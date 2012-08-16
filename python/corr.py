@@ -50,7 +50,7 @@ input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=data_bloc
 
 s1_blk = 32
 n_blk = (N_ANT / s1_blk) * (N_ANT / s1_blk + 1) / 2.
-zeros = np.zeros(n_blk, dtype=np.int32)
+zeros = np.zeros(n_blk*(s1_blk*s1_blk)*2, dtype=np.int32)
 
 corr_buffer = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=zeros)
 #corr_buffer = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, size=n_blk)???
