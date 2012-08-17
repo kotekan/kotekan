@@ -1,5 +1,6 @@
 import pyopencl as cl
 import numpy as np
+from time import time
 
 N_ANT = 256
 N_ITER = 128*1024
@@ -55,7 +56,8 @@ zeros = np.zeros(n_blk*(s1_blk*s1_blk)*2, dtype=np.int32)
 corr_buffer = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=zeros)
 #corr_buffer = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, size=n_blk)???
 
-#too lazy to make this better and actually figure out what I'm writing
+#too lazy to make this better and actually figure out what I'm writing.  Is calculating
+# the blocks to share kernels efficiently.
 global_id_x_map = np.zeros(n_blk, dtype=np.uint)
 global_id_y_map = np.zeros(n_blk, dtype=np.uint)
 for i in np.arange(n_blk):
