@@ -110,7 +110,7 @@ int main(int argc, char ** argv) {
   clSetKernelArg(corr_kernel, 3, sizeof(id_y_map), (void*) &id_y_map);
   clSetKernelArg(corr_kernel, 4, 4*16 *4 * sizeof(cl_uint), NULL);
 
-  int nkern=1;
+  int nkern=1000;
   unsigned int n_caccum=N_ITER/256;
   size_t gws_corr[3]={8,8,n_blk*n_caccum};
   size_t lws_corr[3]={8,8,1};

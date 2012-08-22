@@ -92,7 +92,7 @@ id_y_map = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=global_id_y_m
 
 unpacked = cl.LocalMemory(4*16*4*4)
 
-count = 1
+
 global_work_size = [8,8,int(n_blk*N_ITER/256)]
 local_work_size = [8,8,1]
 corr_kernel.set_arg(0,input_buffer)
@@ -101,8 +101,9 @@ corr_kernel.set_arg(2,id_x_map)
 corr_kernel.set_arg(3,id_y_map)
 corr_kernel.set_arg(4,unpacked)
 
+count = 1000
 t1 = time()
-for i in range(count):
+for i in np.arange(count):
     #maybe should be using cl.enqueue_nd_range_kernel(queue, kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=True)
     #to be the same as keiths.
     event = cl.enqueue_nd_range_kernel(queue, corr_kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=False)  
@@ -110,7 +111,14 @@ for i in range(count):
 
 event.wait()
 
-gpu_time = (time()-t1)/count
+gpu_time = (time()-t1)
+print "Unpacking rate: %6.4fs on GPU (%.1f kHz)\n" % (gpu_time,N_ITER/gpu_time/1000*count);
+print "    [Theoretical max: @%.1f TFLOPS, %.1f kHz; %2.0f%% efficiency]\n" % (theoretical_perf, theoretical_perf*1e12 / (N_ANT/2.*(N_ANT+1.) * 2. * 2.) / 1e3, 100.*count*N_ITER/gpu_time / (theoretical_perf*1e12) * N_ANT/2.*(N_ANT+1.) * 2. * 2.)
+
+  # printf("    [Theoretical max: @%.1f TFLOPS, %.1f kHz; %2.0f%% efficiency]\n",
+  #  card_tflops, card_tflops*1e12 / (N_ANT/2.*(N_ANT+1.) * 2. * 2.) / 1e3,
+  #  100.*nkern*N_ITER/cputime / (card_tflops*1e12) * N_ANT/2.*(N_ANT+1.) * 2. * 2.);
+
   # Keith's c code to do it
   # int nkern=1000;
   # unsigned int n_caccum=N_ITER/256;
@@ -140,7 +148,8 @@ print zeros
 realp = zeros[::2]
 imagp = zeros[1::2]
 outgpu = realp + 1.0j*imagp
-
+outgpu.real = outgpu.real/count
+outgpu.imag = outgpu.imag/count
 
 
 #Calculate the expected output in CPU
@@ -150,15 +159,20 @@ dat = data_block.reshape((N_ITER,N_ANT))
 dat_real = dat & 0x0F
 dat_imag = (dat >> 4) & 0x0F
 dat = dat_real + 1.0j*dat_imag
-outcpu = np.dot(dat.conjugate().transpose(), dat)
+outcpu = np.dot(dat.conjugate().transpose(), dat).astype(np.complex64)
 
 outgpumat = np.zeros(outcpu.shape, dtype=np.complex64)
 
+
 k = 0
 block_total_size = s1_blk*s1_blk
+errors = 0
 for i in np.arange(blocks_per_side):
     for j in np.arange(i,blocks_per_side):
         dat = outgpu[k*block_total_size:(k+1)*block_total_size].reshape(s1_blk,s1_blk)
         outgpumat[i*s1_blk:(i+1)*s1_blk,j*s1_blk:(j+1)*s1_blk] = dat
+        if(~(np.allclose(outcpu[i*s1_blk:(i+1)*s1_blk,j*s1_blk:(j+1)*s1_blk], dat))):
+          errors +=1
         k += 1
 		
+print errors
