@@ -77,8 +77,8 @@ corr_buffer = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=zeros)
 #     print x
 #     print y
 
-global_id_x_map = np.zeros(n_blk, dtype=np.uint)
-global_id_y_map = np.zeros(n_blk, dtype=np.uint)
+global_id_x_map = np.zeros(n_blk, dtype=np.uint32)
+global_id_y_map = np.zeros(n_blk, dtype=np.uint32)
 cont = 0
 blocks_per_side = N_ANT/s1_blk
 for i in np.arange(blocks_per_side):

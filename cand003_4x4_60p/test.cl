@@ -23,6 +23,7 @@ __kernel void corr(__global uint *packed,
 
   uint addr_x = ((get_local_size(0)*x+lx)*4  + z*N_ANT*256) / 4;
   uint addr_y = ((y*32 + get_global_id(1)*4) + z*N_ANT*256 + lx*N_ANT)/4;
+  //if ((lx==0) && (ly==0)) {printf("%i %i | %i %i\n",lx,ly,x,y);}
 
   uint corr_a[4]={0,0,0,0};
   uint corr_b[4]={0,0,0,0};

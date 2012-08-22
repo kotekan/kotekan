@@ -182,7 +182,7 @@ int main(int argc, char ** argv) {
 
   err=0;
   idx=0;
-  for (int ant_y=0; ant_y < 1; ant_y++)
+  for (int ant_y=0; ant_y < N_ANT; ant_y++)
   {
     for (int ant_x=ant_y; ant_x < N_ANT; ant_x++)
     {
@@ -194,7 +194,7 @@ int main(int argc, char ** argv) {
       int gpu_addr=blkid*s1_blk*s1_blk + (ant_y%32)*32 + (ant_x%32);
       int gpu_corr_re=corr_ptr[gpu_addr*2]/nkern;
       int gpu_corr_im=corr_ptr[gpu_addr*2+1]/nkern;
-      printf("%d %d\n",gpu_corr_re, gpu_corr_im);
+     // printf("%d %d\n",gpu_corr_re, gpu_corr_im);
       if (corr_re[idx] != gpu_corr_re || corr_im[idx] != gpu_corr_im) err++;
       dat_x_re = LO_NIBBLE(data_block[ant_y]);
       dat_x_im = HI_NIBBLE(data_block[ant_y]);
