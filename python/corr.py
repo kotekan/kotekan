@@ -1,6 +1,10 @@
 import pyopencl as cl
 import numpy as np
 from time import time
+import matplotlib
+matplotlib.use('TkAgg')
+import pylab
+pylab.ion()
 
 N_ANT = 256
 N_ITER = 128*1024
@@ -8,14 +12,7 @@ N_ITER = 128*1024
 #read in test data should make this be (128*1024, 256)
 data_block = np.fromfile('block2.dat', dtype=np.int8)
 
-#Calculate the expected output in CPU
-dat = data_block.reshape((N_ITER,N_ANT))
-#real 4bit data in the "low"
-#imag 4bit data in the "high"
-dat_real = dat & 0x0F
-dat_imag = (dat >> 4) & 0x0F
-dat = dat_real + 1.0j*dat_imag
-out = np.dot(dat.transpose(), dat)
+
 
 #Get the platform, not sure how this could be more than one thing
 plat = cl.get_platforms()[0]
@@ -24,7 +21,7 @@ plat = cl.get_platforms()[0]
 devs = plat.get_devices()
 
 #Get the second device, need to change this to look for specific card etc.
-dev1 = devs[1]
+dev1 = devs[0]
 
 #create a context for the device
 ctx = cl.Context(devices=[dev1])
@@ -95,14 +92,16 @@ id_y_map = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=global_id_y_m
 
 unpacked = cl.LocalMemory(4*16*4*4)
 
-count = 5
-global_work_size = [16,8,int(n_blk*N_ITER/256)]
-local_work_size = [16,4,1]
+count = 1
+global_work_size = [8,8,int(n_blk*N_ITER/256)]
+local_work_size = [8,8,1]
 corr_kernel.set_arg(0,input_buffer)
 corr_kernel.set_arg(1,corr_buffer)
 corr_kernel.set_arg(2,id_x_map)
 corr_kernel.set_arg(3,id_y_map)
 corr_kernel.set_arg(4,unpacked)
+
+t1 = time()
 for i in range(count):
     #maybe should be using cl.enqueue_nd_range_kernel(queue, kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=True)
     #to be the same as keiths.
@@ -111,6 +110,8 @@ for i in range(count):
 
 event.wait()
 
+gpu_time = (time()-t1)/count
+  # Keith's c code to do it
   # int nkern=1000;
   # unsigned int n_caccum=N_ITER/256;
   # size_t gws_corr[3]={16,8,n_blk*n_caccum};
@@ -119,7 +120,7 @@ event.wait()
   #   err=clEnqueueNDRangeKernel(queue, corr_kernel, 3, NULL, gws_corr, lws_corr, 0, NULL, NULL);
   # if (err) printf("Error enqueueing! %i\n",err);
 
-
+## The c command
 # cl_int clEnqueueNDRangeKernel ( cl_command_queue command_queue,
 #     cl_kernel kernel,
 #     cl_uint work_dim,
@@ -140,7 +141,24 @@ realp = zeros[::2]
 imagp = zeros[1::2]
 outgpu = realp + 1.0j*imagp
 
-outgpumat = np.zeros(out.shape)
 
 
+#Calculate the expected output in CPU
+dat = data_block.reshape((N_ITER,N_ANT))
+#real 4bit data in the "low"
+#imag 4bit data in the "high"
+dat_real = dat & 0x0F
+dat_imag = (dat >> 4) & 0x0F
+dat = dat_real + 1.0j*dat_imag
+outcpu = np.dot(dat.conjugate().transpose(), dat)
+
+outgpumat = np.zeros(outcpu.shape, dtype=np.complex64)
+
+k = 0
+block_total_size = s1_blk*s1_blk
+for i in np.arange(blocks_per_side):
+    for j in np.arange(i,blocks_per_side):
+        dat = outgpu[k*block_total_size:(k+1)*block_total_size].reshape(s1_blk,s1_blk)
+        outgpumat[i*s1_blk:(i+1)*s1_blk,j*s1_blk:(j+1)*s1_blk] = dat
+        k += 1
 		

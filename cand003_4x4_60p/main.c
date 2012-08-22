@@ -13,8 +13,7 @@
 #define LO_NIBBLE(b) ((b) & 0x0F)
 
 #define N_ANT 256
-//#define N_ITER 128*1024
-#define N_ITER 10000
+#define N_ITER 128*1024
 
 
 double e_time(void)
@@ -113,8 +112,8 @@ int main(int argc, char ** argv) {
 
   int nkern=1000;
   unsigned int n_caccum=N_ITER/256;
-  size_t gws_corr[3]={16,8,n_blk*n_caccum};
-  size_t lws_corr[3]={16,4,1};
+  size_t gws_corr[3]={8,8,n_blk*n_caccum};
+  size_t lws_corr[3]={8,8,1};
   for (int i=0; i<nkern; i++)
     err=clEnqueueNDRangeKernel(queue, corr_kernel, 3, NULL, gws_corr, lws_corr, 0, NULL, NULL);
   if (err) printf("Error enqueueing! %i\n",err);
