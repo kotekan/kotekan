@@ -101,7 +101,7 @@ corr_kernel.set_arg(2,id_x_map)
 corr_kernel.set_arg(3,id_y_map)
 corr_kernel.set_arg(4,unpacked)
 
-count = 1000
+count = 36
 t1 = time()
 for i in np.arange(count):
     #maybe should be using cl.enqueue_nd_range_kernel(queue, kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=True)
@@ -174,5 +174,8 @@ for i in np.arange(blocks_per_side):
         if(~(np.allclose(outcpu[i*s1_blk:(i+1)*s1_blk,j*s1_blk:(j+1)*s1_blk], dat))):
           errors +=1
         k += 1
-		
-print errors
+
+if errors:
+  print "CPU does not match GPU!!!!"		
+else:
+  print "CPU == GPU, success!!!"
