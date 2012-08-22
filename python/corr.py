@@ -142,8 +142,8 @@ print "    [Theoretical max: @%.1f TFLOPS, %.1f kHz; %2.0f%% efficiency]\n" % (t
 
 cl.enqueue_copy(queue, zeros, corr_buffer)
 
-print zeros.shape
-print zeros
+# print zeros.shape
+# print zeros
 
 realp = zeros[::2]
 imagp = zeros[1::2]
@@ -159,7 +159,10 @@ dat = data_block.reshape((N_ITER,N_ANT))
 dat_real = dat & 0x0F
 dat_imag = (dat >> 4) & 0x0F
 dat = dat_real + 1.0j*dat_imag
+t1 = time()
 outcpu = np.dot(dat.conjugate().transpose(), dat).astype(np.complex64)
+cpu_time = (time()-t1)
+print  "Unpacking rate: %6.4fs on CPU (%.1f kHz)\n" % (cpu_time,N_ITER/cpu_time/1000)
 
 outgpumat = np.zeros(outcpu.shape, dtype=np.complex64)
 
