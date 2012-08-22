@@ -43,9 +43,6 @@ max_compute_units = dev1.max_compute_units
 theoretical_perf = max_clock_frequency*1e6 * max_compute_units * 16 * 4 *2/1e12
 print "Theoretical Maximum Performance ", theoretical_perf, " TFLOPs"
 
-#not sure how to use this yet
-#kernel_params = {"packed": packed,
-#		"corr_buff":corr_buff, "id_x_map":id_x_map, "id_y_map":id_y_map}
 
 #Create program and kernel
 corr_program = cl.Program(ctx, KERNEL_CODE).build()
@@ -99,10 +96,18 @@ id_y_map = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=global_id_y_m
 unpacked = cl.LocalMemory(4*16*4*4)
 
 count = 5
+global_work_size = [16,8,int(n_blk*N_ITER/256)]
+local_work_size = [16,4,1]
+corr_kernel.set_arg(0,input_buffer)
+corr_kernel.set_arg(1,corr_buffer)
+corr_kernel.set_arg(2,id_x_map)
+corr_kernel.set_arg(3,id_y_map)
+corr_kernel.set_arg(4,unpacked)
 for i in range(count):
     #maybe should be using cl.enqueue_nd_range_kernel(queue, kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=True)
-    #to be the same as keiths.  
-    event = corr_kernel(queue, zeros.shape[::-1], input_buffer, corr_buffer, id_x_map, id_y_map, unpacked )
+    #to be the same as keiths.
+    event = cl.enqueue_nd_range_kernel(queue, corr_kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=False)  
+    #event = corr_kernel(queue, zeros.shape[::-1], input_buffer, corr_buffer, id_x_map, id_y_map, unpacked )
 
 event.wait()
 
