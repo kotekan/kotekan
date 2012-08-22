@@ -32,7 +32,7 @@ int main(int argc, char ** argv) {
   //-------------------------------------------------------------- 
   // Read in test data
   FILE *fp;
-  fp=fopen("block.dat", "r");
+  fp=fopen("block2.dat", "r");
   int ct=fread(data_block, 1, N_ITER*N_ANT, fp);
   if (ct) ct=0;
   fclose(fp);
@@ -110,7 +110,7 @@ int main(int argc, char ** argv) {
   clSetKernelArg(corr_kernel, 3, sizeof(id_y_map), (void*) &id_y_map);
   clSetKernelArg(corr_kernel, 4, 4*16 *4 * sizeof(cl_uint), NULL);
 
-  int nkern=1000;
+  int nkern=1;
   unsigned int n_caccum=N_ITER/256;
   size_t gws_corr[3]={8,8,n_blk*n_caccum};
   size_t lws_corr[3]={8,8,1};
@@ -194,6 +194,7 @@ int main(int argc, char ** argv) {
       int gpu_addr=blkid*s1_blk*s1_blk + (ant_y%32)*32 + (ant_x%32);
       int gpu_corr_re=corr_ptr[gpu_addr*2]/nkern;
       int gpu_corr_im=corr_ptr[gpu_addr*2+1]/nkern;
+      printf("%d %d\n",gpu_corr_re, gpu_corr_im);
       if (corr_re[idx] != gpu_corr_re || corr_im[idx] != gpu_corr_im) err++;
       dat_x_re = LO_NIBBLE(data_block[ant_y]);
       dat_x_im = HI_NIBBLE(data_block[ant_y]);
