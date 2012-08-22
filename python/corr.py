@@ -5,9 +5,17 @@ from time import time
 N_ANT = 256
 N_ITER = 128*1024
 
-#read in test data
-data_block = np.fromfile('block.dat', dtype=np.int8)
+#read in test data should make this be (128*1024, 256)
+data_block = np.fromfile('block2.dat', dtype=np.int8)
 
+#Calculate the expected output in CPU
+dat = data_block.reshape((N_ITER,N_ANT))
+#real 4bit data in the "low"
+#imag 4bit data in the "high"
+dat_real = dat & 0x0F
+dat_imag = (dat >> 4) & 0x0F
+dat = dat_real + 1.0j*dat_imag
+out = np.dot(dat.transpose(), dat)
 
 #Get the platform, not sure how this could be more than one thing
 plat = cl.get_platforms()[0]
@@ -77,5 +85,6 @@ event.wait()
 
 cl.enqueue_copy(queue, zeros, corr_buffer)
 
+print zeros.shape
 print zeros
 		
