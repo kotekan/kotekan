@@ -101,7 +101,13 @@ corr_kernel.set_arg(2,id_x_map)
 corr_kernel.set_arg(3,id_y_map)
 corr_kernel.set_arg(4,unpacked)
 
-count = 36
+niter = 36
+#warmup
+warmup=1
+for i in np.arange(warmup):
+    event = cl.enqueue_nd_range_kernel(queue, corr_kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=False)  
+event.wait()
+count = niter - warmup
 t1 = time()
 for i in np.arange(count):
     #maybe should be using cl.enqueue_nd_range_kernel(queue, kernel, global_work_size, local_work_size, global_work_offset=None, wait_for=None, g_times_l=True)
@@ -148,8 +154,8 @@ cl.enqueue_copy(queue, zeros, corr_buffer)
 realp = zeros[::2]
 imagp = zeros[1::2]
 outgpu = realp + 1.0j*imagp
-outgpu.real = outgpu.real/count
-outgpu.imag = outgpu.imag/count
+outgpu.real = outgpu.real/niter
+outgpu.imag = outgpu.imag/niter
 
 
 #Calculate the expected output in CPU
