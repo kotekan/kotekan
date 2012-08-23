@@ -21,7 +21,7 @@ plat = cl.get_platforms()[0]
 devs = plat.get_devices()
 
 #Get the second device, need to change this to look for specific card etc.
-dev1 = devs[1]
+dev1 = devs[0]
 
 #create a context for the device
 ctx = cl.Context(devices=[dev1])
