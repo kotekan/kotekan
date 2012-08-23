@@ -4,7 +4,7 @@ from time import time
 import matplotlib
 matplotlib.use('TkAgg')
 import pylab
-pylab.ion()
+#pylab.ion()
 
 N_ANT = 256
 N_ITER = 128*1024
@@ -21,7 +21,7 @@ plat = cl.get_platforms()[0]
 devs = plat.get_devices()
 
 #Get the second device, need to change this to look for specific card etc.
-dev1 = devs[0]
+dev1 = devs[1]
 
 #create a context for the device
 ctx = cl.Context(devices=[dev1])
@@ -182,3 +182,16 @@ if errors:
   print "CPU does not match GPU!!!!"		
 else:
   print "CPU == GPU, success!!!"
+
+pylab.imshow(outgpumat.real)
+pylab.savefig('gpu_mat_real.png')
+pylab.clf()
+pylab.imshow(outcpu.real)
+pylab.savefig('cpu_mat_real.png')
+pylab.clf()
+pylab.imshow(outgpumat.imag)
+pylab.savefig('gpu_mat_imag.png')
+pylab.clf()
+pylab.imshow(outcpu.imag)
+pylab.savefig('cpu_mat_imag.png')
+pylab.clf()
