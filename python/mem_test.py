@@ -60,7 +60,7 @@ print "Tranfer time from memory to GPU is {0:.5}s, corresponding to {1:.5} Gbit/
 #test transpose
 ######
 t1 = time()
-mem_data = np.zeros((data_block_size,4), dtype=np.int8)
+mem_data = np.zeros((data_block_size,8), dtype=np.int8)
 mem_time = time()-t1
 
 gbps = 8*mem_data.size/mem_time/1e9
