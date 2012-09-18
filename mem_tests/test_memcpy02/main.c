@@ -2,9 +2,11 @@
 #include <sys/time.h>
 #include <memory.h>
 #include <pthread.h>
+#include <malloc.h>
+
 
 #define NITER 100
-#define SHUF 1
+#define SHUF 4
 
 double e_time(void)
 {
@@ -47,21 +49,23 @@ int main(int argc, char **argv)
   pthread_t cp_th[SHUF];
   struct thread_data thread_data_array[SHUF];
 
-  char *src=malloc(x*y*SHUF);
+//  char *src=malloc(x*y*SHUF);
+  char *src=memalign(1024*1024,x*y*SHUF);
   srand(time(NULL));
   for (i=0; i<x*y*SHUF; i++) {src[i] = rand();}
 
   char *dst[SHUF];
   for (i=0; i<SHUF; i++)
   {
-    dst[i]=malloc(x*y);
+//    dst[i]=malloc(x*y);
+    dst[i]=memalign(1024*1024,x*y);
     memset(dst[i],'d'+i,x*y);
   }
 
   sleep(5);
 
   //loop over interleaving -- number of contiguous samples = 2^db
-  for (db=3; db<=25; db++)
+  for (db=5; db<=25; db++)
   {
     int ilv=1<<db;
     double cputime=0;
@@ -98,3 +102,4 @@ int main(int argc, char **argv)
   pthread_exit(NULL);
 }
 
+//gcc -O3 -ffast-math -msse2 -mfpmath=sse -mtune=corei7 -m64 main.c -lpthread
