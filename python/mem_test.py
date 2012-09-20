@@ -39,7 +39,8 @@ mf = cl.mem_flags
 mult=4
 rand_data = np.random.randint(256,size=data_block_size*mult).astype(np.int8)
 t1 = time()
-input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rand_data )
+#input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rand_data )
+input_buffer = cl.Buffer(ctx, mf.READ_WRITE, data_block_size*mult)
 push_time = time()-t1
 
 print "time to initiate to card: {0}".format(push_time)
@@ -55,9 +56,10 @@ for i in np.arange(3):
 	rand_data = np.random.randint(256,size=data_block_size*mult).astype(np.int8)
 	#input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rand_data )
 	print rand_data.size
-	#input_buffer.release()
+	queue.finish()
 	t1 = time()
 	cl.enqueue_copy(queue, input_buffer, rand_data)
+	queue.finish()
 	push_time = time()-t1
 	transfer_times.append(push_time)
 	print "time to send to card: {0}".format(push_time)
