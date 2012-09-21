@@ -52,17 +52,21 @@ print "first time to send to card: {0}".format(push_time)
 
 transfer_times = []
 
-for i in np.arange(3):
-	rand_data = np.random.randint(256,size=data_block_size*mult).astype(np.int8)
-	#input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rand_data )
-	print rand_data.size
-	queue.finish()
-	t1 = time()
+rand_data = np.random.randint(256,size=data_block_size*mult).astype(np.int8)
+#input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rand_data )
+print rand_data.size
+queue.finish()
+
+t1 = time()
+ntries = 8
+for i in np.arange(ntries):
 	cl.enqueue_copy(queue, input_buffer, rand_data)
-	queue.finish()
-	push_time = time()-t1
-	transfer_times.append(push_time)
-	print "time to send to card: {0}".format(push_time)
+
+queue.finish()
+push_time = time()-t1
+mean_transfer = push_time*1.0/ntries
+transfer_times.append(push_time*1.0/ntries)
+print "time to send to card: {0}".format(push_time)
 
 mean_transfer = np.mean(transfer_times)
 
