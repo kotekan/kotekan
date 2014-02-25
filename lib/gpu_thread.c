@@ -5,6 +5,7 @@
 #include <memory.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #include "gpu_thread.h"
 #include "errors.h"
@@ -41,11 +42,11 @@ void gpu_thread(void* arg)
     cl_data.out_buf = args->out_buf;
 
     cl_data.block_size = args->block_size;
-    cl_data.num_antennas = args->num_antennas;
-    cl_data.num_iterations = args->num_iterations;
+    cl_data.num_elements = args->num_elements;
+    cl_data.num_timesamples = args->num_timesamples;
     cl_data.num_freq = args->num_freq;
 
-    cl_data.accumulate_len = args->num_freq * args->num_antennas * 2 * sizeof(cl_int);
+    cl_data.accumulate_len = args->num_freq * args->num_elements * 2 * sizeof(cl_int);
 
     cl_data.gpu_id = args->gpu_id;
 
@@ -150,7 +151,7 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
                                             cl_data->device_input_buffer[buffer_id],
                                             CL_FALSE,
                                             0, //offset
-                                            cl_data->in_buf->buffer_size,
+                                            cl_data->in_buf->aligned_buffer_size,
                                             cl_data->in_buf->data[buffer_id],
                                             1,
                                             &cl_data->host_buffer_ready[buffer_id], // Wait on this user event (network finished).
@@ -160,7 +161,7 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
                                             cl_data->device_accumulate_buffer[buffer_id],
                                             CL_FALSE,
                                             0,
-                                            cl_data->accumulate_len,
+                                            cl_data->aligned_accumulate_len,
                                             cl_data->accumulate_zeros,
                                             1,
                                             &cl_data->input_data_written[buffer_id],
@@ -177,9 +178,8 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
 
     // not sure it is actually paying attention to our changes
     //printf(".");
-    //
-    
-	
+
+
     // The offset accumulate kernel args.
     // Set 2 arguments--input array and zeroed output array
     CHECK_CL_ERROR( clSetKernelArg(cl_data->offset_accumulate_kernel,
@@ -251,7 +251,7 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
                                             cl_data->device_output_buffer[buffer_id],
                                             CL_FALSE,
                                             0,
-                                            cl_data->output_len*sizeof(cl_int),
+                                            cl_data->out_buf->aligned_buffer_size,
                                             cl_data->out_buf->data[buffer_id],
                                             1,
                                             &cl_data->corr_finished[buffer_id],
@@ -286,7 +286,9 @@ void setupOpenCL(struct OpenCLData * cl_data)
     // TODO Move this into a function for just loading kernels.
     // Load kernels and compile them.
     char *cl_file_names[] = {OPENCL_FILENAME_1, OPENCL_FILENAME_2, OPENCL_FILENAME_3};
-    char cl_options[] = "";
+    char cl_options[1024];
+    sprintf(cl_options,"-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du", 
+            cl_data->actual_num_elements, cl_data->actual_num_freq, cl_data->num_elements, cl_data->num_freq, cl_data->num_blocks, cl_data->num_timesamples);
     size_t cl_program_size[NUM_CL_FILES];
     FILE *fp;
     char *cl_program_buffer[NUM_CL_FILES];
@@ -340,15 +342,33 @@ void setupOpenCL(struct OpenCLData * cl_data)
     cl_data->device_input_buffer = (cl_mem *) malloc(cl_data->in_buf->num_buffers * sizeof(cl_mem));
     CHECK_MEM(cl_data->device_input_buffer);
     for (int i = 0; i < cl_data->in_buf->num_buffers; ++i) {
-        cl_data->device_input_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_READ_WRITE, cl_data->in_buf->buffer_size, NULL, &err);
+        cl_data->device_input_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_READ_ONLY, cl_data->in_buf->aligned_buffer_size, NULL, &err);
         CHECK_CL_ERROR(err);
     }
+
+    // Array used to zero the output memory on the device.
+    // TODO should this be in it's own function?
+    cl_data->aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data->accumulate_len / (double)PAGESIZE_MEM));
+    INFO ("aligned: %d, accumulate_len: %d", cl_data->aligned_accumulate_len, cl_data->accumulate_len);
+    err = posix_memalign((void **) &cl_data->accumulate_zeros, PAGESIZE_MEM, cl_data->aligned_accumulate_len);
+    if ( err != 0 ) {
+        ERROR("Error creating aligned memory for accumulate zeros");
+        exit(err);
+    }
+
+    // Ask that all pages be kept in memory
+    err = mlock((void *) cl_data->accumulate_zeros, cl_data->aligned_accumulate_len);
+    if ( err == -1 ) {
+        ERROR("Error locking memory - check ulimit -a to check memlock limits");
+        exit(errno);
+    }
+    memset(cl_data->accumulate_zeros, 0, cl_data->aligned_accumulate_len );
 
     // Setup device accumulate buffers.
     cl_data->device_accumulate_buffer = (cl_mem *) malloc(cl_data->in_buf->num_buffers * sizeof(cl_mem));
     CHECK_MEM(cl_data->device_accumulate_buffer);
     for (int i = 0; i < cl_data->in_buf->num_buffers; ++i) {
-        cl_data->device_accumulate_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_READ_WRITE, cl_data->accumulate_len, NULL, &err);
+        cl_data->device_accumulate_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_READ_WRITE, cl_data->aligned_accumulate_len, NULL, &err);
         CHECK_CL_ERROR(err);
     }
 
@@ -356,7 +376,7 @@ void setupOpenCL(struct OpenCLData * cl_data)
     cl_data->device_output_buffer = (cl_mem *) malloc(cl_data->out_buf->num_buffers * sizeof(cl_mem));
     CHECK_MEM(cl_data->device_output_buffer);
     for (int i = 0; i < cl_data->out_buf->num_buffers; ++i) {
-        cl_data->device_output_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_WRITE_ONLY, cl_data->out_buf->buffer_size, NULL, &err);
+        cl_data->device_output_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_WRITE_ONLY, cl_data->out_buf->aligned_buffer_size, NULL, &err);
         //INFO("buffer_size: %d", cl_data->out_buf->buffer_size);
         CHECK_CL_ERROR(err);
     }
@@ -388,7 +408,7 @@ void setupOpenCL(struct OpenCLData * cl_data)
     // Create lookup tables 
     // TODO move this out of this function?
     // TODO explain these numbers/formulas.
-    cl_data->num_blocks = (cl_data->num_antennas / cl_data->block_size) * (cl_data->num_antennas / cl_data->block_size + 1) / 2.;
+    cl_data->num_blocks = (cl_data->num_elements / cl_data->block_size) * (cl_data->num_elements / cl_data->block_size + 1) / 2.;
     cl_data->output_len = cl_data->num_freq*cl_data->num_blocks*(cl_data->block_size*cl_data->block_size)*2.;
 
     //upper triangular address mapping --converting 1d addresses to 2d addresses
@@ -397,7 +417,7 @@ void setupOpenCL(struct OpenCLData * cl_data)
 
     //TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y indices for an upper triangle.  
     // Time Test kernels using them compared to the lookup tables for NUM_ELEM = 256
-    int largest_num_blocks_1D = cl_data->num_antennas/cl_data->block_size;
+    int largest_num_blocks_1D = cl_data->num_elements/cl_data->block_size;
     int index_1D = 0;
     for (int j = 0; j < largest_num_blocks_1D; j++){
         for (int i = j; i < largest_num_blocks_1D; i++){
@@ -456,12 +476,12 @@ void setupOpenCL(struct OpenCLData * cl_data)
                                    NULL) );
 
     // Number of compressed accumulations.
-    cl_data->num_accumulations = cl_data->num_iterations/256;
+    cl_data->num_accumulations = cl_data->num_timesamples/256;
 
     // Accumulation kernel global and local work space sizes.
     cl_data->gws_accum[0] = 64;
-    cl_data->gws_accum[1] = (int)ceil(cl_data->num_antennas*cl_data->num_freq/256.0); 
-    cl_data->gws_accum[2] = cl_data->num_iterations/1024;
+    cl_data->gws_accum[1] = (int)ceil(cl_data->num_elements*cl_data->num_freq/256.0); 
+    cl_data->gws_accum[2] = cl_data->num_timesamples/1024;
 
     cl_data->lws_accum[0] = 64;
     cl_data->lws_accum[1] = 1;
@@ -485,26 +505,6 @@ void setupOpenCL(struct OpenCLData * cl_data)
     cl_data->lws_corr[1] = 8;
     cl_data->lws_corr[2] = 1;
 
-    // Array used to zero the output memory on the device.
-    // TODO should this be in it's own function?
-    int aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data->accumulate_len / (double)PAGESIZE_MEM));
-    INFO ("aligned: %d, accumulate_len: %d", aligned_accumulate_len, cl_data->accumulate_len);
-    err = posix_memalign((void **) &cl_data->accumulate_zeros, PAGESIZE_MEM, aligned_accumulate_len);
-
-    if ( err != 0 ) {
-        ERROR("Error creating aligned memory for accumulate zeros");
-        exit(err);
-    }
-
-    // Ask that all pages be kept in memory
-    err = mlock((void *) cl_data->accumulate_zeros, aligned_accumulate_len);
-
-    if ( err == -1 ) {
-        ERROR("Error locking memory - check ulimit -a to check memlock limits");
-        exit(errno);
-    }
-
-    memset(cl_data->accumulate_zeros, 0, aligned_accumulate_len );
 }
 
 void closeOpenCL(struct OpenCLData * cl_data)

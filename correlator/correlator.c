@@ -20,8 +20,15 @@
 #define BLOCK_SIZE 32
 
 #define NUM_ELEMENTS 32  // Must be >= 32
-#define NUM_ITER 64*1024 //32 initally best
+#define NUM_TIMESAMPLES 64*1024 //32 initally best
 #define NUM_FREQ 64
+// Since we are using the kernels for the 256-element correlator for a
+// 16-element correlator, we pack more than one full correlator product into each
+// work group to make it efficent.  This means the paramaters for the 16-element
+// correlator don't reflect the true number of frequencies and elements per FPGA link.
+// These true values are set here.
+#define ACTUAL_NUM_ELEMENTS 16u
+#define ACTUAL_NUM_FREQUENCIES 128u
 
 int main(int argc, char ** argv) {
 
@@ -38,9 +45,9 @@ int main(int argc, char ** argv) {
     int num_blocks = (NUM_ELEMENTS / BLOCK_SIZE) * (NUM_ELEMENTS / BLOCK_SIZE + 1) / 2.;
     cl_int output_len = NUM_FREQ*num_blocks*(BLOCK_SIZE*BLOCK_SIZE)*2.;
 
-    createBuffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_ITER * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS);
+    createBuffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS);
     createBuffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1);
-    DEBUG("%d %d %d %d", NUM_ITER * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
+    DEBUG("%d %d %d %d", NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
 
     // Create Open CL thread.
     pthread_t gpu_t;
@@ -48,8 +55,10 @@ int main(int argc, char ** argv) {
     gpu_args.in_buf = &input_buffer;
     gpu_args.out_buf = &output_buffer;
     gpu_args.block_size = BLOCK_SIZE;
-    gpu_args.num_antennas = NUM_ELEMENTS;
-    gpu_args.num_iterations = NUM_ITER;
+    gpu_args.num_elements = NUM_ELEMENTS;
+    gpu_args.num_timesamples = NUM_TIMESAMPLES;
+    gpu_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
+    gpu_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
     gpu_args.num_freq = NUM_FREQ;
     gpu_args.gpu_id = atoi(argv[1]);
     gpu_args.started = 0;

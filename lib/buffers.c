@@ -37,8 +37,9 @@ int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers)
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
 
     buf->num_buffers = num_buf;
+    buf->buffer_size = len;
     // We need to align the buffer length to a page.
-    buf->buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
+    buf->aligned_buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
     buf->num_producers = num_producers;
 
     // Create the is_free array
@@ -81,7 +82,7 @@ int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers)
     for (int i = 0; i < num_buf; ++i) {
 
         // Create a page alligned block of memory for the buffer
-        err = posix_memalign((void **) &(buf->data[i]), PAGESIZE_MEM, len);
+        err = posix_memalign((void **) &(buf->data[i]), PAGESIZE_MEM, buf->aligned_buffer_size);
 
         if ( err != 0 ) {
             ERROR("Error creating alligned memory");

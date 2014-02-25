@@ -15,8 +15,13 @@
 #include <CL/cl_ext.h>
 #include "pthread.h"
 
+// This adjusts the number of queues used by the OpenCL runtime
+// One queue is for data transfers to the GPU, one is for kernels,
+// and one is for data transfers from the GPU to host memory.
+// Unless you really know what you are doing, don't change this.
 #define NUM_QUEUES 3
 
+// The maximum number of expected GPUs in a host.  Increase as needed.
 #define MAX_GPUS 4
 
 struct gpu_thread_args {
@@ -24,11 +29,17 @@ struct gpu_thread_args {
     struct Buffer * out_buf;
 
     int block_size;
-    int num_antennas;
+    int num_elements;
     int num_freq;
-    int num_iterations;
+    int num_timesamples;
+    int num_links;
     int started;
     int gpu_id;
+
+    // When processing less than 32 elements, num_freq and num_elements are set differently
+    // than the true number of freq/elements.
+    int actual_num_freq;
+    int actual_num_elements;
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
@@ -75,11 +86,15 @@ struct OpenCLData {
     int num_blocks;
     int output_len;
     int accumulate_len;
+    int aligned_accumulate_len;
     int block_size;
-    int num_antennas;
+    int num_elements;
     int num_freq;
-    int num_iterations;
+    int num_timesamples;
     int gpu_id; // Internal GPU ID.
+
+    int actual_num_freq;
+    int actual_num_elements;
 
     // Kernel values.
     unsigned int num_accumulations;

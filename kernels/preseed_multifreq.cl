@@ -2,8 +2,8 @@
 //Preseed the output array for correlations
 
 //HARDCODE ALL OF THESE!
-#define NUM_ELEMENTS                    32u // must be 32 or larger, 2560u eventually
-#define NUM_BLOCKS                      1u  // N(N+1)/2 where N=(NUM_ELEMENTS/32)
+//#define NUM_ELEMENTS                    32u // must be 32 or larger, 2560u eventually
+//#define NUM_BLOCKS                      1u  // N(N+1)/2 where N=(NUM_ELEMENTS/32)
 
 #define LOCAL_SIZE                      8u
 #define BLOCK_DIM                       32u

@@ -6,9 +6,10 @@
 //#pragma OPENCL EXTENSION cl_amd_printf : enable
 
 //HARDCODE ALL OF THESE!
-#define NUM_ELEMENTS                                32u // 2560u eventually
-#define NUM_FREQUENCIES                             64u
-#define NUM_BLOCKS                                  1u  // N(N+1)/2 where N=(NUM_ELEMENTS/32)
+//NUM_ELEMENTS, NUM_FREQUENCIES, NUM_BLOCKS defined at compile time
+//#define NUM_ELEMENTS                                32u // 2560u eventually
+//#define NUM_FREQUENCIES                             64u
+//#define NUM_BLOCKS                                  1u  // N(N+1)/2 where N=(NUM_ELEMENTS/32)
 
 #define NUM_ELEMENTS_div_4                          NUM_ELEMENTS/4u  // N/4
 #define _256_x_NUM_ELEMENTS_div_4_x_NUM_FREQUENCIES 256u*NUM_ELEMENTS_div_4*NUM_FREQUENCIES

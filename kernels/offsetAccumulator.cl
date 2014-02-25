@@ -20,10 +20,10 @@
 
 // errors in results have (at least partially) to do with the fact that (int)(N*M/256) = 7 for M=126 frequencies (we need 8 and a check!)
 
-#define ACTUAL_NUM_ELEMENTS         16u
-#define ACTUAL_NUM_FREQ_CHANNELS    128u
+//#define ACTUAL_NUM_ELEMENTS         16u
+//#define ACTUAL_NUM_FREQ_CHANNELS    128u
 #define NUM_TIMESTEPS_LOCAL         1024u //if you change this, check the gws_accum in the main program, too! (also note that the max possible value here is 4096)
-#define OFFSET_FOR_1_TIMESTEP       (ACTUAL_NUM_ELEMENTS*ACTUAL_NUM_FREQ_CHANNELS/4u) //divide by 4 to account for the 4 B per uint
+#define OFFSET_FOR_1_TIMESTEP       (ACTUAL_NUM_ELEMENTS*ACTUAL_NUM_FREQUENCIES/4u) //divide by 4 to account for the 4 B per uint
 
 __kernel void offsetAccumulateElements (__global uint *inputData,
                                         __global uint *outputData){
@@ -36,7 +36,7 @@ __kernel void offsetAccumulateElements (__global uint *inputData,
 
     //only compute values if the output address is going to be valid
     //address * 8 accounts for the 8 values (4 pairs of complex numbers) accessed by loading 4 B of packed data
-    if (address * 8u + 7u < ACTUAL_NUM_ELEMENTS*ACTUAL_NUM_FREQ_CHANNELS*2u){ //check to see if the output address falls in a useful range (i.e. < Num_Elements x Num_Freq)
+    if (address * 8u + 7u < ACTUAL_NUM_ELEMENTS*ACTUAL_NUM_FREQUENCIES*2u){ //check to see if the output address falls in a useful range (i.e. < Num_Elements x Num_Freq)
         address += get_group_id(2)*NUM_TIMESTEPS_LOCAL*OFFSET_FOR_1_TIMESTEP;
 
         for (int i = 0; i < NUM_TIMESTEPS_LOCAL; i++){

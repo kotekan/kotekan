@@ -45,6 +45,8 @@ struct Buffer {
     /// The size of each buffer.
     int buffer_size;
 
+    int aligned_buffer_size;
+
     /// The array of buffers
     char ** data;
 

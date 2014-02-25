@@ -16,4 +16,6 @@ struct network_thread_arg {
 
 void network_thread(void * arg);
 
+void test_network_thread(void * arg);
+
 #endif
