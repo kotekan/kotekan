@@ -29,9 +29,9 @@ To build with the project with debug symbols:
 
 # Build Requirements
 
-### CMAKE 2.6+
+* CMAKE 2.6+
 
-### gcc 4.7+
+* gcc 4.7+
 
 On CentOS 6.5 this requires installing dev tools and entering a different shell:
 
@@ -41,19 +41,17 @@ On CentOS 6.5 this requires installing dev tools and entering a different shell:
 
 Once devtools are installed, only the last line needs to be run before building
 
-### AMD OpenCL SDK
+* AMD OpenCL SDK
 
 http://developer.amd.com/tools-and-sdks/heterogeneous-computing/amd-accelerated-parallel-processing-app-sdk/downloads/
 
-### AMD Catalyst Drivers (required to use AMD OpenCL)
+* AMD Catalyst Drivers (required to use AMD OpenCL)
 
 http://support.amd.com/en-us/download/desktop?os=Linux%20x86_64
 
 Use the latest non-beta drivers, currently 13.12 
 
-### PF_RING
-
-http://www.ntop.org/get-started/download/
+* PF_RING
 
 The lastest versions of PF_RING seem to have some large API changes, which have not been addressed.
 The version that does work is SVN #6818.  Checkout and install that version until the code has
@@ -61,10 +59,14 @@ been updated to address the new API
 
 Install process:
 
+	svn co https://svn.ntop.org/svn/ntop/trunk/PF_RING/
+	cd PF_RING
+	svn checkout 6818 
+
 	cd PF_RING/kernel
 	make
 
-	cd PF_RING/drivers/DNA/ixgbe-*/src/
+	cd PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/
 	make
 
 	cd PF_RING/userland/lib
@@ -76,14 +78,14 @@ To load the kernel modules:
 	insmod /data/PF_RING/kernel/pf_ring.ko transparent_mode=2 quick_mode=1 enable_tx_capture=0 min_num_slots=4096
 	insmod /data/PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/ixgbe.ko mtu=16110 RSS=1,1,1,1,1,1,1,1 num_rx_slots=4096 num_tx_slots=0 
 
-To enable the library to be loaded:
+To enable the library to be dynamicallyy loaded:
 
 	echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf
 	ldconfig
 
-### HDF5 Development Libraries
+* HDF5 Development Libraries
 
-### Python 2.7+
+* Python 2.7+
 
 On CentOS follow the instructions here to get Python 2.7:
 http://toomuchdata.com/2014/02/16/how-to-install-python-on-centos/
