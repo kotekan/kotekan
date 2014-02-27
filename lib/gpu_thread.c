@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "gpu_thread.h"
 #include "errors.h"
@@ -283,6 +284,11 @@ void setupOpenCL(struct OpenCLData * cl_data)
     cl_data->context = clCreateContext( NULL, 1, &cl_data->device_id[cl_data->gpu_id], NULL, NULL, &err);
     CHECK_CL_ERROR(err);
 
+    // TODO move this out of this function?
+    // TODO explain these numbers/formulas.
+    cl_data->num_blocks = (cl_data->num_elements / cl_data->block_size) * (cl_data->num_elements / cl_data->block_size + 1) / 2.;
+    cl_data->output_len = cl_data->num_freq*cl_data->num_blocks*(cl_data->block_size*cl_data->block_size)*2.;
+
     // TODO Move this into a function for just loading kernels.
     // Load kernels and compile them.
     char *cl_file_names[] = {OPENCL_FILENAME_1, OPENCL_FILENAME_2, OPENCL_FILENAME_3};
@@ -406,10 +412,6 @@ void setupOpenCL(struct OpenCLData * cl_data)
     CHECK_MEM(cl_data->read_finished);
 
     // Create lookup tables 
-    // TODO move this out of this function?
-    // TODO explain these numbers/formulas.
-    cl_data->num_blocks = (cl_data->num_elements / cl_data->block_size) * (cl_data->num_elements / cl_data->block_size + 1) / 2.;
-    cl_data->output_len = cl_data->num_freq*cl_data->num_blocks*(cl_data->block_size*cl_data->block_size)*2.;
 
     //upper triangular address mapping --converting 1d addresses to 2d addresses
     unsigned int global_id_x_map[cl_data->num_blocks];

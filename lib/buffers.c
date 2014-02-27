@@ -38,9 +38,18 @@ int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers)
 
     buf->num_buffers = num_buf;
     buf->buffer_size = len;
-    // We need to align the buffer length to a page.
+    // We align the buffer length to a multiple of the system page size.
+    // This may result in the memory allocated being larger than the size of the
+    // memory requested.  So buffer_size is the size requested/used, and aligned_buffer_size
+    // is the actual size of the memory space.
+    // To make CPU-GPU transfers more efficient, it is recommended to use the aligned value
+    // so that no partial pages are send in the DMA copy.
     buf->aligned_buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
     buf->num_producers = num_producers;
+
+    // Make sure we don't have a math error,
+    // which would make the buffer smaller than it should be.
+    assert(buf->aligned_buffer_size >= buf->buffer_size);
 
     // Create the is_free array
     buf->is_full = malloc(num_buf * sizeof(int));
