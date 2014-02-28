@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <getopt.h>
+#include <assert.h>
 
 #include "errors.h"
 #include "buffers.h"
@@ -30,12 +32,58 @@
 #define ACTUAL_NUM_ELEMENTS 16u
 #define ACTUAL_NUM_FREQUENCIES 128u
 
-int main(int argc, char ** argv) {
+void print_help() {
+    printf("usage: correlator [opts]\n\n");
+    printf("Options:\n");
+    printf("    --gpu (-g) [gpu number]     The id of the GPU to use\n");
+    printf("    --no-network-test (-n)      Bypass taking data from the nextwork\n\n");
+}
 
-    // TODO process argc/argv in a nice way.
+int main(int argc, char ** argv) {
 
     // Setup syslog
     openlog ("correlator", LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_LOCAL1);
+
+    // Default values:
+    int opt_val = 0;
+    int gpu_id = 0;
+    int no_network_test = 0;
+ 
+    for (;;) {
+        static struct option long_options[] = {
+            {"gpu", required_argument, 0, 'g'},
+            {"no-network-test", no_argument, 0, 'n'},
+            {"help", no_argument, 0, 'h'},
+            {0, 0, 0, 0}
+        };
+
+        int option_index = 0;
+
+        opt_val = getopt_long (argc, argv, "g:nh",
+                               long_options, &option_index);
+
+        // End of args
+        if (opt_val == -1) {
+            break;
+        }
+
+        switch (opt_val) {
+            case 'h':
+                print_help();
+                return 0;
+                break;
+            case 'n':
+                no_network_test = 1;
+                break;
+            case 'g':
+                gpu_id = atoi(optarg);
+                break;
+            default:
+                printf("Invalid option, run with -h to see options");
+                return -1;
+                break;
+        }
+    }
 
     // Create buffers.
     struct Buffer input_buffer;
@@ -47,7 +95,7 @@ int main(int argc, char ** argv) {
 
     createBuffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS);
     createBuffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1);
-    DEBUG("%d %d %d %d", NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
+    DEBUG("%d %d %d", NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
 
     // Create Open CL thread.
     pthread_t gpu_t;
@@ -60,7 +108,7 @@ int main(int argc, char ** argv) {
     gpu_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
     gpu_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
     gpu_args.num_freq = NUM_FREQ;
-    gpu_args.gpu_id = atoi(argv[1]);
+    gpu_args.gpu_id = gpu_id;
     gpu_args.started = 0;
     CHECK_ERROR( pthread_mutex_init(&gpu_args.lock, NULL) );
     CHECK_ERROR( pthread_cond_init(&gpu_args.cond, NULL) );
@@ -92,7 +140,11 @@ int main(int argc, char ** argv) {
         snprintf(ip_address, 100, "dna%d", i);
         network_args[i].ip_address = ip_address;
 
-        CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread, (void *)&network_args[i] ) );
+        if (no_network_test == 0) {
+            CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread, (void *)&network_args[i] ) );
+        } else {
+            CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &test_network_thread, (void *)&network_args[i] ) );
+        }
     }
 
     // Create consumer thread (i.e. file write thread).
