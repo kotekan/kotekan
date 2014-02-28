@@ -22,7 +22,7 @@
 #define BLOCK_SIZE 32
 
 #define NUM_ELEMENTS 32  // Must be >= 32
-#define NUM_TIMESAMPLES 64*1024 //32 initally best
+#define NUM_TIMESAMPLES 32*1024 //32 initally best
 #define NUM_FREQ 64
 // Since we are using the kernels for the 256-element correlator for a
 // 16-element correlator, we pack more than one full correlator product into each
@@ -110,6 +110,9 @@ int main(int argc, char ** argv) {
     gpu_args.num_freq = NUM_FREQ;
     gpu_args.gpu_id = gpu_id;
     gpu_args.started = 0;
+    // NOTE: This value must be 1 until the output code is modified to support
+    // more than one data set per N time samples.
+    gpu_args.num_data_sets = 1;
     CHECK_ERROR( pthread_mutex_init(&gpu_args.lock, NULL) );
     CHECK_ERROR( pthread_cond_init(&gpu_args.cond, NULL) );
 

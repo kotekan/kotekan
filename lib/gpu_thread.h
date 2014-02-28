@@ -35,6 +35,7 @@ struct gpu_thread_args {
     int num_links;
     int started;
     int gpu_id;
+    int num_data_sets;
 
     // When processing less than 32 elements, num_freq and num_elements are set differently
     // than the true number of freq/elements.
@@ -92,6 +93,7 @@ struct OpenCLData {
     int num_freq;
     int num_timesamples;
     int gpu_id; // Internal GPU ID.
+    int num_data_sets;
 
     int actual_num_freq;
     int actual_num_elements;
