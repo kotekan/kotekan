@@ -48,7 +48,12 @@ void gpu_thread(void* arg)
     cl_data.num_freq = args->num_freq;
     cl_data.num_data_sets = args->num_data_sets;
 
+    cl_data.actual_num_elements = args->actual_num_elements;
+    cl_data.actual_num_freq = args->actual_num_freq;
+
     cl_data.accumulate_len = args->num_freq * args->num_elements * 2 * sizeof(cl_int);
+    cl_data.aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data.accumulate_len / (double)PAGESIZE_MEM));
+    assert(cl_data.accumulate_len >= cl_data.accumulate_len);
 
     cl_data.gpu_id = args->gpu_id;
 
@@ -296,6 +301,13 @@ void setupOpenCL(struct OpenCLData * cl_data)
     char cl_options[1024];
     sprintf(cl_options,"-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du", 
             cl_data->actual_num_elements, cl_data->actual_num_freq, cl_data->num_elements, cl_data->num_freq, cl_data->num_blocks, cl_data->num_timesamples);
+    DEBUG("ACTUAL_NUM_ELEMENTS: %du", cl_data->actual_num_elements);
+    DEBUG("ACTUAL_NUM_FREQUENCIES: %du", cl_data->actual_num_freq);
+    DEBUG("NUM_ELEMENTS: %du", cl_data->num_elements);
+    DEBUG("NUM_FREQUENCIES: %du", cl_data->num_freq);
+    DEBUG("NUM_BLOCKS: %du", cl_data->num_blocks);
+    DEBUG("NUM_TIMESAMPLES: %du", cl_data->num_timesamples);
+
     size_t cl_program_size[NUM_CL_FILES];
     FILE *fp;
     char *cl_program_buffer[NUM_CL_FILES];
@@ -355,8 +367,6 @@ void setupOpenCL(struct OpenCLData * cl_data)
 
     // Array used to zero the output memory on the device.
     // TODO should this be in it's own function?
-    cl_data->aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data->accumulate_len / (double)PAGESIZE_MEM));
-    INFO ("aligned: %d, accumulate_len: %d", cl_data->aligned_accumulate_len, cl_data->accumulate_len);
     err = posix_memalign((void **) &cl_data->accumulate_zeros, PAGESIZE_MEM, cl_data->aligned_accumulate_len);
     if ( err != 0 ) {
         ERROR("Error creating aligned memory for accumulate zeros");
