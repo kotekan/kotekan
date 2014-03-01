@@ -20,10 +20,6 @@
 #define OPENCL_FILENAME_2   "kernels/offsetAccumulator_multiple.cl"
 #define OPENCL_FILENAME_3   "kernels/preseed_multifreq_multiple.cl"
 
-//bad form... remove this
-//int saveInputDataCounter;
-//
-
 
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -53,7 +49,7 @@ void gpu_thread(void* arg)
 
     cl_data.accumulate_len = args->num_freq * args->num_elements * 2 * sizeof(cl_int);
     cl_data.aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data.accumulate_len / (double)PAGESIZE_MEM));
-    assert(cl_data.accumulate_len >= cl_data.accumulate_len);
+    assert(cl_data.aligned_accumulate_len >= cl_data.accumulate_len);
 
     cl_data.gpu_id = args->gpu_id;
 
@@ -174,19 +170,6 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
                                             &cl_data->input_data_written[buffer_id],
                                             &cl_data->accumulate_data_zeroed[buffer_id]) );
 
-    // New section to check input buffer contents
-   // if (saveInputDataCounter == 150){
-   //     FILE *fp; 
-   //     fp = fopen("InputDataDump", "wb");
-   //     fwrite(cl_data->in_buf->data[buffer_id],1,cl_data->in_buf->buffer_size, fp);
-   //     fclose(fp);
-   // }
-   // saveInputDataCounter++;
-
-    // not sure it is actually paying attention to our changes
-    //printf(".");
-
-
     // The offset accumulate kernel args.
     // Set 2 arguments--input array and zeroed output array
     CHECK_CL_ERROR( clSetKernelArg(cl_data->offset_accumulate_kernel,
@@ -276,9 +259,6 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
 
 void setupOpenCL(struct OpenCLData * cl_data)
 {
-    //remove this
-    //saveInputDataCounter = 0;
-    //
     cl_int err;
 
     // Get a platform.

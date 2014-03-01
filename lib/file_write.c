@@ -63,20 +63,6 @@ void file_write_thread(void * arg)
     const int file_name_len = 100;
     char file_name[file_name_len];
 
-    // Open files.
-    /*
-    for (int i = 0; i < args->num_links; ++i) {
-
-        snprintf(file_name, file_name_len, "%s/%s_%d.dat", args->data_dir, args->dataset_name, i);
-
-        fd[i] = open(file_name, O_WRONLY | O_CREAT);
-
-        if (fd[i] == -1) {
-            ERROR("Cannot open file, errno: %d; File name was: %s", errno, file_name);
-            exit(errno);
-        }
-    }*/
-
     int useableBufferIDs[1] = {0};
     int link_id = 0;
 
@@ -112,13 +98,6 @@ void file_write_thread(void * arg)
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
-            /*
-            for (int i = 0; i < args->buf->num_buffers; ++i) {
-                if (close(fd[i]) == -1) {
-                    ERROR("Cannot close file");
-                }
-            }
-            */
             chrx.running = 0;
             pthread_join(chrx.disc_loop, NULL);
 
@@ -141,15 +120,6 @@ void file_write_thread(void * arg)
 
         //INFO("Pushing correlator frame, with seq num: %u", fpga_seq_number*4);
         push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*4, frame_start_time, link_id, push);
-
-        /*
-        ssize_t bytes_writen = write(fd[file_id], args->buf->data[bufferID], args->buf->buffer_size);
-
-        if (bytes_writen != args->buf->buffer_size) {
-            ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
-            exit(-1);
-        }
-        */
 
         markBufferEmpty(args->buf, bufferID);
 
