@@ -143,6 +143,11 @@ int main(int argc, char ** argv) {
         snprintf(ip_address, 100, "dna%d", i);
         network_args[i].ip_address = ip_address;
 
+        // Args used for testing.
+        network_args[i].actual_num_elements = ACTUAL_NUM_ELEMENTS;
+        network_args[i].actual_num_freq = ACTUAL_NUM_FREQUENCIES;
+        network_args[i].num_timesamples = NUM_TIMESAMPLES;
+
         if (no_network_test == 0) {
             CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread, (void *)&network_args[i] ) );
         } else {

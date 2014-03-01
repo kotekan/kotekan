@@ -12,6 +12,11 @@ struct network_thread_arg {
     int data_limit;
     int numLinks;
     int link_id;
+
+    // Args used for testing.
+    int num_timesamples;
+    int actual_num_freq;
+    int actual_num_elements;
 };
 
 void network_thread(void * arg);

@@ -397,10 +397,20 @@ void test_network_thread(void * arg) {
 
     setDataID(args->buf, buffer_id, data_id++);
 
-    generate_char_data_set(GEN_TYPE,GEN_DEFAULT_SEED,GEN_DEFAULT_RE, GEN_DEFAULT_IM,GEN_INITIAL_RE,GEN_INITIAL_IM,GEN_FREQ, 16*1024, 126, 16, (unsigned char *) args->buf->data[buffer_id]);
+    generate_char_data_set(GENERATE_DATASET_CONSTANT,
+                           GEN_DEFAULT_SEED,
+                           GEN_DEFAULT_RE,
+                           GEN_DEFAULT_IM,
+                           GEN_INITIAL_RE,
+                           GEN_INITIAL_IM,
+                           GEN_FREQ,
+                           args->num_timesamples,
+                           args->actual_num_freq, 
+                           args->actual_num_elements, 
+                           (unsigned char *) args->buf->data[buffer_id]);
 
     for (int i = 0; i < 100; i++) {
-        INFO("%X", *(unsigned int *)(&args->buf->data[buffer_id][i*4]) );
+        INFO("Thread ID=%d; buf[%d]=0x%X", args->link_id, i, *(unsigned int *)(&args->buf->data[buffer_id][i*4]) );
     }
 
     markBufferFull(args->buf, buffer_id);
