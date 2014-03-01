@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
+#include <inttypes.h>
 
 //#define UDP_PACKETSIZE 8256
 #define UDP_PACKETSIZE 9296
@@ -163,7 +164,7 @@ void network_thread(void * arg) {
                 continue;
             }
 
-            INFO("Got first packet %d", seq);
+            INFO("Got first packet %" PRId64, seq);
             // Set the time we got the first packet.
             static struct timeval now;
             gettimeofday(&now, NULL);

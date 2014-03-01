@@ -1,4 +1,3 @@
-
 #ifndef CH_ACQ_UPLINK
 #define CH_ACQ_UPLINK
 
@@ -9,8 +8,8 @@ struct ch_acq_uplink_thread_arg {
     char * ch_acq_ip_addr;
     int ch_acq_port_num;
 
-    int num_elem;
-    int num_freq;
+    int actual_num_freq;
+    int actual_num_elements;
 };
 
 

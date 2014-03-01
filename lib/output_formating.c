@@ -103,7 +103,6 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion(
                     output_data[output_counter++].imag = input_data[input_index+1];
                 }
                 else{
-                    assert(output_counter < 139264); // 16*(16+1)/2 * 1024
                     output_data[output_counter].real = 0;
                     output_data[output_counter++].imag = 0;
                 }
@@ -113,7 +112,7 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion(
     return;
 }
 
-void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8_pairs(int num_frequencies_final, int num_frequencies, int *input_data, complex_int_t *output_data, int link_num)
+void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8_pairs(int num_frequencies, int *input_data, complex_int_t *output_data, int link_num)
 {
     //input data should be arranged as (num_elements*(num_elements+1))/2 (real,imag) pairs of complex visibilities for frequencies
     //output array will be sparsely to moderately filled, so loop such that writing is done in sequential order
@@ -121,14 +120,12 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_
     int output_counter = link_num*2;
     for (int y = 0; y < 16; y++){
         for (int x = y; x < 16; x++){
-            for (int freq_count = 0; freq_count < 64; freq_count++){
+            for (int freq_count = 0; freq_count < num_frequencies/2; freq_count++){
                 int input_index = (freq_count * 2 * 256 + y*16 + x)*2;
                 output_data[output_counter].real = input_data[input_index];
                 output_data[output_counter].imag = input_data[input_index+1];
                 output_data[output_counter+1].real = input_data[input_index+256*2];
                 output_data[output_counter+1].imag = input_data[input_index+256*2+1];
-                //output_counter += 16;
-                assert(output_counter <= 139264);
             }
             output_counter += 16;
         }
@@ -136,7 +133,7 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_
     return;
 }
 
-void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(int num_frequencies_final, int num_frequencies, int *input_data, complex_int_t *output_data, int link_num)
+void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(int num_frequencies, int *input_data, complex_int_t *output_data, int link_num)
 {
     //input data should be arranged as (num_elements*(num_elements+1))/2 (real,imag) pairs of complex visibilities for frequencies
     //output array will be sparsely to moderately filled, so loop such that writing is done in sequential order
@@ -144,15 +141,13 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_
     int output_counter = link_num;
     for (int y = 0; y < 16; y++){
         for (int x = y; x < 16; x++){
-            for (int freq_count = 0; freq_count < 128; freq_count++){
-                assert(output_counter <= 139264);
-                
+            for (int freq_count = 0; freq_count < num_frequencies; freq_count++){
+
                 int input_index = (freq_count * 256 + y*16 + x)*2;
                 output_data[output_counter].real = input_data[input_index];
                 output_data[output_counter].imag = input_data[input_index+1];
                 output_counter += 8;
             }
-            //output_counter += 8;
         }
     }
     return;

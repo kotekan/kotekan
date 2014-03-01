@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -43,7 +42,7 @@ void ch_acq_uplink_thread(void* arg)
     int link_id = 0;
 
     // Create tcp send buffer
-    int num_values = ((args->num_elem * (args->num_elem + 1)) / 2 ) * args->num_freq;
+    int num_values = ((args->actual_num_elem * (args->actual_num_elem + 1)) / 2 ) * args->actual_num_freq;
     int buffer_size = sizeof(tcp_frame_header) + num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
 
     unsigned char * buf = malloc(buffer_size);
@@ -90,13 +89,14 @@ void ch_acq_uplink_thread(void* arg)
 
         link_id = bufferID % args->num_links;
 
-        // TODO Make this cleaner (single function, remove constants, etc.)
-        reorganize_32_to_16_feed_GPU_Correlated_Data(
-                                                128, 16, (int *)args->buf->data[bufferID] );
-        
-        
+        // TODO Make this cleaner (single function)
+        reorganize_32_to_16_feed_GPU_Correlated_Data( args->actual_num_freq,
+                                                      args->actual_num_elem,
+                                                      (int *)args->buf->data[bufferID] );
+
+
         shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8_pairs(
-                                                1024, 128, (int *)args->buf->data[bufferID],
+                                                args->actual_num_freq, (int *)args->buf->data[bufferID],
                                                 visibilities, link_id );
 
         // TODO Add the ability to integrate the data down further here.
@@ -109,9 +109,9 @@ void ch_acq_uplink_thread(void* arg)
         if (link_id + 1 == args->num_links) {
             // Send the frame.
             header->cpu_timestamp = frame_start_time;
-            header->fpga_seq_number =fpga_seq_number;
-            header->num_freq = args->num_freq;
-            header->num_vis = ((args->num_elem * (args->num_elem + 1)) / 2 );
+            header->fpga_seq_number = fpga_seq_number;
+            header->num_freq = args->actual_num_freq;
+            header->num_vis = ((args->actual_num_elem * (args->actual_num_elem + 1)) / 2 );
 
             if (send(tcp_fd, buf, buffer_size, 0) == -1) {
                 ERROR("Could not send frame to ch_acq, error: %d", errno); 

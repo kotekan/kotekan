@@ -14,21 +14,24 @@
 
 void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
                      const uint8_t *new_flag, unsigned int fpga_count,
-                     struct timeval time, int32_t link_num, int32_t push )
+                     struct timeval time, int32_t link_num, int32_t push,
+                     int actual_num_freq )
 {
     int n, page;
-    struct timeval tv;
 
     n = self->n_freq * self->n_corr;
     page = get_frame_page(self);
 
     // Record the FPGA counter and the CPU time.
 
-    self->frame[self->frame_page].timestamp[0].fpga_count = fpga_count;
-    self->frame[self->frame_page].timestamp[0].cpu_s = time.tv_sec;
-    self->frame[self->frame_page].timestamp[0].cpu_us = time.tv_usec;
+    self->frame[page].timestamp[0].fpga_count = fpga_count;
+    self->frame[page].timestamp[0].cpu_s = time.tv_sec;
+    self->frame[page].timestamp[0].cpu_us = time.tv_usec;
 
-    shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(1024, 128, (int *)new_vis, self->frame[self->frame_page].vis, link_num );
+    shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(actual_num_freq,
+                                                                                      (int *)new_vis,
+                                                                                      self->frame[page].vis,
+                                                                                      link_num );
 
     // For thread-safety, lock writing to the frame while we increment the frame
     // page counter.
@@ -40,9 +43,10 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
             self->frame_page = 0;
         pthread_mutex_unlock(&self->frame_lock);
 
+        page = get_frame_page(self);
         // Clear visibility and flag buffers.
         memset((void *)self->vis_sum, 0, n * sizeof(double complex));
-        memset((void *)self->frame[self->frame_page].vis_flag, 0,
+        memset((void *)self->frame[page].vis_flag, 0,
                n * sizeof(struct vis_flag_t));
 
         self->n_fpga_sample = 0;
@@ -56,12 +60,6 @@ void file_write_thread(void * arg)
     struct file_write_thread_arg * args = (struct file_write_thread_arg *) arg;
 
     int bufferID = -1;
-    assert(args->num_links > 0);
-    assert(args->num_links < 10);
-    int fd[args->num_links];
-
-    const int file_name_len = 100;
-    char file_name[file_name_len];
 
     int useableBufferIDs[1] = {0};
     int link_id = 0;
@@ -111,7 +109,9 @@ void file_write_thread(void * arg)
 
         link_id = bufferID % args->num_links;
 
-        reorganize_32_to_16_feed_GPU_Correlated_Data(128, 16, (int *)args->buf->data[bufferID] );
+        reorganize_32_to_16_feed_GPU_Correlated_Data(args->actual_num_freq,
+                                                     args->actual_num_elements,
+                                                     (int *)args->buf->data[bufferID] );
 
         int32_t push = 0;
         if (link_id + 1 == args->num_links) {
@@ -119,7 +119,9 @@ void file_write_thread(void * arg)
         }
 
         //INFO("Pushing correlator frame, with seq num: %u", fpga_seq_number*4);
-        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*4, frame_start_time, link_id, push);
+        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*4,
+                        frame_start_time, link_id, push,
+                        args->actual_num_freq);
 
         markBufferEmpty(args->buf, bufferID);
 

@@ -163,6 +163,8 @@ int main(int argc, char ** argv) {
     file_write_args.data_dir = "results";
     file_write_args.dataset_name = "test_data";
     file_write_args.num_links = NUM_LINKS;
+    file_write_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
+    file_write_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
     CHECK_ERROR( pthread_create(&file_write_t, NULL, (void *) &file_write_thread, (void *)&file_write_args ) );
 
     // Join with threads.

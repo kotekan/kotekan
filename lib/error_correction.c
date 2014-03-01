@@ -89,7 +89,7 @@ void finalize_error_matrix(struct ErrorMatrix* error_matrix)
             for (int j = i; j < error_matrix->num_elements; ++j) {
 
                 // Add errors for each time a frame was discarded/lost.
-                error_matrix->correction_factors[index] += error_matrix->bad_frames;
+                error_matrix->correction_factors[index] += error_matrix->bad_frames[k];
 
                 // Add errors on elements. Note: we double add here in some cases, but 
                 // these are corrected by the existing offsets created when the error was added.

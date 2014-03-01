@@ -9,6 +9,9 @@ struct file_write_thread_arg {
     int bufferDepth;
     char * dataset_name;
     char * data_dir;
+
+    int actual_num_freq;
+    int actual_num_elements;
 };
 
 void file_write_thread(void * arg);
