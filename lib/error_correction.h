@@ -16,10 +16,10 @@ struct ErrorMatrix {
     int num_freq;
     int num_elements;
 
-    // Array indexed by freq containing the number of bad frames for a
-    // given frequency.  Used it cases when there is packet loss, or too
+    // Number of fully currupt frames
+    // Used in cases when there is packet loss, or too
     // many errors in the packet to be dealt with. 
-    int * bad_frames;
+    int bad_frames;
 
     // An array of length elements*freq, with an element-major encoding,
     // tracking the number of errors that each element has encountered in each
@@ -40,7 +40,7 @@ void delete_error_matrix(struct ErrorMatrix * error_matrix);
 
 void reset_error_matrix(struct ErrorMatrix* error_matrix);
 
-void add_bad_frames(struct ErrorMatrix* error_matrix, int freq, int num_bad_frames);
+void add_bad_frames(struct ErrorMatrix* error_matrix, int num_bad_frames);
 
 void add_errors(struct ErrorMatrix* error_matrix, int freq, int * new_errors, const int len);
 

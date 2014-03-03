@@ -11,19 +11,34 @@
 
 #include <pthread.h>
 #include <sys/types.h>
+#include <stdlib.h>
 #include <stdint.h>
 
+#include "error_correction.h"
 
 /** @brief Object containing information about a given buffer.
  *
  */
 struct BufferInfo {
 
-    /// Buffer data_ID. 
+    /// Buffer data_ID.
     /// This is the ID of the data in the buffer, not the ID of the buffer.
-    int32_t data_ID; 
+    int32_t data_ID;
     uint32_t fpga_seq_num;
-    struct timeval first_packet_recv_time; 
+    struct timeval first_packet_recv_time;
+    struct ErrorMatrix error_matrix;
+
+    // 1 = in use, 0 = avaiable;
+    char in_use;
+};
+
+struct InfoObjectPool {
+    struct BufferInfo * info_objects;
+
+    unsigned int pool_size;
+
+    // Always lock when changing the in_use status of an info object.
+    pthread_mutex_t in_use_lock;
 };
 
 /** @brief Buffer object used to contain and manage the buffers shared by the network 
@@ -59,7 +74,7 @@ struct Buffer {
     int num_free;
 
     /// Array of buffer info objects, for tracking information about each buffer.
-    struct BufferInfo * info;
+    struct BufferInfo ** info;
 
     /// An array of flags indicating if the producer is done.
     /// 0 means the producer is not done, 1 means the producer is done.
@@ -67,6 +82,9 @@ struct Buffer {
 
     /// The number of producers.
     int num_producers;
+
+    /// The pool of info objects
+    struct InfoObjectPool * info_object_pool;
 };
 
 /** @brief Creates a buffer object.
@@ -74,9 +92,10 @@ struct Buffer {
  *  @param [out] buf A pointer to a buffer object to be initialized.
  *  @param [in] num_buf The number of buffers to create in the buffer object.
  *  @param [in] len The lenght of each buffer to be created in bytes.
+ *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
  *  @return 0 if successful, or a non-zero standard error value if not successful 
  */
-int createBuffer(struct Buffer * buf, int num_buf, int len, int num_producers); 
+int createBuffer(struct Buffer * buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
@@ -117,6 +136,13 @@ int32_t get_buffer_data_ID(struct Buffer * buf, const int ID);
 uint32_t get_fpga_seq_num(struct Buffer * buf, const int ID);
 
 struct timeval get_first_packet_recv_time(struct Buffer * buf, const int ID);
+
+// TODO/HACK This function bypasses the thread safety systems that the other get_ functions have.
+// This is not ideal, although in the current implementation of the network/gpu/file_write
+// code, we do not actually require thread safety here.
+// Having said that, either all get_ functions should lose thread safety, or this one
+// should get thread safety for consistency - by creating proxy functions which are safe.
+struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID);
 
 /** @brief Sets the data_ID for a buffer.
  *  This function is thread safe.
@@ -167,6 +193,18 @@ int getNumFullBuffers(struct Buffer * buf);
  */
 void printBufferStatus(struct Buffer * buf);
 
-void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
+void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
+
+void release_info_object(struct Buffer * buf, const int ID);
+
+void create_info_pool(struct InfoObjectPool * pool, int num_info_objects, int num_freq, int num_elem);
+
+struct BufferInfo * request_info_object(struct InfoObjectPool * pool);
+
+void return_info_object(struct InfoObjectPool * pool, struct BufferInfo * buffer_info);
+
+void reset_info_object(struct BufferInfo * buffer_info);
+
+void delete_info_object_pool(struct InfoObjectPool * pool);
 
 #endif

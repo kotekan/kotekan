@@ -1,5 +1,6 @@
 #include "buffers.h"
 #include "errors.h"
+#include "error_correction.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -9,7 +10,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <math.h>
-#include </opt/AMDAPP/include/CL/cl_platform.h>
+
 
 /**
  * @brief private function to get the id of the first full buffer.
@@ -25,10 +26,16 @@ int private_getFullBufferFromList(struct Buffer * buf, const int* buffer_IDs, co
 
 int private_areProducersDone(struct Buffer * buf);
 
-int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers)
+// Checks if the buffer in question has an BufferInfo object attached to it.
+// If not it requests one from the buffer_info pool.
+// Not thread safe, call from with-in a lock.
+void private_check_info_object(struct Buffer * buf, const int ID);
+
+int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool)
 {
 
     assert(num_buf > 0);
+    assert(pool != NULL);
 
     CHECK_ERROR( pthread_mutex_init(&buf->lock, NULL) );
     CHECK_ERROR( pthread_mutex_init(&buf->lock_info, NULL) );
@@ -37,6 +44,7 @@ int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers)
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
 
     buf->num_buffers = num_buf;
+    buf->info_object_pool = pool;
     buf->buffer_size = len;
     // We align the buffer length to a multiple of the system page size.
     // This may result in the memory allocated being larger than the size of the
@@ -70,7 +78,7 @@ int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers)
     }
 
     // Create the info array
-    buf->info = malloc(num_buf*sizeof(struct BufferInfo));
+    buf->info = malloc(num_buf*sizeof(void *));
 
     if ( buf->info == NULL ) {
         ERROR("Error creating info array");
@@ -200,7 +208,7 @@ int is_buffer_empty(struct Buffer* buf, const int ID)
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
     assert (buf != NULL);
-    
+
     int empty = 1;
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
@@ -210,7 +218,7 @@ int is_buffer_empty(struct Buffer* buf, const int ID)
     }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
-    
+
     return empty;
 }
 
@@ -223,7 +231,8 @@ int32_t get_buffer_data_ID(struct Buffer* buf, const int ID)
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
-    dataID = buf->info[ID].data_ID;
+    assert(buf->info[ID] != NULL);
+    dataID = buf->info[ID]->data_ID;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 
@@ -236,7 +245,8 @@ uint32_t get_fpga_seq_num(struct Buffer* buf, const int ID)
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
-    fpga_seq_num = buf->info[ID].fpga_seq_num;
+    assert(buf->info[ID] != NULL);
+    fpga_seq_num = buf->info[ID]->fpga_seq_num;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 
@@ -249,11 +259,28 @@ struct timeval get_first_packet_recv_time(struct Buffer* buf, const int ID)
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
-    time = buf->info[ID].first_packet_recv_time;
+    assert(buf->info[ID] != NULL);
+    time = buf->info[ID]->first_packet_recv_time;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 
     return time;
+}
+
+struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID)
+{
+    struct ErrorMatrix * ret = NULL;
+
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
+
+    private_check_info_object(buf, ID);
+    ret = &buf->info[ID]->error_matrix;
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
+
+    // TODO By operating on the error matrix like this we break thread safety
+    // of the BufferInfo sturct.  See comment on decl.
+    return ret;
 }
 
 void setDataID(struct Buffer* buf, const int ID, const int data_ID)
@@ -263,7 +290,8 @@ void setDataID(struct Buffer* buf, const int ID, const int data_ID)
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
-    buf->info[ID].data_ID = data_ID;
+    private_check_info_object(buf, ID);
+    buf->info[ID]->data_ID = data_ID;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 }
@@ -272,7 +300,8 @@ void set_fpga_seq_num(struct Buffer* buf, const int ID, const uint32_t fpga_seq_
 {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
-    buf->info[ID].fpga_seq_num = fpga_seq_num;
+    private_check_info_object(buf, ID);
+    buf->info[ID]->fpga_seq_num = fpga_seq_num;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 }
@@ -281,7 +310,8 @@ void set_first_packet_recv_time(struct Buffer* buf, const int ID, struct timeval
 {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
-    buf->info[ID].first_packet_recv_time = time;
+    private_check_info_object(buf, ID);
+    buf->info[ID]->first_packet_recv_time = time;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 }
@@ -360,7 +390,7 @@ void printBufferStatus(struct Buffer* buf)
     DEBUG("Buffer Status: %s", status_string);
 }
 
-void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id)
+void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id)
 {
     assert(from != NULL);
     assert(to != NULL);
@@ -368,10 +398,94 @@ void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int
     CHECK_ERROR( pthread_mutex_lock(&from->lock_info) );
     CHECK_ERROR( pthread_mutex_lock(&to->lock_info) );
 
-    memcpy((void *)&to->info[to_id], (void *)&from->info[from_id], sizeof(struct BufferInfo));
+    to->info[to_id] = from->info[from_id];
+    // Only one buffer object should ever have controll of a BufferInfo object.
+    from->info[from_id] = NULL;
 
     CHECK_ERROR( pthread_mutex_unlock(&to->lock_info) );
     CHECK_ERROR( pthread_mutex_unlock(&from->lock_info) );
+}
+
+void release_info_object(struct Buffer * buf, const int ID)
+{
+    return_info_object(buf->info_object_pool, buf->info[ID]);
+    buf->info[ID] = NULL;
+}
+
+void private_check_info_object(struct Buffer * buf, const int ID)
+{
+    assert(buf != NULL);
+    assert(ID >= 0);
+    assert(ID < buf->num_buffers);
+
+    if (buf->info[ID] == NULL) {
+        buf->info[ID] = request_info_object(buf->info_object_pool);
+    }
+
+    // We assume for now that we always have enough info objects in the pool.
+    assert(buf->info[ID] != NULL);
+}
+
+void create_info_pool(struct InfoObjectPool * pool, int num_info_objects, int num_freq, int num_elem)
+{
+    CHECK_ERROR( pthread_mutex_init(&pool->in_use_lock, NULL) );
+
+    pool->info_objects = malloc(num_info_objects * sizeof(struct InfoObjectPool));
+    CHECK_MEM(pool->info_objects);
+
+    pool->pool_size = num_info_objects;
+
+    for (int i = 0; i < num_info_objects; ++i) {
+        initalize_error_matrix(&pool->info_objects[i].error_matrix, num_freq, num_elem);
+        reset_info_object(&pool->info_objects[i]);
+        pool->info_objects[i].in_use = 0;
+    }
+
+    CHECK_ERROR( pthread_mutex_unlock(&pool->in_use_lock) );
+}
+
+struct BufferInfo * request_info_object(struct InfoObjectPool * pool) {
+
+    struct BufferInfo * ret = NULL;
+
+    CHECK_ERROR( pthread_mutex_lock(&pool->in_use_lock) );
+
+    for (int i = 0; i < pool->pool_size; ++i) {
+        if (pool->info_objects[i].in_use == 0) {
+            pool->info_objects[i].in_use = 1;
+            ret = &pool->info_objects[i];
+            break;
+        }
+    }
+
+    CHECK_ERROR( pthread_mutex_unlock(&pool->in_use_lock) );
+
+    return ret;
+}
+
+void return_info_object(struct InfoObjectPool * pool, struct BufferInfo * buffer_info)
+{
+    CHECK_ERROR( pthread_mutex_lock(&pool->in_use_lock) );
+
+    reset_info_object(buffer_info);
+    buffer_info->in_use = 0;
+
+    CHECK_ERROR( pthread_mutex_unlock(&pool->in_use_lock) );
+}
+
+void reset_info_object(struct BufferInfo * buffer_info)
+{
+    buffer_info->data_ID = -1;
+    reset_error_matrix(&buffer_info->error_matrix);
+    buffer_info->fpga_seq_num = 0;
+}
+
+void delete_info_object_pool(struct InfoObjectPool * pool)
+{
+    for (int i = 0; i < pool->pool_size; ++i) {
+        delete_error_matrix( &pool->info_objects[i].error_matrix );
+    }
+    CHECK_ERROR( pthread_mutex_destroy(&pool->in_use_lock) );
 }
 
 int private_getFullBuffer(struct Buffer* buf)

@@ -122,7 +122,7 @@ void CL_CALLBACK readComplete(cl_event event, cl_int status, void *data) {
     markBufferEmpty(cb_data->cl_data->in_buf, cb_data->buffer_id);
 
     // Copy the information contained in the input buffer
-    copy_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id, 
+    move_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
                      cb_data->cl_data->out_buf, cb_data->buffer_id);
 
     // Mark the output buffer as full, so it can be processed.

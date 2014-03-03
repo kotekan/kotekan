@@ -14,7 +14,7 @@
 #include "gpu_thread.h"
 #include "network_dna.h"
 #include "file_write.h"
-
+#include "error_correction.h"
 
 #define NUM_LINKS 7
 #define BUFFER_DEPTH 3
@@ -93,8 +93,13 @@ int main(int argc, char ** argv) {
     int num_blocks = (NUM_ELEMENTS / BLOCK_SIZE) * (NUM_ELEMENTS / BLOCK_SIZE + 1) / 2.;
     cl_int output_len = NUM_FREQ*num_blocks*(BLOCK_SIZE*BLOCK_SIZE)*2.;
 
-    createBuffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS);
-    createBuffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1);
+    // Create the shared pool of buffer info objects; used for recording information about a
+    // given frame and past between buffers as needed.
+    struct InfoObjectPool pool;
+    create_info_pool(&pool, 2 * NUM_LINKS * BUFFER_DEPTH, NUM_FREQ, NUM_ELEMENTS);
+
+    createBuffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS, &pool);
+    createBuffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1, &pool);
     DEBUG("%d %d %d", NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
 
     // Create Open CL thread.

@@ -11,6 +11,9 @@
 #include "errors.h"
 #include "chrx.h"
 #include "output_formating.h"
+#include "error_correction.h"
+
+#define NUM_FRAMES_PER_PACKET 4
 
 void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
                      const uint8_t *new_flag, unsigned int fpga_count,
@@ -64,6 +67,8 @@ void file_write_thread(void * arg)
     int useableBufferIDs[1] = {0};
     int link_id = 0;
 
+    int bad_frames[args->num_links];
+
     /// HDF5 File setup
 
     struct chrx_acq_t chrx; 
@@ -106,6 +111,9 @@ void file_write_thread(void * arg)
         // TODO Check that this is valid data.
         uint32_t fpga_seq_number = get_fpga_seq_num(args->buf, bufferID);
         struct timeval frame_start_time = get_first_packet_recv_time(args->buf, bufferID);
+        int data_id = get_buffer_data_ID(args->buf, bufferID);
+
+        struct ErrorMatrix * error_matrix = get_error_matrix(args->buf, bufferID);
 
         link_id = bufferID % args->num_links;
 
@@ -113,16 +121,28 @@ void file_write_thread(void * arg)
                                                      args->actual_num_elements,
                                                      (int *)args->buf->data[bufferID] );
 
+        bad_frames[link_id] = error_matrix->bad_frames;
+
         int32_t push = 0;
         if (link_id + 1 == args->num_links) {
             push = 1;
+            if (args->num_links == 7) {
+                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_frames = [ %d %d %d %d %d %d %d ]",
+                     data_id, fpga_seq_number, bad_frames[0], bad_frames[1], bad_frames[2],
+                     bad_frames[3], bad_frames[4], bad_frames[5], bad_frames[6]);
+            }
+            if (args->num_links == 8) {
+                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_frames = [ %d %d %d %d %d %d %d %d ]",
+                     data_id, fpga_seq_number, bad_frames[0], bad_frames[1], bad_frames[2],
+                     bad_frames[3], bad_frames[4], bad_frames[5], bad_frames[6], bad_frames[7]);
+            }
         }
 
-        //INFO("Pushing correlator frame, with seq num: %u", fpga_seq_number*4);
-        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*4,
+        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*NUM_FRAMES_PER_PACKET,
                         frame_start_time, link_id, push,
                         args->actual_num_freq);
 
+        release_info_object(args->buf, bufferID);
         markBufferEmpty(args->buf, bufferID);
 
         useableBufferIDs[0] = (useableBufferIDs[0] + 1) % args->buf->num_buffers;

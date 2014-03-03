@@ -13,21 +13,20 @@ void initalize_error_matrix(struct ErrorMatrix* error_matrix, const int num_freq
     error_matrix->num_elements = num_elements;
     error_matrix->num_freq = num_freq;
 
-    error_matrix->bad_frames = malloc(num_freq * sizeof(int));
-    CHECK_MEM(error_matrix->bad_frames);
-
     error_matrix->element_error_counts = malloc(num_elements * num_freq * sizeof(int));
     CHECK_MEM(error_matrix->element_error_counts);
 
     error_matrix->correction_factors = malloc((num_elements*(num_elements + 1)/2) * 
                                                                 num_freq * sizeof(int));
     CHECK_MEM(error_matrix->correction_factors);
+
+    reset_error_matrix(error_matrix);
 }
 
 
 void reset_error_matrix(struct ErrorMatrix* error_matrix)
 {
-    memset(error_matrix->bad_frames, 0, error_matrix->num_freq);
+    error_matrix->bad_frames = 0;
     memset(error_matrix->element_error_counts, 0, error_matrix->num_elements * error_matrix->num_freq);
     memset(error_matrix->correction_factors, 0, (error_matrix->num_elements*(error_matrix->num_elements + 1)/2) * error_matrix->num_freq);
 }
@@ -35,7 +34,6 @@ void reset_error_matrix(struct ErrorMatrix* error_matrix)
 
 void delete_error_matrix(struct ErrorMatrix* error_matrix)
 {
-    free(error_matrix->bad_frames);
     free(error_matrix->correction_factors);
     free(error_matrix->element_error_counts);
 }
@@ -89,7 +87,7 @@ void finalize_error_matrix(struct ErrorMatrix* error_matrix)
             for (int j = i; j < error_matrix->num_elements; ++j) {
 
                 // Add errors for each time a frame was discarded/lost.
-                error_matrix->correction_factors[index] += error_matrix->bad_frames[k];
+                error_matrix->correction_factors[index] += error_matrix->bad_frames;
 
                 // Add errors on elements. Note: we double add here in some cases, but 
                 // these are corrected by the existing offsets created when the error was added.
@@ -102,12 +100,11 @@ void finalize_error_matrix(struct ErrorMatrix* error_matrix)
     }
 }
 
-void add_bad_frames(struct ErrorMatrix* error_matrix, int freq, int num_bad_frames)
+void add_bad_frames(struct ErrorMatrix* error_matrix, int num_bad_frames)
 {
     assert(error_matrix != NULL);
-    assert(freq <= error_matrix->num_freq);
 
-    error_matrix->bad_frames[freq] += 1;
+    error_matrix->bad_frames += num_bad_frames;
 }
 
 void apply_error_corrections(struct ErrorMatrix* error_matrix, 

@@ -3,6 +3,7 @@
 #include "pfring.h"
 #include "errors.h"
 #include "test_data_generation.h"
+#include "error_correction.h"
 
 #include <sys/socket.h>
 #include <stdio.h>
@@ -19,6 +20,7 @@
 //#define UDP_PACKETSIZE 8256
 #define UDP_PACKETSIZE 9296
 #define UDP_PAYLOADSIZE 8192
+#define NUM_FRAMES_PER_PACKET 4
 
 // Count max
 #define COUNTER_BITS 30
@@ -98,10 +100,13 @@ void network_thread(void * arg) {
 
     int64_t out_of_order_event = 0;
 
+    struct ErrorMatrix * error_matrix = NULL;
+
     // Make sure the first buffer is ready to go. (this check is not really needed)
     waitForEmptyBuffer(args->buf, buffer_id);
 
     setDataID(args->buf, buffer_id, data_id++);
+    error_matrix = get_error_matrix(args->buf, buffer_id);
 
     double start_time = -1;
 
@@ -128,6 +133,7 @@ void network_thread(void * arg) {
             buffer_location = 0;
 
             setDataID(args->buf, buffer_id, data_id++);
+            error_matrix = get_error_matrix(args->buf, buffer_id);
             if (last_seq != -1) {
                 // If not the first packet we need to set BufferInfo data.
                 set_fpga_seq_num(args->buf, buffer_id, last_seq + 1);
@@ -257,6 +263,7 @@ void network_thread(void * arg) {
                     for (int i = 0; i < lost; ++i) {
                         memset(&args->buf->data[buffer_id][buffer_location + i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
                     }
+                    add_bad_frames( error_matrix, lost * NUM_FRAMES_PER_PACKET );
 
                     buffer_location = realPacketLocation + UDP_PAYLOADSIZE;
 
@@ -267,6 +274,7 @@ void network_thread(void * arg) {
                     int i, j;
                     for (i = 0; (buffer_location + i*UDP_PAYLOADSIZE) < args->buf->buffer_size; ++i) {
                         memset(&args->buf->data[buffer_id][buffer_location + i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
+                        add_bad_frames(error_matrix, NUM_FRAMES_PER_PACKET);
                     }
 
                     // Keep track of the last edge seq number in case we need it later.
@@ -298,6 +306,8 @@ void network_thread(void * arg) {
                         waitForEmptyBuffer(args->buf, buffer_id);
 
                         setDataID(args->buf, buffer_id, data_id++);
+                        error_matrix = get_error_matrix(args->buf, buffer_id);
+
                         uint32_t fpga_seq_number = last_edge + j * (args->buf->buffer_size/UDP_PAYLOADSIZE); // == number of iterations FIXME.
 
                         set_fpga_seq_num(args->buf, buffer_id, fpga_seq_number);
@@ -309,6 +319,7 @@ void network_thread(void * arg) {
 
                         for (i = 0; num_lost_packets_new_buf > 0 && (i*UDP_PAYLOADSIZE) < args->buf->buffer_size; ++i) {
                             memset(&args->buf->data[buffer_id][i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
+                            add_bad_frames(error_matrix, NUM_FRAMES_PER_PACKET);
                             num_lost_packets_new_buf--;
                         }
 
