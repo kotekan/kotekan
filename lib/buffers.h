@@ -95,26 +95,26 @@ struct Buffer {
  *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
  *  @return 0 if successful, or a non-zero standard error value if not successful 
  */
-int createBuffer(struct Buffer * buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool);
+int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
  *  @param [in] buf The buffer to delete.
  *  @return 0 if successful, or a non-zero standard error value if not. 
  */
-void deleteBuffer(struct Buffer * buf);
+void delete_buffer(struct Buffer * buf);
 
 /** @brief Gets ID of a buffer which is full.
  *  This function is thread safe, and will block if not buffers are free.
  *  @return The ID of a buffer which is full. Or -1 if the producer is done filling buffers.
  */
-int getFullBufferID(struct Buffer * buf);
+int get_full_buffer_ID(struct Buffer * buf);
 
 /** @brief Mark a buffer as full.
  *  This function is thread safe.
  *  @param ID The id of the buffer to mark as full.
  */
-void markBufferFull(struct Buffer * buf, const int ID);
+void mark_buffer_full(struct Buffer * buf, const int ID);
 
 /** @brief Waits for one of the buffers given to be full.
  *  This function is thread safe.
@@ -123,7 +123,7 @@ void markBufferFull(struct Buffer * buf, const int ID);
  *  @param [in] len The lenght of the array of buffer IDs.
  *  @return The ID of the buffer that is full.  Or -1 if the producer is done filling buffers.
  */
-int getFullBufferFromList(struct Buffer * buf, const int * buffer_IDs, const int len);
+int get_full_buffer_from_list(struct Buffer * buf, const int * buffer_IDs, const int len);
 
 /** @brief Gets the data_ID of the buffer with the given ID.
  *  This function is thread safe.
@@ -150,7 +150,7 @@ struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID);
  *  @param [in] ID The ID of the buffer
  *  @param [in] data_ID The data ID of the data in the buffer.
  */
-void setDataID(struct Buffer * buf, const int ID, const int data_ID);
+void set_data_ID(struct Buffer * buf, const int ID, const int data_ID);
 
 void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint32_t fpga_seq_num);
 
@@ -161,14 +161,14 @@ void set_first_packet_recv_time(struct Buffer * buf, const int ID, const struct 
  *  @param [in] buf The buffer object
  *  @param [in] ID The id of the buffer to mark as empty.
  */
-void markBufferEmpty(struct Buffer * buf, const int ID);
+void mark_buffer_empty(struct Buffer * buf, const int ID);
 
 /** @brief Blocks until the buffer requested is empty.
  *  This function is thread safe.
  *  @param [in] buf The buffer
  *  @param [in] ID The id of the buffer wait for.
  */
-void waitForEmptyBuffer(struct Buffer * buf, const int ID);
+void wait_for_empty_buffer(struct Buffer * buf, const int ID);
 
 /** @brief Checks if the requested buffer is empty, returns 1
  *  if the buffer is empty, and 1 if the full.  Thread safe.
@@ -181,17 +181,17 @@ int is_buffer_empty(struct Buffer * buf, const int ID);
  * @brief Tells the buffer that no new data is coming. 
  * Consumer threads are free to exit as soon as all buffers are empty.
  */
-void markProducerDone(struct Buffer * buf, int producer_id);
+void mark_producer_done(struct Buffer * buf, int producer_id);
 
 /**
  * @brief Returns the number of currently full buffers.
  */
-int getNumFullBuffers(struct Buffer * buf);
+int get_num_full_buffers(struct Buffer * buf);
 
 /**
  * @brief Prints a picture of the buffers which are currently full.
  */
-void printBufferStatus(struct Buffer * buf);
+void print_buffer_status(struct Buffer * buf);
 
 void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
 

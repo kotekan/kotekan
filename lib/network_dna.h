@@ -4,13 +4,13 @@
 #include "buffers.h"
 #include "errors.h"
 
-struct network_thread_arg {
+struct networkThreadArg {
     char * ip_address;
     struct Buffer * buf;
-    int portNumber;
-    int bufferDepth;
+    int port_number;
+    int buffer_depth;
     int data_limit;
-    int numLinks;
+    int num_links;
     int link_id;
 
     // Args used for testing.

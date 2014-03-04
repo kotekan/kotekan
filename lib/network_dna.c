@@ -20,7 +20,7 @@
 //#define UDP_PACKETSIZE 8256
 #define UDP_PACKETSIZE 9296
 #define UDP_PAYLOADSIZE 8192
-#define NUM_FRAMES_PER_PACKET 4
+#define NUM_TIMESAMPLES_PER_PACKET 4
 
 // Count max
 #define COUNTER_BITS 30
@@ -34,7 +34,7 @@ double e_time(void) {
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 }
 
-void check_if_done(int * total_buffers_filled, struct network_thread_arg * args,
+void check_if_done(int * total_buffers_filled, struct networkThreadArg * args,
                     long long int total_packets, int32_t total_lost, int32_t total_out_of_order, 
                    int32_t total_duplicate, double start_time) {
 
@@ -44,7 +44,7 @@ void check_if_done(int * total_buffers_filled, struct network_thread_arg * args,
         printf("Stopping packet capture, ran for ~ %f seconds.\n", end_time - start_time);
         printf("\nStats:\nTotal Packets Captured: %lld\nPackets lost: %d\nOut of order packets: %d\nDuplicate Packets: %d\n", 
                 total_packets, total_lost, total_out_of_order, total_duplicate);
-        markProducerDone(args->buf, args->link_id);
+        mark_producer_done(args->buf, args->link_id);
         int ret = 0;
         pthread_exit((void *) &ret);
     }
@@ -53,8 +53,8 @@ void check_if_done(int * total_buffers_filled, struct network_thread_arg * args,
 
 void network_thread(void * arg) {
 
-    struct network_thread_arg * args;
-    args = (struct network_thread_arg *) arg;
+    struct networkThreadArg * args;
+    args = (struct networkThreadArg *) arg;
 
     // Setup the PF_RING.
     pfring *pd;
@@ -103,9 +103,9 @@ void network_thread(void * arg) {
     struct ErrorMatrix * error_matrix = NULL;
 
     // Make sure the first buffer is ready to go. (this check is not really needed)
-    waitForEmptyBuffer(args->buf, buffer_id);
+    wait_for_empty_buffer(args->buf, buffer_id);
 
-    setDataID(args->buf, buffer_id, data_id++);
+    set_data_ID(args->buf, buffer_id, data_id++);
     error_matrix = get_error_matrix(args->buf, buffer_id);
 
     double start_time = -1;
@@ -118,21 +118,21 @@ void network_thread(void * arg) {
         if (buffer_location == args->buf->buffer_size) {
 
             // Notify the we have filled a buffer.
-            markBufferFull(args->buf, buffer_id);
+            mark_buffer_full(args->buf, buffer_id);
             pthread_yield();
 
             // Check if we should stop collecting data.
             check_if_done(&total_buffers_filled, args, total_packets, 
                         grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
-            buffer_id = (buffer_id + args->numLinks) % (args->buf->num_buffers);
+            buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
 
             // This call will block if the buffer has not been written out to disk yet.
-            waitForEmptyBuffer(args->buf, buffer_id);
+            wait_for_empty_buffer(args->buf, buffer_id);
 
             buffer_location = 0;
 
-            setDataID(args->buf, buffer_id, data_id++);
+            set_data_ID(args->buf, buffer_id, data_id++);
             error_matrix = get_error_matrix(args->buf, buffer_id);
             if (last_seq != -1) {
                 // If not the first packet we need to set BufferInfo data.
@@ -252,7 +252,7 @@ void network_thread(void * arg) {
                     // Copy the memory in the right location.
                     assert(buffer_id < args->buf->num_buffers);
                     assert(realPacketLocation <= args->buf->buffer_size - UDP_PAYLOADSIZE);
-                    assert(buffer_location <= args->buf->buffer_size - UDP_PAYLOADSIZE );
+                    assert(buffer_location <= args->buf->buffer_size - UDP_PAYLOADSIZE);
                     assert(buffer_id >= 0);
                     assert(buffer_location >= 0);
                     assert(realPacketLocation >= 0);
@@ -263,7 +263,7 @@ void network_thread(void * arg) {
                     for (int i = 0; i < lost; ++i) {
                         memset(&args->buf->data[buffer_id][buffer_location + i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
                     }
-                    add_bad_frames( error_matrix, lost * NUM_FRAMES_PER_PACKET );
+                    add_bad_timesamples(error_matrix, lost * NUM_TIMESAMPLES_PER_PACKET);
 
                     buffer_location = realPacketLocation + UDP_PAYLOADSIZE;
 
@@ -274,14 +274,14 @@ void network_thread(void * arg) {
                     int i, j;
                     for (i = 0; (buffer_location + i*UDP_PAYLOADSIZE) < args->buf->buffer_size; ++i) {
                         memset(&args->buf->data[buffer_id][buffer_location + i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
-                        add_bad_frames(error_matrix, NUM_FRAMES_PER_PACKET);
+                        add_bad_timesamples(error_matrix, NUM_TIMESAMPLES_PER_PACKET);
                     }
 
                     // Keep track of the last edge seq number in case we need it later.
                     uint32_t last_edge = get_fpga_seq_num(args->buf, buffer_id);
 
                     // Notify the we have filled a buffer.
-                    markBufferFull(args->buf, buffer_id);
+                    mark_buffer_full(args->buf, buffer_id);
 
                     // Check if we should stop collecting data.
                     check_if_done(&total_buffers_filled, args, total_packets, 
@@ -299,13 +299,13 @@ void network_thread(void * arg) {
                     do {
 
                         // Get a new buffer.
-                        buffer_id = (buffer_id + args->numLinks) % (args->buf->num_buffers);
+                        buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
 
                         // This call will block if the buffer has not been written out to disk yet
                         // shouldn't be an issue if everything runs correctly.
-                        waitForEmptyBuffer(args->buf, buffer_id);
+                        wait_for_empty_buffer(args->buf, buffer_id);
 
-                        setDataID(args->buf, buffer_id, data_id++);
+                        set_data_ID(args->buf, buffer_id, data_id++);
                         error_matrix = get_error_matrix(args->buf, buffer_id);
 
                         uint32_t fpga_seq_number = last_edge + j * (args->buf->buffer_size/UDP_PAYLOADSIZE); // == number of iterations FIXME.
@@ -319,7 +319,7 @@ void network_thread(void * arg) {
 
                         for (i = 0; num_lost_packets_new_buf > 0 && (i*UDP_PAYLOADSIZE) < args->buf->buffer_size; ++i) {
                             memset(&args->buf->data[buffer_id][i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
-                            add_bad_frames(error_matrix, NUM_FRAMES_PER_PACKET);
+                            add_bad_timesamples(error_matrix, NUM_TIMESAMPLES_PER_PACKET);
                             num_lost_packets_new_buf--;
                         }
 
@@ -328,7 +328,7 @@ void network_thread(void * arg) {
                         if (num_lost_packets_new_buf > 0) {
 
                             // Notify the we have filled a buffer.
-                            markBufferFull(args->buf, buffer_id);
+                            mark_buffer_full(args->buf, buffer_id);
                             pthread_yield();
 
                             // Check if we should stop collecting data.
@@ -393,21 +393,21 @@ void network_thread(void * arg) {
             total_lost = 0;
 
             INFO("Data received: %.2f GB -- ", ((double)total_buffers_filled * ((double)args->buf->buffer_size / (1024.0*1024.0)))/1024.0);
-            INFO("Number of full buffers: %d\n", getNumFullBuffers(args->buf));
+            INFO("Number of full buffers: %d\n", get_num_full_buffers(args->buf));
         }
     }
 }
 
 void test_network_thread(void * arg) {
-    struct network_thread_arg * args;
-    args = (struct network_thread_arg *) arg;
+    struct networkThreadArg * args;
+    args = (struct networkThreadArg *) arg;
     int buffer_id = args->link_id;
     int data_id = 0;
 
     // Make sure the first buffer is ready to go. (this check is not really needed)
-    waitForEmptyBuffer(args->buf, buffer_id);
+    wait_for_empty_buffer(args->buf, buffer_id);
 
-    setDataID(args->buf, buffer_id, data_id++);
+    set_data_ID(args->buf, buffer_id, data_id++);
 
     generate_char_data_set(GENERATE_DATASET_CONSTANT,
                            GEN_DEFAULT_SEED,
@@ -425,9 +425,9 @@ void test_network_thread(void * arg) {
         INFO("Thread ID=%d; buf[%d]=0x%X", args->link_id, i, *(unsigned int *)(&args->buf->data[buffer_id][i*4]) );
     }
 
-    markBufferFull(args->buf, buffer_id);
+    mark_buffer_full(args->buf, buffer_id);
 
-    markProducerDone(args->buf, args->link_id);
+    mark_producer_done(args->buf, args->link_id);
     int ret = 0;
     pthread_exit((void *) &ret);
 

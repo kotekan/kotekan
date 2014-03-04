@@ -3,10 +3,10 @@
 
 #include "buffers.h"
 
-struct file_write_thread_arg {
+struct fileWriteThreadArg {
     struct Buffer * buf;
     int num_links;
-    int bufferDepth;
+    int buffer_depth;
     char * dataset_name;
     char * data_dir;
 

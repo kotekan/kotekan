@@ -98,13 +98,13 @@ int main(int argc, char ** argv) {
     struct InfoObjectPool pool;
     create_info_pool(&pool, 2 * NUM_LINKS * BUFFER_DEPTH, NUM_FREQ, NUM_ELEMENTS);
 
-    createBuffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS, &pool);
-    createBuffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1, &pool);
+    create_buffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS, &pool);
+    create_buffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1, &pool);
     DEBUG("%d %d %d", NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
 
     // Create Open CL thread.
     pthread_t gpu_t;
-    struct gpu_thread_args gpu_args;
+    struct gpuThreadArgs gpu_args;
     gpu_args.in_buf = &input_buffer;
     gpu_args.out_buf = &output_buffer;
     gpu_args.block_size = BLOCK_SIZE;
@@ -135,14 +135,14 @@ int main(int argc, char ** argv) {
 
     // Create network threads
     pthread_t network_t[NUM_LINKS];
-    struct network_thread_arg network_args[NUM_LINKS];
+    struct networkThreadArg network_args[NUM_LINKS];
     for (int i = 0; i < NUM_LINKS; ++i) {
         network_args[i].buf = &input_buffer;
-        network_args[i].bufferDepth = BUFFER_DEPTH;
+        network_args[i].buffer_depth = BUFFER_DEPTH;
         //Sets how long takes data.  in GB.  ~4800 is ~1hr
         network_args[i].data_limit = 2400;
-        network_args[i].portNumber = 41000;
-        network_args[i].numLinks = NUM_LINKS;
+        network_args[i].port_number = 41000;
+        network_args[i].num_links = NUM_LINKS;
         network_args[i].link_id = i;
         char * ip_address = malloc(100*sizeof(char));
         snprintf(ip_address, 100, "dna%d", i);
@@ -162,9 +162,9 @@ int main(int argc, char ** argv) {
 
     // Create consumer thread (i.e. file write thread).
     pthread_t file_write_t;
-    struct file_write_thread_arg file_write_args;
+    struct fileWriteThreadArg file_write_args;
     file_write_args.buf = &output_buffer;
-    file_write_args.bufferDepth = BUFFER_DEPTH;
+    file_write_args.buffer_depth = BUFFER_DEPTH;
     file_write_args.data_dir = "results";
     file_write_args.dataset_name = "test_data";
     file_write_args.num_links = NUM_LINKS;

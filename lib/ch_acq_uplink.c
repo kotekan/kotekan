@@ -30,7 +30,7 @@ struct tcp_frame_header {
 
 void ch_acq_uplink_thread(void* arg)
 {
-    struct ch_acq_uplink_thread_args * args = (struct ch_acq_uplink_thread_args *) arg;
+    struct ch_acqUplinkThreadArg * args = (struct ch_acqUplinkThreadArg *) arg;
 
     int err = 0;
 
@@ -75,7 +75,7 @@ void ch_acq_uplink_thread(void* arg)
     for (;;) {
 
         // This call is blocking!
-        bufferID = getFullBufferFromList(args->buf, useableBufferIDs, 1);
+        bufferID = get_full_buffer_from_list(args->buf, useableBufferIDs, 1);
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
@@ -118,7 +118,7 @@ void ch_acq_uplink_thread(void* arg)
             }
         }
 
-        markBufferEmpty(args->buf, bufferID);
+        mark_buffer_empty(args->buf, bufferID);
 
         useableBufferIDs[0] = (useableBufferIDs[0] + 1) % args->buf->num_buffers;
     }

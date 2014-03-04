@@ -24,7 +24,7 @@
 // The maximum number of expected GPUs in a host.  Increase as needed.
 #define MAX_GPUS 4
 
-struct gpu_thread_args {
+struct gpuThreadArgs {
     struct Buffer * in_buf;
     struct Buffer * out_buf;
 
@@ -46,7 +46,7 @@ struct gpu_thread_args {
     pthread_cond_t cond;
 };
 
-struct call_back_data {
+struct callBackData {
     int buffer_id;
 
     struct OpenCLData * cl_data;
@@ -81,7 +81,7 @@ struct OpenCLData {
     cl_event * read_finished;
 
     // Call back data.
-    struct call_back_data * cb_data;
+    struct callBackData * cb_data;
 
     // Extra data
     int num_blocks;
@@ -121,8 +121,8 @@ struct OpenCLData {
 
 void gpu_thread(void * arg); 
 
-void wait_for_gpu_thread_ready(struct gpu_thread_args * args);
+void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
 
-void CL_CALLBACK readComplete(cl_event event, cl_int status, void *data);
+void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data);
 
 #endif

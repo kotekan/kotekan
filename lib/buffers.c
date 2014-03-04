@@ -16,22 +16,22 @@
  * @brief private function to get the id of the first full buffer.
  * This should only be called from within a lock.
  */
-int private_getFullBuffer(struct Buffer * buf);
+int private_get_full_buffer(struct Buffer * buf);
 
 /**
  * @brief finds a full buffer within a list of buffers, and returns its ID if it exists.
  * This should only be called from within a lock.
  */
-int private_getFullBufferFromList(struct Buffer * buf, const int* buffer_IDs, const int len);
+int private_get_full_buffer_from_list(struct Buffer * buf, const int* buffer_IDs, const int len);
 
-int private_areProducersDone(struct Buffer * buf);
+int private_are_producers_done(struct Buffer * buf);
 
 // Checks if the buffer in question has an BufferInfo object attached to it.
 // If not it requests one from the buffer_info pool.
 // Not thread safe, call from with-in a lock.
 void private_check_info_object(struct Buffer * buf, const int ID);
 
-int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool)
+int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool)
 {
 
     assert(num_buf > 0);
@@ -118,7 +118,7 @@ int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers, st
     return 0;
 }
 
-void deleteBuffer(struct Buffer* buf)
+void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_buffers; ++i) {
         free(buf->data[i]);
@@ -139,7 +139,7 @@ void deleteBuffer(struct Buffer* buf)
     CHECK_ERROR( pthread_cond_destroy(&buf->empty_cond) );
 }
 
-void markBufferFull(struct Buffer * buf, const int ID)
+void mark_buffer_full(struct Buffer * buf, const int ID)
 {
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
@@ -154,25 +154,25 @@ void markBufferFull(struct Buffer * buf, const int ID)
     CHECK_ERROR( pthread_cond_broadcast(&buf->full_cond) );
 }
 
-int getFullBufferID(struct Buffer * buf)
+int get_full_buffer_ID(struct Buffer * buf)
 {
     int fullBuf = -1;
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
-    while ( private_getFullBuffer(buf) == -1 
-            && private_areProducersDone(buf) == 0) {
+    while ( private_get_full_buffer(buf) == -1
+            && private_are_producers_done(buf) == 0) {
         pthread_cond_wait(&buf->full_cond, &buf->lock);
     }
 
-    fullBuf = private_getFullBuffer(buf);
+    fullBuf = private_get_full_buffer(buf);
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     return fullBuf;
 }
 
-void markBufferEmpty(struct Buffer* buf, const int ID)
+void mark_buffer_empty(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
@@ -187,7 +187,7 @@ void markBufferEmpty(struct Buffer* buf, const int ID)
     CHECK_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
 }
 
-void waitForEmptyBuffer(struct Buffer* buf, const int ID)
+void wait_for_empty_buffer(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
@@ -283,7 +283,7 @@ struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID)
     return ret;
 }
 
-void setDataID(struct Buffer* buf, const int ID, const int data_ID)
+void set_data_ID(struct Buffer* buf, const int ID, const int data_ID)
 {
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
@@ -317,25 +317,25 @@ void set_first_packet_recv_time(struct Buffer* buf, const int ID, struct timeval
 }
 
 
-int getFullBufferFromList(struct Buffer* buf, const int* buffer_IDs, const int len)
+int get_full_buffer_from_list(struct Buffer* buf, const int* buffer_IDs, const int len)
 {
     int fullBuf = -1;
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
-    while ( private_getFullBufferFromList(buf, buffer_IDs, len) == -1 
-            && private_areProducersDone(buf) == 0 ) {
+    while ( private_get_full_buffer_from_list(buf, buffer_IDs, len) == -1
+            && private_are_producers_done(buf) == 0 ) {
         pthread_cond_wait(&buf->full_cond, &buf->lock);
     }
 
-    fullBuf = private_getFullBufferFromList(buf, buffer_IDs, len);
+    fullBuf = private_get_full_buffer_from_list(buf, buffer_IDs, len);
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     return fullBuf;
 }
 
-void markProducerDone(struct Buffer* buf, int producer_id)
+void mark_producer_done(struct Buffer* buf, int producer_id)
 {
     assert(buf != NULL);
     assert(producer_id >= 0);
@@ -351,7 +351,7 @@ void markProducerDone(struct Buffer* buf, int producer_id)
     CHECK_ERROR( pthread_cond_broadcast(&buf->full_cond) );
 }
 
-int getNumFullBuffers(struct Buffer* buf)
+int get_num_full_buffers(struct Buffer* buf)
 {
     int numFull = 0;
 
@@ -368,7 +368,7 @@ int getNumFullBuffers(struct Buffer* buf)
     return numFull;
 }
 
-void printBufferStatus(struct Buffer* buf)
+void print_buffer_status(struct Buffer* buf)
 {
     int is_full[buf->num_buffers];
 
@@ -488,7 +488,7 @@ void delete_info_object_pool(struct InfoObjectPool * pool)
     CHECK_ERROR( pthread_mutex_destroy(&pool->in_use_lock) );
 }
 
-int private_getFullBuffer(struct Buffer* buf)
+int private_get_full_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_buffers; ++i) {
         if (buf->is_full[i] == 1) {
@@ -498,7 +498,7 @@ int private_getFullBuffer(struct Buffer* buf)
     return -1;
 }
 
-int private_getFullBufferFromList(struct Buffer* buf, const int* buffer_IDs, const int len)
+int private_get_full_buffer_from_list(struct Buffer* buf, const int* buffer_IDs, const int len)
 {
     for(int i = 0; i < len; ++i) {
         assert (buffer_IDs[i] >= 0);
@@ -511,7 +511,7 @@ int private_getFullBufferFromList(struct Buffer* buf, const int* buffer_IDs, con
     return -1;
 }
 
-int private_areProducersDone(struct Buffer* buf)
+int private_are_producers_done(struct Buffer* buf)
 {
     // Assume we are done.
     int result = 1;

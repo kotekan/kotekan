@@ -26,7 +26,7 @@ void initalize_error_matrix(struct ErrorMatrix* error_matrix, const int num_freq
 
 void reset_error_matrix(struct ErrorMatrix* error_matrix)
 {
-    error_matrix->bad_frames = 0;
+    error_matrix->bad_timesamples = 0;
     memset(error_matrix->element_error_counts, 0, error_matrix->num_elements * error_matrix->num_freq);
     memset(error_matrix->correction_factors, 0, (error_matrix->num_elements*(error_matrix->num_elements + 1)/2) * error_matrix->num_freq);
 }
@@ -87,7 +87,7 @@ void finalize_error_matrix(struct ErrorMatrix* error_matrix)
             for (int j = i; j < error_matrix->num_elements; ++j) {
 
                 // Add errors for each time a frame was discarded/lost.
-                error_matrix->correction_factors[index] += error_matrix->bad_frames;
+                error_matrix->correction_factors[index] += error_matrix->bad_timesamples;
 
                 // Add errors on elements. Note: we double add here in some cases, but 
                 // these are corrected by the existing offsets created when the error was added.
@@ -100,11 +100,11 @@ void finalize_error_matrix(struct ErrorMatrix* error_matrix)
     }
 }
 
-void add_bad_frames(struct ErrorMatrix* error_matrix, int num_bad_frames)
+void add_bad_timesamples(struct ErrorMatrix* error_matrix, int num_bad_timesamples)
 {
     assert(error_matrix != NULL);
 
-    error_matrix->bad_frames += num_bad_frames;
+    error_matrix->bad_timesamples += num_bad_timesamples;
 }
 
 void apply_error_corrections(struct ErrorMatrix* error_matrix, 

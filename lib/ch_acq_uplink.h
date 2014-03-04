@@ -1,10 +1,10 @@
 #ifndef CH_ACQ_UPLINK
 #define CH_ACQ_UPLINK
 
-struct ch_acq_uplink_thread_arg {
+struct ch_acqUplinkThreadArg {
     struct Buffer * buf;
     int num_links;
-    int bufferDepth;
+    int buffer_depth;
     char * ch_acq_ip_addr;
     int ch_acq_port_num;
 

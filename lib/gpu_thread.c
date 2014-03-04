@@ -23,15 +23,15 @@
 
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
-void setupOpenCL(struct OpenCLData * cl_data);
+void setup_open_cl(struct OpenCLData * cl_data);
 
-void closeOpenCL(struct OpenCLData * cl_data);
+void close_open_cl(struct OpenCLData * cl_data);
 
-void addQueueSet(struct OpenCLData * cl_data, int buffer_id);
+void add_queue_set(struct OpenCLData * cl_data, int buffer_id);
 
 void gpu_thread(void* arg)
 {
-    struct gpu_thread_args * args = (struct gpu_thread_args *) arg; 
+    struct gpuThreadArgs * args = (struct gpuThreadArgs *) arg;
 
     struct OpenCLData cl_data;
 
@@ -53,11 +53,11 @@ void gpu_thread(void* arg)
 
     cl_data.gpu_id = args->gpu_id;
 
-    setupOpenCL(&cl_data);
+    setup_open_cl(&cl_data);
 
     // Queue the initial commands in buffer order.
     for (int i = 0; i < args->in_buf->num_buffers; ++i) {
-        addQueueSet(&cl_data, i);
+        add_queue_set(&cl_data, i);
     }
 
     CHECK_ERROR( pthread_mutex_lock(&args->lock) );
@@ -75,7 +75,7 @@ void gpu_thread(void* arg)
     for(;;) {
 
         // Wait for data, this call will block.
-        bufferID = getFullBufferFromList(args->in_buf, buffer_list, 1);
+        bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
 
         // If buffer id is -1, then all the producers are done.
         if (bufferID == -1) {
@@ -84,7 +84,7 @@ void gpu_thread(void* arg)
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        waitForEmptyBuffer(args->out_buf, bufferID);
+        wait_for_empty_buffer(args->out_buf, bufferID);
 
         CHECK_CL_ERROR( clSetUserEventStatus(cl_data.host_buffer_ready[buffer_list[0]], CL_SUCCESS) );
 
@@ -93,15 +93,15 @@ void gpu_thread(void* arg)
 
     DEBUG("Closing OpenCL\n");
 
-    closeOpenCL(&cl_data);
+    close_open_cl(&cl_data);
 
-    markProducerDone(args->out_buf, 0);
+    mark_producer_done(args->out_buf, 0);
 
     int ret;
     pthread_exit((void *) &ret); 
 }
 
-void wait_for_gpu_thread_ready(struct gpu_thread_args * args)
+void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
 {
     CHECK_ERROR( pthread_mutex_lock(&args->lock) );
 
@@ -112,28 +112,28 @@ void wait_for_gpu_thread_ready(struct gpu_thread_args * args)
     CHECK_ERROR( pthread_mutex_unlock(&args->lock) );
 }
 
-void CL_CALLBACK readComplete(cl_event event, cl_int status, void *data) {
+void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
 
     //INFO("GPU Kernel Finished!\n");
 
-    struct call_back_data * cb_data = (struct call_back_data *) data;
+    struct callBackData * cb_data = (struct callBackData *) data;
 
     // Mark the input buffer as "empty" so that it can be reused.
-    markBufferEmpty(cb_data->cl_data->in_buf, cb_data->buffer_id);
+    mark_buffer_empty(cb_data->cl_data->in_buf, cb_data->buffer_id);
 
     // Copy the information contained in the input buffer
     move_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
                      cb_data->cl_data->out_buf, cb_data->buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
-    markBufferFull(cb_data->cl_data->out_buf, cb_data->buffer_id);
+    mark_buffer_full(cb_data->cl_data->out_buf, cb_data->buffer_id);
 
     // TODO move this to the consumer thread for the output data.
-    addQueueSet(cb_data->cl_data, cb_data->buffer_id);
+    add_queue_set(cb_data->cl_data, cb_data->buffer_id);
 
 }
 
-void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
+void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
 {
     cl_int err;
 
@@ -250,14 +250,14 @@ void addQueueSet(struct OpenCLData * cl_data, int buffer_id)
     // Setup call back.
     CHECK_CL_ERROR( clSetEventCallback(cl_data->read_finished[buffer_id],
                                             CL_COMPLETE,
-                                            &readComplete,
+                                            &read_complete,
                                             &cl_data->cb_data[buffer_id]) );
 
     pthread_mutex_unlock(&queue_lock);
 }
 
 
-void setupOpenCL(struct OpenCLData * cl_data)
+void setup_open_cl(struct OpenCLData * cl_data)
 {
     cl_int err;
 
@@ -378,7 +378,7 @@ void setupOpenCL(struct OpenCLData * cl_data)
         CHECK_CL_ERROR(err);
     }
 
-    cl_data->cb_data = malloc(cl_data->in_buf->num_buffers * sizeof(struct call_back_data));
+    cl_data->cb_data = malloc(cl_data->in_buf->num_buffers * sizeof(struct callBackData));
     CHECK_MEM(cl_data->cb_data);
 
     cl_data->host_buffer_ready = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
@@ -500,7 +500,7 @@ void setupOpenCL(struct OpenCLData * cl_data)
 
 }
 
-void closeOpenCL(struct OpenCLData * cl_data)
+void close_open_cl(struct OpenCLData * cl_data)
 {
     CHECK_CL_ERROR( clReleaseKernel(cl_data->corr_kernel) );
     CHECK_CL_ERROR( clReleaseProgram(cl_data->program) );

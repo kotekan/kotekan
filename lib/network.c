@@ -38,7 +38,7 @@ void check_if_done(int * total_buffers_filled, struct network_thread_arg * args,
         INFO("Stopping packet capture, ran for ~ %f seconds.\n", end_time - start_time);
         INFO("\nStats:\nTotal Packets Captured: %lld\nPackets lost: %d\nOut of order packets: %d\nDuplicate Packets: %d\n", 
                 total_packets, total_lost, total_out_of_order, total_duplicate);
-        markProducerDone(args->buf, args->link_id);
+        mark_producer_done(args->buf, args->link_id);
         int ret = 0;
         pthread_exit((void *) &ret);
     }
@@ -46,8 +46,8 @@ void check_if_done(int * total_buffers_filled, struct network_thread_arg * args,
 
 void network_thread(void * arg) {
 
-    struct network_thread_arg * args;
-    args = (struct network_thread_arg *) arg;
+    struct networkThreadArg * args;
+    args = (struct networkThreadArg *) arg;
 
     struct epoll_event ev;
     struct epoll_event events[MAX_EVENTS];
@@ -71,7 +71,7 @@ void network_thread(void * arg) {
     memset(&server_address, 0, sizeof(server_address));
     server_address.sin_family = AF_INET;
     inet_pton(AF_INET, args->ip_address, &(server_address.sin_addr));
-    server_address.sin_port=htons(args->portNumber);
+    server_address.sin_port=htons(args->port_number);
     if ( bind(udp_socket,(struct sockaddr *)&server_address,sizeof(server_address)) == -1) {
         ERROR("Socket bind; errno %d", errno);
     }
@@ -109,9 +109,9 @@ void network_thread(void * arg) {
     int64_t out_of_order_event = 0;
 
     // Make sure the first buffer is ready to go. (this check is not really needed)
-    waitForEmptyBuffer(args->buf, buffer_id);
+    wait_for_empty_buffer(args->buf, buffer_id);
 
-    setDataID(args->buf, buffer_id, data_id++);
+    set_data_ID(args->buf, buffer_id, data_id++);
 
     double start_time = -1;
 
@@ -135,20 +135,20 @@ void network_thread(void * arg) {
             if (buffer_location == args->buf->buffer_size) {
 
                 // Notify the we have filled a buffer.
-                markBufferFull(args->buf, buffer_id);
+                mark_buffer_full(args->buf, buffer_id);
 
                 // Check if we should stop collecting data.
                 check_if_done(&total_buffers_filled, args, total_packets, 
                               grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
-                buffer_id = (buffer_id + args->numLinks) % (args->buf->num_buffers);
+                buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
 
                 // This call will block if the buffer has not been written out to disk yet.
-                waitForEmptyBuffer(args->buf, buffer_id);
+                wait_for_empty_buffer(args->buf, buffer_id);
 
                 buffer_location = 0;
 
-                setDataID(args->buf, buffer_id, data_id++);
+                set_data_ID(args->buf, buffer_id, data_id++);
             }
 
             // TODO This will need to be changed once we start getting packets with header information.
@@ -246,7 +246,7 @@ void network_thread(void * arg) {
                         }
 
                         // Notify the we have filled a buffer.
-                        markBufferFull(args->buf, buffer_id);
+                        mark_buffer_full(args->buf, buffer_id);
 
                         // Check if we should stop collecting data.
                         check_if_done(&total_buffers_filled, args, total_packets, 
@@ -263,13 +263,13 @@ void network_thread(void * arg) {
                         do {
 
                             // Get a new buffer.
-                            buffer_id = (buffer_id + args->numLinks) % (args->buf->num_buffers);
+                            buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
 
                             // This call will block if the buffer has not been written out to disk yet
                             // shouldn't be an issue if everything runs correctly.
-                            waitForEmptyBuffer(args->buf, buffer_id);
+                            wait_for_empty_buffer(args->buf, buffer_id);
 
-                            setDataID(args->buf, buffer_id, data_id++);
+                            set_data_ID(args->buf, buffer_id, data_id++);
 
                             for (i = 0; num_lost_packets_new_buf > 0 && (i*UDP_PACKETSIZE) < args->buf->buffer_size; ++i) {
                                 memset(&args->buf->data[buffer_id][i*UDP_PACKETSIZE], 0, UDP_PACKETSIZE);
@@ -281,7 +281,7 @@ void network_thread(void * arg) {
                             if (num_lost_packets_new_buf > 0) {
 
                                 // Notify the we have filled a buffer.
-                                markBufferFull(args->buf, buffer_id);
+                                mark_buffer_full(args->buf, buffer_id);
 
                                 // Check if we should stop collecting data.
                                 check_if_done(&total_buffers_filled, args, total_packets, 

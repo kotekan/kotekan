@@ -13,7 +13,7 @@
 #include "output_formating.h"
 #include "error_correction.h"
 
-#define NUM_FRAMES_PER_PACKET 4
+#define NUM_TIMESAMPLES_PER_PACKET 4
 
 void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
                      const uint8_t *new_flag, unsigned int fpga_count,
@@ -60,14 +60,14 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
 
 void file_write_thread(void * arg)
 {
-    struct file_write_thread_arg * args = (struct file_write_thread_arg *) arg;
+    struct fileWriteThreadArg * args = (struct fileWriteThreadArg *) arg;
 
     int bufferID = -1;
 
     int useableBufferIDs[1] = {0};
     int link_id = 0;
 
-    int bad_frames[args->num_links];
+    int bad_timesamples[args->num_links];
 
     /// HDF5 File setup
 
@@ -97,7 +97,7 @@ void file_write_thread(void * arg)
     for (;;) {
 
         // This call is blocking.
-        bufferID = getFullBufferFromList(args->buf, useableBufferIDs, 1);
+        bufferID = get_full_buffer_from_list(args->buf, useableBufferIDs, 1);
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
@@ -121,29 +121,29 @@ void file_write_thread(void * arg)
                                                      args->actual_num_elements,
                                                      (int *)args->buf->data[bufferID] );
 
-        bad_frames[link_id] = error_matrix->bad_frames;
+        bad_timesamples[link_id] = error_matrix->bad_timesamples;
 
         int32_t push = 0;
         if (link_id + 1 == args->num_links) {
             push = 1;
             if (args->num_links == 7) {
-                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_frames = [ %d %d %d %d %d %d %d ]",
-                     data_id, fpga_seq_number, bad_frames[0], bad_frames[1], bad_frames[2],
-                     bad_frames[3], bad_frames[4], bad_frames[5], bad_frames[6]);
+                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d ]",
+                     data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
+                     bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6]);
             }
             if (args->num_links == 8) {
-                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_frames = [ %d %d %d %d %d %d %d %d ]",
-                     data_id, fpga_seq_number, bad_frames[0], bad_frames[1], bad_frames[2],
-                     bad_frames[3], bad_frames[4], bad_frames[5], bad_frames[6], bad_frames[7]);
+                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d %d ]",
+                     data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
+                     bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6], bad_timesamples[7]);
             }
         }
 
-        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*NUM_FRAMES_PER_PACKET,
+        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*NUM_TIMESAMPLES_PER_PACKET,
                         frame_start_time, link_id, push,
                         args->actual_num_freq);
 
         release_info_object(args->buf, bufferID);
-        markBufferEmpty(args->buf, bufferID);
+        mark_buffer_empty(args->buf, bufferID);
 
         useableBufferIDs[0] = (useableBufferIDs[0] + 1) % args->buf->num_buffers;
     }
