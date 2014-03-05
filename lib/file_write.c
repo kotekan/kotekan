@@ -25,22 +25,33 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
     n = self->n_freq * self->n_corr;
     page = get_frame_page(self);
 
-    // Record the FPGA counter and the CPU time.
+    for (i = 0; i < n; i++) {
+        self->vis_sum[i] += new_vis[i];
+    }
 
-    self->frame[page].timestamp[0].fpga_count = fpga_count;
-    self->frame[page].timestamp[0].cpu_s = time.tv_sec;
-    self->frame[page].timestamp[0].cpu_us = time.tv_usec;
+    if ( (++self->n_fpga_sample >= self->udp_spf) && push) {
 
-    shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(actual_num_freq,
-                                                                                      (int *)new_vis,
+
+        // Record the FPGA counter and the CPU time.
+
+        self->frame[page].timestamp[0].fpga_count = fpga_count;
+        self->frame[page].timestamp[0].cpu_s = time.tv_sec;
+        self->frame[page].timestamp[0].cpu_us = time.tv_usec;
+
+        // Get into right order and put in visibility data.
+
+        shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(actual_num_freq,
+                                                                                          (int *)vis_sum,
                                                                                       self->frame[page].vis,
                                                                                       link_num );
 
-    // For thread-safety, lock writing to the frame while we increment the frame
-    // page counter.
-    // Only push once we have the data from all links.
-    // TODO if we are missing data for some links, this won't work. 
-    if (push) {
+
+
+
+        // For thread-safety, lock writing to the frame while we increment the frame
+        // page counter.
+        // Only push once we have the data from all links.
+        // TODO if we are missing data for some links, this won't work. 
         pthread_mutex_lock(&self->frame_lock);
         if (++self->frame_page >= self->n_frame_page)
             self->frame_page = 0;
@@ -53,6 +64,7 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
                n * sizeof(struct vis_flag_t));
 
         self->n_fpga_sample = 0;
+
     }
 
   return;
