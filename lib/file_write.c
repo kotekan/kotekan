@@ -25,35 +25,22 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
     n = self->n_freq * self->n_corr;
     page = get_frame_page(self);
 
-    // Get into right order and put in visibility data.
+    // Record the FPGA counter and the CPU time.
+
+    self->frame[page].timestamp[0].fpga_count = fpga_count;
+    self->frame[page].timestamp[0].cpu_s = time.tv_sec;
+    self->frame[page].timestamp[0].cpu_us = time.tv_usec;
 
     shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(actual_num_freq,
-                                                                                          (int *)new_vis,
-                                                                                      self->vis_sum,
+                                                                                      (int *)new_vis,
+                                                                                      self->frame[page].vis,
                                                                                       link_num );
 
-    if ( (++self->n_fpga_sample >= self->udp_spf ) && push) {
-
-
-        // Record the FPGA counter and the CPU time.
-
-        self->frame[page].timestamp[0].fpga_count = fpga_count;
-        self->frame[page].timestamp[0].cpu_s = time.tv_sec;
-        self->frame[page].timestamp[0].cpu_us = time.tv_usec;
-
-        //put into visibility data
-        for (i = 0; i < n; i++) {
-          self->frame[page].vis[i].real = 
-                (int32_t)(creal(self->vis_sum[i]);
-          self->frame[page].vis[i].imag =
-                (int32_t)(cimag(self->vis_sum[i]);
-        }
-
-
-        // For thread-safety, lock writing to the frame while we increment the frame
-        // page counter.
-        // Only push once we have the data from all links.
-        // TODO if we are missing data for some links, this won't work. 
+    // For thread-safety, lock writing to the frame while we increment the frame
+    // page counter.
+    // Only push once we have the data from all links.
+    // TODO if we are missing data for some links, this won't work. 
+    if (push) {
         pthread_mutex_lock(&self->frame_lock);
         if (++self->frame_page >= self->n_frame_page)
             self->frame_page = 0;
@@ -66,7 +53,6 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
                n * sizeof(struct vis_flag_t));
 
         self->n_fpga_sample = 0;
-
     }
 
   return;

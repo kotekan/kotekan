@@ -32,26 +32,23 @@ void ch_acq_uplink_thread(void* arg)
 {
     struct ch_acqUplinkThreadArg * args = (struct ch_acqUplinkThreadArg *) arg;
 
-    int err = 0;
-
     int bufferID = -1;
     assert(args->num_links > 0);
-    int fd[args->num_links];
 
     int useableBufferIDs[1] = {0};
     int link_id = 0;
 
     // Create tcp send buffer
-    int num_values = ((args->actual_num_elem * (args->actual_num_elem + 1)) / 2 ) * args->actual_num_freq;
-    int buffer_size = sizeof(tcp_frame_header) + num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
+    int num_values = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 ) * args->actual_num_freq;
+    int buffer_size = sizeof(struct tcp_frame_header) + num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
 
     unsigned char * buf = malloc(buffer_size);
     CHECK_MEM(buf);
 
     // Create convenient pointers into the buffer (yay pointer math).
     struct tcp_frame_header * header = (struct tcp_frame_header *)buf;
-    complex_int_t * visibilities = ( complex_int_t * ) (buf + sizeof(tcp_frame_header));
-    uint8_t * error_flags = (uint8_t *)(buf + sizeof(tcp_frame_header) 
+    complex_int_t * visibilities = ( complex_int_t * ) (buf + sizeof(struct tcp_frame_header));
+    uint8_t * error_flags = (uint8_t *)(buf + sizeof(struct tcp_frame_header) 
                                         + num_values*sizeof(complex_int_t) );
     // Connect to server.
     struct sockaddr_in ch_acq_addr;
@@ -91,7 +88,7 @@ void ch_acq_uplink_thread(void* arg)
 
         // TODO Make this cleaner (single function)
         reorganize_32_to_16_feed_GPU_Correlated_Data( args->actual_num_freq,
-                                                      args->actual_num_elem,
+                                                      args->actual_num_elements,
                                                       (int *)args->buf->data[bufferID] );
 
 
@@ -111,13 +108,14 @@ void ch_acq_uplink_thread(void* arg)
             header->cpu_timestamp = frame_start_time;
             header->fpga_seq_number = fpga_seq_number;
             header->num_freq = args->actual_num_freq;
-            header->num_vis = ((args->actual_num_elem * (args->actual_num_elem + 1)) / 2 );
+            header->num_vis = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 );
 
             if (send(tcp_fd, buf, buffer_size, 0) == -1) {
                 ERROR("Could not send frame to ch_acq, error: %d", errno); 
             }
         }
 
+        release_info_object(args->buf, bufferID);
         mark_buffer_empty(args->buf, bufferID);
 
         useableBufferIDs[0] = (useableBufferIDs[0] + 1) % args->buf->num_buffers;

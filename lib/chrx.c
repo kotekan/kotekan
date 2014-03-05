@@ -114,7 +114,7 @@ int chrx_acq_init(struct chrx_acq_t *self) {
   self->ser_dev = 0;
   self->ser_timeout = 0;
   self->udp_port = 0;
-  self->udp_spf = 100;
+  self->udp_spf = 0;
   self->frame_per_file = 360;
 
   // Process the serial ADC channel configuration.

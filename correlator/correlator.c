@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <getopt.h>
 #include <assert.h>
+#include <string.h>
 
 #include "errors.h"
 #include "buffers.h"
@@ -15,6 +16,7 @@
 #include "network_dna.h"
 #include "file_write.h"
 #include "error_correction.h"
+#include "ch_acq_uplink.h"
 
 #define NUM_LINKS 7
 #define BUFFER_DEPTH 3
@@ -32,10 +34,13 @@
 #define ACTUAL_NUM_ELEMENTS 16u
 #define ACTUAL_NUM_FREQUENCIES 128u
 
+#define CH_ACQ_PORT 41001
+
 void print_help() {
     printf("usage: correlator [opts]\n\n");
     printf("Options:\n");
     printf("    --gpu (-g) [gpu number]     The id of the GPU to use\n");
+    printf("    --use-ch-acq (-a) [ip address]");
     printf("    --no-network-test (-n)      Bypass taking data from the nextwork\n\n");
 }
 
@@ -48,18 +53,21 @@ int main(int argc, char ** argv) {
     int opt_val = 0;
     int gpu_id = 0;
     int no_network_test = 0;
+    char * ch_acq_ip_address;
+    int use_ch_acq = 0;
  
     for (;;) {
         static struct option long_options[] = {
             {"gpu", required_argument, 0, 'g'},
             {"no-network-test", no_argument, 0, 'n'},
+            {"use-ch-acq", required_argument, 0, 'a'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "g:nh",
+        opt_val = getopt_long (argc, argv, "g:nha:",
                                long_options, &option_index);
 
         // End of args
@@ -77,6 +85,10 @@ int main(int argc, char ** argv) {
                 break;
             case 'g':
                 gpu_id = atoi(optarg);
+                break;
+            case 'a':
+                ch_acq_ip_address = strdup(optarg);
+                use_ch_acq = 1;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -160,17 +172,30 @@ int main(int argc, char ** argv) {
         }
     }
 
-    // Create consumer thread (i.e. file write thread).
-    pthread_t file_write_t;
-    struct fileWriteThreadArg file_write_args;
-    file_write_args.buf = &output_buffer;
-    file_write_args.buffer_depth = BUFFER_DEPTH;
-    file_write_args.data_dir = "results";
-    file_write_args.dataset_name = "test_data";
-    file_write_args.num_links = NUM_LINKS;
-    file_write_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
-    file_write_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
-    CHECK_ERROR( pthread_create(&file_write_t, NULL, (void *) &file_write_thread, (void *)&file_write_args ) );
+    pthread_t output_consumer_t;
+    if (use_ch_acq == 1) {
+        // Consumer thread which sends data to ch_acq server to be written to disk.
+        struct ch_acqUplinkThreadArg ch_acq_uplink_args;
+        ch_acq_uplink_args.buf = &output_buffer;
+        ch_acq_uplink_args.num_links = NUM_LINKS;
+        ch_acq_uplink_args.buffer_depth = BUFFER_DEPTH;
+        ch_acq_uplink_args.ch_acq_ip_addr = ch_acq_ip_address;
+        ch_acq_uplink_args.ch_acq_port_num = CH_ACQ_PORT;
+        ch_acq_uplink_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
+        ch_acq_uplink_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
+        CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &ch_acq_uplink_thread, (void *)&ch_acq_uplink_args ) );
+    } else  {
+        // Create consumer thread (i.e. file write thread).
+        struct fileWriteThreadArg file_write_args;
+        file_write_args.buf = &output_buffer;
+        file_write_args.buffer_depth = BUFFER_DEPTH;
+        file_write_args.data_dir = "results";
+        file_write_args.dataset_name = "test_data";
+        file_write_args.num_links = NUM_LINKS;
+        file_write_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
+        file_write_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
+        CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &file_write_thread, (void *)&file_write_args ) );
+    }
 
     // Join with threads.
     int * ret;
@@ -180,7 +205,7 @@ int main(int argc, char ** argv) {
         CHECK_ERROR( pthread_join(network_t[i], (void **) &ret) );
     }
 
-    CHECK_ERROR( pthread_join(file_write_t, (void **) &ret) );
+    CHECK_ERROR( pthread_join(output_consumer_t, (void **) &ret) );
 
     closelog();
 
