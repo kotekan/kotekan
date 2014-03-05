@@ -144,8 +144,8 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_
             for (int freq_count = 0; freq_count < num_frequencies; freq_count++){
 
                 int input_index = (freq_count * 256 + y*16 + x)*2;
-                output_data[output_counter].real = input_data[input_index];
-                output_data[output_counter].imag = input_data[input_index+1];
+                output_data[output_counter].real += input_data[input_index];
+                output_data[output_counter].imag += input_data[input_index+1];
                 output_counter += 8;
             }
         }

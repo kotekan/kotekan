@@ -25,11 +25,14 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
     n = self->n_freq * self->n_corr;
     page = get_frame_page(self);
 
-    for (i = 0; i < n; i++) {
-        self->vis_sum[i] += new_vis[i];
-    }
+    // Get into right order and put in visibility data.
 
-    if ( (++self->n_fpga_sample >= self->udp_spf) && push) {
+    shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(actual_num_freq,
+                                                                                          (int *)new_vis,
+                                                                                      self->vis_sum,
+                                                                                      link_num );
+
+    if ( (++self->n_fpga_sample >= self->udp_spf ) && push) {
 
 
         // Record the FPGA counter and the CPU time.
@@ -38,14 +41,13 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
         self->frame[page].timestamp[0].cpu_s = time.tv_sec;
         self->frame[page].timestamp[0].cpu_us = time.tv_usec;
 
-        // Get into right order and put in visibility data.
-
-        shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(actual_num_freq,
-                                                                                          (int *)vis_sum,
-                                                                                      self->frame[page].vis,
-                                                                                      link_num );
-
-
+        //put into visibility data
+        for (i = 0; i < n; i++) {
+          self->frame[page].vis[i].real = 
+                (int32_t)(creal(self->vis_sum[i]);
+          self->frame[page].vis[i].imag =
+                (int32_t)(cimag(self->vis_sum[i]);
+        }
 
 
         // For thread-safety, lock writing to the frame while we increment the frame
