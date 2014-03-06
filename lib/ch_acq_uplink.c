@@ -94,7 +94,7 @@ void ch_acq_uplink_thread(void* arg)
                                                       (int *)args->buf->data[bufferID] );
 
 
-        shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8_pairs(
+        shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(
                                                 args->actual_num_freq, (int *)args->buf->data[bufferID],
                                                 visibilities, link_id );
 
