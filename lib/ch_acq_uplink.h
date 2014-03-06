@@ -10,6 +10,8 @@ struct ch_acqUplinkThreadArg {
 
     int actual_num_freq;
     int actual_num_elements;
+
+    int total_num_freq;
 };
 
 

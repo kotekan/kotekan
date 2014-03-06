@@ -36,6 +36,9 @@
 
 #define CH_ACQ_PORT 41001
 
+// The total number of frequencies across the entire system.
+#define TOTAL_FREQUENCIES 1024
+
 void print_help() {
     printf("usage: correlator [opts]\n\n");
     printf("Options:\n");
@@ -183,6 +186,7 @@ int main(int argc, char ** argv) {
         ch_acq_uplink_args.ch_acq_port_num = CH_ACQ_PORT;
         ch_acq_uplink_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
         ch_acq_uplink_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
+        ch_acq_uplink_args.total_num_freq = TOTAL_FREQUENCIES;
         CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &ch_acq_uplink_thread, (void *)&ch_acq_uplink_args ) );
     } else  {
         // Create consumer thread (i.e. file write thread).

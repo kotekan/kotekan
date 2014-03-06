@@ -107,7 +107,7 @@ void ch_acq_uplink_thread(void* arg)
             // Send the frame.
             header->cpu_timestamp = frame_start_time;
             header->fpga_seq_number = fpga_seq_number;
-            header->num_freq = args->actual_num_freq;
+            header->num_freq = args->total_num_freq;
             header->num_vis = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 );
 
             if (send(tcp_fd, buf, buffer_size, 0) == -1) {
