@@ -19,6 +19,7 @@
 // -- HEADER:sizeof(TCP_frame_header) --
 // -- VISIBILITIES:n_corr * n_freq * sizeof(complex_int_t) --
 // -- FLAGS:n_corr * sizeof(uint8_t) --
+#pragma pack(1)
 struct tcp_frame_header {
     uint32_t fpga_seq_number;
     uint32_t num_freq;
@@ -26,6 +27,7 @@ struct tcp_frame_header {
 
     struct timeval cpu_timestamp; // The time stamp as set by the GPU correlator - not accurate!
 };
+#pragma pack(0)
 
 
 void ch_acq_uplink_thread(void* arg)
@@ -39,7 +41,7 @@ void ch_acq_uplink_thread(void* arg)
     int link_id = 0;
 
     // Create tcp send buffer
-    int num_values = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 ) * args->actual_num_freq;
+    int num_values = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 ) * args->total_num_freq;
     int buffer_size = sizeof(struct tcp_frame_header) + num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
 
     unsigned char * buf = malloc(buffer_size);
@@ -110,8 +112,17 @@ void ch_acq_uplink_thread(void* arg)
             header->num_freq = args->total_num_freq;
             header->num_vis = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 );
 
-            if (send(tcp_fd, buf, buffer_size, 0) == -1) {
+            DEBUG("Sending frame to ch_master: FPGA_SEQ_NUMBER = %d ; NUM_FREQ = %d ; NUM_VIS = %d",
+                    header->fpga_seq_number, header->num_freq, header->num_vis);
+
+            ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
+            if (bytes_sent == -1) {
                 ERROR("Could not send frame to ch_acq, error: %d", errno); 
+                break;
+            }
+            if (bytes_sent != buffer_size) {
+                ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d", (int)bytes_sent, buffer_size);
+                break;
             }
         }
 
