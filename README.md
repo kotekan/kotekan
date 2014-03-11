@@ -63,8 +63,36 @@ Install process:
 	cd PF_RING
 	svn checkout 6818 
 
+
 	cd PF_RING/kernel
 	make
+
+	(might need to update sim-links)
+
+    Edit PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/kcompat.h
+
+	    --- kcompat.h	(revision 6818)
+		+++ kcompat.h	(working copy)
+		@@ -3129,14 +3129,14 @@
+		 #endif
+		 
+		 /*****************************************************************************/
+		-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
+		-typedef u32 netdev_features_t;
+		-#else /* ! < 3.3.0 */
+		-#define HAVE_INT_NDO_VLAN_RX_ADD_VID
+		-#ifdef ETHTOOL_SRXNTUPLE
+		-#undef ETHTOOL_SRXNTUPLE
+		-#endif
+		-#endif /* < 3.3.0 */
+		+//#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
+		+//typedef u32 netdev_features_t;
+		+//#else /* ! < 3.3.0 */
+		+//#define HAVE_INT_NDO_VLAN_RX_ADD_VID
+		+//#ifdef ETHTOOL_SRXNTUPLE
+		+//#undef ETHTOOL_SRXNTUPLE
+		+//#endif
+		+//#endif /* < 3.3.0 */
 
 	cd PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/
 	make
@@ -81,6 +109,15 @@ To load the kernel modules:
 To enable the library to be dynamicallyy loaded:
 
 	echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf
+	ldconfig
+
+To have everything running at startup add to /etc/rc.local:
+
+	insmod /data/PF_RING/kernel/pf_ring.ko transparent_mode=2 quick_mode=1 enable_tx_capture=0 min_num_slots=4096
+
+	rmmod ixgbe
+	insmod /data/PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/ixgbe.ko mtu=16110 RSS=1,1,1,1,1,1,1,1 num_rx_slots=4096 num_tx_slots=0
+
 	ldconfig
 
 * HDF5 Development Libraries
