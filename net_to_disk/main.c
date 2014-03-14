@@ -21,11 +21,9 @@
 // The number of buffers to keep for each disk.
 #define BUFFER_DEPTH 3
 
-// Buffer size, currently trying 128MB
-#define BUFFER_SIZE 128*1024*1024
-
-// port to listen to from FPGA
-#define PORT_FPGA 41000
+#define NUM_TIMESAMPLES 64*1024
+#define UDP_PACKETSIZE 9296
+#define BUFFER_SIZE NUM_TIMESAMPLES * UDP_PACKETSIZE
 
 void print_help() {
 
@@ -33,13 +31,12 @@ void print_help() {
     printf("Records data from the network to disk.\n\n");
 
     printf("Required Options:\n\n");
-    printf("--ip-address -i [address]     The ip address to listen to.\n");
+    printf("--interface -i [interface]    The interface to listen on.\n");
     printf("--data-set -d [dir name]      The name of the data set.\n");
     printf("--symlink-dir -s [dir name]   The directory to put the symlinks into.\n");
     printf("--data-limit -l [number]      The maximum number of GB to save.\n");
 
     printf("\nExtra Options:\n\n");
-    printf("--port -p [port]              The port to listen to, default: 41000\n");
     printf("--num-disks -n [number]       The number of disks, default: 6\n");
     printf("--disk-base -b [dir name]     The base dir of the disks, default: /drives/ \n");
 }
@@ -118,9 +115,8 @@ int main(int argc, char ** argv) {
 
     // Default values:
 
-    char * ip_address = "*";
+    char * interface = "*";
     char * data_set = "*";
-    int port = 41000;
     int num_disks = 6;
     int data_limit = -1;
     char * symlink_dir = "*";
@@ -130,7 +126,6 @@ int main(int argc, char ** argv) {
         static struct option long_options[] = {
             {"ip-address", required_argument, 0, 'i'},
             {"data-set", required_argument, 0, 'd'},
-            {"port", required_argument, 0, 'p'},
             {"num-disks", required_argument, 0, 'n'},
             {"disk-base", required_argument, 0, 'b'},
             {"data-limit", required_argument, 0, 'l'},
@@ -141,7 +136,7 @@ int main(int argc, char ** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "i:d:p:n:b:d:s:",
+        opt_val = getopt_long (argc, argv, "hi:d:l:n:b:s:",
                             long_options, &option_index);
 
         // End of args
@@ -155,13 +150,10 @@ int main(int argc, char ** argv) {
                 return 0;
                 break;
             case 'i':
-                ip_address = optarg;
+                interface = optarg;
                 break;
             case 'd':
                 data_set = optarg;
-                break;
-            case 'p':
-                port = atoi(optarg);
                 break;
             case 'n':
                 num_disks = atoi(optarg);
@@ -186,7 +178,7 @@ int main(int argc, char ** argv) {
         return -1;
     }
 
-    if (ip_address[0] == '*') {
+    if (interface[0] == '*') {
         printf("--ip-address needs to be set.\nUse -h for help.\n");
         return -1;
     }
@@ -212,12 +204,12 @@ int main(int argc, char ** argv) {
 
     // Create the network thread.
     struct network_thread_arg network_args;
-    network_args.ip_address = ip_address;
+    network_args.interface = interface;
     network_args.buf = &buf;
     network_args.bufferDepth = BUFFER_DEPTH;
-    network_args.portNumber = port;
     network_args.numLinks = 1;
     network_args.data_limit = data_limit;
+    network_args.link_id = 0;
     HANDLE_ERROR( pthread_create(&network_t, NULL, (void *) &network_thread, (void *)&network_args ) );
 
     // Create the file writing threads.

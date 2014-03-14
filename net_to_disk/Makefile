@@ -1,5 +1,5 @@
 TARGET = net_to_disk
-LIBS = -pthread 
+LIBS = -pthread -lpfring
 CC = gcc
 CFLAGS = -Wall -std=gnu99 -o2
 

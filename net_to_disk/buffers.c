@@ -158,6 +158,7 @@ void markBufferEmpty(struct Buffer* buf, const int ID)
 void waitForEmptyBuffer(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
+    fprintf(stderr, "num_buffers: %d; ID: %d", buf->num_buffers, ID);
     assert (ID < buf->num_buffers);
 
     //printf("Waiting for buffer %d\n", ID);

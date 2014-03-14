@@ -4,7 +4,7 @@
 #include "buffers.h"
 
 struct network_thread_arg {
-    char * ip_address;
+    char * interface;
     struct Buffer * buf;
     int portNumber;
     int bufferDepth;
