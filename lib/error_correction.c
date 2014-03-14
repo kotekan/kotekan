@@ -27,8 +27,11 @@ void initalize_error_matrix(struct ErrorMatrix* error_matrix, const int num_freq
 void reset_error_matrix(struct ErrorMatrix* error_matrix)
 {
     error_matrix->bad_timesamples = 0;
-    memset(error_matrix->element_error_counts, 0, error_matrix->num_elements * error_matrix->num_freq);
-    memset(error_matrix->correction_factors, 0, (error_matrix->num_elements*(error_matrix->num_elements + 1)/2) * error_matrix->num_freq);
+    memset(error_matrix->element_error_counts, 0,
+           error_matrix->num_elements * error_matrix->num_freq * sizeof(int));
+    memset(error_matrix->correction_factors, 0,
+           (error_matrix->num_elements*(error_matrix->num_elements + 1)/2) *
+           error_matrix->num_freq * sizeof(int));
 }
 
 

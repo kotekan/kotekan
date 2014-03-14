@@ -85,7 +85,9 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers, s
         return errno;
     }
 
-    memset(buf->is_full, 0, num_buf*sizeof(struct BufferInfo));
+    for(int i = 0; i < num_buf; ++i) {
+        buf->info[i] = NULL;
+    }
 
     // Create the array for tracking producers
     buf->producer_done = malloc(num_producers * sizeof(int));
@@ -415,6 +417,7 @@ void release_info_object(struct Buffer * buf, const int ID)
 void private_check_info_object(struct Buffer * buf, const int ID)
 {
     assert(buf != NULL);
+    assert(buf->info != NULL);
     assert(ID >= 0);
     assert(ID < buf->num_buffers);
 
@@ -430,7 +433,7 @@ void create_info_pool(struct InfoObjectPool * pool, int num_info_objects, int nu
 {
     CHECK_ERROR( pthread_mutex_init(&pool->in_use_lock, NULL) );
 
-    pool->info_objects = malloc(num_info_objects * sizeof(struct InfoObjectPool));
+    pool->info_objects = malloc(num_info_objects * sizeof(struct BufferInfo));
     CHECK_MEM(pool->info_objects);
 
     pool->pool_size = num_info_objects;
