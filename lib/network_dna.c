@@ -39,6 +39,12 @@ void check_if_done(int * total_buffers_filled, struct networkThreadArg * args,
                    int32_t total_duplicate, double start_time) {
 
     (*total_buffers_filled)++;
+
+    // If data_limit = 0 => unlimited
+    if (args->data_limit == 0) {
+        return;
+    }
+
     if ( (*total_buffers_filled) * (args->buf->buffer_size / (1024*1024)) >= args->data_limit * 1024) {
         double end_time = e_time();
         printf("Stopping packet capture, ran for ~ %f seconds.\n", end_time - start_time);

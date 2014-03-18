@@ -155,7 +155,8 @@ int main(int argc, char ** argv) {
         network_args[i].buf = &input_buffer;
         network_args[i].buffer_depth = BUFFER_DEPTH;
         //Sets how long takes data.  in GB.  ~4800 is ~1hr
-        network_args[i].data_limit = 57600;
+        // 0 = unlimited
+        network_args[i].data_limit = 0;
         network_args[i].port_number = 41000;
         network_args[i].num_links = NUM_LINKS;
         network_args[i].link_id = i;
