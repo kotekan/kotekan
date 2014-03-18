@@ -18,7 +18,7 @@
 #include "error_correction.h"
 #include "ch_acq_uplink.h"
 
-#define NUM_LINKS 7
+#define NUM_LINKS 8
 #define BUFFER_DEPTH 3
 
 #define BLOCK_SIZE 32
@@ -155,7 +155,7 @@ int main(int argc, char ** argv) {
         network_args[i].buf = &input_buffer;
         network_args[i].buffer_depth = BUFFER_DEPTH;
         //Sets how long takes data.  in GB.  ~4800 is ~1hr
-        network_args[i].data_limit = 2400;
+        network_args[i].data_limit = 57600;
         network_args[i].port_number = 41000;
         network_args[i].num_links = NUM_LINKS;
         network_args[i].link_id = i;
