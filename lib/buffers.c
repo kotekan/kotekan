@@ -400,6 +400,12 @@ void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int
     CHECK_ERROR( pthread_mutex_lock(&from->lock_info) );
     CHECK_ERROR( pthread_mutex_lock(&to->lock_info) );
 
+    // Assume we are always copying an already valid pointer.
+    assert(from->info[from_id] != NULL);
+
+    // Assume we are always coping to a buffer without a valid pointer.
+    assert(to->info[to_id] == NULL);
+
     to->info[to_id] = from->info[from_id];
     // Only one buffer object should ever have controll of a BufferInfo object.
     from->info[from_id] = NULL;
@@ -410,8 +416,12 @@ void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int
 
 void release_info_object(struct Buffer * buf, const int ID)
 {
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
+
     return_info_object(buf->info_object_pool, buf->info[ID]);
     buf->info[ID] = NULL;
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 }
 
 void private_check_info_object(struct Buffer * buf, const int ID)

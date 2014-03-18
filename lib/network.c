@@ -135,6 +135,7 @@ void network_thread(void * arg) {
             if (buffer_location == args->buf->buffer_size) {
 
                 // Notify the we have filled a buffer.
+                assert(args->buf->info[buffer_id] != NULL);
                 mark_buffer_full(args->buf, buffer_id);
 
                 // Check if we should stop collecting data.
@@ -246,6 +247,7 @@ void network_thread(void * arg) {
                         }
 
                         // Notify the we have filled a buffer.
+                        assert(args->buf->info[buffer_id] != NULL);
                         mark_buffer_full(args->buf, buffer_id);
 
                         // Check if we should stop collecting data.
@@ -281,6 +283,7 @@ void network_thread(void * arg) {
                             if (num_lost_packets_new_buf > 0) {
 
                                 // Notify the we have filled a buffer.
+                                assert(args->buf->info[buffer_id] != NULL);
                                 mark_buffer_full(args->buf, buffer_id);
 
                                 // Check if we should stop collecting data.

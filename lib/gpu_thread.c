@@ -118,12 +118,12 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
 
     struct callBackData * cb_data = (struct callBackData *) data;
 
-    // Mark the input buffer as "empty" so that it can be reused.
-    mark_buffer_empty(cb_data->cl_data->in_buf, cb_data->buffer_id);
-
     // Copy the information contained in the input buffer
     move_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
                      cb_data->cl_data->out_buf, cb_data->buffer_id);
+
+    // Mark the input buffer as "empty" so that it can be reused.
+    mark_buffer_empty(cb_data->cl_data->in_buf, cb_data->buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
     mark_buffer_full(cb_data->cl_data->out_buf, cb_data->buffer_id);
