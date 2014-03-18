@@ -29,6 +29,8 @@ void close_open_cl(struct OpenCLData * cl_data);
 
 void add_queue_set(struct OpenCLData * cl_data, int buffer_id);
 
+void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id);
+
 void gpu_thread(void* arg)
 {
     struct gpuThreadArgs * args = (struct gpuThreadArgs *) arg;
@@ -128,9 +130,32 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
     // Mark the output buffer as full, so it can be processed.
     mark_buffer_full(cb_data->cl_data->out_buf, cb_data->buffer_id);
 
+    // Relase the events from the last queue set run.
+    release_events_for_buffer(cb_data->cl_data, cb_data->buffer_id);
+
     // TODO move this to the consumer thread for the output data.
     add_queue_set(cb_data->cl_data, cb_data->buffer_id);
 
+}
+
+void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
+{
+    assert(cl_data != NULL);
+    assert(cl_data->host_buffer_ready[buffer_id] != NULL);
+    assert(cl_data->input_data_written[buffer_id] != NULL);
+    assert(cl_data->accumulate_data_zeroed[buffer_id] != NULL);
+    assert(cl_data->offset_accumulate_finished[buffer_id] != NULL);
+    assert(cl_data->preseed_finished[buffer_id] != NULL);
+    assert(cl_data->corr_finished[buffer_id] != NULL);
+    assert(cl_data->read_finished[buffer_id] != NULL);
+
+    clReleaseEvent(cl_data->host_buffer_ready[buffer_id]);
+    clReleaseEvent(cl_data->input_data_written[buffer_id]);
+    clReleaseEvent(cl_data->accumulate_data_zeroed[buffer_id]);
+    clReleaseEvent(cl_data->offset_accumulate_finished[buffer_id]);
+    clReleaseEvent(cl_data->preseed_finished[buffer_id]);
+    clReleaseEvent(cl_data->corr_finished[buffer_id]);
+    clReleaseEvent(cl_data->read_finished[buffer_id]);
 }
 
 void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
