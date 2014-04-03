@@ -86,7 +86,7 @@ Install process:
 
 
 	cd PF_RING/kernel
-	make
+	make && make install
 
 	(might need to update sim-links)
 
@@ -143,6 +143,9 @@ To have everything running at startup add to /etc/rc.local:
 
 * HDF5 Development Libraries
 
+	rpm -Uvh http://download.fedoraproject.org/pub/epel/6/i386/epel-release-6-8.noarch.rpm
+	yum install hdf5-devel
+
 * Python 2.7+
 
 On CentOS follow the instructions here to get Python 2.7:
@@ -154,6 +157,10 @@ If you do install Canopy, you need to run the following cmake command to build t
 	cmake -DPYTHON_INCLUDE_DIRS:PATH=/<Canopy install path>/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/include -DPYTHON_EXECUTABLE:FILEPATH=/<Canopy install path>/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/bin/python2.7 ..
 
 Where <Canopy install path> is normally the home dir of the user who installed Canopy.>
+
+You may also need to run:
+
+	yum install python-libs python-devel
 
 # Net-to-disk
 
