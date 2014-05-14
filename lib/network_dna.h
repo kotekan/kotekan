@@ -17,6 +17,9 @@ struct networkThreadArg {
     int num_timesamples;
     int actual_num_freq;
     int actual_num_elements;
+
+    int read_from_file;
+    char * file_name;
 };
 
 void network_thread(void * arg);

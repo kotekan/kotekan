@@ -18,13 +18,9 @@
 #include "error_correction.h"
 #include "ch_acq_uplink.h"
 
-#define NUM_LINKS 8
-#define BUFFER_DEPTH 3
-
 #define BLOCK_SIZE 32
 
 #define NUM_ELEMENTS 32  // Must be >= 32
-#define NUM_TIMESAMPLES 32*1024 //32 initally best
 #define NUM_FREQ 64
 // Since we are using the kernels for the 256-element correlator for a
 // 16-element correlator, we pack more than one full correlator product into each
@@ -42,9 +38,15 @@
 void print_help() {
     printf("usage: correlator [opts]\n\n");
     printf("Options:\n");
-    printf("    --gpu (-g) [gpu number]     The id of the GPU to use\n");
+    printf("    --gpu (-g) [number]         The id of the GPU to use.\n");
     printf("    --use-ch-acq (-a) [ip address]");
-    printf("    --no-network-test (-n)      Bypass taking data from the nextwork\n\n");
+    printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
+    printf("    --num-links (-l) [number]       Number of links to listen to (default 8).\n");
+    printf("    --spf (-s) [number]             Number of time samples per GPU frame x1024 (default 32).\n");
+    printf("    --gpu-spf (-S) [number]         Number of GPU frames to intergrate per final frame (default 1).\n");
+    printf("    --buffer-depth (-d) [number]    The number of buffers to keep per link (default/min 3).\n\n");
+    printf("Testing Options:\n");
+    printf("    --no-network-test (-t)          Generates fake data for testing.\n\n");
 }
 
 int main(int argc, char ** argv) {
@@ -58,19 +60,30 @@ int main(int argc, char ** argv) {
     int no_network_test = 0;
     char * ch_acq_ip_address;
     int use_ch_acq = 0;
+    int read_file = 0;
+    char * file_name;
+    int num_links = 8;
+    int num_timesamples = 32;
+    int num_gpu_spf = 1;
+    int buffer_depth = 3;
  
     for (;;) {
         static struct option long_options[] = {
             {"gpu", required_argument, 0, 'g'},
-            {"no-network-test", no_argument, 0, 'n'},
+            {"no-network-test", no_argument, 0, 't'},
             {"use-ch-acq", required_argument, 0, 'a'},
+            {"read-file", required_argument, 0, 'f'},
+            {"num-links", required_argument, 0, 'l'},
+            {"spf", required_argument, 0, 's'},
+            {"gpu-spf", required_argument, 0, 'S'},
+            {"buffer-depth", required_argument, 0 , 'd'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "g:nha:",
+        opt_val = getopt_long (argc, argv, "g:tha:f:l:s:S:d:",
                                long_options, &option_index);
 
         // End of args
@@ -83,15 +96,31 @@ int main(int argc, char ** argv) {
                 print_help();
                 return 0;
                 break;
-            case 'n':
+            case 't':
                 no_network_test = 1;
                 break;
             case 'g':
                 gpu_id = atoi(optarg);
                 break;
+            case 'l':
+                num_links = atoi(optarg);
+                break;
             case 'a':
                 ch_acq_ip_address = strdup(optarg);
                 use_ch_acq = 1;
+                break;
+            case 'f':
+                read_file = 1;
+                file_name = strdup(optarg);
+                break;
+            case 's':
+                num_timesamples = atoi(optarg);
+                break;
+            case 'S':
+                num_gpu_spf = atoi(optarg);
+                break;
+            case 'd':
+                buffer_depth = atoi(optarg);
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -99,6 +128,14 @@ int main(int argc, char ** argv) {
                 break;
         }
     }
+
+    // If we are reading from a file, force the number of links to be 1.
+    if (read_file == 1) {
+        num_links = 1;
+    }
+
+    // We want the number of time samples to be a multiple of 1024
+    num_timesamples = num_timesamples * 1024;
 
     // Create buffers.
     struct Buffer input_buffer;
@@ -111,11 +148,11 @@ int main(int argc, char ** argv) {
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
     struct InfoObjectPool pool;
-    create_info_pool(&pool, 2 * NUM_LINKS * BUFFER_DEPTH, NUM_FREQ, NUM_ELEMENTS);
+    create_info_pool(&pool, 2 * num_links * buffer_depth, NUM_FREQ, NUM_ELEMENTS);
 
-    create_buffer(&input_buffer, NUM_LINKS * BUFFER_DEPTH, NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, NUM_LINKS, &pool);
-    create_buffer(&output_buffer, NUM_LINKS * BUFFER_DEPTH, output_len * sizeof(cl_int), 1, &pool);
-    DEBUG("%d %d %d", NUM_TIMESAMPLES * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
+    create_buffer(&input_buffer, num_links * buffer_depth, num_timesamples * NUM_ELEMENTS * NUM_FREQ, num_links, &pool);
+    create_buffer(&output_buffer, num_links * buffer_depth, output_len * sizeof(cl_int), 1, &pool);
+    DEBUG("%d %d %d", num_timesamples * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
 
     // Create Open CL thread.
     pthread_t gpu_t;
@@ -124,7 +161,7 @@ int main(int argc, char ** argv) {
     gpu_args.out_buf = &output_buffer;
     gpu_args.block_size = BLOCK_SIZE;
     gpu_args.num_elements = NUM_ELEMENTS;
-    gpu_args.num_timesamples = NUM_TIMESAMPLES;
+    gpu_args.num_timesamples = num_timesamples;
     gpu_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
     gpu_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
     gpu_args.num_freq = NUM_FREQ;
@@ -149,16 +186,16 @@ int main(int argc, char ** argv) {
     DEBUG("Starting up network threads\n");
 
     // Create network threads
-    pthread_t network_t[NUM_LINKS];
-    struct networkThreadArg network_args[NUM_LINKS];
-    for (int i = 0; i < NUM_LINKS; ++i) {
+    pthread_t network_t[num_links];
+    struct networkThreadArg network_args[num_links];
+    for (int i = 0; i < num_links; ++i) {
         network_args[i].buf = &input_buffer;
-        network_args[i].buffer_depth = BUFFER_DEPTH;
+        network_args[i].buffer_depth = buffer_depth;
         //Sets how long takes data.  in GB.  ~4800 is ~1hr
         // 0 = unlimited
         network_args[i].data_limit = 0;
         network_args[i].port_number = 41000;
-        network_args[i].num_links = NUM_LINKS;
+        network_args[i].num_links = num_links;
         network_args[i].link_id = i;
         char * ip_address = malloc(100*sizeof(char));
         snprintf(ip_address, 100, "dna%d", i);
@@ -167,7 +204,11 @@ int main(int argc, char ** argv) {
         // Args used for testing.
         network_args[i].actual_num_elements = ACTUAL_NUM_ELEMENTS;
         network_args[i].actual_num_freq = ACTUAL_NUM_FREQUENCIES;
-        network_args[i].num_timesamples = NUM_TIMESAMPLES;
+        network_args[i].num_timesamples = num_timesamples;
+
+        // Args for reading from file
+        network_args[i].read_from_file = read_file;
+        network_args[i].file_name = file_name;
 
         if (no_network_test == 0) {
             CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread, (void *)&network_args[i] ) );
@@ -181,8 +222,8 @@ int main(int argc, char ** argv) {
         // Consumer thread which sends data to ch_acq server to be written to disk.
         struct ch_acqUplinkThreadArg ch_acq_uplink_args;
         ch_acq_uplink_args.buf = &output_buffer;
-        ch_acq_uplink_args.num_links = NUM_LINKS;
-        ch_acq_uplink_args.buffer_depth = BUFFER_DEPTH;
+        ch_acq_uplink_args.num_links = num_links;
+        ch_acq_uplink_args.buffer_depth = buffer_depth;
         ch_acq_uplink_args.ch_acq_ip_addr = ch_acq_ip_address;
         ch_acq_uplink_args.ch_acq_port_num = CH_ACQ_PORT;
         ch_acq_uplink_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
@@ -193,10 +234,10 @@ int main(int argc, char ** argv) {
         // Create consumer thread (i.e. file write thread).
         struct fileWriteThreadArg file_write_args;
         file_write_args.buf = &output_buffer;
-        file_write_args.buffer_depth = BUFFER_DEPTH;
+        file_write_args.buffer_depth = buffer_depth;
         file_write_args.data_dir = "results";
         file_write_args.dataset_name = "test_data";
-        file_write_args.num_links = NUM_LINKS;
+        file_write_args.num_links = num_links;
         file_write_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
         file_write_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
         CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &file_write_thread, (void *)&file_write_args ) );
@@ -206,7 +247,7 @@ int main(int argc, char ** argv) {
     int * ret;
 
     CHECK_ERROR( pthread_join(gpu_t, (void **) &ret) );
-    for (int i = 0; i < NUM_LINKS; ++i) {
+    for (int i = 0; i < num_links; ++i) {
         CHECK_ERROR( pthread_join(network_t[i], (void **) &ret) );
     }
 

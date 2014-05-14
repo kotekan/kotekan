@@ -5,12 +5,14 @@
 #include "test_data_generation.h"
 #include "error_correction.h"
 
+#include <dirent.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <memory.h>
 #include <unistd.h>
 #include <assert.h>
@@ -56,35 +58,27 @@ void check_if_done(int * total_buffers_filled, struct networkThreadArg * args,
     }
 }
 
+FILE * open_next_file(const char * file_base_dir, struct dirent * file_info) {
+    char full_name[256];
+    sprintf(full_name, "%s/%s", file_base_dir, file_info->d_name);
+
+    FILE * data_file = fopen(full_name, "rp");
+    if (!data_file) {
+        ERROR("Cannot open file %s, errno: %d", full_name, errno);
+        return NULL;
+    }
+    INFO("Opened file %s", full_name);
+    return data_file;
+}
+
+int file_select(const struct dirent *entry) {
+    return strstr(entry->d_name, ".dat") || strstr(entry->d_name, ".pkt");
+}
 
 void network_thread(void * arg) {
 
     struct networkThreadArg * args;
     args = (struct networkThreadArg *) arg;
-
-    // Setup the PF_RING.
-    pfring *pd;
-    pd = pfring_open(args->ip_address, UDP_PACKETSIZE, PF_RING_PROMISC );
-
-    if(pd == NULL) {
-        ERROR("pfring_open error [%s] (pf_ring not loaded or quick mode is enabled you and have already a socket bound to %s?)\n",
-            strerror(errno), args->ip_address);
-        exit(EXIT_FAILURE);
-    }
-
-    pfring_set_application_name(pd, "gpu_correlator");
-
-    if (pd->dna.dna_mapped_device == 0) {
-        ERROR("The device is not in DNA mode.?");
-    }
-
-    pfring_set_poll_duration(pd, 1000);
-    pfring_set_poll_watermark(pd, 10000);
-
-    if (pfring_enable_ring(pd) != 0) {
-        ERROR("Cannot enable the PF_RING.");
-        exit(EXIT_FAILURE);
-    }
 
     uint64_t count = 0;
     double last_time = e_time();
@@ -108,6 +102,41 @@ void network_thread(void * arg) {
 
     struct ErrorMatrix * error_matrix = NULL;
 
+    // Testing variables.
+    FILE * data_file;
+    u_char file_buf[UDP_PACKETSIZE];
+    struct dirent ** file_list;
+    int num_files = 0;
+    int cur_file_id = 0;
+
+    // Setup the PF_RING.
+    pfring *pd;
+
+    if (args->read_from_file == 0) {
+        pd = pfring_open(args->ip_address, UDP_PACKETSIZE, PF_RING_PROMISC );
+
+        if(pd == NULL) {
+            ERROR("pfring_open error [%s] (pf_ring not loaded or quick mode is enabled you and have already a socket bound to %s?)\n",
+                  strerror(errno), args->ip_address);
+            exit(EXIT_FAILURE);
+        }
+
+        pfring_set_application_name(pd, "gpu_correlator");
+
+        if (pd->dna.dna_mapped_device == 0) {
+            ERROR("The device is not in DNA mode.?");
+        }
+
+        pfring_set_poll_duration(pd, 1000);
+        pfring_set_poll_watermark(pd, 10000);
+
+        if (pfring_enable_ring(pd) != 0) {
+            ERROR("Cannot enable the PF_RING.");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+
     // Make sure the first buffer is ready to go. (this check is not really needed)
     wait_for_empty_buffer(args->buf, buffer_id);
 
@@ -115,6 +144,37 @@ void network_thread(void * arg) {
     error_matrix = get_error_matrix(args->buf, buffer_id);
 
     double start_time = -1;
+
+    // Code for reading data from files.
+    if (args->read_from_file == 1) {
+        struct stat file_info;
+
+        if (stat(args->file_name, &file_info) != 0) {
+            ERROR("File or directory does not exist");
+            return;
+        }
+
+        if (file_info.st_mode & S_IFREG) {
+            file_list = malloc(sizeof(void*));
+            file_list[0] = malloc(sizeof(struct dirent));
+            strcpy(file_list[0]->d_name, args->file_name);
+            strcpy(args->file_name, "");
+        } else if (file_info.st_mode & S_IFDIR) {
+            INFO("Reading directory %s", args->file_name);
+
+            num_files = scandir(args->file_name, &file_list, file_select, versionsort);
+
+            if (num_files <= 0) {
+                ERROR("No files in directory");
+                return;
+            }
+        } else {
+            ERROR("Not a file or directory. mode: %xxd", file_info.st_mode);
+            return;
+        }
+
+        data_file = open_next_file(args->file_name, file_list[cur_file_id]);
+    }
 
     for (;;) {
 
@@ -150,19 +210,50 @@ void network_thread(void * arg) {
             }
         }
 
-        struct pfring_pkthdr pf_header;
         u_char *pkt_buf;
-        int rc = pfring_recv(pd, &pkt_buf, 0, &pf_header, 1);
-        if (rc <= 0) {
-            // No packets available.
-            if (rc < 0) { fprintf(stderr,"Error in pfring_recv! %d\n", rc); }
-            pthread_yield();
-            continue;
-        }
 
-        if (pf_header.len != UDP_PACKETSIZE) {
-            fprintf(stderr,"Got wrong sized packet with len: %d", pf_header.len);
-            continue;
+        if (likely(args->read_from_file == 0)) {
+            struct pfring_pkthdr pf_header;
+            int rc = pfring_recv(pd, &pkt_buf, 0, &pf_header, 1);
+            if (rc <= 0) {
+                // No packets available.
+                if (rc < 0) {
+                    ERROR(stderr,"Error in pfring_recv! %d\n", rc);
+                }
+                pthread_yield();
+                continue;
+            }
+
+            if (pf_header.len != UDP_PACKETSIZE) {
+                INFO("Received packet with incorrect length: %d", pf_header.len);
+                continue;
+            }
+        } else {
+            // File read code.
+            if (fread(file_buf, UDP_PACKETSIZE, 1, data_file) != 1) {
+                if (!feof(data_file)) {
+                    ERROR("Error reading file %s", args->file_name);
+                    break;
+                } else {
+                    INFO("Reached EOF");
+                    cur_file_id++;
+                    if (cur_file_id < num_files) {
+                        fclose(data_file);
+                        data_file = open_next_file(args->file_name, file_list[cur_file_id]);
+                        continue;
+                    } else {
+                        INFO("Reached end of files");
+                        mark_producer_done(args->buf, args->link_id);
+                        int ret = 0;
+                        pthread_exit((void *) &ret);
+                    }
+                }
+            }
+            if (*(uint32_t *)&file_buf[44] == 0) {
+                INFO("Skiping empty packet");
+                continue;
+            }
+            pkt_buf = file_buf;
         }
 
         // Do seq number related stuff (location will change.)
@@ -170,9 +261,9 @@ void network_thread(void * arg) {
         //INFO("seq: %u", seq);
 
         // First packet alignment code.
-        if (last_seq == -1) {
+        if (unlikely(last_seq == -1)) {
 
-            if ( !( (seq % SEQ_NUM_EDGE) <= 10 && (seq % SEQ_NUM_EDGE) >= 0 ) ) {
+            if ( !( (seq % SEQ_NUM_EDGE) <= 10 && (seq % SEQ_NUM_EDGE) >= 0 ) && args->read_from_file == 0) {
                 continue;
             }
 
@@ -188,7 +279,7 @@ void network_thread(void * arg) {
 
             // TODO This is only correct with high probability,
             // this should be made deterministic. 
-            if (seq % SEQ_NUM_EDGE ==  0) {
+            if (seq % SEQ_NUM_EDGE == 0 || args->read_from_file == 1) {
                 last_seq = seq;
                 memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
                 count++;
@@ -207,16 +298,7 @@ void network_thread(void * arg) {
 
         //INFO("seq_num: %d", seq);
 
-        // If this is the first packet, we don't need to check the later cases,
-        // just move the buffer location, and continue.
-        if (last_seq == -1) {
-            last_seq = seq;
-            count++;
-            buffer_location += UDP_PAYLOADSIZE;
-            continue;
-        }
-
-        if (seq == last_seq) {
+        if (unlikely(seq == last_seq)) {
             total_duplicate++;
             // Do nothing in this case, because if the buffer_location doesn't change, 
             // we over write this duplicate with the next packet.
@@ -232,7 +314,7 @@ void network_thread(void * arg) {
 
             // Compute the true distance between seq numbers, and packet loss (if any).
             diff = seq - last_seq;
-            if (diff < 0) {
+            if (unlikely(diff < 0)) {
                 diff += COUNTER_MAX + 1ll;
             }
 
@@ -246,7 +328,7 @@ void network_thread(void * arg) {
             // we recorded, and zero the values in the next buffer(s), upto the point we want to
             // start writing new data.  Note in this case we zero out even the last packet that we
             // read.  So losses over a buffer edge result in one extra "lost" packet. 
-            if ( lost > 0 ) {
+            if ( unlikely(lost > 0) ) {
 
                 if (lost > 1000000) {
                     ERROR("Packet loss is very high! lost packets: %lld\n", (long long int)lost);
