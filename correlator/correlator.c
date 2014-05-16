@@ -30,6 +30,8 @@
 #define ACTUAL_NUM_ELEMENTS 16u
 #define ACTUAL_NUM_FREQUENCIES 128u
 
+#define TIMESAMPLES_PER_PACKET 4
+
 #define CH_ACQ_PORT 41001
 
 // The total number of frequencies across the entire system.
@@ -43,6 +45,7 @@ void print_help() {
     printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
     printf("    --num-links (-l) [number]       Number of links to listen to (default 8).\n");
     printf("    --spf (-s) [number]             Number of time samples per GPU frame x1024 (default 32).\n");
+    printf("    --num-data-sets (-n) [number]   Number of sub data sets per GPU frame.\n");
     printf("    --gpu-spf (-S) [number]         Number of GPU frames to intergrate per final frame (default 1).\n");
     printf("    --buffer-depth (-d) [number]    The number of buffers to keep per link (default/min 3).\n\n");
     printf("Testing Options:\n");
@@ -64,8 +67,9 @@ int main(int argc, char ** argv) {
     char * file_name;
     int num_links = 8;
     int num_timesamples = 32;
-    int num_gpu_spf = 1;
+    int gpu_spf = 1;
     int buffer_depth = 3;
+    int num_data_sets = 1;
  
     for (;;) {
         static struct option long_options[] = {
@@ -77,13 +81,14 @@ int main(int argc, char ** argv) {
             {"spf", required_argument, 0, 's'},
             {"gpu-spf", required_argument, 0, 'S'},
             {"buffer-depth", required_argument, 0 , 'd'},
+            {"num-data-sets", required_argument, 0, 'n'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "g:tha:f:l:s:S:d:",
+        opt_val = getopt_long (argc, argv, "g:tha:f:l:s:S:d:n:",
                                long_options, &option_index);
 
         // End of args
@@ -117,10 +122,13 @@ int main(int argc, char ** argv) {
                 num_timesamples = atoi(optarg);
                 break;
             case 'S':
-                num_gpu_spf = atoi(optarg);
+                gpu_spf = atoi(optarg);
                 break;
             case 'd':
                 buffer_depth = atoi(optarg);
+                break;
+            case 'n':
+                num_data_sets = atoi(optarg);
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -150,9 +158,15 @@ int main(int argc, char ** argv) {
     struct InfoObjectPool pool;
     create_info_pool(&pool, 2 * num_links * buffer_depth, NUM_FREQ, NUM_ELEMENTS);
 
-    create_buffer(&input_buffer, num_links * buffer_depth, num_timesamples * NUM_ELEMENTS * NUM_FREQ, num_links, &pool);
-    create_buffer(&output_buffer, num_links * buffer_depth, output_len * sizeof(cl_int), 1, &pool);
-    DEBUG("%d %d %d", num_timesamples * NUM_ELEMENTS * NUM_FREQ, output_len, num_blocks);
+    create_buffer(&input_buffer, num_links * buffer_depth, num_timesamples * NUM_ELEMENTS * NUM_FREQ * num_data_sets, num_links, &pool);
+    create_buffer(&output_buffer, num_links * buffer_depth, output_len * num_data_sets * sizeof(cl_int), 1, &pool);
+
+    INFO("num_links = %d", num_links);
+    INFO("num_timesamples = %d", num_timesamples);
+    INFO("num_data_sets = %d", num_data_sets);
+    INFO("input_buffer_size = %d", input_buffer.buffer_size);
+    INFO("output_buffer_size = %d", output_buffer.buffer_size);
+    INFO("gpu_spf = %d", gpu_spf);
 
     // Create Open CL thread.
     pthread_t gpu_t;
@@ -167,9 +181,7 @@ int main(int argc, char ** argv) {
     gpu_args.num_freq = NUM_FREQ;
     gpu_args.gpu_id = gpu_id;
     gpu_args.started = 0;
-    // NOTE: This value must be 1 until the output code is modified to support
-    // more than one data set per N time samples.
-    gpu_args.num_data_sets = 1;
+    gpu_args.num_data_sets = num_data_sets;
     CHECK_ERROR( pthread_mutex_init(&gpu_args.lock, NULL) );
     CHECK_ERROR( pthread_cond_init(&gpu_args.cond, NULL) );
 
@@ -229,6 +241,9 @@ int main(int argc, char ** argv) {
         ch_acq_uplink_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
         ch_acq_uplink_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
         ch_acq_uplink_args.total_num_freq = TOTAL_FREQUENCIES;
+        ch_acq_uplink_args.num_data_sets = num_data_sets;
+        ch_acq_uplink_args.num_timesamples = num_timesamples;
+        ch_acq_uplink_args.timesamples_per_packet = TIMESAMPLES_PER_PACKET;
         CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &ch_acq_uplink_thread, (void *)&ch_acq_uplink_args ) );
     } else  {
         // Create consumer thread (i.e. file write thread).
@@ -240,6 +255,8 @@ int main(int argc, char ** argv) {
         file_write_args.num_links = num_links;
         file_write_args.actual_num_elements = ACTUAL_NUM_ELEMENTS;
         file_write_args.actual_num_freq = ACTUAL_NUM_FREQUENCIES;
+        file_write_args.num_data_sets = num_data_sets;
+        file_write_args.num_timesamples = num_timesamples;
         CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &file_write_thread, (void *)&file_write_args ) );
     }
 

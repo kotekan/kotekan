@@ -193,6 +193,10 @@ void network_thread(void * arg) {
 
             buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
 
+            // Add some delay so that ch_master can keep up with the files.
+            if (args->read_from_file == 1) {
+                usleep(10000);
+            }
             // This call will block if the buffer has not been written out to disk yet.
             wait_for_empty_buffer(args->buf, buffer_id);
 
@@ -236,6 +240,7 @@ void network_thread(void * arg) {
                     break;
                 } else {
                     INFO("Reached EOF");
+                    INFO("Current data_id = %d", get_buffer_data_ID(args->buf, buffer_id));
                     cur_file_id++;
                     if (cur_file_id < num_files) {
                         fclose(data_file);
@@ -272,7 +277,11 @@ void network_thread(void * arg) {
             static struct timeval now;
             gettimeofday(&now, NULL);
             set_first_packet_recv_time(args->buf, buffer_id, now);
-            set_fpga_seq_num(args->buf, buffer_id, seq - seq % SEQ_NUM_EDGE);
+            if (args->read_from_file == 0) {
+                set_fpga_seq_num(args->buf, buffer_id, seq - seq % SEQ_NUM_EDGE);
+            } else {
+                set_fpga_seq_num(args->buf, buffer_id, seq);
+            }
 
             // Time for internal counters.
             start_time = e_time();

@@ -110,7 +110,7 @@ int chrx_acq_init(struct chrx_acq_t *self) {
   self->n_corr = self->n_ant * (self->n_ant + 1) / 2;
   self->udp_max_len = 0;  // not used.
   self->udp_n_buf = 0; // not used
-  self->n_frame_page = 5;
+  self->n_frame_page = 300;
   self->ser_dev = 0;
   self->ser_timeout = 0;
   self->udp_port = 0;

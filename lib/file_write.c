@@ -93,17 +93,17 @@ void file_write_thread(void * arg)
     pthread_create(&chrx.disc_loop, NULL, disc_thread, &chrx);
 
     /// END HDF5 File setup
-
     for (;;) {
 
         // This call is blocking.
         bufferID = get_full_buffer_from_list(args->buf, useableBufferIDs, 1);
+        INFO("file_write: got buffer with data ID = %d", get_buffer_data_ID(args->buf, bufferID));
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
+            INFO("Exiting file_write_thread");
             chrx.running = 0;
             pthread_join(chrx.disc_loop, NULL);
-
             int ret;
             pthread_exit((void *) &ret);
         }
@@ -117,30 +117,36 @@ void file_write_thread(void * arg)
 
         link_id = bufferID % args->num_links;
 
-        reorganize_32_to_16_feed_GPU_Correlated_Data(args->actual_num_freq,
-                                                     args->actual_num_elements,
-                                                     (int *)args->buf->data[bufferID] );
+        // TODO THIS IS A HACK to work with multipal data sets per gpu intergration.
+        // The errors, id's, etc. are wrong!!
+        for (int i = 0; i < args->num_data_sets; ++i) {
+            reorganize_32_to_16_feed_GPU_Correlated_Data(args->actual_num_freq,
+                                                        args->actual_num_elements,
+                                                         (int *)&args->buf->data[bufferID][(args->buf->buffer_size / args->num_data_sets) * i] );
 
-        bad_timesamples[link_id] = error_matrix->bad_timesamples;
+            bad_timesamples[link_id] = error_matrix->bad_timesamples;
 
-        int32_t push = 0;
-        if (link_id + 1 == args->num_links) {
+            int32_t push = 0;
             push = 1;
-            if (args->num_links == 7) {
-                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d ]",
-                     data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
-                     bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6]);
+            if (link_id + 1 == args->num_links) {
+                if (args->num_links == 7) {
+                    INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d ]",
+                        data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
+                        bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6]);
+                }
+                if (args->num_links == 8) {
+                    INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d %d ]",
+                        data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
+                        bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6], bad_timesamples[7]);
+                }
             }
-            if (args->num_links == 8) {
-                INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d %d ]",
-                     data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
-                     bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6], bad_timesamples[7]);
-            }
-        }
 
-        push_corr_frame(&chrx, args->buf->data[bufferID], NULL, fpga_seq_number*NUM_TIMESAMPLES_PER_PACKET,
-                        frame_start_time, link_id, push,
-                        args->actual_num_freq);
+            push_corr_frame(&chrx, &args->buf->data[bufferID][(args->buf->buffer_size / args->num_data_sets) * i], NULL,
+                            fpga_seq_number*NUM_TIMESAMPLES_PER_PACKET + args->num_timesamples * i,
+                            frame_start_time, link_id, push,
+                            args->actual_num_freq);
+
+        }
 
         release_info_object(args->buf, bufferID);
         mark_buffer_empty(args->buf, bufferID);

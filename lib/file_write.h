@@ -9,6 +9,8 @@ struct fileWriteThreadArg {
     int buffer_depth;
     char * dataset_name;
     char * data_dir;
+    int num_data_sets;
+    int num_timesamples;
 
     int actual_num_freq;
     int actual_num_elements;

@@ -47,6 +47,9 @@ void ch_acq_uplink_thread(void* arg)
     unsigned char * buf = malloc(buffer_size);
     CHECK_MEM(buf);
 
+    unsigned char * data_sets_buf = malloc(num_values * args->num_data_sets * sizeof(complex_int_t));
+    CHECK_MEM(data_sets_buf);
+
     // Create convenient pointers into the buffer (yay pointer math).
     struct tcp_frame_header * header = (struct tcp_frame_header *)buf;
     complex_int_t * visibilities = ( complex_int_t * ) (buf + sizeof(struct tcp_frame_header));
@@ -88,16 +91,18 @@ void ch_acq_uplink_thread(void* arg)
 
         link_id = bufferID % args->num_links;
 
-        // TODO Make this cleaner (single function)
-        reorganize_32_to_16_feed_GPU_Correlated_Data( args->actual_num_freq,
-                                                      args->actual_num_elements,
-                                                      (int *)args->buf->data[bufferID] );
+        for (int i = 0; i < args->num_data_sets; ++i) {
+            // TODO Make this cleaner (single function)
+            reorganize_32_to_16_feed_GPU_Correlated_Data( args->actual_num_freq,
+                                                        args->actual_num_elements,
+                                                          (int *)&args->buf->data[bufferID][i * (args->buf->buffer_size / args->num_data_sets)] );
 
 
-        shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(
-                                                args->actual_num_freq, (int *)args->buf->data[bufferID],
-                                                visibilities, link_id );
-
+            shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(
+                                                    args->actual_num_freq,
+                                                    (int *)&args->buf->data[bufferID][i * (args->buf->buffer_size / args->num_data_sets)],
+                                                    (complex_int_t *)&data_sets_buf[i * num_values * sizeof(complex_int_t)], link_id );
+        }
         // TODO Add the ability to integrate the data down further here.
 
         // TODO Add flagging code here.
@@ -106,23 +111,32 @@ void ch_acq_uplink_thread(void* arg)
         }
 
         if (link_id + 1 == args->num_links) {
-            // Send the frame.
-            header->cpu_timestamp = frame_start_time;
-            header->fpga_seq_number = fpga_seq_number;
-            header->num_freq = args->total_num_freq;
-            header->num_vis = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 );
 
-            DEBUG("Sending frame to ch_master: FPGA_SEQ_NUMBER = %d ; NUM_FREQ = %d ; NUM_VIS = %d",
-                    header->fpga_seq_number, header->num_freq, header->num_vis);
+            for (int i = 0; i < args->num_data_sets; ++i) {
+                // Send the frame.
+                header->cpu_timestamp = frame_start_time;
+                // TODO Is this the right thing to do?
+                double time_offset = i * (args->num_timesamples * 2.56);
+                header->cpu_timestamp.tv_usec = header->cpu_timestamp.tv_usec + time_offset;
+                header->fpga_seq_number = fpga_seq_number*args->timesamples_per_packet + i * args->num_timesamples;
+                header->num_freq = args->total_num_freq;
+                header->num_vis = ((args->actual_num_elements * (args->actual_num_elements + 1)) / 2 );
+                for (int j = 0; j < num_values; ++j) {
+                    visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                }
 
-            ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
-            if (bytes_sent == -1) {
-                ERROR("Could not send frame to ch_acq, error: %d", errno); 
-                break;
-            }
-            if (bytes_sent != buffer_size) {
-                ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d", (int)bytes_sent, buffer_size);
-                break;
+                //DEBUG("Sending frame to ch_master: FPGA_SEQ_NUMBER = %d ; NUM_FREQ = %d ; NUM_VIS = %d",
+                //        header->fpga_seq_number, header->num_freq, header->num_vis);
+
+                ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
+                if (bytes_sent == -1) {
+                    ERROR("Could not send frame to ch_acq, error: %d", errno);
+                    break;
+                }
+                if (bytes_sent != buffer_size) {
+                    ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d", (int)bytes_sent, buffer_size);
+                    break;
+                }
             }
         }
 

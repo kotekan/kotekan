@@ -7,6 +7,9 @@ struct ch_acqUplinkThreadArg {
     int buffer_depth;
     char * ch_acq_ip_addr;
     int ch_acq_port_num;
+    int num_data_sets;
+    int num_timesamples;
+    int timesamples_per_packet;
 
     int actual_num_freq;
     int actual_num_elements;

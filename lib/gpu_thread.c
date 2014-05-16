@@ -49,7 +49,7 @@ void gpu_thread(void* arg)
     cl_data.actual_num_elements = args->actual_num_elements;
     cl_data.actual_num_freq = args->actual_num_freq;
 
-    cl_data.accumulate_len = args->num_freq * args->num_elements * 2 * sizeof(cl_int);
+    cl_data.accumulate_len = args->num_freq * args->num_elements * 2 * args->num_data_sets * sizeof(cl_int);
     cl_data.aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data.accumulate_len / (double)PAGESIZE_MEM));
     assert(cl_data.aligned_accumulate_len >= cl_data.accumulate_len);
 
@@ -298,7 +298,6 @@ void setup_open_cl(struct OpenCLData * cl_data)
     // TODO move this out of this function?
     // TODO explain these numbers/formulas.
     cl_data->num_blocks = (cl_data->num_elements / cl_data->block_size) * (cl_data->num_elements / cl_data->block_size + 1) / 2.;
-    cl_data->output_len = cl_data->num_freq*cl_data->num_blocks*(cl_data->block_size*cl_data->block_size)*2.;
 
     // TODO Move this into a function for just loading kernels.
     // Load kernels and compile them.
