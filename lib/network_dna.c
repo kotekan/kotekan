@@ -4,6 +4,7 @@
 #include "errors.h"
 #include "test_data_generation.h"
 #include "error_correction.h"
+#include "nt_memcpy.h"
 
 #include <dirent.h>
 #include <sys/socket.h>
@@ -290,7 +291,7 @@ void network_thread(void * arg) {
             // this should be made deterministic. 
             if (seq % SEQ_NUM_EDGE == 0 || args->read_from_file == 1) {
                 last_seq = seq;
-                memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
+                nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
                 count++;
                 buffer_location += UDP_PAYLOADSIZE;
             } else {
@@ -303,7 +304,7 @@ void network_thread(void * arg) {
         }
 
 
-        memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
+        nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
 
         //INFO("seq_num: %d", seq);
 
@@ -353,7 +354,7 @@ void network_thread(void * arg) {
                     assert(buffer_id >= 0);
                     assert(buffer_location >= 0);
                     assert(realPacketLocation >= 0);
-                    memcpy((void *) &args->buf->data[buffer_id][realPacketLocation], 
+                    nt_memcpy((void *) &args->buf->data[buffer_id][realPacketLocation],
                             (void *) &args->buf->data[buffer_id][buffer_location], UDP_PAYLOADSIZE);
 
                     // Zero out the lost part of the buffer.
