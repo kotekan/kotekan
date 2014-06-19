@@ -11,6 +11,8 @@
 
 #include <pthread.h>
 #include <sys/types.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 #define HANDLE_ERROR( err )                                         \
     if ( err ) {                                                    \
@@ -26,7 +28,10 @@ struct BufferInfo {
 
     /// Buffer data_ID. 
     /// This is the ID of the data in the buffer, not the ID of the buffer.
-    int32_t data_ID; 
+    int32_t data_ID;
+
+    uint32_t fpga_seq_num;
+    struct timeval first_packet_time;
 };
 
 /** @brief Buffer object used to contain and manage the buffers shared by the network 
@@ -48,12 +53,24 @@ struct Buffer {
     /// The size of each buffer.
     int buffer_size;
 
+    // Number of producers
+    int num_producers;
+
+    // Number of consumers
+    int num_consumers;
+
     /// The array of buffers
     char ** data;
 
     /// Flag vars to say which buffers are full
     /// A 0 at index I means the buffer at index I is not full, one means it is full.
     int * is_full;
+
+    /// The number of producers
+    int * num_producers_done;
+
+    /// The number of consumers done.
+    int * num_consumers_done;
 
     /// The total number of free buffers, used by cond variable to check if there
     /// is space to write to.
@@ -74,7 +91,7 @@ struct Buffer {
  *  @param [in] len The lenght of each buffer to be created in bytes.
  *  @return 0 if successful, or a non-zero standard error value if not successful 
  */
-int createBuffer(struct Buffer * buf, int num_buf, int len); 
+int createBuffer(struct Buffer * buf, int num_buf, int len, int num_producers, int num_consumers);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
@@ -94,6 +111,8 @@ int getFullBufferID(struct Buffer * buf);
  *  @param ID The id of the buffer to mark as full.
  */
 void markBufferFull(struct Buffer * buf, const int ID);
+
+void markBufferFull_nProducers(struct Buffer * buf, const int ID);
 
 /** @brief Waits for one of the buffers given to be full.
  *  This function is thread safe.
@@ -126,6 +145,8 @@ void setDataID(struct Buffer * buf, const int ID, const int data_ID);
  *  @param [in] ID The id of the buffer to mark as empty.
  */
 void markBufferEmpty(struct Buffer * buf, const int ID);
+
+void markBufferEmpty_nConsumers(struct Buffer * buf, const int ID);
 
 /** @brief Blocks until the buffer requested is empty.
  *  This function is thread safe.

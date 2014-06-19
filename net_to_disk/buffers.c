@@ -20,7 +20,7 @@ int private_getFullBuffer(struct Buffer * buf);
  */
 int private_getFullBufferFromList(struct Buffer * buf, const int* buffer_IDs, const int len);
 
-int createBuffer(struct Buffer* buf, int num_buf, int len)
+int createBuffer(struct Buffer* buf, int num_buf, int len, int num_producers, int num_consumers)
 {
 
     assert(num_buf > 0);
@@ -34,20 +34,19 @@ int createBuffer(struct Buffer* buf, int num_buf, int len)
     buf->num_buffers = num_buf;
     buf->buffer_size = len;
     buf->producer_done = 0;
+    buf->num_producers = num_producers;
+    buf->num_consumers = num_consumers;
 
     // Create the is_free array
     buf->is_full = malloc(num_buf * sizeof(int));
-
     if ( buf->is_full == NULL ) {
         perror("Error creating is_full array");
         return errno;
     }
-
     memset(buf->is_full, 0, num_buf*sizeof(int));
 
     // Create the array of buffer pointers.
     buf->data = malloc(num_buf * sizeof(void *));
-
     if ( buf->data == NULL ) {
         perror("Error creating is_free array");
         return errno;
@@ -55,13 +54,27 @@ int createBuffer(struct Buffer* buf, int num_buf, int len)
 
     // Create the info array
     buf->info = malloc(num_buf*sizeof(struct BufferInfo));
-
     if ( buf->info == NULL ) {
         perror("Error creating info array");
         return errno;
     }
+    memset(buf->info, 0, num_buf*sizeof(int));
 
-    memset(buf->is_full, 0, num_buf*sizeof(struct BufferInfo));
+    // Create the producers done array
+    buf->num_producers_done = malloc(num_buf*sizeof(int));
+    if ( buf->num_producers_done == NULL ) {
+        perror("Error creating num_producers_done array");
+        return errno;
+    }
+    memset(buf->num_producers_done, 0, num_buf*sizeof(int));
+
+    // Create the producers done array
+    buf->num_consumers_done = malloc(num_buf*sizeof(int));
+    if ( buf->num_consumers_done == NULL ) {
+        perror("Error creating num_consumers_done array");
+        return errno;
+    }
+    memset(buf->num_consumers_done, 0, num_buf*sizeof(int));
 
     int err = 0;
 
@@ -97,6 +110,7 @@ void deleteBuffer(struct Buffer* buf)
     free(buf->data);
 
     free(buf->is_full);
+    free(buf->num_producers_done);
 
     free(buf->info);
 
@@ -120,6 +134,30 @@ void markBufferFull(struct Buffer * buf, const int ID)
 
     // Signal consumer
     HANDLE_ERROR( pthread_cond_broadcast(&buf->full_cond) );
+}
+
+void markBufferFull_nProducers(struct Buffer * buf, const int ID)
+{
+    assert (ID >= 0);
+    assert (ID < buf->num_buffers);
+
+    int set_full = 0;
+
+    HANDLE_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    buf->num_producers_done[ID]++;
+    if (buf->num_producers_done[ID] == buf->num_producers) {
+        //fprintf(stderr, "Marking buffer as full\n");
+        buf->is_full[ID] = 1;
+        set_full = 1;
+    }
+
+    HANDLE_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    // Signal consumer
+    if (set_full == 1) {
+        HANDLE_ERROR( pthread_cond_broadcast(&buf->full_cond) );
+    }
 }
 
 int getFullBufferID(struct Buffer * buf)
@@ -148,6 +186,7 @@ void markBufferEmpty(struct Buffer* buf, const int ID)
     HANDLE_ERROR( pthread_mutex_lock(&buf->lock) );
 
     buf->is_full[ID] = 0;
+    buf->num_producers_done[ID] = 0;
 
     HANDLE_ERROR( pthread_mutex_unlock(&buf->lock) );
 
@@ -155,10 +194,35 @@ void markBufferEmpty(struct Buffer* buf, const int ID)
     HANDLE_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
 }
 
+void markBufferEmpty_nConsumers(struct Buffer* buf, const int ID)
+{
+    assert (ID >= 0);
+    assert (ID < buf->num_buffers);
+
+    int broadcast = 0;
+
+    HANDLE_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    buf->num_consumers_done[ID]++;
+    if (buf->num_consumers_done[ID] == buf->num_consumers) {
+        buf->is_full[ID] = 0;
+        buf->num_producers_done[ID] = 0;
+        buf->num_consumers_done[ID] = 0;
+        broadcast = 1;
+    }
+
+    HANDLE_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    // Signal producer
+    if (broadcast == 1) {
+        HANDLE_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
+    }
+}
+
 void waitForEmptyBuffer(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
-    fprintf(stderr, "num_buffers: %d; ID: %d", buf->num_buffers, ID);
+    //fprintf(stderr, "num_buffers: %d; ID: %d", buf->num_buffers, ID);
     assert (ID < buf->num_buffers);
 
     //printf("Waiting for buffer %d\n", ID);

@@ -21,6 +21,8 @@ void file_write_thread(void * arg)
         // This call is blocking.
         bufferID = getFullBufferFromList(args->buf, useableBufferIDs, 1);
 
+        //printf("Got buffer, id: %d", bufferID);
+
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
             int ret;
@@ -34,13 +36,13 @@ void file_write_thread(void * arg)
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%d/%s/%d.dat", args->disk_base, args->diskID, args->dataset_name, file_num);
+        snprintf(file_name, file_name_len, "%s/%d/%s/%07d.dat", args->disk_base, args->diskID, args->dataset_name, file_num);
 
         fd = open(file_name, O_WRONLY | O_CREAT, 0666);
 
         if (fd == -1) {
             perror("Cannot open file");
-            printf("File name was: %s", file_name);
+            fprintf(stderr, "File name was: %s", file_name);
             exit(errno);
         }
 
@@ -49,13 +51,15 @@ void file_write_thread(void * arg)
         if (bytes_writen != args->buf->buffer_size) {
             printf("Failed to write buffer to disk!!!  Abort, Panic, etc.");
             exit(-1);
+        } else {
+             //fprintf(stderr, "Data writen to file!");
         }
 
         if (close(fd) == -1) {
-            printf("Cannot close file");
+            fprintf(stderr, "Cannot close file");
         }
 
-        markBufferEmpty(args->buf, bufferID);
+        markBufferEmpty_nConsumers(args->buf, bufferID);
 
         useableBufferIDs[0] = ( useableBufferIDs[0] + args->numDisks ) % ( args->bufferDepth * args->numDisks );
     }

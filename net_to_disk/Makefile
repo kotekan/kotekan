@@ -1,7 +1,7 @@
 TARGET = net_to_disk
 LIBS = -pthread -lpfring
 CC = gcc
-CFLAGS = -Wall -std=gnu99 -o2
+CFLAGS = -Wall -std=gnu99 -O2 -ggdb
 
 .PHONY: default all clean
 
