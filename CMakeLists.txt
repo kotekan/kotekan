@@ -12,4 +12,4 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 
 add_subdirectory(lib)
-add_subdirectory(correlator)
+add_subdirectory(kotekan)
