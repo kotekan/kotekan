@@ -5,7 +5,7 @@
 #ifndef CHRX_H
 #define CHRX_H
 
-#include <python2.7/Python.h>
+//#include <python2.7/Python.h>
 #include <complex.h>
 #include <hdf5.h>
 #include <hdf5_hl.h>
@@ -121,8 +121,8 @@ void *disc_thread(void *arg);
 void mlog_full(struct chrx_acq_t *self, enum mlog_level_t mlog_level,
           const char *format, ...);
 #define mlog(l, fmt, ...) mlog_full(self, l, fmt, ##__VA_ARGS__)
-PyObject *grab_conf_val(PyObject *conf, const char *key);
-PyObject *grab_conf_dict(struct chrx_acq_t *self, const char *key);
+//PyObject *grab_conf_val(PyObject *conf, const char *key);
+//PyObject *grab_conf_dict(struct chrx_acq_t *self, const char *key);
 
 
 
@@ -134,9 +134,9 @@ PyObject *grab_conf_dict(struct chrx_acq_t *self, const char *key);
 //==============================================================================
 
 //! The Python chrx module.
-struct chrx_t {
-  PyObject_HEAD     //!< Default python object definition.
-};
+//struct chrx_t {
+//  PyObject_HEAD     //!< Default python object definition.
+//};
 
 //! For storing integer header information.
 struct chrx_acq_head_int_t {
@@ -172,11 +172,11 @@ union chrx_acq_head_t {
 //! The Python data acquisition class.
 struct chrx_acq_t {
   // Python stuff.
-  PyObject_HEAD     //!< Default python object definition.
+  //PyObject_HEAD     //!< Default python object definition.
 
   // Variables used by all acquisition systems.
-  PyObject *conf;   //!< The Python configuration object.
-  PyObject *log;
+  //PyObject *conf;   //!< The Python configuration object.
+  //PyObject *log;
   //! The prefix for all data files (e.g., /data/[timestamp]/[timestamp].h5).
   char *path_prefix;
   int running;      //!< True if acquisition is running, false otherwise.
@@ -228,14 +228,14 @@ struct chrx_acq_t {
 };
 
 //! The Python data acquisition object.
-extern PyTypeObject chrx_acq;
+//extern PyTypeObject chrx_acq;
 
 int chrx_acq_init(struct chrx_acq_t *self);
 void chrx_acq_delete(struct chrx_acq_t *self);
 
 
 //! A macro for defining Python variable get functions.
-#define GET_FUNCTION(var, pyvar_type, cvar_type) \
+/*#define GET_FUNCTION(var, pyvar_type, cvar_type) \
   static PyObject *chrx_acq_get_##var(struct chrx_acq_t *self, \
                                        void *closure) { \
     return Py##pyvar_type##_From##cvar_type(self->var); \
@@ -282,5 +282,5 @@ void chrx_acq_delete(struct chrx_acq_t *self);
 #define GET_STRUCT(var, docstring) \
   {#var, (getter)chrx_acq_get_##var, NULL, \
    docstring},
-
+*/
 #endif

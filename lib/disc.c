@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 //! For keeping track of the HDF5 architecture.
 //! The fractional number is incremented if a new dataset or attribute is added
@@ -257,11 +258,11 @@ hid_t new_hdf5_table_serial_adc(struct chrx_acq_t *self, const char *name,
 }
 
 int open_hdf5(struct chrx_acq_t *self, int n_file) {
-  char path[256], tmpstr[512], *tmpbuf;
-  int i, j, k, len, req_cal_found;
+  char path[256], *tmpbuf;
+  int i, j, k, len; // req_cal_found;
   double x;
   hsize_t dim[2];
-  hid_t hdt_tmp, hs_tmp, ha_tmp, hg_tmp;
+  hid_t hdt_tmp, hs_tmp, ha_tmp; //hg_tmp;
   herr_t err;
   struct vis_layout_t vl;
   // PyObject *dict, *cal_dict, *i_key, *j_key, *i_val, *j_val;

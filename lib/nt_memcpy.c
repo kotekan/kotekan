@@ -7,7 +7,7 @@
 
 // Assumes that the dest pointer is 16 byte alligned.
 // Assumes that the len is divisible by 128
-void nt_memcpy(unsigned char* dest, unsigned char* src, size_t len)
+void nt_memcpy(void* dest, void* src, size_t len)
 {
     // Assumes dest is 16 byte alligned
     // NOTE: This must be true or else non-temporal writes are not possible.
@@ -22,7 +22,7 @@ void nt_memcpy(unsigned char* dest, unsigned char* src, size_t len)
 }
 
 // Assumes that the source is 16 byte alligned.
-void nt_aligned_memcpy(unsigned char* dest, unsigned char* src, size_t len)
+void nt_aligned_memcpy(void* dest, void* src, size_t len)
 {
     size_t num_loops = len >> 7;
 
@@ -56,7 +56,7 @@ void nt_aligned_memcpy(unsigned char* dest, unsigned char* src, size_t len)
 }
 
 // Assumes that the source is not 16 byte alligned.
-void nt_unaligned_memcpy(unsigned char* dest, unsigned char* src, size_t len)
+void nt_unaligned_memcpy(void* dest, void* src, size_t len)
 {
     size_t num_loops = len >> 7;
 

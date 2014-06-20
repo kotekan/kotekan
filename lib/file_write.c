@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
+#include <string.h>
 
 #include "file_write.h"
 #include "buffers.h"

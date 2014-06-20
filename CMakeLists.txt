@@ -3,7 +3,7 @@ project (CHIME)
 
 find_package(Threads REQUIRED)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -D_GNU_SOURCE -Wall -msse4.2 -MMD -march=corei7-avx -mtune=corei7-avx")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -msse4.2 -MMD -march=corei7-avx -mtune=corei7-avx")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb ")
 

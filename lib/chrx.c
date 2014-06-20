@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #include "chrx.h"
 
@@ -91,7 +92,6 @@ PyMODINIT_FUNC initchrx(void) {
 
 // Hacked a little bit ;)
 int chrx_acq_init(struct chrx_acq_t *self) {
-  char *keywords[] = {"conf", "log", NULL};
   int i, n;
 
   // Initialise and set internal values that cannot be configured.

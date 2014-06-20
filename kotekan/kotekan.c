@@ -38,7 +38,7 @@
 #define TOTAL_FREQUENCIES 1024
 
 void print_help() {
-    printf("usage: correlator [opts]\n\n");
+    printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --gpu (-g) [number]         The id of the GPU to use.\n");
     printf("    --use-ch-acq (-a) [ip address]");
@@ -55,16 +55,16 @@ void print_help() {
 int main(int argc, char ** argv) {
 
     // Setup syslog
-    openlog ("correlator", LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_LOCAL1);
+    openlog ("kotekan", LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_LOCAL1);
 
     // Default values:
     int opt_val = 0;
     int gpu_id = 0;
     int no_network_test = 0;
-    char * ch_acq_ip_address;
+    char * ch_acq_ip_address = NULL;
     int use_ch_acq = 0;
     int read_file = 0;
-    char * file_name;
+    char * file_name = NULL;
     int num_links = 8;
     int num_timesamples = 32;
     int gpu_spf = 1;

@@ -104,14 +104,14 @@ void network_thread(void * arg) {
     struct ErrorMatrix * error_matrix = NULL;
 
     // Testing variables.
-    FILE * data_file;
+    FILE * data_file = NULL;
     u_char file_buf[UDP_PACKETSIZE];
     struct dirent ** file_list;
     int num_files = 0;
     int cur_file_id = 0;
 
     // Setup the PF_RING.
-    pfring *pd;
+    pfring *pd = NULL;
 
     if (args->read_from_file == 0) {
         pd = pfring_open(args->ip_address, UDP_PACKETSIZE, PF_RING_PROMISC );
@@ -223,7 +223,7 @@ void network_thread(void * arg) {
             if (rc <= 0) {
                 // No packets available.
                 if (rc < 0) {
-                    ERROR(stderr,"Error in pfring_recv! %d\n", rc);
+                    ERROR("Error in pfring_recv! %d", rc);
                 }
                 pthread_yield();
                 continue;
@@ -255,11 +255,12 @@ void network_thread(void * arg) {
                     }
                 }
             }
-            if (*(uint32_t *)&file_buf[44] == 0) {
+            pkt_buf = file_buf;
+
+            if (((uint32_t *)&pkt_buf[44])[0] == 0) {
                 INFO("Skiping empty packet");
                 continue;
             }
-            pkt_buf = file_buf;
         }
 
         // Do seq number related stuff (location will change.)

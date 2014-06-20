@@ -2,6 +2,8 @@
 //! Functions for frame read/write control.
 //==============================================================================
 
+#include <string.h>
+
 #include "chrx.h"
 #include "util.h"
 
