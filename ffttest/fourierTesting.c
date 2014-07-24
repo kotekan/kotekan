@@ -269,7 +269,7 @@ int main(int argc, char **argv){
     }
     
     cl_mem device_fourier64data, device_fourier64results;
-    device_fourier64data = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, total_number_floats*sizeof(float), array1, &err);
+    device_fourier64data = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, total_number_floats*sizeof(float), array1, &err); //note there was a typo previously that USED host memory instead of COPYing host memory.  Speeds are close to theoretical now.
     device_fourier64results = clCreateBuffer(context, CL_MEM_WRITE_ONLY, total_number_floats * sizeof(float), NULL, &err);
     
     // Set up work sizes
@@ -286,7 +286,7 @@ int main(int argc, char **argv){
     //start the timer
     elapsed_time = e_time();
     //enqueue the kernel
-    int extra_coef = 1;
+    int extra_coef = 1000;
     for (int i = 0; i < extra_coef; i++){
         clEnqueueNDRangeKernel(queue[0],
                             fft64,
