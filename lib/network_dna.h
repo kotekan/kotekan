@@ -7,16 +7,12 @@
 struct networkThreadArg {
     char * ip_address;
     struct Buffer * buf;
-    int port_number;
-    int buffer_depth;
     int data_limit;
-    int num_links;
+    int num_links_in_group;
     int link_id;
+    int frequency_id;
 
-    // Args used for testing.
-    int num_timesamples;
-    int actual_num_freq;
-    int actual_num_elements;
+    struct Config * config;
 
     int read_from_file;
     char * file_name;

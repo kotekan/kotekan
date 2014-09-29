@@ -5,6 +5,7 @@
 #include "test_data_generation.h"
 #include "error_correction.h"
 #include "nt_memcpy.h"
+#include "config.h"
 
 #include <dirent.h>
 #include <sys/socket.h>
@@ -19,11 +20,6 @@
 #include <assert.h>
 #include <pthread.h>
 #include <inttypes.h>
-
-//#define UDP_PACKETSIZE 8256
-#define UDP_PACKETSIZE 9296
-#define UDP_PAYLOADSIZE 8192
-#define NUM_TIMESAMPLES_PER_PACKET 4
 
 // Count max
 #define COUNTER_BITS 30
@@ -81,6 +77,10 @@ void network_thread(void * arg) {
     struct networkThreadArg * args;
     args = (struct networkThreadArg *) arg;
 
+    struct Config * config = args->config;
+    const int udp_payload_size = config->fpga_network.udp_frame_size *
+        config->fpga_network.timesamples_per_packet;
+
     uint64_t count = 0;
     double last_time = e_time();
     double current_time = e_time();
@@ -105,7 +105,7 @@ void network_thread(void * arg) {
 
     // Testing variables.
     FILE * data_file = NULL;
-    u_char file_buf[UDP_PACKETSIZE];
+    u_char file_buf[config->fpga_network.udp_packet_size];
     struct dirent ** file_list;
     int num_files = 0;
     int cur_file_id = 0;
@@ -114,7 +114,7 @@ void network_thread(void * arg) {
     pfring *pd = NULL;
 
     if (args->read_from_file == 0) {
-        pd = pfring_open(args->ip_address, UDP_PACKETSIZE, PF_RING_PROMISC );
+        pd = pfring_open(args->ip_address, config->fpga_network.udp_packet_size, PF_RING_PROMISC );
 
         if(pd == NULL) {
             ERROR("pfring_open error [%s] (pf_ring not loaded or quick mode is enabled you and have already a socket bound to %s?)\n",
@@ -128,8 +128,8 @@ void network_thread(void * arg) {
             ERROR("The device is not in DNA mode.?");
         }
 
-        pfring_set_poll_duration(pd, 1000);
-        pfring_set_poll_watermark(pd, 10000);
+        pfring_set_poll_duration(pd, 100);
+        pfring_set_poll_watermark(pd, 1000);
 
         if (pfring_enable_ring(pd) != 0) {
             ERROR("Cannot enable the PF_RING.");
@@ -140,6 +140,7 @@ void network_thread(void * arg) {
 
     // Make sure the first buffer is ready to go. (this check is not really needed)
     wait_for_empty_buffer(args->buf, buffer_id);
+
 
     set_data_ID(args->buf, buffer_id, data_id++);
     error_matrix = get_error_matrix(args->buf, buffer_id);
@@ -192,7 +193,7 @@ void network_thread(void * arg) {
             check_if_done(&total_buffers_filled, args, total_packets, 
                         grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
-            buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
+            buffer_id = (buffer_id + args->num_links_in_group) % (args->buf->num_buffers);
 
             // Add some delay so that ch_master can keep up with the files.
             if (args->read_from_file == 1) {
@@ -229,13 +230,13 @@ void network_thread(void * arg) {
                 continue;
             }
 
-            if (pf_header.len != UDP_PACKETSIZE) {
+            if (pf_header.len != config->fpga_network.udp_packet_size) {
                 INFO("Received packet with incorrect length: %d", pf_header.len);
                 continue;
             }
         } else {
             // File read code.
-            if (fread(file_buf, UDP_PACKETSIZE, 1, data_file) != 1) {
+            if (fread(file_buf, config->fpga_network.udp_packet_size, 1, data_file) != 1) {
                 if (!feof(data_file)) {
                     ERROR("Error reading file %s", args->file_name);
                     break;
@@ -265,7 +266,7 @@ void network_thread(void * arg) {
 
         // Do seq number related stuff (location will change.)
         seq = ((((uint32_t *) &pkt_buf[54])[0]) + 0 ) >> 2;
-        //INFO("seq: %u", seq);
+        //INFO("Network thread: %d, seq: %u", args->frequency_id, seq);
 
         // First packet alignment code.
         if (unlikely(last_seq == -1)) {
@@ -274,7 +275,7 @@ void network_thread(void * arg) {
                 continue;
             }
 
-            INFO("Got first packet %" PRId64, seq);
+            INFO("Network Thread: %d, Got first packet %" PRId64, args->frequency_id, seq);
             // Set the time we got the first packet.
             static struct timeval now;
             gettimeofday(&now, NULL);
@@ -292,9 +293,9 @@ void network_thread(void * arg) {
             // this should be made deterministic. 
             if (seq % SEQ_NUM_EDGE == 0 || args->read_from_file == 1) {
                 last_seq = seq;
-                nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
+                nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, udp_payload_size);
                 count++;
-                buffer_location += UDP_PAYLOADSIZE;
+                buffer_location += udp_payload_size;
             } else {
                 // If we have lost the packet on the edge,
                 // we set the last_seq to the edge so that the buffer will still be aligned.
@@ -305,7 +306,7 @@ void network_thread(void * arg) {
         }
 
 
-        nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, UDP_PAYLOADSIZE);
+        nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, udp_payload_size);
 
         //INFO("seq_num: %d", seq);
 
@@ -346,36 +347,37 @@ void network_thread(void * arg) {
                 }
 
                 // The location the packet should have been in.
-                int realPacketLocation = buffer_location + lost * UDP_PAYLOADSIZE;
+                int realPacketLocation = buffer_location + lost * udp_payload_size;
                 if ( realPacketLocation < args->buf->buffer_size ) { // Case 1:
                     // Copy the memory in the right location.
                     assert(buffer_id < args->buf->num_buffers);
-                    assert(realPacketLocation <= args->buf->buffer_size - UDP_PAYLOADSIZE);
-                    assert(buffer_location <= args->buf->buffer_size - UDP_PAYLOADSIZE);
+                    assert(realPacketLocation <= args->buf->buffer_size - udp_payload_size);
+                    assert(buffer_location <= args->buf->buffer_size - udp_payload_size);
                     assert(buffer_id >= 0);
                     assert(buffer_location >= 0);
                     assert(realPacketLocation >= 0);
                     nt_memcpy((void *) &args->buf->data[buffer_id][realPacketLocation],
-                            (void *) &args->buf->data[buffer_id][buffer_location], UDP_PAYLOADSIZE);
+                              (void *) &args->buf->data[buffer_id][buffer_location], udp_payload_size);
 
                     // Zero out the lost part of the buffer.
                     for (int i = 0; i < lost; ++i) {
-                        memset(&args->buf->data[buffer_id][buffer_location + i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
+                        memset(&args->buf->data[buffer_id][buffer_location + i*udp_payload_size], 0x88, udp_payload_size);
                     }
-                    add_bad_timesamples(error_matrix, lost * NUM_TIMESAMPLES_PER_PACKET);
+                    add_bad_timesamples(error_matrix, lost * config->fpga_network.timesamples_per_packet);
 
-                    buffer_location = realPacketLocation + UDP_PAYLOADSIZE;
+                    buffer_location = realPacketLocation + udp_payload_size;
 
                     //ERROR("Case 1 packet loss event on data_id: %d", data_id);
                 } else { // Case 2 (the hard one):
 
                     // zero out the rest of the current buffer and mark it as full.
                     int i, j;
-                    for (i = 0; (buffer_location + i*UDP_PAYLOADSIZE) < args->buf->buffer_size; ++i) {
-                        memset(&args->buf->data[buffer_id][buffer_location + i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
-                        add_bad_timesamples(error_matrix, NUM_TIMESAMPLES_PER_PACKET);
+                    for (i = 0; (buffer_location + i*udp_payload_size) < args->buf->buffer_size; ++i) {
+                        memset(&args->buf->data[buffer_id][buffer_location + i*udp_payload_size], 0x88, udp_payload_size);
+                        add_bad_timesamples(error_matrix, config->fpga_network.timesamples_per_packet);
                     }
 
+                    DEBUG("In Case 2 packet loss on link: %d ; data_id: %d ; buffer_id: %d", args->link_id, data_id, buffer_id);
                     // Keep track of the last edge seq number in case we need it later.
                     uint32_t last_edge = get_fpga_seq_num(args->buf, buffer_id);
 
@@ -387,7 +389,7 @@ void network_thread(void * arg) {
                                 grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
                     // Get the number of lost packets in the new buffer(s).
-                    int num_lost_packets_new_buf = (lost+1) - (args->buf->buffer_size - buffer_location)/UDP_PAYLOADSIZE;
+                    int num_lost_packets_new_buf = (lost+1) - (args->buf->buffer_size - buffer_location)/udp_payload_size;
 
                     assert(num_lost_packets_new_buf > 0);
 
@@ -398,7 +400,7 @@ void network_thread(void * arg) {
                     do {
 
                         // Get a new buffer.
-                        buffer_id = (buffer_id + args->num_links) % (args->buf->num_buffers);
+                        buffer_id = (buffer_id + args->num_links_in_group) % (args->buf->num_buffers);
 
                         // This call will block if the buffer has not been written out to disk yet
                         // shouldn't be an issue if everything runs correctly.
@@ -407,7 +409,7 @@ void network_thread(void * arg) {
                         set_data_ID(args->buf, buffer_id, data_id++);
                         error_matrix = get_error_matrix(args->buf, buffer_id);
 
-                        uint32_t fpga_seq_number = last_edge + j * (args->buf->buffer_size/UDP_PAYLOADSIZE); // == number of iterations FIXME.
+                        uint32_t fpga_seq_number = last_edge + j * (args->buf->buffer_size/udp_payload_size); // == number of iterations FIXME.
 
                         set_fpga_seq_num(args->buf, buffer_id, fpga_seq_number);
 
@@ -416,9 +418,9 @@ void network_thread(void * arg) {
                         gettimeofday(&now, NULL);
                         set_first_packet_recv_time(args->buf, buffer_id, now);
 
-                        for (i = 0; num_lost_packets_new_buf > 0 && (i*UDP_PAYLOADSIZE) < args->buf->buffer_size; ++i) {
-                            memset(&args->buf->data[buffer_id][i*UDP_PAYLOADSIZE], 0x88, UDP_PAYLOADSIZE);
-                            add_bad_timesamples(error_matrix, NUM_TIMESAMPLES_PER_PACKET);
+                        for (i = 0; num_lost_packets_new_buf > 0 && (i*udp_payload_size) < args->buf->buffer_size; ++i) {
+                            memset(&args->buf->data[buffer_id][i*udp_payload_size], 0x88, udp_payload_size);
+                            add_bad_timesamples(error_matrix, config->fpga_network.timesamples_per_packet);
                             num_lost_packets_new_buf--;
                         }
 
@@ -440,17 +442,17 @@ void network_thread(void * arg) {
                     } while (num_lost_packets_new_buf > 0);
 
                     // Update the new buffer location.
-                    buffer_location = i*UDP_PAYLOADSIZE;
+                    buffer_location = i*udp_payload_size;
 
                     // We need to increase the total number of lost packets since we 
                     // just tossed away the packet we read.
                     total_lost++;
-                    printf("Case 2 packet loss event on data_id: %d\n", data_id);
+                    DEBUG("Case 2 packet loss event on link: %d ; data_id: %d\n", args->link_id, data_id);
 
                 }
             } else {
                 // This is the normal case; a valid packet. 
-                buffer_location += UDP_PAYLOADSIZE;
+                buffer_location += udp_payload_size;
             }
 
         } else {
@@ -481,12 +483,12 @@ void network_thread(void * arg) {
         static const int X = 10*39062;
         if (count % (X+1) == 0) {
             current_time = e_time();
-            INFO("Receive Speed: %1.3f Gbps %.0f pps\n", (((double)X*UDP_PACKETSIZE*8) / (current_time - last_time)) / (1024*1024*1024), X / (current_time - last_time) );
+            INFO("Receive Speed: %1.3f Gbps %.0f pps\n", (((double)X*config->fpga_network.udp_packet_size*8) / (current_time - last_time)) / (1024*1024*1024), X / (current_time - last_time) );
             last_time = current_time;
             if (total_lost != 0) {
-                INFO("Packet loss: %.6f%%\n", ((double)total_lost/(double)X)*100); 
+                INFO("Packet loss on link %d: %.6f%%\n", args->frequency_id, ((double)total_lost/(double)X)*100);
             } else {
-                INFO("Packet loss: %.6f%%\n", (double)0.0);
+                INFO("Packet loss on link %d: %.6f%%\n", args->frequency_id, (double)0.0);
             }
             grand_total_lost += total_lost;
             total_lost = 0;
@@ -515,9 +517,9 @@ void test_network_thread(void * arg) {
                            GEN_INITIAL_RE,
                            GEN_INITIAL_IM,
                            GEN_FREQ,
-                           args->num_timesamples,
-                           args->actual_num_freq, 
-                           args->actual_num_elements, 
+                           args->config->processing.samples_per_data_set,
+                           args->config->processing.num_local_freq,
+                           args->config->processing.num_elements,
                            (unsigned char *) args->buf->data[buffer_id]);
 
     for (int i = 0; i < 100; i++) {

@@ -4,16 +4,10 @@
 #include "buffers.h"
 
 struct fileWriteThreadArg {
+    struct Config * config;
     struct Buffer * buf;
-    int num_links;
-    int buffer_depth;
     char * dataset_name;
     char * data_dir;
-    int num_data_sets;
-    int num_timesamples;
-
-    int actual_num_freq;
-    int actual_num_elements;
 };
 
 void file_write_thread(void * arg);

@@ -25,22 +25,13 @@
 #define MAX_GPUS 4
 
 struct gpuThreadArgs {
+    struct Config * config;
+
     struct Buffer * in_buf;
     struct Buffer * out_buf;
 
-    int block_size;
-    int num_elements;
-    int num_freq;
-    int num_timesamples;
-    int num_links;
     int started;
     int gpu_id;
-    int num_data_sets;
-
-    // When processing less than 32 elements, num_freq and num_elements are set differently
-    // than the true number of freq/elements.
-    int actual_num_freq;
-    int actual_num_elements;
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
@@ -84,19 +75,13 @@ struct OpenCLData {
     struct callBackData * cb_data;
 
     // Extra data
+    struct Config * config;
+
     int num_blocks;
     int output_len;
     int accumulate_len;
     int aligned_accumulate_len;
-    int block_size;
-    int num_elements;
-    int num_freq;
-    int num_timesamples;
     int gpu_id; // Internal GPU ID.
-    int num_data_sets;
-
-    int actual_num_freq;
-    int actual_num_elements;
 
     // Kernel values.
     unsigned int num_accumulations;

@@ -11,15 +11,10 @@
 #include "gpu_thread.h"
 #include "errors.h"
 #include "buffers.h"
+#include "config.h"
 
 #include "pthread.h"
-
-// TODO This should move to a config file.
-#define NUM_CL_FILES        3
-#define OPENCL_FILENAME_1   "kernels/test0xB_multifreq_multiple.cl"
-#define OPENCL_FILENAME_2   "kernels/offsetAccumulator_multiple.cl"
-#define OPENCL_FILENAME_3   "kernels/preseed_multifreq_multiple.cl"
-
+#include <unistd.h>
 
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -40,16 +35,10 @@ void gpu_thread(void* arg)
     cl_data.in_buf = args->in_buf;
     cl_data.out_buf = args->out_buf;
 
-    cl_data.block_size = args->block_size;
-    cl_data.num_elements = args->num_elements;
-    cl_data.num_timesamples = args->num_timesamples;
-    cl_data.num_freq = args->num_freq;
-    cl_data.num_data_sets = args->num_data_sets;
+    cl_data.config = args->config;
 
-    cl_data.actual_num_elements = args->actual_num_elements;
-    cl_data.actual_num_freq = args->actual_num_freq;
-
-    cl_data.accumulate_len = args->num_freq * args->num_elements * 2 * args->num_data_sets * sizeof(cl_int);
+    cl_data.accumulate_len = cl_data.config->processing.num_adjusted_local_freq *
+    cl_data.config->processing.num_adjusted_elements * 2 * cl_data.config->processing.num_data_sets * sizeof(cl_int);
     cl_data.aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)cl_data.accumulate_len / (double)PAGESIZE_MEM));
     assert(cl_data.aligned_accumulate_len >= cl_data.accumulate_len);
 
@@ -72,6 +61,7 @@ void gpu_thread(void* arg)
     // Just wait on one buffer.
     int buffer_list[1] = {0};
     int bufferID = 0;
+    int first_time = 1;
 
     // Main loop for collecting data from producers.
     for(;;) {
@@ -79,6 +69,10 @@ void gpu_thread(void* arg)
         // Wait for data, this call will block.
         bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
 
+        if (args->gpu_id == 0 && first_time == 1) {
+            usleep(100000);
+            first_time = 0;
+        }
         // If buffer id is -1, then all the producers are done.
         if (bufferID == -1) {
             break;
@@ -88,9 +82,12 @@ void gpu_thread(void* arg)
         // This should almost never block, since the output buffer should clear quickly.
         wait_for_empty_buffer(args->out_buf, bufferID);
 
-        CHECK_CL_ERROR( clSetUserEventStatus(cl_data.host_buffer_ready[buffer_list[0]], CL_SUCCESS) );
+        //INFO("GPU Kernel started on gpu %d in buffer (%d,%d)", args->gpu_id, args->gpu_id - 1, bufferID);
+
+        CHECK_CL_ERROR( clSetUserEventStatus(cl_data.host_buffer_ready[bufferID], CL_SUCCESS) );
 
         buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
+
     }
 
     DEBUG("Closing OpenCL\n");
@@ -116,9 +113,9 @@ void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
 
 void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
 
-    //INFO("GPU Kernel Finished!\n");
-
     struct callBackData * cb_data = (struct callBackData *) data;
+
+    //INFO("GPU Kernel Finished on GPUID: %d", cb_data->cl_data->gpu_id);
 
     // Copy the information contained in the input buffer
     move_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
@@ -297,29 +294,26 @@ void setup_open_cl(struct OpenCLData * cl_data)
 
     // TODO move this out of this function?
     // TODO explain these numbers/formulas.
-    cl_data->num_blocks = (cl_data->num_elements / cl_data->block_size) * (cl_data->num_elements / cl_data->block_size + 1) / 2.;
+    cl_data->num_blocks = (cl_data->config->processing.num_adjusted_elements / cl_data->config->gpu.block_size) *
+    (cl_data->config->processing.num_adjusted_elements / cl_data->config->gpu.block_size + 1) / 2.;
 
     // TODO Move this into a function for just loading kernels.
     // Load kernels and compile them.
-    char *cl_file_names[] = {OPENCL_FILENAME_1, OPENCL_FILENAME_2, OPENCL_FILENAME_3};
     char cl_options[1024];
-    sprintf(cl_options,"-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du", 
-            cl_data->actual_num_elements, cl_data->actual_num_freq, cl_data->num_elements, cl_data->num_freq, cl_data->num_blocks, cl_data->num_timesamples);
-    DEBUG("ACTUAL_NUM_ELEMENTS: %du", cl_data->actual_num_elements);
-    DEBUG("ACTUAL_NUM_FREQUENCIES: %du", cl_data->actual_num_freq);
-    DEBUG("NUM_ELEMENTS: %du", cl_data->num_elements);
-    DEBUG("NUM_FREQUENCIES: %du", cl_data->num_freq);
-    DEBUG("NUM_BLOCKS: %du", cl_data->num_blocks);
-    DEBUG("NUM_TIMESAMPLES: %du", cl_data->num_timesamples);
+    sprintf(cl_options, "-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du",
+            cl_data->config->processing.num_elements, cl_data->config->processing.num_local_freq,
+            cl_data->config->processing.num_adjusted_elements,
+            cl_data->config->processing.num_adjusted_local_freq,
+            cl_data->config->processing.num_blocks, cl_data->config->processing.samples_per_data_set);
 
-    size_t cl_program_size[NUM_CL_FILES];
+    size_t cl_program_size[cl_data->config->gpu.num_kernels];
     FILE *fp;
-    char *cl_program_buffer[NUM_CL_FILES];
+    char *cl_program_buffer[cl_data->config->gpu.num_kernels];
 
-    for (int i = 0; i < NUM_CL_FILES; i++){
-        fp = fopen(cl_file_names[i], "r");
+    for (int i = 0; i < cl_data->config->gpu.num_kernels; i++){
+        fp = fopen(cl_data->config->gpu.kernels[i], "r");
         if (fp == NULL){
-            ERROR("error loading file: %s", cl_file_names[i]);
+            ERROR("error loading file: %s", cl_data->config->gpu.kernels[i]);
             exit(errno);
         }
         fseek(fp, 0, SEEK_END);
@@ -329,15 +323,17 @@ void setup_open_cl(struct OpenCLData * cl_data)
         cl_program_buffer[i][cl_program_size[i]] = '\0';
         int sizeRead = fread(cl_program_buffer[i], sizeof(char), cl_program_size[i], fp);
         if (sizeRead < cl_program_size[i])
-            ERROR("Error reading the file: %s", cl_file_names[i]);
+            ERROR("Error reading the file: %s", cl_data->config->gpu.kernels[i]);
         fclose(fp);
     }
 
-    INFO("%d", NUM_CL_FILES);
-    cl_data->program = clCreateProgramWithSource( cl_data->context, NUM_CL_FILES, (const char**)cl_program_buffer, cl_program_size, &err );
+    cl_data->program = clCreateProgramWithSource( cl_data->context,
+                                                  cl_data->config->gpu.num_kernels,
+                                                  (const char**)cl_program_buffer,
+                                                  cl_program_size, &err );
     CHECK_CL_ERROR (err);
 
-    for (int i =0; i < NUM_CL_FILES; i++){
+    for (int i =0; i < cl_data->config->gpu.num_kernels; i++){
         free(cl_program_buffer[i]);
     }
 
@@ -398,7 +394,6 @@ void setup_open_cl(struct OpenCLData * cl_data)
     CHECK_MEM(cl_data->device_output_buffer);
     for (int i = 0; i < cl_data->out_buf->num_buffers; ++i) {
         cl_data->device_output_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_WRITE_ONLY, cl_data->out_buf->aligned_buffer_size, NULL, &err);
-        //INFO("buffer_size: %d", cl_data->out_buf->buffer_size);
         CHECK_CL_ERROR(err);
     }
 
@@ -434,7 +429,7 @@ void setup_open_cl(struct OpenCLData * cl_data)
 
     //TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y indices for an upper triangle.  
     // Time Test kernels using them compared to the lookup tables for NUM_ELEM = 256
-    int largest_num_blocks_1D = cl_data->num_elements/cl_data->block_size;
+    int largest_num_blocks_1D = cl_data->config->processing.num_adjusted_elements /cl_data->config->gpu.block_size;
     int index_1D = 0;
     for (int j = 0; j < largest_num_blocks_1D; j++){
         for (int i = j; i < largest_num_blocks_1D; i++){
@@ -493,29 +488,30 @@ void setup_open_cl(struct OpenCLData * cl_data)
                                    NULL) );
 
     // Number of compressed accumulations.
-    cl_data->num_accumulations = cl_data->num_timesamples/256;
+    cl_data->num_accumulations = cl_data->config->processing.samples_per_data_set/256;
 
     // Accumulation kernel global and local work space sizes.
-    cl_data->gws_accum[0] = 64*cl_data->num_data_sets;
-    cl_data->gws_accum[1] = (int)ceil(cl_data->num_elements*cl_data->num_freq/256.0); 
-    cl_data->gws_accum[2] = cl_data->num_timesamples/1024;
+    cl_data->gws_accum[0] = 64*cl_data->config->processing.num_data_sets;
+    cl_data->gws_accum[1] = (int)ceil(cl_data->config->processing.num_adjusted_elements *
+        cl_data->config->processing.num_adjusted_local_freq/256.0);
+    cl_data->gws_accum[2] = cl_data->config->processing.samples_per_data_set/1024;
 
     cl_data->lws_accum[0] = 64;
     cl_data->lws_accum[1] = 1;
     cl_data->lws_accum[2] = 1;
 
     // Pre-seed kernel global and local work space sizes.
-    cl_data->gws_preseed[0] = 8*cl_data->num_data_sets;
-    cl_data->gws_preseed[1] = 8*cl_data->num_freq;
-    cl_data->gws_preseed[2] = cl_data->num_blocks;
+    cl_data->gws_preseed[0] = 8*cl_data->config->processing.num_data_sets;
+    cl_data->gws_preseed[1] = 8*cl_data->config->processing.num_adjusted_local_freq;
+    cl_data->gws_preseed[2] = cl_data->config->processing.num_blocks;
 
     cl_data->lws_preseed[0] = 8;
     cl_data->lws_preseed[1] = 8;
     cl_data->lws_preseed[2] = 1;
 
     // Correlation kernel global and local work space sizes.
-    cl_data->gws_corr[0] = 8*cl_data->num_data_sets;
-    cl_data->gws_corr[1] = 8*cl_data->num_freq;
+    cl_data->gws_corr[0] = 8*cl_data->config->processing.num_data_sets;
+    cl_data->gws_corr[1] = 8*cl_data->config->processing.num_adjusted_local_freq;
     cl_data->gws_corr[2] = cl_data->num_blocks*cl_data->num_accumulations;
 
     cl_data->lws_corr[0] = 8;

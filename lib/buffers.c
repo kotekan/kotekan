@@ -198,6 +198,7 @@ void wait_for_empty_buffer(struct Buffer* buf, const int ID)
 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     while (buf->is_full[ID] == 1) {
+        DEBUG("wait_for_empty_buffer: waiting for buffer ID = %d", ID);
         pthread_cond_wait(&buf->empty_cond, &buf->lock);
     }
 
@@ -247,6 +248,9 @@ uint32_t get_fpga_seq_num(struct Buffer* buf, const int ID)
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 
+    if (buf->info[ID] == NULL) {
+        DEBUG("get_fpga_seq_num: info struct %d is null", ID);
+    }
     assert(buf->info[ID] != NULL);
     fpga_seq_num = buf->info[ID]->fpga_seq_num;
 
@@ -331,6 +335,7 @@ int get_full_buffer_from_list(struct Buffer* buf, const int* buffer_IDs, const i
     }
 
     fullBuf = private_get_full_buffer_from_list(buf, buffer_IDs, len);
+    //buf->is_full[fullBuf] = 2;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
@@ -407,8 +412,9 @@ void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int
     assert(to->info[to_id] == NULL);
 
     to->info[to_id] = from->info[from_id];
-    // Only one buffer object should ever have controll of a BufferInfo object.
+    // Only one buffer object should ever have control of a BufferInfo object.
     from->info[from_id] = NULL;
+    //INFO("move_buffer_info: Setting info id: %d to null", from_id);
 
     CHECK_ERROR( pthread_mutex_unlock(&to->lock_info) );
     CHECK_ERROR( pthread_mutex_unlock(&from->lock_info) );
@@ -420,6 +426,7 @@ void release_info_object(struct Buffer * buf, const int ID)
 
     return_info_object(buf->info_object_pool, buf->info[ID]);
     buf->info[ID] = NULL;
+    //INFO("release_info_object: Setting info id: %d to null", ID);
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 }
@@ -470,6 +477,9 @@ struct BufferInfo * request_info_object(struct InfoObjectPool * pool) {
             break;
         }
     }
+
+    // Assume we never run out.
+    assert(ret != NULL);
 
     CHECK_ERROR( pthread_mutex_unlock(&pool->in_use_lock) );
 

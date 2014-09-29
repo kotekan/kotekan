@@ -13,6 +13,7 @@
 #include "chrx.h"
 #include "output_formating.h"
 #include "error_correction.h"
+#include "config.h"
 
 #define NUM_TIMESAMPLES_PER_PACKET 4
 
@@ -62,13 +63,14 @@ void push_corr_frame(struct chrx_acq_t *self, const char *new_vis,
 void file_write_thread(void * arg)
 {
     struct fileWriteThreadArg * args = (struct fileWriteThreadArg *) arg;
+    struct Config * config = args->config;
 
     int bufferID = -1;
 
     int useableBufferIDs[1] = {0};
     int link_id = 0;
 
-    int bad_timesamples[args->num_links];
+    int bad_timesamples[config->fpga_network.num_links];
 
     /// HDF5 File setup
 
@@ -116,36 +118,36 @@ void file_write_thread(void * arg)
 
         struct ErrorMatrix * error_matrix = get_error_matrix(args->buf, bufferID);
 
-        link_id = bufferID % args->num_links;
+        link_id = bufferID % config->fpga_network.num_links;
 
         // TODO THIS IS A HACK to work with multipal data sets per gpu intergration.
         // The errors, id's, etc. are wrong!!
-        for (int i = 0; i < args->num_data_sets; ++i) {
-            reorganize_32_to_16_feed_GPU_Correlated_Data(args->actual_num_freq,
-                                                        args->actual_num_elements,
-                                                         (int *)&args->buf->data[bufferID][(args->buf->buffer_size / args->num_data_sets) * i] );
+        for (int i = 0; i < config->processing.num_data_sets; ++i) {
+            reorganize_32_to_16_feed_GPU_Correlated_Data(config->processing.num_local_freq,
+                                                         config->processing.num_elements,
+                                                         (int *)&args->buf->data[bufferID][(args->buf->buffer_size / config->processing.num_data_sets) * i] );
 
             bad_timesamples[link_id] = error_matrix->bad_timesamples;
 
             int32_t push = 0;
             push = 1;
-            if (link_id + 1 == args->num_links) {
-                if (args->num_links == 7) {
+            if (link_id + 1 == config->fpga_network.num_links) {
+                if (config->fpga_network.num_links == 7) {
                     INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d ]",
                         data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
                         bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6]);
                 }
-                if (args->num_links == 8) {
+                if (config->fpga_network.num_links == 8) {
                     INFO("Pushing correlator frame; ID = %d; FPGA_seq_number = %d; num_bad_timesamples = [ %d %d %d %d %d %d %d %d ]",
                         data_id, fpga_seq_number, bad_timesamples[0], bad_timesamples[1], bad_timesamples[2],
                         bad_timesamples[3], bad_timesamples[4], bad_timesamples[5], bad_timesamples[6], bad_timesamples[7]);
                 }
             }
 
-            push_corr_frame(&chrx, &args->buf->data[bufferID][(args->buf->buffer_size / args->num_data_sets) * i], NULL,
-                            fpga_seq_number*NUM_TIMESAMPLES_PER_PACKET + args->num_timesamples * i,
+            push_corr_frame(&chrx, &args->buf->data[bufferID][(args->buf->buffer_size / config->processing.num_data_sets) * i], NULL,
+                            fpga_seq_number*NUM_TIMESAMPLES_PER_PACKET + config->processing.samples_per_data_set * i,
                             frame_start_time, link_id, push,
-                            args->actual_num_freq);
+                            config->processing.num_local_freq);
 
         }
 
