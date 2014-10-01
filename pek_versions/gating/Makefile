@@ -13,8 +13,8 @@ CFLAGS	= $(OPTIMIZE) $(INC)
 #step 2: (to compile the program)
 #OBJS	= SFMT.o main_multi-freq-4interleaved_output_xor_gating_for16.o
 #OBJS	= SFMT.o main_multi-freq-4interleaved_output_xor_multidataset_alternate.o
-OBJS	= SFMT.o main_multi-freq-4interleaved_output_xor_gating.o
-PROGRAM	= full_gating_run
+OBJS	= SFMT.o main_multi-freq-gating_multi-periods_2.o
+PROGRAM	= multi_gating_run_2_bins_per
 
 $(PROGRAM) : $(OBJS)
 	$(CC) $(OBJS) $(LIBS) -o $@
@@ -29,7 +29,7 @@ SFMT.o : ./SFMT-src-1.4/SFMT.c
 
 #main_multi-freq-4interleaved_output_xor_gating_for16.o :  main_multi-freq-4interleaved_output_xor_gating_for16.c #kernel.h kernel2.h
 #main_multi-freq-4interleaved_output_xor_multidataset_alternate.o :  main_multi-freq-4interleaved_output_xor_multidataset_alternate.c #kernel.h kernel2.h
-main_multi-freq-4interleaved_output_xor_gating.o :  main_multi-freq-4interleaved_output_xor_gating.c #kernel.h kernel2.h
+main_multi-freq-gating_multi-periods_2.o :  main_multi-freq-gating_multi-periods_2.c #kernel.h kernel2.h
 
 
 #Note I don't know how to use make files very well... after a clean, to make the SFMT.o, it needs ./SFMT-src-1.4/SFMT.o in OBJS before it decides to make the object file
