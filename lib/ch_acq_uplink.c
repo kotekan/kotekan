@@ -102,10 +102,12 @@ void ch_acq_uplink_thread(void* arg)
 
         for (int i = 0; i < config->processing.num_data_sets; ++i) {
             // TODO Make this cleaner (single function)
-            reorganize_32_to_16_feed_GPU_Correlated_Data(
+            reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(
                 config->processing.num_local_freq,
                 config->processing.num_elements,
-                (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)] );
+                1,
+                (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)],
+                args->config->processing.product_remap);
 
 
             shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(

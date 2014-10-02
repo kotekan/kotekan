@@ -25,4 +25,12 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_
     int num_frequencies, int *input_data,
     complex_int_t *output_data, int link_num);
 
+void reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(
+    int actual_num_frequencies, int actual_num_elements,
+    int num_data_sets, int *correlated_data, int *map);
+
+void reorganize_32_to_16_element_UT_GPU_correlated_data_with_shuffle(
+    int actual_num_frequencies, int actual_num_elements,
+    int num_data_sets, int *correlated_data, int *map);
+
 #endif

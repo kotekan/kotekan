@@ -152,3 +152,96 @@ void shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_
     }
     return;
 }
+
+void reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(int actual_num_frequencies, int actual_num_elements, int num_data_sets, int *correlated_data, int *map)
+{
+    //data is processed as 32 elements x 32 elements to fit the kernel even though only 16 elements exist.
+    //This is equivalent to processing 2 elements at the same time, where the desired correlations live in the first and fourth quadrants
+    //This function is to reorganize the data so that comparisons can be done more easily
+
+    //The input dataset is larger than the output, so can reorganize in the same array
+
+    int input_frequencies = actual_num_frequencies/2;
+    int input_elements = actual_num_elements*2;
+    int address = 0;
+    int address_out = 0;
+    int temp_address;
+    int temp_array[1024]; //16 elements x 16 elements x 2 complex vals x 2 sets at once
+    for (int m = 0; m < num_data_sets; m++){
+        for (int freq = 0; freq < input_frequencies; freq++){
+            for (int element_y = 0; element_y < input_elements; element_y++){
+                for (int element_x = 0; element_x < input_elements; element_x++){
+                    if (element_x < actual_num_elements && element_y < actual_num_elements){
+                        temp_address = (map[element_y]*16+map[element_x])*2;
+                        temp_array[temp_address++] = correlated_data[address++];
+                        temp_array[temp_address]   = correlated_data[address++]; //real and imaginary at each spot
+                    }
+                    else if (element_x >=actual_num_elements && element_y >=actual_num_elements){
+                        temp_address = (map[element_y-16]*16+map[element_x-16])*2+512;
+                        temp_array[temp_address++] = correlated_data[address++];
+                        temp_array[temp_address]   = correlated_data[address++];
+                    }
+                    else
+                        address += 2;
+                }
+            }
+            for (int i = 0; i < 1024; i++){
+                correlated_data[address_out++] = temp_array[i];
+            }
+        }
+    }
+    return;
+}
+
+void reorganize_32_to_16_element_UT_GPU_correlated_data_with_shuffle(int actual_num_frequencies, int actual_num_elements, int num_data_sets, int *correlated_data, int *map)
+{
+    //data is processed as 32 elements x 32 elements to fit the kernel even though only 16 elements exist.
+    //This is equivalent to processing 2 elements at the same time, where the desired correlations live in the first and fourth quadrants
+    //This function is to reorganize the data so that comparisons can be done more easily
+
+    //The input dataset is larger than the output, so can reorganize in the same array
+
+    int input_frequencies = actual_num_frequencies/2;
+    int input_elements = actual_num_elements*2;
+    int address = 0;
+    int address_out = 0;
+    int temp_address;
+    int temp_array[544]; //(16 x 17 / 2 ) elements x 2 complex vals x 2 sets at once
+    int mapped_x, mapped_y;
+    for (int m = 0; m < num_data_sets; m++){
+        for (int freq = 0; freq < input_frequencies; freq++){
+            for (int element_y = 0; element_y < input_elements; element_y++){
+                for (int element_x = 0; element_x < input_elements; element_x++){
+                    if (element_x < actual_num_elements && element_y < actual_num_elements){
+                        mapped_x = map[element_x];
+                        mapped_y = map[element_y];
+                        if (mapped_x >= mapped_y){
+                            temp_address = (mapped_y*16+mapped_x-(mapped_y*(mapped_y+1)/2))*2;
+                            temp_array[temp_address++] = correlated_data[address++];
+                            temp_array[temp_address]   = correlated_data[address++]; //real and imaginary at each spot
+                        }
+                        else
+                            address += 2;
+                    }
+                    else if (element_x >=actual_num_elements && element_y >=actual_num_elements){
+                        mapped_x = map[element_x-16];
+                        mapped_y = map[element_y-16];
+                        if (mapped_x >= mapped_y){
+                            temp_address = (mapped_y*16+mapped_x-(mapped_y*(mapped_y+1)/2))*2+272; //16*17/2*2: offset to next set of data
+                            temp_array[temp_address++] = correlated_data[address++];
+                            temp_array[temp_address]   = correlated_data[address++];
+                        }
+                        else
+                            address += 2;
+                    }
+                    else
+                        address += 2;
+                }
+            }
+            for (int i = 0; i < 544; i++){
+                correlated_data[address_out++] = temp_array[i];
+            }
+        }
+    }
+    return;
+}

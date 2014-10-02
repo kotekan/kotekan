@@ -97,7 +97,7 @@ void gpu_thread(void* arg)
     mark_producer_done(args->out_buf, 0);
 
     int ret;
-    pthread_exit((void *) &ret); 
+    pthread_exit((void *) &ret);
 }
 
 void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
