@@ -58,6 +58,9 @@ struct ProcessingConfig {
     // TODO break this up into more than one global depth
     int buffer_depth;
 
+    // The number of GPU frames to add before sending to ch_master
+    int num_gpu_frames;
+
     // The remapping of products from FPGA order to "physical (on the focal line) order"
     int * product_remap;
 

@@ -36,6 +36,7 @@ void ch_acq_uplink_thread(void* arg)
     struct ch_acqUplinkThreadArg * args = (struct ch_acqUplinkThreadArg *) arg;
 
     int bufferID = -1;
+    int frame_number = 0;
 
     struct Config * config = args->config;
 
@@ -125,35 +126,48 @@ void ch_acq_uplink_thread(void* arg)
         if (link_id + 1 == config->fpga_network.num_links) {
 
             for (int i = 0; i < config->processing.num_data_sets; ++i) {
-                // Send the frame.
-                header->cpu_timestamp = frame_start_time;
-                // TODO Is this the right thing to do?
-                double time_offset = i * (config->processing.samples_per_data_set * 2.56);
-                header->cpu_timestamp.tv_usec = header->cpu_timestamp.tv_usec + time_offset;
-                header->fpga_seq_number = fpga_seq_number*config->fpga_network.timesamples_per_packet + i * config->processing.samples_per_data_set;
-                header->num_freq = config->processing.num_total_freq;
-                header->num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
-                for (int j = 0; j < num_values; ++j) {
-                    visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+
+                // If this is the first frame, set the header, and initial visibility data.
+                if (frame_number == 0) {
+                    header->cpu_timestamp = frame_start_time;
+                    double time_offset = i * (config->processing.samples_per_data_set * 2.56);
+                    header->cpu_timestamp.tv_usec = header->cpu_timestamp.tv_usec + time_offset;
+                    header->fpga_seq_number = fpga_seq_number*config->fpga_network.timesamples_per_packet + i * config->processing.samples_per_data_set;
+                    header->num_freq = config->processing.num_total_freq;
+                    header->num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
+                    for (int j = 0; j < num_values; ++j) {
+                        visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                    }
+                } else {
+                    // Add to the visibilities.
+                    for (int j = 0; j < num_values; ++j) {
+                        complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                        visibilities[j].real += temp_vis.real;
+                        visibilities[j].imag += temp_vis.imag;
+                    }
                 }
 
-                DEBUG("Sending frame to ch_master: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d",
-                      header->fpga_seq_number*config->fpga_network.timesamples_per_packet,
-                      header->num_freq, header->num_vis);
+                // If we are on the last frame in the set, push the buffer.
+                if (frame_number + 1 >= config->processing.num_gpu_frames) {
+                    DEBUG("Sending frame to ch_master: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d",
+                        header->fpga_seq_number*config->fpga_network.timesamples_per_packet,
+                        header->num_freq, header->num_vis);
 
-                ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
-                if (bytes_sent == -1) {
-                    ERROR("Could not send frame to ch_acq, error: %d", errno);
-                    break;
-                }
-                if (bytes_sent != buffer_size) {
-                    ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d", (int)bytes_sent, buffer_size);
-                    break;
+                    ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
+                    if (bytes_sent == -1) {
+                        ERROR("Could not send frame to ch_acq, error: %d", errno);
+                        break;
+                    }
+                    if (bytes_sent != buffer_size) {
+                        ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d", (int)bytes_sent, buffer_size);
+                        break;
+                    }
                 }
             }
+
+            frame_number = (frame_number + 1) % config->processing.num_gpu_frames;
         }
 
-        //INFO("ch_acq_uplink: marking buffer (%d,%d) empty", gpu_id, bufferID);
         release_info_object(&args->buf[gpu_id], bufferID);
         mark_buffer_empty(&args->buf[gpu_id], bufferID);
 

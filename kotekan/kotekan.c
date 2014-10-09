@@ -17,7 +17,6 @@
 #include "file_write.h"
 #include "error_correction.h"
 #include "ch_acq_uplink.h"
-#include "link_mapping.h"
 #include "config.h"
 
 void print_help() {

@@ -11,13 +11,14 @@ int parse_processing_config(struct Config* config, struct json_t * json)
     int error = 0;
     json_t * product_remap;
 
-    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:i, s:o}",
+    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:o}",
         "num_elements", &config->processing.num_elements,
         "num_local_freq", &config->processing.num_local_freq,
         "num_total_freq", &config->processing.num_total_freq,
         "samples_per_data_set", &config->processing.samples_per_data_set,
         "num_data_sets", &config->processing.num_data_sets,
         "buffer_depth", &config->processing.buffer_depth,
+        "num_gpu_frames", &config->processing.num_gpu_frames,
         "product_remap", &product_remap);
 
     if (error) {
