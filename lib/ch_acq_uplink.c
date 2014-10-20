@@ -149,12 +149,12 @@ void ch_acq_uplink_thread(void* arg)
 
                 // If we are on the last frame in the set, push the buffer.
                 if (frame_number + 1 >= config->processing.num_gpu_frames) {
-                    DEBUG("Sending frame to ch_master: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d",
+                    INFO("Sending frame to ch_master: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d",
                         header->fpga_seq_number*config->fpga_network.timesamples_per_packet,
                         header->num_freq, header->num_vis);
 
                     ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
-                    if (bytes_sent == -1) {
+                    if (bytes_sent <= 0) {
                         ERROR("Could not send frame to ch_acq, error: %d", errno);
                         break;
                     }

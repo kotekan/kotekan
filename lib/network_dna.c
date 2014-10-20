@@ -377,7 +377,7 @@ void network_thread(void * arg) {
                         add_bad_timesamples(error_matrix, config->fpga_network.timesamples_per_packet);
                     }
 
-                    DEBUG("In Case 2 packet loss on link: %d ; data_id: %d ; buffer_id: %d", args->link_id, data_id, buffer_id);
+                    WARN("In Case 2 packet loss on link: %d ; data_id: %d ; buffer_id: %d", args->link_id, data_id, buffer_id);
                     // Keep track of the last edge seq number in case we need it later.
                     uint32_t last_edge = get_fpga_seq_num(args->buf, buffer_id);
 
@@ -447,7 +447,7 @@ void network_thread(void * arg) {
                     // We need to increase the total number of lost packets since we 
                     // just tossed away the packet we read.
                     total_lost++;
-                    DEBUG("Case 2 packet loss event on link: %d ; data_id: %d\n", args->link_id, data_id);
+                    WARN("Case 2 packet loss event on link: %d ; data_id: %d\n", args->link_id, data_id);
 
                 }
             } else {
@@ -461,7 +461,7 @@ void network_thread(void * arg) {
             total_out_of_order++;
 
             if (out_of_order_event == 0 || out_of_order_event != last_seq) {
-                ERROR("Out of order event in data_id: %d\n", data_id);
+                WARN("Out of order event in data_id: %d\n", data_id);
                 out_of_order_event = last_seq;
             }
 
@@ -477,24 +477,33 @@ void network_thread(void * arg) {
 
         last_seq = seq;
 
-        // Compute speed at packet loss every X packets
+        // Compute speed and packet loss for every recorded frame.
         count++;
         total_packets++;
-        static const int X = 10*39062;
-        if (count % (X+1) == 0) {
+        int output_period = config->processing.num_gpu_frames *
+            config->processing.samples_per_data_set;
+
+        if (count % (output_period+1) == 0) {
             current_time = e_time();
-            INFO("Receive Speed: %1.3f Gbps %.0f pps\n", (((double)X*config->fpga_network.udp_packet_size*8) / (current_time - last_time)) / (1024*1024*1024), X / (current_time - last_time) );
+            DEBUG("Link id: %d; Receive Speed: %1.3f Gbps %.0f pps\n", args->frequency_id,
+                  (((double)output_period*config->fpga_network.udp_packet_size*8) /
+                  (current_time - last_time)) / (1024*1024*1024), output_period / (current_time - last_time) );
             last_time = current_time;
             if (total_lost != 0) {
-                INFO("Packet loss on link %d: %.6f%%\n", args->frequency_id, ((double)total_lost/(double)X)*100);
+                INFO("Link id: %d; Packet loss on %.6f%%\n",
+                     args->frequency_id, ((double)total_lost/(double)output_period)*100);
             } else {
-                INFO("Packet loss on link %d: %.6f%%\n", args->frequency_id, (double)0.0);
+                INFO("Link id: %d; Packet loss on %.6f%%\n",
+                     args->frequency_id, (double)0.0);
             }
             grand_total_lost += total_lost;
             total_lost = 0;
 
-            INFO("Data received: %.2f GB -- ", ((double)total_buffers_filled * ((double)args->buf->buffer_size / (1024.0*1024.0)))/1024.0);
-            INFO("Number of full buffers: %d\n", get_num_full_buffers(args->buf));
+            INFO("Link id: %d; Number of full buffers: %d/%d; Total data received: %.2f GB\n",
+                 args->frequency_id, get_num_full_buffers(args->buf),
+                 args->buf->num_buffers,
+                 ((double)total_buffers_filled *
+                 ((double)args->buf->buffer_size / (1024.0*1024.0)))/1024.0);
         }
     }
 }

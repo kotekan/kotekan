@@ -11,6 +11,10 @@
 
 char* oclGetOpenCLErrorCodeStr(cl_int input);
 
+extern int log_level_warn;
+extern int log_level_debug;
+extern int log_level_info;
+
 // TODO Rename to check_error
 #define CHECK_CL_ERROR( err )                                      \
     if ( err ) {                                                    \
@@ -38,7 +42,7 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
 // Use this for messages that shouldn't be shown in the release version.
 // This is mostly for testing, tracking down bugs.  It can live in most critical
 // sections, since it will be removed in a release build.
-#define DEBUG(m, a...) syslog(LOG_DEBUG, m, ## a);
+#define DEBUG(m, a...) if (log_level_debug) { syslog(LOG_DEBUG, m, ## a); }
 
 #else
 
@@ -51,10 +55,10 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
 
 // This is for errors that could cause problems with the operation, or data issues,
 // but don't cause the program to fail.
-#define WARN(m, a...) syslog(LOG_WARN, m, ## a);
+#define WARN(m, a...) if (log_level_warn) { syslog(LOG_WARNING, m, ## a); }
 
 // Useful messages to say what the application is doing.
 // Should be used sparingly, and limited to useful areas.
-#define INFO(m, a...) syslog(LOG_INFO, m, ## a);
+#define INFO(m, a...) if (log_level_info) { syslog(LOG_INFO, m, ## a); }
 
 #endif

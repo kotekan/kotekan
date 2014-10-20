@@ -22,17 +22,16 @@
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]            The local JSON config file to use\n\n");
+    printf("    --config (-c) [file]            The local JSON config file to use\n");
+    printf("    --log-to-screen (-s)            Output log messages to stderr\n");
+    printf("    --log-level (-l) [level]        0 = errors only, 1 = +warnings, 2 = +info, 3 = +debug\n\n");
     printf("Testing Options:\n");
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
     printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
-    printf("    --write-local (-l)              Write the data locally.\n");
+    printf("    --write-local (-w)              Write the data locally.\n");
 }
 
 int main(int argc, char ** argv) {
-
-    // Setup syslog
-    openlog ("kotekan", LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_LOCAL1);
 
     int use_ch_acq = 1;
     int read_file = 0;
@@ -42,20 +41,23 @@ int main(int argc, char ** argv) {
     char * config_file_name = "../../kotekan/kotekan.conf";
     struct Config config;
     int error = 0;
+    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
 
     for (;;) {
         static struct option long_options[] = {
             {"no-network-test", no_argument, 0, 't'},
             {"read-file", required_argument, 0, 'f'},
             {"config", required_argument, 0, 'c'},
-            {"write-local", no_argument, 0, 'l'},
+            {"write-local", no_argument, 0, 'w'},
+            {"log-level", required_argument, 0, 'l'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
+        int option_value = 0;
 
-        opt_val = getopt_long (argc, argv, "htlf:c:",
+        opt_val = getopt_long (argc, argv, "htwsf:c:l:",
                                long_options, &option_index);
 
         // End of args
@@ -71,8 +73,11 @@ int main(int argc, char ** argv) {
             case 't':
                 no_network_test = 1;
                 break;
-            case 'l':
+            case 'w':
                 use_ch_acq = 0;
+                break;
+            case 's':
+                log_options = log_options | LOG_PERROR;
                 break;
             case 'f':
                 read_file = 1;
@@ -81,12 +86,29 @@ int main(int argc, char ** argv) {
             case 'c':
                 config_file_name = strdup(optarg);
                 break;
+            case 'l':
+                option_value = atoi(optarg);
+                switch (option_value) {
+                    case 3:
+                        log_level_debug = 1;
+                    case 2:
+                        log_level_info = 1;
+                    case 1:
+                        log_level_warn = 1;
+                    default:
+                        break;
+                }
+                break;
             default:
                 printf("Invalid option, run with -h to see options");
                 return -1;
                 break;
         }
     }
+
+    // Setup syslog
+    openlog ("kotekan", log_options, LOG_LOCAL1);
+    INFO("kotekan starting..."); /// TODO Include git commit id.
 
     // Load configuration file.
     error = load_config_from_file(&config, config_file_name);
@@ -95,7 +117,7 @@ int main(int argc, char ** argv) {
         return -1;
     }
 
-    INFO("Parsed config:");
+    INFO("Parsed config file %s:", config_file_name);
     print_config(&config);
 
     // If we are reading from a file, force the number of links to be 1.
@@ -117,9 +139,11 @@ int main(int argc, char ** argv) {
     pthread_t gpu_t[config.gpu.num_gpus];
     struct gpuThreadArgs gpu_args[config.gpu.num_gpus];
 
+    INFO("Starting GPU threads...");
+
     for (int i = 0; i < config.gpu.num_gpus; ++i) {
 
-        INFO ("Creating buffers");
+        DEBUG("Creating buffers...");
 
         // TODO Figure out why this value currently needs to be constant.
         int links_per_gpu = 3; // num_links_per_gpu(&config, i);
@@ -153,17 +177,19 @@ int main(int argc, char ** argv) {
 
         CHECK_ERROR( pthread_mutex_destroy(&gpu_args[i].lock) );
         CHECK_ERROR( pthread_cond_destroy(&gpu_args[i].cond) );
+
+        INFO("GPU thread %d ready.", i);
     }
 
     //sleep(5);
-    DEBUG("Starting up network threads\n");
+    INFO("Starting up network threads...");
 
     // Create network threads
     pthread_t network_t[config.fpga_network.num_links];
     struct networkThreadArg network_args[config.fpga_network.num_links];
 
     for (int i = 0; i < config.fpga_network.num_links; ++i) {
-        DEBUG("Link %d being assigned to buffer %d", i, config.fpga_network.link_map[i].gpu_id);
+        INFO("Link %d being assigned to buffer %d", i, config.fpga_network.link_map[i].gpu_id);
         network_args[i].buf = &input_buffer[config.fpga_network.link_map[i].gpu_id];
         //Sets how long takes data.  in GB.  ~4800 is ~1hr
         // 0 = unlimited

@@ -3,6 +3,12 @@
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
 
+
+// Default values for log levels.
+int log_level_warn = 0;
+int log_level_debug = 0;
+int log_level_info = 0;
+
 //from amd firepro demo:
 char* oclGetOpenCLErrorCodeStr(cl_int input)
 {
