@@ -481,7 +481,7 @@ void network_thread(void * arg) {
         count++;
         total_packets++;
         int output_period = config->processing.num_gpu_frames *
-            config->processing.samples_per_data_set;
+            config->processing.samples_per_data_set / config->fpga_network.timesamples_per_packet;
 
         if (count % (output_period+1) == 0) {
             current_time = e_time();
