@@ -20,3 +20,6 @@ add_custom_target(kernel_copy
         "kernels")
 
 add_dependencies( kotekan kernel_copy )
+
+install(TARGETS kotekan DESTINATION bin COMPONENT binaries)
+install(FILES kotekan.conf DESTINATION conf COMPONENT config)

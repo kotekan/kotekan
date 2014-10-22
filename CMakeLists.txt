@@ -11,6 +11,11 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 
+SET(CMAKE_INSTALL_PREFIX "/root/kotekan/")
+
+install(DIRECTORY kernels DESTINATION . )
+
 add_subdirectory(lib)
 add_subdirectory(kotekan)
 add_subdirectory(tools)
+add_subdirectory(scripts)

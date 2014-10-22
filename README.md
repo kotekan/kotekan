@@ -27,6 +27,10 @@ To build with the project with debug symbols:
 	cmake -DCMAKE_BUILD_TYPE=Debug ..
 	make 
 
+To install the program (only works on CentOS at the moment):
+
+	make install
+
 # Build Requirements
 
 * Standard dev tools and kernel headers

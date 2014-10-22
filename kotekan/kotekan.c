@@ -9,6 +9,10 @@
 #include <getopt.h>
 #include <assert.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "errors.h"
 #include "buffers.h"
@@ -25,10 +29,60 @@ void print_help() {
     printf("    --config (-c) [file]            The local JSON config file to use\n");
     printf("    --log-to-screen (-s)            Output log messages to stderr\n");
     printf("    --log-level (-l) [level]        0 = errors only, 1 = +warnings, 2 = +info, 3 = +debug\n\n");
+    printf("    --daemon -d [root]              Run in daemon mode, disables output to stderr");
     printf("Testing Options:\n");
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
     printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
     printf("    --write-local (-w)              Write the data locally.\n");
+}
+
+void daemonize(char * root_dir, int log_options) {
+    // Process ID and Session ID.
+    pid_t pid, sid;
+
+    // Fork off the parent process.
+    pid = fork();
+    if (pid < 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    // Exit the parrent proces.
+    if (pid > 0) {
+        FILE * pid_fd = fopen("/var/run/kotekan.pid", "w");
+        if (!pid_fd) {
+            perror("failed to open PID file");
+            exit(EXIT_FAILURE);
+        }
+        fprintf(pid_fd, "%d\n", pid);
+        fclose(pid_fd);
+        exit(EXIT_SUCCESS);
+    }
+
+    // Change the file mode mask.
+    umask(0);
+
+    // Open logs.
+    openlog ("kotekan", log_options, LOG_LOCAL1);
+
+    // Create a new SID for the child process
+    sid = setsid();
+    if (sid < 0) {
+        ERROR("Cannot set SID!");
+        exit(EXIT_FAILURE);
+    }
+
+    // Change the current working directory.
+    if ((chdir(root_dir)) < 0) {
+        ERROR("Cannot change directory to %s", root_dir);
+        exit(EXIT_FAILURE);
+    }
+
+    // Close standard file descriptors
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    // TODO Handle signals.
 }
 
 int main(int argc, char ** argv) {
@@ -38,10 +92,12 @@ int main(int argc, char ** argv) {
     char * input_file_name = NULL;
     int opt_val = 0;
     int no_network_test = 0;
-    char * config_file_name = "../../kotekan/kotekan.conf";
+    char * config_file_name = "kotekan.conf";
     struct Config config;
     int error = 0;
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
+    int make_daemon = 0;
+    char * kotekan_root_dir = "./";
 
     for (;;) {
         static struct option long_options[] = {
@@ -50,6 +106,7 @@ int main(int argc, char ** argv) {
             {"config", required_argument, 0, 'c'},
             {"write-local", no_argument, 0, 'w'},
             {"log-level", required_argument, 0, 'l'},
+            {"daemon", required_argument, 0, 'd'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
@@ -57,7 +114,7 @@ int main(int argc, char ** argv) {
         int option_index = 0;
         int option_value = 0;
 
-        opt_val = getopt_long (argc, argv, "htwsf:c:l:",
+        opt_val = getopt_long (argc, argv, "htwsf:c:l:d:",
                                long_options, &option_index);
 
         // End of args
@@ -86,6 +143,10 @@ int main(int argc, char ** argv) {
             case 'c':
                 config_file_name = strdup(optarg);
                 break;
+            case 'd':
+                make_daemon = 1;
+                kotekan_root_dir = strdup(optarg);
+                break;
             case 'l':
                 option_value = atoi(optarg);
                 switch (option_value) {
@@ -106,8 +167,14 @@ int main(int argc, char ** argv) {
         }
     }
 
-    // Setup syslog
-    openlog ("kotekan", log_options, LOG_LOCAL1);
+    if (make_daemon) {
+        // Do not use LOG_CONS or LOG_PERROR, since stderr does not exist in daemon mode.
+        daemonize(kotekan_root_dir, LOG_PID | LOG_NDELAY);
+    } else {
+        // Setup syslog
+        openlog ("kotekan", log_options, LOG_LOCAL1);
+    }
+
     INFO("kotekan starting..."); /// TODO Include git commit id.
 
     // Load configuration file.
