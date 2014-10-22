@@ -1,0 +1,7 @@
+.DS_Store
+*.kdev4
+*.save
+*.kate-swp
+.kdev_include_paths
+*.c~
+*.h~
