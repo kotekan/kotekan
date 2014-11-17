@@ -27,6 +27,7 @@ struct BufferInfo {
     uint32_t fpga_seq_num;
     struct timeval first_packet_recv_time;
     struct ErrorMatrix error_matrix;
+    uint16_t stream_ID;
 
     // 1 = in use, 0 = avaiable;
     char in_use;
@@ -135,6 +136,8 @@ int32_t get_buffer_data_ID(struct Buffer * buf, const int ID);
 
 uint32_t get_fpga_seq_num(struct Buffer * buf, const int ID);
 
+uint16_t get_streamID(struct Buffer * buf, const int ID);
+
 struct timeval get_first_packet_recv_time(struct Buffer * buf, const int ID);
 
 // TODO/HACK This function bypasses the thread safety systems that the other get_ functions have.
@@ -153,6 +156,8 @@ struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID);
 void set_data_ID(struct Buffer * buf, const int ID, const int data_ID);
 
 void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint32_t fpga_seq_num);
+
+void set_stream_ID(struct Buffer * buf, const int ID, const uint16_t stream_ID);
 
 void set_first_packet_recv_time(struct Buffer * buf, const int ID, const struct timeval time);
 

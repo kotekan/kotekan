@@ -90,11 +90,17 @@ void gpu_thread(void* arg)
 
     }
 
-    DEBUG("Closing OpenCL\n");
+    DEBUG("Closing OpenCL, thread: %d", args->gpu_id);
 
-    close_open_cl(&cl_data);
+    // *** BUG ***
+    // This function blocks, and prevents the system from shutting down.  However without this
+    // function the program will have memory leaks if gpu_thread is restarted!
+    // *** BUG ***
+    //close_open_cl(&cl_data);
 
     mark_producer_done(args->out_buf, 0);
+
+    DEBUG("Closed OpenCL, thread: %d", args->gpu_id);
 
     int ret;
     pthread_exit((void *) &ret);
@@ -522,12 +528,12 @@ void setup_open_cl(struct OpenCLData * cl_data)
 
 void close_open_cl(struct OpenCLData * cl_data)
 {
-    CHECK_CL_ERROR( clReleaseKernel(cl_data->corr_kernel) );
-    CHECK_CL_ERROR( clReleaseProgram(cl_data->program) );
-
     for (int i = 0; i < NUM_QUEUES; ++i) {
         CHECK_CL_ERROR( clReleaseCommandQueue(cl_data->queue[i]) );
     }
+
+    CHECK_CL_ERROR( clReleaseKernel(cl_data->corr_kernel) );
+    CHECK_CL_ERROR( clReleaseProgram(cl_data->program) );
 
     for (int i = 0; i < cl_data->in_buf->num_buffers; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_input_buffer[i]) );

@@ -33,4 +33,9 @@ void reorganize_32_to_16_element_UT_GPU_correlated_data_with_shuffle(
     int actual_num_frequencies, int actual_num_elements,
     int num_data_sets, int *correlated_data, int *map);
 
+void reorganize_GPU_to_upper_triangle(int block_side_length, int num_blocks,
+    int actual_num_frequencies, int actual_num_elements,
+    int num_data_sets, int *gpu_data, complex_int_t *final_matrix);
+
+
 #endif

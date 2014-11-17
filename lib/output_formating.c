@@ -245,3 +245,75 @@ void reorganize_32_to_16_element_UT_GPU_correlated_data_with_shuffle(int actual_
     }
     return;
 }
+
+void reorganize_GPU_to_upper_triangle(int block_side_length,
+                                      int num_blocks,
+                                      int actual_num_frequencies,
+                                      int actual_num_elements,
+                                      int num_data_sets,
+                                      int *gpu_data,
+                                      complex_int_t *final_matrix) {
+
+    for (int m = 0; m < num_data_sets; m++){
+        // We go through the gpu data sequentially and
+        // map it to the proper locations in the output array
+        int GPU_address =
+            m*(actual_num_frequencies*(num_blocks*(block_side_length*block_side_length*2)));
+
+        for (int frequency_bin = 0; frequency_bin < actual_num_frequencies; frequency_bin++ ){
+            int block_x_ID = 0;
+            int block_y_ID = 0;
+            int num_blocks_x = actual_num_elements/block_side_length;
+            int block_check = num_blocks_x;
+            int frequency_offset =
+                m*actual_num_frequencies*(actual_num_elements* (actual_num_elements+1))/2 +
+                frequency_bin * (actual_num_elements* (actual_num_elements+1))/2;
+                // frequency_bin * number of items in an upper triangle
+
+            for (int block_ID = 0; block_ID < num_blocks; block_ID++){
+                if (block_ID == block_check){ //at the end of a row in the upper triangle
+                    num_blocks_x--;
+                    block_check += num_blocks_x;
+                    block_y_ID++;
+                    block_x_ID = block_y_ID;
+                }
+
+                for (int y_ID_local = 0; y_ID_local < block_side_length; y_ID_local++){
+
+                    for (int x_ID_local = 0; x_ID_local < block_side_length; x_ID_local++){
+
+                        int x_ID_global = block_x_ID * block_side_length + x_ID_local;
+                        int y_ID_global = block_y_ID * block_side_length + y_ID_local;
+
+                        // address_1d_output = frequency_offset, plus the number of entries
+                        // in the rectangle area (y_ID_global*actual_num_elements),
+                        // minus the number of elements in lower triangle to that row:
+                        // (((y_ID_global-1)*y_ID_global)/2),
+                        // plus the contributions to the address from the current row:
+                        // (x_ID_global - y_ID_global)
+                        int address_1d_output =
+                            frequency_offset + y_ID_global*actual_num_elements -
+                            ((y_ID_global-1)*y_ID_global)/2 + (x_ID_global - y_ID_global);
+
+                        if (block_x_ID != block_y_ID){ //when we are not in the diagonal blocks
+                            final_matrix[address_1d_output].real = gpu_data[GPU_address++];
+                            final_matrix[address_1d_output].imag = gpu_data[GPU_address++];
+                        }
+                        else{ // the special case needed to deal with the diagonal pieces
+                            if (x_ID_local >= y_ID_local){
+                                final_matrix[address_1d_output].real = gpu_data[GPU_address++];
+                                final_matrix[address_1d_output].imag = gpu_data[GPU_address++];
+                            }
+                            else{
+                                GPU_address += 2;
+                            }
+                        }
+                    }
+                }
+                //offset_GPU += (block_side_length*block_side_length);
+                //update block offset values
+                block_x_ID++;
+            }
+        }
+    }
+}

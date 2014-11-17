@@ -53,6 +53,9 @@ void ch_acq_uplink_thread(void* arg)
     int buffer_size = sizeof(struct tcp_frame_header) +
                         num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
 
+    int num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
+    int num_values_per_link = num_vis * config->processing.num_local_freq;
+
     unsigned char * buf = malloc(buffer_size);
     CHECK_MEM(buf);
 
@@ -93,6 +96,8 @@ void ch_acq_uplink_thread(void* arg)
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
+            INFO("Closing ch_acq_uplink");
+            close(tcp_fd);
             int ret;
             pthread_exit((void *) &ret);
         }
@@ -102,19 +107,30 @@ void ch_acq_uplink_thread(void* arg)
         struct timeval frame_start_time = get_first_packet_recv_time(&args->buf[gpu_id], bufferID);
 
         for (int i = 0; i < config->processing.num_data_sets; ++i) {
-            // TODO Make this cleaner (single function)
-            reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(
-                config->processing.num_local_freq,
-                config->processing.num_elements,
-                1,
-                (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)],
-                args->config->processing.product_remap);
+
+            if (config->processing.num_elements <= 16) {
+                // TODO Make this cleaner (single function)
+                reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(
+                    config->processing.num_local_freq,
+                    config->processing.num_elements,
+                    1,
+                    (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)],
+                    args->config->processing.product_remap);
 
 
-            shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(
-                config->processing.num_local_freq,
-                (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)],
-                (complex_int_t *)&data_sets_buf[i * num_values * sizeof(complex_int_t)], link_id );
+                shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(
+                    config->processing.num_local_freq,
+                    (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)],
+                    (complex_int_t *)&data_sets_buf[i * num_values * sizeof(complex_int_t)], link_id );
+            } else {
+                reorganize_GPU_to_upper_triangle(config->gpu.block_size,
+                    config->processing.num_blocks,
+                    config->processing.num_local_freq,
+                    config->processing.num_elements,
+                    1,
+                    (int *)&args->buf[gpu_id].data[bufferID][i * (args->buf[gpu_id].buffer_size / config->processing.num_data_sets)],
+                    (complex_int_t *)&data_sets_buf[(i * num_values + link_id * num_values_per_link) * sizeof(complex_int_t)]);
+            }
         }
         // TODO Add the ability to integrate the data down further here.
 
@@ -134,7 +150,7 @@ void ch_acq_uplink_thread(void* arg)
                     header->cpu_timestamp.tv_usec = header->cpu_timestamp.tv_usec + time_offset;
                     header->fpga_seq_number = fpga_seq_number*config->fpga_network.timesamples_per_packet + i * config->processing.samples_per_data_set;
                     header->num_freq = config->processing.num_total_freq;
-                    header->num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
+                    header->num_vis = num_vis;
                     for (int j = 0; j < num_values; ++j) {
                         visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                     }

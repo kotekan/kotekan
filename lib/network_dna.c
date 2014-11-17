@@ -40,14 +40,14 @@ void check_if_done(int * total_buffers_filled, struct networkThreadArg * args,
     (*total_buffers_filled)++;
 
     // If data_limit = 0 => unlimited
-    if (args->data_limit == 0) {
+    if (args->config->processing.data_limit == 0) {
         return;
     }
 
-    if ( (*total_buffers_filled) * (args->buf->buffer_size / (1024*1024)) >= args->data_limit * 1024) {
+    if ( (*total_buffers_filled) * (args->buf->buffer_size / (1024*1024)) >= args->config->processing.data_limit * 1024) {
         double end_time = e_time();
-        printf("Stopping packet capture, ran for ~ %f seconds.\n", end_time - start_time);
-        printf("\nStats:\nTotal Packets Captured: %lld\nPackets lost: %d\nOut of order packets: %d\nDuplicate Packets: %d\n", 
+        INFO("Stopping packet capture, ran for ~ %f seconds.\n", end_time - start_time);
+        INFO("\nStats:\nTotal Packets Captured: %lld\nPackets lost: %d\nOut of order packets: %d\nDuplicate Packets: %d\n",
                 total_packets, total_lost, total_out_of_order, total_duplicate);
         mark_producer_done(args->buf, args->link_id);
         int ret = 0;
@@ -86,6 +86,7 @@ void network_thread(void * arg) {
     double current_time = e_time();
     int64_t seq = 0;
     int64_t last_seq = -1;
+    uint32_t stream_ID = 0xffff;
     int64_t diff = 0;
     int64_t total_lost = 0;
     int64_t grand_total_lost = 0;
@@ -209,6 +210,7 @@ void network_thread(void * arg) {
             if (last_seq != -1) {
                 // If not the first packet we need to set BufferInfo data.
                 set_fpga_seq_num(args->buf, buffer_id, last_seq + 1);
+                set_stream_ID(args->buf, buffer_id, stream_ID);
                 // TODO This is close, but not perfect timing - but this shouldn't really matter.
                 static struct timeval now;
                 gettimeofday(&now, NULL);
@@ -266,6 +268,7 @@ void network_thread(void * arg) {
 
         // Do seq number related stuff (location will change.)
         seq = ((((uint32_t *) &pkt_buf[54])[0]) + 0 ) >> 2;
+        stream_ID = ((uint16_t *) &pkt_buf[44])[0];
         //INFO("Network thread: %d, seq: %u", args->frequency_id, seq);
 
         // First packet alignment code.
@@ -276,14 +279,28 @@ void network_thread(void * arg) {
             }
 
             INFO("Network Thread: %d, Got first packet %" PRId64, args->frequency_id, seq);
+            uint16_t link_ID = stream_ID & 0x000F;
+            uint16_t slot_ID = (stream_ID & 0x00F0) >> 4;
+            uint16_t crate_ID = (stream_ID & 0x0F00) >> 8;
+            INFO("Network Thread: %d, Link ID: %u; Slot ID: %u; Crate ID: %u",
+                 args->frequency_id, link_ID, slot_ID, crate_ID);
+            if (link_ID != args->frequency_id) {
+                // This shouldn't really be necessary, since the system should work with any cable configuration
+                // However for now we will enforce it, since the cables are supposed to be connected in this way.
+                ERROR("Cable connected incorrectly, please fix before running kotekan.");
+                exit(0);
+            }
+
             // Set the time we got the first packet.
             static struct timeval now;
             gettimeofday(&now, NULL);
             set_first_packet_recv_time(args->buf, buffer_id, now);
             if (args->read_from_file == 0) {
                 set_fpga_seq_num(args->buf, buffer_id, seq - seq % SEQ_NUM_EDGE);
+                set_stream_ID(args->buf, buffer_id, stream_ID);
             } else {
                 set_fpga_seq_num(args->buf, buffer_id, seq);
+                set_stream_ID(args->buf, buffer_id, stream_ID);
             }
 
             // Time for internal counters.
@@ -412,6 +429,7 @@ void network_thread(void * arg) {
                         uint32_t fpga_seq_number = last_edge + j * (args->buf->buffer_size/udp_payload_size); // == number of iterations FIXME.
 
                         set_fpga_seq_num(args->buf, buffer_id, fpga_seq_number);
+                        set_stream_ID(args->buf, buffer_id, stream_ID);
 
                         // This really isn't the correct time, but this is the best we can do here.
                         struct timeval now;

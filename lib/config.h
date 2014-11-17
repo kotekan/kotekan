@@ -64,6 +64,9 @@ struct ProcessingConfig {
     // The remapping of products from FPGA order to "physical (on the focal line) order"
     int * product_remap;
 
+    // Data limit, used for testing to take "snapshots"
+    int data_limit;
+
     /// NOTE The next two values are specal cases when the number of elements is < 32, i.e.
     /// when the correlator is running in 16-element mode with one FPGA.
 

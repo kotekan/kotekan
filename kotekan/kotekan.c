@@ -222,7 +222,7 @@ int main(int argc, char ** argv) {
         create_buffer(&input_buffer[i], links_per_gpu * config.processing.buffer_depth,
                       config.processing.samples_per_data_set * config.processing.num_adjusted_elements *
                       config.processing.num_adjusted_local_freq * config.processing.num_data_sets,
-                      links_per_gpu, &pool[i]);
+                      num_links_per_gpu(&config, i), &pool[i]);
         create_buffer(&output_buffer[i], links_per_gpu * config.processing.buffer_depth,
                       output_len * config.processing.num_data_sets * sizeof(cl_int), 1, &pool[i]);
 
@@ -258,9 +258,6 @@ int main(int argc, char ** argv) {
     for (int i = 0; i < config.fpga_network.num_links; ++i) {
         INFO("Link %d being assigned to buffer %d", i, config.fpga_network.link_map[i].gpu_id);
         network_args[i].buf = &input_buffer[config.fpga_network.link_map[i].gpu_id];
-        //Sets how long takes data.  in GB.  ~4800 is ~1hr
-        // 0 = unlimited
-        network_args[i].data_limit = 0;
         network_args[i].ip_address = config.fpga_network.link_map[i].link_name;
         network_args[i].link_id = config.fpga_network.link_map[i].link_id;
         network_args[i].frequency_id = i;
@@ -308,6 +305,8 @@ int main(int argc, char ** argv) {
     }
 
     CHECK_ERROR( pthread_join(output_consumer_t, (void **) &ret) );
+
+    INFO("kotekan shutdown successfully.");
 
     closelog();
 

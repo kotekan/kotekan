@@ -11,7 +11,7 @@ int parse_processing_config(struct Config* config, struct json_t * json)
     int error = 0;
     json_t * product_remap;
 
-    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:o}",
+    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:o, s:i}",
         "num_elements", &config->processing.num_elements,
         "num_local_freq", &config->processing.num_local_freq,
         "num_total_freq", &config->processing.num_total_freq,
@@ -19,7 +19,8 @@ int parse_processing_config(struct Config* config, struct json_t * json)
         "num_data_sets", &config->processing.num_data_sets,
         "buffer_depth", &config->processing.buffer_depth,
         "num_gpu_frames", &config->processing.num_gpu_frames,
-        "product_remap", &product_remap);
+        "product_remap", &product_remap,
+        "data_limit", &config->processing.data_limit);
 
     if (error) {
         ERROR("Error parsing processing config.");
@@ -28,10 +29,13 @@ int parse_processing_config(struct Config* config, struct json_t * json)
 
     int remap_size = json_array_size(product_remap);
 
+    // TODO Bring this section back once 256-element reordering is supported.
+    /*
     if (remap_size != config->processing.num_elements) {
         ERROR("The remap array must have the same size as the number of elements.");
         return -2;
     }
+    */
 
     config->processing.product_remap = malloc(remap_size * sizeof(int));
     assert(config->processing.product_remap != NULL);
@@ -249,10 +253,12 @@ void print_config(struct Config* config)
     INFO("config.processing.num_adjusted_local_freq = %d", config->processing.num_adjusted_local_freq);
     INFO("config.processing.num_blocks = %d", config->processing.num_blocks);
 
+    // TODO Bring this section back once 256-element reordering is supported.
+    /*
     for (int i = 0; i < config->processing.num_elements; ++i) {
         INFO("config.processing.product_remap[%d] = %d", i, config->processing.product_remap[i]);
     }
-
+    */
     // FPGA Network Section
     INFO("config.fpga_network.num_links = %d", config->fpga_network.num_links);
     INFO("config.fpga_network.port_number = %d", config->fpga_network.port_number);
