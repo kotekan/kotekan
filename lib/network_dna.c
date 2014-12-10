@@ -25,8 +25,6 @@
 #define COUNTER_BITS 30
 #define COUNTER_MAX (1ll << COUNTER_BITS) - 1ll
 
-#define SEQ_NUM_EDGE 100000
-
 double e_time(void) {
     static struct timeval now;
     gettimeofday(&now, NULL);
@@ -104,6 +102,12 @@ void network_thread(void * arg) {
 
     struct ErrorMatrix * error_matrix = NULL;
 
+    // NOTE: This is a temporary solution to aligning frames. Since it requires
+    // an integration period which is a power of 2.
+    const uint32_t integration_edge =
+        (config->processing.samples_per_data_set * config->processing.num_gpu_frames *
+        config->processing.num_data_sets) >> 2;
+
     // Testing variables.
     FILE * data_file = NULL;
     u_char file_buf[config->fpga_network.udp_packet_size];
@@ -138,10 +142,8 @@ void network_thread(void * arg) {
         }
     }
 
-
     // Make sure the first buffer is ready to go. (this check is not really needed)
     wait_for_empty_buffer(args->buf, buffer_id);
-
 
     set_data_ID(args->buf, buffer_id, data_id++);
     error_matrix = get_error_matrix(args->buf, buffer_id);
@@ -233,7 +235,9 @@ void network_thread(void * arg) {
             }
 
             if (pf_header.len != config->fpga_network.udp_packet_size) {
-                INFO("Received packet with incorrect length: %d", pf_header.len);
+                INFO("Link id: %d; Received packet with incorrect length: %d",
+                     args->dev_id,
+                     pf_header.len);
                 continue;
             }
         } else {
@@ -269,22 +273,22 @@ void network_thread(void * arg) {
         // Do seq number related stuff (location will change.)
         seq = ((((uint32_t *) &pkt_buf[54])[0]) + 0 ) >> 2;
         stream_ID = ((uint16_t *) &pkt_buf[44])[0];
-        //INFO("Network thread: %d, seq: %u", args->frequency_id, seq);
+        //INFO("Network thread: %d, seq: %u", args->dev_id, seq);
 
         // First packet alignment code.
         if (unlikely(last_seq == -1)) {
 
-            if ( !( (seq % SEQ_NUM_EDGE) <= 10 && (seq % SEQ_NUM_EDGE) >= 0 ) && args->read_from_file == 0) {
+            if ( !( (seq % integration_edge) <= 10 && (seq % integration_edge) >= 0 ) && args->read_from_file == 0) {
                 continue;
             }
 
-            INFO("Network Thread: %d, Got first packet %" PRId64, args->frequency_id, seq);
+            INFO("Network Thread: %d, Got first packet %" PRId64, args->dev_id, seq << 2);
             uint16_t link_ID = stream_ID & 0x000F;
             uint16_t slot_ID = (stream_ID & 0x00F0) >> 4;
             uint16_t crate_ID = (stream_ID & 0x0F00) >> 8;
             INFO("Network Thread: %d, Link ID: %u; Slot ID: %u; Crate ID: %u",
-                 args->frequency_id, link_ID, slot_ID, crate_ID);
-            if (link_ID != args->frequency_id) {
+                 args->dev_id, link_ID, slot_ID, crate_ID);
+            if (link_ID != args->dev_id) {
                 // This shouldn't really be necessary, since the system should work with any cable configuration
                 // However for now we will enforce it, since the cables are supposed to be connected in this way.
                 ERROR("Cable connected incorrectly, please fix before running kotekan.");
@@ -296,7 +300,7 @@ void network_thread(void * arg) {
             gettimeofday(&now, NULL);
             set_first_packet_recv_time(args->buf, buffer_id, now);
             if (args->read_from_file == 0) {
-                set_fpga_seq_num(args->buf, buffer_id, seq - seq % SEQ_NUM_EDGE);
+                set_fpga_seq_num(args->buf, buffer_id, seq - seq % integration_edge);
                 set_stream_ID(args->buf, buffer_id, stream_ID);
             } else {
                 set_fpga_seq_num(args->buf, buffer_id, seq);
@@ -308,7 +312,7 @@ void network_thread(void * arg) {
 
             // TODO This is only correct with high probability,
             // this should be made deterministic. 
-            if (seq % SEQ_NUM_EDGE == 0 || args->read_from_file == 1) {
+            if (seq % integration_edge == 0 || args->read_from_file == 1) {
                 last_seq = seq;
                 nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, udp_payload_size);
                 count++;
@@ -317,7 +321,7 @@ void network_thread(void * arg) {
                 // If we have lost the packet on the edge,
                 // we set the last_seq to the edge so that the buffer will still be aligned.
                 // We also ignore the current packet, and just allow it to be lost for simplicity.
-                last_seq = seq - seq % SEQ_NUM_EDGE;
+                last_seq = seq - seq % integration_edge;
             }
             continue;
         }
@@ -503,22 +507,22 @@ void network_thread(void * arg) {
 
         if (count % (output_period+1) == 0) {
             current_time = e_time();
-            DEBUG("Link id: %d; Receive Speed: %1.3f Gbps %.0f pps\n", args->frequency_id,
+            DEBUG("Link id: %d; Receive Speed: %1.3f Gbps %.0f pps\n", args->dev_id,
                   (((double)output_period*config->fpga_network.udp_packet_size*8) /
                   (current_time - last_time)) / (1024*1024*1024), output_period / (current_time - last_time) );
             last_time = current_time;
             if (total_lost != 0) {
                 INFO("Link id: %d; Packet loss on %.6f%%\n",
-                     args->frequency_id, ((double)total_lost/(double)output_period)*100);
+                     args->dev_id, ((double)total_lost/(double)output_period)*100);
             } else {
                 INFO("Link id: %d; Packet loss on %.6f%%\n",
-                     args->frequency_id, (double)0.0);
+                     args->dev_id, (double)0.0);
             }
             grand_total_lost += total_lost;
             total_lost = 0;
 
             INFO("Link id: %d; Number of full buffers: %d/%d; Total data received: %.2f GB\n",
-                 args->frequency_id, get_num_full_buffers(args->buf),
+                 args->dev_id, get_num_full_buffers(args->buf),
                  args->buf->num_buffers,
                  ((double)total_buffers_filled *
                  ((double)args->buf->buffer_size / (1024.0*1024.0)))/1024.0);

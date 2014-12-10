@@ -29,13 +29,11 @@ int parse_processing_config(struct Config* config, struct json_t * json)
 
     int remap_size = json_array_size(product_remap);
 
-    // TODO Bring this section back once 256-element reordering is supported.
-    /*
     if (remap_size != config->processing.num_elements) {
-        ERROR("The remap array must have the same size as the number of elements.");
+        ERROR("The remap array must have the same size as the number of elements. array size %d, num_elements %d",
+            remap_size, config->processing.num_elements);
         return -2;
     }
-    */
 
     config->processing.product_remap = malloc(remap_size * sizeof(int));
     assert(config->processing.product_remap != NULL);
@@ -253,12 +251,10 @@ void print_config(struct Config* config)
     INFO("config.processing.num_adjusted_local_freq = %d", config->processing.num_adjusted_local_freq);
     INFO("config.processing.num_blocks = %d", config->processing.num_blocks);
 
-    // TODO Bring this section back once 256-element reordering is supported.
-    /*
     for (int i = 0; i < config->processing.num_elements; ++i) {
         INFO("config.processing.product_remap[%d] = %d", i, config->processing.product_remap[i]);
     }
-    */
+
     // FPGA Network Section
     INFO("config.fpga_network.num_links = %d", config->fpga_network.num_links);
     INFO("config.fpga_network.port_number = %d", config->fpga_network.port_number);

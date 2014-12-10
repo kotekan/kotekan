@@ -16,15 +16,26 @@
 #include "output_formating.h"
 #include "config.h"
 
+#define MAX_NUM_LINKS (8)
+
 // A TCP frame contains this header followed by the visibilities, and flags.
 // -- HEADER:sizeof(TCP_frame_header) --
 // -- VISIBILITIES:n_corr * n_freq * sizeof(complex_int_t) --
 // -- FLAGS:n_corr * sizeof(uint8_t) --
 #pragma pack(1)
+struct stream_id {
+    unsigned int link_id : 8;
+    unsigned int slot_id : 8;
+    unsigned int crate_id : 8;
+    unsigned int reserved : 8;
+};
+
 struct tcp_frame_header {
     uint32_t fpga_seq_number;
     uint32_t num_freq;
     uint32_t num_vis; // The number of visibilities per frequency.
+
+    struct stream_id stream_ids[MAX_NUM_LINKS];
 
     struct timeval cpu_timestamp; // The time stamp as set by the GPU correlator - not accurate!
 };
@@ -55,6 +66,8 @@ void ch_acq_uplink_thread(void* arg)
 
     int num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
     int num_values_per_link = num_vis * config->processing.num_local_freq;
+
+    struct stream_id local_stream_ids[MAX_NUM_LINKS];
 
     unsigned char * buf = malloc(buffer_size);
     CHECK_MEM(buf);
@@ -106,6 +119,12 @@ void ch_acq_uplink_thread(void* arg)
         uint32_t fpga_seq_number = get_fpga_seq_num(&args->buf[gpu_id], bufferID);
         struct timeval frame_start_time = get_first_packet_recv_time(&args->buf[gpu_id], bufferID);
 
+        uint32_t packed_stream_ID = get_streamID(&args->buf[gpu_id], bufferID);
+        local_stream_ids[link_id].link_id =   packed_stream_ID & 0x000F;
+        local_stream_ids[link_id].slot_id =  (packed_stream_ID & 0x00F0) >> 4;
+        local_stream_ids[link_id].crate_id = (packed_stream_ID & 0x0F00) >> 8;
+        local_stream_ids[link_id].reserved = (packed_stream_ID & 0xF000) >> 12;
+
         for (int i = 0; i < config->processing.num_data_sets; ++i) {
 
             if (config->processing.num_elements <= 16) {
@@ -132,7 +151,6 @@ void ch_acq_uplink_thread(void* arg)
                     (complex_int_t *)&data_sets_buf[(i * num_values + link_id * num_values_per_link) * sizeof(complex_int_t)]);
             }
         }
-        // TODO Add the ability to integrate the data down further here.
 
         // TODO Add flagging code here.
         for (int i = 0; i < num_values; ++i) {
@@ -151,6 +169,9 @@ void ch_acq_uplink_thread(void* arg)
                     header->fpga_seq_number = fpga_seq_number*config->fpga_network.timesamples_per_packet + i * config->processing.samples_per_data_set;
                     header->num_freq = config->processing.num_total_freq;
                     header->num_vis = num_vis;
+                    for (int j = 0; j < MAX_NUM_LINKS; ++j) {
+                        header->stream_ids[j] = local_stream_ids[j];
+                    }
                     for (int j = 0; j < num_values; ++j) {
                         visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                     }
@@ -165,9 +186,9 @@ void ch_acq_uplink_thread(void* arg)
 
                 // If we are on the last frame in the set, push the buffer.
                 if (frame_number + 1 >= config->processing.num_gpu_frames) {
-                    INFO("Sending frame to ch_master: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d",
+                    INFO("Sending frame to ch_master: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; BUFFER_SIZE = %d",
                         header->fpga_seq_number*config->fpga_network.timesamples_per_packet,
-                        header->num_freq, header->num_vis);
+                        header->num_freq, header->num_vis, buffer_size);
 
                     ssize_t bytes_sent = send(tcp_fd, buf, buffer_size, 0);
                     if (bytes_sent <= 0) {

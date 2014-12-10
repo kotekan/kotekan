@@ -260,7 +260,7 @@ int main(int argc, char ** argv) {
         network_args[i].buf = &input_buffer[config.fpga_network.link_map[i].gpu_id];
         network_args[i].ip_address = config.fpga_network.link_map[i].link_name;
         network_args[i].link_id = config.fpga_network.link_map[i].link_id;
-        network_args[i].frequency_id = i;
+        network_args[i].dev_id = i;
         network_args[i].num_links_in_group = num_links_in_group(&config, i);
 
         // Args for reading from file

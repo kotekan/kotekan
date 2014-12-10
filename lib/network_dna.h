@@ -10,7 +10,7 @@ struct networkThreadArg {
     int data_limit;
     int num_links_in_group;
     int link_id;
-    int frequency_id;
+    int dev_id;
 
     struct Config * config;
 

@@ -15,15 +15,26 @@
 #include <math.h>
 #include <assert.h>
 
+#define MAX_NUM_LINKS (8)
+
 // A TCP frame contains this header followed by the visibilities, and flags.
 // -- HEADER:sizeof(TCP_frame_header) --
 // -- VISIBILITIES:n_prod * n_freq * sizeof(complex_int_t) --
 // -- FLAGS:n_prod * sizeof(uint8_t) --
 #pragma pack(1)
+struct stream_id {
+    unsigned int link_id : 8;
+    unsigned int slot_id : 8;
+    unsigned int crate_id : 8;
+    unsigned int reserved : 8;
+};
+
 struct tcp_frame_header {
     uint32_t fpga_seq_number;
     uint32_t num_freq;
     uint32_t num_vis; // The number of visibilities per frequency.
+
+    struct stream_id stream_ids[MAX_NUM_LINKS];
 
     struct timeval cpu_timestamp; // The time stamp as set by the GPU correlator - not accurate!
 };
@@ -98,28 +109,28 @@ int main(int argc, char ** argv) {
 
     for (;;) {
 
-        fprintf(stderr, "Waiting for connection from GPU.");
+        fprintf(stderr, "Waiting for connection from GPU.\n");
         tcp_fd = accept(tcp_listen_fd, (struct sockaddr *)&gpu_addr, &tcp_addr_len);
 
         if (tcp_fd < 0) {
-            fprintf(stderr, "Error failed to accept tcp socket.");
+            fprintf(stderr, "Error failed to accept tcp socket.\n");
             continue;
         } else {
-            fprintf(stderr, "TCP connection with GPU established.");
+            fprintf(stderr, "TCP connection with GPU established.\n");
         }
 
         for (;;) {
             bytes_recv = recv(tcp_fd, (void *)tcp_buf, buffer_size, MSG_WAITALL);
 
             if (bytes_recv == 0) {
-                fprintf(stderr, "The GPU correlator closed its connection.");
+                fprintf(stderr, "The GPU correlator closed its connection.\n");
                 close(tcp_fd);
                 fclose(out_fp);
                 exit(0);
             }
 
             if (bytes_recv < 0) {
-                fprintf(stderr, "There was an error with the GPU correlator connection.");
+                fprintf(stderr, "There was an error with the GPU correlator connection.\n");
                 break;
             }
 
@@ -146,8 +157,16 @@ int main(int argc, char ** argv) {
                 return NULL;
             }
 
+            printf("Got GPU frame: %d\n",  header->fpga_seq_number);
+            printf("     Part || Link Id || Slot ID || Crate ID || Reserved\n");
+            for (int j = 0; j < MAX_NUM_LINKS; ++j) {
+                printf("%8u %8u %8u %8u %8u\n", j, header->stream_ids[j].link_id,
+                       header->stream_ids[j].slot_id, header->stream_ids[j].crate_id,
+                       header->stream_ids[j].reserved);
+            }
+
             size_t bytes_written = fwrite(vis, n_val * sizeof(complex_int_t), 1, out_fp);
-            printf(stderr, "bytes_written: %d", bytes_written);
+            printf("bytes_written: %d", bytes_written);
             //assert(bytes_written == n_val * sizeof(complex_int_t));
 
         }

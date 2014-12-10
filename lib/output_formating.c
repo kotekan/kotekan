@@ -317,3 +317,86 @@ void reorganize_GPU_to_upper_triangle(int block_side_length,
         }
     }
 }
+
+
+void reorganize_GPU_to_upper_triangle_remap(int block_side_length,
+                                            int num_blocks,
+                                            int actual_num_frequencies,
+                                            int actual_num_elements,
+                                            int num_data_sets,
+                                            int *gpu_data,
+                                            int *final_matrix,
+                                            int *map) {
+    for (int m = 0; m < num_data_sets; m++){
+        // we go through the gpu data sequentially and
+        // map it to the proper locations in the output array
+        int GPU_address =
+            m*(actual_num_frequencies*(num_blocks*(block_side_length*block_side_length*2)));
+        for (int frequency_bin = 0; frequency_bin < actual_num_frequencies; frequency_bin++ ){
+            int block_x_ID = 0;
+            int block_y_ID = 0;
+            int num_blocks_x = actual_num_elements/block_side_length;
+            int block_check = num_blocks_x;
+            // frequency_bin * number of items in an upper triangle
+            int frequency_offset = m*actual_num_frequencies*(actual_num_elements*
+                (actual_num_elements+1))/2 + frequency_bin * (actual_num_elements* (actual_num_elements+1))/2;
+
+            for (int block_ID = 0; block_ID < num_blocks; block_ID++){
+                if (block_ID == block_check){ //at the end of a row in the upper triangle
+                    num_blocks_x--;
+                    block_check += num_blocks_x;
+                    block_y_ID++;
+                    block_x_ID = block_y_ID;
+                }
+
+                for (int y_ID_local = 0; y_ID_local < block_side_length; y_ID_local++){
+
+                    for (int x_ID_local = 0; x_ID_local < block_side_length; x_ID_local++){
+
+                        int x_ID_global = block_x_ID * block_side_length + x_ID_local;
+                        int y_ID_global = block_y_ID * block_side_length + y_ID_local;
+                        //would reduce to the unmapped case if map[x_ID_global] = x_ID_global
+                        int mapped_x = map[x_ID_global];
+                        int mapped_y = map[y_ID_global];
+                        int imag_multiplier = 1;
+                        if (mapped_x < mapped_y){ //i.e. lower triangle position after remap
+                            int temp_mapped_x = mapped_x;
+                            mapped_x = mapped_y;
+                            mapped_y = temp_mapped_x;
+
+                            imag_multiplier = -1;
+                        }
+
+                        /// address_1d_output = frequency_offset,
+                        /// plus the number of entries in the rectangle area
+                        /// (y_ID_global*actual_num_elements), minus the number of elements in
+                        /// lower triangle to that row (((y_ID_global-1)*y_ID_global)/2),
+                        /// plus the contributions to the address from the current row
+                        /// (x_ID_global - y_ID_global)
+                        int address_1d_output = frequency_offset + mapped_y*actual_num_elements -
+                            ((mapped_y-1)*mapped_y)/2 + (mapped_x - mapped_y);
+
+                        if (block_x_ID != block_y_ID){ //when we are not in the diagonal blocks
+                            final_matrix[address_1d_output*2  ] = gpu_data[GPU_address++];
+                            final_matrix[address_1d_output*2+1] =
+                                imag_multiplier * gpu_data[GPU_address++];
+                        }
+                        else{ // the special case needed to deal with the diagonal pieces
+                            if (x_ID_local >= y_ID_local){
+                                final_matrix[address_1d_output*2  ] = gpu_data[GPU_address++];
+                                final_matrix[address_1d_output*2+1] =
+                                    imag_multiplier * gpu_data[GPU_address++];
+                            }
+                            else{
+                                GPU_address += 2;
+                            }
+                        }
+                    }
+                }
+                //update block offset values
+                block_x_ID++;
+            }
+        }
+    }
+    return;
+}
