@@ -291,8 +291,7 @@ void network_thread(void * arg) {
             if (link_ID != args->dev_id) {
                 // This shouldn't really be necessary, since the system should work with any cable configuration
                 // However for now we will enforce it, since the cables are supposed to be connected in this way.
-                ERROR("Cable connected incorrectly, please fix before running kotekan.");
-                exit(0);
+                ERROR("Cable connected incorrectly on link %d", args->dev_id);
             }
 
             // Set the time we got the first packet.
