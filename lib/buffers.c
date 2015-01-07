@@ -31,7 +31,8 @@ int private_are_producers_done(struct Buffer * buf);
 // Not thread safe, call from with-in a lock.
 void private_check_info_object(struct Buffer * buf, const int ID);
 
-int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool)
+int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
+                  struct InfoObjectPool * pool, char * buffer_name)
 {
 
     assert(num_buf > 0);
@@ -42,6 +43,9 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers, s
 
     CHECK_ERROR( pthread_cond_init(&buf->full_cond, NULL) );
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
+
+    // Copy the buffer buffer name.
+    buf->buffer_name = strdup(buffer_name);
 
     buf->num_buffers = num_buf;
     buf->info_object_pool = pool;
@@ -198,7 +202,8 @@ void wait_for_empty_buffer(struct Buffer* buf, const int ID)
 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     while (buf->is_full[ID] == 1) {
-        DEBUG("wait_for_empty_buffer: waiting for buffer ID = %d", ID);
+        DEBUG("wait_for_empty_buffer: waiting for empty buffer ID = %d in buffer %s",
+              ID, buf->buffer_name);
         pthread_cond_wait(&buf->empty_cond, &buf->lock);
     }
 

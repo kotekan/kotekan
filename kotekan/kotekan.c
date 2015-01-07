@@ -22,6 +22,8 @@
 #include "error_correction.h"
 #include "ch_acq_uplink.h"
 #include "config.h"
+#include "gpu_post_process.h"
+#include "chrx.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -193,8 +195,8 @@ int main(int argc, char ** argv) {
     }
 
     // Create buffers.
-    struct Buffer input_buffer[config.gpu.num_gpus];
-    struct Buffer output_buffer[config.gpu.num_gpus];
+    struct Buffer gpu_input_buffer[config.gpu.num_gpus];
+    struct Buffer gpu_output_buffer[config.gpu.num_gpus];
 
     cl_int output_len = config.processing.num_adjusted_local_freq * config.processing.num_blocks*
                         (config.gpu.block_size*config.gpu.block_size)*2.;
@@ -219,15 +221,16 @@ int main(int argc, char ** argv) {
                                     config.processing.num_adjusted_local_freq,
                                     config.processing.num_adjusted_elements);
 
-        create_buffer(&input_buffer[i], links_per_gpu * config.processing.buffer_depth,
+        create_buffer(&gpu_input_buffer[i], links_per_gpu * config.processing.buffer_depth,
                       config.processing.samples_per_data_set * config.processing.num_adjusted_elements *
                       config.processing.num_adjusted_local_freq * config.processing.num_data_sets,
-                      num_links_per_gpu(&config, i), &pool[i]);
-        create_buffer(&output_buffer[i], links_per_gpu * config.processing.buffer_depth,
-                      output_len * config.processing.num_data_sets * sizeof(cl_int), 1, &pool[i]);
+                      num_links_per_gpu(&config, i), &pool[i], "gpu_input_buffer");
+        create_buffer(&gpu_output_buffer[i], links_per_gpu * config.processing.buffer_depth,
+                      output_len * config.processing.num_data_sets * sizeof(cl_int), 1, &pool[i],
+                      "gpu_output_buffer");
 
-        gpu_args[i].in_buf = &input_buffer[i];
-        gpu_args[i].out_buf = &output_buffer[i];
+        gpu_args[i].in_buf = &gpu_input_buffer[i];
+        gpu_args[i].out_buf = &gpu_output_buffer[i];
         gpu_args[i].gpu_id = i;
         gpu_args[i].started = 0;
         gpu_args[i].config = &config;
@@ -257,7 +260,7 @@ int main(int argc, char ** argv) {
 
     for (int i = 0; i < config.fpga_network.num_links; ++i) {
         INFO("Link %d being assigned to buffer %d", i, config.fpga_network.link_map[i].gpu_id);
-        network_args[i].buf = &input_buffer[config.fpga_network.link_map[i].gpu_id];
+        network_args[i].buf = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
         network_args[i].ip_address = config.fpga_network.link_map[i].link_name;
         network_args[i].link_id = config.fpga_network.link_map[i].link_id;
         network_args[i].dev_id = i;
@@ -270,28 +273,58 @@ int main(int argc, char ** argv) {
         network_args[i].config = &config;
 
         if (no_network_test == 0) {
-            CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread, (void *)&network_args[i] ) );
+            CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread,
+                                        (void *)&network_args[i] ) );
         } else {
-            CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &test_network_thread, (void *)&network_args[i] ) );
+            CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &test_network_thread,
+                                        (void *)&network_args[i] ) );
         }
     }
 
     pthread_t output_consumer_t;
+    pthread_t output_network_t;
     if (use_ch_acq == 1) {
-        // Consumer thread which sends data to ch_acq server to be written to disk.
+        int num_values = ((config.processing.num_elements *
+        (config.processing.num_elements + 1)) / 2 ) *
+        config.processing.num_total_freq;
+
+        int tcp_buffer_size = sizeof(struct tcp_frame_header) +
+        num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
+
+        // TODO config file this.
+        const int network_buffer_depth = 10;
+
+        struct Buffer network_output_buffer;
+        create_buffer(&network_output_buffer, network_buffer_depth, tcp_buffer_size,
+                      1, pool, "network_output_buffer");
+
+        // The thread which creates output frame.
+        struct gpuPostProcessThreadArg gpu_post_process_args;
+        gpu_post_process_args.in_buf = gpu_output_buffer;
+        gpu_post_process_args.out_buf = &network_output_buffer;
+        gpu_post_process_args.config = &config;
+        CHECK_ERROR( pthread_create(&output_consumer_t, NULL,
+                                    (void *) &gpu_post_process_thread,
+                                    (void *) &gpu_post_process_args ) );
+
+        // The thread which sends it with TCP to ch_acq.
         struct ch_acqUplinkThreadArg ch_acq_uplink_args;
-        ch_acq_uplink_args.buf = output_buffer;
+        ch_acq_uplink_args.buf = &network_output_buffer;
         ch_acq_uplink_args.config = &config;
-        CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &ch_acq_uplink_thread, (void *)&ch_acq_uplink_args ) );
+        CHECK_ERROR( pthread_create(&output_network_t, NULL,
+                                    (void *) &ch_acq_uplink_thread,
+                                    (void *) &ch_acq_uplink_args ) );
     } else  {
         // Create consumer thread (i.e. file write thread).
         // TODO: only works with one GPU, fix to work with more than one?
         struct fileWriteThreadArg file_write_args;
         file_write_args.config = &config;
-        file_write_args.buf = &output_buffer[0];
+        file_write_args.buf = &gpu_output_buffer[0];
         file_write_args.data_dir = "results";
         file_write_args.dataset_name = "test_data";
-        CHECK_ERROR( pthread_create(&output_consumer_t, NULL, (void *) &file_write_thread, (void *)&file_write_args ) );
+        CHECK_ERROR( pthread_create(&output_consumer_t, NULL,
+                                    (void *) &file_write_thread,
+                                    (void *)&file_write_args ) );
     }
 
     // Join with threads.
@@ -305,6 +338,10 @@ int main(int argc, char ** argv) {
     }
 
     CHECK_ERROR( pthread_join(output_consumer_t, (void **) &ret) );
+
+    if (use_ch_acq == 1) {
+        CHECK_ERROR( pthread_join(output_network_t, (void **) &ret) );
+    }
 
     INFO("kotekan shutdown successfully.");
 

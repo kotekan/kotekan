@@ -86,6 +86,9 @@ struct Buffer {
 
     /// The pool of info objects
     struct InfoObjectPool * info_object_pool;
+
+    /// The name of the buffer for use in debug messages.
+    char * buffer_name;
 };
 
 /** @brief Creates a buffer object.
@@ -96,7 +99,8 @@ struct Buffer {
  *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
  *  @return 0 if successful, or a non-zero standard error value if not successful 
  */
-int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool);
+int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
+                  struct InfoObjectPool * pool, char * buffer_name);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.

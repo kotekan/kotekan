@@ -325,7 +325,7 @@ void reorganize_GPU_to_upper_triangle_remap(int block_side_length,
                                             int actual_num_elements,
                                             int num_data_sets,
                                             int *gpu_data,
-                                            int *final_matrix,
+                                            complex_int_t *final_matrix,
                                             int *map) {
     for (int m = 0; m < num_data_sets; m++){
         // we go through the gpu data sequentially and
@@ -377,14 +377,14 @@ void reorganize_GPU_to_upper_triangle_remap(int block_side_length,
                             ((mapped_y-1)*mapped_y)/2 + (mapped_x - mapped_y);
 
                         if (block_x_ID != block_y_ID){ //when we are not in the diagonal blocks
-                            final_matrix[address_1d_output*2  ] = gpu_data[GPU_address++];
-                            final_matrix[address_1d_output*2+1] =
+                            final_matrix[address_1d_output].real = gpu_data[GPU_address++];
+                            final_matrix[address_1d_output].imag =
                                 imag_multiplier * gpu_data[GPU_address++];
                         }
                         else{ // the special case needed to deal with the diagonal pieces
                             if (x_ID_local >= y_ID_local){
-                                final_matrix[address_1d_output*2  ] = gpu_data[GPU_address++];
-                                final_matrix[address_1d_output*2+1] =
+                                final_matrix[address_1d_output].real = gpu_data[GPU_address++];
+                                final_matrix[address_1d_output].imag =
                                     imag_multiplier * gpu_data[GPU_address++];
                             }
                             else{

@@ -39,7 +39,7 @@ void reorganize_GPU_to_upper_triangle(int block_side_length, int num_blocks,
 
 void reorganize_GPU_to_upper_triangle_remap(int block_side_length, int num_blocks,
     int actual_num_frequencies, int actual_num_elements, int num_data_sets,
-    int *gpu_data, int *final_matrix, int *map);
+    int *gpu_data, complex_int_t *final_matrix, int *map);
 
 
 #endif
