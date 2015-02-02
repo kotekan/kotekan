@@ -288,8 +288,11 @@ int main(int argc, char ** argv) {
         (config.processing.num_elements + 1)) / 2 ) *
         config.processing.num_total_freq;
 
-        int tcp_buffer_size = sizeof(struct tcp_frame_header) +
-        num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
+        const int tcp_buffer_size = sizeof(struct tcp_frame_header) +
+            num_values * sizeof(complex_int_t) +
+            config.processing.num_total_freq * sizeof(struct per_frequency_data) +
+            config.processing.num_total_freq * config.processing.num_elements * sizeof(struct per_element_data) +
+            num_values * sizeof(uint8_t);
 
         // TODO config file this.
         const int network_buffer_depth = 10;

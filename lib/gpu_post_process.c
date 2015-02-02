@@ -33,31 +33,59 @@ void gpu_post_process_thread(void* arg)
     int link_id = 0;
 
     // Create tcp send buffer
-    int num_values = ((config->processing.num_elements *
-    (config->processing.num_elements + 1)) / 2 ) *
-    config->processing.num_total_freq;
-    int buffer_size = sizeof(struct tcp_frame_header) +
-    num_values * (sizeof(complex_int_t) + sizeof(uint8_t));
+    const int num_values = ((config->processing.num_elements *
+        (config->processing.num_elements + 1)) / 2 ) *
+        config->processing.num_total_freq;
+    const int buffer_size = sizeof(struct tcp_frame_header) +
+        num_values * sizeof(complex_int_t) +
+        config->processing.num_total_freq * sizeof(struct per_frequency_data) +
+        config->processing.num_total_freq * config->processing.num_elements * sizeof(struct per_element_data) +
+        num_values * sizeof(uint8_t);
 
-    int num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
-    int num_values_per_link = num_vis * config->processing.num_local_freq;
+    assert(buffer_size == args->out_buf->buffer_size);
 
-    struct stream_id local_stream_ids[MAX_NUM_LINKS];
+    const int num_vis = ((config->processing.num_elements * (config->processing.num_elements + 1)) / 2 );
+    const int num_values_per_link = num_vis * config->processing.num_local_freq;
 
     unsigned char * buf = malloc(buffer_size);
     CHECK_MEM(buf);
 
     unsigned char * data_sets_buf =
-    malloc(num_values * config->processing.num_data_sets * sizeof(complex_int_t));
+        malloc(num_values * config->processing.num_data_sets * sizeof(complex_int_t));
     CHECK_MEM(data_sets_buf);
+
+    struct per_frequency_data ** local_freq_data = malloc(config->processing.num_data_sets * sizeof(void *));
+    CHECK_MEM(local_freq_data);
+
+    struct per_element_data ** local_element_data = malloc(config->processing.num_data_sets * sizeof(void *));
+    for (int i = 0; i < config->processing.num_data_sets; ++i) {
+        local_freq_data[i] = malloc(config->processing.num_total_freq * sizeof(struct per_frequency_data));
+        CHECK_MEM(local_freq_data[i]);
+
+        local_element_data[i] = malloc(config->processing.num_total_freq * config->processing.num_elements *
+                                    sizeof(struct per_element_data));
+        CHECK_MEM(local_element_data[i]);
+    }
 
     // Create convenient pointers into the buffer (yay pointer math).
     struct tcp_frame_header * header = (struct tcp_frame_header *)buf;
-    complex_int_t * visibilities = ( complex_int_t * ) (buf + sizeof(struct tcp_frame_header));
-    uint8_t * error_flags = (uint8_t *)(buf + sizeof(struct tcp_frame_header)
-    + num_values*sizeof(complex_int_t) );
-    // Connect to server.
-    struct sockaddr_in ch_acq_addr;
+
+    int offset = sizeof(struct tcp_frame_header);
+    complex_int_t * visibilities = ( complex_int_t * )&buf[offset];
+
+    offset += num_values * sizeof(complex_int_t);
+    struct per_frequency_data * frequency_data = ( struct per_frequency_data * )&buf[offset];
+
+    offset += config->processing.num_total_freq * sizeof(struct per_frequency_data);
+    struct per_element_data * element_data = (struct per_element_data *)&buf[offset];
+
+    offset += config->processing.num_total_freq * config->processing.num_elements *
+              sizeof(struct per_element_data);
+    uint8_t * vis_weight = (uint8_t *)&buf[offset];
+
+    // Safety check for pointer math.
+    offset += num_values * sizeof(uint8_t);
+    assert(offset == buffer_size);
 
     // Wait for full buffers.
     for (;;) {
@@ -79,12 +107,6 @@ void gpu_post_process_thread(void* arg)
         uint32_t fpga_seq_number = get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID);
         struct timeval frame_start_time = get_first_packet_recv_time(&args->in_buf[gpu_id], in_buffer_ID);
 
-        uint32_t packed_stream_ID = get_streamID(&args->in_buf[gpu_id], in_buffer_ID);
-        local_stream_ids[link_id].link_id =   packed_stream_ID & 0x000F;
-        local_stream_ids[link_id].slot_id =  (packed_stream_ID & 0x00F0) >> 4;
-        local_stream_ids[link_id].crate_id = (packed_stream_ID & 0x0F00) >> 8;
-        local_stream_ids[link_id].reserved = (packed_stream_ID & 0xF000) >> 12;
-
         for (int i = 0; i < config->processing.num_data_sets; ++i) {
 
             if (config->processing.num_elements <= 16) {
@@ -94,13 +116,13 @@ void gpu_post_process_thread(void* arg)
                     config->processing.num_elements,
                     1,
                     (int *)&args->in_buf[gpu_id].data[in_buffer_ID][i * (args->in_buf[gpu_id].buffer_size / config->processing.num_data_sets)],
-                                                                             args->config->processing.product_remap);
+                    args->config->processing.product_remap);
 
 
-                shuffle_data_to_frequency_major_output_16_element_with_triangle_conversion_skip_8(
+                full_16_element_matrix_to_upper_triangle_skip_8(
                     config->processing.num_local_freq,
                     (int *)&args->in_buf[gpu_id].data[in_buffer_ID][i * (args->in_buf[gpu_id].buffer_size / config->processing.num_data_sets)],
-                                                                                                  (complex_int_t *)&data_sets_buf[i * num_values * sizeof(complex_int_t)], link_id );
+                    (complex_int_t *)&data_sets_buf[i * num_values * sizeof(complex_int_t)], link_id );
             } else {
                 reorganize_GPU_to_upper_triangle_remap(config->gpu.block_size,
                     config->processing.num_blocks,
@@ -111,15 +133,37 @@ void gpu_post_process_thread(void* arg)
                     (complex_int_t *)&data_sets_buf[(i * num_values + link_id * num_values_per_link) * sizeof(complex_int_t)],
                     config->processing.product_remap);
             }
+
+            // Frequency varing data.
+            uint32_t packed_stream_ID = get_streamID(&args->in_buf[gpu_id], in_buffer_ID);
+            struct ErrorMatrix * error_matrix = get_error_matrix(&args->in_buf[gpu_id], in_buffer_ID);
+            for (int j = 0; j < config->processing.num_local_freq; ++j) {
+                int pos = link_id*config->processing.num_local_freq + j;
+                local_freq_data[i][pos].stream_id.link_id = packed_stream_ID & 0x000F;
+                local_freq_data[i][pos].stream_id.slot_id = (packed_stream_ID & 0x00F0) >> 4;
+                local_freq_data[i][pos].stream_id.crate_id = (packed_stream_ID & 0x0F00) >> 8;
+                local_freq_data[i][pos].stream_id.reserved = (packed_stream_ID & 0xF000) >> 12;
+                local_freq_data[i][pos].index = j;
+                // TODO this needs to be data set aware.  adjust the error matrix code for this.
+                local_freq_data[i][pos].lost_packet_count = error_matrix->bad_timesamples;
+                local_freq_data[i][pos].rfi_count = 0;  // TODO add RFI counts here.
+
+                // Frequency and element varing data.
+                for (int e = 0; e < config->processing.num_elements; ++e) {
+                    pos = link_id * config->processing.num_elements * config->processing.num_local_freq +
+                        j * config->processing.num_elements + e;
+                    // TODO Set these values with the error matrix.
+                    local_element_data[i][pos].fpga_adc_count = 0;
+                    local_element_data[i][pos].fpga_fft_count = 0;
+                    local_element_data[i][pos].fpga_scalar_count = 0;
+                }
+            }
         }
 
-        // TODO Add flagging code here.
-        for (int i = 0; i < num_values; ++i) {
-            error_flags[i] = 0;
-        }
-
+        // Only happens once every time all the links have been read from.
         if (link_id + 1 == config->fpga_network.num_links) {
 
+            // Happens once for each data set within the frames.
             for (int i = 0; i < config->processing.num_data_sets; ++i) {
 
                 // If this is the first frame, set the header, and initial visibility data.
@@ -130,12 +174,20 @@ void gpu_post_process_thread(void* arg)
                     header->fpga_seq_number = fpga_seq_number*config->fpga_network.timesamples_per_packet + i * config->processing.samples_per_data_set;
                     header->num_freq = config->processing.num_total_freq;
                     header->num_vis = num_vis;
-                    for (int j = 0; j < MAX_NUM_LINKS; ++j) {
-                        header->stream_ids[j] = local_stream_ids[j];
-                    }
+                    header->num_elements = config->processing.num_elements;
+                    header->num_links = config->fpga_network.num_links;
+
                     for (int j = 0; j < num_values; ++j) {
                         visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                        vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
                     }
+                    for (int j = 0; j < config->processing.num_total_freq; ++j) {
+                        frequency_data[j] = local_freq_data[i][j];
+                    }
+                    for (int j = 0; j < config->processing.num_elements * config->processing.num_total_freq; ++j) {
+                        element_data[j] = local_element_data[i][j];
+                    }
+
                 } else {
                     // Add to the visibilities.
                     for (int j = 0; j < num_values; ++j) {
@@ -143,12 +195,16 @@ void gpu_post_process_thread(void* arg)
                         visibilities[j].real += temp_vis.real;
                         visibilities[j].imag += temp_vis.imag;
                     }
+                    for (int j = 0; j < config->processing.num_total_freq; ++j) {
+                      frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
+                      frequency_data[j].rfi_count += local_freq_data[i][j].rfi_count;
+                    }
                 }
 
                 // If we are on the last frame in the set, push the buffer to the network thread.
                 if (frame_number + 1 >= config->processing.num_gpu_frames) {
                     INFO("Sending TCP frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; BUFFER_SIZE = %d",
-                         header->fpga_seq_number*config->fpga_network.timesamples_per_packet,
+                         header->fpga_seq_number,
                          header->num_freq, header->num_vis, buffer_size);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
