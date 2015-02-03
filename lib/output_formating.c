@@ -173,6 +173,24 @@ void full_16_element_matrix_to_upper_triangle_skip_8(int num_frequencies, int *i
     }
 }
 
+void full_16_element_matrix_to_upper_triangle(int num_frequencies, int *input_data, complex_int_t *output_data)
+{
+    //input data should be arranged as (num_elements*(num_elements+1))/2 (real,imag) pairs of complex visibilities for frequencies
+    //output array will be sparsely to moderately filled, so loop such that writing is done in sequential order
+    //int num_complex_visibilities = 136;//16*(16+1)/2; //(n*(n+1)/2)
+    int output_address = 0;
+    for (int freq_count = 0; freq_count < num_frequencies; ++freq_count) {
+        for (int y = 0; y < 16; ++y) {
+            for (int x = y; x < 16; ++x) {
+                int input_index = (freq_count * 256 + y*16 + x)*2;
+                output_data[output_address].real = input_data[input_index];
+                output_data[output_address].imag = input_data[input_index+1];
+                output_address++;
+            }
+        }
+    }
+}
+
 void reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(int actual_num_frequencies, int actual_num_elements, int num_data_sets, int *correlated_data, int *map)
 {
     //data is processed as 32 elements x 32 elements to fit the kernel even though only 16 elements exist.

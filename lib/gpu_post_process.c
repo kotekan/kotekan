@@ -119,10 +119,10 @@ void gpu_post_process_thread(void* arg)
                     args->config->processing.product_remap);
 
 
-                full_16_element_matrix_to_upper_triangle_skip_8(
+                full_16_element_matrix_to_upper_triangle(
                     config->processing.num_local_freq,
                     (int *)&args->in_buf[gpu_id].data[in_buffer_ID][i * (args->in_buf[gpu_id].buffer_size / config->processing.num_data_sets)],
-                    (complex_int_t *)&data_sets_buf[i * num_values * sizeof(complex_int_t)], link_id );
+                    (complex_int_t *)&data_sets_buf[(i * num_values + link_id * num_values_per_link) * sizeof(complex_int_t)]);
             } else {
                 reorganize_GPU_to_upper_triangle_remap(config->gpu.block_size,
                     config->processing.num_blocks,
@@ -151,7 +151,7 @@ void gpu_post_process_thread(void* arg)
                 // Frequency and element varing data.
                 for (int e = 0; e < config->processing.num_elements; ++e) {
                     pos = link_id * config->processing.num_elements * config->processing.num_local_freq +
-                        j * config->processing.num_elements + e;
+                        j * config->processing.num_elements + config->processing.product_remap[e];
                     // TODO Set these values with the error matrix.
                     local_element_data[i][pos].fpga_adc_count = 0;
                     local_element_data[i][pos].fpga_fft_count = 0;
