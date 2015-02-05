@@ -1,0 +1,494 @@
+$ diff main_multi-freq-gating_multi-periods_2.c main_multi-freq-gating_multi-periods.c 
+22,23c22,23
+< #define OPENCL_FILENAME_1               "test0xB_multifreq_gating_multiple_outputs_2_bins_per.cl" /* _optimizing1.cl .cl" */
+< #define OPENCL_FILENAME_2               "offsetAccumulator_gating_multiple_outputs_2_bins_per.cl"
+---
+> #define OPENCL_FILENAME_1               "test0xB_multifreq_gating_multiple_outputs.cl"
+> #define OPENCL_FILENAME_2               "offsetAccumulator_gating_multiple_outputs.cl"
+43,44c43
+< #define NUM_DATA_SETS                   2
+< #define NUM_GATING_GROUPS               1 //will always be half of the number of Data sets...
+---
+> #define NUM_DATA_SETS                   64
+47c46
+< //#define NUM_REPEATS_GPU                 1000u
+---
+> #define NUM_REPEATS_GPU                 1000u
+758,824d756
+< int cpu_data_generate_and_correlate_gated_general(int num_timesteps, int num_frequencies, int num_elements, unsigned int *num_time_bins, unsigned int *bin_cutoff, int *correlated_data, int num_gate_groups, unsigned int *time_offset_remainder, unsigned int *single_gate_period){
+<     //correlatedData will be returned as num_frequencies blocks, each num_elements x num_elements x 2
+< 
+<     //generate a dataset that should be the same as what the gpu is testing
+<     //dataset will be num_timesteps x num_frequencies x num_elements large
+<     unsigned char *generated = (unsigned char *)malloc(num_timesteps*num_frequencies*num_elements*sizeof(unsigned char));
+<     //check the array was allocated properly
+<     if (generated == NULL){
+<         printf ("Error allocating memory: cpu_data_generate_and_correlate\n");
+<         return (-1);
+<     }
+< 
+<     generate_char_data_set(GEN_TYPE,GEN_DEFAULT_SEED,GEN_DEFAULT_RE, GEN_DEFAULT_IM,GEN_INITIAL_RE,GEN_INITIAL_IM,GEN_FREQ, num_timesteps, num_frequencies, num_elements,1, generated);
+< 
+<     if (CHECKING_VERBOSE){
+<         print_element_data(1, num_frequencies, num_elements, ALL_FREQUENCIES, generated);
+<     }
+< 
+<     unsigned char temp_char;
+<     //correlate based on generated data
+<     for (int g_group = 0; g_group < num_gate_groups; g_group++){
+<         int time_for_bin_calc = time_offset_remainder[g_group];
+<         int time_counter = 0;
+<         for (int k = 0; k < num_timesteps; k++){
+<             int time_bin = time_for_bin_calc/single_gate_period[g_group];
+<             int reduced_time_bin = (time_bin >= bin_cutoff[g_group]) ? 1 : 0;
+<             for (int j = 0; j < num_frequencies; j++){
+<                 for (int element_y = 0; element_y < num_elements; element_y++){
+<                     temp_char = generated[ k*num_frequencies*num_elements + j*num_elements + element_y];
+<                     if (XOR_MANUAL){
+<                         temp_char = temp_char ^ 0x88;
+<                     }
+<                     int element_y_re = (int)(HI_NIBBLE(temp_char)) - 8; //-8 is to put the number back in the range -8 to 7 from 0 to 15
+<                     int element_y_im = (int)(LO_NIBBLE(temp_char)) - 8;
+<                     for (int element_x = 0; element_x < num_elements; element_x++){
+<                         temp_char = generated[ k*num_frequencies*num_elements + j*num_elements + element_x];
+<                         if (XOR_MANUAL){
+<                             temp_char = temp_char ^ 0x88;
+<                         }
+<                         int element_x_re = (int)(HI_NIBBLE(temp_char)) - 8;
+<                         int element_x_im = (int)(LO_NIBBLE(temp_char)) - 8;
+<                         if (k != 0){
+<                             correlated_data[((reduced_time_bin+2*g_group)*num_frequencies*num_elements*num_elements + j*num_elements*num_elements+element_y*num_elements+element_x)*2]   += element_x_re*element_y_re + element_x_im*element_y_im;
+<                             correlated_data[((reduced_time_bin+2*g_group)*num_frequencies*num_elements*num_elements + j*num_elements*num_elements+element_y*num_elements+element_x)*2+1] += element_x_im*element_y_re - element_x_re*element_y_im;
+<                         }
+<                         else{
+<                             correlated_data[((reduced_time_bin+2*g_group)*num_frequencies*num_elements*num_elements + j*num_elements*num_elements+element_y*num_elements+element_x)*2]   = element_x_re*element_y_re + element_x_im*element_y_im;
+<                             correlated_data[((reduced_time_bin+2*g_group)*num_frequencies*num_elements*num_elements + j*num_elements*num_elements+element_y*num_elements+element_x)*2+1] = element_x_im*element_y_re - element_x_re*element_y_im;
+<                         }
+<                     }
+<                 }
+<             }
+<             time_counter++;
+<             if (time_counter == BASE_TIMESAMPLES_ACCUM){
+<                 time_for_bin_calc += TIME_FOR_TIMESTEP_IN_10ns_UNITS*BASE_TIMESAMPLES_ACCUM;
+<                 time_counter = 0;
+<             }
+<             if (time_for_bin_calc >= num_time_bins[g_group]*single_gate_period[g_group])
+<                 time_for_bin_calc -= num_time_bins[g_group]*single_gate_period[g_group];
+<         }
+<     }
+<     
+<     //clean up parameters as needed
+<     free(generated);
+<     return (0);
+< }
+< 
+1094,1161d1025
+< int cpu_data_generate_and_correlate_upper_triangle_only_gated_general(int num_timesteps, int num_frequencies, int num_elements, unsigned int *num_time_bins, unsigned int *bin_cutoff, int *correlated_data_triangle, int num_gate_groups, unsigned int *time_offset_remainder, unsigned int *single_gate_period){
+<     //correlatedData will be returned as num_frequencies blocks, each num_elements x num_elements x 2
+< 
+<     //generate a dataset that should be the same as what the gpu is testing
+<     //dataset will be num_timesteps x num_frequencies x num_elements large
+<     unsigned char *generated = (unsigned char *)malloc(num_timesteps*num_frequencies*num_elements*sizeof(unsigned char));
+<     //check the array was allocated properly
+<     if (generated == NULL){
+<         printf ("Error allocating memory: cpu_data_generate_and_correlate\n");
+<         return (-1);
+<     }
+< 
+<     generate_char_data_set(GEN_TYPE,GEN_DEFAULT_SEED,GEN_DEFAULT_RE, GEN_DEFAULT_IM,GEN_INITIAL_RE,GEN_INITIAL_IM,GEN_FREQ, num_timesteps, num_frequencies, num_elements, 1,generated);
+< 
+<     if (CHECKING_VERBOSE){
+<         print_element_data(1, num_frequencies, num_elements, ALL_FREQUENCIES, generated);
+<     }
+<     //printf("started1\n");
+<     unsigned char temp_char;
+<     //correlate based on generated data
+<     for (int g_group = 0; g_group < num_gate_groups; g_group++){
+<         int time_for_bin_calc = time_offset_remainder[g_group];
+<         int time_counter = 0;
+<         for (int k = 0; k < num_timesteps; k++){
+<             int time_bin = time_for_bin_calc/single_gate_period[g_group];
+<             int reduced_time_bin = (time_bin >= bin_cutoff[g_group]) ? 1 : 0;
+<             int output_counter = g_group*num_frequencies*num_elements*(num_elements+1)*2 + reduced_time_bin*num_frequencies*num_elements*(num_elements+1);// /2*2;
+<             for (int j = 0; j < num_frequencies; j++){
+<                 for (int element_y = 0; element_y < num_elements; element_y++){
+<                     temp_char = generated[k*num_frequencies*num_elements+j*num_elements+element_y];
+<                     if (XOR_MANUAL){
+<                         temp_char = temp_char ^ 0x88;
+<                     }
+<                     int element_y_re = (int)(HI_NIBBLE(temp_char)) - 8; //-8 is to put the number back in the range -8 to 7 from 0 to 15
+<                     int element_y_im = (int)(LO_NIBBLE(temp_char)) - 8;
+<                     for (int element_x = element_y; element_x < num_elements; element_x++){
+<                         temp_char = generated[k*num_frequencies*num_elements+j*num_elements+element_x];
+<                         if (XOR_MANUAL){
+<                             temp_char = temp_char ^ 0x88;
+<                         }
+<                         int element_x_re = (int)(HI_NIBBLE(temp_char)) - 8;
+<                         int element_x_im = (int)(LO_NIBBLE(temp_char)) - 8;
+<                         if (k != 0){
+<                             correlated_data_triangle[output_counter++] += element_x_re*element_y_re + element_x_im*element_y_im;
+<                             correlated_data_triangle[output_counter++] += element_x_im*element_y_re - element_x_re*element_y_im;
+<                         }
+<                         else{
+<                             correlated_data_triangle[output_counter++] = element_x_re*element_y_re + element_x_im*element_y_im;
+<                             correlated_data_triangle[output_counter++] = element_x_im*element_y_re - element_x_re*element_y_im;
+<                         }
+<                     }
+<                 }
+<             }
+<             time_counter++;
+<             if (time_counter == BASE_TIMESAMPLES_ACCUM){
+<                 time_for_bin_calc += TIME_FOR_TIMESTEP_IN_10ns_UNITS*BASE_TIMESAMPLES_ACCUM;
+<                 time_counter = 0;
+<             }
+<             if (time_for_bin_calc >= num_time_bins[g_group]*single_gate_period[g_group])
+<                 time_for_bin_calc -= (num_time_bins[g_group]*single_gate_period[g_group]);
+<         }
+<         printf("Done stage %d \n",g_group);
+<     }
+<     
+<     free(generated);
+<     return (0);
+< }
+< 
+1668,1669c1532,1533
+<     sprintf(cl_options,"-g -D NUM_GATINGGROUPS=%d -D NUM_DATASETS=%d -D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du -D BASE_TIMESAMPLES_INT_ACCUM=%d", NUM_GATING_GROUPS, NUM_DATA_SETS, ACTUAL_NUM_ELEM, ACTUAL_NUM_FREQ, NUM_ELEM, NUM_FREQ, num_blocks, NUM_TIMESAMPLES, BASE_TIMESAMPLES_ACCUM);
+<     printf("Compiler Options: -g \n-D NUM_GATINGGROUPS=%d \n-D NUM_DATASETS=%d \n-D ACTUAL_NUM_ELEMENTS=%du \n-D ACTUAL_NUM_FREQUENCIES=%du \n-D NUM_ELEMENTS=%du \n-D NUM_FREQUENCIES=%du \n-D NUM_BLOCKS=%du \n-D NUM_TIMESAMPLES=%du \n-D BASE_TIMESAMPLES_INT_ACCUM=%d \n", NUM_GATING_GROUPS, NUM_DATA_SETS, ACTUAL_NUM_ELEM, ACTUAL_NUM_FREQ, NUM_ELEM, NUM_FREQ, num_blocks, NUM_TIMESAMPLES, BASE_TIMESAMPLES_ACCUM);
+---
+>     sprintf(cl_options,"-D NUM_DATASETS=%d -D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du -D BASE_TIMESAMPLES_INT_ACCUM=%d", NUM_DATA_SETS, ACTUAL_NUM_ELEM, ACTUAL_NUM_FREQ, NUM_ELEM, NUM_FREQ, num_blocks, NUM_TIMESAMPLES, BASE_TIMESAMPLES_ACCUM);
+>     printf("Compiler Options:\n-D NUM_DATASETS=%d \n-D ACTUAL_NUM_ELEMENTS=%du \n-D ACTUAL_NUM_FREQUENCIES=%du \n-D NUM_ELEMENTS=%du \n-D NUM_FREQUENCIES=%du \n-D NUM_BLOCKS=%du \n-D NUM_TIMESAMPLES=%du \n-D BASE_TIMESAMPLES_INT_ACCUM=%d \n", NUM_DATA_SETS, ACTUAL_NUM_ELEM, ACTUAL_NUM_FREQ, NUM_ELEM, NUM_FREQ, num_blocks, NUM_TIMESAMPLES, BASE_TIMESAMPLES_ACCUM);
+1713c1577
+<     cl_kernel offsetAccumulate_kernel = clCreateKernel( program, "offsetAccumulateElements", &err );
+---
+>     cl_kernel corr_kernel = clCreateKernel( program, "corr", &err );
+1716c1580,1587
+<         return -1;
+---
+>         size_t log_size;
+>         clGetProgramBuildInfo(program, deviceID[dev_number], CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+>         char * program_log = (char*)malloc(log_size+1);
+>         program_log[log_size] = '\0';
+>         clGetProgramBuildInfo(program, deviceID[dev_number], CL_PROGRAM_BUILD_LOG, log_size+1, program_log, NULL);
+>         printf("%s\n",program_log);
+>         free(program_log);
+>         return (-1);
+1718,1727d1588
+<     /* parameters for the kernel
+<     void offsetAccumulateElements (__global const uint *inputData,
+<                                         __global uint *outputData,
+<                                         __global uint *counters,
+<                                         __global const uint gating_group_count, //number of gating periods to check
+<                                         __global const uint *num_time_bins, //number of bins to sort things into (part of duty cycle)
+<                                         __global const uint *offset_remainder, //a 'wrapped' offset time
+<                                         __global const uint *delta_time_bin, //time for 1 bin in the gating (in units of 10 ns)
+<                                         __global const uint *bin_cut) //number of bins to keep in the 'on' section (entry values must be >= 1)
+<      */
+1729c1590
+<     cl_kernel preseed_kernel = clCreateKernel( program, "preseed", &err );
+---
+>     cl_kernel offsetAccumulate_kernel = clCreateKernel( program, "offsetAccumulateElements", &err );
+1731a1593,1599
+>         size_t log_size;
+>         clGetProgramBuildInfo(program, deviceID[dev_number], CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+>         char * program_log = (char*)malloc(log_size+1);
+>         program_log[log_size] = '\0';
+>         clGetProgramBuildInfo(program, deviceID[dev_number], CL_PROGRAM_BUILD_LOG, log_size+1, program_log, NULL);
+>         printf("%s\n",program_log);
+>         free(program_log);
+1734,1742d1601
+<     /*
+<     void preseed( __global const uint *dataIn,
+<               __global  int *corr_buf,
+<               __global const uint *id_x_map,
+<               __global const uint *id_y_map,
+<               __local  uint *localDataX,
+<               __local  uint *localDataY,
+<               __global const uint *counters)
+<      */
+1744c1603
+<     cl_kernel corr_kernel = clCreateKernel( program, "corr", &err );
+---
+>     cl_kernel preseed_kernel = clCreateKernel( program, "preseed", &err );
+1747c1606,1613
+<         return (-1);
+---
+>         size_t log_size;
+>         clGetProgramBuildInfo(program, deviceID[dev_number], CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+>         char * program_log = (char*)malloc(log_size+1);
+>         program_log[log_size] = '\0';
+>         clGetProgramBuildInfo(program, deviceID[dev_number], CL_PROGRAM_BUILD_LOG, log_size+1, program_log, NULL);
+>         printf("%s\n",program_log);
+>         free(program_log);
+>         return -1;
+1749,1760d1614
+<     /*
+<     void corr ( __global const uint *packed,
+<             __global  int *corr_buf,
+<             __global const uint *id_x_map,
+<             __global const uint *id_y_map,
+<             __local  uint *stillPacked,
+<             __global const uint gating_group_count, // <--
+<             __global const unsigned int *num_time_bins, // <--
+<             __global const unsigned int *offset_remainder, // <--
+<             __global const unsigned int *delta_time_bin, // <--
+<             __global const uint *bin_cut) // <--
+<     */
+1782c1636
+<     int len=NUM_FREQ*num_blocks*(size1_block*size1_block)*2*NUM_DATA_SETS;// *2 real and imag
+---
+>     int len=3*NUM_FREQ*num_blocks*(size1_block*size1_block)*2*NUM_DATA_SETS;// *2 real and imag
+1879c1733
+<                                 NUM_DATA_SETS*sizeof(cl_uint),
+---
+>                                 3*NUM_DATA_SETS*sizeof(cl_uint),
+1892,1893c1746,1747
+<     zeros=calloc(NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS,sizeof(cl_uint)); // <--this was missed! Was causing most of the problems!
+<     cl_uint *zeros2 = calloc(NUM_DATA_SETS,sizeof(cl_uint));
+---
+>     zeros=calloc(3*NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS,sizeof(cl_uint)); // <--this was missed! Was causing most of the problems!
+>     cl_uint *zeros2 = calloc(3*NUM_DATA_SETS,sizeof(cl_uint));
+1897c1751
+<                                           NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_uint),
+---
+>                                           3*NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_uint),
+1907c1761
+<                                           NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_uint),
+---
+>                                           3*NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_uint),
+1984,2003c1838,1840
+<     
+<     cl_uint num_gate_groups = NUM_GATING_GROUPS;
+<     cl_uint gate_size_time [NUM_GATING_GROUPS];
+<     cl_uint num_time_bins [NUM_GATING_GROUPS];
+<     cl_uint offset_remainder [NUM_GATING_GROUPS];
+<     cl_uint clip_bin [NUM_GATING_GROUPS];
+<     
+<     for (int i = 0 ; i < NUM_GATING_GROUPS; i++){
+<         gate_size_time[i] = GATE_PERIOD_IN_10ns_UNITS;
+<         num_time_bins [i] = 128;
+<         clip_bin [i]      = 1;
+<     }
+<     
+<     cl_mem device_gate_size_time = clCreateBuffer(context,CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, NUM_GATING_GROUPS*sizeof(cl_uint),gate_size_time, &err);
+<     cl_mem device_num_time_bins = clCreateBuffer(context,CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, NUM_GATING_GROUPS *sizeof(cl_uint),num_time_bins,&err);
+<     cl_mem device_clip_bin = clCreateBuffer(context,CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, NUM_GATING_GROUPS * sizeof(cl_uint), clip_bin,&err);
+<     cl_mem device_offset_remainder = clCreateBuffer(context,CL_MEM_READ_WRITE, NUM_GATING_GROUPS*sizeof(cl_uint), NULL, &err);
+<     
+<     
+<     
+---
+>     cl_uint gate_size = GATE_PERIOD_IN_10ns_UNITS;
+>     cl_uint gate_size2 = GATE_PERIOD_IN_10ns_UNITS;
+>     cl_uint gate_size3 = GATE_PERIOD_IN_10ns_UNITS;
+2005,2029c1842,1845
+<     /* parameters for the kernel
+<     void offsetAccumulateElements (__global const uint *inputData,              //0 <--
+<                                         __global uint *outputData,              //1 <--
+<                                         __global uint *counters,                //2 <--
+<                                         __global const uint gating_group_count, //3 number of gating periods to check
+<                                         __global const uint *num_time_bins,     //4 number of bins to sort things into (part of duty cycle)
+<                                         __global const uint *offset_remainder,  //5 <-- a 'wrapped' offset time
+<                                         __global const uint *delta_time_bin,    //6 <-- time for 1 bin in the gating (in units of 10 ns)
+<                                         __global const uint *bin_cut)           //7 number of bins to keep in the 'on' section (entry values must be >= 1)
+<      */
+<     clSetKernelArg(offsetAccumulate_kernel, 3, sizeof(cl_uint),&num_gate_groups);
+<     clSetKernelArg(offsetAccumulate_kernel, 4, sizeof(void *),(void *)&device_num_time_bins);
+<     clSetKernelArg(offsetAccumulate_kernel, 6, sizeof(void *),(void *)&device_gate_size_time);
+<     clSetKernelArg(offsetAccumulate_kernel, 7, sizeof(void *),(void *)&device_clip_bin);
+<     
+< 
+<     /*
+<     void preseed( __global const uint *dataIn,  //0 <--
+<               __global  int *corr_buf,          //1 <--
+<               __global const uint *id_x_map,    //2
+<               __global const uint *id_y_map,    //3
+<               __local  uint *localDataX,        //4
+<               __local  uint *localDataY,        //5
+<               __global const uint *counters)    //6 <--
+<      */
+---
+>     clSetKernelArg(offsetAccumulate_kernel, 4, sizeof(cl_uint),&gate_size);
+>     clSetKernelArg(offsetAccumulate_kernel, 6, sizeof(cl_uint),&gate_size2);
+>     clSetKernelArg(offsetAccumulate_kernel, 8, sizeof(cl_uint),&gate_size3);
+> 
+2035,2046d1850
+<      /*
+<     void corr ( __global const uint *packed,                //0 <--
+<             __global  int *corr_buf,                        //1 <--
+<             __global const uint *id_x_map,                  //2
+<             __global const uint *id_y_map,                  //3
+<             __local  uint *stillPacked,                     //4 
+<             __global const uint gating_group_count,         //5
+<             __global const unsigned int *num_time_bins,     //6
+<             __global const unsigned int *offset_remainder,  //7 <--
+<             __global const unsigned int *delta_time_bin,    //8
+<             __global const uint *bin_cut)                   //9
+<     */
+2049,2053c1853,1856
+<     clSetKernelArg(corr_kernel, 4, 8*8*4 * sizeof(cl_uint), NULL); //define the size of the local memory///TODO--check if hardcoding has any speed effects
+<     clSetKernelArg(corr_kernel, 5, sizeof(cl_uint), &num_gate_groups);
+<     clSetKernelArg(corr_kernel, 6, sizeof(void *), &device_num_time_bins);
+<     clSetKernelArg(corr_kernel, 8, sizeof(void *), &device_gate_size_time);
+<     clSetKernelArg(corr_kernel, 9, sizeof(void *), &device_clip_bin);
+---
+>     clSetKernelArg(corr_kernel, 4, 8*8*4 * sizeof(cl_uint), NULL);
+>     clSetKernelArg(corr_kernel, 6, sizeof(cl_uint), &gate_size);
+>     clSetKernelArg(corr_kernel, 8, sizeof(cl_uint), &gate_size2);
+>     clSetKernelArg(corr_kernel, 10, sizeof(cl_uint), &gate_size3);
+2058a1862,1864
+>     size_t gws_corr[3]={8,8*NUM_FREQ,num_blocks*n_cAccum}; //global work size array
+>     size_t lws_corr[3]={8,8,1}; //local work size array
+> 
+2062c1868
+<     size_t gws_preseed[3]={8*NUM_DATA_SETS, 8*NUM_FREQ, num_blocks};
+---
+>     size_t gws_preseed[3]={3*8*NUM_DATA_SETS, 8*NUM_FREQ, num_blocks};
+2065,2066d1870
+<     size_t gws_corr[3]={8,8*NUM_FREQ,num_blocks*n_cAccum}; //global work size array
+<     size_t lws_corr[3]={8,8,1}; //local work size array
+2078d1881
+<     cl_event copy_time_remainders_event;
+2133c1936
+<                                         NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_int),
+---
+>                                         3*NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_int),
+2140,2149d1942
+<                                         device_offset_remainder,
+<                                         CL_FALSE,
+<                                         0,
+<                                         NUM_GATING_GROUPS*sizeof(cl_uint),
+<                                         offset_remainder,
+<                                         1,
+<                                         &clearCountersEvent,
+<                                         &copy_time_remainders_event);
+< 
+<                 err = clEnqueueWriteBuffer(queue[0],
+2153c1946
+<                                         NUM_DATA_SETS*sizeof(cl_uint),
+---
+>                                         3*NUM_DATA_SETS*sizeof(cl_uint),
+2156c1949
+<                                         &copy_time_remainders_event,
+---
+>                                         &clearCountersEvent,
+2173c1966
+<                                         NUM_TIMESAMPLES * NUM_ELEM*NUM_FREQ, //
+---
+>                                         NUM_TIMESAMPLES * NUM_ELEM*NUM_FREQ, //8 for multifreq interleaving
+2179,2182d1971
+<                 uint wrapped_time_offset = 0; //should be the current_time%(time_per_bin*NUM_DATA_SETS)
+<                 for (int g_group = 0; g_group <= num_gate_groups; g_group++){
+<                     offset_remainder[g_group] = wrapped_time_offset;
+<                 }
+2187c1976
+<                                         NUM_DATA_SETS*sizeof(cl_uint),
+---
+>                                         3*NUM_DATA_SETS*sizeof(cl_uint),
+2201c1990
+<                                         NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_int),
+---
+>                                         3*NUM_FREQ*NUM_ELEM*2*NUM_DATA_SETS*sizeof(cl_int),
+2238,2239c2027,2031
+<             
+< 
+---
+>             uint wrapped_time_offset = 0; //should be the current_time%(time_per_bin*NUM_DATA_SETS)
+>             err |= clSetKernelArg(offsetAccumulate_kernel,
+>                                   3,
+>                                   sizeof(uint),
+>                                   &wrapped_time_offset);
+2242,2247c2034,2039
+<                                   sizeof(void *),
+<                                   &device_offset_remainder);
+< //             err |= clSetKernelArg(offsetAccumulate_kernel,
+< //                                   7,
+< //                                   sizeof(void *),
+< //                                   (void *)&clip_bin);
+---
+>                                   sizeof(uint),
+>                                   &wrapped_time_offset);
+>             err |= clSetKernelArg(offsetAccumulate_kernel,
+>                                   7,
+>                                   sizeof(uint),
+>                                   &wrapped_time_offset);
+2252,2254c2044
+<             //else{
+<             //    printf("ok\n");
+<             //}
+---
+> 
+2316c2106,2109
+<             
+---
+>             err |= clSetKernelArg(corr_kernel,
+>                                     5,
+>                                     sizeof(uint),
+>                                     &wrapped_time_offset);
+2319,2321c2112,2117
+<                                     sizeof(void *),
+<                                     &device_offset_remainder);
+<             
+---
+>                                     sizeof(uint),
+>                                     &wrapped_time_offset);
+>             err |= clSetKernelArg(corr_kernel,
+>                                     9,
+>                                     sizeof(uint),
+>                                     &wrapped_time_offset);
+2452c2248
+<     int *correlated_CPU = calloc((ACTUAL_NUM_ELEM*(ACTUAL_NUM_ELEM))*ACTUAL_NUM_FREQ*2*NUM_DATA_SETS,sizeof(int)); //made for the largest possible size (one size fits all)
+---
+>     int *correlated_CPU = calloc((3*ACTUAL_NUM_ELEM*(ACTUAL_NUM_ELEM))*ACTUAL_NUM_FREQ*2*NUM_DATA_SETS,sizeof(int)); //made for the largest possible size (one size fits all)
+2459,2460d2254
+<     //int cpu_data_generate_and_correlate_upper_triangle_only_gated_general(int num_timesteps, int num_frequencies, int num_elements, unsigned int *num_time_bins, unsigned int *bin_cutoff, int *correlated_data_triangle, int num_gate_groups, unsigned int *time_offset_remainder, unsigned int *single_gate_period){
+<     //int cpu_data_generate_and_correlate_gated_general(int num_timesteps, int num_frequencies, int num_elements, int *num_time_bins, unsigned int *bin_cutoff, int *correlated_data, int num_gate_groups, int *time_offset_remainder, int *single_gate_period){
+2462c2256
+<         err = cpu_data_generate_and_correlate_upper_triangle_only_gated_general(NUM_TIMESAMPLES, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, num_time_bins, clip_bin, correlated_CPU,NUM_GATING_GROUPS,offset_remainder,gate_size_time);
+---
+>         err = cpu_data_generate_and_correlate_upper_triangle_only_gated_3_ways(NUM_TIMESAMPLES, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, correlated_CPU,0,GATE_PERIOD_IN_10ns_UNITS,0,GATE_PERIOD_IN_10ns_UNITS,0,GATE_PERIOD_IN_10ns_UNITS);
+2464,2465c2258,2259
+<     else{
+<         err = cpu_data_generate_and_correlate_gated_general(NUM_TIMESAMPLES, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, num_time_bins, clip_bin, correlated_CPU, NUM_GATING_GROUPS, offset_remainder,gate_size_time);
+---
+>     else{ 
+>         err = cpu_data_generate_and_correlate_gated_3_ways(NUM_TIMESAMPLES, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, correlated_CPU, 0, GATE_PERIOD_IN_10ns_UNITS,0,GATE_PERIOD_IN_10ns_UNITS,0,GATE_PERIOD_IN_10ns_UNITS);
+2468c2262
+<     int *correlated_GPU = (int *)malloc((ACTUAL_NUM_ELEM*(ACTUAL_NUM_ELEM))*HDF5_FREQ*2*NUM_DATA_SETS*sizeof(int));
+---
+>     int *correlated_GPU = (int *)malloc(3*(ACTUAL_NUM_ELEM*(ACTUAL_NUM_ELEM))*HDF5_FREQ*2*NUM_DATA_SETS*sizeof(int));
+2479c2273
+<             reorganize_32_to_16_feed_GPU_Correlated_Data_Interleaved(ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, host_PrimaryOutput[0]);
+---
+>             reorganize_32_to_16_feed_GPU_Correlated_Data_Interleaved(ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, 3*NUM_DATA_SETS, host_PrimaryOutput[0]);
+2482c2276
+<             reorganize_32_to_16_feed_GPU_Correlated_Data(ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, host_PrimaryOutput[0]); //needed for comparison of outputs.
+---
+>             reorganize_32_to_16_feed_GPU_Correlated_Data(ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, 3*NUM_DATA_SETS, host_PrimaryOutput[0]); //needed for comparison of outputs.
+2486c2280
+<             reorganize_data_16_element_with_triangle_conversion(HDF5_FREQ, ACTUAL_NUM_FREQ,NUM_DATA_SETS,host_PrimaryOutput[0],correlated_GPU);
+---
+>             reorganize_data_16_element_with_triangle_conversion(HDF5_FREQ, ACTUAL_NUM_FREQ,3*NUM_DATA_SETS,host_PrimaryOutput[0],correlated_GPU);
+2491c2285
+<             reorganize_GPU_to_upper_triangle(size1_block, num_blocks, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, host_PrimaryOutput[0], correlated_GPU);
+---
+>             reorganize_GPU_to_upper_triangle(size1_block, num_blocks, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, 3*NUM_DATA_SETS, host_PrimaryOutput[0], correlated_GPU);
+2494c2288
+<             reorganize_GPU_to_full_Matrix_for_comparison(size1_block, num_blocks, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, host_PrimaryOutput[0], correlated_GPU);
+---
+>             reorganize_GPU_to_full_Matrix_for_comparison(size1_block, num_blocks, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, 3*NUM_DATA_SETS, host_PrimaryOutput[0], correlated_GPU);
+2500c2294
+<     double *amp2_ratio_GPU_div_CPU = (double *)malloc(ACTUAL_NUM_ELEM*ACTUAL_NUM_ELEM*ACTUAL_NUM_FREQ*NUM_DATA_SETS*sizeof(double));
+---
+>     double *amp2_ratio_GPU_div_CPU = (double *)malloc(3*ACTUAL_NUM_ELEM*ACTUAL_NUM_ELEM*ACTUAL_NUM_FREQ*NUM_DATA_SETS*sizeof(double));
+2505c2299
+<     double *phaseAngleDiff_GPU_m_CPU = (double *)malloc(ACTUAL_NUM_ELEM*ACTUAL_NUM_ELEM*ACTUAL_NUM_FREQ*NUM_DATA_SETS*sizeof(double));
+---
+>     double *phaseAngleDiff_GPU_m_CPU = (double *)malloc(3*ACTUAL_NUM_ELEM*ACTUAL_NUM_ELEM*ACTUAL_NUM_FREQ*NUM_DATA_SETS*sizeof(double));
+2512c2306
+<         compare_NSquared_correlator_results_data_has_upper_triangle_only ( &number_errors, &errors_squared, HDF5_FREQ, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, correlated_GPU, correlated_CPU, amp2_ratio_GPU_div_CPU, phaseAngleDiff_GPU_m_CPU, CHECKING_VERBOSE);
+---
+>         compare_NSquared_correlator_results_data_has_upper_triangle_only ( &number_errors, &errors_squared, HDF5_FREQ, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, 3*NUM_DATA_SETS, correlated_GPU, correlated_CPU, amp2_ratio_GPU_div_CPU, phaseAngleDiff_GPU_m_CPU, CHECKING_VERBOSE);
+2515c2309
+<         compare_NSquared_correlator_results ( &number_errors, &errors_squared, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, NUM_DATA_SETS, correlated_GPU, correlated_CPU, amp2_ratio_GPU_div_CPU, phaseAngleDiff_GPU_m_CPU, CHECKING_VERBOSE);
+---
+>         compare_NSquared_correlator_results ( &number_errors, &errors_squared, ACTUAL_NUM_FREQ, ACTUAL_NUM_ELEM, 3*NUM_DATA_SETS, correlated_GPU, correlated_CPU, amp2_ratio_GPU_div_CPU, phaseAngleDiff_GPU_m_CPU, CHECKING_VERBOSE);

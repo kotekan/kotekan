@@ -1,7 +1,7 @@
 CC	= gcc
 ATISDK	= /opt/AMDAPP
-INC	= -I$(ATISDK)/include -I$(ATISDK)/include/CAL -I$(AMDAPPSDKROOT)/include -I$(AMDAPPSDKROOT)/include/CAL
-LIBS	= -lOpenCL -L/opt/AMDAPP/lib/x86_64/ -L$(AMDAPPSDKROOT)/lib/x86_64/ -lm
+INC	= -I$(ATISDK)/include -I$(ATISDK)/include/CAL
+LIBS	= -lOpenCL -L/opt/AMDAPP/lib/x86_64/ -lm
 
 OPTIMIZE= -Wall -O4 -std=gnu99 -msse3 -DSFMT_MEXP=19937 -ggdb
 CFLAGS	= $(OPTIMIZE) $(INC)
