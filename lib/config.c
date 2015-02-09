@@ -87,8 +87,11 @@ int parse_gpu_config(struct Config* config, struct json_t * json)
     int error = 0;
     json_t * kernels;
 
-    error = json_unpack(json, "{s:o, s:i, s:i}",
+    error = json_unpack(json, "{s:o, s:i, s:i, s:i, s:i, s:i}",
         "kernels", &kernels,
+        "ts_element_offset", &config->gpu.ts_element_offset,
+        "ts_num_elem_to_shift", &config->gpu.ts_num_elem_to_shift,
+        "ts_samples_to_shift", &config->gpu.ts_samples_to_shift,
         "num_gpus", &config->gpu.num_gpus,
         "block_size", &config->gpu.block_size);
 

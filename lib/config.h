@@ -33,6 +33,14 @@ struct GPUConfig {
     // Kernels
     char ** kernels;
 
+    // The first element (in FPGA order) to shift.
+    int ts_element_offset;
+
+    // The number of elements to shift starting at ts_element_offset.
+    int ts_num_elem_to_shift;
+
+    // The number of timesamples to shift above elements.
+    int ts_samples_to_shift;
 };
 
 /// @brief Values related to the processing performed (e.g. intergration time, etc.).

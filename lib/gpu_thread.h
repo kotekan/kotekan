@@ -49,6 +49,7 @@ struct OpenCLData {
     cl_kernel corr_kernel; /// Correlation Kernel
     cl_kernel offset_accumulate_kernel;
     cl_kernel preseed_kernel;
+    cl_kernel time_shift_kernel;
     cl_device_id device_id[MAX_GPUS];
     cl_platform_id platform_id;
 
@@ -58,15 +59,17 @@ struct OpenCLData {
     cl_int * accumulate_zeros;
 
     // Device Buffers
-    cl_mem * device_input_buffer;
+    cl_mem device_input_buffer;
     cl_mem * device_output_buffer;
     cl_mem * device_accumulate_buffer;
+    cl_mem device_time_shifted_buffer;
 
     // User events.
     cl_event * host_buffer_ready;
     cl_event * input_data_written;
     cl_event * accumulate_data_zeroed;
     cl_event * offset_accumulate_finished;
+    cl_event * time_shift_finished;
     cl_event * preseed_finished;
     cl_event * corr_finished;
     cl_event * read_finished;
@@ -93,6 +96,9 @@ struct OpenCLData {
 
     size_t gws_preseed[3];
     size_t lws_preseed[3];
+
+    size_t gws_time_shift[3];
+    size_t lws_time_shift[3];
 
     // Buffer objects
     struct Buffer * in_buf;
