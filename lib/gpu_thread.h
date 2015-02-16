@@ -59,7 +59,7 @@ struct OpenCLData {
     cl_int * accumulate_zeros;
 
     // Device Buffers
-    cl_mem device_input_buffer;
+    cl_mem * device_input_buffer;
     cl_mem * device_output_buffer;
     cl_mem * device_accumulate_buffer;
     cl_mem device_time_shifted_buffer;
@@ -85,6 +85,7 @@ struct OpenCLData {
     int accumulate_len;
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
+    int num_links;
 
     // Kernel values.
     unsigned int num_accumulations;

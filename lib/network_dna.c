@@ -6,6 +6,7 @@
 #include "error_correction.h"
 #include "nt_memcpy.h"
 #include "config.h"
+#include "util.h"
 
 #include <dirent.h>
 #include <sys/socket.h>
@@ -501,8 +502,10 @@ void network_thread(void * arg) {
         // Compute speed and packet loss for every recorded frame.
         count++;
         total_packets++;
-        int output_period = config->processing.num_gpu_frames *
-            config->processing.samples_per_data_set / config->fpga_network.timesamples_per_packet;
+        int output_period = MIN(config->processing.num_gpu_frames *
+                                config->processing.samples_per_data_set /
+                                config->fpga_network.timesamples_per_packet,
+                                100000);
 
         if (count % (output_period+1) == 0) {
             current_time = e_time();
