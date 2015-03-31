@@ -33,6 +33,9 @@ struct GPUConfig {
     // Kernels
     char ** kernels;
 
+    // Use time shift kernel?
+    int use_time_shift;
+
     // The first element (in FPGA order) to shift.
     int ts_element_offset;
 

@@ -49,13 +49,14 @@ void gpu_thread(void* arg)
 
     setup_open_cl(&cl_data);
 
-    // Queue the initial commands in buffer order.
-    for (int i = 0; i < cl_data.num_links; ++i) {
-        add_write_to_queue_set(&cl_data, i);
+    int num_initial_command_queues = args->in_buf->num_buffers;
+    if (args->config->gpu.use_time_shift) {
+        num_initial_command_queues -= cl_data.num_links;
     }
-    for (int i = 0; i < args->in_buf->num_buffers - cl_data.num_links; ++i) {
+    for (int i = 0; i < num_initial_command_queues; ++i) {
         add_queue_set(&cl_data, i);
     }
+
 
     CHECK_ERROR( pthread_mutex_lock(&args->lock) );
     args->started = 1;
@@ -91,7 +92,9 @@ void gpu_thread(void* arg)
         // has been cleared.
         // This should almost never block, since the output buffer should clear quickly.
         wait_for_empty_buffer(args->out_buf, bufferID);
-        wait_for_empty_buffer(args->out_buf, mod(bufferID + cl_data.num_links, args->out_buf->num_buffers));
+        if (args->config->gpu.use_time_shift) {
+            wait_for_empty_buffer(args->out_buf, mod(bufferID + cl_data.num_links, args->out_buf->num_buffers));
+        }
 
         //INFO("GPU Kernel started on gpu %d in buffer (%d,%d)", args->gpu_id, args->gpu_id - 1, bufferID);
 
@@ -146,8 +149,12 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
     // Relase the events from the last queue set run.
     release_events_for_buffer(cb_data->cl_data, cb_data->buffer_id);
 
-    // We add the (n - links) queue set, since it will create the n write buffer.
-    add_queue_set(cb_data->cl_data, mod(cb_data->buffer_id - cb_data->cl_data->num_links, cb_data->cl_data->in_buf->num_buffers));
+    if (cb_data->cl_data->config->gpu.use_time_shift) {
+        // We add the (n - links) queue set, since it will create the n write buffer.
+        add_queue_set(cb_data->cl_data, mod(cb_data->buffer_id - cb_data->cl_data->num_links, cb_data->cl_data->in_buf->num_buffers));
+    } else {
+        add_queue_set(cb_data->cl_data, cb_data->buffer_id);
+    }
 }
 
 void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
@@ -156,7 +163,6 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
     assert(cl_data->host_buffer_ready[buffer_id] != NULL);
     assert(cl_data->input_data_written[buffer_id] != NULL);
     assert(cl_data->accumulate_data_zeroed[buffer_id] != NULL);
-    assert(cl_data->time_shift_finished[buffer_id] != NULL);
     assert(cl_data->offset_accumulate_finished[buffer_id] != NULL);
     assert(cl_data->preseed_finished[buffer_id] != NULL);
     assert(cl_data->corr_finished[buffer_id] != NULL);
@@ -170,6 +176,11 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
     clReleaseEvent(cl_data->preseed_finished[buffer_id]);
     clReleaseEvent(cl_data->corr_finished[buffer_id]);
     clReleaseEvent(cl_data->read_finished[buffer_id]);
+
+    if (cl_data->config->gpu.use_time_shift) {
+        assert(cl_data->time_shift_finished[buffer_id] != NULL);
+        clReleaseEvent(cl_data->time_shift_finished[buffer_id]);
+    }
 }
 
 void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id)
@@ -205,22 +216,12 @@ void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                          &cl_data->accumulate_data_zeroed[buffer_id]) );
 }
 
-void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
-{
-    // This function can be called from a call back, so it must be thread safe to avoid
-    // having queues out of order.
-    pthread_mutex_lock(&queue_lock);
+void add_time_shift_kernel(struct OpenCLData * cl_data, int buffer_id) {
 
-    // Set call back data
-    cl_data->cb_data[buffer_id].buffer_id = buffer_id;
-    cl_data->cb_data[buffer_id].cl_data = cl_data;
+    cl_event mem_copy_in_finished_list[2];
+    mem_copy_in_finished_list[0] = cl_data->accumulate_data_zeroed[buffer_id];
+    mem_copy_in_finished_list[1] = cl_data->accumulate_data_zeroed[mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers)];
 
-    add_write_to_queue_set(cl_data, mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers));
-
-    cl_event mem_copy_in_finished_list[2] = {cl_data->accumulate_data_zeroed[buffer_id],
-        cl_data->accumulate_data_zeroed[mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers)]};
-
-    // The time shift kernel
     CHECK_CL_ERROR( clSetKernelArg(cl_data->time_shift_kernel,
                                    0,
                                    sizeof(void *),
@@ -259,12 +260,38 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                            mem_copy_in_finished_list,
                                            &cl_data->time_shift_finished[buffer_id]) );
 
+}
+
+void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
+{
+    // This function can be called from a call back, so it must be thread safe to avoid
+    // having queues out of order.
+    pthread_mutex_lock(&queue_lock);
+
+    // Set call back data
+    cl_data->cb_data[buffer_id].buffer_id = buffer_id;
+    cl_data->cb_data[buffer_id].cl_data = cl_data;
+
+    // The input data host to device copies.
+    add_write_to_queue_set(cl_data, mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers));
+
+    cl_mem device_kernel_input_data = cl_data->device_input_buffer[buffer_id];
+    cl_event input_data_ready_event = cl_data->accumulate_data_zeroed[buffer_id];
+
+    // The time shift kernel
+    if (cl_data->config->gpu.use_time_shift) {
+        add_time_shift_kernel(cl_data, buffer_id);
+        device_kernel_input_data = cl_data->device_time_shifted_buffer;
+        input_data_ready_event = cl_data->time_shift_finished[buffer_id];
+    }
+
     // The offset accumulate kernel args.
     // Set 2 arguments--input array and zeroed output array
+
     CHECK_CL_ERROR( clSetKernelArg(cl_data->offset_accumulate_kernel,
                                         0,
                                         sizeof(void*),
-                                        (void*) &cl_data->device_time_shifted_buffer) );
+                                       (void*) &device_kernel_input_data) );
 
     CHECK_CL_ERROR( clSetKernelArg(cl_data->offset_accumulate_kernel,
                                         1,
@@ -278,7 +305,7 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                             cl_data->gws_accum,
                                             cl_data->lws_accum,
                                             1,
-                                            &cl_data->time_shift_finished[buffer_id],
+                                            &input_data_ready_event,
                                             &cl_data->offset_accumulate_finished[buffer_id]) );
 
     // The perseed kernel
@@ -304,10 +331,11 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                             &cl_data->preseed_finished[buffer_id]) );
 
     // The correlation kernel.
+
     CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel,
-                                        0,
-                                        sizeof(void *),
-                                        (void*) &cl_data->device_time_shifted_buffer) );
+                                       0,
+                                       sizeof(void *),
+                                       (void*) &device_kernel_input_data) );
 
     CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel,
                                         1,
@@ -430,26 +458,36 @@ void setup_open_cl(struct OpenCLData * cl_data)
     // 
 
     // Setup device input buffers.
+    int num_input_buffers = cl_data->in_buf->num_buffers;
+    int input_buffer_size = cl_data->in_buf->aligned_buffer_size;
+
     cl_data->num_links = num_links_per_gpu(cl_data->config, cl_data->gpu_id);
-    cl_data->device_input_buffer = (cl_mem *) malloc(cl_data->num_links * sizeof(cl_mem));
+    if (cl_data->config->gpu.use_time_shift) {
+        num_input_buffers = cl_data->num_links;
+        input_buffer_size = cl_data->in_buf->buffer_size * cl_data->config->processing.buffer_depth;
+    }
+
+    cl_data->device_input_buffer = (cl_mem *) malloc(num_input_buffers * sizeof(cl_mem));
     INFO("setup_open_cl, gpu id %d, numlinks %d", cl_data->gpu_id, cl_data->num_links);
     CHECK_MEM(cl_data->device_input_buffer);
-    for (int i = 0; i < cl_data->num_links; ++i) {
+
+    for (int i = 0; i < num_input_buffers; ++i) {
         cl_data->device_input_buffer[i] = clCreateBuffer(cl_data->context,
                                                           CL_MEM_READ_ONLY,
-                                                          cl_data->in_buf->buffer_size *
-                                                          cl_data->config->processing.buffer_depth,
+                                                          input_buffer_size,
                                                           NULL,
                                                           &err);
         CHECK_CL_ERROR(err);
     }
 
-    // Create the time_shifted buffer.
-    cl_data->device_time_shifted_buffer = clCreateBuffer(cl_data->context,
-                                                        CL_MEM_READ_WRITE,
-                                                        cl_data->in_buf->buffer_size,
-                                                        NULL,
-                                                        &err);
+    if (cl_data->config->gpu.use_time_shift) {
+        // Create the time_shifted buffer.
+        cl_data->device_time_shifted_buffer = clCreateBuffer(cl_data->context,
+                                                            CL_MEM_READ_WRITE,
+                                                            cl_data->in_buf->buffer_size,
+                                                            NULL,
+                                                            &err);
+    }
 
     // Array used to zero the output memory on the device.
     // TODO should this be in it's own function?
@@ -637,12 +675,15 @@ void close_open_cl(struct OpenCLData * cl_data)
     CHECK_CL_ERROR( clReleaseKernel(cl_data->corr_kernel) );
     CHECK_CL_ERROR( clReleaseProgram(cl_data->program) );
 
-    for (int i = 0; i < num_links_per_gpu(cl_data->config, cl_data->gpu_id); ++i) {
+    int num_input_buffers = cl_data->in_buf->num_buffers;
+    if (cl_data->config->gpu.use_time_shift) {
+        num_input_buffers = cl_data->num_links;
+    }
+    for (int i = 0; i < num_input_buffers; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_input_buffer[i]) );
     }
     free(cl_data->device_input_buffer);
     CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_time_shifted_buffer) );
-
 
     for (int i = 0; i < cl_data->in_buf->num_buffers; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_accumulate_buffer[i]) );
@@ -667,3 +708,4 @@ void close_open_cl(struct OpenCLData * cl_data)
 
     CHECK_CL_ERROR( clReleaseContext(cl_data->context) );
 }
+

@@ -87,8 +87,9 @@ int parse_gpu_config(struct Config* config, struct json_t * json)
     int error = 0;
     json_t * kernels;
 
-    error = json_unpack(json, "{s:o, s:i, s:i, s:i, s:i, s:i}",
+    error = json_unpack(json, "{s:o, s:i, s:i, s:i, s:i, s:i, s:i}",
         "kernels", &kernels,
+        "use_time_shift", &config->gpu.use_time_shift,
         "ts_element_offset", &config->gpu.ts_element_offset,
         "ts_num_elem_to_shift", &config->gpu.ts_num_elem_to_shift,
         "ts_samples_to_shift", &config->gpu.ts_samples_to_shift,
@@ -242,6 +243,10 @@ void print_config(struct Config* config)
     for (int i = 0; i < config->gpu.num_kernels; ++i) {
         INFO("config.gpu.kernels[%d] = %s", i, config->gpu.kernels[i]);
     }
+    INFO("config.gpu.use_time_shift = %d", config->gpu.use_time_shift);
+    INFO("config.gpu.ts_element_offset = %d", config->gpu.ts_element_offset);
+    INFO("config.gpu.ts_num_elem_to_shift = %d", config->gpu.ts_num_elem_to_shift);
+    INFO("config.gpu.ts_samples_to_shift = %d", config->gpu.ts_samples_to_shift);
 
     // Processing section
     INFO("config.processing.num_elements = %d", config->processing.num_elements);
