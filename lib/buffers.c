@@ -32,7 +32,7 @@ int private_are_producers_done(struct Buffer * buf);
 void private_check_info_object(struct Buffer * buf, const int ID);
 
 int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
-                  struct InfoObjectPool * pool, char * buffer_name)
+                  int num_consumers, struct InfoObjectPool * pool, char * buffer_name)
 {
 
     assert(num_buf > 0);
@@ -58,6 +58,7 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
     // so that no partial pages are send in the DMA copy.
     buf->aligned_buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
     buf->num_producers = num_producers;
+    buf->num_consumers = num_consumers;
 
     // Make sure we don't have a math error,
     // which would make the buffer smaller than it should be.
@@ -98,6 +99,22 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
     CHECK_MEM(buf->producer_done);
 
     memset(buf->producer_done, 0, num_producers * sizeof(int));
+
+    // Create the producers done array
+    buf->num_producers_done = malloc(num_buf*sizeof(int));
+    if ( buf->num_producers_done == NULL ) {
+        perror("Error creating num_producers_done array");
+        return errno;
+    }
+    memset(buf->num_producers_done, 0, num_buf*sizeof(int));
+
+    // Create the consumers done array
+    buf->num_consumers_done = malloc(num_buf*sizeof(int));
+    if ( buf->num_consumers_done == NULL ) {
+        perror("Error creating num_consumers_done array");
+        return errno;
+    }
+    memset(buf->num_consumers_done, 0, num_buf*sizeof(int));
 
     int err = 0;
 
@@ -145,19 +162,27 @@ void delete_buffer(struct Buffer* buf)
     CHECK_ERROR( pthread_cond_destroy(&buf->empty_cond) );
 }
 
-void mark_buffer_full(struct Buffer * buf, const int ID)
-{
+void mark_buffer_full(struct Buffer * buf, const int ID){
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
 
+    int set_full = 0;
+
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
-    buf->is_full[ID] = 1;
+    buf->num_producers_done[ID]++;
+    if (buf->num_producers_done[ID] == buf->num_producers) {
+        buf->num_producers_done[ID] = 0;
+        buf->is_full[ID] = 1;
+        set_full = 1;
+    }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     // Signal consumer
-    CHECK_ERROR( pthread_cond_broadcast(&buf->full_cond) );
+    if (set_full == 1) {
+        CHECK_ERROR( pthread_cond_broadcast(&buf->full_cond) );
+    }
 }
 
 int get_full_buffer_ID(struct Buffer * buf)
@@ -453,6 +478,27 @@ void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int
     CHECK_ERROR( pthread_mutex_unlock(&from->lock_info) );
 }
 
+void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id)
+{
+    assert(from != NULL);
+    assert(to != NULL);
+
+    CHECK_ERROR( pthread_mutex_lock(&from->lock_info) );
+    CHECK_ERROR( pthread_mutex_lock(&to->lock_info) );
+
+    // Assume we are always copying an already valid pointer.
+    assert(from->info[from_id] != NULL);
+
+    // Assume we are always coping to a buffer without a valid pointer.
+    assert(to->info[to_id] == NULL);
+
+    to->info[to_id] = from->info[from_id];
+    to->info[to_id]->ref_count++;
+
+    CHECK_ERROR( pthread_mutex_unlock(&to->lock_info) );
+    CHECK_ERROR( pthread_mutex_unlock(&from->lock_info) );
+}
+
 void release_info_object(struct Buffer * buf, const int ID)
 {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
@@ -514,6 +560,8 @@ struct BufferInfo * request_info_object(struct InfoObjectPool * pool) {
     // Assume we never run out.
     assert(ret != NULL);
 
+    ret->ref_count = 1;
+
     CHECK_ERROR( pthread_mutex_unlock(&pool->in_use_lock) );
 
     return ret;
@@ -523,8 +571,10 @@ void return_info_object(struct InfoObjectPool * pool, struct BufferInfo * buffer
 {
     CHECK_ERROR( pthread_mutex_lock(&pool->in_use_lock) );
 
-    reset_info_object(buffer_info);
-    buffer_info->in_use = 0;
+    if (--buffer_info->ref_count == 0) {
+        reset_info_object(buffer_info);
+        buffer_info->in_use = 0;
+    }
 
     CHECK_ERROR( pthread_mutex_unlock(&pool->in_use_lock) );
 }
@@ -534,6 +584,7 @@ void reset_info_object(struct BufferInfo * buffer_info)
     buffer_info->data_ID = -1;
     reset_error_matrix(&buffer_info->error_matrix);
     buffer_info->fpga_seq_num = 0;
+    buffer_info->ref_count = 0;
 }
 
 void delete_info_object_pool(struct InfoObjectPool * pool)

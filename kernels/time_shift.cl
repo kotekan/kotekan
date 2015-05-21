@@ -32,5 +32,4 @@ __kernel void time_shift(__global unsigned char *data, // Input data starting at
                        + get_global_id(1) * ACTUAL_NUM_ELEMENTS
                        + get_global_id(0);
     output_data[output_address] = temp;
-//
 }

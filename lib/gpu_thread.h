@@ -29,6 +29,7 @@ struct gpuThreadArgs {
 
     struct Buffer * in_buf;
     struct Buffer * out_buf;
+    struct Buffer * beamforming_out_buf;
 
     int started;
     int gpu_id;
@@ -50,6 +51,7 @@ struct OpenCLData {
     cl_kernel offset_accumulate_kernel;
     cl_kernel preseed_kernel;
     cl_kernel time_shift_kernel;
+    cl_kernel beamform_kernel;
     cl_device_id device_id[MAX_GPUS];
     cl_platform_id platform_id;
 
@@ -61,6 +63,7 @@ struct OpenCLData {
     // Device Buffers
     cl_mem * device_input_buffer;
     cl_mem * device_output_buffer;
+    cl_mem * device_beamform_output_buffer;
     cl_mem * device_accumulate_buffer;
     cl_mem device_time_shifted_buffer;
 
@@ -72,6 +75,8 @@ struct OpenCLData {
     cl_event * time_shift_finished;
     cl_event * preseed_finished;
     cl_event * corr_finished;
+    cl_event * beamform_finished;
+    cl_event * beamform_read_finished;
     cl_event * read_finished;
 
     // Call back data.
@@ -89,21 +94,31 @@ struct OpenCLData {
 
     // Kernel values.
     unsigned int num_accumulations;
-    size_t gws_corr[3]; // TODO Rename to something more meaningful - or comment.
+
+    // The global and local work space sizes for the correlation kernel
+    size_t gws_corr[3];
     size_t lws_corr[3];
 
+    // The global and local work spcae sizes for the accumulate kernel
     size_t gws_accum[3];
     size_t lws_accum[3];
 
+    // The global and local work space sizes for the preseed kernel
     size_t gws_preseed[3];
     size_t lws_preseed[3];
 
+    // The global and local work space sizes for the time shift kernel
     size_t gws_time_shift[3];
     size_t lws_time_shift[3];
+
+    // The global and local work space sizes for the beamforming kernel
+    size_t gws_beamforming[3];
+    size_t lws_beamforming[3];
 
     // Buffer objects
     struct Buffer * in_buf;
     struct Buffer * out_buf;
+    struct Buffer * beamforming_out_buf;
 
     // Locks
     pthread_mutex_t queue_lock;

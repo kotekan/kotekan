@@ -13,6 +13,7 @@
 #include "buffers.h"
 #include "config.h"
 #include "util.h"
+#include "beamforming.h"
 
 #include "pthread.h"
 #include <unistd.h>
@@ -37,6 +38,7 @@ void gpu_thread(void* arg)
 
     cl_data.in_buf = args->in_buf;
     cl_data.out_buf = args->out_buf;
+    cl_data.beamforming_out_buf = args->beamforming_out_buf;
 
     cl_data.config = args->config;
 
@@ -95,8 +97,11 @@ void gpu_thread(void* arg)
         if (args->config->gpu.use_time_shift) {
             wait_for_empty_buffer(args->out_buf, mod(bufferID + cl_data.num_links, args->out_buf->num_buffers));
         }
+        if (args->config->gpu.use_beamforming) {
+            wait_for_empty_buffer(args->beamforming_out_buf, bufferID);
+        }
 
-        //INFO("GPU Kernel started on gpu %d in buffer (%d,%d)", args->gpu_id, args->gpu_id - 1, bufferID);
+        //INFO("GPU Kernel started on gpu %d in buffer (%d,%d)", args->gpu_id, args->gpu_id, bufferID);
 
         CHECK_CL_ERROR( clSetUserEventStatus(cl_data.host_buffer_ready[bufferID], CL_SUCCESS) );
 
@@ -137,6 +142,10 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
     //INFO("GPU Kernel Finished on GPUID: %d", cb_data->cl_data->gpu_id);
 
     // Copy the information contained in the input buffer
+    copy_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
+                     cb_data->cl_data->beamforming_out_buf, cb_data->buffer_id);
+
+    // Copy the information contained in the input buffer
     move_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
                      cb_data->cl_data->out_buf, cb_data->buffer_id);
 
@@ -146,10 +155,13 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
     // Mark the output buffer as full, so it can be processed.
     mark_buffer_full(cb_data->cl_data->out_buf, cb_data->buffer_id);
 
+    // Mark the beamforming buffer as full.
+    mark_buffer_full(cb_data->cl_data->beamforming_out_buf, cb_data->buffer_id);
+
     // Relase the events from the last queue set run.
     release_events_for_buffer(cb_data->cl_data, cb_data->buffer_id);
 
-    if (cb_data->cl_data->config->gpu.use_time_shift) {
+    if (cb_data->cl_data->config->gpu.use_time_shift == 1) {
         // We add the (n - links) queue set, since it will create the n write buffer.
         add_queue_set(cb_data->cl_data, mod(cb_data->buffer_id - cb_data->cl_data->num_links, cb_data->cl_data->in_buf->num_buffers));
     } else {
@@ -171,7 +183,6 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
     clReleaseEvent(cl_data->host_buffer_ready[buffer_id]);
     clReleaseEvent(cl_data->input_data_written[buffer_id]);
     clReleaseEvent(cl_data->accumulate_data_zeroed[buffer_id]);
-    clReleaseEvent(cl_data->time_shift_finished[buffer_id]);
     clReleaseEvent(cl_data->offset_accumulate_finished[buffer_id]);
     clReleaseEvent(cl_data->preseed_finished[buffer_id]);
     clReleaseEvent(cl_data->corr_finished[buffer_id]);
@@ -180,6 +191,11 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
     if (cl_data->config->gpu.use_time_shift) {
         assert(cl_data->time_shift_finished[buffer_id] != NULL);
         clReleaseEvent(cl_data->time_shift_finished[buffer_id]);
+    }
+
+    if (cl_data->config->gpu.use_beamforming) {
+        assert(cl_data->beamform_finished[buffer_id] != NULL);
+        clReleaseEvent(cl_data->beamform_finished[buffer_id]);
     }
 }
 
@@ -191,19 +207,34 @@ void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id)
 
     CHECK_CL_ERROR(err);
 
-    // TODO Remove this requirement!!
-    assert(cl_data->in_buf->aligned_buffer_size == cl_data->in_buf->buffer_size);
+    if (cl_data->config->gpu.use_time_shift == 1) {
 
-    // Data transfer to GPU
-    CHECK_CL_ERROR( clEnqueueWriteBuffer(cl_data->queue[0],
-                                         cl_data->device_input_buffer[buffer_id % cl_data->num_links],
-                                         CL_FALSE,
-                                         cl_data->in_buf->buffer_size * (buffer_id / cl_data->num_links), //offset
-                                         cl_data->in_buf->buffer_size,
-                                         cl_data->in_buf->data[buffer_id],
-                                         1,
-                                         &cl_data->host_buffer_ready[buffer_id], // Wait on this user event (network finished).
-                                         &cl_data->input_data_written[buffer_id]) );
+        // TODO Remove this requirement!!
+        assert(cl_data->in_buf->aligned_buffer_size == cl_data->in_buf->buffer_size);
+
+        // Data transfer to GPU
+        CHECK_CL_ERROR( clEnqueueWriteBuffer(cl_data->queue[0],
+                                            cl_data->device_input_buffer[buffer_id % cl_data->num_links],
+                                            CL_FALSE,
+                                            cl_data->in_buf->buffer_size * (buffer_id / cl_data->num_links), //offset
+                                            cl_data->in_buf->buffer_size,
+                                            cl_data->in_buf->data[buffer_id],
+                                            1,
+                                            &cl_data->host_buffer_ready[buffer_id], // Wait on this user event (network finished).
+                                            &cl_data->input_data_written[buffer_id]) );
+
+    } else {
+        // Data transfer to GPU
+        CHECK_CL_ERROR( clEnqueueWriteBuffer(cl_data->queue[0],
+                                             cl_data->device_input_buffer[buffer_id],
+                                             CL_FALSE,
+                                             0, //offset
+                                             cl_data->in_buf->aligned_buffer_size,
+                                             cl_data->in_buf->data[buffer_id],
+                                             1,
+                                             &cl_data->host_buffer_ready[buffer_id], // Wait on this user event (network finished).
+                                             &cl_data->input_data_written[buffer_id]) );
+    }
 
     CHECK_CL_ERROR( clEnqueueWriteBuffer(cl_data->queue[0],
                                          cl_data->device_accumulate_buffer[buffer_id],
@@ -273,16 +304,20 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
     cl_data->cb_data[buffer_id].cl_data = cl_data;
 
     // The input data host to device copies.
-    add_write_to_queue_set(cl_data, mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers));
+    if (cl_data->config->gpu.use_time_shift == 1) {
+        add_write_to_queue_set(cl_data, mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers));
+    } else {
+        add_write_to_queue_set(cl_data, buffer_id);
+    }
 
     cl_mem device_kernel_input_data = cl_data->device_input_buffer[buffer_id];
-    cl_event input_data_ready_event = cl_data->accumulate_data_zeroed[buffer_id];
+    cl_event * input_data_ready_event = &cl_data->accumulate_data_zeroed[buffer_id];
 
     // The time shift kernel
-    if (cl_data->config->gpu.use_time_shift) {
+    if (cl_data->config->gpu.use_time_shift == 1) {
         add_time_shift_kernel(cl_data, buffer_id);
         device_kernel_input_data = cl_data->device_time_shifted_buffer;
-        input_data_ready_event = cl_data->time_shift_finished[buffer_id];
+        input_data_ready_event = &cl_data->time_shift_finished[buffer_id];
     }
 
     // The offset accumulate kernel args.
@@ -305,7 +340,7 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                             cl_data->gws_accum,
                                             cl_data->lws_accum,
                                             1,
-                                            &input_data_ready_event,
+                                            input_data_ready_event,
                                             &cl_data->offset_accumulate_finished[buffer_id]) );
 
     // The perseed kernel
@@ -329,6 +364,7 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                             1,
                                             &cl_data->offset_accumulate_finished[buffer_id],
                                             &cl_data->preseed_finished[buffer_id]) );
+
 
     // The correlation kernel.
 
@@ -364,13 +400,70 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                             &cl_data->corr_finished[buffer_id],
                                             &cl_data->read_finished[buffer_id]) );
 
+    // The beamforming kernel.
+    cl_event last_event = cl_data->read_finished[buffer_id];
+    if (cl_data->config->gpu.use_beamforming) {
+
+
+        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                       0,
+                                       sizeof(void *),
+                                       (void*) &device_kernel_input_data) );
+
+        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                       1,
+                                       sizeof(void *),
+                                       (void*) &cl_data->device_beamform_output_buffer[buffer_id]) );
+
+        CHECK_CL_ERROR( clEnqueueNDRangeKernel(cl_data->queue[1],
+                                               cl_data->beamform_kernel,
+                                               3,
+                                               NULL,
+                                               cl_data->gws_beamforming,
+                                               cl_data->lws_beamforming,
+                                               1,
+                                               &cl_data->corr_finished[buffer_id],
+                                               &cl_data->beamform_finished[buffer_id]) );
+
+        // Read the results
+        CHECK_CL_ERROR( clEnqueueReadBuffer(cl_data->queue[2],
+                                            cl_data->device_beamform_output_buffer[buffer_id],
+                                            CL_FALSE,
+                                            0,
+                                            cl_data->beamforming_out_buf->aligned_buffer_size,
+                                            cl_data->beamforming_out_buf->data[buffer_id],
+                                            1,
+                                            &cl_data->beamform_finished[buffer_id],
+                                            &cl_data->beamform_read_finished[buffer_id]) );
+
+        last_event = cl_data->beamform_read_finished[buffer_id];
+    }
     // Setup call back.
-    CHECK_CL_ERROR( clSetEventCallback(cl_data->read_finished[buffer_id],
+    CHECK_CL_ERROR( clSetEventCallback(last_event,
                                             CL_COMPLETE,
                                             &read_complete,
                                             &cl_data->cb_data[buffer_id]) );
 
     pthread_mutex_unlock(&queue_lock);
+}
+
+void setup_beamform_kernel_worksize(struct OpenCLData *  cl_data) {
+
+    INFO("setup_beamform_kernel_worksize, setting bit shift factor to %d",
+         cl_data->config->beamforming.bit_shift_factor);
+    CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                   5,
+                                   sizeof(int),
+                                   &cl_data->config->beamforming.bit_shift_factor) );
+
+    // Beamforming kernel global and local work space sizes.
+    cl_data->gws_beamforming[0] = cl_data->config->processing.num_elements / 4;
+    cl_data->gws_beamforming[1] = cl_data->config->processing.num_local_freq;
+    cl_data->gws_beamforming[2] = cl_data->config->processing.samples_per_data_set / 32;
+
+    cl_data->lws_beamforming[0] = 64;
+    cl_data->lws_beamforming[1] = 1;
+    cl_data->lws_beamforming[2] = 1;
 }
 
 
@@ -448,6 +541,9 @@ void setup_open_cl(struct OpenCLData * cl_data)
     cl_data->time_shift_kernel = clCreateKernel( cl_data->program, "time_shift", &err );
     CHECK_CL_ERROR(err);
 
+    cl_data->beamform_kernel = clCreateKernel( cl_data->program, "gpu_beamforming", &err );
+    CHECK_CL_ERROR(err);
+
     // Create command queues
     for (int i = 0; i < NUM_QUEUES; ++i) {
         cl_data->queue[i] = clCreateCommandQueue( cl_data->context, cl_data->device_id[cl_data->gpu_id], CL_QUEUE_PROFILING_ENABLE, &err );
@@ -509,7 +605,10 @@ void setup_open_cl(struct OpenCLData * cl_data)
     cl_data->device_accumulate_buffer = (cl_mem *) malloc(cl_data->in_buf->num_buffers * sizeof(cl_mem));
     CHECK_MEM(cl_data->device_accumulate_buffer);
     for (int i = 0; i < cl_data->in_buf->num_buffers; ++i) {
-        cl_data->device_accumulate_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_READ_WRITE, cl_data->aligned_accumulate_len, NULL, &err);
+        cl_data->device_accumulate_buffer[i] = clCreateBuffer(cl_data->context,
+                                                              CL_MEM_READ_WRITE,
+                                                              cl_data->aligned_accumulate_len,
+                                                              NULL, &err);
         CHECK_CL_ERROR(err);
     }
 
@@ -517,7 +616,21 @@ void setup_open_cl(struct OpenCLData * cl_data)
     cl_data->device_output_buffer = (cl_mem *) malloc(cl_data->out_buf->num_buffers * sizeof(cl_mem));
     CHECK_MEM(cl_data->device_output_buffer);
     for (int i = 0; i < cl_data->out_buf->num_buffers; ++i) {
-        cl_data->device_output_buffer[i] = clCreateBuffer(cl_data->context, CL_MEM_WRITE_ONLY, cl_data->out_buf->aligned_buffer_size, NULL, &err);
+        cl_data->device_output_buffer[i] = clCreateBuffer(cl_data->context,
+                                                          CL_MEM_WRITE_ONLY,
+                                                          cl_data->out_buf->aligned_buffer_size,
+                                                          NULL, &err);
+        CHECK_CL_ERROR(err);
+    }
+
+    // Setup beamforming output buffers.
+    cl_data->device_beamform_output_buffer = (cl_mem *) malloc(cl_data->beamforming_out_buf->num_buffers * sizeof(cl_mem));
+    CHECK_MEM(cl_data->device_beamform_output_buffer);
+    for (int i = 0; i < cl_data->beamforming_out_buf->num_buffers; ++i) {
+        cl_data->device_beamform_output_buffer[i] = clCreateBuffer(cl_data->context,
+                                                                   CL_MEM_WRITE_ONLY,
+                                                                   cl_data->beamforming_out_buf->aligned_buffer_size,
+                                                                   NULL, &err);
         CHECK_CL_ERROR(err);
     }
 
@@ -547,6 +660,12 @@ void setup_open_cl(struct OpenCLData * cl_data)
 
     cl_data->read_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
     CHECK_MEM(cl_data->read_finished);
+
+    cl_data->beamform_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
+    CHECK_MEM(cl_data->beamform_finished);
+
+    cl_data->beamform_read_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
+    CHECK_MEM(cl_data->beamform_read_finished);
 
     // Create lookup tables 
 
@@ -614,6 +733,60 @@ void setup_open_cl(struct OpenCLData * cl_data)
                                    64* sizeof(cl_uint),
                                    NULL) );
 
+    // Setup beamforming output.
+    setup_beamform_kernel_worksize(cl_data);
+
+    // TODO make this depend on actual frequences.
+    float freq[cl_data->config->processing.num_local_freq];
+    for (int i = 0; i < cl_data->config->processing.num_local_freq; ++i) {
+        freq[i] = 400 + i * 25;
+    }
+    cl_mem device_freq_map = clCreateBuffer(cl_data->context,
+                                            CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                            cl_data->config->processing.num_local_freq * sizeof(float),
+                                            freq,
+                                            &err);
+    CHECK_CL_ERROR(err);
+
+    CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                   2,
+                                   sizeof(cl_mem),
+                                   (void*) &device_freq_map) );
+
+    // TODO update this at the ~1 minute time basis.
+    float phases[cl_data->config->processing.num_elements];
+    get_delays(cl_data->config->beamforming.ra,
+               cl_data->config->beamforming.dec,
+               cl_data->config,
+               cl_data->config->beamforming.element_positions,
+               phases);
+    cl_mem device_phases = clCreateBuffer(cl_data->context,
+                                          CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                          cl_data->config->processing.num_elements * sizeof(cl_uint),
+                                          phases,
+                                          &err);
+    CHECK_CL_ERROR(err);
+
+    CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                   3,
+                                   sizeof(cl_mem),
+                                   (void*) &device_phases) );
+
+    unsigned char mask[cl_data->config->processing.num_adjusted_elements];
+    for (int i = 0; i < cl_data->config->processing.num_adjusted_elements; ++i) {
+        mask[i] = 1;
+    }
+    cl_mem device_mask = clCreateBuffer(cl_data->context,
+                                        CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                        cl_data->config->processing.num_elements * sizeof(unsigned char),
+                                        mask,
+                                        &err);
+
+    CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                   4,
+                                   sizeof(cl_mem),
+                                   (void*) &device_mask) );
+
     // Number of compressed accumulations.
     cl_data->num_accumulations = cl_data->config->processing.samples_per_data_set/256;
 
@@ -650,7 +823,7 @@ void setup_open_cl(struct OpenCLData * cl_data)
     cl_data->gws_time_shift[2] = cl_data->config->processing.samples_per_data_set *
                                     cl_data->config->processing.num_data_sets;
 
-    // Time shift kernel global and local work sapce sizes.
+    // Time shift kernel global and local work space sizes.
     if (cl_data->config->processing.num_elements > 64) {
         cl_data->lws_time_shift[0] = 64;
         cl_data->lws_time_shift[1] = 1;
@@ -703,6 +876,8 @@ void close_open_cl(struct OpenCLData * cl_data)
     free(cl_data->corr_finished);
     free(cl_data->offset_accumulate_finished);
     free(cl_data->preseed_finished);
+    free(cl_data->beamform_finished);
+    free(cl_data->beamform_read_finished);
 
     free(cl_data->cb_data);
 

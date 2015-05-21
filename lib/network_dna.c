@@ -7,6 +7,7 @@
 #include "nt_memcpy.h"
 #include "config.h"
 #include "util.h"
+#include "time_tracking.h"
 
 #include <dirent.h>
 #include <sys/socket.h>
@@ -299,6 +300,9 @@ void network_thread(void * arg) {
             static struct timeval now;
             gettimeofday(&now, NULL);
             set_first_packet_recv_time(args->buf, buffer_id, now);
+            if (args->dev_id == 0) {
+                set_fpga_num_and_time(&now, seq);
+            }
             if (args->read_from_file == 0) {
                 set_fpga_seq_num(args->buf, buffer_id, seq - seq % integration_edge);
                 set_stream_ID(args->buf, buffer_id, stream_ID);

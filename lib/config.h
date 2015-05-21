@@ -33,6 +33,8 @@ struct GPUConfig {
     // Kernels
     char ** kernels;
 
+    // ** Time shift options **
+
     // Use time shift kernel?
     int use_time_shift;
 
@@ -44,6 +46,12 @@ struct GPUConfig {
 
     // The number of timesamples to shift above elements.
     int ts_samples_to_shift;
+
+    // ** Beamforming options **
+
+    // Do beamforming
+    int use_beamforming;
+
 };
 
 /// @brief Values related to the processing performed (e.g. intergration time, etc.).
@@ -121,6 +129,36 @@ struct CH_MASTER_NetworkConfig {
 
     // The TCP port to use on the collection server.
     int collection_server_port;
+
+    // Disable upload
+    int disable_upload;
+};
+
+struct Beamforming {
+    // The IP address of the collection server
+    char * vdif_server_ip;
+
+    // The port to send packets to.
+    int vdif_port;
+
+    // The latitude and longitude of the instrument
+    float instrument_lat, instrument_long;
+
+    // The ra and dec the pointing should be set to.
+    // NOTE: This will be made more complex to allow more than one pointing in a run.
+    double ra, dec;
+
+    // The positions of the feeds.
+    float * element_positions;
+
+    // Number of masked elements
+    int num_masked_elements;
+
+    // The array of elements to mask out of the beamforming.
+    int * element_mask;
+
+    // The gain amount.
+    int bit_shift_factor;
 };
 
 /// @brief Struct for holding static system configuration
@@ -138,6 +176,9 @@ struct Config {
 
     /// Data processing configuration
     struct ProcessingConfig processing;
+
+    /// The beamforming options
+    struct Beamforming beamforming;
 };
 
 /// @brief Parses a json object which contains the configuration for kotekan

@@ -23,6 +23,10 @@
 #include "ch_acq_uplink.h"
 #include "config.h"
 #include "gpu_post_process.h"
+#include "beamforming.h"
+#include "beamforming_post_process.h"
+#include "vdif_stream.h"
+#include "null.h"
 #include "chrx.h"
 
 void print_help() {
@@ -197,6 +201,7 @@ int main(int argc, char ** argv) {
     // Create buffers.
     struct Buffer gpu_input_buffer[config.gpu.num_gpus];
     struct Buffer gpu_output_buffer[config.gpu.num_gpus];
+    struct Buffer gpu_beamform_output_buffer[config.gpu.num_gpus];
 
     cl_int output_len = config.processing.num_adjusted_local_freq * config.processing.num_blocks*
                         (config.gpu.block_size*config.gpu.block_size)*2.;
@@ -214,24 +219,48 @@ int main(int argc, char ** argv) {
 
         DEBUG("Creating buffers...");
 
+        char buffer_name[100];
+
         // TODO Figure out why this value currently needs to be constant.
-        int links_per_gpu = num_links_per_gpu(&config, i);
+        int links_per_gpu = 3; //num_links_per_gpu(&config, i);
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
         create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
                                     config.processing.num_adjusted_local_freq,
                                     config.processing.num_adjusted_elements);
 
-        create_buffer(&gpu_input_buffer[i], links_per_gpu * config.processing.buffer_depth,
+        snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
+        create_buffer(&gpu_input_buffer[i],
+                      links_per_gpu * config.processing.buffer_depth,
                       config.processing.samples_per_data_set * config.processing.num_adjusted_elements *
                       config.processing.num_adjusted_local_freq * config.processing.num_data_sets,
-                      num_links_per_gpu(&config, i), &pool[i], "gpu_input_buffer");
-        create_buffer(&gpu_output_buffer[i], links_per_gpu * config.processing.buffer_depth,
-                      output_len * config.processing.num_data_sets * sizeof(cl_int), 1, &pool[i],
-                      "gpu_output_buffer");
+                      1, //num_links_per_gpu(&config, i),
+                      1,
+                      &pool[i],
+                      buffer_name);
+
+        snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
+        create_buffer(&gpu_output_buffer[i],
+                      links_per_gpu * config.processing.buffer_depth,
+                      output_len * config.processing.num_data_sets * sizeof(cl_int),
+                      1,
+                      1,
+                      &pool[i],
+                      buffer_name);
+
+        snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
+        create_buffer(&gpu_beamform_output_buffer[i],
+                      links_per_gpu * config.processing.buffer_depth,
+                      config.processing.samples_per_data_set * config.processing.num_data_sets *
+                      config.processing.num_local_freq * 2,
+                      1,
+                      1,
+                      &pool[i],
+                      buffer_name);
 
         gpu_args[i].in_buf = &gpu_input_buffer[i];
         gpu_args[i].out_buf = &gpu_output_buffer[i];
+        gpu_args[i].beamforming_out_buf = &gpu_beamform_output_buffer[i];
         gpu_args[i].gpu_id = i;
         gpu_args[i].started = 0;
         gpu_args[i].config = &config;
@@ -284,6 +313,10 @@ int main(int argc, char ** argv) {
 
     pthread_t output_consumer_t;
     pthread_t output_network_t;
+
+    pthread_t beamforming_comsumer_t;
+    pthread_t vdif_output_t;
+
     if (use_ch_acq == 1) {
         int num_values = ((config.processing.num_elements *
         (config.processing.num_elements + 1)) / 2 ) *
@@ -300,7 +333,7 @@ int main(int argc, char ** argv) {
 
         struct Buffer network_output_buffer;
         create_buffer(&network_output_buffer, network_buffer_depth, tcp_buffer_size,
-                      1, pool, "network_output_buffer");
+                      1, 1, pool, "network_output_buffer");
 
         // The thread which creates output frame.
         struct gpuPostProcessThreadArg gpu_post_process_args;
@@ -311,13 +344,47 @@ int main(int argc, char ** argv) {
                                     (void *) &gpu_post_process_thread,
                                     (void *) &gpu_post_process_args ) );
 
-        // The thread which sends it with TCP to ch_acq.
-        struct ch_acqUplinkThreadArg ch_acq_uplink_args;
-        ch_acq_uplink_args.buf = &network_output_buffer;
-        ch_acq_uplink_args.config = &config;
-        CHECK_ERROR( pthread_create(&output_network_t, NULL,
-                                    (void *) &ch_acq_uplink_thread,
-                                    (void *) &ch_acq_uplink_args ) );
+        if (config.ch_master_network.disable_upload == 0) {
+            // The thread which sends it with TCP to ch_acq.
+            struct ch_acqUplinkThreadArg ch_acq_uplink_args;
+            ch_acq_uplink_args.buf = &network_output_buffer;
+            ch_acq_uplink_args.config = &config;
+            CHECK_ERROR( pthread_create(&output_network_t, NULL,
+                                        (void *) &ch_acq_uplink_thread,
+                                        (void *) &ch_acq_uplink_args ) );
+        } else {
+            // Drop the data.
+            struct NullThreadArg null_thread_args;
+            null_thread_args.buf = &network_output_buffer;
+            null_thread_args.config = &config;
+            CHECK_ERROR( pthread_create(&output_network_t, NULL,
+                                        (void *) &null_thread,
+                                        (void *) &null_thread_args ) );
+        }
+
+        // The beamforming thread
+        if (config.gpu.use_beamforming == 1) {
+            struct Buffer vdif_output_buffer;
+            create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
+                          1, 1, pool, "vdif_output_buffer");
+
+            // The thread which creates output frame.
+            struct BeamformingPostProcessArgs beamforming_post_process_args;
+            beamforming_post_process_args.in_buf = gpu_beamform_output_buffer;
+            beamforming_post_process_args.out_buf = &vdif_output_buffer;
+            beamforming_post_process_args.config = &config;
+            CHECK_ERROR( pthread_create(&beamforming_comsumer_t, NULL,
+                                        (void *) &beamforming_post_process,
+                                        (void *) &beamforming_post_process_args ) );
+
+            // The thread which sends it with TCP to ch_acq.
+            struct VDIFstreamArgs vdif_stream_args;
+            vdif_stream_args.buf = &vdif_output_buffer;
+            vdif_stream_args.config = &config;
+            CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
+                                        (void *) &vdif_stream,
+                                        (void *) &vdif_stream_args ) );
+        }
     } else  {
         // Create consumer thread (i.e. file write thread).
         // TODO: only works with one GPU, fix to work with more than one?
@@ -345,6 +412,11 @@ int main(int argc, char ** argv) {
 
     if (use_ch_acq == 1) {
         CHECK_ERROR( pthread_join(output_network_t, (void **) &ret) );
+    }
+
+    if (config.gpu.use_beamforming == 1) {
+        CHECK_ERROR( pthread_join(beamforming_comsumer_t, (void **) &ret) );
+        CHECK_ERROR( pthread_join(vdif_output_t, (void **) &ret) );
     }
 
     INFO("kotekan shutdown successfully.");

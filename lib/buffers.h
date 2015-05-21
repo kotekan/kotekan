@@ -31,6 +31,8 @@ struct BufferInfo {
 
     // 1 = in use, 0 = avaiable;
     char in_use;
+
+    int ref_count;
 };
 
 struct InfoObjectPool {
@@ -61,10 +63,23 @@ struct Buffer {
     /// The size of each buffer.
     int buffer_size;
 
+    // Each buffer is padded out to a page aligned size.
     int aligned_buffer_size;
 
+    // Number of producers
+    int num_producers;
+
+    // Number of consumers
+    int num_consumers;
+
+    /// The number of producers
+    int * num_producers_done;
+
+    /// The number of consumers done.
+    int * num_consumers_done;
+
     /// The array of buffers
-    char ** data;
+    unsigned char ** data;
 
     /// Flag vars to say which buffers are full
     /// A 0 at index I means the buffer at index I is not full, one means it is full.
@@ -80,9 +95,6 @@ struct Buffer {
     /// An array of flags indicating if the producer is done.
     /// 0 means the producer is not done, 1 means the producer is done.
     int * producer_done;
-
-    /// The number of producers.
-    int num_producers;
 
     /// The pool of info objects
     struct InfoObjectPool * info_object_pool;
@@ -100,7 +112,7 @@ struct Buffer {
  *  @return 0 if successful, or a non-zero standard error value if not successful 
  */
 int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
-                  struct InfoObjectPool * pool, char * buffer_name);
+                  int num_consumers, struct InfoObjectPool * pool, char * buffer_name);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
@@ -203,6 +215,8 @@ int get_num_full_buffers(struct Buffer * buf);
 void print_buffer_status(struct Buffer * buf);
 
 void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
+
+void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
 
 void release_info_object(struct Buffer * buf, const int ID);
 
