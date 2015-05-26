@@ -6,7 +6,6 @@
 #include "null.h"
 #include "buffers.h"
 #include "errors.h"
-#include "chrx.h"
 #include "output_formating.h"
 #include "config.h"
 

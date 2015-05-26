@@ -11,10 +11,10 @@
 
 #include "buffers.h"
 #include "errors.h"
-#include "chrx.h"
 #include "output_formating.h"
 #include "config.h"
 #include "gpu_post_process.h"
+#include "util.h"
 
 void gpu_post_process_thread(void* arg)
 {

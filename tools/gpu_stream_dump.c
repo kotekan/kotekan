@@ -52,8 +52,8 @@ typedef struct {
 
 int main(int argc, char ** argv) {
     unsigned char *tcp_buf;
-    uint8_t *curr_flag, err_flag;
-    int i, j, k, l, tcp_listen_fd, tcp_fd, bytes_recv, buffer_size;
+    uint8_t *curr_flag; //, *err_flag;
+    int tcp_listen_fd, tcp_fd, bytes_recv, buffer_size;
     int n_val;
     socklen_t tcp_addr_len;
     struct sockaddr_in acq_addr, gpu_addr;
@@ -70,20 +70,20 @@ int main(int argc, char ** argv) {
     tcp_buf = malloc(buffer_size);
     if (tcp_buf == NULL) {
         fprintf(stderr, "Error creating tcp buffer.");
-        return NULL;
+        return -1;
     }
 
     curr_flag = (uint8_t *)malloc(n_val * sizeof(uint8_t));
     if (curr_flag == NULL) {
         fprintf(stderr, "Error creating curr_flag buffer.");
-        return NULL;
+        return -1;
     }
 
     tcp_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (tcp_listen_fd < 0) {
         fprintf(stderr, "Error creating tcp socket.");
-        return NULL;
+        return -1;
     }
 
     bzero(&acq_addr, sizeof(acq_addr));
@@ -93,7 +93,7 @@ int main(int argc, char ** argv) {
 
     if (bind(tcp_listen_fd, (struct sockaddr *)&acq_addr,
         sizeof(struct sockaddr)) < 0) {
-        fprintf(stderr, "Error binding tcp socket (errno = %d).");
+        fprintf(stderr, "Error binding tcp socket (errno = %d).", errno);
         return -1;
     }
 
@@ -142,8 +142,9 @@ int main(int argc, char ** argv) {
 
             header = (struct tcp_frame_header *)tcp_buf;
             vis = (complex_int_t *)(tcp_buf + sizeof(struct tcp_frame_header));
-            err_flag = (uint8_t *)(tcp_buf + sizeof(struct tcp_frame_header) +
-                        n_val * sizeof(complex_int_t));
+            //err_flag = (uint8_t *)(tcp_buf + sizeof(struct tcp_frame_header) +
+            //            n_val * sizeof(complex_int_t));
+
 
             if (header->num_freq != N_FREQ || header->num_vis != N_PROD) {
                 fprintf(stderr, "bytes_recv: %d", bytes_recv);
@@ -152,9 +153,10 @@ int main(int argc, char ** argv) {
                 fprintf(stderr, "vis: %d", header->num_vis);
                 fprintf(stderr, "local freq: %d ", N_FREQ);
                 fprintf(stderr, "local vis: %d", N_PROD);
-                fprintf(stderr, "The tcp frame has a different number of frequencies %d or visibilities %d.", header->num_freq,
-                header->num_vis);
-                return NULL;
+                fprintf(stderr, "The tcp frame has a different number of frequencies %d or visibilities %d.",
+                        header->num_freq,
+                        header->num_vis);
+                return -1;
             }
 
             printf("Got GPU frame: %d\n",  header->fpga_seq_number);
@@ -166,7 +168,7 @@ int main(int argc, char ** argv) {
             }
 
             size_t bytes_written = fwrite(vis, n_val * sizeof(complex_int_t), 1, out_fp);
-            printf("bytes_written: %d", bytes_written);
+            printf("bytes_written: %d", (int)bytes_written);
             //assert(bytes_written == n_val * sizeof(complex_int_t));
 
         }

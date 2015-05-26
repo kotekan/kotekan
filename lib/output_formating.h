@@ -1,8 +1,7 @@
-
-#include "chrx.h"
-
 #ifndef OUTPUT_FORMATING
 #define OUTPUT_FORMATING
+
+#include "util.h"
 
 void reorganize_32_to_16_feed_GPU_Correlated_Data_Interleaved(int actual_num_frequencies, 
                                                               int actual_num_elements, 

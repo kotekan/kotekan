@@ -18,7 +18,6 @@
 #include "buffers.h"
 #include "gpu_thread.h"
 #include "network_dna.h"
-#include "file_write.h"
 #include "error_correction.h"
 #include "ch_acq_uplink.h"
 #include "config.h"
@@ -27,7 +26,7 @@
 #include "beamforming_post_process.h"
 #include "vdif_stream.h"
 #include "null.h"
-#include "chrx.h"
+#include "util.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -39,7 +38,6 @@ void print_help() {
     printf("Testing Options:\n");
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
     printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
-    printf("    --write-local (-w)              Write the data locally.\n");
 }
 
 void daemonize(char * root_dir, int log_options) {
@@ -135,9 +133,6 @@ int main(int argc, char ** argv) {
                 break;
             case 't':
                 no_network_test = 1;
-                break;
-            case 'w':
-                use_ch_acq = 0;
                 break;
             case 's':
                 log_options = log_options | LOG_PERROR;
@@ -386,16 +381,7 @@ int main(int argc, char ** argv) {
                                         (void *) &vdif_stream_args ) );
         }
     } else  {
-        // Create consumer thread (i.e. file write thread).
-        // TODO: only works with one GPU, fix to work with more than one?
-        struct fileWriteThreadArg file_write_args;
-        file_write_args.config = &config;
-        file_write_args.buf = &gpu_output_buffer[0];
-        file_write_args.data_dir = "results";
-        file_write_args.dataset_name = "test_data";
-        CHECK_ERROR( pthread_create(&output_consumer_t, NULL,
-                                    (void *) &file_write_thread,
-                                    (void *)&file_write_args ) );
+        // TODO add local file output in some form here.
     }
 
     // Join with threads.
