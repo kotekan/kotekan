@@ -3,7 +3,7 @@ ATISDK	= /opt/AMDAPP
 INC	= -I$(ATISDK)/include -I$(ATISDK)/include/CAL -I$(AMDAPPSDKROOT)/include -I$(AMDAPPSDKROOT)/include/CAL
 LIBS	= -lOpenCL -L/opt/AMDAPP/lib/x86_64/ -L$(AMDAPPSDKROOT)/lib/x86_64/ -lm
 
-OPTIMIZE= -Wall -O4 -std=gnu99 -msse3 -DSFMT_MEXP=19937 -ggdb
+OPTIMIZE= -Wall -std=gnu99 -O4 -msse3 -DSFMT_MEXP=19937 -ggdb # -O4
 CFLAGS	= $(OPTIMIZE) $(INC)
 #SRCS	= main_multi-freq-2.c SFMT-src-1.4/SFMT.c
 
