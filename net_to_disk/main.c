@@ -22,6 +22,65 @@
 // The number of buffers to keep for each disk.
 #define BUFFER_DEPTH 10
 
+int cp(const char *to, const char *from)
+{
+    int fd_to, fd_from;
+    char buf[4096];
+    ssize_t nread;
+    int saved_errno;
+
+    fd_from = open(from, O_RDONLY);
+    if (fd_from < 0)
+        return -1;
+
+    fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (fd_to < 0)
+        goto out_error;
+
+    while (nread = read(fd_from, buf, sizeof buf), nread > 0)
+    {
+        char *out_ptr = buf;
+        ssize_t nwritten;
+
+        do {
+            nwritten = write(fd_to, out_ptr, nread);
+
+            if (nwritten >= 0)
+            {
+                nread -= nwritten;
+                out_ptr += nwritten;
+            }
+            else if (errno != EINTR)
+            {
+                goto out_error;
+            }
+        } while (nread > 0);
+    }
+
+    if (nread == 0)
+    {
+        if (close(fd_to) < 0)
+        {
+            fd_to = -1;
+            goto out_error;
+        }
+        close(fd_from);
+
+        /* Success! */
+        return 0;
+    }
+
+  out_error:
+    saved_errno = errno;
+
+    close(fd_from);
+    if (fd_to >= 0)
+        close(fd_to);
+
+    errno = saved_errno;
+    return -1;
+}
+
 void print_help() {
 
     printf("Program: net_to_disk\n\n");
@@ -109,6 +168,21 @@ void makeSymlinks(char * disk_base, char * symlink_dir, char * data_set, int num
     }
 }
 
+// This function is very much a hack to make life easier, but it should be replaced with something better
+void copy_gains(char * symlink_dir, char * data_set) {
+    char src[100];  // The source gains file
+    char dest[100]; // The dist for the gains file copy
+
+    snprintf(src, 100, "/home/x-ray-user/aro/ch_acq/gains.pkl");
+    snprintf(dest, 100, "%s/%s/gains.pkl", symlink_dir, data_set);
+
+    if (cp(dest, src) != 0) {
+        fprintf(stderr, "Could not copy %s to %s\n", src, dest);
+    } else {
+        printf("Copied gains.pkl from %s to %s\n", src, dest);
+    }
+}
+
 int main(int argc, char ** argv) {
 
     int opt_val = 0;
@@ -116,7 +190,8 @@ int main(int argc, char ** argv) {
     // Default values:
 
     char * interface = "*";
-    char * data_set = "*";
+    char * note = "*";
+    char data_set[150];
     int num_disks = 9;
     int data_limit = -1;
     char * symlink_dir = "*";
@@ -126,7 +201,7 @@ int main(int argc, char ** argv) {
     int write_powers = 1;
     int num_consumers = 2;
 
-    int num_timesamples = 16*1024;
+    int num_timesamples = 32*1024;
     int header_len = 58;
 
     // Data format
@@ -169,7 +244,7 @@ int main(int argc, char ** argv) {
                 interface = optarg;
                 break;
             case 'd':
-                data_set = optarg;
+                note = optarg;
                 break;
             case 'n':
                 num_disks = atoi(optarg);
@@ -209,7 +284,7 @@ int main(int argc, char ** argv) {
     //    return -1;
     //}
 
-    if (data_set[0] == '*') {
+    if (note[0] == '*') {
         printf("--data-set needs to be set.\nUse -h for help.\n");
         return -1;
     }
@@ -219,12 +294,60 @@ int main(int argc, char ** argv) {
         return -1;
     }
 
+    int packet_len = num_frames * num_inputs * num_freq + header_len;
+
+    // Compute the data set name.
+    char data_time[64];
+    time_t rawtime;
+    struct tm* timeinfo;
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+
+    strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
+    snprintf(data_set, sizeof(data_set), "%s_aro_raw", data_time);
+
     if (write_packets == 1) {
         // Make the data set directory
         makeDirs(disk_base, data_set, symlink_dir, num_disks);
+
+        // Copy the gains file
+        copy_gains(symlink_dir, data_set);
+
+        //  ** Create settings file **
+        char info_file_name[256];
+
+        snprintf(info_file_name, sizeof(info_file_name), "%s/%s/settings.txt", symlink_dir, data_set);
+
+        FILE * info_file = fopen(info_file_name, "w");
+
+        if(!info_file) {
+            printf("Error creating info file: %s\n", info_file_name);
+            exit(-1);
+        }
+
+        int data_format_version = 2;
+
+        fprintf(info_file, "format_version_number=%02d\n", data_format_version);
+        fprintf(info_file, "num_freq=%d\n", num_freq);
+        fprintf(info_file, "num_inputs=%d\n", num_inputs);
+        fprintf(info_file, "num_frames=%d\n", num_frames);
+        fprintf(info_file, "num_timesamples=%d\n", num_timesamples);
+        fprintf(info_file, "header_len=%d\n", header_len);
+        fprintf(info_file, "packet_len=%d\n", packet_len);
+        fprintf(info_file, "offset=%d\n", offset);
+        fprintf(info_file, "data_bits=%d\n", 4);
+        fprintf(info_file, "stride=%d\n", 1);
+        fprintf(info_file, "stream_id=n/a\n");
+        fprintf(info_file, "note=\"%s\"\n", note);
+        fprintf(info_file, "start_time=%s\n", data_time);
+        fprintf(info_file, "# Warning: The start time is when the program starts it, the time recorded in the packets is more accurate\n");
+
+        fclose(info_file);
+
+        printf("Created meta data file: %s/%s/settings.txt\n", symlink_dir, data_set);
     }
 
-    int packet_len = num_frames * num_inputs * num_freq + header_len;
+    //int packet_len = num_frames * num_inputs * num_freq + header_len;
     int buffer_len = (num_timesamples / num_frames) * packet_len;
 
     pthread_t network_t[num_links], file_write_t[num_disks], output_power_t;
@@ -282,13 +405,13 @@ int main(int argc, char ** argv) {
         output_arg.dataset_name = data_set;
         output_arg.diskID = 0;
         output_arg.numDisks = num_disks;
-        if (num_freq == 1024) {
-            output_arg.num_freq = 512;
-            output_arg.offset = 512;
-        } else {
+        //if (num_freq == 1024) {
             output_arg.num_freq = num_freq;
-            output_arg.offset = 0;
-        }
+            output_arg.offset = offset;
+        //} else {
+        //    output_arg.num_freq = num_freq;
+        //    output_arg.offset = 0;
+        //}
         output_arg.num_frames = num_frames;
         output_arg.num_inputs = num_inputs;
         HANDLE_ERROR( pthread_create(&output_power_t, NULL, (void *)&output_power_thread, (void *)&output_arg) );
