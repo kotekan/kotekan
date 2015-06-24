@@ -15,6 +15,7 @@ struct output_power_thread_arg {
     int num_inputs;
     int num_freq;
     int offset;
+    int product;
 };
 
 void output_power_thread(void * arg);

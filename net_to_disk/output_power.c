@@ -24,14 +24,27 @@ void output_power_thread(void * arg)
 
     snprintf(file_name, file_name_len, "/mnt/ram_disk/power_data.dat");
 
-    const int integration_time = 8*1024;
+    const int integration_time = 16*1024;
+
+    //int out_buf[args->num_freq*2];
+    //int * xx = out_buf;
+    //int * yy = out_buf + args->num_freq;
+
+    // These values are based on the input data format so we must not change num_freq here
+    const int packet_len = args->num_frames * args->num_freq * args->num_inputs + PACKET_OFFSET;
+    const int frame_size = args->num_freq * args->num_inputs;
+
+    // We change the output space here if we have too many frequencies to process
+    int stride = 1;
+    if (args->num_freq == 1024) {
+        args->num_freq = 512;
+        args->offset = 0;
+        stride = 2;
+    }
 
     int out_buf[args->num_freq*2];
     int * xx = out_buf;
     int * yy = out_buf + args->num_freq;
-
-    const int packet_len = args->num_frames * args->num_freq * args->num_inputs + PACKET_OFFSET;
-    const int frame_size = args->num_freq * args->num_inputs;
 
     int file_open = 0;
 
@@ -69,7 +82,7 @@ void output_power_thread(void * arg)
             for (int frame = 0; frame < args->num_frames; ++frame) {
                 for (int freq = 0; freq < args->num_freq; ++freq) {
 
-                    const int index = packet * packet_len + PACKET_OFFSET + frame * frame_size + (freq + args->offset)*2;
+                    const int index = packet * packet_len + PACKET_OFFSET + frame * frame_size + (args->offset + freq*stride)*2;
 
                     int x_img = ((int)data[index] & 0x0f) - 8;
                     int x_real = ( ((int)data[index] & 0xf0) >> 4 ) - 8;
