@@ -30,6 +30,18 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id);
 
 void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id);
 
+void setup_beamform_kernel_worksize(struct OpenCLData * cl_data);
+
+void init_command_queue(struct gpuThreadArgs * args, struct OpenCLData * cl_data) {
+    int num_initial_command_queues = args->in_buf->num_buffers;
+    if (args->config->gpu.use_time_shift) {
+        num_initial_command_queues -= cl_data->num_links;
+    }
+    for (int i = 0; i < num_initial_command_queues; ++i) {
+        add_queue_set(cl_data, i);
+    }
+}
+
 void gpu_thread(void* arg)
 {
     struct gpuThreadArgs * args = (struct gpuThreadArgs *) arg;
@@ -48,17 +60,13 @@ void gpu_thread(void* arg)
     assert(cl_data.aligned_accumulate_len >= cl_data.accumulate_len);
 
     cl_data.gpu_id = args->gpu_id;
+    cl_data.num_links = num_links_per_gpu(cl_data.config, cl_data.gpu_id);
+    INFO("gpu_thread: gpu_id: %d; num_links: %d", cl_data.gpu_id, cl_data.num_links);
+
+    cl_data.stream_info = malloc(cl_data.num_links * sizeof(struct StreamINFO));
+    CHECK_MEM(cl_data.stream_info);
 
     setup_open_cl(&cl_data);
-
-    int num_initial_command_queues = args->in_buf->num_buffers;
-    if (args->config->gpu.use_time_shift) {
-        num_initial_command_queues -= cl_data.num_links;
-    }
-    for (int i = 0; i < num_initial_command_queues; ++i) {
-        add_queue_set(&cl_data, i);
-    }
-
 
     CHECK_ERROR( pthread_mutex_lock(&args->lock) );
     args->started = 1;
@@ -70,20 +78,46 @@ void gpu_thread(void* arg)
     // Just wait on one buffer.
     int buffer_list[1] = {0};
     int bufferID = 0;
-    int first_time = 1;
+    int links_started = 0;
 
     // Main loop for collecting data from producers.
     for(EVER) {
 
         // Wait for data, this call will block.
         bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
-        // We need the next buffer to be empty (i.e. for the GPU to have already processed it).
-        wait_for_empty_buffer(args->in_buf, mod(buffer_list[0] + cl_data.num_links, args->in_buf->num_buffers));
 
-        if (args->gpu_id == 0 && first_time == 1) {
-            //usleep(100);
-            first_time = 0;
+        // We need the next buffer to be empty (i.e. for the GPU to have already processed it).
+        if (args->config->gpu.use_time_shift) {
+            wait_for_empty_buffer(args->in_buf, mod(buffer_list[0] + cl_data.num_links, args->in_buf->num_buffers));
         }
+
+        // When the system starts we need to get one buffer from each network link to
+        // know the seq number, stream_i, and absolute time to initialize the command queues.
+        if (links_started < cl_data.num_links) {
+
+            // Set the stream ID for the link.
+            int32_t stream_id = get_streamID(args->in_buf, bufferID);
+            assert(stream_id != -1);
+            cl_data.stream_info[links_started].stream_id = extract_stream_id(stream_id);
+
+            // Todo get/set time information here as well.
+
+            links_started++;
+            if (links_started == cl_data.num_links) {
+                // Setup the beamforming options that required stream information.
+                setup_beamform_kernel_worksize(&cl_data);
+                // Create the inital command queue.
+                init_command_queue(args, &cl_data);
+                // Start the GPU transfers/kernels for the data we already have.
+                for (int i = 0; i < cl_data.num_links; ++i) {
+                    CHECK_CL_ERROR( clSetUserEventStatus(cl_data.host_buffer_ready[i], CL_SUCCESS) );
+                }
+            }
+
+            buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
+            continue;
+        }
+
         // If buffer id is -1, then all the producers are done.
         if (bufferID == -1) {
             break;
@@ -415,6 +449,11 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                        sizeof(void *),
                                        (void*) &cl_data->device_beamform_output_buffer[buffer_id]) );
 
+        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
+                                       2,
+                                       sizeof(cl_mem),
+                                       (void*) &cl_data->device_freq_map[buffer_id % cl_data->num_links]) );
+
         CHECK_CL_ERROR( clEnqueueNDRangeKernel(cl_data->queue[1],
                                                cl_data->beamform_kernel,
                                                3,
@@ -447,7 +486,30 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
     pthread_mutex_unlock(&queue_lock);
 }
 
-void setup_beamform_kernel_worksize(struct OpenCLData *  cl_data) {
+void setup_beamform_kernel_worksize(struct OpenCLData * cl_data) {
+
+    cl_int err;
+    cl_data->device_freq_map = malloc(cl_data->num_links * sizeof(cl_mem));
+    CHECK_MEM(cl_data->device_freq_map);
+    float freq[cl_data->config->processing.num_local_freq];
+    stream_id_t stream_id;
+
+    for (int i = 0; i < cl_data->num_links; ++i) {
+
+        stream_id = cl_data->stream_info[i].stream_id;
+
+        for (int j = 0; j < cl_data->config->processing.num_local_freq; ++j) {
+            freq[j] = freq_from_bin(bin_number(&stream_id, j));
+        }
+        cl_data->device_freq_map[i] = clCreateBuffer(cl_data->context,
+                                                CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                                cl_data->config->processing.num_local_freq
+                                                    * sizeof(float),
+                                                freq,
+                                                &err);
+        CHECK_CL_ERROR(err);
+        INFO("creating buffer for freq step %d", i);
+    }
 
     INFO("setup_beamform_kernel_worksize, setting bit shift factor to %d",
          cl_data->config->beamforming.bit_shift_factor);
@@ -734,24 +796,6 @@ void setup_open_cl(struct OpenCLData * cl_data)
                                    NULL) );
 
     // Setup beamforming output.
-    setup_beamform_kernel_worksize(cl_data);
-
-    // TODO make this depend on actual frequences.
-    float freq[cl_data->config->processing.num_local_freq];
-    for (int i = 0; i < cl_data->config->processing.num_local_freq; ++i) {
-        freq[i] = 400 + i * 25;
-    }
-    cl_mem device_freq_map = clCreateBuffer(cl_data->context,
-                                            CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                            cl_data->config->processing.num_local_freq * sizeof(float),
-                                            freq,
-                                            &err);
-    CHECK_CL_ERROR(err);
-
-    CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
-                                   2,
-                                   sizeof(cl_mem),
-                                   (void*) &device_freq_map) );
 
     // TODO update this at the ~1 minute time basis.
     float phases[cl_data->config->processing.num_elements];
@@ -775,6 +819,14 @@ void setup_open_cl(struct OpenCLData * cl_data)
     unsigned char mask[cl_data->config->processing.num_adjusted_elements];
     for (int i = 0; i < cl_data->config->processing.num_adjusted_elements; ++i) {
         mask[i] = 1;
+    }
+    for (int i = 0; i < cl_data->config->beamforming.num_masked_elements; ++i) {
+        int mask_position = cl_data->config->beamforming.element_mask[i];
+        mask_position = cl_data->config->processing.inverse_product_remap[mask_position];
+        mask[mask_position] = 0;
+    }
+    for (int i = 0; i < cl_data->config->processing.num_adjusted_elements; ++i) {
+        INFO("MASK[%d] = %d", i, mask[i]);
     }
     cl_mem device_mask = clCreateBuffer(cl_data->context,
                                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,

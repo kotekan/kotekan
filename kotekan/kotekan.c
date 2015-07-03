@@ -186,7 +186,7 @@ int main(int argc, char ** argv) {
     }
 
     INFO("Parsed config file %s:", config_file_name);
-    print_config(&config);
+    //print_config(&config);
 
     // If we are reading from a file, force the number of links to be 1.
     if (read_file == 1) {

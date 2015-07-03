@@ -83,6 +83,8 @@ struct ProcessingConfig {
     // The remapping of products from FPGA order to "physical (on the focal line) order"
     int * product_remap;
 
+    int * inverse_product_remap;
+
     // Data limit, used for testing to take "snapshots"
     int data_limit;
 
@@ -142,7 +144,7 @@ struct Beamforming {
     int vdif_port;
 
     // The latitude and longitude of the instrument
-    float instrument_lat, instrument_long;
+    double instrument_lat, instrument_long;
 
     // The ra and dec the pointing should be set to.
     // NOTE: This will be made more complex to allow more than one pointing in a run.

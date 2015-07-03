@@ -289,7 +289,7 @@ uint32_t get_fpga_seq_num(struct Buffer* buf, const int ID)
     return fpga_seq_num;
 }
 
-uint16_t get_streamID(struct Buffer* buf, const int ID)
+int32_t get_streamID(struct Buffer* buf, const int ID)
 {
     int stream_ID = 0;
 
@@ -297,9 +297,10 @@ uint16_t get_streamID(struct Buffer* buf, const int ID)
 
     if (buf->info[ID] == NULL) {
         WARN("get_streamID: info struct %d is null", ID);
+        stream_ID = -1;
+    } else {
+        stream_ID = buf->info[ID]->stream_ID;
     }
-    assert(buf->info[ID] != NULL);
-    stream_ID = buf->info[ID]->stream_ID;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 

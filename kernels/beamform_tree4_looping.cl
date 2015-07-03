@@ -54,16 +54,15 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         + (NUM_ELEMENTS/4) * (FREQUENCY_BAND + NUM_FREQUENCIES*(TIME_OFFSET_DIV_TIME_SCL * TIME_SCL + t)) ];
 
 
+        I[0] = ((float)((input_data>> 0)&0xF) - 8)*mask[0];
+        I[1] = ((float)((input_data>> 8)&0xF) - 8)*mask[1];
+        I[2] = ((float)((input_data>>16)&0xF) - 8)*mask[2];
+        I[3] = ((float)((input_data>>24)&0xF) - 8)*mask[3];
 
-        I[0] = ((float)((input_data>> 0)&0xF)*mask[0]) - 8;
-        I[1] = ((float)((input_data>> 8)&0xF)*mask[1]) - 8;
-        I[2] = ((float)((input_data>>16)&0xF)*mask[2]) - 8;
-        I[3] = ((float)((input_data>>24)&0xF)*mask[3]) - 8;
-
-        R[0] = ((float)((input_data>> 4)&0xF)*mask[0]) - 8;
-        R[1] = ((float)((input_data>>12)&0xF)*mask[1]) - 8;
-        R[2] = ((float)((input_data>>20)&0xF)*mask[2]) - 8;
-        R[3] = ((float)((input_data>>28)&0xF)*mask[3]) - 8;
+        R[0] = ((float)((input_data>> 4)&0xF) - 8)*mask[0];
+        R[1] = ((float)((input_data>>12)&0xF) - 8)*mask[1];
+        R[2] = ((float)((input_data>>20)&0xF) - 8)*mask[2];
+        R[3] = ((float)((input_data>>28)&0xF) - 8)*mask[3];
 
         outR = R[0]*phase_re[0] + I[0]*phase_im[0] +
         R[1]*phase_re[1] + I[1]*phase_im[1] +

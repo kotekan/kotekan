@@ -13,7 +13,10 @@
 
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
-#include "pthread.h"
+#include <stdint.h>
+#include <pthread.h>
+
+#include "fpga_header_functions.h"
 
 // This adjusts the number of queues used by the OpenCL runtime
 // One queue is for data transfers to the GPU, one is for kernels,
@@ -44,6 +47,11 @@ struct callBackData {
     struct OpenCLData * cl_data;
 };
 
+struct StreamINFO {
+    stream_id_t stream_id;
+    // Add time tracking of some kind.
+};
+
 struct OpenCLData {
     cl_context context;
     cl_program program;
@@ -66,6 +74,7 @@ struct OpenCLData {
     cl_mem * device_beamform_output_buffer;
     cl_mem * device_accumulate_buffer;
     cl_mem device_time_shifted_buffer;
+    cl_mem * device_freq_map;
 
     // User events.
     cl_event * host_buffer_ready;
@@ -91,6 +100,9 @@ struct OpenCLData {
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
     int num_links;
+
+    // Contains info needed by the kernels for each stream handled by the GPU
+    struct StreamINFO * stream_info;
 
     // Kernel values.
     unsigned int num_accumulations;

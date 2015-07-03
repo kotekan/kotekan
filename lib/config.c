@@ -42,6 +42,13 @@ int parse_processing_config(struct Config* config, struct json_t * json)
         config->processing.product_remap[i] = json_integer_value(json_array_get(product_remap, i));
     }
 
+    config->processing.inverse_product_remap = malloc(remap_size * sizeof(int));
+    CHECK_MEM(config->processing.inverse_product_remap);
+    // Given a channel ID, where is it in FPGA order.
+    for(int i = 0; i < remap_size; ++i) {
+        config->processing.inverse_product_remap[config->processing.product_remap[i]] = i;
+    }
+
     // Special case for 16-element version
     if (config->processing.num_elements < 32) {
         config->processing.num_adjusted_elements = 32;
@@ -184,7 +191,7 @@ int parse_beamforming_config(struct Config* config, struct json_t * json) {
     char * server_ip;
     json_t * element_mask, * element_positions;
 
-    error = json_unpack(json, "{s:s, s:i, s:f, s:f, s:f, s:f, s:o, s:o, s:i}",
+    error = json_unpack(json, "{s:s, s:i, s:F, s:F, s:F, s:F, s:o, s:o, s:i}",
                         "vdif_server_ip", &server_ip,
                         "vdif_port", &config->beamforming.vdif_port,
                         "ra", &config->beamforming.ra,
@@ -344,6 +351,15 @@ void print_config(struct Config* config)
         INFO("config.fpga_network.link_map[%d].link_id = %d", i,
              config->fpga_network.link_map[i].link_id);
     }
+
+    // Beamforming section
+    INFO("config.beamforming.num_masked_elements = %d", config->beamforming.num_masked_elements);
+    INFO("config.beamforming.bit_shift_factor = %d", config->beamforming.bit_shift_factor);
+    INFO("config.beamforming.ra = %f", config->beamforming.ra);
+    INFO("config.beamforming.dec = %f", config->beamforming.dec);
+    INFO("config.beamforming.instrument_lat = %f", config->beamforming.instrument_lat);
+    INFO("config.beamforming.instrument_long = %f", config->beamforming.instrument_long);
+
 }
 
 int num_links_in_group(struct Config* config, const unsigned int link_id)

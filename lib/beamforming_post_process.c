@@ -30,6 +30,10 @@ void fill_headers(unsigned char * out_buf,
             memcpy(&out_buf[(i*16+j*2)*5032], vdif_header, sizeof(struct VDIFHeader));
             vdif_header->station_id = 1;
             memcpy(&out_buf[(i*16+j*2 + 1)*5032], vdif_header, sizeof(struct VDIFHeader));
+            /*for (int k = 0; k < sizeof(struct VDIFHeader); ++k) {
+                (&out_buf[(i*16+j*2)*5032])[k] = 0xAB;
+                (&out_buf[(i*16+j*2 + 1)*5032])[k] = 0xAB;
+            }*/
         }
     }
 }
@@ -75,6 +79,10 @@ void beamforming_post_process(void* arg)
     vdif_header.eud2 = 0;
     vdif_header.eud3 = 0;
     vdif_header.eud4 = 0;
+
+    int frame = 0;
+    int in_frame_location = 0;
+    int second = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
@@ -140,13 +148,14 @@ void beamforming_post_process(void* arg)
                          get_vdif_second(first_seq_number + current_input_location),
                          num_links,
                          thread_ids);
+            second = get_vdif_second(first_seq_number + current_input_location);
         }
 
         // This loop which takes data from the input buffer and formats the output.
         if (likely(startup == 0)) {
 
-            int frame = get_vdif_frame( first_seq_number + current_input_location );
-            int in_frame_location = get_vdif_location( first_seq_number + current_input_location );
+            // frame = get_vdif_frame( first_seq_number + current_input_location );
+            // in_frame_location = get_vdif_location( first_seq_number + current_input_location );
 
             for (int i = current_input_location; i < num_samples; ++i) {
 
@@ -155,7 +164,13 @@ void beamforming_post_process(void* arg)
                     frame++;
                     if (unlikely(frame == 625)) {
                         frame = 0;
+                        second++;
                         // The current buffer is full.
+                        /*for (int j = 1; j < args->out_buf->buffer_size; ++j) {
+                            if (args->out_buf->data[out_buffer_ID][j] != 0xAB  ) {
+                                DEBUG("Output space not filled at index %d; value: 0x%X", j, args->out_buf->data[out_buffer_ID][j]);
+                            }
+                        }*/
                         mark_buffer_full(args->out_buf, out_buffer_ID);
 
                         // Get a new output buffer
@@ -165,7 +180,7 @@ void beamforming_post_process(void* arg)
                         // Fill the headers of the new buffer
                         fill_headers(args->out_buf->data[out_buffer_ID],
                                      &vdif_header,
-                                     get_vdif_second(first_seq_number),
+                                     second,
                                      num_links,
                                      thread_ids);
                     }
@@ -180,6 +195,8 @@ void beamforming_post_process(void* arg)
                     uint32_t station_1_index = frame * frame_size * num_links * 2
                                                 + thread_id * frame_size * 2 + frame_size
                                                 + in_frame_location * 8 + header_size;
+
+                    //DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
 
                     for (int freq = 0; freq < config->processing.num_local_freq; ++freq) {
                         int gpu_id = config->fpga_network.link_map[thread_id].gpu_id;

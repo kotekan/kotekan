@@ -15,7 +15,6 @@ extern int log_level_warn;
 extern int log_level_debug;
 extern int log_level_info;
 
-// TODO Rename to check_error
 #define CHECK_CL_ERROR( err )                                      \
     if ( err ) {                                                    \
         syslog(LOG_ERR, "Error at %s:%d; Error type: %s",               \
