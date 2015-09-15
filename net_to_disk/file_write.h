@@ -10,6 +10,7 @@ struct file_write_thread_arg {
     int bufferDepth;
     char * dataset_name;
     char * disk_base;
+    char * disk_set;
 };
 
 void file_write_thread(void * arg);

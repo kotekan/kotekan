@@ -36,7 +36,7 @@ void file_write_thread(void * arg)
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%d/%s/%07d.dat", args->disk_base, args->diskID, args->dataset_name, file_num);
+        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%07d.dat", args->disk_base, args->disk_set, args->diskID, args->dataset_name, file_num);
 
         fd = open(file_name, O_WRONLY | O_CREAT, 0666);
 

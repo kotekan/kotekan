@@ -87,27 +87,27 @@ void print_help() {
     printf("Records data from the network to disk.\n\n");
 
     printf("Required Options:\n\n");
-    //printf("--interface -i [interface]    The interface to listen on.\n");
-    printf("--data-set -d [dir name]      The name of the data set.\n");
-    printf("--symlink-dir -s [dir name]   The directory to put the symlinks into.\n");
+    printf("--note -c [string]            A note about the current run.\n");
+    printf("--disk-set -d [cap letter]    The disk set, i.e. A, B, etc. \n");
     printf("--data-limit -l [number]      The maximum number of GB to save.\n");
 
     printf("\nExtra Options:\n\n");
-    printf("--num-disks -n [number]       The number of disks, default: 9\n");
+    printf("--symlink-dir -s [dir name]   The directory to put the symlinks into, default: none\n");
+    printf("--num-disks -n [number]       The number of disks, default: 10\n");
     printf("--disk-base -b [dir name]     The base dir of the disks, default: /drives/ \n");
     printf("--disable-packet-dump -x      Don't write the packets to disk \n");
     printf("--num-freq -f [number]        The number of frequencies to record, default 1024\n");
     printf("--offset -o [number]          Offset of the frequencies to record, default 0\n ");
 }
 
-void makeDirs(char * disk_base, char * data_set, char * symlink_dir, int num_disks) {
+void makeDirs(char * disk_base, char * disk_set, char * data_set, char * symlink_dir, int num_disks) {
 
     // Make the data location.
     int err = 0;
     char dir_name[100];
     for (int i = 0; i < num_disks; ++i) {
 
-        snprintf(dir_name, 100, "%s/%d/%s", disk_base, i, data_set);
+        snprintf(dir_name, 100, "%s/%s/%d/%s", disk_base, disk_set, i, data_set);
         err = mkdir(dir_name, 0777);
 
         if (err != -1) {
@@ -116,36 +116,38 @@ void makeDirs(char * disk_base, char * data_set, char * symlink_dir, int num_dis
 
         if (errno == EEXIST) {
             printf("The data set: %s, already exists.\nPlease delete the data set, or use another name.\n", data_set);
-            printf("The current data set can be deleted with: rm -fr %s/*/%s && rm -fr %s/%s\n", disk_base, data_set, symlink_dir, data_set);
+            printf("The current data set can be deleted with: rm -fr %s/%s/*/%s && rm -fr %s/%s\n", disk_base, disk_set, data_set, symlink_dir, data_set);
         } else {
             perror("Error creating data set directory.\n");
-            printf("The directory was: %s/%d/%s \n", disk_base, i, data_set);
+            printf("The directory was: %s/%s/%d/%s \n", disk_base, disk_set, i, data_set);
         }
         exit(errno);
     }
 
-    // Make the symlink location.
-    char symlink_path[100];
+    if (symlink_dir[0] != '*') {
+        // Make the symlink location.
+        char symlink_path[100];
 
-    snprintf(symlink_path, 100, "%s/%s", symlink_dir, data_set);
-    err = mkdir(symlink_path, 0777);
+        snprintf(symlink_path, 100, "%s/%s", symlink_dir, data_set);
+        err = mkdir(symlink_path, 0777);
 
-    if (err == -1) {
-        if (errno == EEXIST) {
-            printf("The symlink output director: %s/%s, already exists.\n", symlink_dir, data_set);
-            printf("Please delete the data set, or use another name.\n");
-            printf("The current data set can be deleted with: sudo rm -fr %s/*/%s && sudo rm -fr %s/%s\n", disk_base, data_set, symlink_dir, data_set);
-        } else {
-            perror("Error creating symlink output director directory.\n");
-            printf("The symlink output directory was: %s/%s \n", symlink_dir, data_set);
+        if (err == -1) {
+            if (errno == EEXIST) {
+                printf("The symlink output director: %s/%s, already exists.\n", symlink_dir, data_set);
+                printf("Please delete the data set, or use another name.\n");
+                printf("The current data set can be deleted with: sudo rm -fr %s/%s/*/%s && sudo rm -fr %s/%s\n", disk_base, disk_set, data_set, symlink_dir, data_set);
+            } else {
+                perror("Error creating symlink output director directory.\n");
+                printf("The symlink output directory was: %s/%s \n", symlink_dir, data_set);
+            }
+            exit(errno);
         }
-        exit(errno);
     }
 }
 
 // Note this could be done in the file writing threads, but I put it here so there wouldn't
 // be any delays caused by writing symlinks to the system disk.
-void makeSymlinks(char * disk_base, char * symlink_dir, char * data_set, int num_disks, int data_limit, int buffer_size) {
+void makeSymlinks(char * disk_base, char * disk_set, char * symlink_dir, char * data_set, int num_disks, int data_limit, int buffer_size) {
 
     int err = 0;
     char file_name[100];
@@ -158,7 +160,7 @@ void makeSymlinks(char * disk_base, char * symlink_dir, char * data_set, int num
     for (int i = 0; i < num_files; ++i) {
         disk_id = i % num_disks;
 
-        snprintf(file_name, 100, "%s/%d/%s/%07d.dat", disk_base, disk_id, data_set, i);
+        snprintf(file_name, 100, "%s/%s/%d/%s/%07d.dat", disk_base, disk_set, disk_id, data_set, i);
         snprintf(link_name, 100, "%s/%s/%07d.dat", symlink_dir, data_set, i);
         err = symlink(file_name, link_name);
         if (err == -1) {
@@ -169,12 +171,12 @@ void makeSymlinks(char * disk_base, char * symlink_dir, char * data_set, int num
 }
 
 // This function is very much a hack to make life easier, but it should be replaced with something better
-void copy_gains(char * symlink_dir, char * data_set) {
+void copy_gains(char * base_dir, char * data_set) {
     char src[100];  // The source gains file
     char dest[100]; // The dist for the gains file copy
 
-    snprintf(src, 100, "/home/x-ray-user/aro/ch_acq/gains.pkl");
-    snprintf(dest, 100, "%s/%s/gains.pkl", symlink_dir, data_set);
+    snprintf(src, 100, "/home/squirrel/ch_acq/gains.pkl");
+    snprintf(dest, 100, "%s/%s/gains.pkl", base_dir, data_set);
 
     if (cp(dest, src) != 0) {
         fprintf(stderr, "Could not copy %s to %s\n", src, dest);
@@ -191,8 +193,9 @@ int main(int argc, char ** argv) {
 
     char * interface = "*";
     char * note = "*";
+    char * disk_set = "*";
     char data_set[150];
-    int num_disks = 9;
+    int num_disks = 10;
     int data_limit = -1;
     char * symlink_dir = "*";
     char * disk_base = "/drives";
@@ -213,7 +216,8 @@ int main(int argc, char ** argv) {
     for (;;) {
         static struct option long_options[] = {
             {"ip-address", required_argument, 0, 'i'},
-            {"data-set", required_argument, 0, 'd'},
+            {"disk-set", required_argument, 0, 'd'},
+            {"note", required_argument, 0, 'c'},
             {"num-disks", required_argument, 0, 'n'},
             {"disk-base", required_argument, 0, 'b'},
             {"data-limit", required_argument, 0, 'l'},
@@ -227,7 +231,7 @@ int main(int argc, char ** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "hi:d:l:n:b:s:xf:o:",
+        opt_val = getopt_long (argc, argv, "hi:d:c:l:n:b:s:xf:o:",
                             long_options, &option_index);
 
         // End of args
@@ -243,9 +247,12 @@ int main(int argc, char ** argv) {
             case 'i':
                 interface = optarg;
                 break;
-            case 'd':
+            case 'c':
                 note = optarg;
                 break;
+            case 'd':
+                disk_set = optarg;
+		break;
             case 'n':
                 num_disks = atoi(optarg);
                 break;
@@ -279,20 +286,22 @@ int main(int argc, char ** argv) {
         return -1;
     }
 
-    //if (interface[0] == '*') {
-    //    printf("--ip-address needs to be set.\nUse -h for help.\n");
-    //    return -1;
-    //}
-
     if (note[0] == '*') {
-        printf("--data-set needs to be set.\nUse -h for help.\n");
+        printf("--note needs to be set.\nUse -h for help.\n");
         return -1;
     }
 
+    if (disk_set[0] == '*') {
+        printf("--disk-set needs to be set.\n Use -h for help\n");
+	return -1;
+    }
+
+/*
     if (symlink_dir[0] == '*') {
         printf("--symlink-dir needs to be set.\nUse -h for help.\n");
         return -1;
     }
+*/
 
     int packet_len = num_frames * num_inputs * num_freq + header_len;
 
@@ -308,15 +317,21 @@ int main(int argc, char ** argv) {
 
     if (write_packets == 1) {
         // Make the data set directory
-        makeDirs(disk_base, data_set, symlink_dir, num_disks);
+        makeDirs(disk_base, disk_set, data_set, symlink_dir, num_disks);
 
         // Copy the gains file
         copy_gains(symlink_dir, data_set);
 
+	for (int i = 0; i < num_disks; ++i) {
+	    char disk_base_dir[256];
+            snprintf(disk_base_dir, sizeof(disk_base_dir), "%s/%s/%d/", disk_base, disk_set, i);
+            copy_gains(disk_base_dir, data_set);	
+	}
+
         //  ** Create settings file **
         char info_file_name[256];
 
-        snprintf(info_file_name, sizeof(info_file_name), "%s/%s/settings.txt", symlink_dir, data_set);
+        snprintf(info_file_name, sizeof(info_file_name), "settings.txt", symlink_dir, data_set);
 
         FILE * info_file = fopen(info_file_name, "w");
 
@@ -340,11 +355,33 @@ int main(int argc, char ** argv) {
         fprintf(info_file, "stream_id=n/a\n");
         fprintf(info_file, "note=\"%s\"\n", note);
         fprintf(info_file, "start_time=%s\n", data_time);
+        fprintf(info_file, "num_disks=%d\n", num_disks);
+        fprintf(info_file, "disk_set=%s\n", disk_set);
         fprintf(info_file, "# Warning: The start time is when the program starts it, the time recorded in the packets is more accurate\n");
 
         fclose(info_file);
 
-        printf("Created meta data file: %s/%s/settings.txt\n", symlink_dir, data_set);
+        printf("Created meta data file: settings.txt\n");
+
+        for (int i = 0; i < num_disks; ++i) {
+            char to_file[256];
+            snprintf(to_file, sizeof(to_file), "%s/%s/%d/%s/settings.txt", disk_base, disk_set, i, data_set);
+            int err = cp(to_file, info_file_name);
+            if (err != 0) {
+		fprintf(stderr, "could not copy settings");
+                exit(err);
+            }
+        }
+        if (symlink_dir[0] != '*') {
+            char to_file[256];
+            snprintf(to_file, sizeof(to_file), "%s/%s/settings.txt", symlink_dir, data_set);
+            int err = cp(to_file, info_file_name);
+            if (err != 0) {
+		fprintf(stderr, "could not copy settings to symlink dir");
+                exit(err);
+            }
+        }
+
     }
 
     //int packet_len = num_frames * num_inputs * num_freq + header_len;
@@ -356,10 +393,10 @@ int main(int argc, char ** argv) {
 
     createBuffer(&buf, num_disks * BUFFER_DEPTH, buffer_len, num_links, num_consumers);
 
-    if (write_packets == 1) {
+    if ((write_packets == 1) && (symlink_dir[0] != '*')) {
         // Create symlinks.
         printf("Creating symlinks in %s/%s\n", symlink_dir, data_set);
-        makeSymlinks(disk_base, symlink_dir, data_set, num_disks, data_limit, buffer_len);
+        makeSymlinks(disk_base, disk_set, symlink_dir, data_set, num_disks, data_limit, buffer_len);
     }
 
     // Let the disks flush
@@ -393,7 +430,8 @@ int main(int argc, char ** argv) {
             file_write_args[i].bufferDepth = BUFFER_DEPTH;
             file_write_args[i].dataset_name = data_set;
             file_write_args[i].disk_base = disk_base;
-            HANDLE_ERROR( pthread_create(&file_write_t[i], NULL, (void *) &file_write_thread, (void *)&file_write_args[i] ) );
+            file_write_args[i].disk_set = disk_set;
+ 	    HANDLE_ERROR( pthread_create(&file_write_t[i], NULL, (void *) &file_write_thread, (void *)&file_write_args[i] ) );
         }
     }
 
@@ -406,14 +444,17 @@ int main(int argc, char ** argv) {
         output_arg.diskID = 0;
         output_arg.numDisks = num_disks;
         //if (num_freq == 1024) {
-            output_arg.num_freq = num_freq;
-            output_arg.offset = offset;
+        output_arg.num_freq = num_freq;
+        output_arg.offset = offset;
         //} else {
         //    output_arg.num_freq = num_freq;
         //    output_arg.offset = 0;
         //}
         output_arg.num_frames = num_frames;
         output_arg.num_inputs = num_inputs;
+        output_arg.integration_samples = 512;
+        output_arg.num_timesamples = num_timesamples;
+        output_arg.legacy_output =  0;
         HANDLE_ERROR( pthread_create(&output_power_t, NULL, (void *)&output_power_thread, (void *)&output_arg) );
     }
 
