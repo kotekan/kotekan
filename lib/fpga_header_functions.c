@@ -14,7 +14,8 @@ stream_id_t extract_stream_id(const uint16_t encoded_stream_id)
 
 uint32_t bin_number(const stream_id_t* stream_id, const int index)
 {
-    return stream_id->slot_id + stream_id->link_id * 16 + index * 128;
+  return stream_id->slot_id + stream_id->link_id * 16 + index * 128;
+  //return index * 128;
 }
 
 float freq_from_bin(const int bin)

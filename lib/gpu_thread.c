@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 
 #include <math.h>
@@ -499,7 +498,7 @@ void setup_beamform_kernel_worksize(struct OpenCLData * cl_data) {
         stream_id = cl_data->stream_info[i].stream_id;
 
         for (int j = 0; j < cl_data->config->processing.num_local_freq; ++j) {
-            freq[j] = freq_from_bin(bin_number(&stream_id, j));
+            freq[j] = freq_from_bin(bin_number(&stream_id, j))/1000.0;
         }
         cl_data->device_freq_map[i] = clCreateBuffer(cl_data->context,
                                                 CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -511,12 +510,13 @@ void setup_beamform_kernel_worksize(struct OpenCLData * cl_data) {
         INFO("creating buffer for freq step %d", i);
     }
 
-    INFO("setup_beamform_kernel_worksize, setting bit shift factor to %d",
-         cl_data->config->beamforming.bit_shift_factor);
+    INFO("setup_beamform_kernel_worksize, setting scale factor to %f",
+         cl_data->config->beamforming.scale_factor);
+    float scale_factor = cl_data->config->beamforming.scale_factor;
     CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
                                    5,
-                                   sizeof(int),
-                                   &cl_data->config->beamforming.bit_shift_factor) );
+                                   sizeof(float),
+                                   &scale_factor) );
 
     // Beamforming kernel global and local work space sizes.
     cl_data->gws_beamforming[0] = cl_data->config->processing.num_elements / 4;
@@ -799,11 +799,35 @@ void setup_open_cl(struct OpenCLData * cl_data)
 
     // TODO update this at the ~1 minute time basis.
     float phases[cl_data->config->processing.num_elements];
-    get_delays(cl_data->config->beamforming.ra,
+    time_t beam_time = time(NULL); // Current time.
+    if (cl_data->config->beamforming.do_not_track == 1) {
+        if (cl_data->config->beamforming.fixed_time != 0)
+            beam_time = cl_data->config->beamforming.fixed_time;
+    }
+    get_delays(beam_time,
+               cl_data->config->beamforming.ra,
                cl_data->config->beamforming.dec,
                cl_data->config,
                cl_data->config->beamforming.element_positions,
                phases);
+
+    // DEBUG output
+    INFO("gpu_thread; ID = 0, FPGA ID = 60, x_pos = %f, y_pos = %f, freq = 0.69414, phase_delay = %f, phase_delay*freq = %f, phase_re = %f, phase_im = %f",
+         cl_data->config->beamforming.element_positions[60*2],
+         cl_data->config->beamforming.element_positions[60*2 + 1],
+         phases[60], phases[60]*0.64914,
+         cos(phases[60]*0.69414), sin(phases[60]*0.64914));
+    INFO("gpu_thread; ID = 130, FPGA ID = 126, x_pos = %f, y_pos = %f, freq = 0.69414, phase_delay = %f, phase_delay*freq = %f, phase_re = %f, phase_im = %f",
+         cl_data->config->beamforming.element_positions[126*2],
+         cl_data->config->beamforming.element_positions[126*2 + 1],
+         phases[126], phases[126]*0.64914,
+         cos(phases[126]*0.69414), sin(phases[126]*0.64914));
+   INFO("gpu_thread; ID = 131, FPGA ID = 127, x_pos = %f, y_pos = %f, freq = 0.69414, phase_delay = %f, phase_delay*freq = %f, phase_re = %f, phase_im = %f",
+   cl_data->config->beamforming.element_positions[127*2],
+   cl_data->config->beamforming.element_positions[127*2 + 1],
+   phases[127], phases[127]*0.64914,
+   cos(phases[127]*0.69414), sin(phases[127]*0.64914));
+
     cl_mem device_phases = clCreateBuffer(cl_data->context,
                                           CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                           cl_data->config->processing.num_elements * sizeof(cl_uint),

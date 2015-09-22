@@ -36,8 +36,8 @@ void generate_char_data_set(int generation_Type,
     initial_imaginary = offset_and_clip_value(initial_imaginary,8,0,15);
     unsigned char clipped_offset_default_real = (unsigned char) default_real;
     unsigned char clipped_offset_default_imaginary = (unsigned char) default_imaginary;
-    unsigned char clipped_offset_initial_real = (unsigned char) initial_real;
-    unsigned char clipped_offset_initial_imaginary = (unsigned char) initial_imaginary;
+    unsigned char clipped_offset_initial_real = 8;//(unsigned char) initial_real;
+    unsigned char clipped_offset_initial_imaginary = 8;//(unsigned char) initial_imaginary;
 
     //printf("clipped_offset_initial_real: %d, clipped_offset_initial_imaginary: %d, clipped_offset_default_real: %d, clipped_offset_default_imaginary: %d\n", clipped_offset_initial_real, clipped_offset_initial_imaginary, clipped_offset_default_real, clipped_offset_default_imaginary);
 
@@ -60,8 +60,8 @@ void generate_char_data_set(int generation_Type,
                 unsigned char new_imaginary;
                 switch (generation_Type){
                     case GENERATE_DATASET_CONSTANT:
-                        new_real = clipped_offset_initial_real;
-                        new_imaginary = clipped_offset_initial_imaginary;
+                        new_real = 8; //clipped_offset_initial_real;
+                        new_imaginary = 8; //clipped_offset_initial_imaginary;
                         break;
                     case GENERATE_DATASET_RAMP_UP:
                         new_real = (j+clipped_offset_initial_real+i)%16;

@@ -227,8 +227,8 @@ void wait_for_empty_buffer(struct Buffer* buf, const int ID)
 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     while (buf->is_full[ID] == 1) {
-        DEBUG("wait_for_empty_buffer: waiting for empty buffer ID = %d in buffer %s",
-              ID, buf->buffer_name);
+      //        DEBUG("wait_for_empty_buffer: waiting for empty buffer ID = %d in buffer %s",
+      //        ID, buf->buffer_name);
         pthread_cond_wait(&buf->empty_cond, &buf->lock);
     }
 

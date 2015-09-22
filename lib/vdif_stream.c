@@ -61,6 +61,10 @@ void vdif_stream(void * arg)
                              packet_size, 0,
                              &saddr_remote, saddr_len);
 
+            if (i % 625 == 0) {
+                usleep(30000);
+            }
+
             if (bytes_sent == -1) {
                 ERROR("Cannot set VDIF packet");
                 exit_thread(-1);

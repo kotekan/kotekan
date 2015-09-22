@@ -27,6 +27,7 @@
 #include "vdif_stream.h"
 #include "null.h"
 #include "util.h"
+#include "file_write.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -38,6 +39,7 @@ void print_help() {
     printf("Testing Options:\n");
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
     printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
+    printf("    --save_vdif (-o)                Save the VDIF to disk, do not stream.\n");
 }
 
 void daemonize(char * root_dir, int log_options) {
@@ -89,6 +91,33 @@ void daemonize(char * root_dir, int log_options) {
     // TODO Handle signals.
 }
 
+void make_dirs(char * disk_base, char * data_set, int num_disks) {
+
+    // Make the data location.
+    int err = 0;
+    char dir_name[100];
+    for (int i = 0; i < num_disks; ++i) {
+
+        snprintf(dir_name, 100, "%s/%d/%s", disk_base, i, data_set);
+        err = mkdir(dir_name, 0777);
+
+        if (err != -1) {
+            continue;
+        }
+
+        if (errno == EEXIST) {
+            //printf("The data set: %s, already exists.\nPlease delete the data set, or use another name.\n", data_set);
+            //printf("The current data set can be deleted with: rm -fr %s/*/%s && rm -fr %s/%s\n", disk_base, data_set, symlink_dir, data_set);
+        } else {
+            perror("Error creating data set directory.\n");
+            printf("The directory was: %s/%d/%s \n", disk_base, i, data_set);
+        }
+        exit(errno);
+    }
+}
+
+
+
 int main(int argc, char ** argv) {
 
     int use_ch_acq = 1;
@@ -102,6 +131,7 @@ int main(int argc, char ** argv) {
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     int make_daemon = 0;
     char * kotekan_root_dir = "./";
+    int save_vdif = 0;
 
     for (;;) {
         static struct option long_options[] = {
@@ -111,6 +141,7 @@ int main(int argc, char ** argv) {
             {"write-local", no_argument, 0, 'w'},
             {"log-level", required_argument, 0, 'l'},
             {"daemon", required_argument, 0, 'd'},
+            {"save-vdif", no_argument, 0, 'o'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
@@ -118,7 +149,7 @@ int main(int argc, char ** argv) {
         int option_index = 0;
         int option_value = 0;
 
-        opt_val = getopt_long (argc, argv, "htwsf:c:l:d:",
+        opt_val = getopt_long (argc, argv, "htwosf:c:l:d:",
                                long_options, &option_index);
 
         // End of args
@@ -160,6 +191,9 @@ int main(int argc, char ** argv) {
                     default:
                         break;
                 }
+                break;
+            case 'o':
+                save_vdif = 1;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -372,14 +406,44 @@ int main(int argc, char ** argv) {
                                         (void *) &beamforming_post_process,
                                         (void *) &beamforming_post_process_args ) );
 
-            // The thread which sends it with TCP to ch_acq.
-            struct VDIFstreamArgs vdif_stream_args;
-            vdif_stream_args.buf = &vdif_output_buffer;
-            vdif_stream_args.config = &config;
-            CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
-                                        (void *) &vdif_stream,
-                                        (void *) &vdif_stream_args ) );
-        }
+            if (save_vdif == 1) {
+                // Compute the data set name.
+                char data_set[150];
+                char data_time[64];
+                char disk_base[64];
+                time_t rawtime;
+                struct tm* timeinfo;
+                time(&rawtime);
+                timeinfo = gmtime(&rawtime);
+
+                strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
+                snprintf(data_set, sizeof(data_set), "%s_chime_beamformed", data_time);
+                snprintf(disk_base, sizeof(disk_base), "/data/vdif/");
+
+                // Make dirs
+                make_dirs(disk_base, data_set, 1);
+
+                struct fileWriteThreadArg file_write_args;
+                file_write_args.disk_ID = 0;
+                file_write_args.num_disks = 1;
+                file_write_args.buf = &vdif_output_buffer;
+                file_write_args.buffer_depth = network_buffer_depth;
+                file_write_args.disk_base = disk_base;
+                file_write_args.dataset_name = data_set;
+
+                CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
+                                            (void *) &file_write_thread,
+                                            (void *) &file_write_args ) );
+            } else {
+                // The thread which sends it with TCP to ch_acq.
+                struct VDIFstreamArgs vdif_stream_args;
+                vdif_stream_args.buf = &vdif_output_buffer;
+                vdif_stream_args.config = &config;
+                CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
+                                            (void *) &vdif_stream,
+                                            (void *) &vdif_stream_args ) );
+            }
+	}
     } else  {
         // TODO add local file output in some form here.
     }
