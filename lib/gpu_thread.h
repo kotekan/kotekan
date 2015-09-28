@@ -6,7 +6,7 @@
 
 #define SDK_SUCCESS 0
 
-//check pagesize: 
+//check pagesize:
 //getconf PAGESIZE
 // result: 4096
 #define PAGESIZE_MEM 4096
@@ -68,6 +68,10 @@ struct OpenCLData {
     // Buffer of zeros to zero the accumulate buffer on the device.
     cl_int * accumulate_zeros;
 
+    // phase data
+    float * phases;
+    time_t beamform_time;
+
     // Device Buffers
     cl_mem * device_input_buffer;
     cl_mem * device_output_buffer;
@@ -75,6 +79,7 @@ struct OpenCLData {
     cl_mem * device_accumulate_buffer;
     cl_mem device_time_shifted_buffer;
     cl_mem * device_freq_map;
+    cl_mem device_phases;
 
     // User events.
     cl_event * host_buffer_ready;
@@ -87,6 +92,7 @@ struct OpenCLData {
     cl_event * beamform_finished;
     cl_event * beamform_read_finished;
     cl_event * read_finished;
+    cl_event * beamform_phases_written;
 
     // Call back data.
     struct callBackData * cb_data;
@@ -138,7 +144,7 @@ struct OpenCLData {
     pthread_cond_t status_cond;
 };
 
-void gpu_thread(void * arg); 
+void gpu_thread(void * arg);
 
 void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
 
