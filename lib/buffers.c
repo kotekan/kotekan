@@ -455,7 +455,7 @@ void print_buffer_status(struct Buffer* buf)
     }
     DEBUG("Buffer Status: %s", status_string);
 }
-
+ 
 void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id)
 {
     assert(from != NULL);

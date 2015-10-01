@@ -58,7 +58,7 @@ void ch_acq_uplink_thread(void* arg)
             pthread_exit((void *) &ret);
         }
 
-        INFO("Sending TCP frame to ch_master.");
+        INFO("Sending TCP frame to ch_master. frame size: %d", args->buf->buffer_size);
 
         ssize_t bytes_sent = send(tcp_fd, args->buf->data[buffer_ID], args->buf->buffer_size, 0);
         if (bytes_sent <= 0) {
@@ -69,6 +69,7 @@ void ch_acq_uplink_thread(void* arg)
             ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d", (int)bytes_sent, args->buf->buffer_size);
             break;
         }
+        INFO("Finished sending data to ch_master");
         mark_buffer_empty(args->buf, buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % args->buf->num_buffers;

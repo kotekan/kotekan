@@ -105,7 +105,8 @@ void gpu_thread(void* arg)
             links_started++;
             if (links_started == cl_data.num_links) {
                 // Setup the beamforming options that required stream information.
-                setup_beamform_kernel_worksize(&cl_data);
+                if (cl_data.config->gpu.use_beamforming == 1)
+                    setup_beamform_kernel_worksize(&cl_data);
                 // Create the inital command queue.
                 init_command_queue(args, &cl_data);
                 // Start the GPU transfers/kernels for the data we already have.
@@ -176,8 +177,10 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
     //INFO("GPU Kernel Finished on GPUID: %d", cb_data->cl_data->gpu_id);
 
     // Copy the information contained in the input buffer
-    copy_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
-                     cb_data->cl_data->beamforming_out_buf, cb_data->buffer_id);
+    if (cb_data->cl_data->config->gpu.use_beamforming) {
+        copy_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
+                         cb_data->cl_data->beamforming_out_buf, cb_data->buffer_id);
+    }
 
     // Copy the information contained in the input buffer
     move_buffer_info(cb_data->cl_data->in_buf, cb_data->buffer_id,
@@ -190,7 +193,9 @@ void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data) {
     mark_buffer_full(cb_data->cl_data->out_buf, cb_data->buffer_id);
 
     // Mark the beamforming buffer as full.
-    mark_buffer_full(cb_data->cl_data->beamforming_out_buf, cb_data->buffer_id);
+    if (cb_data->cl_data->config->gpu.use_beamforming) {
+        mark_buffer_full(cb_data->cl_data->beamforming_out_buf, cb_data->buffer_id);
+    }
 
     // Relase the events from the last queue set run.
     release_events_for_buffer(cb_data->cl_data, cb_data->buffer_id);
@@ -557,6 +562,7 @@ void setup_open_cl(struct OpenCLData * cl_data)
             cl_data->config->processing.num_blocks,
             cl_data->config->processing.samples_per_data_set,
             cl_data->config->processing.buffer_depth);
+    INFO("Kernel options: %s", cl_options);
 
     size_t cl_program_size[cl_data->config->gpu.num_kernels];
     FILE *fp;
@@ -686,14 +692,16 @@ void setup_open_cl(struct OpenCLData * cl_data)
     }
 
     // Setup beamforming output buffers.
-    cl_data->device_beamform_output_buffer = (cl_mem *) malloc(cl_data->beamforming_out_buf->num_buffers * sizeof(cl_mem));
-    CHECK_MEM(cl_data->device_beamform_output_buffer);
-    for (int i = 0; i < cl_data->beamforming_out_buf->num_buffers; ++i) {
-        cl_data->device_beamform_output_buffer[i] = clCreateBuffer(cl_data->context,
-                                                                   CL_MEM_WRITE_ONLY,
-                                                                   cl_data->beamforming_out_buf->aligned_buffer_size,
-                                                                   NULL, &err);
-        CHECK_CL_ERROR(err);
+    if (cl_data->config->gpu.use_beamforming == 1) {
+        cl_data->device_beamform_output_buffer = (cl_mem *) malloc(cl_data->beamforming_out_buf->num_buffers * sizeof(cl_mem));
+        CHECK_MEM(cl_data->device_beamform_output_buffer);
+        for (int i = 0; i < cl_data->beamforming_out_buf->num_buffers; ++i) {
+            cl_data->device_beamform_output_buffer[i] = clCreateBuffer(cl_data->context,
+                                                                    CL_MEM_WRITE_ONLY,
+                                                                    cl_data->beamforming_out_buf->aligned_buffer_size,
+                                                                    NULL, &err);
+            CHECK_CL_ERROR(err);
+        }
     }
 
     cl_data->cb_data = malloc(cl_data->in_buf->num_buffers * sizeof(struct callBackData));
@@ -760,6 +768,16 @@ void setup_open_cl(struct OpenCLData * cl_data)
         printf("Error in clCreateBuffer %i\n", err);
     }
 
+    cl_int *zeros=calloc(cl_data->num_blocks*cl_data->config->processing.num_local_freq,
+                         sizeof(cl_int)); // block locking
+
+    cl_data->device_block_lock = clCreateBuffer (cl_data->context,
+                                        CL_MEM_COPY_HOST_PTR,
+                                        cl_data->num_blocks*cl_data->config->processing.num_local_freq*sizeof(cl_int),
+                                        zeros,
+                                        &err);
+    CHECK_CL_ERROR(err);
+
     //set other parameters that will be fixed for the kernels (changeable parameters will be set in run loops)
     CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel, 
                                    2,
@@ -770,10 +788,11 @@ void setup_open_cl(struct OpenCLData * cl_data)
                                    3,
                                    sizeof(id_y_map),
                                    (void*) &id_y_map) );
+
     CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel,
                                    4,
-                                   8*8*4 * sizeof(cl_uint),
-                                   NULL) );
+                                   sizeof(void*),
+                                   (void*)&cl_data->device_block_lock) );
 
     CHECK_CL_ERROR( clSetKernelArg(cl_data->preseed_kernel,
                                    2,
@@ -825,9 +844,9 @@ void setup_open_cl(struct OpenCLData * cl_data)
         mask_position = cl_data->config->processing.inverse_product_remap[mask_position];
         mask[mask_position] = 0;
     }
-    for (int i = 0; i < cl_data->config->processing.num_adjusted_elements; ++i) {
-        INFO("MASK[%d] = %d", i, mask[i]);
-    }
+    //for (int i = 0; i < cl_data->config->processing.num_adjusted_elements; ++i) {
+    //    INFO("MASK[%d] = %d", i, mask[i]);
+    //}
     cl_mem device_mask = clCreateBuffer(cl_data->context,
                                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                         cl_data->config->processing.num_elements * sizeof(unsigned char),
@@ -909,6 +928,7 @@ void close_open_cl(struct OpenCLData * cl_data)
     }
     free(cl_data->device_input_buffer);
     CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_time_shifted_buffer) );
+    CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_block_lock) );
 
     for (int i = 0; i < cl_data->in_buf->num_buffers; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_accumulate_buffer[i]) );

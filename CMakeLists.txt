@@ -1,9 +1,25 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 2.8)
 project (CHIME)
 
 find_package(Threads REQUIRED)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -msse4.2 -MMD -march=corei7-avx -mtune=corei7-avx")
+include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
+link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
+
+set (DPDK_LIST
+        ethdev       rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
+        rte_power    rte_timer        rte_ring    rte_sched     rte_table
+        rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000  rte_pmd_virtio_uio
+        rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
+        rte_cmdline  rte_ip_frag      rte_malloc  rte_pipeline  rte_pmd_ixgbe  rte_port
+)
+
+add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
+set (DPDK_LIBS
+        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group )
+
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb ")
 

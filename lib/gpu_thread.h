@@ -75,6 +75,7 @@ struct OpenCLData {
     cl_mem * device_accumulate_buffer;
     cl_mem device_time_shifted_buffer;
     cl_mem * device_freq_map;
+    cl_mem device_block_lock;
 
     // User events.
     cl_event * host_buffer_ready;

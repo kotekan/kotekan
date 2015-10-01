@@ -26,8 +26,10 @@ void gpu_post_process_thread(void* arg)
 
     struct Config * config = args->config;
 
-    int useableBufferIDs[config->gpu.num_gpus][1];
-    for (int i = 0; i < config->gpu.num_gpus; ++i) {
+    int num_gpus = 1; // config->gpu.num_gpus;
+
+    int useableBufferIDs[num_gpus][1];
+    for (int i = 0; i < num_gpus; ++i) {
         useableBufferIDs[i][0] = 0;
     }
     int link_id = 0;
@@ -96,6 +98,13 @@ void gpu_post_process_thread(void* arg)
 
         // This call is blocking!
         in_buffer_ID = get_full_buffer_from_list(&args->in_buf[gpu_id], useableBufferIDs[gpu_id], 1);
+
+        // _______________________
+        //release_info_object(&args->in_buf[gpu_id], in_buffer_ID);
+        //mark_buffer_empty(&args->in_buf[gpu_id], in_buffer_ID);
+
+        //continue;
+        // _______________________
 
         // Check if the producer has finished, and we should exit.
         if (in_buffer_ID == -1) {

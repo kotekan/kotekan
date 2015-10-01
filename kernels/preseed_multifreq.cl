@@ -1,23 +1,16 @@
-//CASPER ordering--actually, this kernel doesn't care about the original packed B data, so it should be the same as the version in the Non-casper directory
-//Preseed the output array for correlations
-
-//HARDCODE ALL OF THESE!
+//NUM_ELEMENTS, NUM_BLOCKS, NUM_TIMESAMPLES defined at compile time
 //#define NUM_ELEMENTS                    32u // must be 32 or larger, 2560u eventually
 //#define NUM_BLOCKS                      1u  // N(N+1)/2 where N=(NUM_ELEMENTS/32)
+//#define NUM_TIMESAMPLES                 10u*1024u
+
+
+#define NUM_TIMESAMPLES_x_128           (NUM_TIMESAMPLES*128u)// need the total number of iterations for the offset outputs
+#define NUM_BLOCKS_x_2048               (NUM_BLOCKS*2048u) //each block size is 32 x 32 x 2 = 2048
 
 #define LOCAL_SIZE                      8u
 #define BLOCK_DIM                       32u
-//#define N_TIME_CHUNKS                   256u
-#define NUM_ITERATIONS_x_128            (32u*1024u)*128u// need the total number of iterations for the offset outputs
-
-//#define NUM_ELEMENTS_div_4                     8u  // N/4
-//#define N_FREQ                          128u
-//#define _256_x_NUM_ELEMENTS_div_4_x_N_FREQ     262144u
-//#define NUM_ELEMENTS_div_4_x_N_FREQ            1024u
-#define NUM_BLOCKS_x_2048               NUM_BLOCKS*2048u //each block size is 32 x 32 x 2 = 2048
 
 #define FREQUENCY_BAND                  (get_group_id(1))
-//#define TIME_STEP_DIV_256               (get_global_id(2)/NUM_BLOCKS)
 #define BLOCK_ID                        (get_group_id(2))
 #define LOCAL_X                         (get_local_id(0))
 #define LOCAL_Y                         (get_local_id(1))
@@ -85,40 +78,39 @@ void preseed( __global uint *dataIn,
     //16 pairs * 8 (local_size(0)) * 8 (local_size(1)) = 1024
     uint addr_o = ((BLOCK_ID * 2048u) + (LOCAL_Y * 256u) + (LOCAL_X * 8u)) + (FREQUENCY_BAND * NUM_BLOCKS_x_2048);
     //row 0
-    corr_buf[addr_o+0u]=   NUM_ITERATIONS_x_128 - 8u*(xValPairs[0u]+yValPairs[0u]); //real value correction
-    corr_buf[addr_o+1u]=                          8u*(xValPairs[1u]+yValPairs[1u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+2u]=   NUM_ITERATIONS_x_128 - 8u*(xValPairs[2u]+yValPairs[0u]); //note that x changes, but y stays the same
-    corr_buf[addr_o+3u]=                          8u*(xValPairs[3u]+yValPairs[1u]);
-    corr_buf[addr_o+4u]=   NUM_ITERATIONS_x_128 - 8u*(xValPairs[4u]+yValPairs[0u]); //real value correction
-    corr_buf[addr_o+5u]=                          8u*(xValPairs[5u]+yValPairs[1u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+6u]=   NUM_ITERATIONS_x_128 - 8u*(xValPairs[6u]+yValPairs[0u]);
-    corr_buf[addr_o+7u]=                          8u*(xValPairs[7u]+yValPairs[1u]);
+    corr_buf[addr_o+0u]=   NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[0u]+yValPairs[0u]); //real value correction
+    corr_buf[addr_o+1u]=                           8u*(xValPairs[1u]+yValPairs[1u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+2u]=   NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[2u]+yValPairs[0u]); //note that x changes, but y stays the same
+    corr_buf[addr_o+3u]=                           8u*(xValPairs[3u]+yValPairs[1u]);
+    corr_buf[addr_o+4u]=   NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[4u]+yValPairs[0u]); //real value correction
+    corr_buf[addr_o+5u]=                           8u*(xValPairs[5u]+yValPairs[1u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+6u]=   NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[6u]+yValPairs[0u]);
+    corr_buf[addr_o+7u]=                           8u*(xValPairs[7u]+yValPairs[1u]);
     //row 1
-    corr_buf[addr_o+64u]=  NUM_ITERATIONS_x_128 - 8u*(xValPairs[0u]+yValPairs[2u]); //real value correction
-    corr_buf[addr_o+65u]=                         8u*(xValPairs[1u]+yValPairs[3u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+66u]=  NUM_ITERATIONS_x_128 - 8u*(xValPairs[2u]+yValPairs[2u]);
-    corr_buf[addr_o+67u]=                         8u*(xValPairs[3u]+yValPairs[3u]);
-    corr_buf[addr_o+68u]=  NUM_ITERATIONS_x_128 - 8u*(xValPairs[4u]+yValPairs[2u]); //real value correction
-    corr_buf[addr_o+69u]=                         8u*(xValPairs[5u]+yValPairs[3u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+70u]=  NUM_ITERATIONS_x_128 - 8u*(xValPairs[6u]+yValPairs[2u]);
-    corr_buf[addr_o+71u]=                         8u*(xValPairs[7u]+yValPairs[3u]);
+    corr_buf[addr_o+64u]=  NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[0u]+yValPairs[2u]); //real value correction
+    corr_buf[addr_o+65u]=                          8u*(xValPairs[1u]+yValPairs[3u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+66u]=  NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[2u]+yValPairs[2u]);
+    corr_buf[addr_o+67u]=                          8u*(xValPairs[3u]+yValPairs[3u]);
+    corr_buf[addr_o+68u]=  NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[4u]+yValPairs[2u]); //real value correction
+    corr_buf[addr_o+69u]=                          8u*(xValPairs[5u]+yValPairs[3u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+70u]=  NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[6u]+yValPairs[2u]);
+    corr_buf[addr_o+71u]=                          8u*(xValPairs[7u]+yValPairs[3u]);
     //row 2
-    corr_buf[addr_o+128u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[0u]+yValPairs[4u]); //real value correction
-    corr_buf[addr_o+129u]=                        8u*(xValPairs[1u]+yValPairs[5u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+130u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[2u]+yValPairs[4u]);
-    corr_buf[addr_o+131u]=                        8u*(xValPairs[3u]+yValPairs[5u]);
-    corr_buf[addr_o+132u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[4u]+yValPairs[4u]); //real value correction
-    corr_buf[addr_o+133u]=                        8u*(xValPairs[5u]+yValPairs[5u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+134u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[6u]+yValPairs[4u]);
-    corr_buf[addr_o+135u]=                        8u*(xValPairs[7u]+yValPairs[5u]);
+    corr_buf[addr_o+128u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[0u]+yValPairs[4u]); //real value correction
+    corr_buf[addr_o+129u]=                         8u*(xValPairs[1u]+yValPairs[5u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+130u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[2u]+yValPairs[4u]);
+    corr_buf[addr_o+131u]=                         8u*(xValPairs[3u]+yValPairs[5u]);
+    corr_buf[addr_o+132u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[4u]+yValPairs[4u]); //real value correction
+    corr_buf[addr_o+133u]=                         8u*(xValPairs[5u]+yValPairs[5u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+134u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[6u]+yValPairs[4u]);
+    corr_buf[addr_o+135u]=                         8u*(xValPairs[7u]+yValPairs[5u]);
     //row 3
-    corr_buf[addr_o+192u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[0u]+yValPairs[6u]); //real value correction
-    corr_buf[addr_o+193u]=                        8u*(xValPairs[1u]+yValPairs[7u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+194u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[2u]+yValPairs[6u]);
-    corr_buf[addr_o+195u]=                        8u*(xValPairs[3u]+yValPairs[7u]);
-    corr_buf[addr_o+196u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[4u]+yValPairs[6u]); //real value correction
-    corr_buf[addr_o+197u]=                        8u*(xValPairs[5u]+yValPairs[7u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
-    corr_buf[addr_o+198u]= NUM_ITERATIONS_x_128 - 8u*(xValPairs[6u]+yValPairs[6u]);
-    corr_buf[addr_o+199u]=                        8u*(xValPairs[7u]+yValPairs[7u]);
-
+    corr_buf[addr_o+192u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[0u]+yValPairs[6u]); //real value correction
+    corr_buf[addr_o+193u]=                         8u*(xValPairs[1u]+yValPairs[7u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+194u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[2u]+yValPairs[6u]);
+    corr_buf[addr_o+195u]=                         8u*(xValPairs[3u]+yValPairs[7u]);
+    corr_buf[addr_o+196u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[4u]+yValPairs[6u]); //real value correction
+    corr_buf[addr_o+197u]=                         8u*(xValPairs[5u]+yValPairs[7u]); //imaginary value correction (the extra subtraction in the notes has been performed by swapping order above
+    corr_buf[addr_o+198u]= NUM_TIMESAMPLES_x_128 - 8u*(xValPairs[6u]+yValPairs[6u]);
+    corr_buf[addr_o+199u]=                         8u*(xValPairs[7u]+yValPairs[7u]);
 }

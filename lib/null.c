@@ -28,7 +28,7 @@ void null_thread(void* arg)
             pthread_exit((void *) &ret);
         }
 
-        INFO("Dropping frame in null thread.");
+        //INFO("Dropping frame in null thread.");
 
         mark_buffer_empty(args->buf, buffer_ID);
 
