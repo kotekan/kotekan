@@ -14,22 +14,22 @@
 
 #define FREQUENCY_BAND                              (get_group_id(1))
 #define TIME_STEP_DIV_256                           (get_global_id(2)/NUM_BLOCKS)
-#define BLOCK_ID                                    (get_global_id(2)%NUM_BLOCKS)
+#define BLOCK_ID_CORR                               (get_global_id(2)%NUM_BLOCKS)
 #define LOCAL_X                                     (get_local_id(0))
 #define LOCAL_Y                                     (get_local_id(1))
 
 
 __kernel __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE, 1)))
 void corr ( __global const uint *packed,
-            __global  int *corr_buf,
+            __global int *corr_buf,
             __global const uint *id_x_map,
             __global const uint *id_y_map,
             __global int *block_lock)
 {
     __local uint stillPackedY[256];
     __local uint stillPackedX[256];
-    const uint block_x = id_x_map[BLOCK_ID]; //column of output block
-    const uint block_y = id_y_map[BLOCK_ID]; //row of output block  //if NUM_BLOCKS = 1, then BLOCK_ID = 0 then block_x = block_y = 0
+    const uint block_x = id_x_map[BLOCK_ID_CORR]; //column of output block
+    const uint block_y = id_y_map[BLOCK_ID_CORR]; //row of output block  //if NUM_BLOCKS = 1, then BLOCK_ID_CORR = 0 then block_x = block_y = 0
 
     /// The address for the x elements for the data
     uint addr_x = (   LOCAL_Y*NUM_ELEMENTS_div_4_x_NUM_FREQUENCIES
@@ -158,10 +158,10 @@ void corr ( __global const uint *packed,
     }
     //output: 32 numbers--> 16 pairs of real/imag numbers
     //16 pairs * 8 (local_size(0)) * 8 (local_size(1)) = 1024
-    uint addr_o = ((BLOCK_ID * 2048u) + (LOCAL_Y * 256u) + (LOCAL_X * 8u)) + (FREQUENCY_BAND * NUM_BLOCKS_x_2048);
+    uint addr_o = ((BLOCK_ID_CORR * 2048u) + (LOCAL_Y * 256u) + (LOCAL_X * 8u)) + (FREQUENCY_BAND * NUM_BLOCKS_x_2048);
 
     if (LOCAL_X == 0 && LOCAL_Y == 0){
-        while(atomic_cmpxchg(&block_lock[FREQUENCY_BAND*NUM_BLOCKS + BLOCK_ID],0,1)); //wait until unlocked
+        while(atomic_cmpxchg(&block_lock[FREQUENCY_BAND*NUM_BLOCKS + BLOCK_ID_CORR],0,1)); //wait until unlocked
     }
         barrier(CLK_GLOBAL_MEM_FENCE); //sync point for the group
         corr_buf[addr_o+0u]+=   (corr_a0 >> 16u) + (corr_a1 & 0xffff) ; //real value
@@ -202,5 +202,5 @@ void corr ( __global const uint *packed,
         barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
 
     if (LOCAL_X == 0 && LOCAL_Y == 0)
-        block_lock[FREQUENCY_BAND*NUM_BLOCKS + BLOCK_ID]=0;
+        block_lock[FREQUENCY_BAND*NUM_BLOCKS + BLOCK_ID_CORR]=0;
 }
