@@ -1,8 +1,12 @@
+#ifndef PACKET_COPY_H
+#define PACKET_COPY_H
+
 #include <stdint.h>
 #include <stdio.h>
 #include <inttypes.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <emmintrin.h>
 #include <rte_eal.h>
 #include <rte_ethdev.h>
 #include <rte_cycles.h>
@@ -15,10 +19,10 @@
 static inline void
 rte_mov8_nt(uint8_t *dst, const uint8_t *src)
 {
-    uint64_t value;
+    long long int value;
 
-    value = *(const uint64_t *)src;
-    _mm_stream_si64((long long int *)dst, value);
+    value = *(const long long int*)src;
+    _mm_stream_si64((long long int*)dst, value);
 }
 
 // Copy 16 bytes from one location to another,
@@ -228,3 +232,5 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
     *offset = local_offset;
     //assert(len == 0);
 }
+
+#endif

@@ -32,7 +32,7 @@
 #include <rte_ring.h>
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
-
+#include <emmintrin.h>
 
 #include "packet_copy.h"
 #include "network_dpdk.h"
@@ -72,8 +72,7 @@ static const struct rte_eth_conf port_conf_default = {
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
  */
-static inline int
-port_init(uint8_t port, struct rte_mempool *mbuf_pool)
+static inline int port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 {
     struct rte_eth_conf port_conf = port_conf_default;
     const uint16_t rx_rings = 1, tx_rings = 1;
@@ -125,8 +124,29 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     return 0;
 }
 
-static inline void
-print_eth_stats(const uint32_t port) {
+static void check_port_socket_assignment() {
+
+    const uint8_t nb_ports = rte_eth_dev_count();
+    assert(nb_ports == NUM_LINKS);
+
+    /*
+    * Check that the port is on the same NUMA node as the polling thread
+    * for best performance.
+    */
+    for (int port = 0; port < nb_ports; port++)
+        if (rte_eth_dev_socket_id(port) > 0 &&
+            rte_eth_dev_socket_id(port) !=
+            (int)rte_socket_id())
+            WARN("WARNING, port %u is on remote NUMA node to "
+            "polling thread.\n\tPerformance will "
+            "not be optimal.\n", port);
+
+        INFO("network_dpdk: Core %u forwarding packets. [Ctrl+C to quit]\n",
+            rte_lcore_id());
+}
+
+
+static inline void print_eth_stats(const uint32_t port) {
 
     static struct rte_eth_stats rx_stats[4];
 
@@ -144,6 +164,85 @@ print_eth_stats(const uint32_t port) {
     rte_eth_stats_reset(port);
 }
 
+static void init_network_object(struct NetworkDPDK * net_dpdk) {
+
+    for (int i = 0; i < NUM_LINKS; ++i) {
+
+        net_dpdk->link_data[i].buffer_id = 0;
+        net_dpdk->link_data[i].seq = -1;
+        net_dpdk->link_data[i].lost_packets = 0;
+        net_dpdk->link_data[i].last_seq = -1;
+        net_dpdk->link_data[i].cur_seq64_edge = 0;
+        net_dpdk->link_data[i].num_packets = 0;
+        net_dpdk->link_data[i].seq64 = 0;
+        net_dpdk->link_data[i].num_packets = 0;
+        net_dpdk->link_data[i].finished_buffer = 0;
+    }
+
+    net_dpdk->num_unused_cycles = 0;
+    net_dpdk->start_time = e_time();
+    net_dpdk->end_time = e_time();
+}
+
+static void check_and_advance_frame(struct NetworkDPDK * dpdk_net,
+                                    const int port,
+                                    int * data_id) {
+
+    // TODO it is really bad to have a blocking call here(!)
+
+    mark_buffer_full(&dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id);
+
+    dpdk_net->link_data[port].buffer_id =
+    (dpdk_net->link_data[port].buffer_id + 1) % dpdk_net->args->buf[port].num_buffers;
+
+    static struct timeval now;
+    gettimeofday(&now, NULL);
+
+    wait_for_empty_buffer(&dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id);
+    set_data_ID(&dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id, (*data_id)++);
+    set_stream_ID(&dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id, *data_id);
+    set_fpga_seq_num(&dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id, (*data_id/4)*262144/2);
+    set_first_packet_recv_time(&dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id, now);
+
+}
+
+
+
+static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
+                                          struct rte_mbuf * cur_mbuf,
+                                          int port) {
+    int offset = 58;
+
+    for (int frame = 0;
+         frame < dpdk_net->args->config->fpga_network.timesamples_per_packet;
+         ++frame) {
+
+        // TODO this should only mark the buffers as full once we have
+        // a full set of data from all links.  At the moment we are
+        if (unlikely(dpdk_net->link_data[port].seq64 >=
+                        dpdk_net->link_data[port].cur_seq64_edge)) {
+            for (int i = 0; i < 4; ++i) {
+
+            }
+        }
+
+        // TODO this 4 shouldn't be hard coded
+        for (int freq = 0; freq < 4; ++freq) {
+            copy_block(&cur_mbuf,
+                       (uint8_t *) &dpdk_net->args->buf[freq].data[dpdk_net->link_data[freq].buffer_id][512*port],
+                       512,
+                       &offset);
+
+        }
+
+    }
+}
+
+static inline void copy_data_no_shuffle() {
+
+
+}
+
 /*
  * The lcore main. This is the main thread that does the work, reading from
  * an input port and writing to an output port.
@@ -151,172 +250,89 @@ print_eth_stats(const uint32_t port) {
 static __attribute__((noreturn)) void
 lcore_main(void *args)
 {
-    const uint8_t nb_ports = rte_eth_dev_count();
+    struct NetworkDPDK dpdk_net;
     uint8_t port;
-    uint32_t num_packets = 0;
-    uint32_t num_unused_cycles = 0;
-    double start_time = e_time();
-    double end_time = e_time();
+
+    dpdk_net.args = (struct networkDPDKArg *)args;
+
     struct rte_mbuf *bufs[BURST_SIZE];
-    int64_t seq[4];
-    int64_t last_seq[4];
-    uint16_t stream_ID[4];
-    uint64_t lost_packets[4];
-    uint32_t num_packets_per_link[4];
 
-    struct networkDPDKArg * arg = (struct networkDPDKArg *)args;
+    int data_id = 0;
 
-    int buffer_ids[arg->num_links];
-    int num_frames = 0;
+    check_port_socket_assignment();
 
     static struct timeval now;
     gettimeofday(&now, NULL);
-    int data_id = 0;
 
-    for (int i = 0; i < 4; ++i) {
-        buffer_ids[i] = 0;
-        seq[i] = -1;
-        lost_packets[i] = 0;
-        last_seq[i] = -1;
-        wait_for_empty_buffer(&arg->buf[i], buffer_ids[i]);
-        set_data_ID(&arg->buf[i], buffer_ids[i], data_id++);
-        set_stream_ID(&arg->buf[i], buffer_ids[i], i);
-        set_fpga_seq_num(&arg->buf[i], buffer_ids[i], 0*262144);
-        set_first_packet_recv_time(&arg->buf[i], buffer_ids[i], now);
+    for (port = 0; port < NUM_LINKS; ++port) {
+        wait_for_empty_buffer(&dpdk_net.args->buf[port], dpdk_net.link_data[port].buffer_id);
+        set_data_ID(&dpdk_net.args->buf[port], dpdk_net.link_data[port].buffer_id, data_id++);
+        set_stream_ID(&dpdk_net.args->buf[port], dpdk_net.link_data[port].buffer_id, port);
+        set_fpga_seq_num(&dpdk_net.args->buf[port], dpdk_net.link_data[port].buffer_id, 0);
+        set_first_packet_recv_time(&dpdk_net.args->buf[port], dpdk_net.link_data[port].buffer_id, now);
     }
 
-    int out_i[4] = {0, 0, 0, 0};
 
-    /*
-     * Check that the port is on the same NUMA node as the polling thread
-     * for best performance.
-     */
-    for (port = 0; port < nb_ports; port++)
-        if (rte_eth_dev_socket_id(port) > 0 &&
-            rte_eth_dev_socket_id(port) !=
-            (int)rte_socket_id())
-            printf("WARNING, port %u is on remote NUMA node to "
-            "polling thread.\n\tPerformance will "
-            "not be optimal.\n", port);
+    /* Run until the application is quit or killed. */
+    for (;;) {
 
-        printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
-               rte_lcore_id());
+        // For each port.
+        for (port = 0; port < dpdk_net.args->num_links; port++) {
 
-        /* Run until the application is quit or killed. */
-        for (;;) {
-            /*
-             * Receive packets
-             */
-            for (port = 0; port < nb_ports; port++) {
+            const int32_t nb_rx = rte_eth_rx_burst(port, 0,
+                                                    bufs, BURST_SIZE);
 
-                const int32_t nb_rx = rte_eth_rx_burst(port, 0,
-                                                        bufs, BURST_SIZE);
+            if (likely(nb_rx == 0)) {
+                dpdk_net.num_unused_cycles++;
+                continue;
+            }
+            dpdk_net.link_data[port].num_packets += nb_rx;
 
-                if (likely(nb_rx == 0)) {
-                    num_unused_cycles++;
+            //printf("Got packet!\n");
+            if (unlikely (dpdk_net.link_data[port].num_packets > 16*390625/2)) {
+
+                INFO("network_dpdk; link %d lost_packets %.6f%%", port,
+                    (double)dpdk_net.link_data[port].lost_packets/
+                    (double)dpdk_net.link_data[port].num_packets);
+
+                dpdk_net.link_data[port].num_packets = 0;
+                dpdk_net.link_data[port].lost_packets = 0;
+            }
+
+            // For each packet on that port.
+            for (int i = 0; i < nb_rx; ++i) {
+
+                if ((bufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1) {
+                    ERROR("network_dpdk: Got bad packet!");
                     continue;
                 }
-                num_packets += nb_rx;
-                num_packets_per_link[port] += nb_rx;
 
-                //printf("Got packet!\n");
-                if (unlikely (num_packets > 16*390625/2)) {
-                    //struct rte_mbuf * pkt = bufs[0];
-                    //end_time = e_time();
-                    /*INFO("Packet rate: %f PPS\n Unused cycles: %d mbuf data len %d mbuf pkt len %d seq_num %u\n",
-                           (double)num_packets / (end_time - start_time),
-                           num_unused_cycles,
-                           pkt->data_len,
-                           pkt->pkt_len,
-                           *(uint32_t *)(rte_pktmbuf_mtod(pkt, char *) + 54) );*/
-                    /*printf("Frame rate: %f Frames/second\n",
-                           (double)num_frames / 4.0 / (end_time - start_time));*/
+                dpdk_net.link_data[port].seq = *(uint32_t *)(rte_pktmbuf_mtod(bufs[i], char *) + 54);
 
-                    num_frames = 0;
-                    num_packets = 0;
-                    num_unused_cycles = 0;
-                    INFO("network_dpdk; lost_packets %.6f%%, %.6f%%, %.6f%%, %.6f%%",
-                         (double)lost_packets[0]/(double)num_packets_per_link[0],
-                         (double)lost_packets[1]/(double)num_packets_per_link[1],
-                         (double)lost_packets[2]/(double)num_packets_per_link[2],
-                         (double)lost_packets[3]/(double)num_packets_per_link[3] );
-                    for (int i = 0; i < 4; i++) {
-                        lost_packets[i] = 0;
-                        num_packets_per_link[i] = 0;
-                    }
-                    //start_time = end_time;
+                if (unlikely(dpdk_net.link_data[port].last_seq == -1)) {
+                    dpdk_net.link_data[port].last_seq = dpdk_net.link_data[port].seq;
+                    dpdk_net.link_data[port].stream_ID = *(uint16_t *)(rte_pktmbuf_mtod(bufs[i], char *) + 44);
                 }
 
-                for (int i = 0; i < nb_rx; ++i) {
-                    //fprintf(stderr, "output + out_i: %p\n", output + out_i);
-
-                    if ((bufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1) {
-                        fprintf(stderr, "Got bad packet!");
-                    }
-
-                    struct rte_mbuf * cur_mbuf = bufs[i];
-                    int offset = 58;
-
-                    seq[port] = *(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 54);
-
-                    if (unlikely(last_seq[port] == -1)) {
-                        last_seq[port] = seq[port];
-                        stream_ID[port] = *(uint16_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 44) >> 1;
-                    }
-
-                    int64_t diff = seq[port] - last_seq[port];
-                    if (unlikely(diff < 0)) {
-                        diff += COUNTER_MAX + (uint64_t)num_frames_per_packet;
-                    }
-
-                    int64_t lost = (diff - (uint64_t)num_frames_per_packet);
-                    lost_packets[port] += lost;
-
-                    //INFO("seq %d; last_seq %d; diff %d", seq[port], last_seq[port], diff);
-                    last_seq[port] = seq[port];
-
-                    for (int frame = 0; frame < 2; ++frame) {
-                        for (int freq = 0; freq < 4; ++freq) {
-                            //INFO("cur_buf %p; port %d; out_i[freq] %d; freq %d; offset %d; buf_size %d\n",
-                            //     cur_mbuf, port, out_i[freq],
-                            //     freq, offset, arg->buf[freq].buffer_size);
-                            copy_block(&cur_mbuf,
-                                    (uint8_t *) &arg->buf[freq].data[buffer_ids[freq]][out_i[port] + 512*port],
-                                    512,
-                                    &offset);
-
-                        }
-                        out_i[port] += 2048;
-                        // TODO this should only mark the buffers as full once we have
-                        // a full set of data from all links.  At the moment we are
-                        if (unlikely(out_i[port] >= arg->buf[0].buffer_size)) {
-                            for (int i = 0; i < 4; ++i) {
-                                // TODO it is really bad to have a blocking call here(!)
-                                // INFO("Getting new buffer for buf % 4 = %d", i);
-                                mark_buffer_full(&arg->buf[i], buffer_ids[i]);
-
-                                buffer_ids[i] = (buffer_ids[i] + 1) % arg->buf[i].num_buffers;
-
-                                static struct timeval now;
-                                gettimeofday(&now, NULL);
-
-                                num_frames++;
-
-                                wait_for_empty_buffer(&arg->buf[i], buffer_ids[i]);
-                                set_data_ID(&arg->buf[i], buffer_ids[i], data_id++);
-                                set_stream_ID(&arg->buf[i], buffer_ids[i], data_id);
-                                set_fpga_seq_num(&arg->buf[i], buffer_ids[i], (data_id/4)*262144/2);
-                                set_first_packet_recv_time(&arg->buf[i], buffer_ids[i], now);
-
-                                out_i[i] = 0;
-                            }
-                        }
-                    }
-
-                    rte_pktmbuf_free(bufs[i]);
+                int64_t diff = dpdk_net.link_data[port].seq - dpdk_net.link_data[port].last_seq;
+                if (unlikely(diff < 0)) {
+                    diff += COUNTER_MAX + (uint64_t)dpdk_net.args->config->fpga_network.timesamples_per_packet;
                 }
+
+                dpdk_net.link_data[port].lost_packets = diff - (uint64_t)dpdk_net.args->config->fpga_network.timesamples_per_packet;
+
+                // TODO Mark lost packets here to be zeroed from GPU frame.
+
+                // Copy the packet to the GPU staging buffer.
+                copy_data_with_shuffle(&dpdk_net, bufs[i], port);
+
+
+                dpdk_net.link_data[port].last_seq = dpdk_net.link_data[port].seq;
+
+                rte_pktmbuf_free(bufs[i]);
             }
         }
+    }
 }
 
 /*
