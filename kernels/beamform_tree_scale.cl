@@ -32,11 +32,11 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
     //calculate the phase correction
     float phase_re[4], phase_im[4]; //why arrays?
     int base_element_id = ELEMENT_ID_DIV_4*4;
-    //the angle used is actually the negative of what is wanted--this shows up in the complex multiply
-    phase_im[0] = sincos(phases[base_element_id+0]*freq, &phase_re[0]);
-    phase_im[1] = sincos(phases[base_element_id+1]*freq, &phase_re[1]);
-    phase_im[2] = sincos(phases[base_element_id+2]*freq, &phase_re[2]);
-    phase_im[3] = sincos(phases[base_element_id+3]*freq, &phase_re[3]);
+    //phases is calculated as the true phase. we must apply -phases to remove the geometric delay.
+    phase_im[0] = sincos(-phases[base_element_id+0]*freq, &phase_re[0]);
+    phase_im[1] = sincos(-phases[base_element_id+1]*freq, &phase_re[1]);
+    phase_im[2] = sincos(-phases[base_element_id+2]*freq, &phase_re[2]);
+    phase_im[3] = sincos(-phases[base_element_id+3]*freq, &phase_re[3]);
 //     if (FREQUENCY_BAND ==0){
 //         printf("%3i: angle: %10.6f sin: %10.6f cos: %10.6f unitary check:%f\n",get_local_id(0)*4,phases[base_element_id]*freq,phase_im[0], phase_re[0], phase_im[0]*phase_im[0]+phase_re[0]*phase_re[0]);
 //         printf("%3i: angle: %10.6f sin: %10.6f cos: %10.6f unitary check:%f\n",get_local_id(0)*4+1,phases[base_element_id+1]*freq,phase_im[1], phase_re[1], phase_im[1]*phase_im[1]+phase_re[1]*phase_re[1]);
