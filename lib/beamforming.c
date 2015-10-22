@@ -1,4 +1,3 @@
-
 #include <math.h>
 #include <time.h>
 
@@ -39,7 +38,8 @@ void get_delays(time_t unix_time, double ra, double dec, const struct Config * c
     az = acos(az);
     if(sin(hour_angle*D2R) >= 0){az = TAU - az;}
 
-    //project, determine phases for each element
+    //project, determine phases for each element 
+    //return geometric phase that instrument sees, i.e. -phases will be applied in beamformer
     double projection_angle, effective_angle, offset_distance;
     for(int i = 0; i < config->processing.num_elements; ++i)
     {
