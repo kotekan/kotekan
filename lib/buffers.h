@@ -192,7 +192,7 @@ void mark_buffer_empty(struct Buffer * buf, const int ID);
 void wait_for_empty_buffer(struct Buffer * buf, const int ID);
 
 /** @brief Checks if the requested buffer is empty, returns 1
- *  if the buffer is empty, and 1 if the full.  Thread safe.
+ *  if the buffer is empty, and 0 if the full.  Thread safe.
  * @param [in] buf The buffer
  * @param [in] ID The id of the buffer to check.
  */

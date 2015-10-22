@@ -16,17 +16,18 @@ void file_write_thread(void * arg)
     int useableBufferIDs[1] = {args->disk_ID};
     int bufferID = args->disk_ID;
     int file_num = args->disk_ID;
+    int ret = 0;
 
     for (;;) {
 
         // This call is blocking.
         bufferID = get_full_buffer_from_list(args->buf, useableBufferIDs, 1);
 
-        //printf("Got buffer, id: %d", bufferID);
+        //printf("Got buffer, id: %d\n", bufferID);
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
-            int ret;
+            fprintf(stderr, "Exiting file write thread\n");
             pthread_exit((void *) &ret);
         }
 
@@ -35,7 +36,11 @@ void file_write_thread(void * arg)
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%d/%s/%07d.dat", args->disk_base, args->disk_ID, args->dataset_name, file_num);
+        if (args->num_disks == 1) {
+            snprintf(file_name, file_name_len, "%s/%s/%07d.dat", args->disk_base, args->dataset_name, file_num);
+        } else {
+            snprintf(file_name, file_name_len, "%s/%d/%s/%07d.dat", args->disk_base, args->disk_ID, args->dataset_name, file_num);
+        }
 
         fd = open(file_name, O_WRONLY | O_CREAT, 0666);
 
@@ -51,7 +56,7 @@ void file_write_thread(void * arg)
             printf("Failed to write buffer to disk!!!  Abort, Panic, etc.");
             exit(-1);
         } else {
-             fprintf(stderr, "Data writen to file!");
+             fprintf(stderr, "Data writen to file: %s\n", file_name);
         }
 
         if (close(fd) == -1) {
