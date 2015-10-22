@@ -76,6 +76,21 @@ Initialize the driver settings:
 
 http://developer.amd.com/tools-and-sdks/heterogeneous-computing/amd-accelerated-parallel-processing-app-sdk/downloads/
 
+* DPDK
+
+Install process.  Download the DPDK version 2.0.0 from:
+
+http://dpdk.org/browse/dpdk/snapshot/dpdk-2.0.0.tar.gz
+
+Unpack it and run:
+
+        make install T=x86_64-native-linuxapp-gcc
+
+Then export these variables before building the project:
+
+        export RTE_SDK=/<dpdk-location>/
+        export RTE_TARGET=x86_64-native-linuxapp-gcc
+
 * PF_RING
 
 The lastest versions of PF_RING seem to have some large API changes, which have not been addressed.
