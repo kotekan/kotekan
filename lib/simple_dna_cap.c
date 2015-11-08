@@ -56,6 +56,8 @@ void simple_dna_cap(void * arg) {
     int buffer_ID = 0;
     int buffer_location = 0;
 
+    int first_run = 1;
+
     wait_for_empty_buffer(args->buf, buffer_ID);
 
     for (;;) {
@@ -74,11 +76,21 @@ void simple_dna_cap(void * arg) {
             continue;
         }
 
-        assert(buffer_location < args->buf->buffer_size);
+        if (first_run == 1) {
+            uint32_t seq = *((uint32_t *) &pkt_buf[54]);
+            if ( (seq % args->integration_edge) <= 10 && (seq % args->integration_edge) >= 0 ) {
+                fprintf(stderr, "Link dna%d; got first packet with seq num: %d", args->dna_id, seq);
+                first_run = 0;
+            } else {
+                continue;
+            }
+        }
+        assert((buffer_location + args->packet_size) <= args->buf->buffer_size);
 
         memcpy( (void*) &args->buf->data[buffer_ID][buffer_location],
                 (void*) pkt_buf,
                 args->packet_size );
+        //fprintf(stderr, "copied packet!");
 
         buffer_location += args->packet_size;
 

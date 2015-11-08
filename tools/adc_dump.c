@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <time.h>
 #include <stdio.h>
+#include <math.h>
 #include <pthread.h>
 
 #include "buffers.h"
@@ -17,7 +18,7 @@
 #include "simple_dna_cap.h"
 #include "errors.h"
 
-void make_dirs(char * disk_base, char * data_set, char * symlink_dir, int num_disks) {
+void make_dirs(char * disk_base, char * data_set, int num_disks) {
 
     // Make the data location.
     int err = 0;
@@ -60,21 +61,25 @@ void make_dirs(char * disk_base, char * data_set, char * symlink_dir, int num_di
 
 int main(int argc, char ** argv) {
 
-    const int packet_len = 2112;
-    const int packets_per_frame = 100000;
+    const int packet_len = 9536;
+    const int packets_per_frame = 20000;
+    const int num_links = 8;
     const int num_disks = 1;
-    const int buffer_depth = 10;
-    const int dna_numer = 0;
-    const int num_buffers = num_disks * buffer_depth;
+    const int buffer_depth =
+        (int)floor( (14.0*1024*1024*1024) / (packet_len * packets_per_frame * num_links) );
     const int buffer_len = packet_len * packets_per_frame;
+    const int integration_edge = 16777216;
     char disk_base[100];
-    char symlink_dir[100];
+    snprintf(disk_base, sizeof(disk_base), "/data/glock/archive/");
 
-    struct Buffer buf;
+
     struct InfoObjectPool pool;
-    create_info_pool(&pool, num_buffers, 1024, 256);
-    create_buffer(&buf, num_buffers, buffer_len, 1, 1, &pool, "adc_frames");
+    create_info_pool(&pool, buffer_depth * num_links * 2, 1, 1);
 
+    struct Buffer buf[num_links];
+    for (int i = 0; i < num_links; ++i) {
+        create_buffer(&buf[i], buffer_depth, buffer_len, 1, 1, &pool, "adc_frames");
+    }
 
     // Compute the data set name.
     char data_set[150];
@@ -84,32 +89,40 @@ int main(int argc, char ** argv) {
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
 
+    char hostname[256];
+    hostname[255] = '\0';
+    gethostname(hostname, 256);
+
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-    snprintf(data_set, sizeof(data_set), "%s_adc_raw_burst", data_time);
-    snprintf(disk_base, sizeof(disk_base), "/data/test/");
+    snprintf(data_set, sizeof(data_set), "%s_%s_fft_burst", data_time, hostname);
 
     // Make the data set directory
-    make_dirs(disk_base, data_set, symlink_dir, num_disks);
+    make_dirs(disk_base, data_set, num_disks);
 
-    struct dnaCapArgs cap_args;
-    cap_args.buf = &buf;
-    cap_args.buffer_depth = buffer_depth;
-    cap_args.dna_id = dna_numer;
-    cap_args.close_on_block = 1;
-    cap_args.packet_size = packet_len;
+    struct dnaCapArgs cap_args[num_links];
+    pthread_t network_t[num_links];
+    for (int i = 0; i < num_links; ++i) {
+        cap_args[i].buf = &buf[i];
+        cap_args[i].buffer_depth = buffer_depth;
+        cap_args[i].dna_id = i;
+        cap_args[i].close_on_block = 1;
+        cap_args[i].packet_size = packet_len;
+        cap_args[i].integration_edge = integration_edge;
 
-    pthread_t network_t;
-    CHECK_ERROR( pthread_create(&network_t, NULL, (void *)&simple_dna_cap, (void *)&cap_args ) );
+        CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *)&simple_dna_cap, (void *)&cap_args[i] ) );
+    }
 
     fprintf(stderr, "started network thread\n");
 
     // Start file write threads.
-    pthread_t file_write_t[num_disks];
-    struct fileWriteThreadArg file_write_args[num_disks];
-    for (int i = 0; i < num_disks; ++i) {
-        file_write_args[i].buf = &buf;
-        file_write_args[i].disk_ID = i;
+    pthread_t file_write_t[num_links];
+    struct fileWriteThreadArg file_write_args[num_links];
+    for (int i = 0; i < num_links; ++i) {
+        file_write_args[i].buf = &buf[i];
+        file_write_args[i].disk_ID = 0;
+        file_write_args[i].link_ID = i;
         file_write_args[i].num_disks = num_disks;
+        file_write_args[i].num_links = num_links;
         file_write_args[i].buffer_depth = buffer_depth;
         file_write_args[i].dataset_name = data_set;
         file_write_args[i].disk_base = disk_base;
@@ -121,12 +134,14 @@ int main(int argc, char ** argv) {
     // Join threads
     int ret;
 
-    for (int i = 0; i < num_disks; ++i) {
+    for (int i = 0; i < num_links; ++i) {
         CHECK_ERROR(pthread_join(file_write_t[i], (void **)&ret));
     }
 
     fprintf(stderr, "Finished writting all files...\n");
 
-    CHECK_ERROR( pthread_join(network_t, (void **)&ret) );
+    for (int i = 0; i < num_links; ++i) {
+        CHECK_ERROR(pthread_join(network_t[i], (void **)&ret));
+    }
 
 }

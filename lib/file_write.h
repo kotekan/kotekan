@@ -7,6 +7,8 @@ struct fileWriteThreadArg {
     struct Buffer * buf;
     int disk_ID;
     int num_disks;
+    int link_ID;
+    int num_links;
     int buffer_depth;
     char * dataset_name;
     char * disk_base;

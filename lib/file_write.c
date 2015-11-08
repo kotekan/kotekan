@@ -37,9 +37,20 @@ void file_write_thread(void * arg)
         char file_name[file_name_len];
 
         if (args->num_disks == 1) {
-            snprintf(file_name, file_name_len, "%s/%s/%07d.dat", args->disk_base, args->dataset_name, file_num);
+            snprintf(file_name, file_name_len,
+                     "%s/%s/%d_%07d.dat",
+                     args->disk_base,
+                     args->dataset_name,
+                     args->link_ID,
+                     file_num);
         } else {
-            snprintf(file_name, file_name_len, "%s/%d/%s/%07d.dat", args->disk_base, args->disk_ID, args->dataset_name, file_num);
+            snprintf(file_name, file_name_len,
+                     "%s/%d/%s/%d_%07d.dat",
+                     args->disk_base,
+                     args->disk_ID,
+                     args->dataset_name,
+                     args->link_ID,
+                     file_num);
         }
 
         fd = open(file_name, O_WRONLY | O_CREAT, 0666);
