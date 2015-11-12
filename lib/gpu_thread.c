@@ -234,6 +234,10 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
     if (cl_data->config->gpu.use_beamforming) {
         assert(cl_data->beamform_finished[buffer_id] != NULL);
         clReleaseEvent(cl_data->beamform_finished[buffer_id]);
+
+        assert(cl_data->beamform_read_finished[buffer_id] != NULL);
+        clReleaseEvent(cl_data->beamform_read_finished[buffer_id]);
+
         if (cl_data->config->beamforming.fixed_time == 0 &&
             (buffer_id % cl_data->num_links) == 0) {
 
