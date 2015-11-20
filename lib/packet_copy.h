@@ -13,6 +13,10 @@
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Copy 8 bytes from one location to another,
 // locations should not overlap.
 // Output must be 4 bytes aligned.
@@ -232,5 +236,9 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
     *offset = local_offset;
     //assert(len == 0);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

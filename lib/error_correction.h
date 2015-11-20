@@ -1,3 +1,7 @@
+/// @file error_correction.h
+/// When correlating in the GPU errors are simply ignored for efficiency,
+/// this set of functions deals with tracking those errors, and normalizing
+/// the visibilities once the GPU is finished processing them. 
 
 #ifndef ERROR_CORRECTION
 #define ERROR_CORRECTION
@@ -5,11 +9,9 @@
 #include <complex.h>
 #include <error.h>
 
-/// @file error_correction.h
-/// When correlating in the GPU errors are simply ignored for efficiency,
-/// this set of functions deals with tracking those errors, and normalizing
-/// the visibilities once the GPU is finished processing them. 
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct ErrorMatrix {
 
@@ -49,5 +51,9 @@ void finalize_error_matrix(struct ErrorMatrix* error_matrix);
 // Currently assumes the visibilities are ordered in the natural way.
 void apply_error_corrections(struct ErrorMatrix* error_matrix, 
                              double complex * visibilities, int num_steps);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

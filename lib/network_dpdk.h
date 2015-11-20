@@ -6,6 +6,10 @@
 
 #define NUM_LINKS (4)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct networkDPDKArg {
     // Array of output buffers
     struct Buffer * buf;
@@ -39,6 +43,10 @@ struct NetworkDPDK {
     struct networkDPDKArg * args;
 };
 
-void network_dpdk_thread(void * arg);
+void* network_dpdk_thread(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

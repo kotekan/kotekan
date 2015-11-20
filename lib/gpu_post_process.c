@@ -16,7 +16,7 @@
 #include "gpu_post_process.h"
 #include "util.h"
 
-void gpu_post_process_thread(void* arg)
+void* gpu_post_process_thread(void* arg)
 {
     struct gpuPostProcessThreadArg * args = (struct gpuPostProcessThreadArg *) arg;
 

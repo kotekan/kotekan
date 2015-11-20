@@ -4,6 +4,10 @@
 #include "config.h"
 #include "buffers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct VDIFHeader {
     uint32_t seconds : 30;
     uint32_t legacy : 1;
@@ -31,6 +35,10 @@ struct BeamformingPostProcessArgs {
     struct Buffer * out_buf;
 };
 
-void beamforming_post_process(void * arg);
+void* beamforming_post_process(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

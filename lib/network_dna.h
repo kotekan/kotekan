@@ -4,6 +4,10 @@
 #include "buffers.h"
 #include "errors.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct networkThreadArg {
     char * ip_address;
     struct Buffer * buf;
@@ -18,8 +22,12 @@ struct networkThreadArg {
     char * file_name;
 };
 
-void network_thread(void * arg);
+void* network_thread(void * arg);
 
-void test_network_thread(void * arg);
+void* test_network_thread(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

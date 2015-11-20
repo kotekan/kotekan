@@ -3,6 +3,10 @@
 
 #include "buffers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct dnaCapArgs {
     struct Buffer * buf;
     int buffer_depth;
@@ -13,5 +17,9 @@ struct dnaCapArgs {
 };
 
 void simple_dna_cap(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

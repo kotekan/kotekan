@@ -7,6 +7,10 @@
 #ifndef BUFFERS
 #define BUFFERS
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define PAGESIZE_MEM 4096
 
 #include <pthread.h>
@@ -112,7 +116,7 @@ struct Buffer {
  *  @return 0 if successful, or a non-zero standard error value if not successful 
  */
 int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
-                  int num_consumers, struct InfoObjectPool * pool, char * buffer_name);
+                  int num_consumers, struct InfoObjectPool * pool, const char * buffer_name);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
@@ -229,5 +233,9 @@ void return_info_object(struct InfoObjectPool * pool, struct BufferInfo * buffer
 void reset_info_object(struct BufferInfo * buffer_info);
 
 void delete_info_object_pool(struct InfoObjectPool * pool);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

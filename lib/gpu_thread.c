@@ -42,7 +42,7 @@ void init_command_queue(struct gpuThreadArgs * args, struct OpenCLData * cl_data
     }
 }
 
-void gpu_thread(void* arg)
+void* gpu_thread(void* arg)
 {
     struct gpuThreadArgs * args = (struct gpuThreadArgs *) arg;
 

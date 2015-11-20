@@ -27,6 +27,10 @@
 // The maximum number of expected GPUs in a host.  Increase as needed.
 #define MAX_GPUS 4
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gpuThreadArgs {
     struct Config * config;
 
@@ -139,10 +143,14 @@ struct OpenCLData {
     pthread_cond_t status_cond;
 };
 
-void gpu_thread(void * arg); 
+void* gpu_thread(void * arg);
 
 void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
 
 void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

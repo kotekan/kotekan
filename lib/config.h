@@ -3,6 +3,10 @@
 
 #include <jansson.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// @brief Maps the a link to a GPU and set of buffers.
 struct LinkMap {
     // The interface name of the link.
@@ -209,5 +213,9 @@ int num_links_in_group(struct Config * config, const unsigned int link_id);
 
 /// @brief Returns the number of links assigned to a gpu based on the gpu ID
 int num_links_per_gpu(struct Config * config, const unsigned int gpu_id);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

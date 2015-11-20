@@ -32,7 +32,7 @@ int private_are_producers_done(struct Buffer * buf);
 void private_check_info_object(struct Buffer * buf, const int ID);
 
 int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
-                  int num_consumers, struct InfoObjectPool * pool, char * buffer_name)
+                  int num_consumers, struct InfoObjectPool * pool, const char * buffer_name)
 {
 
     assert(num_buf > 0);

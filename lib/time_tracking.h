@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// The functions in this file work like a static class.
 // Time is represented as nanoseconds since the j2000 epoch.
 
@@ -21,5 +25,9 @@ uint32_t get_vdif_frame(const uint32_t seq_number);
 
 // Gets the location within a frame in the range of [0,649]
 uint32_t get_vdif_location(const uint32_t seq_number);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

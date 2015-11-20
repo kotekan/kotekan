@@ -13,10 +13,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <pthread.h>
 
+extern "C" {
+#include <pthread.h>
+}
 
 // DPDK!
+extern "C" {
 #include <rte_config.h>
 #include <rte_common.h>
 #include <rte_log.h>
@@ -41,7 +44,7 @@
 #include <rte_ring.h>
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
-
+}
 
 #include "errors.h"
 #include "buffers.h"
@@ -149,12 +152,12 @@ int main(int argc, char ** argv) {
     char * input_file_name = NULL;
     int opt_val = 0;
     int no_network_test = 0;
-    char * config_file_name = "kotekan.conf";
+    char * config_file_name = (char *)"kotekan.conf";
     struct Config config;
     int error = 0;
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     int make_daemon = 0;
-    char * kotekan_root_dir = "./";
+    char * kotekan_root_dir = (char *)"./";
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -325,7 +328,7 @@ int main(int argc, char ** argv) {
 
             DEBUG("Setting up GPU thread %d\n", i);
 
-            CHECK_ERROR( pthread_create(&gpu_t[i], NULL, (void *) &gpu_thread, (void *)&gpu_args[i] ) );
+            pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
             CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
 
 
@@ -341,7 +344,7 @@ int main(int argc, char ** argv) {
             gpu_null_thread_args[i].buf = &gpu_input_buffer[i];
             gpu_null_thread_args[i].config = &config;
             CHECK_ERROR( pthread_create(&gpu_t[i], NULL,
-                                        (void *) &null_thread,
+                                        &null_thread,
                                         (void *) &gpu_null_thread_args[i] ) );
             CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
         }
@@ -363,7 +366,7 @@ int main(int argc, char ** argv) {
         network_dpdk_args.num_links = 4;
         network_dpdk_args.config = &config;
 
-        CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, (void *) &network_dpdk_thread,
+        CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
                                     (void *)&network_dpdk_args ) );
 
     } else {
@@ -382,10 +385,10 @@ int main(int argc, char ** argv) {
             network_args[i].config = &config;
 
             if (no_network_test == 0) {
-                CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &network_thread,
+                CHECK_ERROR( pthread_create(&network_t[i], NULL, &network_thread,
                                             (void *)&network_args[i] ) );
             } else {
-                CHECK_ERROR( pthread_create(&network_t[i], NULL, (void *) &test_network_thread,
+                CHECK_ERROR( pthread_create(&network_t[i], NULL, &test_network_thread,
                                             (void *)&network_args[i] ) );
             }
         }
@@ -427,7 +430,7 @@ int main(int argc, char ** argv) {
         gpu_post_process_args.out_buf = &network_output_buffer;
         gpu_post_process_args.config = &config;
         CHECK_ERROR( pthread_create(&output_consumer_t, NULL,
-                                    (void *) &gpu_post_process_thread,
+                                    &gpu_post_process_thread,
                                     (void *) &gpu_post_process_args ) );
         CHECK_ERROR( pthread_setaffinity_np(output_consumer_t, sizeof(cpu_set_t), &cpuset) );
 
@@ -436,17 +439,17 @@ int main(int argc, char ** argv) {
             ch_acq_uplink_args.buf = &network_output_buffer;
             ch_acq_uplink_args.config = &config;
             CHECK_ERROR( pthread_create(&output_network_t, NULL,
-                                        (void *) &ch_acq_uplink_thread,
+                                        &ch_acq_uplink_thread,
                                         (void *) &ch_acq_uplink_args ) );
         } else {
             // Drop the data.
             null_thread_args.buf = &network_output_buffer;
             null_thread_args.config = &config;
             CHECK_ERROR( pthread_create(&output_network_t, NULL,
-                                        (void *) &null_thread,
+                                        &null_thread,
                                         (void *) &null_thread_args ) );
         }
-        CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
+        //CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
 
         // The beamforming thread
         if (config.gpu.use_beamforming == 1) {
@@ -458,14 +461,14 @@ int main(int argc, char ** argv) {
             beamforming_post_process_args.out_buf = &vdif_output_buffer;
             beamforming_post_process_args.config = &config;
             CHECK_ERROR( pthread_create(&beamforming_comsumer_t, NULL,
-                                        (void *) &beamforming_post_process,
+                                        &beamforming_post_process,
                                         (void *) &beamforming_post_process_args ) );
 
             // The thread which sends it with TCP to ch_acq.
             vdif_stream_args.buf = &vdif_output_buffer;
             vdif_stream_args.config = &config;
             CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
-                                        (void *) &vdif_stream,
+                                        &vdif_stream,
                                         (void *) &vdif_stream_args ) );
         }
     } else  {

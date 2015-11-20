@@ -3,6 +3,10 @@
 
 #include "buffers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct udpCapArgs {
     char * ip_address;
     struct Buffer * buf;
@@ -14,5 +18,9 @@ struct udpCapArgs {
 };
 
 void simple_udp_cap(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

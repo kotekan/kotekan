@@ -9,7 +9,7 @@
 #include "output_formating.h"
 #include "config.h"
 
-void null_thread(void* arg)
+void* null_thread(void* arg)
 {
     struct NullThreadArg * args = (struct NullThreadArg *) arg;
 

@@ -3,6 +3,10 @@
 
 #include "buffers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct fileWriteThreadArg {
     struct Buffer * buf;
     int disk_ID;
@@ -14,6 +18,10 @@ struct fileWriteThreadArg {
     char * disk_base;
 };
 
-void file_write_thread(void * arg);
+void* file_write_thread(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

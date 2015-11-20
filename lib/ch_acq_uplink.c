@@ -15,7 +15,7 @@
 #include "output_formating.h"
 #include "config.h"
 
-void ch_acq_uplink_thread(void* arg)
+void* ch_acq_uplink_thread(void* arg)
 {
     struct ch_acqUplinkThreadArg * args = (struct ch_acqUplinkThreadArg *) arg;
 
@@ -29,7 +29,7 @@ void ch_acq_uplink_thread(void* arg)
     int tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_fd == -1) {
         ERROR("Could not create socket, errno: %d", errno);
-        return;
+        return NULL;
     }
 
     bzero(&ch_acq_addr, sizeof(ch_acq_addr));
@@ -53,9 +53,7 @@ void ch_acq_uplink_thread(void* arg)
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
             INFO("Closing ch_acq_uplink");
-            close(tcp_fd);
-            int ret;
-            pthread_exit((void *) &ret);
+            break;
         }
 
         INFO("Sending TCP frame to ch_master. frame size: %d", args->buf->buffer_size);
@@ -74,4 +72,7 @@ void ch_acq_uplink_thread(void* arg)
 
         buffer_ID = (buffer_ID + 1) % args->buf->num_buffers;
     }
+    int ret;
+    pthread_exit((void *) &ret);
+    return NULL;
 }

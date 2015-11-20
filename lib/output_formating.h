@@ -3,6 +3,10 @@
 
 #include "util.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void reorganize_32_to_16_feed_GPU_Correlated_Data_Interleaved(int actual_num_frequencies, 
                                                               int actual_num_elements, 
                                                               int *correlated_data);
@@ -48,5 +52,8 @@ void reorganize_GPU_to_upper_triangle_remap(int block_side_length, int num_block
     int actual_num_frequencies, int actual_num_elements, int num_data_sets,
     int *gpu_data, complex_int_t *final_matrix, int *map);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif

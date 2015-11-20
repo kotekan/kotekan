@@ -72,7 +72,7 @@ int file_select(const struct dirent *entry) {
     return strstr(entry->d_name, ".dat") || strstr(entry->d_name, ".pkt");
 }
 
-void network_thread(void * arg) {
+void* network_thread(void * arg) {
 
     struct networkThreadArg * args;
     args = (struct networkThreadArg *) arg;
@@ -158,7 +158,7 @@ void network_thread(void * arg) {
 
         if (stat(args->file_name, &file_info) != 0) {
             ERROR("File or directory does not exist");
-            return;
+            return NULL;
         }
 
         if (file_info.st_mode & S_IFREG) {
@@ -173,11 +173,11 @@ void network_thread(void * arg) {
 
             if (num_files <= 0) {
                 ERROR("No files in directory");
-                return;
+                return NULL;
             }
         } else {
             ERROR("Not a file or directory. mode: %xxd", file_info.st_mode);
-            return;
+            return NULL;
         }
 
         data_file = open_next_file(args->file_name, file_list[cur_file_id]);
@@ -534,9 +534,10 @@ void network_thread(void * arg) {
                  ((double)args->buf->buffer_size / (1024.0*1024.0)))/1024.0);
         }
     }
+    return NULL;
 }
 
-void test_network_thread(void * arg) {
+void* test_network_thread(void * arg) {
     struct networkThreadArg * args;
     args = (struct networkThreadArg *) arg;
     int buffer_id = args->link_id;

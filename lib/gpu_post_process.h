@@ -1,6 +1,10 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gpuPostProcessThreadArg {
     struct Config * config;
     struct Buffer * in_buf;
@@ -46,6 +50,10 @@ struct per_element_data {
 };
 #pragma pack(0)
 
-void gpu_post_process_thread(void * arg);
+void* gpu_post_process_thread(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

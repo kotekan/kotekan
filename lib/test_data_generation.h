@@ -21,6 +21,10 @@
 
 #define CHECKING_VERBOSE                0u
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int offset_and_clip_value(int input_value, int offset_value, int min_val, int max_val);
 
 
@@ -36,5 +40,8 @@ void generate_char_data_set(int generation_Type,
                             int num_elements,
                             unsigned char *packed_data_set);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif

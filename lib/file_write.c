@@ -8,7 +8,7 @@
 #include "file_write.h"
 #include "buffers.h"
 
-void file_write_thread(void * arg)
+void* file_write_thread(void * arg)
 {
     struct fileWriteThreadArg * args = (struct fileWriteThreadArg *) arg;
 

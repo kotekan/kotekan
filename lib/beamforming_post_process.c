@@ -38,7 +38,7 @@ void fill_headers(unsigned char * out_buf,
     }
 }
 
-void beamforming_post_process(void* arg)
+void* beamforming_post_process(void* arg)
 {
     struct BeamformingPostProcessArgs * args = (struct BeamformingPostProcessArgs *) arg;
 

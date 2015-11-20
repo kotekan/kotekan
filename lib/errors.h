@@ -9,6 +9,10 @@
 #include <CL/cl_ext.h>
 #include <syslog.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 char* oclGetOpenCLErrorCodeStr(cl_int input);
 
 extern int log_level_warn;
@@ -59,5 +63,9 @@ extern int log_level_info;
 // Useful messages to say what the application is doing.
 // Should be used sparingly, and limited to useful areas.
 #define INFO(m, a...) if (log_level_info) { syslog(LOG_INFO, m, ## a); }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

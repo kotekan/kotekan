@@ -14,7 +14,7 @@ void exit_thread(int error) {
     pthread_exit((void*) &error);
 }
 
-void vdif_stream(void * arg)
+void* vdif_stream(void * arg)
 {
     struct VDIFstreamArgs * args = (struct VDIFstreamArgs *) arg;
 

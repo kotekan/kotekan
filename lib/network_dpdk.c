@@ -339,7 +339,7 @@ lcore_main(void *args)
  * The main function, which does initialization and calls the per-lcore
  * functions.
  */
-void
+void*
 network_dpdk_thread(void * args)
 {
     struct rte_mempool *mbuf_pool;
@@ -377,5 +377,5 @@ network_dpdk_thread(void * args)
     /* Call lcore_main on the master core only. */
     lcore_main(args);
 
-    return;
+    return NULL;
 }

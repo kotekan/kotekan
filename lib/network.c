@@ -44,7 +44,7 @@ void check_if_done(int * total_buffers_filled, struct network_thread_arg * args,
     }
 }
 
-void network_thread(void * arg) {
+void* network_thread(void * arg) {
 
     struct networkThreadArg * args;
     args = (struct networkThreadArg *) arg;

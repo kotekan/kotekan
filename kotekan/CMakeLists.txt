@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.6)
 
 PROJECT (kotekan)
 
-SET(SOURCE_EXE kotekan.c)
+SET(SOURCE_EXE kotekan.cpp)
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
 
