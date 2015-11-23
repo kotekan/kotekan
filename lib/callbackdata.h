@@ -24,63 +24,21 @@
  *
  */
 
-#ifndef GPU_THREAD_H
-#define GPU_THREAD_H
+#ifndef CALLBACKDATA_H
+#define CALLBACKDATA_H
 
-class gpu_thread
-{
-public:
-    gpu_thread();
-    ~gpu_thread();
-    void gpu_thread(void * arg); 
-    void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
-protected:
-    // Locks
-    pthread_mutex_t queue_lock;
-    pthread_mutex_t status_lock;
-    pthread_cond_t status_cond;
-};
+#include "gpu_command.h"
+#include "buffers.h"
 
-#endif // GPU_THREAD_H
-#ifndef GPU_THREAD
-#define GPU_THREAD
+struct callBackData {
+    int buffer_id;
+    int numCommands;
+    
+    gpu_command * listKernels[];
 
-#define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
-#define LO_NIBBLE(b) ((b) & 0x0F)
-
-#define SDK_SUCCESS 0
-
-//check pagesize: 
-//getconf PAGESIZE
-// result: 4096
-#define PAGESIZE_MEM 4096
-
-#include <CL/cl.h>
-#include <CL/cl_ext.h>
-#include "pthread.h"
-
-// This adjusts the number of queues used by the OpenCL runtime
-// One queue is for data transfers to the GPU, one is for kernels,
-// and one is for data transfers from the GPU to host memory.
-// Unless you really know what you are doing, don't change this.
-#define NUM_QUEUES 3
-
-// The maximum number of expected GPUs in a host.  Increase as needed.
-#define MAX_GPUS 4
-
-
-struct gpuThreadArgs {
-    struct Config * config;
-
+    // Buffer objects
     struct Buffer * in_buf;
     struct Buffer * out_buf;
-
-    int started;
-    int gpu_id;
-
-    pthread_mutex_t lock;  // Lock for the is_ready function.
-    pthread_cond_t cond;
 };
 
-
-#endif
+#endif // CALLBACKDATA_H
