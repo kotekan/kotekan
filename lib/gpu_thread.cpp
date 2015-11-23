@@ -90,7 +90,7 @@ void gpu_thread(void* arg)
 	preseedEvent != nullptr; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
 	for (int i = 0; i < factory.getNumCommands(); i++){
 	  currentCommand = factory.getNextCommand(device, bufferID, &preseedEvent);
-	  preseedEvent = currentCommand.execute();	  
+	  preseedEvent = currentCommand.execute(device, bufferID);	  
 	  cb_data[bufferID].listKernels[i] = currentCommand;
 	}
 	
