@@ -10,7 +10,9 @@ add_library ( chime buffers.c errors.c nt_memcpy.c
               output_formating.c test_data_generation.c ch_acq_uplink.c gpu_post_process.c
               config.c beamforming.c beamforming_post_process.c time_tracking.c vdif_stream.c
               fpga_header_functions.c null.c file_write.c simple_udp_cap.c
-              network_dpdk.c simple_dna_cap.c )
+              network_dpdk.c simple_dna_cap.c callbackdata.cpp device_interface.cpp
+              finalqueuesequence_command.cpp gpu_command_factory.cpp initqueuesequence_command.cpp
+              kernel_factory.cpp kernelcorrelator.cpp kerneloffset.cpp kernelpreseed.cpp )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
 
