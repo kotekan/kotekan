@@ -272,14 +272,14 @@ int main(int argc, char ** argv) {
 
     INFO("Starting GPU threads...");
     char buffer_name[100];
-    int num_working_gpus = 1;
+    int num_working_gpus = 2;
 
     for (int i = 0; i < config.gpu.num_gpus; ++i) {
 
         DEBUG("Creating buffers...");
 
         // TODO Figure out why this value currently needs to be constant.
-        int links_per_gpu = 1; //num_links_per_gpu(&config, i);
+        int links_per_gpu = num_links_per_gpu(&config, i);
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
         create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
@@ -360,11 +360,18 @@ int main(int argc, char ** argv) {
     struct networkDPDKArg network_dpdk_args;
 
     int use_dpdk = 1;
+    struct Buffer * tmp_buffer[config.fpga_network.num_links];
     if (use_dpdk == 1) {
 
-        network_dpdk_args.buf = gpu_input_buffer;
-        network_dpdk_args.num_links = 4;
+        for (int i = 0; i < config.fpga_network.num_links; ++i) {
+            tmp_buffer[i] = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
+            network_dpdk_args.num_links_in_group[i] = num_links_in_group(&config, i);
+            network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
+        }
+        network_dpdk_args.buf = tmp_buffer;
+        network_dpdk_args.num_links = config.fpga_network.num_links;
         network_dpdk_args.config = &config;
+        network_dpdk_args.integration_edge_offset = 0;
 
         CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
                                     (void *)&network_dpdk_args ) );

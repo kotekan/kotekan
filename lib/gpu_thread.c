@@ -86,6 +86,8 @@ void* gpu_thread(void* arg)
         // Wait for data, this call will block.
         bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
 
+        //INFO("gpu_thread; got buffer on gpu %d in buffer (%d,%d)", args->gpu_id, args->gpu_id, bufferID);
+
         // We need the next buffer to be empty (i.e. for the GPU to have already processed it).
         if (args->config->gpu.use_time_shift) {
             wait_for_empty_buffer(args->in_buf, mod(buffer_list[0] + cl_data.num_links, args->in_buf->num_buffers));

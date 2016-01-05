@@ -289,6 +289,24 @@ uint32_t get_fpga_seq_num(struct Buffer* buf, const int ID)
     return fpga_seq_num;
 }
 
+int64_t get_fpga_seq64_num(struct Buffer* buf, const int ID)
+{
+    int64_t fpga_seq_num = 0;
+
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
+
+    if (buf->info[ID] == NULL) {
+        WARN("get_fpga_seq64_num: info struct %d is null", ID);
+    }
+    assert(buf->info[ID] != NULL);
+    fpga_seq_num = buf->info[ID]->fpga_seq64_num;
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
+
+    return fpga_seq_num;
+}
+
+
 int32_t get_streamID(struct Buffer* buf, const int ID)
 {
     int stream_ID = 0;
@@ -356,6 +374,16 @@ void set_fpga_seq_num(struct Buffer* buf, const int ID, const uint32_t fpga_seq_
 
     private_check_info_object(buf, ID);
     buf->info[ID]->fpga_seq_num = fpga_seq_num;
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
+}
+
+void set_fpga_seq64_num(struct Buffer* buf, const int ID, const int64_t fpga_seq64_num)
+{
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
+
+    private_check_info_object(buf, ID);
+    buf->info[ID]->fpga_seq64_num = fpga_seq64_num;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock_info) );
 }

@@ -29,6 +29,7 @@ struct BufferInfo {
     /// This is the ID of the data in the buffer, not the ID of the buffer.
     int32_t data_ID;
     uint32_t fpga_seq_num;
+    int64_t fpga_seq64_num;
     struct timeval first_packet_recv_time;
     struct ErrorMatrix error_matrix;
     uint16_t stream_ID;
@@ -156,6 +157,8 @@ int32_t get_buffer_data_ID(struct Buffer * buf, const int ID);
 
 uint32_t get_fpga_seq_num(struct Buffer * buf, const int ID);
 
+int64_t get_fpga_seq64_num(struct Buffer * buf, const int ID);
+
 int32_t get_streamID(struct Buffer * buf, const int ID);
 
 struct timeval get_first_packet_recv_time(struct Buffer * buf, const int ID);
@@ -176,6 +179,8 @@ struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID);
 void set_data_ID(struct Buffer * buf, const int ID, const int data_ID);
 
 void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint32_t fpga_seq_num);
+
+void set_fpga_seq64_num(struct Buffer * buf, const int ID, const int64_t fpga_seq64_num);
 
 void set_stream_ID(struct Buffer * buf, const int ID, const uint16_t stream_ID);
 
