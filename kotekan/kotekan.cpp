@@ -257,7 +257,7 @@ int main(int argc, char ** argv) {
     // Create buffers.
     struct Buffer gpu_input_buffer[config.gpu.num_gpus];
     struct Buffer gpu_output_buffer[config.gpu.num_gpus];
-    struct Buffer gpu_beamform_output_buffer[config.gpu.num_gpus];
+//     struct Buffer gpu_beamform_output_buffer[config.gpu.num_gpus];
 
     cl_int output_len = config.processing.num_adjusted_local_freq * config.processing.num_blocks*
                         (config.gpu.block_size*config.gpu.block_size)*2.;
@@ -305,49 +305,39 @@ int main(int argc, char ** argv) {
                       &pool[i],
                       buffer_name);
 
-        snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
-        /*create_buffer(&gpu_beamform_output_buffer[i],
-                      links_per_gpu * config.processing.buffer_depth,
-                      config.processing.samples_per_data_set * config.processing.num_data_sets *
-                      config.processing.num_local_freq * 2,
-                      1,
-                      1,
-                      &pool[i],
-                      buffer_name);*/
+//         snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
+//         create_buffer(&gpu_beamform_output_buffer[i],
+//                       links_per_gpu * config.processing.buffer_depth,
+//                       config.processing.samples_per_data_set * config.processing.num_data_sets *
+//                       config.processing.num_local_freq * 2,
+//                       1,
+//                       1,
+//                       &pool[i],
+//                       buffer_name);
 
         gpu_args[i].in_buf = &gpu_input_buffer[i];
         gpu_args[i].out_buf = &gpu_output_buffer[i];
-        gpu_args[i].beamforming_out_buf = &gpu_beamform_output_buffer[i];
+//         gpu_args[i].beamforming_out_buf = &gpu_beamform_output_buffer[i];
         gpu_args[i].gpu_id = i;
         gpu_args[i].started = 0;
         gpu_args[i].config = &config;
 
-        if (i < num_working_gpus) {
-            CHECK_ERROR( pthread_mutex_init(&gpu_args[i].lock, NULL) );
-            CHECK_ERROR( pthread_cond_init(&gpu_args[i].cond, NULL) );
+	CHECK_ERROR( pthread_mutex_init(&gpu_args[i].lock, NULL) );
+	CHECK_ERROR( pthread_cond_init(&gpu_args[i].cond, NULL) );
 
-            DEBUG("Setting up GPU thread %d\n", i);
+	DEBUG("Setting up GPU thread %d\n", i);
 
-            pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
-            CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
+	pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
+	CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
 
+	// Block until the OpenCL thread is read to read data.
+	wait_for_gpu_thread_ready(&gpu_args[i]);
 
-            // Block until the OpenCL thread is read to read data.
-            wait_for_gpu_thread_ready(&gpu_args[i]);
+	CHECK_ERROR( pthread_mutex_destroy(&gpu_args[i].lock) );
+	CHECK_ERROR( pthread_cond_destroy(&gpu_args[i].cond) );
 
-            CHECK_ERROR( pthread_mutex_destroy(&gpu_args[i].lock) );
-            CHECK_ERROR( pthread_cond_destroy(&gpu_args[i].cond) );
+	INFO("GPU thread %d ready.", i);
 
-            INFO("GPU thread %d ready.", i);
-        } else {
-            // Setup null threads
-            gpu_null_thread_args[i].buf = &gpu_input_buffer[i];
-            gpu_null_thread_args[i].config = &config;
-            CHECK_ERROR( pthread_create(&gpu_t[i], NULL,
-                                        &null_thread,
-                                        (void *) &gpu_null_thread_args[i] ) );
-            CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
-        }
     }
 
     //sleep(5);
@@ -452,25 +442,25 @@ int main(int argc, char ** argv) {
         //CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
 
         // The beamforming thread
-        if (config.gpu.use_beamforming == 1) {
-            create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
-                          1, 1, pool, "vdif_output_buffer");
-
-            // The thread which creates output frame.
-            beamforming_post_process_args.in_buf = gpu_beamform_output_buffer;
-            beamforming_post_process_args.out_buf = &vdif_output_buffer;
-            beamforming_post_process_args.config = &config;
-            CHECK_ERROR( pthread_create(&beamforming_comsumer_t, NULL,
-                                        &beamforming_post_process,
-                                        (void *) &beamforming_post_process_args ) );
-
-            // The thread which sends it with TCP to ch_acq.
-            vdif_stream_args.buf = &vdif_output_buffer;
-            vdif_stream_args.config = &config;
-            CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
-                                        &vdif_stream,
-                                        (void *) &vdif_stream_args ) );
-        }
+//         if (config.gpu.use_beamforming == 1) {
+//             create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
+//                           1, 1, pool, "vdif_output_buffer");
+// 
+//             // The thread which creates output frame.
+//             beamforming_post_process_args.in_buf = gpu_beamform_output_buffer;
+//             beamforming_post_process_args.out_buf = &vdif_output_buffer;
+//             beamforming_post_process_args.config = &config;
+//             CHECK_ERROR( pthread_create(&beamforming_comsumer_t, NULL,
+//                                         &beamforming_post_process,
+//                                         (void *) &beamforming_post_process_args ) );
+// 
+//             // The thread which sends it with TCP to ch_acq.
+//             vdif_stream_args.buf = &vdif_output_buffer;
+//             vdif_stream_args.config = &config;
+//             CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
+//                                         &vdif_stream,
+//                                         (void *) &vdif_stream_args ) );
+//         }
     } else  {
         // TODO add local file output in some form here.
     }

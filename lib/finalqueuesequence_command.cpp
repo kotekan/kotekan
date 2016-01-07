@@ -25,22 +25,26 @@
  */
 
 #include "finalqueuesequence_command.h"
-#include "device_interface.h"
+
+finalQueueSequence_Command::finalQueueSequence_Command():gpu_command()
+{
+
+}
 
 //void finalQueueSequence_Command::setCBData(callBackData* param_CBData)
 //{
 //  cb_data = param_CBData;
 //}
-void finalQueueSequence_Command::build(const Config& param_Config, const device_interface& param_Device)
+void finalQueueSequence_Command::build(Config* param_Config, class device_interface &param_Device)
 {   
-    gpu_command::createThisEvent(param_Device);
+    //gpu_command::createThisEvent(param_Device);
 }
 
-cl_event finalQueueSequence_Command::execute(int param_bufferID, const device_interface& param_Device)
+cl_event finalQueueSequence_Command::execute(int param_bufferID, class device_interface &param_Device)
 {
-    cl_event *postEvent;
+    //cl_event curPostEvent;
     
-    postEvent = thisPostEvent[param_bufferID];
+    //curPostEvent = thisPostEvent[param_bufferID];
   
 
     // Read the results
@@ -52,13 +56,16 @@ cl_event finalQueueSequence_Command::execute(int param_bufferID, const device_in
                                             param_Device.getOutBuf()->data[param_bufferID],
                                             1,
                                             &preceedEvent,
-                                            &postEvent) );
+					    &postEvent) );
+                                            //&curPostEvent) );
 
     // Setup call back.
     //CHECK_CL_ERROR( clSetEventCallback(postEvent,
                                             //CL_COMPLETE,
                                             //param_Device.read_complete(),
                                             //&cb_data) );
+    //return curPostEvent;
+    
     return postEvent;
     
 }

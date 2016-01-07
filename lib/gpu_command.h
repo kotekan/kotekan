@@ -34,29 +34,29 @@
 #include <stdio.h>
 #include "device_interface.h"
 #include "assert.h"
+#include "buffers.h"
 
 class gpu_command
 {
 public:
-    gpu_command(const char param_gpuKernel);//, cl_device_id *param_DeviceID, cl_context param_Context);
-    ~gpu_command();
-    gpu_command getCommand() const;
-    size_t getGWS() const;
-    size_t getLWS() const;
-    setPreceedEvent(cl_event param_Event);
-    cl_event getPreceedEvent() const;
-    setPostEvent(int param_BufferID);
-    cl_event getPostEvent() const;
-    cl_event getPostEvent() const;
-    virtual void build(const Config& param_Config, const device_interface& param_Device);
+    gpu_command();
+    gpu_command(char param_gpuKernel);//, cl_device_id *param_DeviceID, cl_context param_Context);
+    //gpu_command getCommand() const;
+    //size_t* getGWS() const;
+    //size_t* getLWS() const;
+    void setPreceedEvent(cl_event param_Event);
+    cl_event getPreceedEvent();
+    void setPostEvent(int param_BufferID);
+    cl_event getPostEvent();
+    virtual void build(Config* param_Config, class device_interface& param_Device);
     
-    setKernelArg(int param_ArgPos, cl_mem &param_Buffer);
+    void setKernelArg(int param_ArgPos, cl_mem param_Buffer);
     
-    virtual cl_event execute(int param_bufferID, const device_interface &param_Device);
+    virtual cl_event execute(int param_bufferID, class device_interface &param_Device)=0;
     virtual void cleanMe(int param_BufferID);
     virtual void freeMe();
 protected:
-  void createThisEvent(const device_interface &param_device);
+  //void createThisEvent(const class device_interface &param_device);
   cl_kernel kernel;
   cl_program program;
   
@@ -65,11 +65,11 @@ protected:
   size_t lws[3];
   
   // Kernel Events
-  cl_event * preceedEvent;
-  cl_event * postEvent;
-  cl_event * thisPostEvent;
+  cl_event preceedEvent;
+  cl_event postEvent;
+  //cl_event * postEventArray;
   
-  const char gpuKernel;
+  char * gpuKernel;
 };
 
 #endif // GPU_COMMAND_H

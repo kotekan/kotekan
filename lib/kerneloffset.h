@@ -35,8 +35,8 @@ public:
     kernelOffset();
     kernelOffset(const char param_gpuKernel);
     ~kernelOffset();
-    virtual void build(const Config& param_Config, const device_interface& param_Device);
-    virtual cl_event execute(int param_bufferID, const device_interface &param_Device);
+    virtual void build(Config* param_Config, class device_interface &param_Device);
+    virtual cl_event execute(int param_bufferID, class device_interface &param_Device);
 };
 
 #endif // KERNELOFFSET_H

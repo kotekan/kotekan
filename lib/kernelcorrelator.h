@@ -35,10 +35,10 @@ public:
     kernelCorrelator();
     kernelCorrelator(const char param_gpuKernel);
     ~kernelCorrelator();
-    virtual void build(const Config& param_Config, const device_interface& param_Device);
-    virtual cl_event execute(int param_bufferID, const device_interface &param_Device);
+    virtual void build(Config* param_Config, class device_interface& param_Device);
+    virtual cl_event execute(int param_bufferID, class device_interface &param_Device);
 protected:
-    void defineOutputDataMap(const Config & param_Config, int param_num_blocks, const device_interface & param_Device, cl_mem & id_x_map, cl_mem & id_y_map);
+    void defineOutputDataMap(Config* param_Config, int param_num_blocks,class device_interface& param_Device, cl_mem id_x_map, cl_mem id_y_map);
 };
 
 #endif // KERNELCORRELATOR_H

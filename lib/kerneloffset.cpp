@@ -25,17 +25,14 @@
  */
 
 #include "kerneloffset.h"
-#include "device_interface.h"
-#include "gpu_command.h"
-
-
+#include "math.h"
 
 kernelOffset::kernelOffset(const char param_gpuKernel): gpu_command(param_gpuKernel)
 {
 
 }
 
-void kernelOffset::build(const Config& param_Config, const device_interface& param_Device)
+void kernelOffset::build(Config *param_Config, class device_interface &param_Device)
 {
   gpu_command::build(param_Config, param_Device);
 
@@ -48,7 +45,7 @@ void kernelOffset::build(const Config& param_Config, const device_interface& par
 	param_Config->processing.num_adjusted_local_freq,
 	param_Config->processing.num_blocks, param_Config->processing.samples_per_data_set);
 	  
-  CHECK_CL_ERROR ( clBuildProgram( program, 1, &param_Device->getDeviceID(), cl_options, NULL, NULL ) );
+  CHECK_CL_ERROR ( clBuildProgram( program, 1, &param_Device.getDeviceID()[param_Device.getGpuID()], cl_options, NULL, NULL ) );
   
   
   kernel = clCreateKernel( program, "offsetAccumulateElements", &err );
@@ -65,11 +62,11 @@ void kernelOffset::build(const Config& param_Config, const device_interface& par
   lws[2] = 1;
 }
 
-cl_event kernelOffset::execute(int param_bufferID, const device_interface& param_Device)
+cl_event kernelOffset::execute(int param_bufferID, class device_interface &param_Device)
 {
-  cl_event *postEvent;
+  //cl_event *postEvent;
     
-  postEvent = thisPostEvent[param_bufferID];
+  //postEvent = thisPostEvent[param_bufferID];
   
   
   CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue()[1],

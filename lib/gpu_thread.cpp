@@ -31,22 +31,23 @@
 #include "callbackdata.h"
 #include "unistd.h"
 
-pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
+// pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
-void gpu_thread(void* arg)
+
+void* gpu_thread(void* arg)
 {
     struct gpuThreadArgs * args = (struct gpuThreadArgs *) arg;
 
-    gpu_command currentCommand;
-    cl_event * host_buffer_ready;
-    cl_event * preseedEvent;
+    gpu_command * currentCommand;
+    //cl_event * host_buffer_ready;
+    cl_event preseedEvent;
     cl_int err;
     
     device_interface device(args->in_buf, args->out_buf, args->config, args->gpu_id);
     
-    gpu_command_factory factory();
+    gpu_command_factory factory;
             
-    factory.initializeCommands(args->config, device);    
+    factory.initializeCommands(device, args->config);    
     
     device.prepareCommandQueue();
     
@@ -58,9 +59,9 @@ void gpu_thread(void* arg)
     int buffer_list[1] = {0};
     int bufferID = 0;
     int first_time = 1;
-    callBackData * cb_data;
+    struct callBackData * cb_data;
     
-    cb_data = malloc(device.getInBuf()->num_buffers * sizeof(struct callBackData));
+    cb_data = (callBackData*)malloc(device.getInBuf()->num_buffers * sizeof(struct callBackData));
     CHECK_MEM(cb_data);
     
     //host_buffer_ready = malloc(args->in_buf->num_buffers * sizeof(cl_event));
@@ -80,29 +81,31 @@ void gpu_thread(void* arg)
 	
 	CHECK_CL_ERROR(err);
 	
-	pthread_mutex_lock(&queue_lock);
+// 	pthread_mutex_lock(&queue_lock);
 	// Set call back data
 	cb_data[bufferID].buffer_id = bufferID; //SHOULD CB_DATA BE MANAGED THROUGH FINALIZEQUEUESEQUENCE_COMMAND SINCE IT IS BEING FREED THERE?
 	cb_data[bufferID].in_buf = device.getInBuf();
 	cb_data[bufferID].out_buf = device.getOutBuf();
 	cb_data[bufferID].numCommands = factory.getNumCommands() - 1;
 	
-	preseedEvent != nullptr; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
+	preseedEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
+	cb_data[bufferID].listKernels = (gpu_command **)malloc(factory.getNumCommands() * sizeof(class gpu_command));
+        
 	for (int i = 0; i < factory.getNumCommands(); i++){
-	  currentCommand = factory.getNextCommand(device, bufferID, &preseedEvent);
-	  preseedEvent = currentCommand.execute(device, bufferID);	  
+	  currentCommand = factory.getNextCommand(device, bufferID, preseedEvent);
+	  preseedEvent = currentCommand->execute(bufferID, device);	  
 	  cb_data[bufferID].listKernels[i] = currentCommand;
 	}
 	
 	// Setup call back.
 	CHECK_CL_ERROR( clSetEventCallback(preseedEvent,
                                             CL_COMPLETE,
-                                            device.read_complete(),
+                                            &read_complete,
                                             &cb_data) );
     
     
     
-	pthread_mutex_unlock(&queue_lock);
+// 	pthread_mutex_unlock(&queue_lock);
     
     	CHECK_ERROR( pthread_mutex_lock(&args->lock) );
 	args->started = 1;
@@ -153,4 +156,27 @@ void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
 
     CHECK_ERROR( pthread_mutex_unlock(&args->lock) );
 }
+void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
+{
 
+    struct callBackData * cb_data = (struct callBackData *) data;
+
+    //INFO("GPU Kernel Finished on GPUID: %d", cb_data->cl_data->gpu_id);
+
+    // Copy the information contained in the input buffer
+    move_buffer_info(cb_data->in_buf, cb_data->buffer_id,
+                     cb_data->out_buf, cb_data->buffer_id);
+
+    // Mark the input buffer as "empty" so that it can be reused.
+    mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
+
+    // Mark the output buffer as full, so it can be processed.
+    mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
+
+       
+    for (int i = 0; i <= cb_data->numCommands; i++){
+      cb_data->listKernels[i]->cleanMe(cb_data->buffer_id);
+    }
+    
+    free(cb_data);//DOES THIS BELONG HERE?
+}

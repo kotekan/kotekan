@@ -52,32 +52,26 @@ class device_interface
 {
 public:
     device_interface();
-    device_interface(const Buffer & param_In_Buf, const Buffer & param_Out_Buf, const Config &param_Config, int param_GPU_ID);
-    ~device_interface();
-    Buffer getInBuf() const;
-    Buffer getOutBuf() const;
-    cl_context getContext() const;
+    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf, Config* param_Config, int param_GPU_ID);
+    Buffer* getInBuf();
+    Buffer* getOutBuf();
+    cl_context getContext();
     int getGpuID() const;
-    cl_device_id getDeviceID() const;
+    cl_device_id* getDeviceID();
     //cl_mem getIDxMap();
     //cl_mem getIDyMap();
-    cl_mem getInputBuffer(int param_BufferID) const;
-    cl_mem getOutputBuffer(int param_BufferID) const;
-    cl_mem getAccumulateBuffer(int param_BufferID) const;
-    cl_command_queue getQueue() const;
-    cl_int getAccumulateZeros() const;
+    cl_mem getInputBuffer(int param_BufferID);
+    cl_mem getOutputBuffer(int param_BufferID);
+    cl_mem getAccumulateBuffer(int param_BufferID);
+    cl_command_queue* getQueue();
+    cl_int* getAccumulateZeros();
     int getAlignedAccumulateLen() const;
-    cl_event getAccumulateDataZeroed(int param_BufferID) const;
-    cl_event getOffsetAccumulateFinished(int param_BufferID) const;
-    cl_event getPreseedFinished(int param_BufferID) const;
-    cl_event getCorrFinished(int param_BufferID) const;
     void prepareCommandQueue();
     void allocateMemory();
         
     //defineOutputDataMap(Config *param_Config);
         
     
-    void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void *data);
     void release_events_for_buffer(int param_BufferID);
     void deallocateResources();
 protected:

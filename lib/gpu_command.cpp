@@ -26,14 +26,19 @@
 
 #include "gpu_command.h"
 
-gpu_command::gpu_command(const char param_gpuKernel)
-{ 
-  gpuKernel = param_gpuKernel;
+gpu_command::gpu_command()
+{
+
 }
 
-void gpu_command::build(const Config &param_Config, const device_interface &param_Device)
+gpu_command::gpu_command(char param_gpuKernel)
+{ 
+  *gpuKernel = param_gpuKernel;
+}
+
+void gpu_command::build(Config * param_Config, class device_interface &param_Device)
 {
-    size_t cl_program_size;
+  size_t cl_program_size[1];
   FILE *fp;
   char *cl_program_buffer;
   cl_int err;
@@ -44,34 +49,34 @@ void gpu_command::build(const Config &param_Config, const device_interface &para
             exit(errno);
         }
         fseek(fp, 0, SEEK_END);
-        cl_program_size = ftell(fp);
+        cl_program_size[0] = ftell(fp);
         rewind(fp);
 	
-	cl_program_buffer = (char*)malloc(cl_program_size+1);
-        cl_program_buffer[cl_program_size] = '\0';
-        int sizeRead = fread(cl_program_buffer, sizeof(char), cl_program_size, fp);
-        if (sizeRead < cl_program_size)
+	cl_program_buffer = (char*)malloc(cl_program_size[0]+1);
+        cl_program_buffer[cl_program_size[0]] = '\0';
+        int sizeRead = fread(cl_program_buffer, sizeof(char), cl_program_size[0], fp);
+        if (sizeRead < cl_program_size[0])
             ERROR("Error reading the file: %s", gpuKernel);
         fclose(fp);
-	program = clCreateProgramWithSource( param_Device->getContext(),
+	program = clCreateProgramWithSource( param_Device.getContext(),
 					  1,
 					  (const char**)cl_program_buffer,
 					  cl_program_size, &err );
 	CHECK_CL_ERROR (err);
 	
-	cl_program_size = 0;
+	cl_program_size[0] = 0;
 	free(cl_program_buffer);
 	
-	createThisEvent(param_Device);
+	//createThisEvent(param_Device);
 	
 }
-void gpu_command::createThisEvent(const device_interface & param_device)
-{
-      thisPostEvent = malloc(param_device->getInBuf()->num_buffers * sizeof(cl_event));
-      CHECK_MEM(thisPostEvent);
-}
+//void gpu_command::createThisEvent(const class device_interface & param_device)
+//{
+      //postEventArray = malloc(param_device->getInBuf()->num_buffers * sizeof(cl_event));
+      //CHECK_MEM(thisPostEvent);
+//}
 
-gpu_command::setKernelArgArg(int param_ArgPos, cl_mem& param_Buffer)
+void gpu_command::setKernelArg(int param_ArgPos, cl_mem param_Buffer)
 {
   CHECK_CL_ERROR( clSetKernelArg(kernel,
       param_ArgPos,
@@ -79,43 +84,50 @@ gpu_command::setKernelArgArg(int param_ArgPos, cl_mem& param_Buffer)
       (void*) &param_Buffer) );
 }
 
-size_t gpu_command::getGWS() const
+//size_t* gpu_command::getGWS() 
+//{
+//  return gws;
+//}
+
+//size_t* gpu_command::getLWS() 
+//{
+//  return lws;
+//}
+
+void gpu_command::setPostEvent(int param_BufferID)
 {
-  return gws;
+  postEvent = (cl_event)(sizeof(cl_event));
+  CHECK_MEM(postEvent);
+  //postEvent = postEventArray[param_BufferID];
 }
 
-size_t gpu_command::getLWS() const
-{
-  return lws;
-}
+//cl_event *gpu_command::getPostEvent()
+//{
+ // return postEvent;
+//}
 
-gpu_command::setPostEvent(int param_BufferID)
-{
-  postEvent = thisPostEvent[param_BufferID];
-}
-
-cl_event gpu_command::getPostEvent() const
-{
-  return postEvent;
-}
-
-gpu_command::setPreceedEvent(cl_event param_Event)
+void gpu_command::setPreceedEvent(cl_event param_Event)
 {
   preceedEvent = param_Event;
 }
 
-cl_event gpu_command::getPreceedEvent() const
-{
-  return preceedEvent;
-}
+//cl_event *gpu_command::getPreceedEvent()
+//{
+//  return preceedEvent;
+//}
 
 void gpu_command::cleanMe(int param_BufferID)
 {
-  assert(postEvent[param_BufferID] != NULL);
-  assert(preceedEvent[param_BufferID] != NULL);
+  //assert(postEvent[param_BufferID] != NULL);
+  //assert(preceedEvent[param_BufferID] != NULL);
+  assert(postEvent != NULL);
+  assert(preceedEvent != NULL);
   
-  clReleaseEvent(postEvent[param_BufferID]);
-  clReleaseEvent(preceedEvent[param_BufferID]);
+  //clReleaseEvent(postEvent[param_BufferID]);
+  //clReleaseEvent(preceedEvent[param_BufferID]);
+  
+  clReleaseEvent(postEvent);
+  clReleaseEvent(preceedEvent);
 }
 
 void gpu_command::freeMe()

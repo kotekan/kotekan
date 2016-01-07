@@ -25,23 +25,28 @@
  */
 
 #include "initqueuesequence_command.h"
-#include "device_interface.h"
 
-void initQueueSequence_command::build(const Config &param_Config, const device_interface &param_Device)
+initQueueSequence_command::initQueueSequence_command():gpu_command()
 {
-    input_data_written = malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
-    CHECK_MEM(input_data_written);
-    
-    gpu_command::createThisEvent(param_Device);
+
 }
 
-cl_event initQueueSequence_command::execute(int param_bufferID, const device_interface &param_Device)
+void initQueueSequence_command::build(Config *param_Config, class device_interface &param_Device)
+{
+    //input_data_written = malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
+    input_data_written = (cl_event)malloc(sizeof(cl_event));
+    CHECK_MEM(input_data_written);
+      
+    //gpu_command::createThisEvent(param_Device);
+}
+
+cl_event initQueueSequence_command::execute(int param_bufferID, class device_interface& param_Device)
 {
   cl_int err;
     
-    cl_event *postEvent;
+    //cl_event postEvent;
     
-    postEvent = thisPostEvent[param_bufferID];
+    //postEvent = thisPostEvent[param_bufferID];
     
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue()[0],
@@ -52,16 +57,18 @@ cl_event initQueueSequence_command::execute(int param_bufferID, const device_int
                                             param_Device.getInBuf()->data[param_bufferID],
                                             1,
                                             &preceedEvent, // Wait on this user event (network finished).
-                                            &input_data_written[param_bufferID]) );
+                                            //&input_data_written[param_bufferID]) );
+					    &input_data_written) );
 
     CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue()[0],
-                                            param_Device.getAccumulateBuffer()[param_bufferID],
+                                            param_Device.getAccumulateBuffer(param_bufferID),
                                             CL_FALSE,
                                             0,
                                             param_Device.getAlignedAccumulateLen(),
                                             param_Device.getAccumulateZeros(), 
                                             1,
-                                            &input_data_written[param_bufferID],
+                                            //&input_data_written[param_bufferID],
+					    &input_data_written,
                                             &postEvent) ); 
     
     return postEvent;
@@ -69,11 +76,15 @@ cl_event initQueueSequence_command::execute(int param_bufferID, const device_int
 
 void initQueueSequence_command::cleanMe(int param_BufferID)
 {
-  assert(input_data_written[param_BufferID] != NULL);
+  //assert(input_data_written[param_BufferID] != NULL);
   
-  clReleaseEvent(input_data_written[param_BufferID]);
+ // clReleaseEvent(input_data_written[param_BufferID]);
   
-  gpu_command.cleanMe(param_BufferID);
+  assert(input_data_written != NULL);
+  
+  clReleaseEvent(input_data_written);
+  
+  gpu_command::cleanMe(param_BufferID);
 
 }
 
@@ -81,5 +92,5 @@ void initQueueSequence_command::freeMe()
 {
   free(input_data_written);
   
-  gpu_command.freeMe();
+  gpu_command::freeMe();
 }

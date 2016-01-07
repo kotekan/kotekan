@@ -45,13 +45,12 @@ class gpu_command_factory
 {
 public:
     gpu_command_factory();
-    ~gpu_command_factory();
-    void initializeCommands(const device_interface & param_Device, const Config &param_Config);
-    gpu_command getNextCommand(const device_interface& param_Device, int param_BufferID, const cl_event& param_PreceedEvent);
+    void initializeCommands(class device_interface & param_Device, Config* param_Config);
+    gpu_command* getNextCommand(class device_interface & param_Device, int param_BufferID, cl_event param_PreceedEvent);
     cl_uint getNumCommands() const;
     void deallocateResources();
 protected:
-    gpu_command listCommands[];
+    gpu_command ** listCommands;
     cl_uint numCommands = 0;
     cl_uint currentCommandCnt;
     

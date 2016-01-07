@@ -31,7 +31,7 @@ kernelPreseed::kernelPreseed(const char param_gpuKernel): gpu_command(param_gpuK
 
 }
 
-void kernelPreseed::build(const Config& param_Config, const device_interface& param_Device)
+void kernelPreseed::build(Config* param_Config, class device_interface &param_Device)
 {
   gpu_command::build(param_Config, param_Device);
 
@@ -40,8 +40,8 @@ void kernelPreseed::build(const Config& param_Config, const device_interface& pa
   int num_blocks;
   
   //Host Buffers
-  cl_mem * id_x_map;
-  cl_mem * id_y_map;
+  cl_mem id_x_map;
+  cl_mem id_y_map;
   
   //I GENUINELY DON'T LIKE HOW THIS PORTION OF THE CODE IS DEFINED. WOULD BE NICE TO ENCAPSULATE THE USE OF NUM_BLOCKS AND THE CALL TO DEFINEOUTPUTDATAMAP SOMEWHERE ELSE. 
   // TODO explain these numbers/formulas.
@@ -54,12 +54,12 @@ void kernelPreseed::build(const Config& param_Config, const device_interface& pa
 	  param_Config->processing.num_adjusted_local_freq,
 	  param_Config->processing.num_blocks, param_Config->processing.samples_per_data_set);
 	  
- CHECK_CL_ERROR ( clBuildProgram( program, 1, &param_Device->getDeviceID(), cl_options, NULL, NULL ) );
+ CHECK_CL_ERROR ( clBuildProgram( program, 1, &param_Device.getDeviceID()[param_Device.getGpuID()], cl_options, NULL, NULL ) );
   
   
   kernel = clCreateKernel( program, "preseed", &err );
   CHECK_CL_ERROR(err);
-  call defineOutputDataMap(&param_Config, num_blocks, &param_Device, &id_x_map, &id_y_map);
+  defineOutputDataMap(param_Config, num_blocks, param_Device, id_x_map, id_y_map);
   
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                    2,
@@ -91,11 +91,11 @@ void kernelPreseed::build(const Config& param_Config, const device_interface& pa
     lws[2] = 1;
 }
 
-cl_event kernelPreseed::execute(int param_bufferID, const device_interface& param_Device)
+cl_event kernelPreseed::execute(int param_bufferID, class device_interface &param_Device)
 {
-  cl_event *postEvent;
+  //cl_event *postEvent;
     
-  postEvent = thisPostEvent[param_bufferID];
+  //postEvent = thisPostEvent[param_bufferID];
   
   
   CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue()[1],
@@ -110,7 +110,7 @@ cl_event kernelPreseed::execute(int param_bufferID, const device_interface& para
   
   return postEvent;
 }
-void defineOutputDataMap(const Config & param_Config, int param_num_blocks, const device_interface & param_Device, cl_mem & id_x_map, cl_mem & id_y_map)
+void kernelPreseed::defineOutputDataMap(Config* param_Config, int param_num_blocks, class device_interface& param_Device, cl_mem id_x_map, cl_mem id_y_map)
 {
   cl_int err;    
     // Create lookup tables 
@@ -131,13 +131,13 @@ void defineOutputDataMap(const Config & param_Config, int param_num_blocks, cons
         }
     }
 
-    id_x_map = clCreateBuffer(param_Device->getContext(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+    id_x_map = clCreateBuffer(param_Device.getContext(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                     param_num_blocks * sizeof(cl_uint), global_id_x_map, &err);
     if (err){
         printf("Error in clCreateBuffer %i\n", err);
     }
 
-    id_y_map = clCreateBuffer(param_Device->getContext(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+    id_y_map = clCreateBuffer(param_Device.getContext(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                     param_num_blocks * sizeof(cl_uint), global_id_y_map, &err);
     if (err){
         printf("Error in clCreateBuffer %i\n", err);

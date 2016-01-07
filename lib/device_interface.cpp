@@ -27,8 +27,9 @@
 #include "device_interface.h"
 #include "gpu_command.h"
 #include "callbackdata.h"
+#include "math.h"
 
-device_interface::device_interface(const Buffer & param_In_Buf, const Buffer & param_Out_Buf, const Config &param_Config, int param_GPU_ID)
+device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config, int param_GPU_ID)
 {   
     cl_int err;
   
@@ -57,22 +58,27 @@ device_interface::device_interface(const Buffer & param_In_Buf, const Buffer & p
 
 }
 
-Buffer device_interface::getInBuf() const
+int device_interface::getGpuID() const
+{
+    return gpu_id;
+}
+
+Buffer* device_interface::getInBuf() 
 {
   return in_buf;
 }
 
-Buffer device_interface::getOutBuf() const
+Buffer* device_interface::getOutBuf() 
 {
   return out_buf;
 }
 
-cl_context device_interface::getContext() const
+cl_context device_interface::getContext() 
 {
   return context;
 }
 
-cl_device_id device_interface::getDeviceID() const
+cl_device_id* device_interface::getDeviceID()
 {
   return device_id;
 }
@@ -87,7 +93,7 @@ cl_device_id device_interface::getDeviceID() const
   //return * id_y_map;
 //}
 
-cl_int device_interface::getAccumulateZeros() const
+cl_int* device_interface::getAccumulateZeros()
 {
   return accumulate_zeros;
 }
@@ -103,7 +109,7 @@ int device_interface::getAlignedAccumulateLen() const
 
 //}
 
-device_interface::prepareCommandQueue()
+void device_interface::prepareCommandQueue()
 {
   cl_int err;
 
@@ -157,24 +163,24 @@ void device_interface::allocateMemory()
 
     // Setup device output buffers.
     device_output_buffer = (cl_mem *) malloc(out_buf->num_buffers * sizeof(cl_mem));
-    CHECK_MEM(cl_data->device_output_buffer);
+    CHECK_MEM(device_output_buffer);
     for (int i = 0; i < out_buf->num_buffers; ++i) {
         device_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, out_buf->aligned_buffer_size, NULL, &err);
         CHECK_CL_ERROR(err);
     }
 }
 
-cl_mem device_interface::getInputBuffer(int param_BufferID) const
+cl_mem device_interface::getInputBuffer(int param_BufferID) 
 {
   return device_input_buffer[param_BufferID];
 }
 
-cl_mem device_interface::getOutputBuffer(int param_BufferID) const
+cl_mem device_interface::getOutputBuffer(int param_BufferID) 
 {
   return device_output_buffer[param_BufferID];
 }
 
-cl_mem device_interface::getAccumulateBuffer(int param_BufferID) const
+cl_mem device_interface::getAccumulateBuffer(int param_BufferID) 
 {
   return device_accumulate_buffer[param_BufferID];
 }
@@ -204,28 +210,8 @@ void device_interface::deallocateResources()
     CHECK_CL_ERROR( clReleaseContext(context) );
 }
 
-
-void device_interface::read_complete(cl_event param_event, cl_int param_status, void* data)
+cl_command_queue* device_interface::getQueue()
 {
-
-    struct callBackData * cb_data = (struct callBackData *) data;
-
-    //INFO("GPU Kernel Finished on GPUID: %d", cb_data->cl_data->gpu_id);
-
-    // Copy the information contained in the input buffer
-    move_buffer_info(cb_data->in_buf, cb_data->buffer_id,
-                     cb_data->out_buf, cb_data->buffer_id);
-
-    // Mark the input buffer as "empty" so that it can be reused.
-    mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
-
-    // Mark the output buffer as full, so it can be processed.
-    mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
-
-       
-    for (int i = 0; i <= cb_data->numCommands; i++){
-      cb_data->listKernels[i]->cleanMe(cb_data->buffer_id);
-    }
-    
-    free(cb_data);//DOES THIS BELONG HERE?
+  return queue;
 }
+

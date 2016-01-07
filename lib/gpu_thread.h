@@ -27,19 +27,8 @@
 #ifndef GPU_THREAD_H
 #define GPU_THREAD_H
 
-class gpu_thread
-{
-public:
-    gpu_thread();
-    ~gpu_thread();
-    void gpu_thread(void * arg); 
-    void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
-protected:
-    // Locks
-    pthread_mutex_t queue_lock;
-    pthread_mutex_t status_lock;
-    pthread_cond_t status_cond;
-};
+// pthread_mutex_t status_lock;
+// pthread_cond_t status_cond;
 
 #endif // GPU_THREAD_H
 #ifndef GPU_THREAD
@@ -81,6 +70,8 @@ struct gpuThreadArgs {
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
 };
-
+void* gpu_thread(void * arg); 
+void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
+void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void *data);
 
 #endif

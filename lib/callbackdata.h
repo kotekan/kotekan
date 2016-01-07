@@ -34,7 +34,7 @@ struct callBackData {
     int buffer_id;
     int numCommands;
     
-    gpu_command * listKernels[];
+    gpu_command ** listKernels;
 
     // Buffer objects
     struct Buffer * in_buf;
