@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 <copyright holder> <email>
+ * Copyright (c) 2016 <copyright holder> <email>
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -24,28 +24,15 @@
  *
  */
 
-#ifndef KERNELCORRELATOR_H
-#define KERNELCORRELATOR_H
+#ifndef LOOPCOUNTER_H
+#define LOOPCOUNTER_H
+#include "pthread.h"
 
-#include "gpu_command.h"
-#include "device_interface.h"
+struct loopCounter {
+    int iteration=0;
 
-class kernelCorrelator: public gpu_command
-{
-public:
-    kernelCorrelator();
-    kernelCorrelator(char* param_gpuKernel);
-    ~kernelCorrelator();
-    virtual void build(Config* param_Config, class device_interface& param_Device);
-    virtual cl_event execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent);
-protected:
-    void defineOutputDataMap(Config* param_Config, int param_num_blocks,class device_interface& param_Device);
-    cl_mem device_block_lock;
-    cl_int *zeros;
-
-    //Host Buffers
-    cl_mem id_x_map;
-    cl_mem id_y_map;
+    pthread_mutex_t lock;  // Lock for the is_ready function.
+    pthread_cond_t cond;
 };
 
-#endif // KERNELCORRELATOR_H
+#endif // LOOPCOUNTER_H

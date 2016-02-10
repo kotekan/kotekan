@@ -46,8 +46,6 @@
 
 #include "gpu_command.h"
 
-
-
 class device_interface
 {
 public:
@@ -56,15 +54,16 @@ public:
     Buffer* getInBuf();
     Buffer* getOutBuf();
     cl_context getContext();
-    int getGpuID() const;
-    cl_device_id* getDeviceID();
+    int getGpuID();
+    cl_device_id getDeviceID(int param_GPUID);
     //cl_mem getIDxMap();
     //cl_mem getIDyMap();
     cl_mem getInputBuffer(int param_BufferID);
     cl_mem getOutputBuffer(int param_BufferID);
     cl_mem getAccumulateBuffer(int param_BufferID);
-    cl_command_queue* getQueue();
+    cl_command_queue getQueue(int param_Dim);
     cl_int* getAccumulateZeros();
+    int getNumBlocks();
     int getAlignedAccumulateLen() const;
     void prepareCommandQueue();
     void allocateMemory();
@@ -84,6 +83,7 @@ protected:
     int accumulate_len;
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
+    int num_blocks;
     
     cl_platform_id platform_id;
     cl_device_id device_id[MAX_GPUS];

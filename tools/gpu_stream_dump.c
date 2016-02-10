@@ -72,6 +72,7 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "Error creating tcp buffer.");
         return -1;
     }
+    fprintf(stderr, "buffer size = %d", buffer_size);
 
     curr_flag = (uint8_t *)malloc(n_val * sizeof(uint8_t));
     if (curr_flag == NULL) {

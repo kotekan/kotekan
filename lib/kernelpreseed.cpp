@@ -26,41 +26,51 @@
 
 #include "kernelpreseed.h"
 
-kernelPreseed::kernelPreseed(const char param_gpuKernel): gpu_command(param_gpuKernel)
+kernelPreseed::kernelPreseed(char * param_gpuKernel): gpu_command(param_gpuKernel)
 {
 
 }
 
+kernelPreseed::~kernelPreseed()
+{
+    clReleaseMemObject(id_x_map);
+    clReleaseMemObject(id_y_map);
+}
+
 void kernelPreseed::build(Config* param_Config, class device_interface &param_Device)
 {
-  gpu_command::build(param_Config, param_Device);
+    gpu_command::build(param_Config, param_Device);
 
-  cl_int err;
-  char cl_options[1024];
-  int num_blocks;
-  
-  //Host Buffers
-  cl_mem id_x_map;
-  cl_mem id_y_map;
+    cl_int err;
+    char cl_options[1024];
+    int num_blocks = param_Device.getNumBlocks();
+    cl_device_id valDeviceID;
   
   //I GENUINELY DON'T LIKE HOW THIS PORTION OF THE CODE IS DEFINED. WOULD BE NICE TO ENCAPSULATE THE USE OF NUM_BLOCKS AND THE CALL TO DEFINEOUTPUTDATAMAP SOMEWHERE ELSE. 
   // TODO explain these numbers/formulas.
-  num_blocks = (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size) *
-  (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size + 1) / 2.;
+//     num_blocks = (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size) *
+//     (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size + 1) / 2.;
   
-    sprintf(cl_options, "-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du",
-	  param_Config->processing.num_elements, param_Config->processing.num_local_freq,
-	  param_Config->processing.num_adjusted_elements,
-	  param_Config->processing.num_adjusted_local_freq,
-	  param_Config->processing.num_blocks, param_Config->processing.samples_per_data_set);
+    //Peter has these defined differently in his code
+    sprintf(cl_options,"-D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du -D NUM_TIME_ACCUM=%du -D BASE_ACCUM=%du -D SIZE_PER_SET=%du",
+            param_Config->processing.num_elements, param_Config->processing.num_local_freq, num_blocks,
+            param_Config->processing.samples_per_data_set, 256, 32u,num_blocks*32*32*2*param_Config->processing.num_adjusted_local_freq);
+   
+    //sprintf(cl_options, "-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du",
+	//  param_Config->processing.num_elements, param_Config->processing.num_local_freq,
+	//  param_Config->processing.num_adjusted_elements,
+	//  param_Config->processing.num_adjusted_local_freq,
+	//  param_Config->processing.num_blocks, param_Config->processing.samples_per_data_set);
+    
+    valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
 	  
- CHECK_CL_ERROR ( clBuildProgram( program, 1, &param_Device.getDeviceID()[param_Device.getGpuID()], cl_options, NULL, NULL ) );
+ CHECK_CL_ERROR ( clBuildProgram( program, 1, &valDeviceID, cl_options, NULL, NULL ) );
   
   
   kernel = clCreateKernel( program, "preseed", &err );
   CHECK_CL_ERROR(err);
-  defineOutputDataMap(param_Config, num_blocks, param_Device, id_x_map, id_y_map);
-  
+  defineOutputDataMap(param_Config, num_blocks, param_Device); //id_x_map and id_y_map depend on this call.
+
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                    2,
                                    sizeof(id_x_map),
@@ -84,33 +94,36 @@ void kernelPreseed::build(Config* param_Config, class device_interface &param_De
     // Pre-seed kernel global and local work space sizes.
     gws[0] = 8*param_Config->processing.num_data_sets;
     gws[1] = 8*param_Config->processing.num_adjusted_local_freq;
-    gws[2] = param_Config->processing.num_blocks;
+    //gws[2] = param_Config->processing.num_blocks;
+    gws[2] = num_blocks;
 
     lws[0] = 8;
     lws[1] = 8;
     lws[2] = 1;
 }
 
-cl_event kernelPreseed::execute(int param_bufferID, class device_interface &param_Device)
+cl_event kernelPreseed::execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
   //cl_event *postEvent;
     
   //postEvent = thisPostEvent[param_bufferID];
   
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
   
-  CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue()[1],
+  CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                             kernel,
                                             3,
                                             NULL,
                                             gws,
                                             lws,
                                             1,
-                                            &preceedEvent,
-                                            &postEvent));  
+                                            //&precedeEvent[param_bufferID],
+                                            &param_PrecedeEvent,
+                                            &postEvent[param_bufferID]));  
   
-  return postEvent;
+  return postEvent[param_bufferID];
 }
-void kernelPreseed::defineOutputDataMap(Config* param_Config, int param_num_blocks, class device_interface& param_Device, cl_mem id_x_map, cl_mem id_y_map)
+void kernelPreseed::defineOutputDataMap(Config* param_Config, int param_num_blocks, device_interface& param_Device)
 {
   cl_int err;    
     // Create lookup tables 

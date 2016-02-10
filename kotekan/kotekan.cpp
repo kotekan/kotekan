@@ -145,7 +145,7 @@ void dpdk_setup() {
 
 int main(int argc, char ** argv) {
 
-    dpdk_setup();
+    //dpdk_setup();
 
     int use_ch_acq = 1;
     int read_file = 0;
@@ -279,7 +279,7 @@ int main(int argc, char ** argv) {
         DEBUG("Creating buffers...");
 
         // TODO Figure out why this value currently needs to be constant.
-        int links_per_gpu = 1; //num_links_per_gpu(&config, i);
+        int links_per_gpu = 4; //num_links_per_gpu(&config, i);
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
         create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
@@ -349,7 +349,7 @@ int main(int argc, char ** argv) {
     struct networkThreadArg network_args[config.fpga_network.num_links];
     struct networkDPDKArg network_dpdk_args;
 
-    int use_dpdk = 1;
+    int use_dpdk = 0;
     if (use_dpdk == 1) {
 
         network_dpdk_args.buf = gpu_input_buffer;

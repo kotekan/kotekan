@@ -46,7 +46,7 @@ class gpu_command_factory
 public:
     gpu_command_factory();
     void initializeCommands(class device_interface & param_Device, Config* param_Config);
-    gpu_command* getNextCommand(class device_interface & param_Device, int param_BufferID, cl_event param_PreceedEvent);
+    gpu_command* getNextCommand(device_interface& param_Device, int param_BufferID);
     cl_uint getNumCommands() const;
     void deallocateResources();
 protected:

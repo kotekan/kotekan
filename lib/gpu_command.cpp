@@ -25,48 +25,78 @@
  */
 
 #include "gpu_command.h"
+#include <string.h>
+#include <iostream>
 
 gpu_command::gpu_command()
 {
-
+    
 }
 
-gpu_command::gpu_command(char param_gpuKernel)
+gpu_command::gpu_command(char * param_gpuKernel)
 { 
-  *gpuKernel = param_gpuKernel;
+    gpuKernel = new char[strlen(param_gpuKernel)+1];
+    strcpy(gpuKernel, param_gpuKernel);
+    gpuCommandState=1;
+}
+
+gpu_command::~gpu_command()
+{
+    if (gpuCommandState==1)
+        free(gpuKernel);
 }
 
 void gpu_command::build(Config * param_Config, class device_interface &param_Device)
 {
-  size_t cl_program_size[1];
+  size_t program_size;
   FILE *fp;
-  char *cl_program_buffer;
+  char *program_buffer;
   cl_int err;
   
-    fp = fopen(gpuKernel, "r");
-        if (fp == NULL){
-            ERROR("error loading file: %s", gpuKernel);
-            exit(errno);
-        }
-        fseek(fp, 0, SEEK_END);
-        cl_program_size[0] = ftell(fp);
-        rewind(fp);
-	
-	cl_program_buffer = (char*)malloc(cl_program_size[0]+1);
-        cl_program_buffer[cl_program_size[0]] = '\0';
-        int sizeRead = fread(cl_program_buffer, sizeof(char), cl_program_size[0], fp);
-        if (sizeRead < cl_program_size[0])
-            ERROR("Error reading the file: %s", gpuKernel);
-        fclose(fp);
-	program = clCreateProgramWithSource( param_Device.getContext(),
-					  1,
-					  (const char**)cl_program_buffer,
-					  cl_program_size, &err );
-	CHECK_CL_ERROR (err);
-	
-	cl_program_size[0] = 0;
-	free(cl_program_buffer);
-	
+    //precedeEvent = (cl_event*)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
+    //CHECK_MEM(precedeEvent);
+    
+    
+    postEvent = (cl_event*)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
+    CHECK_MEM(postEvent);
+    for (int j=0;j<param_Device.getInBuf()->num_buffers;++j){
+        //precedeEvent[j] = NULL;
+        postEvent[j] = NULL;
+    }
+  
+//   FILE * pFile;
+//   pFile = fopen("IanTest.txt", "w");
+//   
+//   if (pFile != NULL){
+//       fputs ("I like tofu", pFile);
+//       fclose(pFile);
+//   }
+      
+    if (gpuCommandState==1){
+        fp = fopen(gpuKernel, "r");
+            if (fp == NULL){
+                ERROR("error loading file: %s", gpuKernel);
+                exit(errno);
+            }
+            fseek(fp, 0, SEEK_END);
+            program_size = ftell(fp);
+            rewind(fp);
+            
+            program_buffer = (char*)malloc(program_size+1);
+            program_buffer[program_size] = '\0';
+            int sizeRead = fread(program_buffer, sizeof(char), program_size, fp);
+            if (sizeRead < program_size)
+                ERROR("Error reading the file: %s", gpuKernel);
+            fclose(fp);
+            program = clCreateProgramWithSource(param_Device.getContext(),
+                                            (cl_uint)1,
+                                            (const char**)&program_buffer,
+                                            &program_size, &err );
+            CHECK_CL_ERROR (err);
+            
+            program_size = 0;
+            free(program_buffer);
+    }
 	//createThisEvent(param_Device);
 	
 }
@@ -76,7 +106,16 @@ void gpu_command::build(Config * param_Config, class device_interface &param_Dev
       //CHECK_MEM(thisPostEvent);
 //}
 
-void gpu_command::setKernelArg(int param_ArgPos, cl_mem param_Buffer)
+cl_event gpu_command::execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent)
+{
+    assert(param_bufferID<param_Device.getInBuf()->num_buffers);
+    assert(param_bufferID>=0);
+    
+    //precedeEvent[param_bufferID] = param_PrecedeEvent;
+}
+
+
+void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 {
   CHECK_CL_ERROR( clSetKernelArg(kernel,
       param_ArgPos,
@@ -94,22 +133,20 @@ void gpu_command::setKernelArg(int param_ArgPos, cl_mem param_Buffer)
 //  return lws;
 //}
 
-void gpu_command::setPostEvent(int param_BufferID)
-{
-  postEvent = (cl_event)(sizeof(cl_event));
-  CHECK_MEM(postEvent);
-  //postEvent = postEventArray[param_BufferID];
-}
+// void gpu_command::setPostEvent(int param_BufferID, cl_event param_PostEvent)
+// {
+//     postEvent[param_BufferID] =param_PostEvent;
+// }
 
 //cl_event *gpu_command::getPostEvent()
 //{
  // return postEvent;
 //}
-
-void gpu_command::setPreceedEvent(cl_event param_Event)
+/*
+void gpu_command::setPrecedeEvent(cl_event param_Event)
 {
-  preceedEvent = param_Event;
-}
+    precedeEvent=param_Event;
+}*/
 
 //cl_event *gpu_command::getPreceedEvent()
 //{
@@ -118,23 +155,52 @@ void gpu_command::setPreceedEvent(cl_event param_Event)
 
 void gpu_command::cleanMe(int param_BufferID)
 {
+    //the events need to be defined as arrays per buffer id
+    
   //assert(postEvent[param_BufferID] != NULL);
   //assert(preceedEvent[param_BufferID] != NULL);
-  assert(postEvent != NULL);
-  assert(preceedEvent != NULL);
+    std::cout << "BufferID = " << param_BufferID << std::endl;
+    if (postEvent[param_BufferID] != NULL){
+        DEBUG("PostEvent is not null\n");
+        std::cout << "PostEvent = " << postEvent[param_BufferID] << std::endl;
+        clReleaseEvent(postEvent[param_BufferID]);
+        DEBUG("PostEvent released\n");
+        postEvent[param_BufferID] = NULL;
+        DEBUG("PostEvent set to null\n");
+    }
+    DEBUG("PostEvent Cleaned\n");
+  /*  if (precedeEvent[param_BufferID] != NULL){
+        DEBUG("PrecedeEvent is not null\n");
+        std::cout << "precedeEvent = " << precedeEvent[param_BufferID] << std::endl;
+        CHECK_CL_ERROR( clReleaseEvent(precedeEvent[param_BufferID]));
+        DEBUG("PrecedeEvent released\n");
+        precedeEvent[param_BufferID] = NULL;
+        DEBUG("PrecedeEvent set to null\n");
+    }
+    DEBUG("PrecedeEvent Cleaned\n");*/
+
+        
+  //assert(postEvent[param_BufferID] != NULL);
+  //assert(precedeEvent[param_BufferID] != NULL);
   
   //clReleaseEvent(postEvent[param_BufferID]);
   //clReleaseEvent(preceedEvent[param_BufferID]);
   
-  clReleaseEvent(postEvent);
-  clReleaseEvent(preceedEvent);
+  
+  
 }
 
 void gpu_command::freeMe()
 {
-  CHECK_CL_ERROR( clReleaseKernel(kernel) );
-  free(postEvent);
-  free(preceedEvent);
-  free(program);
+    if (gpuCommandState==1){
+        CHECK_CL_ERROR( clReleaseKernel(kernel) );
+        DEBUG("kernel Freed\n");
+        CHECK_CL_ERROR( clReleaseProgram(program) );
+        DEBUG("program Freed\n");
+    }
+    free(postEvent);
+    DEBUG("posteEvent Freed\n");
+    //free(precedeEvent);
+  
 }
 

@@ -28,6 +28,7 @@
 #include "gpu_command.h"
 #include "callbackdata.h"
 #include "math.h"
+#include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config, int param_GPU_ID)
 {   
@@ -37,15 +38,20 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
     out_buf = param_Out_Buf;
     config = param_Config;
     gpu_id = param_GPU_ID;
+    
+      // TODO explain these numbers/formulas.
+    num_blocks = (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size) *
+    (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size + 1) / 2.;
 
     accumulate_len = config->processing.num_adjusted_local_freq * 
     config->processing.num_adjusted_elements * 2 * config->processing.num_data_sets * sizeof(cl_int);
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));
     assert(aligned_accumulate_len >= accumulate_len);
         
+    
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-
+    
     // Find a GPU device..
     CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
 
@@ -58,7 +64,12 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
 
 }
 
-int device_interface::getGpuID() const
+int device_interface::getNumBlocks()
+{
+    return num_blocks;
+}
+
+int device_interface::getGpuID()
 {
     return gpu_id;
 }
@@ -78,9 +89,9 @@ cl_context device_interface::getContext()
   return context;
 }
 
-cl_device_id* device_interface::getDeviceID()
+cl_device_id device_interface::getDeviceID(int param_GPUID)
 {
-  return device_id;
+  return device_id[param_GPUID];
 }
 
 //cl_mem device_interface::getIDxMap()
@@ -115,7 +126,7 @@ void device_interface::prepareCommandQueue()
 
   // Create command queues
   for (int i = 0; i < NUM_QUEUES; ++i) {
-    queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_PROFILING_ENABLE, &err );
+    queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err );
     CHECK_CL_ERROR(err);
   }
 }    
@@ -187,6 +198,7 @@ cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 
 void device_interface::deallocateResources()
 {
+    cl_int err;
 
     for (int i = 0; i < NUM_QUEUES; ++i) {
         CHECK_CL_ERROR( clReleaseCommandQueue(queue[i]) );
@@ -206,12 +218,27 @@ void device_interface::deallocateResources()
         CHECK_CL_ERROR( clReleaseMemObject(device_output_buffer[i]) );
     }
     free(device_output_buffer);
-
+    
+    /*for (int i = 0; i < MAX_GPUS; ++i) {
+        CHECK_CL_ERROR( clReleaseDevice(device_id[i]) );
+    }
+    free(device_id);*/
+    
+    err = munlock((void *) accumulate_zeros, aligned_accumulate_len);
+    if ( err == -1 ) {
+        ERROR("Error unlocking memory");
+        exit(errno);
+    }
+    free(accumulate_zeros);
+    
     CHECK_CL_ERROR( clReleaseContext(context) );
+    
+
+    //RELEASE PLATFORM?
 }
 
-cl_command_queue* device_interface::getQueue()
+cl_command_queue device_interface::getQueue(int param_Dim)
 {
-  return queue;
+  return queue[param_Dim];
 }
 
