@@ -171,7 +171,10 @@ void* gpu_post_process_thread(void* arg)
                     local_element_data[i][pos].fpga_scalar_count = 0;
                 }
             }
-        }
+            if (error_matrix->bad_timesamples != 0) {
+		INFO("Packet loss in link %d: %d packets, which is %.6f%%", link_id, error_matrix->bad_timesamples, 100*(double)error_matrix->bad_timesamples/(double)config->processing.samples_per_data_set);
+            }
+	}
 
         // Only happens once every time all the links have been read from.
         if (link_id + 1 == config->fpga_network.num_links) {
@@ -183,8 +186,8 @@ void* gpu_post_process_thread(void* arg)
                 if (frame_number == 0) {
                     header->cpu_timestamp = frame_start_time;
                     double time_offset = i * (config->processing.samples_per_data_set * 2.56);
-                    header->cpu_timestamp.tv_usec = header->cpu_timestamp.tv_usec + time_offset;
-                    header->fpga_seq_number = fpga_seq_number*config->fpga_network.timesamples_per_packet + i * config->processing.samples_per_data_set;
+                    header->cpu_timestamp.tv_usec += time_offset;
+                    header->fpga_seq_number = fpga_seq_number + i * config->processing.samples_per_data_set;
                     header->num_freq = config->processing.num_total_freq;
                     header->num_vis = num_vis;
                     header->num_elements = config->processing.num_elements;
@@ -207,6 +210,9 @@ void* gpu_post_process_thread(void* arg)
                         complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                         visibilities[j].real += temp_vis.real;
                         visibilities[j].imag += temp_vis.imag;
+			//if (temp_vis.real == 0) {
+                        //    ERROR("Error there is a zero in the real values! at link_id %d and gpu_id %d, and frame %d", link_id, gpu_id, frame_number);
+			//}
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
                       frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;

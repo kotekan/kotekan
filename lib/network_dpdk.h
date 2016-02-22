@@ -4,7 +4,9 @@
 #include "buffers.h"
 #include "errors.h"
 
+// TODO Make these dynamic.
 #define NUM_LINKS (8)
+#define NUM_LCORES (2)
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,12 +15,17 @@ extern "C" {
 struct networkDPDKArg {
     // Array of output buffers
     struct Buffer ** buf;
+
+    // These should take over the defines.
     int num_links;
+    int num_lcores;
+    int num_links_per_lcore;
 
     struct Config * config;
     uint32_t integration_edge_offset;
     uint32_t num_links_in_group[NUM_LINKS];
     uint32_t link_id[NUM_LINKS];
+    uint32_t port_offset[NUM_LCORES];
 };
 
 struct LinkData {

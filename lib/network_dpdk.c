@@ -59,7 +59,7 @@ static inline double e_time(void) {
 }
 
 static const struct rte_eth_conf port_conf_default = {
-    .rxmode = { .max_rx_pkt_len = 9000,
+    .rxmode = { .max_rx_pkt_len = 5000,
         .jumbo_frame = 1,
         .hw_strip_crc = 0,
         .header_split = 0,
@@ -191,13 +191,15 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                           int64_t new_seq64) {
 
     // TODO it is really bad to have a blocking call here(!)
-    fprintf(stderr, "advance_frame; port: %u, buffer_id: %u, links_in_group %u, buffer: %p, new_fpga_seq: %u, new_seq64: %llu\n",
+    /*DEBUG("advance_frame; port: %u, buffer_id: %u, links_in_group %u, buffer: %p, new_fpga_seq: %u, new_seq64: %llu, num_packets %u, lost_frames %u",
             port,
             dpdk_net->link_data[port].buffer_id,
             dpdk_net->args->num_links_in_group[port],
             dpdk_net->args->buf[port],
-            new_seq, new_seq64);
-
+            new_seq, new_seq64,
+            dpdk_net->link_data[port].num_packets,
+            dpdk_net->link_data[port].lost_packets);
+*/
     mark_buffer_full(dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id);
 
     dpdk_net->link_data[port].buffer_id =
@@ -227,6 +229,8 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
     set_fpga_seq64_num(dpdk_net->args->buf[port],
                        dpdk_net->link_data[port].buffer_id,
                        new_seq64);
+    dpdk_net->link_data[port].num_packets = 0;
+    dpdk_net->link_data[port].lost_packets = 0;
 }
 
 
@@ -260,13 +264,15 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
     }
 }
 
-static inline uint32_t get_mbuf_seq_num(struct rte_mbuf * cur_mbuf) {
-    return *(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 54);
+static inline uint64_t get_mbuf_seq_num(struct rte_mbuf * cur_mbuf) {
+    return (uint64_t)(*(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 54));
 }
 
 static inline uint16_t get_mbuf_stream_id(struct rte_mbuf * cur_mbuf) {
     return *(uint16_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 44);
 }
+
+static void check_data_zero(struct NetworkDPDK * dpdk_net, int port, uint8_t * frame_start, int len);
 
 static inline void copy_data_no_shuffle(struct NetworkDPDK * dpdk_net,
                                         struct rte_mbuf * cur_mbuf,
@@ -296,6 +302,20 @@ static inline void copy_data_no_shuffle(struct NetworkDPDK * dpdk_net,
                (uint8_t*)&dpdk_net->args->buf[port]->data[buffer_id][frame_location * frame_size],
                packet_data_size,
                &offset);
+
+    //check_data_zero(dpdk_net, port,
+//		    (uint8_t*)&dpdk_net->args->buf[port]->data[buffer_id][frame_location * frame_size],
+//		     packet_data_size); 
+}
+
+static void check_data_zero(struct NetworkDPDK * dpdk_net, int port, uint8_t * frame_start, int len)  {
+    uint64_t * packet_array = (uint64_t *)  frame_start;
+    for (int i = 0; i < len/8; ++i) {
+        if (packet_array[i] != 0x8888888888888888) {
+            fprintf(stderr, "location %d", i);
+            assert(0==1);
+	}
+    }
 }
 
 static void setup_for_first_packet(struct NetworkDPDK * dpdk_net, int port) {
@@ -314,9 +334,10 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
     uint16_t stream_id = get_mbuf_stream_id(cur_mbuf);
     uint32_t adj_seq = seq + dpdk_net->args->integration_edge_offset;
     uint32_t integration_period = dpdk_net->args->config->processing.samples_per_data_set *
-                                    dpdk_net->args->config->processing.num_data_sets;
+                                    dpdk_net->args->config->processing.num_data_sets *
+                                    dpdk_net->args->config->processing.num_gpu_frames;
 
-    if ( (adj_seq % integration_period) <= 10 && (adj_seq % integration_period) >= 0 ) {
+    if ( ((adj_seq % integration_period) <= 100) && ((adj_seq % integration_period) >= 0 )) {
 
         static struct timeval now;
         gettimeofday(&now, NULL);
@@ -330,6 +351,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
         set_first_packet_recv_time(dpdk_net->args->buf[port],
                                 dpdk_net->link_data[port].buffer_id,
                                 now);
+        dpdk_net->link_data[port].stream_ID = stream_id; 
         set_stream_ID(dpdk_net->args->buf[port],
                       dpdk_net->link_data[port].buffer_id,
                       stream_id);
@@ -339,7 +361,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
         dpdk_net->link_data[port].seq64 = seq;
         dpdk_net->link_data[port].last_seq64 = seq - adj_seq % integration_period;
 
-        fprintf(stderr, "Got first packet: port: %d; link id: %d, seq: %llu, last_seq: %llu\n",
+        INFO("Got first packet: port: %d; link id: %d, seq: %llu, last_seq: %llu\n",
                 port, dpdk_net->args->link_id[port], dpdk_net->link_data[port].seq, dpdk_net->link_data[port].last_seq);
 
         return 1;
@@ -354,7 +376,7 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net,
     int lost_frames = dpdk_net->link_data[port].seq64 - dpdk_net->link_data[port].last_seq64;
     const int timesamples_per_packet = dpdk_net->args->config->fpga_network.timesamples_per_packet;
     const int frame_size = 2048;
-
+    
     int frame_location = dpdk_net->link_data[port].last_seq64 +
         timesamples_per_packet -
         get_fpga_seq64_num(dpdk_net->args->buf[port],
@@ -363,14 +385,18 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net,
     uint32_t cur_seq_num = dpdk_net->link_data[port].last_seq + timesamples_per_packet;
 
     int buffer_id = dpdk_net->link_data[port].buffer_id;
-    fprintf(stderr, "Number of lost frames: %d\n", lost_frames);
+
+    struct ErrorMatrix * error_matrix = get_error_matrix(dpdk_net->args->buf[port], buffer_id);
+    add_bad_timesamples(error_matrix, lost_frames);
+
+    //fprintf(stderr, "Number of lost frames: %d\n", lost_frames);
     while (lost_frames > 0) {
         if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port]->buffer_size)) {
             advance_frame(dpdk_net, port, cur_seq_num, cur_seq64_num);
             frame_location = 0;
         }
         nt_memset((void *)&dpdk_net->args->buf[port]->data[buffer_id][frame_location * frame_size],
-                  0,
+                  0x88,
                   frame_size * timesamples_per_packet);
         cur_seq64_num += timesamples_per_packet;
         frame_location += timesamples_per_packet;
@@ -383,29 +409,36 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net,
  * The lcore main. This is the main thread that does the work, reading from
  * an input port and writing to an output port.
  */
-static __attribute__((noreturn)) void
-lcore_main(void *args)
+int lcore_recv_pkt(void *args)
 {
-    struct NetworkDPDK dpdk_net;
-    uint8_t port;
-
-    dpdk_net.args = (struct networkDPDKArg *)args;
-
-    init_network_object(&dpdk_net);
-
     struct rte_mbuf *mbufs[BURST_SIZE];
 
-    check_port_socket_assignment();
+    struct NetworkDPDK * dpdk_net = (struct NetworkDPDK *)args;
 
-    for (port = 0; port < dpdk_net.args->num_links; ++port) {
-        setup_for_first_packet(&dpdk_net, port);
+    uint8_t port;
+    unsigned int lcore;
+
+    lcore = rte_lcore_id();
+    fprintf(stderr, "lcore ID: %d\n", lcore);
+    if (lcore == -1)
+        return 0;
+    lcore -= 1; // Offset for master core, which is on zero.
+
+    const int port_offset = dpdk_net->args->port_offset[lcore];
+    for (port = port_offset;
+         port < dpdk_net->args->num_links_per_lcore + port_offset;
+         ++port) {
+        setup_for_first_packet(dpdk_net, port);
+        fprintf(stderr, "port reached %d\n", port);
     }
 
     /* Run until the application is quit or killed. */
     for (;;) {
 
         // For each port.
-        for (port = 0; port < dpdk_net.args->num_links; port++) {
+        for (port = port_offset;
+             port < dpdk_net->args->num_links_per_lcore + port_offset;
+             ++port) {
 
             const int32_t nb_rx = rte_eth_rx_burst(port,
                                                    0,
@@ -413,59 +446,69 @@ lcore_main(void *args)
                                                    BURST_SIZE);
 
             if (likely(nb_rx == 0)) {
-                dpdk_net.num_unused_cycles++;
+                //dpdk_net.num_unused_cycles++;
                 continue;
             }
-            dpdk_net.link_data[port].num_packets += nb_rx;
-
-            //printf("Got packet!\n");
-            if (unlikely (dpdk_net.link_data[port].num_packets > 65536)) {
-
-                INFO("network_dpdk; link %d lost_packets %.6f%%", port,
-                    (double)dpdk_net.link_data[port].lost_packets/
-                    (double)dpdk_net.link_data[port].num_packets);
-
-                dpdk_net.link_data[port].num_packets = 0;
-                dpdk_net.link_data[port].lost_packets = 0;
-            }
+            dpdk_net->link_data[port].num_packets += nb_rx;
 
             // For each packet on that port.
             for (int i = 0; i < nb_rx; ++i) {
 
-                if (unlikely((mbufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
+                /*if (unlikely((mbufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
                     ERROR("network_dpdk: Got bad packet!");
                     goto release_frame;
-                }
+                }*/
 
-                if (unlikely(dpdk_net.link_data[port].seq == -1)) {
-                    if (likely((align_first_packet(&dpdk_net, mbufs[i], port) == 0))) {
-                        goto release_frame;
+		//INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
+
+                //if (start_count < 100000) {
+                //    start_count++;
+                //    goto release_frame;
+                //} else {
+                    if (unlikely(dpdk_net->link_data[port].seq == -1)) {
+                        if (likely((align_first_packet(dpdk_net, mbufs[i], port) == 0))) {
+                            goto release_frame;
+                        } else {
+                            dpdk_net->link_data[port].num_packets = 0;
+                            dpdk_net->link_data[port].lost_packets = 0;
+                        }
+                    } else {
+                        dpdk_net->link_data[port].seq = get_mbuf_seq_num(mbufs[i]);
+
+                        /*if (unlikely (dpdk_net->link_data[port].num_packets > 65536*64)) {
+
+                            INFO("network_dpdk; link %d lost_packets %.6f%%\n", port,
+                                 100*(double)dpdk_net->link_data[port].lost_packets/
+                                 (double)dpdk_net->link_data[port].num_packets);
+
+                            dpdk_net->link_data[port].num_packets = 0;
+                            dpdk_net->link_data[port].lost_packets = 0;
+                        }*/
                     }
-                } else {
-                    dpdk_net.link_data[port].seq = get_mbuf_seq_num(mbufs[i]);
-                }
+                //}
 
                 // TODO: If the time between packets is more than 2 hours, then the seq number
                 // WILL BE WRONG, there should be a time check some place here.
-                int64_t diff = dpdk_net.link_data[port].seq - dpdk_net.link_data[port].last_seq;
+                int64_t diff = dpdk_net->link_data[port].seq - dpdk_net->link_data[port].last_seq;
                 if (unlikely(diff < 0)) {
                     diff += COUNTER_MAX;
                 }
+                //fprintf(stderr, "diff: %d; len: %d", diff, mbufs[i]->pkt_len);
 
-                dpdk_net.link_data[port].lost_packets +=
-                    diff - (uint64_t)dpdk_net.args->config->fpga_network.timesamples_per_packet;
-                dpdk_net.link_data[port].seq64 += diff;
+                dpdk_net->link_data[port].lost_packets +=
+                    diff - (uint64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet;
+                dpdk_net->link_data[port].seq64 += diff;
 
-                if (unlikely(diff > (uint64_t)dpdk_net.args->config->fpga_network.timesamples_per_packet)) {
+                if (unlikely(diff > (uint64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet)) {
                     //printf("lost packets: %d", diff - (uint64_t)dpdk_net.args->config->fpga_network.timesamples_per_packet);
-                    //handle_lost_packets(&dpdk_net, mbufs[i], port);
+                    handle_lost_packets(dpdk_net, mbufs[i], port);
                 }
 
                 // Copy the packet to the GPU staging buffer.
-                copy_data_no_shuffle(&dpdk_net, mbufs[i], port);
+                copy_data_no_shuffle(dpdk_net, mbufs[i], port);
 
-                dpdk_net.link_data[port].last_seq = dpdk_net.link_data[port].seq;
-                dpdk_net.link_data[port].last_seq64 = dpdk_net.link_data[port].seq64;
+                dpdk_net->link_data[port].last_seq = dpdk_net->link_data[port].seq;
+                dpdk_net->link_data[port].last_seq64 = dpdk_net->link_data[port].seq64;
 
                 release_frame:
                 rte_pktmbuf_free(mbufs[i]);
@@ -481,6 +524,15 @@ lcore_main(void *args)
 void*
 network_dpdk_thread(void * args)
 {
+
+    struct NetworkDPDK dpdk_net;
+
+    dpdk_net.args = (struct networkDPDKArg *)args;
+
+    init_network_object(&dpdk_net);
+
+    check_port_socket_assignment();
+
     struct rte_mempool *mbuf_pool;
     unsigned nb_ports;
     uint8_t portid;
@@ -510,11 +562,14 @@ network_dpdk_thread(void * args)
         }
     }
 
-    if (rte_lcore_count() > 1)
-        printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
+    if (rte_lcore_count() != dpdk_net.args->num_lcores) {
+        printf("\nWARNING: The number of lcores %d doesn't match the expected value %d\n", rte_lcore_count(), dpdk_net.args->num_lcores);
+    }
 
-    /* Call lcore_main on the master core only. */
-    lcore_main(args);
+    // Start the packet receiving lcores (basically pthreads)
+    rte_eal_mp_remote_launch(lcore_recv_pkt, (void *) &dpdk_net, CALL_MASTER);
+
+    rte_eal_mp_wait_lcore();
 
     return NULL;
 }

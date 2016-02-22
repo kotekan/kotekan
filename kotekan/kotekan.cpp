@@ -128,7 +128,7 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-    char  arg4[] = "f";
+    char  arg4[] = "7";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], NULL };
     int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
@@ -161,7 +161,7 @@ int main(int argc, char ** argv) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 4; j < 12; j++)
+    for (int j = 4; j < 8; j++)
         CPU_SET(j, &cpuset);
 
     for (;;) {
@@ -359,47 +359,51 @@ int main(int argc, char ** argv) {
     struct networkThreadArg network_args[config.fpga_network.num_links];
     struct networkDPDKArg network_dpdk_args;
 
-    int use_dpdk = 1;
+    //int use_dpdk = 1;
     struct Buffer * tmp_buffer[config.fpga_network.num_links];
-    if (use_dpdk == 1) {
+    //if (use_dpdk == 1) {
 
-        for (int i = 0; i < config.fpga_network.num_links; ++i) {
-            tmp_buffer[i] = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
-            network_dpdk_args.num_links_in_group[i] = num_links_in_group(&config, i);
-            network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
-        }
-        network_dpdk_args.buf = tmp_buffer;
-        network_dpdk_args.num_links = config.fpga_network.num_links;
-        network_dpdk_args.config = &config;
-        network_dpdk_args.integration_edge_offset = 0;
+    for (int i = 0; i < config.fpga_network.num_links; ++i) {
+        tmp_buffer[i] = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
+        network_dpdk_args.num_links_in_group[i] = num_links_in_group(&config, i);
+        network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
+    }
+    network_dpdk_args.buf = tmp_buffer;
+    network_dpdk_args.num_links = config.fpga_network.num_links;
+    network_dpdk_args.config = &config;
+    network_dpdk_args.integration_edge_offset = 0;
+    network_dpdk_args.num_lcores = 2;
+    network_dpdk_args.num_links_per_lcore = 4;
+    network_dpdk_args.port_offset[0] = 0;
+    network_dpdk_args.port_offset[1] = 4;
 
-        CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
-                                    (void *)&network_dpdk_args ) );
+    CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
+                                (void *)&network_dpdk_args ) );
 
-    } else {
-        for (int i = 0; i < config.fpga_network.num_links; ++i) {
-            INFO("Link %d being assigned to buffer %d", i, config.fpga_network.link_map[i].gpu_id);
-            network_args[i].buf = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
-            network_args[i].ip_address = config.fpga_network.link_map[i].link_name;
-            network_args[i].link_id = config.fpga_network.link_map[i].link_id;
-            network_args[i].dev_id = i;
-            network_args[i].num_links_in_group = num_links_in_group(&config, i);
+//    } else {
+//        for (int i = 0; i < config.fpga_network.num_links; ++i) {
+//            INFO("Link %d being assigned to buffer %d", i, config.fpga_network.link_map[i].gpu_id);
+//            network_args[i].buf = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
+//            network_args[i].ip_address = config.fpga_network.link_map[i].link_name;
+//            network_args[i].link_id = config.fpga_network.link_map[i].link_id;
+//            network_args[i].dev_id = i;
+//            network_args[i].num_links_in_group = num_links_in_group(&config, i);
 
             // Args for reading from file
-            network_args[i].read_from_file = read_file;
-            network_args[i].file_name = input_file_name;
+//            network_args[i].read_from_file = read_file;
+//            network_args[i].file_name = input_file_name;
 
-            network_args[i].config = &config;
+//            network_args[i].config = &config;
 
-            if (no_network_test == 0) {
-                CHECK_ERROR( pthread_create(&network_t[i], NULL, &network_thread,
-                                            (void *)&network_args[i] ) );
-            } else {
-                CHECK_ERROR( pthread_create(&network_t[i], NULL, &test_network_thread,
-                                            (void *)&network_args[i] ) );
-            }
-        }
-    }
+//            if (no_network_test == 0) {
+//                CHECK_ERROR( pthread_create(&network_t[i], NULL, &network_thread,
+//                                            (void *)&network_args[i] ) );
+//            } else {
+//                CHECK_ERROR( pthread_create(&network_t[i], NULL, &test_network_thread,
+//                                            (void *)&network_args[i] ) );
+//            }
+//        }
+//    }
 
     pthread_t output_consumer_t;
     pthread_t output_network_t;
@@ -488,13 +492,13 @@ int main(int argc, char ** argv) {
     for (int i = 0; i < config.gpu.num_gpus; ++i) {
         CHECK_ERROR( pthread_join(gpu_t[i], (void **) &ret) );
     }
-    if (use_dpdk == 1) {
-        CHECK_ERROR( pthread_join(network_dpdk_t, (void **) &ret) );
-    } else {
-        for (int i = 0; i < config.fpga_network.num_links; ++i) {
-            CHECK_ERROR( pthread_join(network_t[i], (void **) &ret) );
-        }
-    }
+    //if (use_dpdk == 1) {
+    CHECK_ERROR( pthread_join(network_dpdk_t, (void **) &ret) );
+    //} else {
+    //    for (int i = 0; i < config.fpga_network.num_links; ++i) {
+    //        CHECK_ERROR( pthread_join(network_t[i], (void **) &ret) );
+    //    }
+    //}
 
     CHECK_ERROR( pthread_join(output_consumer_t, (void **) &ret) );
 

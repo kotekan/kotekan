@@ -6,7 +6,7 @@
 #include "config.h"
 #include "errors.h"
 
-int parse_processing_config(struct Config* config, struct json_t * json)
+int parse_processing_config(struct Config* config, json_t * json)
 {
     int error = 0;
     json_t * product_remap;
@@ -65,7 +65,7 @@ int parse_processing_config(struct Config* config, struct json_t * json)
     return 0;
 }
 
-int parse_ch_master_networking_config(struct Config* config, struct json_t * json)
+int parse_ch_master_networking_config(struct Config* config, json_t * json)
 {
     int error = 0;
     char * collection_server_ip;
@@ -90,7 +90,7 @@ int parse_ch_master_networking_config(struct Config* config, struct json_t * jso
     return 0;
 }
 
-int parse_gpu_config(struct Config* config, struct json_t * json)
+int parse_gpu_config(struct Config* config, json_t * json)
 {
     int error = 0;
     json_t * kernels;
@@ -132,7 +132,7 @@ int parse_gpu_config(struct Config* config, struct json_t * json)
     return 0;
 }
 
-int parse_fpga_network_config(struct Config* config, struct json_t * json)
+int parse_fpga_network_config(struct Config* config, json_t * json)
 {
     int error = 0;
     json_t * link_map;
@@ -186,7 +186,7 @@ int parse_fpga_network_config(struct Config* config, struct json_t * json)
     return 0;
 }
 
-int parse_beamforming_config(struct Config* config, struct json_t * json) {
+int parse_beamforming_config(struct Config* config, json_t * json) {
     int error = 0;
     char * server_ip;
     json_t * element_mask, * element_positions;

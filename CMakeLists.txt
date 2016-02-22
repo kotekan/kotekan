@@ -9,9 +9,9 @@ link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
 set (DPDK_LIST
         ethdev       rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
         rte_power    rte_timer        rte_ring    rte_sched     rte_table
-        rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000  rte_pmd_virtio_uio
+        rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000
         rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
-        rte_cmdline  rte_ip_frag      rte_malloc  rte_pipeline  rte_pmd_ixgbe  rte_port
+        rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
 )
 
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)

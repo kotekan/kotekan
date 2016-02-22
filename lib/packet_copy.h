@@ -113,7 +113,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
 
     int local_offset = *offset;
     // Output must be 256-bit aligned
-    //assert(((uintptr_t)dest & 0x1F) == 0);
+    assert(((uintptr_t)dest & 0x1F) == 0);
 
     //fprintf(stderr, "Copy function\n");
 
@@ -126,7 +126,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
             n = len;
         }
         len -= n; // We will copy at least n;
-        //assert(len >= 0);
+        assert(len >= 0);
         src = rte_pktmbuf_mtod(*pkt, uint8_t *) + local_offset;
 
         //fprintf(stderr, "pkt_data_len = %d, n = %d, local_offset = %d\n", pkt->data_len, n, local_offset);
@@ -196,7 +196,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
         // boundry the next packet must exist.
         if (likely(n > 0)) {
 
-            // At this point n < 16
+/*            // At this point n < 8
             uint64_t first_val, second_val, result;
 
             // Get the last 8 bytes of the current frame.
@@ -205,7 +205,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
             // Advance the frame
             *pkt = (*pkt)->next;
             // The preconditions don't allow this to happen.
-            //assert(pkt != NULL);
+            assert(pkt != NULL);
             //assert(n <= pkt->data_len);
 
             // Get the first 8 bytes of the next frame.
@@ -215,6 +215,39 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
             // Add the two parts together and store them.
             result = first_val | second_val;
             _mm_stream_si64((long long int *)dest, result);
+*/
+            // At this point n < 8
+            uint64_t first_val, second_val, result;
+
+            first_val = second_val = result = 0;
+            // Get the last 8 bytes of the current frame.
+            // first_val = (*(const uint64_t *)(src + n - 8)) << (8 - n)*8;
+
+            uint8_t * char_result = (uint8_t *)&result;        
+ 
+            for (int i = 0; i < n; ++i) {
+                char_result[i] = *(src + i);
+            }
+
+            // Advance the frame
+            *pkt = (*pkt)->next;
+            // The preconditions don't allow this to happen.
+            //assert(pkt != NULL);
+            //assert(n <= pkt->data_len);
+
+            // Get the first 8 bytes of the next frame.
+            src = rte_pktmbuf_mtod(*pkt, uint8_t *);
+            //fprintf(stderr, "new src: 0x%016llX\n", );
+            //second_val = (*(const uint64_t *)src) >> n*8;
+            for (int i = 0; i < (8-n); ++i) {
+                char_result[i+n] = *(src + i);
+            }
+
+            // Add the two parts together and store them.
+            //result = first_val | second_val;
+            _mm_stream_si64((long long int *)dest, result); 
+
+            //fprintf(stderr, "n: %d first: 0x%016llX, second: 0x%016llX result: 0x%016llX\n" , n,  first_val, second_val, result);
 
             local_offset = 8 - n;
             len -= local_offset;
@@ -226,7 +259,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
                 *pkt = (*pkt)->next;
                 local_offset = 0;
                 *offset = 0;
-                //assert(pkt != NULL);
+                assert(pkt != NULL);
             } else {
                 local_offset = local_offset + last_copy_len;
                 break;
@@ -234,7 +267,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
         }
     }
     *offset = local_offset;
-    //assert(len == 0);
+    assert(len == 0);
 }
 
 #ifdef __cplusplus
