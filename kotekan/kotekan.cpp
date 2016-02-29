@@ -60,6 +60,7 @@ extern "C" {
 #include "null.h"
 #include "util.h"
 #include "network_dpdk.h"
+#include "version.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -237,16 +238,18 @@ int main(int argc, char ** argv) {
         openlog ("kotekan", log_options, LOG_LOCAL1);
     }
 
-    INFO("kotekan starting..."); /// TODO Include git commit id.
 
     // Load configuration file.
+    //INFO("Kotekan starting with config file %s", config_file_name);
+    const char git_hash[] = GIT_COMMIT_HASH;
+    const char git_branch[] = GIT_BRANCH;
+    INFO("Kotekan starting build: %s, on branch: %s, with config file: %s", git_hash, git_branch, config_file_name);
     error = load_config_from_file(&config, config_file_name);
     if (error) {
         ERROR("Error processing config file, exiting...");
         return -1;
     }
 
-    INFO("Parsed config file %s:", config_file_name);
     //print_config(&config);
 
     // If we are reading from a file, force the number of links to be 1.

@@ -1,6 +1,33 @@
 cmake_minimum_required (VERSION 2.6)
 project (CHIME)
 
+# Get the current working branch
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Get the latest abbreviated commit hash of the working branch
+execute_process(
+  COMMAND git log -1 --format=%h
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Include the version string
+#add_definitions("-DGIT_COMMIT_HASH=${GIT_COMMIT_HASH}")
+#add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/lib/version.h.in
+  ${CMAKE_BINARY_DIR}/generated/version.h
+)
+
+include_directories(${CMAKE_BINARY_DIR}/generated)
+
 find_package(Threads REQUIRED)
 
 include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
@@ -27,9 +54,9 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 
-SET(CMAKE_INSTALL_PREFIX "/root/kotekan/")
+SET(CMAKE_INSTALL_PREFIX "/")
 
-install(DIRECTORY kernels DESTINATION . )
+install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)

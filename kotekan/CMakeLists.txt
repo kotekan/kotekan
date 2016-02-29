@@ -30,5 +30,5 @@ add_custom_target(kernel_copy
 
 add_dependencies( kotekan kernel_copy )
 
-install(TARGETS kotekan DESTINATION bin COMPONENT binaries)
-install(FILES kotekan.conf DESTINATION conf COMPONENT config)
+install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
+install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)

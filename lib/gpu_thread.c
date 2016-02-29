@@ -821,11 +821,11 @@ void setup_open_cl(struct OpenCLData * cl_data)
 
     // TODO update this at the ~1 minute time basis.
     float phases[cl_data->config->processing.num_elements];
-    get_delays(cl_data->config->beamforming.ra,
+    /*get_delays(cl_data->config->beamforming.ra,
                cl_data->config->beamforming.dec,
                cl_data->config,
                cl_data->config->beamforming.element_positions,
-               phases);
+               phases);*/
     cl_mem device_phases = clCreateBuffer(cl_data->context,
                                           CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                           cl_data->config->processing.num_elements * sizeof(cl_uint),
