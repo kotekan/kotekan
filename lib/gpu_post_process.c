@@ -171,9 +171,9 @@ void* gpu_post_process_thread(void* arg)
                     local_element_data[i][pos].fpga_scalar_count = 0;
                 }
             }
-            if (error_matrix->bad_timesamples != 0) {
+            /*if (error_matrix->bad_timesamples != 0) {
 		INFO("Packet loss in link %d: %d packets, which is %.6f%%", link_id, error_matrix->bad_timesamples, 100*(double)error_matrix->bad_timesamples/(double)config->processing.samples_per_data_set);
-            }
+            }*/
 	}
 
         // Only happens once every time all the links have been read from.
@@ -225,6 +225,17 @@ void* gpu_post_process_thread(void* arg)
                     INFO("Sending TCP frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; BUFFER_SIZE = %d",
                          header->fpga_seq_number,
                          header->num_freq, header->num_vis, buffer_size);
+
+                    char frame_loss_str[20 * config->processing.num_total_freq / config->processing.num_local_freq];
+                    char tmp_str[20];
+                    strcpy (frame_loss_str, " ");
+                    for (int j = 0; j < config->processing.num_total_freq / config->processing.num_local_freq; ++j) {
+                        snprintf(tmp_str, 20, "%.6f%%; ",
+                                 (float)100 * (float)frequency_data[j * config->processing.num_local_freq].lost_packet_count / 
+                                 (float)(config->processing.samples_per_data_set * config->processing.num_gpu_frames));
+                        strcat(frame_loss_str, tmp_str);
+                    }
+                    INFO("Frame loss rates:%s", frame_loss_str);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
 

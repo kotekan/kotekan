@@ -217,9 +217,8 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
             _mm_stream_si64((long long int *)dest, result);
 */
             // At this point n < 8
-            uint64_t first_val, second_val, result;
+            uint64_t result = 0;
 
-            first_val = second_val = result = 0;
             // Get the last 8 bytes of the current frame.
             // first_val = (*(const uint64_t *)(src + n - 8)) << (8 - n)*8;
 

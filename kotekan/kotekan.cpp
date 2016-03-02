@@ -129,7 +129,7 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-    char  arg4[] = "7";
+    char  arg4[] = "5";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], NULL };
     int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
@@ -232,12 +232,18 @@ int main(int argc, char ** argv) {
 
     if (make_daemon) {
         // Do not use LOG_CONS or LOG_PERROR, since stderr does not exist in daemon mode.
-        daemonize(kotekan_root_dir, LOG_PID | LOG_NDELAY);
+        //daemonize(kotekan_root_dir, LOG_PID | LOG_NDELAY);
+        openlog ("kotekan", log_options, LOG_PID | LOG_NDELAY);
+        if ((chdir(kotekan_root_dir)) < 0) {
+            ERROR("Cannot change directory to %s", kotekan_root_dir);
+            exit(EXIT_FAILURE);
+        }
     } else {
         // Setup syslog
         openlog ("kotekan", log_options, LOG_LOCAL1);
     }
 
+    //dpdk_setup();
 
     // Load configuration file.
     //INFO("Kotekan starting with config file %s", config_file_name);
@@ -275,14 +281,14 @@ int main(int argc, char ** argv) {
 
     INFO("Starting GPU threads...");
     char buffer_name[100];
-    int num_working_gpus = 2;
+    int num_working_gpus = 3;
 
     for (int i = 0; i < config.gpu.num_gpus; ++i) {
 
         DEBUG("Creating buffers...");
 
         // TODO Figure out why this value currently needs to be constant.
-        int links_per_gpu = num_links_per_gpu(&config, i);
+        int links_per_gpu = 8; num_links_per_gpu(&config, i);
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
         create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
@@ -463,7 +469,7 @@ int main(int argc, char ** argv) {
                                         &null_thread,
                                         (void *) &null_thread_args ) );
         }
-        //CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
+        CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
 
         // The beamforming thread
         if (config.gpu.use_beamforming == 1) {
@@ -505,9 +511,9 @@ int main(int argc, char ** argv) {
 
     CHECK_ERROR( pthread_join(output_consumer_t, (void **) &ret) );
 
-    if (use_ch_acq == 1) {
-        CHECK_ERROR( pthread_join(output_network_t, (void **) &ret) );
-    }
+    //if (use_ch_acq == 1) {
+    //    CHECK_ERROR( pthread_join(output_network_t, (void **) &ret) );
+    //}
 
     if (config.gpu.use_beamforming == 1) {
         CHECK_ERROR( pthread_join(beamforming_comsumer_t, (void **) &ret) );

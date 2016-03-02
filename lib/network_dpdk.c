@@ -63,7 +63,7 @@ static const struct rte_eth_conf port_conf_default = {
         .jumbo_frame = 1,
         .hw_strip_crc = 0,
         .header_split = 0,
-        .hw_ip_checksum = 1
+        .hw_ip_checksum = 0
     }
 };
 
@@ -361,7 +361,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
         dpdk_net->link_data[port].seq64 = seq;
         dpdk_net->link_data[port].last_seq64 = seq - adj_seq % integration_period;
 
-        INFO("Got first packet: port: %d; link id: %d, seq: %llu, last_seq: %llu\n",
+        INFO("Got first packet: port: %d; link id: %d, seq: %" PRId64 ", last_seq: %" PRId64 "",
                 port, dpdk_net->args->link_id[port], dpdk_net->link_data[port].seq, dpdk_net->link_data[port].last_seq);
 
         return 1;
@@ -419,9 +419,9 @@ int lcore_recv_pkt(void *args)
     unsigned int lcore;
 
     lcore = rte_lcore_id();
-    fprintf(stderr, "lcore ID: %d\n", lcore);
-    if (lcore == -1)
-        return 0;
+    INFO("lcore ID: %d", lcore);
+    if (lcore == -1) // Master core is -1 ?
+        lcore = 1;
     lcore -= 1; // Offset for master core, which is on zero.
 
     const int port_offset = dpdk_net->args->port_offset[lcore];
@@ -429,7 +429,7 @@ int lcore_recv_pkt(void *args)
          port < dpdk_net->args->num_links_per_lcore + port_offset;
          ++port) {
         setup_for_first_packet(dpdk_net, port);
-        fprintf(stderr, "port reached %d\n", port);
+        INFO("port reached %d", port);
     }
 
     /* Run until the application is quit or killed. */
@@ -539,7 +539,7 @@ network_dpdk_thread(void * args)
 
     /* Check that there is an even number of ports to send/receive on. */
     nb_ports = rte_eth_dev_count();
-    fprintf(stdout, "Number of ports: %d\n", nb_ports);
+    INFO("Number of ports: %d", nb_ports);
 
     /* Creates a new mempool in memory to hold the mbufs. */
     mbuf_pool = rte_mempool_create("MBUF_POOL",
@@ -563,11 +563,14 @@ network_dpdk_thread(void * args)
     }
 
     if (rte_lcore_count() != dpdk_net.args->num_lcores) {
-        printf("\nWARNING: The number of lcores %d doesn't match the expected value %d\n", rte_lcore_count(), dpdk_net.args->num_lcores);
+        INFO("WARNING: The number of lcores %d doesn't match the expected value %d", rte_lcore_count(), dpdk_net.args->num_lcores);
     }
 
     // Start the packet receiving lcores (basically pthreads)
     rte_eal_mp_remote_launch(lcore_recv_pkt, (void *) &dpdk_net, CALL_MASTER);
+
+    // Run a packet recv loop on the master core as well
+    //lcore_recv_pkt((void *) &dpdk_net);
 
     rte_eal_mp_wait_lcore();
 
