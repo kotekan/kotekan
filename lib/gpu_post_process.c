@@ -222,9 +222,9 @@ void* gpu_post_process_thread(void* arg)
 
                 // If we are on the last frame in the set, push the buffer to the network thread.
                 if (frame_number + 1 >= config->processing.num_gpu_frames) {
-                    INFO("Sending TCP frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; BUFFER_SIZE = %d",
-                         header->fpga_seq_number,
-                         header->num_freq, header->num_vis, buffer_size);
+                    //INFO("Sending frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; BUFFER_SIZE = %d",
+                    //     header->fpga_seq_number,
+                    //     buffer_size);
 
                     char frame_loss_str[20 * config->processing.num_total_freq / config->processing.num_local_freq];
                     char tmp_str[20];
@@ -235,7 +235,7 @@ void* gpu_post_process_thread(void* arg)
                                  (float)(config->processing.samples_per_data_set * config->processing.num_gpu_frames));
                         strcat(frame_loss_str, tmp_str);
                     }
-                    INFO("Frame loss rates:%s", frame_loss_str);
+                    INFO("Frame %u loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
 

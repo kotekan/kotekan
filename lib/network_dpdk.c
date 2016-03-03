@@ -286,12 +286,12 @@ static inline void copy_data_no_shuffle(struct NetworkDPDK * dpdk_net,
     int buffer_id = dpdk_net->link_data[port].buffer_id;
 
     //fprintf(stderr, "seq64: %llu, start_fpga_seq64: %llu", dpdk_net->link_data[port].seq64, get_fpga_seq64_num(dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id));
-    int frame_location = dpdk_net->link_data[port].seq64 -
+    int64_t frame_location = dpdk_net->link_data[port].seq64 -
                             get_fpga_seq64_num(dpdk_net->args->buf[port],
                                                dpdk_net->link_data[port].buffer_id);
 
     if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port]->buffer_size)) {
-        advance_frame(dpdk_net, port, dpdk_net->link_data[port].seq, dpdk_net->link_data[port].seq);
+        advance_frame(dpdk_net, port, dpdk_net->link_data[port].seq, dpdk_net->link_data[port].seq64);
         frame_location = 0;
         buffer_id = dpdk_net->link_data[port].buffer_id;
     }
@@ -374,10 +374,10 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net,
                                 int port) {
     // TODO Consider extracting this to another thread since it is non-deterministic.
     int lost_frames = dpdk_net->link_data[port].seq64 - dpdk_net->link_data[port].last_seq64;
-    const int timesamples_per_packet = dpdk_net->args->config->fpga_network.timesamples_per_packet;
-    const int frame_size = 2048;
+    const int64_t timesamples_per_packet = dpdk_net->args->config->fpga_network.timesamples_per_packet;
+    const int64_t frame_size = 2048;
     
-    int frame_location = dpdk_net->link_data[port].last_seq64 +
+    int64_t frame_location = dpdk_net->link_data[port].last_seq64 +
         timesamples_per_packet -
         get_fpga_seq64_num(dpdk_net->args->buf[port],
                            dpdk_net->link_data[port].buffer_id);
@@ -491,8 +491,10 @@ int lcore_recv_pkt(void *args)
                 // WILL BE WRONG, there should be a time check some place here.
                 int64_t diff = dpdk_net->link_data[port].seq - dpdk_net->link_data[port].last_seq;
                 if (unlikely(diff < 0)) {
-                    diff += COUNTER_MAX;
-                }
+                    DEBUG("Diff less than zero, adding counter max: %" PRId64 ", seq: %" PRId64 ", last_seq: %" PRId64  ", diff: %" PRId64 " !", 
+			  COUNTER_MAX, dpdk_net->link_data[port].seq, dpdk_net->link_data[port].last_seq, diff); 
+                    diff += COUNTER_MAX + 1;
+		}
                 //fprintf(stderr, "diff: %d; len: %d", diff, mbufs[i]->pkt_len);
 
                 dpdk_net->link_data[port].lost_packets +=
