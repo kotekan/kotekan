@@ -129,7 +129,7 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-    char  arg4[] = "5";
+    char  arg4[] = "F";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], NULL };
     int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
@@ -384,10 +384,12 @@ int main(int argc, char ** argv) {
     network_dpdk_args.num_links = config.fpga_network.num_links;
     network_dpdk_args.config = &config;
     network_dpdk_args.integration_edge_offset = 0;
-    network_dpdk_args.num_lcores = 2;
-    network_dpdk_args.num_links_per_lcore = 4;
+    network_dpdk_args.num_lcores = 4;
+    network_dpdk_args.num_links_per_lcore = 2;
     network_dpdk_args.port_offset[0] = 0;
-    network_dpdk_args.port_offset[1] = 4;
+    network_dpdk_args.port_offset[1] = 2;
+    network_dpdk_args.port_offset[2] = 4;
+    network_dpdk_args.port_offset[3] = 6;
 
     CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
                                 (void *)&network_dpdk_args ) );

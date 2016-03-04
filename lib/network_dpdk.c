@@ -421,8 +421,8 @@ int lcore_recv_pkt(void *args)
     lcore = rte_lcore_id();
     INFO("lcore ID: %d", lcore);
     if (lcore == -1) // Master core is -1 ?
-        lcore = 1;
-    lcore -= 1; // Offset for master core, which is on zero.
+        lcore = 0;
+    //lcore -= 1; // Offset for master core, which is on zero.
 
     const int port_offset = dpdk_net->args->port_offset[lcore];
     for (port = port_offset;
