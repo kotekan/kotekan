@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 2.8)
 
 PROJECT (kotekan)
 
@@ -25,7 +25,7 @@ target_link_libraries( kotekan chime )
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${PROJECT_SOURCE_DIR}/kernels"
+        "${CHIME_SOURCE_DIR}/kernels"
         "kernels")
 
 add_dependencies( kotekan kernel_copy )

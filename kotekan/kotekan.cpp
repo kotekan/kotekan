@@ -243,8 +243,6 @@ int main(int argc, char ** argv) {
         openlog ("kotekan", log_options, LOG_LOCAL1);
     }
 
-    //dpdk_setup();
-
     // Load configuration file.
     //INFO("Kotekan starting with config file %s", config_file_name);
     const char git_hash[] = GIT_COMMIT_HASH;
