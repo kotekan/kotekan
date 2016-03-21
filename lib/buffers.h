@@ -28,8 +28,7 @@ struct BufferInfo {
     /// Buffer data_ID.
     /// This is the ID of the data in the buffer, not the ID of the buffer.
     int32_t data_ID;
-    uint32_t fpga_seq_num;
-    int64_t fpga_seq64_num;
+    int64_t fpga_seq_num;
     struct timeval first_packet_recv_time;
     struct ErrorMatrix error_matrix;
     uint16_t stream_ID;
@@ -49,9 +48,9 @@ struct InfoObjectPool {
     pthread_mutex_t in_use_lock;
 };
 
-/** @brief Buffer object used to contain and manage the buffers shared by the network 
+/** @brief Buffer object used to contain and manage the buffers shared by the network
  *  and consumer (OpenCL, file reading) threads.
- * 
+ *
  * All memory here is shared between threads so it must be used with the associated locks
  */
 struct Buffer {
@@ -63,7 +62,7 @@ struct Buffer {
     pthread_cond_t empty_cond;
 
     /// The number of buffers kept by this object
-    int num_buffers; 
+    int num_buffers;
 
     /// The size of each buffer.
     int buffer_size;
@@ -114,7 +113,7 @@ struct Buffer {
  *  @param [in] num_buf The number of buffers to create in the buffer object.
  *  @param [in] len The lenght of each buffer to be created in bytes.
  *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
- *  @return 0 if successful, or a non-zero standard error value if not successful 
+ *  @return 0 if successful, or a non-zero standard error value if not successful
  */
 int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
                   int num_consumers, struct InfoObjectPool * pool, const char * buffer_name);
@@ -122,7 +121,7 @@ int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
 /** @brief Deletes a buffer object
  *  Not thread safe.
  *  @param [in] buf The buffer to delete.
- *  @return 0 if successful, or a non-zero standard error value if not. 
+ *  @return 0 if successful, or a non-zero standard error value if not.
  */
 void delete_buffer(struct Buffer * buf);
 
@@ -155,9 +154,7 @@ int get_full_buffer_from_list(struct Buffer * buf, const int * buffer_IDs, const
  */
 int32_t get_buffer_data_ID(struct Buffer * buf, const int ID);
 
-uint32_t get_fpga_seq_num(struct Buffer * buf, const int ID);
-
-int64_t get_fpga_seq64_num(struct Buffer * buf, const int ID);
+uint64_t get_fpga_seq_num(struct Buffer * buf, const int ID);
 
 int32_t get_streamID(struct Buffer * buf, const int ID);
 
@@ -178,9 +175,7 @@ struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID);
  */
 void set_data_ID(struct Buffer * buf, const int ID, const int data_ID);
 
-void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint32_t fpga_seq_num);
-
-void set_fpga_seq64_num(struct Buffer * buf, const int ID, const int64_t fpga_seq64_num);
+void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint64_t fpga_seq_num);
 
 void set_stream_ID(struct Buffer * buf, const int ID, const uint16_t stream_ID);
 
@@ -208,7 +203,7 @@ void wait_for_empty_buffer(struct Buffer * buf, const int ID);
 int is_buffer_empty(struct Buffer * buf, const int ID);
 
 /**
- * @brief Tells the buffer that no new data is coming. 
+ * @brief Tells the buffer that no new data is coming.
  * Consumer threads are free to exit as soon as all buffers are empty.
  */
 void mark_producer_done(struct Buffer * buf, int producer_id);

@@ -22,21 +22,16 @@ struct networkDPDKArg {
     int num_links_per_lcore;
 
     struct Config * config;
-    uint32_t integration_edge_offset;
     uint32_t num_links_in_group[NUM_LINKS];
     uint32_t link_id[NUM_LINKS];
     uint32_t port_offset[NUM_LCORES];
 };
 
 struct LinkData {
-    int64_t seq;
-    int64_t last_seq;
-    int64_t seq64;
-    int64_t last_seq64;
-    int64_t cur_seq64_edge;
+    uint64_t seq;
+    uint64_t last_seq;
     uint16_t stream_ID;
-    int64_t lost_packets;
-    uint32_t num_packets;
+    int32_t first_packet;
     int32_t buffer_id;
     int32_t finished_buffer;
     int32_t data_id;
