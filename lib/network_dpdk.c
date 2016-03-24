@@ -239,7 +239,7 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
 
 static inline uint64_t get_mbuf_seq_num(struct rte_mbuf * cur_mbuf) {
     return (uint64_t)(*(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 54)) +
-            (((uint64_t)(*(uint16_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 48))) << 32);
+            (((uint64_t) (0xFFFF & (*(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 50)))) << 32);
 }
 
 static inline uint16_t get_mbuf_stream_id(struct rte_mbuf * cur_mbuf) {
@@ -271,16 +271,10 @@ static inline void copy_data_no_shuffle(struct NetworkDPDK * dpdk_net,
         buffer_id = dpdk_net->link_data[port].buffer_id;
     }
 
-    //printf("pack_data_size: %u; frame_location: %u; frame_size %u; packet_size: %u, buffer_id: %u; buffer_len: %u \n",
-    //       packet_data_size, frame_location, frame_size, packet_data_size, buffer_id, dpdk_net->args->buf[port]->buffer_size);
     copy_block(&cur_mbuf,
                (uint8_t*)&dpdk_net->args->buf[port]->data[buffer_id][frame_location * frame_size],
                packet_data_size,
                &offset);
-
-    //check_data_zero(dpdk_net, port,
-    //    (uint8_t*)&dpdk_net->args->buf[port]->data[buffer_id][frame_location * frame_size],
-    //     packet_data_size);
 }
 
 static void check_data_zero(struct NetworkDPDK * dpdk_net, int port, uint8_t * frame_start, int len)  {
@@ -446,8 +440,6 @@ int lcore_recv_pkt(void *args)
                     DEBUG("Diff less than zero, duplicate, bad, or out-of-order packet!");
                     goto release_frame;
                 }
-
-                dpdk_net->link_data[port].seq += diff;
 
                 if (unlikely(diff > (uint64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet)) {
                     handle_lost_packets(dpdk_net, mbufs[i], port);
