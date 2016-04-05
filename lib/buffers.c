@@ -274,7 +274,7 @@ int32_t get_buffer_data_ID(struct Buffer* buf, const int ID)
 
 uint64_t get_fpga_seq_num(struct Buffer* buf, const int ID)
 {
-    int fpga_seq_num = 0;
+    uint64_t fpga_seq_num = 0;
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock_info) );
 

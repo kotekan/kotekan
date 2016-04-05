@@ -232,7 +232,6 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
                        (uint8_t *) &dpdk_net->args->buf[freq]->data[dpdk_net->link_data[freq].buffer_id][512*port],
                        512,
                        &offset);
-
         }
     }
 }
@@ -437,11 +436,12 @@ int lcore_recv_pkt(void *args)
 
                 int64_t diff = (int64_t)dpdk_net->link_data[port].seq - (int64_t)dpdk_net->link_data[port].last_seq;
                 if (unlikely(diff < 0)) {
-                    DEBUG("Diff less than zero, duplicate, bad, or out-of-order packet!");
+                    DEBUG("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
+                            port, diff, dpdk_net->link_data[port].last_seq, dpdk_net->link_data[port].seq);
                     goto release_frame;
                 }
 
-                if (unlikely(diff > (uint64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet)) {
+                if (unlikely(diff > (int64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet)) {
                     handle_lost_packets(dpdk_net, mbufs[i], port);
                 }
 
