@@ -26,7 +26,7 @@ struct stream_id {
 };
 
 struct tcp_frame_header {
-    uint32_t fpga_seq_number;
+    uint64_t fpga_seq_number;
     uint32_t num_freq;
     uint32_t num_vis; // The number of visibilities per frequency.
     uint32_t num_elements;

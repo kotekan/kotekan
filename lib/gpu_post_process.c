@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 
 #include "buffers.h"
 #include "errors.h"
@@ -117,7 +118,7 @@ void* gpu_post_process_thread(void* arg)
         //INFO("GPU post process got buffer!");
 
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
-        uint32_t fpga_seq_number = get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID);
+        uint64_t fpga_seq_number = get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID);
         struct timeval frame_start_time = get_first_packet_recv_time(&args->in_buf[gpu_id], in_buffer_ID);
 
         for (int i = 0; i < config->processing.num_data_sets; ++i) {
@@ -172,9 +173,12 @@ void* gpu_post_process_thread(void* arg)
                 }
             }
             /*if (error_matrix->bad_timesamples != 0) {
-		INFO("Packet loss in link %d: %d packets, which is %.6f%%", link_id, error_matrix->bad_timesamples, 100*(double)error_matrix->bad_timesamples/(double)config->processing.samples_per_data_set);
+                INFO("Packet loss in link %d: %d packets, which is %.6f%%",
+                    link_id,
+                    error_matrix->bad_timesamples,
+                    100*(double)error_matrix->bad_timesamples/(double)config->processing.samples_per_data_set);
             }*/
-	}
+        }
 
         // Only happens once every time all the links have been read from.
         if (link_id + 1 == config->fpga_network.num_links) {
@@ -210,9 +214,9 @@ void* gpu_post_process_thread(void* arg)
                         complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                         visibilities[j].real += temp_vis.real;
                         visibilities[j].imag += temp_vis.imag;
-			//if (temp_vis.real == 0) {
+                        //if (temp_vis.real == 0) {
                         //    ERROR("Error there is a zero in the real values! at link_id %d and gpu_id %d, and frame %d", link_id, gpu_id, frame_number);
-			//}
+                        //}
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
                       frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
@@ -231,11 +235,11 @@ void* gpu_post_process_thread(void* arg)
                     strcpy (frame_loss_str, " ");
                     for (int j = 0; j < config->processing.num_total_freq / config->processing.num_local_freq; ++j) {
                         snprintf(tmp_str, 20, "%.6f%%; ",
-                                 (float)100 * (float)frequency_data[j * config->processing.num_local_freq].lost_packet_count / 
+                                 (float)100 * (float)frequency_data[j * config->processing.num_local_freq].lost_packet_count /
                                  (float)(config->processing.samples_per_data_set * config->processing.num_gpu_frames));
                         strcat(frame_loss_str, tmp_str);
                     }
-                    INFO("Frame %u loss rates:%s", header->fpga_seq_number, frame_loss_str);
+                    INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
 
