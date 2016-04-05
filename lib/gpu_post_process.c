@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 
 #include "buffers.h"
 #include "errors.h"
@@ -238,7 +239,7 @@ void* gpu_post_process_thread(void* arg)
                                  (float)(config->processing.samples_per_data_set * config->processing.num_gpu_frames));
                         strcat(frame_loss_str, tmp_str);
                     }
-                    INFO("Frame %u loss rates:%s", header->fpga_seq_number, frame_loss_str);
+                    INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
 
