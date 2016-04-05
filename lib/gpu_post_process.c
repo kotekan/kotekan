@@ -16,6 +16,7 @@
 #include "config.h"
 #include "gpu_post_process.h"
 #include "util.h"
+#include "version.h"
 
 void* gpu_post_process_thread(void* arg)
 {
@@ -89,6 +90,10 @@ void* gpu_post_process_thread(void* arg)
     // Safety check for pointer math.
     offset += num_values * sizeof(uint8_t);
     assert(offset == buffer_size);
+
+    // Add version information to the header.
+    strcpy(header->kotekan_git_hash, GIT_COMMIT_HASH);
+    header->kotekan_version = KOTEKAN_VERSION;
 
     // Wait for full buffers.
     for (;;) {

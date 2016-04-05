@@ -1,10 +1,9 @@
 #ifndef VERSION_H
 #define VERSION_H
 
-// Kotekan Major release version, only used for very large changes
-#define KOTEKAN_MAJOR_VERSION 1
-// Kotekan Minor release version, used for anything that changes data output
-#define KOTEKAN_MINOR_VERSION 2
+// The Kotekan major release number is only used for very large changes,
+// and the Kotekan minor release number is used for anything that changes data output
+#define KOTEKAN_VERSION (1.2)
 
 #define GIT_BRANCH "@GIT_BRANCH@"
 #define GIT_COMMIT_HASH "@GIT_COMMIT_HASH@"

@@ -33,6 +33,8 @@ struct tcp_frame_header {
     uint32_t num_links; // The number of GPU links in this frame.
 
     struct timeval cpu_timestamp; // The time stamp as set by the GPU correlator - not accurate!
+    double kotekan_version;
+    char kotekan_git_hash[64];
 };
 
 struct per_frequency_data {

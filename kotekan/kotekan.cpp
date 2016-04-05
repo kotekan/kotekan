@@ -247,7 +247,7 @@ int main(int argc, char ** argv) {
     //INFO("Kotekan starting with config file %s", config_file_name);
     const char git_hash[] = GIT_COMMIT_HASH;
     const char git_branch[] = GIT_BRANCH;
-    INFO("Kotekan starting build: %s, on branch: %s, with config file: %s", git_hash, git_branch, config_file_name);
+    INFO("Kotekan %f starting build: %s, on branch: %s, with config file: %s", KOTEKAN_VERSION, git_hash, git_branch, config_file_name);
     error = load_config_from_file(&config, config_file_name);
     if (error) {
         ERROR("Error processing config file, exiting...");
