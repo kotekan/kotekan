@@ -348,14 +348,16 @@ int main(int argc, char ** argv) {
                       buffer_name);
 
         snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
-        /*create_buffer(&gpu_beamform_output_buffer[i],
-                      links_per_gpu * config.processing.buffer_depth,
-                      config.processing.samples_per_data_set * config.processing.num_data_sets *
-                      config.processing.num_local_freq * 2,
-                      1,
-                      1,
-                      &pool[i],
-                      buffer_name);*/
+        if (config.gpu.use_beamforming == 1) {
+            create_buffer(&gpu_beamform_output_buffer[i],
+                          links_per_gpu * config.processing.buffer_depth,
+                          config.processing.samples_per_data_set * config.processing.num_data_sets *
+                          config.processing.num_local_freq * 2,
+                          1,
+                          1,
+                          &pool[i],
+                          buffer_name);
+        }
 
         gpu_args[i].in_buf = &gpu_input_buffer[i];
         gpu_args[i].out_buf = &gpu_output_buffer[i];
@@ -517,7 +519,7 @@ int main(int argc, char ** argv) {
                 file_write_args.dataset_name = data_set;
 
                 CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
-                                            (void *) &file_write_thread,
+                                            &file_write_thread,
                                             (void *) &file_write_args ) );
             } else {
                 // The thread which sends it with TCP

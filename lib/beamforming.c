@@ -26,7 +26,7 @@ void get_delays(time_t unix_time, double ra, double dec, const struct Config * c
     // This accounts for LST difference between J2000 and unix_time. 
     // It was verified with Kiyo's python code ch_util.ephemeris.transit_RA(), which 
     // should account for both precession and nutation. Needs to be tested here though. 
-    double precession_offset = (unix_time - j2000_unix) * 0.012791 / (365 * 24 * 3600)
+    double precession_offset = (unix_time - j2000_unix) * 0.012791 / (365 * 24 * 3600);
 
     //calculate and modulate local sidereal time
     double lst = phi_0 + inst_long + lst_rate*(unix_time - j2000_unix) - precession_offset;
