@@ -191,7 +191,7 @@ int parse_beamforming_config(struct Config* config, json_t * json) {
     char * server_ip;
     json_t * element_mask, * element_positions;
 
-    error = json_unpack(json, "{s:s, s:i, s:F, s:F, s:F, s:F, s:o, s:o, s:i}",
+    error = json_unpack(json, "{s:s, s:i, s:F, s:F, s:F, s:F, s:o, s:o, s:F, s:i, s:i}",
                         "vdif_server_ip", &server_ip,
                         "vdif_port", &config->beamforming.vdif_port,
                         "ra", &config->beamforming.ra,
@@ -200,7 +200,9 @@ int parse_beamforming_config(struct Config* config, json_t * json) {
                         "instrument_long", &config->beamforming.instrument_long,
                         "element_mask", &element_mask,
                         "element_positions", &element_positions,
-                        "bit_shift_factor", &config->beamforming.bit_shift_factor);
+                        "scale_factor", &config->beamforming.scale_factor,
+                        "do_not_track", &config->beamforming.do_not_track,
+                        "fixed_time", &config->beamforming.fixed_time);
 
     if (error) {
         ERROR("Error parsing beamforming config, check config file, error: %d", error);
@@ -354,7 +356,7 @@ void print_config(struct Config* config)
 
     // Beamforming section
     INFO("config.beamforming.num_masked_elements = %d", config->beamforming.num_masked_elements);
-    INFO("config.beamforming.bit_shift_factor = %d", config->beamforming.bit_shift_factor);
+    INFO("config.beamforming.scale_factor = %d", config->beamforming.scale_factor);
     INFO("config.beamforming.ra = %f", config->beamforming.ra);
     INFO("config.beamforming.dec = %f", config->beamforming.dec);
     INFO("config.beamforming.instrument_lat = %f", config->beamforming.instrument_lat);

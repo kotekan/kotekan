@@ -34,7 +34,7 @@ double e_time(void) {
 }
 
 void check_if_done(int * total_buffers_filled, struct networkThreadArg * args,
-                    long long int total_packets, int32_t total_lost, int32_t total_out_of_order, 
+                    long long int total_packets, int32_t total_lost, int32_t total_out_of_order,
                    int32_t total_duplicate, double start_time) {
 
     (*total_buffers_filled)++;
@@ -195,7 +195,7 @@ void* network_thread(void * arg) {
             pthread_yield();
 
             // Check if we should stop collecting data.
-            check_if_done(&total_buffers_filled, args, total_packets, 
+            check_if_done(&total_buffers_filled, args, total_packets,
                         grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
             buffer_id = (buffer_id + args->num_links_in_group) % (args->buf->num_buffers);
@@ -315,7 +315,7 @@ void* network_thread(void * arg) {
             start_time = e_time();
 
             // TODO This is only correct with high probability,
-            // this should be made deterministic. 
+            // this should be made deterministic.
             if (seq % integration_edge == 0 || args->read_from_file == 1) {
                 last_seq = seq;
                 nt_memcpy(&args->buf->data[buffer_id][buffer_location], pkt_buf + 58, udp_payload_size);
@@ -337,15 +337,15 @@ void* network_thread(void * arg) {
 
         if (unlikely(seq == last_seq)) {
             total_duplicate++;
-            // Do nothing in this case, because if the buffer_location doesn't change, 
+            // Do nothing in this case, because if the buffer_location doesn't change,
             // we over write this duplicate with the next packet.
             // We continue since we don't count this as a reciveved packet.
             continue;
         }
 
-        if ( (seq < last_seq && last_seq - seq > 1ll << (COUNTER_BITS - 1ll) ) 
+        if ( (seq < last_seq && last_seq - seq > 1ll << (COUNTER_BITS - 1ll) )
                     || (seq > last_seq && seq - last_seq < 1ll << (COUNTER_BITS - 1ll) ) ) {
-            // See RFC 1982 for above statement details. 
+            // See RFC 1982 for above statement details.
             // Result: seq follows last_seq if above is true.
             // This is the most common case.
 
@@ -364,7 +364,7 @@ void* network_thread(void * arg) {
             // Case 2:  We ended up in a new buffer...  So we need to zero the value
             // we recorded, and zero the values in the next buffer(s), upto the point we want to
             // start writing new data.  Note in this case we zero out even the last packet that we
-            // read.  So losses over a buffer edge result in one extra "lost" packet. 
+            // read.  So losses over a buffer edge result in one extra "lost" packet.
             if ( unlikely(lost > 0) ) {
 
                 if (lost > 1000000) {
@@ -410,7 +410,7 @@ void* network_thread(void * arg) {
                     mark_buffer_full(args->buf, buffer_id);
 
                     // Check if we should stop collecting data.
-                    check_if_done(&total_buffers_filled, args, total_packets, 
+                    check_if_done(&total_buffers_filled, args, total_packets,
                                 grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
                     // Get the number of lost packets in the new buffer(s).
@@ -459,7 +459,7 @@ void* network_thread(void * arg) {
                             pthread_yield();
 
                             // Check if we should stop collecting data.
-                            check_if_done(&total_buffers_filled, args, total_packets, 
+                            check_if_done(&total_buffers_filled, args, total_packets,
                                         grand_total_lost, total_out_of_order, total_duplicate, start_time);
 
                         }
@@ -470,14 +470,14 @@ void* network_thread(void * arg) {
                     // Update the new buffer location.
                     buffer_location = i*udp_payload_size;
 
-                    // We need to increase the total number of lost packets since we 
+                    // We need to increase the total number of lost packets since we
                     // just tossed away the packet we read.
                     total_lost++;
                     WARN("Case 2 packet loss event on link: %d ; data_id: %d\n", args->link_id, data_id);
 
                 }
             } else {
-                // This is the normal case; a valid packet. 
+                // This is the normal case; a valid packet.
                 buffer_location += udp_payload_size;
             }
 
@@ -492,7 +492,7 @@ void* network_thread(void * arg) {
             }
 
             // In this case, we could write the out of order packet into the right location,
-            // upto buffer edge issues. 
+            // upto buffer edge issues.
             // However at the moment, we are just ignoring it, since that location will already
             // have been zeroed out as a lost packet, or written if this is a late duplicate.
             // We don't advance the buffer location, so that this location is overwritten.
@@ -542,29 +542,50 @@ void* test_network_thread(void * arg) {
     args = (struct networkThreadArg *) arg;
     int buffer_id = args->link_id;
     int data_id = 0;
+    uint64_t fpga_seq_num = 0;
 
-    // Make sure the first buffer is ready to go. (this check is not really needed)
-    wait_for_empty_buffer(args->buf, buffer_id);
+    for (int runs = 0; runs < 10000; ++runs) {
+        wait_for_empty_buffer(args->buf, buffer_id);
 
-    set_data_ID(args->buf, buffer_id, data_id++);
+        set_data_ID(args->buf, buffer_id, data_id++);
+        set_stream_ID(args->buf, buffer_id, args->dev_id);
+        set_fpga_seq_num(args->buf, buffer_id, 0);
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        set_first_packet_recv_time(args->buf, buffer_id, now);
 
-    generate_char_data_set(GENERATE_DATASET_CONSTANT,
-                           GEN_DEFAULT_SEED,
-                           GEN_DEFAULT_RE,
-                           GEN_DEFAULT_IM,
-                           GEN_INITIAL_RE,
-                           GEN_INITIAL_IM,
-                           GEN_FREQ,
-                           args->config->processing.samples_per_data_set,
-                           args->config->processing.num_local_freq,
-                           args->config->processing.num_elements,
-                           (unsigned char *) args->buf->data[buffer_id]);
+        generate_char_data_set(GENERATE_DATASET_CONSTANT,
+                            GEN_DEFAULT_SEED,
+                            0, //GEN_DEFAULT_RE,
+                            0, //GEN_DEFAULT_IM,
+                            0, // GEN_INITIAL_RE,
+                            0, // GEN_INITIAL_IM,
+                            GEN_FREQ,
+                            args->config->processing.samples_per_data_set,
+                            args->config->processing.num_local_freq,
+                            args->config->processing.num_elements,
+                            (unsigned char *) args->buf->data[buffer_id]);
 
-    for (int i = 0; i < 100; i++) {
-        INFO("Thread ID=%d; buf[%d]=0x%X", args->link_id, i, *(unsigned int *)(&args->buf->data[buffer_id][i*4]) );
+        //for (int i = 0; i < 20; i++) {
+        //    INFO("Thread ID=%d; buf[%d]=0x%X", args->link_id, i, *(unsigned int *)(&args->buf->data[buffer_id][i*4]) );
+        //}
+        if (args->dev_id == 0) {
+            for (int frame = 0; frame < args->config->processing.samples_per_data_set; ++frame) {
+                for (int freq = 0; freq < 1; freq += 1) {
+                    for (int n = 0; n < 256; n++) {
+                        ((unsigned char *) args->buf->data[buffer_id])[8*256*frame + freq*256 + n] = 0xff;
+                    }
+                }
+            }
+        }
+
+        mark_buffer_full(args->buf, buffer_id);
+
+        buffer_id = (buffer_id + args->num_links_in_group) % (args->buf->num_buffers);
+        if (buffer_id % args->num_links_in_group == 0) {
+            fpga_seq_num += args->config->processing.samples_per_data_set/4;
+        }
     }
-
-    mark_buffer_full(args->buf, buffer_id);
 
     mark_producer_done(args->buf, args->link_id);
     int ret = 0;

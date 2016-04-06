@@ -1,5 +1,3 @@
-
-
 #include <stdio.h>
 
 #include <math.h>
@@ -29,7 +27,7 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id);
 
 void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id);
 
-void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id);
+cl_event * add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id);
 
 void setup_beamform_kernel_worksize(struct OpenCLData * cl_data);
 
@@ -141,6 +139,11 @@ void* gpu_thread(void* arg)
 
         //INFO("GPU Kernel started on gpu %d in buffer (%d,%d)", args->gpu_id, args->gpu_id, bufferID);
 
+        if ((bufferID % cl_data.num_links) == 0) {
+            // TODO: This is imperfect timing, but it should be close enough for beamforming.
+            cl_data.beamform_time = get_first_packet_recv_time(args->in_buf, bufferID).tv_sec;
+        }
+
         CHECK_CL_ERROR( clSetUserEventStatus(cl_data.host_buffer_ready[bufferID], CL_SUCCESS) );
 
         buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
@@ -238,14 +241,25 @@ void release_events_for_buffer(struct OpenCLData * cl_data, int buffer_id)
     if (cl_data->config->gpu.use_beamforming) {
         assert(cl_data->beamform_finished[buffer_id] != NULL);
         clReleaseEvent(cl_data->beamform_finished[buffer_id]);
+
+        assert(cl_data->beamform_read_finished[buffer_id] != NULL);
+        clReleaseEvent(cl_data->beamform_read_finished[buffer_id]);
+
+        if (cl_data->config->beamforming.fixed_time == 0 &&
+            (buffer_id % cl_data->num_links) == 0) {
+
+            assert(cl_data->beamform_phases_written[buffer_id] != NULL);
+            clReleaseEvent(cl_data->beamform_phases_written[buffer_id]);
+        }
     }
 }
 
-void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id)
+cl_event * add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id)
 {
     cl_int err;
 
     cl_data->host_buffer_ready[buffer_id] = clCreateUserEvent(cl_data->context, &err);
+    cl_event * final_write_event = NULL;
 
     CHECK_CL_ERROR(err);
 
@@ -287,6 +301,34 @@ void add_write_to_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                          1,
                                          &cl_data->input_data_written[buffer_id],
                                          &cl_data->accumulate_data_zeroed[buffer_id]) );
+
+    final_write_event = &cl_data->accumulate_data_zeroed[buffer_id];
+
+    if (cl_data->config->gpu.use_beamforming == 1 &&
+        cl_data->config->beamforming.do_not_track == 0 &&
+        (buffer_id % cl_data->num_links) == 0) {
+
+        //INFO("gpu_thread; updating delays!");
+        get_delays(cl_data->beamform_time,
+                   cl_data->config->beamforming.ra,
+                   cl_data->config->beamforming.dec,
+                   cl_data->config,
+                   cl_data->config->beamforming.element_positions,
+                   cl_data->phases);
+
+        CHECK_CL_ERROR( clEnqueueWriteBuffer(cl_data->queue[0],
+                                             cl_data->device_phases,
+                                             CL_FALSE,
+                                             0,
+                                             cl_data->config->processing.num_elements * sizeof(float),
+                                             (cl_float *)cl_data->phases,
+                                             1,
+                                             &cl_data->accumulate_data_zeroed[buffer_id],
+                                             &cl_data->beamform_phases_written[buffer_id]) );
+
+        final_write_event = &cl_data->beamform_phases_written[buffer_id];
+    }
+    return final_write_event;
 }
 
 void add_time_shift_kernel(struct OpenCLData * cl_data, int buffer_id) {
@@ -345,15 +387,16 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
     cl_data->cb_data[buffer_id].buffer_id = buffer_id;
     cl_data->cb_data[buffer_id].cl_data = cl_data;
 
+    cl_event * input_data_ready_event = NULL;
+
     // The input data host to device copies.
     if (cl_data->config->gpu.use_time_shift == 1) {
-        add_write_to_queue_set(cl_data, mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers));
+        input_data_ready_event = add_write_to_queue_set(cl_data, mod(buffer_id + cl_data->num_links, cl_data->in_buf->num_buffers));
     } else {
-        add_write_to_queue_set(cl_data, buffer_id);
+        input_data_ready_event = add_write_to_queue_set(cl_data, buffer_id);
     }
 
     cl_mem device_kernel_input_data = cl_data->device_input_buffer[buffer_id];
-    cl_event * input_data_ready_event = &cl_data->accumulate_data_zeroed[buffer_id];
 
     // The time shift kernel
     if (cl_data->config->gpu.use_time_shift == 1) {
@@ -423,7 +466,7 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
     // The correlation kernel.
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(cl_data->queue[1],
                                             cl_data->corr_kernel,
-                                            3, 
+                                            3,
                                             NULL,
                                             cl_data->gws_corr,
                                             cl_data->lws_corr,
@@ -432,7 +475,7 @@ void add_queue_set(struct OpenCLData * cl_data, int buffer_id)
                                             &cl_data->corr_finished[buffer_id]) );
 
     // Read the results
-    CHECK_CL_ERROR( clEnqueueReadBuffer(cl_data->queue[2], 
+    CHECK_CL_ERROR( clEnqueueReadBuffer(cl_data->queue[2],
                                             cl_data->device_output_buffer[buffer_id],
                                             CL_FALSE,
                                             0,
@@ -507,7 +550,7 @@ void setup_beamform_kernel_worksize(struct OpenCLData * cl_data) {
         stream_id = cl_data->stream_info[i].stream_id;
 
         for (int j = 0; j < cl_data->config->processing.num_local_freq; ++j) {
-            freq[j] = freq_from_bin(bin_number(&stream_id, j));
+            freq[j] = freq_from_bin(bin_number(&stream_id, j))/1000.0;
         }
         cl_data->device_freq_map[i] = clCreateBuffer(cl_data->context,
                                                 CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -519,12 +562,13 @@ void setup_beamform_kernel_worksize(struct OpenCLData * cl_data) {
         INFO("creating buffer for freq step %d", i);
     }
 
-    INFO("setup_beamform_kernel_worksize, setting bit shift factor to %d",
-         cl_data->config->beamforming.bit_shift_factor);
+    INFO("setup_beamform_kernel_worksize, setting scale factor to %f",
+         cl_data->config->beamforming.scale_factor);
+    float scale_factor = cl_data->config->beamforming.scale_factor;
     CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
                                    5,
-                                   sizeof(int),
-                                   &cl_data->config->beamforming.bit_shift_factor) );
+                                   sizeof(float),
+                                   &scale_factor) );
 
     // Beamforming kernel global and local work space sizes.
     cl_data->gws_beamforming[0] = cl_data->config->processing.num_elements / 4;
@@ -621,8 +665,8 @@ void setup_open_cl(struct OpenCLData * cl_data)
         CHECK_CL_ERROR(err);
     }
 
-    // TODO create a struct to contain all of these (including events) to make this memory allocation cleaner. 
-    // 
+    // TODO create a struct to contain all of these (including events) to make this memory allocation cleaner.
+    //
 
     // Setup device input buffers.
     int num_input_buffers = cl_data->in_buf->num_buffers;
@@ -720,7 +764,7 @@ void setup_open_cl(struct OpenCLData * cl_data)
     CHECK_MEM(cl_data->time_shift_finished);
 
     cl_data->preseed_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
-    CHECK_MEM(cl_data->preseed_finished); 
+    CHECK_MEM(cl_data->preseed_finished);
 
     cl_data->corr_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
     CHECK_MEM(cl_data->corr_finished);
@@ -737,16 +781,19 @@ void setup_open_cl(struct OpenCLData * cl_data)
     cl_data->beamform_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
     CHECK_MEM(cl_data->beamform_finished);
 
+    cl_data->beamform_phases_written = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
+    CHECK_MEM(cl_data->beamform_phases_written);
+
     cl_data->beamform_read_finished = malloc(cl_data->in_buf->num_buffers * sizeof(cl_event));
     CHECK_MEM(cl_data->beamform_read_finished);
 
-    // Create lookup tables 
+    // Create lookup tables
 
     //upper triangular address mapping --converting 1d addresses to 2d addresses
     unsigned int global_id_x_map[cl_data->num_blocks];
     unsigned int global_id_y_map[cl_data->num_blocks];
 
-    //TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y indices for an upper triangle.  
+    //TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y indices for an upper triangle.
     // Time Test kernels using them compared to the lookup tables for NUM_ELEM = 256
     int largest_num_blocks_1D = cl_data->config->processing.num_adjusted_elements /cl_data->config->gpu.block_size;
     int index_1D = 0;
@@ -782,12 +829,12 @@ void setup_open_cl(struct OpenCLData * cl_data)
     CHECK_CL_ERROR(err);
 
     //set other parameters that will be fixed for the kernels (changeable parameters will be set in run loops)
-    CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel, 
+    CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel,
                                    2,
                                    sizeof(id_x_map),
                                    (void*) &id_x_map) ); //this should maybe be sizeof(void *)?
 
-    CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel, 
+    CHECK_CL_ERROR( clSetKernelArg(cl_data->corr_kernel,
                                    3,
                                    sizeof(id_y_map),
                                    (void*) &id_y_map) );
@@ -818,25 +865,47 @@ void setup_open_cl(struct OpenCLData * cl_data)
                                    NULL) );
 
     // Setup beamforming output.
-
-    // TODO update this at the ~1 minute time basis.
-    float phases[cl_data->config->processing.num_elements];
-    /*get_delays(cl_data->config->beamforming.ra,
+    cl_data->phases = malloc(cl_data->config->processing.num_elements * sizeof(float));
+    cl_data->beamform_time = time(NULL); // Current time.
+    if (cl_data->config->beamforming.do_not_track == 1) {
+        if (cl_data->config->beamforming.fixed_time != 0)
+            cl_data->beamform_time = cl_data->config->beamforming.fixed_time;
+    }
+    get_delays(cl_data->beamform_time,
+               cl_data->config->beamforming.ra,
                cl_data->config->beamforming.dec,
                cl_data->config,
                cl_data->config->beamforming.element_positions,
-               phases);*/
-    cl_mem device_phases = clCreateBuffer(cl_data->context,
+               cl_data->phases);
+
+    // DEBUG output
+    /*INFO("gpu_thread; ID = 0, FPGA ID = 60, x_pos = %f, y_pos = %f, freq = 0.69414, phase_delay = %f, phase_delay*freq = %f, phase_re = %f, phase_im = %f",
+         cl_data->config->beamforming.element_positions[60*2],
+         cl_data->config->beamforming.element_positions[60*2 + 1],
+         cl_data->phases[60], cl_data->phases[60]*0.64914,
+         cos(cl_data->phases[60]*0.69414), sin(cl_data->phases[60]*0.64914));
+    INFO("gpu_thread; ID = 130, FPGA ID = 126, x_pos = %f, y_pos = %f, freq = 0.69414, phase_delay = %f, phase_delay*freq = %f, phase_re = %f, phase_im = %f",
+         cl_data->config->beamforming.element_positions[126*2],
+         cl_data->config->beamforming.element_positions[126*2 + 1],
+         cl_data->phases[126], cl_data->phases[126]*0.64914,
+         cos(cl_data->phases[126]*0.69414), sin(cl_data->phases[126]*0.64914));
+   INFO("gpu_thread; ID = 131, FPGA ID = 127, x_pos = %f, y_pos = %f, freq = 0.69414, phase_delay = %f, phase_delay*freq = %f, phase_re = %f, phase_im = %f",
+         cl_data->config->beamforming.element_positions[127*2],
+         cl_data->config->beamforming.element_positions[127*2 + 1],
+         cl_data->phases[127], cl_data->phases[127]*0.64914,
+        cos(cl_data->phases[127]*0.69414), sin(cl_data->phases[127]*0.64914));
+    */
+   cl_data->device_phases = clCreateBuffer(cl_data->context,
                                           CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                          cl_data->config->processing.num_elements * sizeof(cl_uint),
-                                          phases,
+                                          cl_data->config->processing.num_elements * sizeof(float),
+                                          cl_data->phases,
                                           &err);
     CHECK_CL_ERROR(err);
 
     CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
                                    3,
                                    sizeof(cl_mem),
-                                   (void*) &device_phases) );
+                                   (void*) &cl_data->device_phases) );
 
     unsigned char mask[cl_data->config->processing.num_adjusted_elements];
     for (int i = 0; i < cl_data->config->processing.num_adjusted_elements; ++i) {
@@ -943,6 +1012,14 @@ void close_open_cl(struct OpenCLData * cl_data)
     }
     free(cl_data->device_output_buffer);
 
+    if (cl_data->config->gpu.use_beamforming) {
+        CHECK_CL_ERROR( clReleaseMemObject(cl_data->device_phases) );
+        free(cl_data->phases);
+        free(cl_data->beamform_finished);
+        free(cl_data->beamform_read_finished);
+        free(cl_data->beamform_phases_written);
+    }
+
     free(cl_data->host_buffer_ready);
     free(cl_data->host_buffer_ready);
     free(cl_data->input_data_written);
@@ -951,8 +1028,6 @@ void close_open_cl(struct OpenCLData * cl_data)
     free(cl_data->corr_finished);
     free(cl_data->offset_accumulate_finished);
     free(cl_data->preseed_finished);
-    free(cl_data->beamform_finished);
-    free(cl_data->beamform_read_finished);
 
     free(cl_data->cb_data);
 

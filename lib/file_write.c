@@ -80,5 +80,4 @@ void* file_write_thread(void * arg)
 
         file_num += args->num_disks;
     }
-
 }
