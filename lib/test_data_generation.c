@@ -60,8 +60,8 @@ void generate_char_data_set(int generation_Type,
                 unsigned char new_imaginary;
                 switch (generation_Type){
                     case GENERATE_DATASET_CONSTANT:
-                        new_real = clipped_offset_initial_real;
-                        new_imaginary = clipped_offset_initial_imaginary;
+                        new_real = 8; //clipped_offset_initial_real;
+                        new_imaginary = 8; //clipped_offset_initial_imaginary;
                         break;
                     case GENERATE_DATASET_RAMP_UP:
                         new_real = (j+clipped_offset_initial_real+i)%16;

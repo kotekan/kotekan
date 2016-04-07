@@ -3,6 +3,10 @@
 
 #include <jansson.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// @brief Maps the a link to a GPU and set of buffers.
 struct LinkMap {
     // The interface name of the link.
@@ -32,6 +36,25 @@ struct GPUConfig {
 
     // Kernels
     char ** kernels;
+
+    // ** Time shift options **
+
+    // Use time shift kernel?
+    int use_time_shift;
+
+    // The first element (in FPGA order) to shift.
+    int ts_element_offset;
+
+    // The number of elements to shift starting at ts_element_offset.
+    int ts_num_elem_to_shift;
+
+    // The number of timesamples to shift above elements.
+    int ts_samples_to_shift;
+
+    // ** Beamforming options **
+
+    // Do beamforming
+    int use_beamforming;
 
 };
 
@@ -63,6 +86,11 @@ struct ProcessingConfig {
 
     // The remapping of products from FPGA order to "physical (on the focal line) order"
     int * product_remap;
+
+    int * inverse_product_remap;
+
+    // Data limit, used for testing to take "snapshots"
+    int data_limit;
 
     /// NOTE The next two values are specal cases when the number of elements is < 32, i.e.
     /// when the correlator is running in 16-element mode with one FPGA.
@@ -107,6 +135,44 @@ struct CH_MASTER_NetworkConfig {
 
     // The TCP port to use on the collection server.
     int collection_server_port;
+
+    // Disable upload
+    int disable_upload;
+};
+
+struct Beamforming {
+    // The IP address of the collection server
+    char * vdif_server_ip;
+
+    // The port to send packets to.
+    int vdif_port;
+
+    // The latitude and longitude of the instrument
+    double instrument_lat, instrument_long;
+
+    // The ra and dec the pointing should be set to.
+    // NOTE: This will be made more complex to allow more than one pointing in a run.
+    double ra, dec;
+
+    // The positions of the feeds.
+    float * element_positions;
+
+    // Number of masked elements
+    int num_masked_elements;
+
+    // The array of elements to mask out of the beamforming.
+    int * element_mask;
+
+    // The gain amount.
+    double scale_factor;
+
+    // Do not track. ( 0 => track, 1 => do not track source )
+    int do_not_track;
+
+    // Option used if do_not_track is set to 1.
+    // 0 means use current time
+    // otherwise this is the unix time stamp to point to.
+    int fixed_time;
 };
 
 /// @brief Struct for holding static system configuration
@@ -124,6 +190,9 @@ struct Config {
 
     /// Data processing configuration
     struct ProcessingConfig processing;
+
+    /// The beamforming options
+    struct Beamforming beamforming;
 };
 
 /// @brief Parses a json object which contains the configuration for kotekan
@@ -152,5 +221,9 @@ int num_links_in_group(struct Config * config, const unsigned int link_id);
 
 /// @brief Returns the number of links assigned to a gpu based on the gpu ID
 int num_links_per_gpu(struct Config * config, const unsigned int gpu_id);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

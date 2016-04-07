@@ -7,6 +7,10 @@
 #ifndef BUFFERS
 #define BUFFERS
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define PAGESIZE_MEM 4096
 
 #include <pthread.h>
@@ -24,12 +28,15 @@ struct BufferInfo {
     /// Buffer data_ID.
     /// This is the ID of the data in the buffer, not the ID of the buffer.
     int32_t data_ID;
-    uint32_t fpga_seq_num;
+    int64_t fpga_seq_num;
     struct timeval first_packet_recv_time;
     struct ErrorMatrix error_matrix;
+    uint16_t stream_ID;
 
     // 1 = in use, 0 = avaiable;
     char in_use;
+
+    int ref_count;
 };
 
 struct InfoObjectPool {
@@ -41,9 +48,9 @@ struct InfoObjectPool {
     pthread_mutex_t in_use_lock;
 };
 
-/** @brief Buffer object used to contain and manage the buffers shared by the network 
+/** @brief Buffer object used to contain and manage the buffers shared by the network
  *  and consumer (OpenCL, file reading) threads.
- * 
+ *
  * All memory here is shared between threads so it must be used with the associated locks
  */
 struct Buffer {
@@ -55,15 +62,28 @@ struct Buffer {
     pthread_cond_t empty_cond;
 
     /// The number of buffers kept by this object
-    int num_buffers; 
+    int num_buffers;
 
     /// The size of each buffer.
     int buffer_size;
 
+    // Each buffer is padded out to a page aligned size.
     int aligned_buffer_size;
 
+    // Number of producers
+    int num_producers;
+
+    // Number of consumers
+    int num_consumers;
+
+    /// The number of producers
+    int * num_producers_done;
+
+    /// The number of consumers done.
+    int * num_consumers_done;
+
     /// The array of buffers
-    char ** data;
+    unsigned char ** data;
 
     /// Flag vars to say which buffers are full
     /// A 0 at index I means the buffer at index I is not full, one means it is full.
@@ -80,11 +100,11 @@ struct Buffer {
     /// 0 means the producer is not done, 1 means the producer is done.
     int * producer_done;
 
-    /// The number of producers.
-    int num_producers;
-
     /// The pool of info objects
     struct InfoObjectPool * info_object_pool;
+
+    /// The name of the buffer for use in debug messages.
+    char * buffer_name;
 };
 
 /** @brief Creates a buffer object.
@@ -93,14 +113,15 @@ struct Buffer {
  *  @param [in] num_buf The number of buffers to create in the buffer object.
  *  @param [in] len The lenght of each buffer to be created in bytes.
  *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
- *  @return 0 if successful, or a non-zero standard error value if not successful 
+ *  @return 0 if successful, or a non-zero standard error value if not successful
  */
-int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers, struct InfoObjectPool * pool);
+int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
+                  int num_consumers, struct InfoObjectPool * pool, const char * buffer_name);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
  *  @param [in] buf The buffer to delete.
- *  @return 0 if successful, or a non-zero standard error value if not. 
+ *  @return 0 if successful, or a non-zero standard error value if not.
  */
 void delete_buffer(struct Buffer * buf);
 
@@ -133,7 +154,9 @@ int get_full_buffer_from_list(struct Buffer * buf, const int * buffer_IDs, const
  */
 int32_t get_buffer_data_ID(struct Buffer * buf, const int ID);
 
-uint32_t get_fpga_seq_num(struct Buffer * buf, const int ID);
+uint64_t get_fpga_seq_num(struct Buffer * buf, const int ID);
+
+int32_t get_streamID(struct Buffer * buf, const int ID);
 
 struct timeval get_first_packet_recv_time(struct Buffer * buf, const int ID);
 
@@ -152,7 +175,9 @@ struct ErrorMatrix * get_error_matrix(struct Buffer * buf, const int ID);
  */
 void set_data_ID(struct Buffer * buf, const int ID, const int data_ID);
 
-void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint32_t fpga_seq_num);
+void set_fpga_seq_num(struct Buffer * buf, const int ID, const uint64_t fpga_seq_num);
+
+void set_stream_ID(struct Buffer * buf, const int ID, const uint16_t stream_ID);
 
 void set_first_packet_recv_time(struct Buffer * buf, const int ID, const struct timeval time);
 
@@ -171,14 +196,14 @@ void mark_buffer_empty(struct Buffer * buf, const int ID);
 void wait_for_empty_buffer(struct Buffer * buf, const int ID);
 
 /** @brief Checks if the requested buffer is empty, returns 1
- *  if the buffer is empty, and 1 if the full.  Thread safe.
+ *  if the buffer is empty, and 0 if the full.  Thread safe.
  * @param [in] buf The buffer
  * @param [in] ID The id of the buffer to check.
  */
 int is_buffer_empty(struct Buffer * buf, const int ID);
 
 /**
- * @brief Tells the buffer that no new data is coming. 
+ * @brief Tells the buffer that no new data is coming.
  * Consumer threads are free to exit as soon as all buffers are empty.
  */
 void mark_producer_done(struct Buffer * buf, int producer_id);
@@ -195,6 +220,8 @@ void print_buffer_status(struct Buffer * buf);
 
 void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
 
+void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id);
+
 void release_info_object(struct Buffer * buf, const int ID);
 
 void create_info_pool(struct InfoObjectPool * pool, int num_info_objects, int num_freq, int num_elem);
@@ -206,5 +233,9 @@ void return_info_object(struct InfoObjectPool * pool, struct BufferInfo * buffer
 void reset_info_object(struct BufferInfo * buffer_info);
 
 void delete_info_object_pool(struct InfoObjectPool * pool);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

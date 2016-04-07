@@ -6,12 +6,12 @@
 #include "config.h"
 #include "errors.h"
 
-int parse_processing_config(struct Config* config, struct json_t * json)
+int parse_processing_config(struct Config* config, json_t * json)
 {
     int error = 0;
     json_t * product_remap;
 
-    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:o}",
+    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:o, s:i}",
         "num_elements", &config->processing.num_elements,
         "num_local_freq", &config->processing.num_local_freq,
         "num_total_freq", &config->processing.num_total_freq,
@@ -19,7 +19,8 @@ int parse_processing_config(struct Config* config, struct json_t * json)
         "num_data_sets", &config->processing.num_data_sets,
         "buffer_depth", &config->processing.buffer_depth,
         "num_gpu_frames", &config->processing.num_gpu_frames,
-        "product_remap", &product_remap);
+        "product_remap", &product_remap,
+        "data_limit", &config->processing.data_limit);
 
     if (error) {
         ERROR("Error parsing processing config.");
@@ -29,7 +30,8 @@ int parse_processing_config(struct Config* config, struct json_t * json)
     int remap_size = json_array_size(product_remap);
 
     if (remap_size != config->processing.num_elements) {
-        ERROR("The remap array must have the same size as the number of elements.");
+        ERROR("The remap array must have the same size as the number of elements. array size %d, num_elements %d",
+            remap_size, config->processing.num_elements);
         return -2;
     }
 
@@ -38,6 +40,13 @@ int parse_processing_config(struct Config* config, struct json_t * json)
 
     for(int i = 0; i < remap_size; ++i) {
         config->processing.product_remap[i] = json_integer_value(json_array_get(product_remap, i));
+    }
+
+    config->processing.inverse_product_remap = malloc(remap_size * sizeof(int));
+    CHECK_MEM(config->processing.inverse_product_remap);
+    // Given a channel ID, where is it in FPGA order.
+    for(int i = 0; i < remap_size; ++i) {
+        config->processing.inverse_product_remap[config->processing.product_remap[i]] = i;
     }
 
     // Special case for 16-element version
@@ -56,17 +65,18 @@ int parse_processing_config(struct Config* config, struct json_t * json)
     return 0;
 }
 
-int parse_ch_master_networking_config(struct Config* config, struct json_t * json)
+int parse_ch_master_networking_config(struct Config* config, json_t * json)
 {
     int error = 0;
     char * collection_server_ip;
 
-    error = json_unpack(json, "{s:s, s:i}",
+    error = json_unpack(json, "{s:s, s:i, s:i}",
         "collection_server_ip", &collection_server_ip,
-        "collection_server_port", &config->ch_master_network.collection_server_port);
+        "collection_server_port", &config->ch_master_network.collection_server_port,
+        "disable_upload", &config->ch_master_network.disable_upload);
 
     if (error) {
-        ERROR("Error parsing ch_master_network config, check config file");
+        ERROR("Error parsing ch_master_network config, check config file, error: %d", error);
         return error;
     }
 
@@ -80,15 +90,20 @@ int parse_ch_master_networking_config(struct Config* config, struct json_t * jso
     return 0;
 }
 
-int parse_gpu_config(struct Config* config, struct json_t * json)
+int parse_gpu_config(struct Config* config, json_t * json)
 {
     int error = 0;
     json_t * kernels;
 
-    error = json_unpack(json, "{s:o, s:i, s:i}",
+    error = json_unpack(json, "{s:o, s:i, s:i, s:i, s:i, s:i, s:i, s:i}",
         "kernels", &kernels,
+        "use_timeshift", &config->gpu.use_time_shift,
+        "ts_element_offset", &config->gpu.ts_element_offset,
+        "ts_num_elem_to_shift", &config->gpu.ts_num_elem_to_shift,
+        "ts_samples_to_shift", &config->gpu.ts_samples_to_shift,
         "num_gpus", &config->gpu.num_gpus,
-        "block_size", &config->gpu.block_size);
+        "block_size", &config->gpu.block_size,
+        "use_beamforming", &config->gpu.use_beamforming);
 
     if (error) {
         ERROR("Error parsing gpu config");
@@ -98,7 +113,7 @@ int parse_gpu_config(struct Config* config, struct json_t * json)
     config->gpu.num_kernels = json_array_size(kernels);
     if (config->gpu.num_kernels <= 0) {
         ERROR("No kernel file names given");
-        return error;
+        return -1;
     }
     config->gpu.kernels = malloc(config->gpu.num_kernels * sizeof(char *));
     assert(config->gpu.kernels != NULL);
@@ -117,7 +132,7 @@ int parse_gpu_config(struct Config* config, struct json_t * json)
     return 0;
 }
 
-int parse_fpga_network_config(struct Config* config, struct json_t * json)
+int parse_fpga_network_config(struct Config* config, json_t * json)
 {
     int error = 0;
     json_t * link_map;
@@ -171,6 +186,63 @@ int parse_fpga_network_config(struct Config* config, struct json_t * json)
     return 0;
 }
 
+int parse_beamforming_config(struct Config* config, json_t * json) {
+    int error = 0;
+    char * server_ip;
+    json_t * element_mask, * element_positions;
+
+    error = json_unpack(json, "{s:s, s:i, s:F, s:F, s:F, s:F, s:o, s:o, s:F, s:i, s:i}",
+                        "vdif_server_ip", &server_ip,
+                        "vdif_port", &config->beamforming.vdif_port,
+                        "ra", &config->beamforming.ra,
+                        "dec", &config->beamforming.dec,
+                        "instrument_lat", &config->beamforming.instrument_lat,
+                        "instrument_long", &config->beamforming.instrument_long,
+                        "element_mask", &element_mask,
+                        "element_positions", &element_positions,
+                        "scale_factor", &config->beamforming.scale_factor,
+                        "do_not_track", &config->beamforming.do_not_track,
+                        "fixed_time", &config->beamforming.fixed_time);
+
+    if (error) {
+        ERROR("Error parsing beamforming config, check config file, error: %d", error);
+        return error;
+    }
+
+    if (server_ip == NULL) {
+        ERROR("The vdif_server_ip address in the config file is not a valid string.");
+        return -1;
+    }
+    config->beamforming.vdif_server_ip = strdup(server_ip);
+
+    config->beamforming.num_masked_elements = json_array_size(element_mask);
+    if (config->beamforming.num_masked_elements > 0) {
+        config->beamforming.element_mask = malloc(config->beamforming.num_masked_elements * sizeof(int));
+        CHECK_MEM(config->beamforming.element_mask);
+
+        for (int i = 0; i < config->beamforming.num_masked_elements; ++i) {
+            config->beamforming.element_mask[i] = json_integer_value(json_array_get(element_mask, i));
+        }
+    }
+
+    int num_positions = json_array_size(element_positions);
+    if (config->processing.num_elements * 2 != num_positions) {
+        ERROR("The number of element positions must match the number of elements, num_positions %d", num_positions);
+        return -1;
+    }
+    config->beamforming.element_positions = malloc(num_positions * sizeof(float));
+    CHECK_MEM(config->beamforming.element_positions);
+
+    for (int i = 0; i < num_positions / 2; ++i) {
+        config->beamforming.element_positions[i*2] =
+            json_number_value(json_array_get(element_positions, 2*config->processing.product_remap[i]));
+        config->beamforming.element_positions[i*2 + 1] =
+            json_number_value(json_array_get(element_positions, 2*config->processing.product_remap[i] + 1));
+    }
+
+    return 0;
+}
+
 int parse_config(struct Config* config, json_t * json)
 {
     int error = 0;
@@ -183,9 +255,15 @@ int parse_config(struct Config* config, json_t * json)
         return -1;
     }
 
-    json_t * gpu_json, * fpga_network_json, * processing_json, * ch_master_network_json;
-    error = json_unpack(json, "{s:o, s:o, s:o, s:o}", "gpu", &gpu_json, "fpga_network", &fpga_network_json,
-        "processing", &processing_json, "ch_master_network", &ch_master_network_json);
+    json_t * gpu_json, * fpga_network_json, * processing_json,
+            * ch_master_network_json, * beamforming_json;
+
+    error = json_unpack(json, "{s:o, s:o, s:o, s:o, s:o}",
+                        "gpu", &gpu_json,
+                        "fpga_network", &fpga_network_json,
+                        "processing", &processing_json,
+                        "ch_master_network", &ch_master_network_json,
+                        "beamforming", &beamforming_json);
 
     if (error) {
         ERROR("Error processing config root structure");
@@ -196,6 +274,7 @@ int parse_config(struct Config* config, json_t * json)
     error |= parse_ch_master_networking_config(config, ch_master_network_json);
     error |= parse_gpu_config(config, gpu_json);
     error |= parse_fpga_network_config(config, fpga_network_json);
+    error |= parse_beamforming_config(config, beamforming_json);
 
     return error;
 }
@@ -237,6 +316,10 @@ void print_config(struct Config* config)
     for (int i = 0; i < config->gpu.num_kernels; ++i) {
         INFO("config.gpu.kernels[%d] = %s", i, config->gpu.kernels[i]);
     }
+    INFO("config.gpu.use_time_shift = %d", config->gpu.use_time_shift);
+    INFO("config.gpu.ts_element_offset = %d", config->gpu.ts_element_offset);
+    INFO("config.gpu.ts_num_elem_to_shift = %d", config->gpu.ts_num_elem_to_shift);
+    INFO("config.gpu.ts_samples_to_shift = %d", config->gpu.ts_samples_to_shift);
 
     // Processing section
     INFO("config.processing.num_elements = %d", config->processing.num_elements);
@@ -250,7 +333,7 @@ void print_config(struct Config* config)
     INFO("config.processing.num_blocks = %d", config->processing.num_blocks);
 
     for (int i = 0; i < config->processing.num_elements; ++i) {
-        INFO("config.processing.product_remap[%d] = %d", i, config->processing.product_remap[i]);
+        //INFO("config.processing.product_remap[%d] = %d", i, config->processing.product_remap[i]);
     }
 
     // FPGA Network Section
@@ -270,6 +353,15 @@ void print_config(struct Config* config)
         INFO("config.fpga_network.link_map[%d].link_id = %d", i,
              config->fpga_network.link_map[i].link_id);
     }
+
+    // Beamforming section
+    INFO("config.beamforming.num_masked_elements = %d", config->beamforming.num_masked_elements);
+    INFO("config.beamforming.scale_factor = %d", config->beamforming.scale_factor);
+    INFO("config.beamforming.ra = %f", config->beamforming.ra);
+    INFO("config.beamforming.dec = %f", config->beamforming.dec);
+    INFO("config.beamforming.instrument_lat = %f", config->beamforming.instrument_lat);
+    INFO("config.beamforming.instrument_long = %f", config->beamforming.instrument_long);
+
 }
 
 int num_links_in_group(struct Config* config, const unsigned int link_id)

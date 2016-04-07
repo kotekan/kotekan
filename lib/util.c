@@ -34,3 +34,12 @@ char *strclone(const char *s) {
 
   return t;
 }
+
+
+int64_t mod(int64_t a, int64_t b)
+{
+    int ret = a % b;
+    if(ret < 0)
+        ret+=b;
+    return ret;
+}

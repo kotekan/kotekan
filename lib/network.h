@@ -3,6 +3,10 @@
 
 #include "buffers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct networkThreadArg {
     char * ip_address;
     struct Buffer * buf;
@@ -13,6 +17,10 @@ struct networkThreadArg {
     int link_id;
 };
 
-void network_thread(void * arg);
+void* network_thread(void * arg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
