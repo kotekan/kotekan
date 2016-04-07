@@ -164,7 +164,15 @@ struct Beamforming {
     int * element_mask;
 
     // The gain amount.
-    int bit_shift_factor;
+    double scale_factor;
+
+    // Do not track. ( 0 => track, 1 => do not track source )
+    int do_not_track;
+
+    // Option used if do_not_track is set to 1.
+    // 0 means use current time
+    // otherwise this is the unix time stamp to point to.
+    int fixed_time;
 };
 
 /// @brief Struct for holding static system configuration

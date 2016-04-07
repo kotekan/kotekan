@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 // TODO Where do these live?
 # define likely(x)      __builtin_expect(!!(x), 1)
@@ -14,6 +15,7 @@
 void fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint32_t second,
+                  const uint32_t fpga_seq_num,
                   const uint32_t num_links,
                   uint32_t *thread_id) {
     // Populate the headers
@@ -25,15 +27,13 @@ void fill_headers(unsigned char * out_buf,
 
         for(int j = 0; j < num_links; ++j) {
             vdif_header->therad_id = thread_id[j];
+            vdif_header->eud2 = fpga_seq_num + 625 * i;
+
             // Each polarization is its own station
             vdif_header->station_id = 0;
             memcpy(&out_buf[(i*16+j*2)*5032], vdif_header, sizeof(struct VDIFHeader));
             vdif_header->station_id = 1;
             memcpy(&out_buf[(i*16+j*2 + 1)*5032], vdif_header, sizeof(struct VDIFHeader));
-            /*for (int k = 0; k < sizeof(struct VDIFHeader); ++k) {
-                (&out_buf[(i*16+j*2)*5032])[k] = 0xAB;
-                (&out_buf[(i*16+j*2 + 1)*5032])[k] = 0xAB;
-            }*/
         }
     }
 }
@@ -83,6 +83,7 @@ void* beamforming_post_process(void* arg)
     int frame = 0;
     int in_frame_location = 0;
     int second = 0;
+    uint32_t fpga_seq_num = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
@@ -113,16 +114,14 @@ void* beamforming_post_process(void* arg)
         //INFO("beamforming_post_process; got full set of GPU output buffers");
 
         uint32_t first_seq_number =
-            get_fpga_seq_num(&args->in_buf[config->fpga_network.link_map[0].gpu_id], in_buffer_ID[0])
-            * config->fpga_network.timesamples_per_packet;
+            (uint32_t)get_fpga_seq_num(&args->in_buf[config->fpga_network.link_map[0].gpu_id], in_buffer_ID[0]);
 
         for (int i = 0; i < num_links; ++i) {
             int gpu_id = config->fpga_network.link_map[i].gpu_id;
             //INFO("fpga_seq_num[%d] = %u", i, get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID[i])
             //        * config->fpga_network.timesamples_per_packet);
             assert(first_seq_number ==
-                    get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID[i])
-                    * config->fpga_network.timesamples_per_packet);
+                    (uint32_t)get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID[i]));
 
             int stream_id = get_streamID(&args->in_buf[gpu_id], in_buffer_ID[i]);
             int link_id = stream_id & 0x000F;
@@ -133,7 +132,7 @@ void* beamforming_post_process(void* arg)
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
             // TODO This can be done without a loop!
-            for (int i = 0; i < num_samples; ++i) {
+            /*for (int i = 0; i < num_samples; ++i) {
                 if (get_vdif_frame( first_seq_number + i ) == 0 &&
                     get_vdif_location( first_seq_number + i ) == 0) {
 
@@ -141,14 +140,22 @@ void* beamforming_post_process(void* arg)
                     startup = 0;
                     break;
                 }
-            }
+            }*/
+
+            // testing sync code
+            startup = 0;
+            current_input_location = 0;
+            struct timeval time = get_first_packet_recv_time(&args->in_buf[config->fpga_network.link_map[0].gpu_id], in_buffer_ID[0]);
+            second = (int)(round((double)time.tv_sec / 20.0) * 20.0) - 946728000;
             // Fill the first output buffer headers
+            fpga_seq_num = first_seq_number;
             fill_headers(args->out_buf->data[out_buffer_ID],
                          &vdif_header,
-                         get_vdif_second(first_seq_number + current_input_location),
+                         second,
+                         first_seq_number,
                          num_links,
                          thread_ids);
-            second = get_vdif_second(first_seq_number + current_input_location);
+            //second = get_vdif_second(first_seq_number + current_input_location);
         }
 
         // This loop which takes data from the input buffer and formats the output.
@@ -178,9 +185,11 @@ void* beamforming_post_process(void* arg)
                         wait_for_empty_buffer(args->out_buf, out_buffer_ID);
 
                         // Fill the headers of the new buffer
+                        fpga_seq_num += 625*625;
                         fill_headers(args->out_buf->data[out_buffer_ID],
                                      &vdif_header,
                                      second,
+                                     fpga_seq_num,
                                      num_links,
                                      thread_ids);
                     }
