@@ -356,7 +356,7 @@ void print_config(struct Config* config)
 
     // Beamforming section
     INFO("config.beamforming.num_masked_elements = %d", config->beamforming.num_masked_elements);
-    INFO("config.beamforming.scale_factor = %d", config->beamforming.scale_factor);
+    INFO("config.beamforming.scale_factor = %f", config->beamforming.scale_factor);
     INFO("config.beamforming.ra = %f", config->beamforming.ra);
     INFO("config.beamforming.dec = %f", config->beamforming.dec);
     INFO("config.beamforming.instrument_lat = %f", config->beamforming.instrument_lat);
