@@ -5,12 +5,14 @@ find_package( OpenCL REQUIRED )
 
 include_directories( ${OPENCL_INCLUDE_DIRS} )
 
-add_library ( chime buffers.c errors.c nt_memcpy.c nt_memset.c
-              gpu_thread.c util.c error_correction.c
+add_library ( chime buffers.c errors.c nt_memcpy.c
+              network_dna.c util.c error_correction.c
               output_formating.c test_data_generation.c ch_acq_uplink.c gpu_post_process.c
               config.c beamforming.c beamforming_post_process.c time_tracking.c vdif_stream.c
               fpga_header_functions.c null.c file_write.c simple_udp_cap.c
-              network_dpdk.c )
+              network_dpdk.c gpu_thread.cpp gpu_command.cpp simple_dna_cap.c callbackdata.cpp device_interface.cpp
+              finalqueuesequence_command.cpp gpu_command_factory.cpp initqueuesequence_command.cpp
+              kernelcorrelator.cpp kerneloffset.cpp kernelpreseed.cpp )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
 

@@ -549,7 +549,9 @@ void* test_network_thread(void * arg) {
 
         set_data_ID(args->buf, buffer_id, data_id++);
         set_stream_ID(args->buf, buffer_id, args->dev_id);
-        set_fpga_seq_num(args->buf, buffer_id, 0);
+        set_fpga_seq_num(args->buf, buffer_id, fpga_seq_num);
+        fpga_seq_num += 32768;
+
         struct timeval now;
         gettimeofday(&now, NULL);
         set_first_packet_recv_time(args->buf, buffer_id, now);
@@ -569,12 +571,10 @@ void* test_network_thread(void * arg) {
         //for (int i = 0; i < 20; i++) {
         //    INFO("Thread ID=%d; buf[%d]=0x%X", args->link_id, i, *(unsigned int *)(&args->buf->data[buffer_id][i*4]) );
         //}
-        if (args->dev_id == 0) {
-            for (int frame = 0; frame < args->config->processing.samples_per_data_set; ++frame) {
-                for (int freq = 0; freq < 1; freq += 1) {
-                    for (int n = 0; n < 256; n++) {
-                        ((unsigned char *) args->buf->data[buffer_id])[8*256*frame + freq*256 + n] = 0xff;
-                    }
+        for (int frame = 0; frame < args->config->processing.samples_per_data_set; ++frame) {
+            for (int freq = 0; freq < 1; freq += 1) {
+                for (int n = 0; n < 256; n++) {
+                    ((unsigned char *) args->buf->data[buffer_id])[8*256*frame + freq*256 + n] = 0xff;
                 }
             }
         }

@@ -100,7 +100,6 @@ void* gpu_post_process_thread(void* arg)
 
         int gpu_id = config->fpga_network.link_map[link_id].gpu_id;
 
-        //INFO("GPU post process waiting for buffer.");
 
         // This call is blocking!
         in_buffer_ID = get_full_buffer_from_list(&args->in_buf[gpu_id], useableBufferIDs[gpu_id], 1);
@@ -119,8 +118,6 @@ void* gpu_post_process_thread(void* arg)
             int ret;
             pthread_exit((void *) &ret);
         }
-
-        //INFO("GPU post process got buffer!");
 
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
         uint64_t fpga_seq_number = get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID);

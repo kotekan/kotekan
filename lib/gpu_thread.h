@@ -1,3 +1,10 @@
+#ifndef GPU_THREAD_H
+#define GPU_THREAD_H
+
+// pthread_mutex_t status_lock;
+// pthread_cond_t status_cond;
+
+#endif // GPU_THREAD_H
 #ifndef GPU_THREAD
 #define GPU_THREAD
 
@@ -13,10 +20,7 @@
 
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
-#include <stdint.h>
-#include <pthread.h>
-
-#include "fpga_header_functions.h"
+#include "pthread.h"
 
 // This adjusts the number of queues used by the OpenCL runtime
 // One queue is for data transfers to the GPU, one is for kernels,
@@ -27,16 +31,12 @@
 // The maximum number of expected GPUs in a host.  Increase as needed.
 #define MAX_GPUS 4
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 struct gpuThreadArgs {
     struct Config * config;
 
     struct Buffer * in_buf;
     struct Buffer * out_buf;
-    struct Buffer * beamforming_out_buf;
 
     int started;
     int gpu_id;
@@ -152,11 +152,6 @@ struct OpenCLData {
 void* gpu_thread(void * arg);
 
 void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
-
-void CL_CALLBACK read_complete(cl_event event, cl_int status, void *data);
-
-#ifdef __cplusplus
-}
-#endif
+void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void *data);
 
 #endif
