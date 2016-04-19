@@ -196,34 +196,14 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
         // boundry the next packet must exist.
         if (likely(n > 0)) {
 
-/*            // At this point n < 8
-            uint64_t first_val, second_val, result;
-
-            // Get the last 8 bytes of the current frame.
-            first_val = (*(const uint64_t *)(src - 8 + n)) << (8 - n)*8;
-
-            // Advance the frame
-            *pkt = (*pkt)->next;
-            // The preconditions don't allow this to happen.
-            assert(pkt != NULL);
-            //assert(n <= pkt->data_len);
-
-            // Get the first 8 bytes of the next frame.
-            src = rte_pktmbuf_mtod(*pkt, uint8_t *);
-            second_val = (*(const uint64_t *)src) >> n*8;
-
-            // Add the two parts together and store them.
-            result = first_val | second_val;
-            _mm_stream_si64((long long int *)dest, result);
-*/
-            // At this point n < 8
+           // At this point n < 8
             uint64_t result = 0;
 
             // Get the last 8 bytes of the current frame.
             // first_val = (*(const uint64_t *)(src + n - 8)) << (8 - n)*8;
 
-            uint8_t * char_result = (uint8_t *)&result;        
- 
+            uint8_t * char_result = (uint8_t *)&result;
+
             for (int i = 0; i < n; ++i) {
                 char_result[i] = *(src + i);
             }
@@ -244,7 +224,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
 
             // Add the two parts together and store them.
             //result = first_val | second_val;
-            _mm_stream_si64((long long int *)dest, result); 
+            _mm_stream_si64((long long int *)dest, result);
 
             //fprintf(stderr, "n: %d first: 0x%016llX, second: 0x%016llX result: 0x%016llX\n" , n,  first_val, second_val, result);
 

@@ -4,6 +4,8 @@
 #include "gpu_command_factory.h"
 #include "callbackdata.h"
 #include "unistd.h"
+#include "vdif_functions.h"
+#include "fpga_header_functions.h"
 #include <vector>
 #include <iostream>
 

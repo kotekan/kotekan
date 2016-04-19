@@ -62,6 +62,7 @@ extern "C" {
 #include "network_dpdk.h"
 #include "version.h"
 #include "file_write.h"
+#include "raw_cap.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -74,55 +75,6 @@ void print_help() {
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
     printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
     printf("    --save_vdif (-o)                Save the VDIF to disk, do not stream.\n");
-}
-
-void daemonize(char * root_dir, int log_options) {
-    // Process ID and Session ID.
-    pid_t pid, sid;
-
-    // Fork off the parent process.
-    pid = fork();
-    if (pid < 0) {
-        exit(EXIT_FAILURE);
-    }
-
-    // Exit the parrent proces.
-    if (pid > 0) {
-        FILE * pid_fd = fopen("/var/run/kotekan.pid", "w");
-        if (!pid_fd) {
-            perror("failed to open PID file");
-            exit(EXIT_FAILURE);
-        }
-        fprintf(pid_fd, "%d\n", pid);
-        fclose(pid_fd);
-        exit(EXIT_SUCCESS);
-    }
-
-    // Change the file mode mask.
-    umask(0);
-
-    // Open logs.
-    openlog ("kotekan", log_options, LOG_LOCAL1);
-
-    // Create a new SID for the child process
-    sid = setsid();
-    if (sid < 0) {
-        ERROR("Cannot set SID!");
-        exit(EXIT_FAILURE);
-    }
-
-    // Change the current working directory.
-    if ((chdir(root_dir)) < 0) {
-        ERROR("Cannot change directory to %s", root_dir);
-        exit(EXIT_FAILURE);
-    }
-
-    // Close standard file descriptors
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
-
-    // TODO Handle signals.
 }
 
 void dpdk_setup() {
@@ -144,31 +96,6 @@ void dpdk_setup() {
     int nb_ports = rte_eth_dev_count();
     fprintf(stdout, "kotekan; Number of ports: %d\n", nb_ports);
 
-}
-
-void make_dirs(char * disk_base, char * data_set, int num_disks) {
-
-    // Make the data location.
-    int err = 0;
-    char dir_name[100];
-    for (int i = 0; i < num_disks; ++i) {
-
-        snprintf(dir_name, 100, "%s/%d/%s", disk_base, i, data_set);
-        err = mkdir(dir_name, 0777);
-
-        if (err != -1) {
-            continue;
-        }
-
-        if (errno == EEXIST) {
-            //printf("The data set: %s, already exists.\nPlease delete the data set, or use another name.\n", data_set);
-            //printf("The current data set can be deleted with: rm -fr %s/*/%s && rm -fr %s/%s\n", disk_base, data_set, symlink_dir, data_set);
-        } else {
-            perror("Error creating data set directory.\n");
-            printf("The directory was: %s/%d/%s \n", disk_base, i, data_set);
-        }
-        exit(errno);
-    }
 }
 
 int main(int argc, char ** argv) {
@@ -264,7 +191,6 @@ int main(int argc, char ** argv) {
 
     if (make_daemon) {
         // Do not use LOG_CONS or LOG_PERROR, since stderr does not exist in daemon mode.
-        //daemonize(kotekan_root_dir, LOG_PID | LOG_NDELAY);
         openlog ("kotekan", log_options, LOG_PID | LOG_NDELAY);
         if ((chdir(kotekan_root_dir)) < 0) {
             ERROR("Cannot change directory to %s", kotekan_root_dir);
@@ -287,6 +213,11 @@ int main(int argc, char ** argv) {
     }
 
     //print_config(&config);
+
+    // TODO: allow raw capture in line with the correlator.
+    if (config.raw_cap.enabled) {
+        return raw_cap(&config);
+    }
 
     // If we are reading from a file, force the number of links to be 1.
     if (read_file == 1) {

@@ -14,7 +14,14 @@ typedef struct {
     uint8_t unused;
 } stream_id_t;
 
-uint32_t bin_number(const stream_id_t * stream_id, const int index);
+inline uint32_t bin_number(const stream_id_t* stream_id, const int index)
+{
+  return stream_id->slot_id + stream_id->link_id * 16 + index * 128;
+}
+
+inline uint32_t bin_number_16_elem(const stream_id_t * stream_id, const int index) {
+  return stream_id->link_id + index * 8;
+}
 
 float freq_from_bin(const int bin);
 

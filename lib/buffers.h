@@ -125,6 +125,8 @@ int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
  */
 void delete_buffer(struct Buffer * buf);
 
+void zero_buffer(struct Buffer * buf, const int ID);
+
 /** @brief Gets ID of a buffer which is full.
  *  This function is thread safe, and will block if not buffers are free.
  *  @return The ID of a buffer which is full. Or -1 if the producer is done filling buffers.

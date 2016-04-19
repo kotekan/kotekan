@@ -175,6 +175,21 @@ struct Beamforming {
     int fixed_time;
 };
 
+struct RawCapture {
+
+    int enabled;
+    int num_disks;
+    char * disk_base;
+    char * disk_set;
+    char * note;
+    char * ram_disk_dir;
+    char * instrument_name;
+    int write_packets;
+    int write_powers;
+    int legacy_power_output;
+    int samples_per_file;
+};
+
 /// @brief Struct for holding static system configuration
 /// This struct should not be used for values which change in the course of
 /// operation - and should only change when system resets.
@@ -193,6 +208,9 @@ struct Config {
 
     /// The beamforming options
     struct Beamforming beamforming;
+
+    /// The raw capture options.
+    struct RawCapture raw_cap;
 };
 
 /// @brief Parses a json object which contains the configuration for kotekan

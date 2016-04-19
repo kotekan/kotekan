@@ -12,8 +12,9 @@
 extern "C" {
 #endif
 
-char *strclone(const char *s);
-double tv_difference(const struct timeval *tv1, const struct timeval *tv2);
+void make_dirs(char * disk_base, char * data_set, int num_disks);
+void make_raw_dirs(char * disk_base, char * disk_set, char * data_set, int num_disks);
+int cp(const char *to, const char *from);
 int64_t mod(int64_t a, int64_t b);
 
 //! A complex integer datatype.

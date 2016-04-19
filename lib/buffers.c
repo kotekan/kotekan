@@ -1,6 +1,7 @@
 #include "buffers.h"
 #include "errors.h"
 #include "error_correction.h"
+#include "nt_memset.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -203,6 +204,24 @@ int get_full_buffer_ID(struct Buffer * buf)
     return fullBuf;
 }
 
+void zero_buffer(struct Buffer * buf, const int ID) {
+
+    assert (ID >= 0);
+    assert (ID <= buf->num_buffers);
+
+    int div_256 = 256*(buf->buffer_size / 256);
+    nt_memset((void *)buf->data[ID], 0x00, div_256);
+    memset((void *)&buf->data[ID][div_256], 0x00, buf->buffer_size - div_256);
+    //memset((void *)buf->data[ID], 0, buf->buffer_size);
+
+    for (int i = 0; i < buf->buffer_size; ++i) {
+        if (buf->data[ID][i] != 0) {
+            INFO("data[%d][%d] = %d; buffer_size: %d", ID, i, buf->data[ID][i], buf->buffer_size);
+        }
+        assert(buf->data[ID][i] == 0);
+    }
+}
+
 void mark_buffer_empty(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
@@ -211,6 +230,7 @@ void mark_buffer_empty(struct Buffer* buf, const int ID)
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     buf->is_full[ID] = 0;
+    buf->num_producers_done[ID] = 0;
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 

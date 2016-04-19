@@ -11,6 +11,7 @@
 #include "util.h"
 #include "errors.h"
 #include "time_tracking.h"
+#include "vdif_functions.h"
 
 void fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
@@ -26,7 +27,7 @@ void fill_headers(unsigned char * out_buf,
         vdif_header->data_frame = i;
 
         for(int j = 0; j < num_links; ++j) {
-            vdif_header->therad_id = thread_id[j];
+            vdif_header->thread_id = thread_id[j];
             vdif_header->eud2 = fpga_seq_num + 625 * i;
 
             // Each polarization is its own station
@@ -65,7 +66,7 @@ void* beamforming_post_process(void* arg)
 
     // Header template
     struct VDIFHeader vdif_header;
-    vdif_header.bits_depth = 4; // 4-bit data
+    vdif_header.bits_depth = 3; // 4-bit data
     vdif_header.data_type = 1; // Complex
     vdif_header.frame_len = 629; // 5032 bytes / 8
     vdif_header.invalid = 0;

@@ -243,6 +243,43 @@ int parse_beamforming_config(struct Config* config, json_t * json) {
     return 0;
 }
 
+int parse_raw_cap_config(struct Config* config, json_t * json) {
+
+    int error = 0;
+    const char * disk_base;
+    const char * disk_set;
+    const char * note;
+    const char * ram_disk_dir;
+    const char * instrument_name;
+
+    error = json_unpack(json, "{s:i, s:i, s:s, s:s, s:s, s:s, s:s, s:i, s:i, s:i, s:i}",
+                        "enabled", &config->raw_cap.enabled,
+                        "num_disks", &config->raw_cap.num_disks,
+                        "disk_base", &disk_base,
+                        "disk_set", &disk_set,
+                        "note", &note,
+                        "ram_disk_dir", &ram_disk_dir,
+                        "instrument_name", &instrument_name,
+                        "write_packets", &config->raw_cap.write_packets,
+                        "write_powers", &config->raw_cap.write_powers,
+                        "legacy_power_output", &config->raw_cap.legacy_power_output,
+                        "samples_per_file", &config->raw_cap.samples_per_file);
+
+    if (error) {
+        ERROR("Error parsing raw capture config, check config file, error: %d", error);
+        return error;
+    }
+
+    config->raw_cap.disk_base = strdup(disk_base);
+    config->raw_cap.disk_set = strdup(disk_set);
+    config->raw_cap.note = strdup(note);
+    config->raw_cap.ram_disk_dir = strdup(ram_disk_dir);
+    config->raw_cap.instrument_name = strdup(instrument_name);
+
+    return 0;
+}
+
+
 int parse_config(struct Config* config, json_t * json)
 {
     int error = 0;
@@ -256,14 +293,15 @@ int parse_config(struct Config* config, json_t * json)
     }
 
     json_t * gpu_json, * fpga_network_json, * processing_json,
-            * ch_master_network_json, * beamforming_json;
+            * ch_master_network_json, * beamforming_json, * raw_cap_json;
 
-    error = json_unpack(json, "{s:o, s:o, s:o, s:o, s:o}",
+    error = json_unpack(json, "{s:o, s:o, s:o, s:o, s:o, s:o}",
                         "gpu", &gpu_json,
                         "fpga_network", &fpga_network_json,
                         "processing", &processing_json,
                         "ch_master_network", &ch_master_network_json,
-                        "beamforming", &beamforming_json);
+                        "beamforming", &beamforming_json,
+                        "raw_capture", &raw_cap_json);
 
     if (error) {
         ERROR("Error processing config root structure");
@@ -275,6 +313,7 @@ int parse_config(struct Config* config, json_t * json)
     error |= parse_gpu_config(config, gpu_json);
     error |= parse_fpga_network_config(config, fpga_network_json);
     error |= parse_beamforming_config(config, beamforming_json);
+    error |= parse_raw_cap_config(config, raw_cap_json);
 
     return error;
 }
@@ -356,7 +395,7 @@ void print_config(struct Config* config)
 
     // Beamforming section
     INFO("config.beamforming.num_masked_elements = %d", config->beamforming.num_masked_elements);
-    INFO("config.beamforming.scale_factor = %d", config->beamforming.scale_factor);
+    INFO("config.beamforming.scale_factor = %f", config->beamforming.scale_factor);
     INFO("config.beamforming.ra = %f", config->beamforming.ra);
     INFO("config.beamforming.dec = %f", config->beamforming.dec);
     INFO("config.beamforming.instrument_lat = %f", config->beamforming.instrument_lat);
