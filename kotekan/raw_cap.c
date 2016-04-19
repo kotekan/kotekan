@@ -171,7 +171,7 @@ int raw_cap(struct Config * config) {
             file_write_args[i].buf = &vdif_buf;
             file_write_args[i].diskID = i;
             file_write_args[i].numDisks = config->raw_cap.num_disks;
-            file_write_args[i].bufferDepth = num_vdif_buf;
+            file_write_args[i].bufferDepth = buffer_depth;
             file_write_args[i].dataset_name = data_set;
             file_write_args[i].disk_base = config->raw_cap.disk_base;
             file_write_args[i].disk_set = config->raw_cap.disk_set;
