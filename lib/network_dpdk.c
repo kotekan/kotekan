@@ -317,7 +317,8 @@ static inline void set_vdif_header_options(struct NetworkDPDK * dpdk_net,
             vdif_header->eud2 = 0;
             vdif_header->eud3 = 0;
             vdif_header->eud4 = 0;
-            vdif_header->station_id = 0x5141;
+            // TODO make this dynamic
+            vdif_header->station_id = 0x4151; // 0x5141 AQ check which order is correct
             vdif_header->thread_id = elem;
             // Only set the invalid bit if it is invalid, since it is preset to valid
             if (invalid == 1)
