@@ -518,8 +518,8 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
             // Now we get the VDIF second
             // TODO check that this offset it correct and accounts for the leap seconds correctly
-            // 946728000 => 2000-01-01T12:00:00+00:00
-            dpdk_net->vdif_base_time = now.tv_sec - 946728000 - ((seq - dpdk_net->vdif_offset) / 390625);
+            // 946684800 => 2000-01-01T12:00:00+00:00
+            dpdk_net->vdif_base_time = now.tv_sec - 946684800 - ((seq - dpdk_net->vdif_offset) / 390625);
             // To get the current time stamp with the 2000-01-01 epoch:
             // seconds = (seq - offset) / 5^8 + vdif_base_time
 
@@ -531,7 +531,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                     (double)now.tv_sec+(double)now.tv_usec/1000000.0,
                     dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
                     (seq - dpdk_net->vdif_offset) % 390625,
-                    (double)(((seq - dpdk_net->vdif_offset) / 390625) + 946728000) +
+                    (double)(((seq - dpdk_net->vdif_offset) / 390625) + 946684800) +
                     (double)dpdk_net->vdif_base_time +
                     (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
         }
