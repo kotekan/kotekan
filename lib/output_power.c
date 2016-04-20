@@ -250,14 +250,12 @@ void *output_power_thread(void * arg)
                     xx_legacy[i] += xx[i];
                     yy_legacy[i] += yy[i];
                 }
-            }
-        }
 
-        if (args->legacy_output == 1) {
-            ssize_t ints_written = fwrite((void*)out_buf_legacy, sizeof(int), args->num_freq*2, fd_legacy);
-            if (ints_written != args->num_freq*2) {
-                ERROR("Failed to write power data to legacy ram disk!!!");
-                fclose(fd);
+                ssize_t ints_written = fwrite((void*)out_buf_legacy, sizeof(int), args->num_freq*2, fd_legacy);
+                if (ints_written != args->num_freq*2) {
+                    ERROR("Failed to write power data to legacy ram disk!!!");
+                    fclose(fd);
+                }
             }
         }
 

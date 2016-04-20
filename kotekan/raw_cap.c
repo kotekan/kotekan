@@ -57,7 +57,7 @@ int raw_cap(struct Config * config) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 4; j < 8; j++)
+    for (int j = 4; j < 12; j++)
         CPU_SET(j, &cpuset);
 
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
