@@ -131,9 +131,17 @@ int raw_cap(struct Config * config) {
     // We don't really need a pool, but buffer needs one.
     create_info_pool(&pool, num_vdif_buf * 2, 1, 1);
 
+    int num_consumers = 0;
+    if (config->raw_cap.write_packets) {
+        num_consumers += 1;
+    }
+    if (config->raw_cap.write_powers) {
+        num_consumers += 1;
+    }
+
     create_buffer(&vdif_buf, num_vdif_buf,
             buffer_len, config->fpga_network.num_links,
-            1, &pool, "vdif_buffer");
+            num_consumers, &pool, "vdif_buffer");
 
     for (int i = 0; i < num_vdif_buf; ++i) {
         zero_buffer(&vdif_buf, i);
