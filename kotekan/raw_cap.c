@@ -22,14 +22,15 @@
 #include "errors.h"
 #include "network_dpdk.h"
 #include "raw_file_write.h"
+#include "output_power.h"
 
 // This function is very much a hack to make life easier, but it should be replaced with something better
-void copy_gains(char * base_dir, char * data_set) {
+void copy_gains(char * base_dir, char * data_set, char * gain_file_name) {
     char src[100];  // The source gains file
     char dest[100]; // The dist for the gains file copy
 
-    snprintf(src, 100, "/home/squirrel/ch_acq/gains_slotNone.pkl");
-    snprintf(dest, 100, "%s/%s/gains_slotNone.pkl", base_dir, data_set);
+    snprintf(src, 100, "/home/squirrel/ch_acq/%s", gain_file_name);
+    snprintf(dest, 100, "%s/%s/%s", base_dir, data_set, gain_file_name);
 
     if (cp(dest, src) != 0) {
         fprintf(stderr, "Could not copy %s to %s\n", src, dest);
@@ -72,7 +73,8 @@ int raw_cap(struct Config * config) {
             char disk_base_dir[256];
             snprintf(disk_base_dir, sizeof(disk_base_dir), "%s/%s/%d/",
                     config->raw_cap.disk_base, config->raw_cap.disk_set, i);
-            copy_gains(disk_base_dir, data_set);
+            copy_gains(disk_base_dir, data_set, "gains_slotNone.pkl");
+            copy_gains(disk_base_dir, data_set, "gains_noisy_slotNone.pkl");
         }
 
         //  ** Create settings file **
@@ -178,6 +180,19 @@ int raw_cap(struct Config * config) {
             CHECK_ERROR( pthread_create(&file_write_t[i], NULL, (void *) &raw_file_write_thread, (void *)&file_write_args[i] ) );
             CHECK_ERROR( pthread_setaffinity_np(file_write_t[i], sizeof(cpu_set_t), &cpuset) );
         }
+    }
+
+    pthread_t output_power_t;
+    struct output_power_thread_arg output_arg;
+    if (config->raw_cap.write_powers == 1) {
+        output_arg.buf = &vdif_buf;
+        output_arg.ram_disk = config->raw_cap.ram_disk_dir;
+        output_arg.num_freq = config->processing.num_total_freq;
+        output_arg.integration_samples = 512;
+        output_arg.num_timesamples = config->raw_cap.samples_per_file;
+        output_arg.legacy_output = config->raw_cap.legacy_power_output;
+        CHECK_ERROR( pthread_create(&output_power_t, NULL, (void *)&output_power_thread, (void *)&output_arg) );
+        CHECK_ERROR( pthread_setaffinity_np(output_power_t, sizeof(cpu_set_t), &cpuset) );
     }
 
     // Just block on the network thread for now.

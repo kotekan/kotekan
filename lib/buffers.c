@@ -167,9 +167,9 @@ void mark_buffer_full(struct Buffer * buf, const int ID){
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
 
-    int set_full = 0;
-
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    int set_full = 0;
 
     buf->num_producers_done[ID]++;
     if (buf->num_producers_done[ID] == buf->num_producers) {
@@ -229,13 +229,22 @@ void mark_buffer_empty(struct Buffer* buf, const int ID)
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
-    buf->is_full[ID] = 0;
-    buf->num_producers_done[ID] = 0;
+    int broadcast = 0;
+
+    buf->num_consumers_done[ID]++;
+    if (buf->num_consumers_done[ID] == buf->num_consumers) {
+        buf->is_full[ID] = 0;
+        buf->num_producers_done[ID] = 0;
+        buf->num_consumers_done[ID] = 0;
+        broadcast = 1;
+    }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     // Signal producer
-    CHECK_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
+    if (broadcast == 1) {
+        CHECK_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
+    }
 }
 
 void wait_for_empty_buffer(struct Buffer* buf, const int ID)
