@@ -9,10 +9,10 @@
 
 //#pragma OPENCL EXTENSION cl_amd_printf : enable
 #define TIME_REDUCTION_FACTOR       4
-#define LOCAL_SIZE                  64
+#define LOCAL_SIZE_REORDER          64
 #define NUM_COMPLEX_PAIRS           4   //4 B per uint
 #define NUM_ELEMENTS_DIV_DATASIZE   (ACTUAL_NUM_ELEMENTS/NUM_COMPLEX_PAIRS)    //DATASIZE = NUM_COMPLEX_PAIRS here since each complex pair = 1 B
-#define LOCAL_SIZE_x_COMPLEX_PAIRS  (LOCAL_SIZE*NUM_COMPLEX_PAIRS)
+#define LOCAL_SIZE_x_COMPLEX_PAIRS  (LOCAL_SIZE_REORDER*NUM_COMPLEX_PAIRS)
 //#define NUM_TIMESTEPS               128  //total number of timesteps
 
 __kernel void reorder_input_data_with_timeshift(__global unsigned int  *input_data,
@@ -23,7 +23,7 @@ __kernel void reorder_input_data_with_timeshift(__global unsigned int  *input_da
     __local unsigned char packed_temp[LOCAL_SIZE_x_COMPLEX_PAIRS];
 
     //Load 4 packed pairs at a time (would it be best to up this to 16 to increase bus usage for GPUs like Fury?)
-    int input_address = get_local_id(0) + get_group_id(0)*LOCAL_SIZE + get_group_id(1)*NUM_ELEMENTS_DIV_DATASIZE + get_group_id(2)*NUM_ELEMENTS_DIV_DATASIZE*NUM_FREQUENCIES;
+    int input_address = get_local_id(0) + get_group_id(0)*LOCAL_SIZE_REORDER + get_group_id(1)*NUM_ELEMENTS_DIV_DATASIZE + get_group_id(2)*NUM_ELEMENTS_DIV_DATASIZE*NUM_FREQUENCIES;
     uint temp = input_data[input_address]; //this would change with how things load (say if a vector were loaded instead)
 
     //unroll this
@@ -41,7 +41,7 @@ __kernel void reorder_input_data_with_timeshift(__global unsigned int  *input_da
     //test this when unrolled, too.
     for (int i = 0; i < NUM_COMPLEX_PAIRS; i++){
         //figure out the output addresses
-        lookup_address          = get_group_id(0)*LOCAL_SIZE_x_COMPLEX_PAIRS + i*LOCAL_SIZE + get_local_id(0);
+        lookup_address          = get_group_id(0)*LOCAL_SIZE_x_COMPLEX_PAIRS + i*LOCAL_SIZE_REORDER + get_local_id(0);
         output_element_address  = remap_lookup[lookup_address];
         output_timeshift        = timeshift_map[output_element_address]; //NOTE: the map for timeshifting is based on the remapped addressing
         output_address          = output_element_address +
@@ -49,7 +49,7 @@ __kernel void reorder_input_data_with_timeshift(__global unsigned int  *input_da
                                     (output_timeshift+get_group_id(2))*NUM_ELEMENTS_DIV_DATASIZE*NUM_COMPLEX_PAIRS*NUM_FREQUENCIES;
         //save individually since scattering can go any which way with the remaps
         if (output_address >=0 && output_address < (NUM_ELEMENTS_DIV_DATASIZE*NUM_COMPLEX_PAIRS*NUM_FREQUENCIES*NUM_TIMESAMPLES))
-            output_data[output_address] = packed_temp[get_local_id(0)+i*LOCAL_SIZE];
+            output_data[output_address] = packed_temp[get_local_id(0)+i*LOCAL_SIZE_REORDER];
     }
 }
 
@@ -61,13 +61,13 @@ __kernel void reorder_input_data_with_timeshift_cache_lookups(__global unsigned 
     __local unsigned char packed_temp[LOCAL_SIZE_x_COMPLEX_PAIRS];
 
     //load and cache the remaps in 4 steps
-    //__local int remap_lookup[LOCAL_SIZE*4];
+    //__local int remap_lookup[LOCAL_SIZE_REORDER*4];
     int remap_address[4];
     int time_shift[4];
 
 //#pragma unroll
     for (int i = 0; i < 4; i++){
-        remap_address[i] = remap_lookup[i*LOCAL_SIZE + get_local_id(0) + get_group_id(0)*LOCAL_SIZE_x_COMPLEX_PAIRS];
+        remap_address[i] = remap_lookup[i*LOCAL_SIZE_REORDER + get_local_id(0) + get_group_id(0)*LOCAL_SIZE_x_COMPLEX_PAIRS];
         time_shift[i] = timeshift_map[remap_address[i]];
     }
 
@@ -82,7 +82,7 @@ __kernel void reorder_input_data_with_timeshift_cache_lookups(__global unsigned 
 
     //test this when unrolled, too.
     for (int j = 0; j < TIME_REDUCTION_FACTOR; j++){
-        input_address = get_local_id(0) + get_group_id(0)*LOCAL_SIZE + get_group_id(1)*NUM_ELEMENTS_DIV_DATASIZE + (get_group_id(2)*TIME_REDUCTION_FACTOR+j)*NUM_ELEMENTS_DIV_DATASIZE*NUM_FREQUENCIES;
+        input_address = get_local_id(0) + get_group_id(0)*LOCAL_SIZE_REORDER + get_group_id(1)*NUM_ELEMENTS_DIV_DATASIZE + (get_group_id(2)*TIME_REDUCTION_FACTOR+j)*NUM_ELEMENTS_DIV_DATASIZE*NUM_FREQUENCIES;
         temp = input_data[input_address]; //this would change with how things load (say if a vector were loaded instead)
 
 //#pragma unroll
@@ -93,18 +93,79 @@ __kernel void reorder_input_data_with_timeshift_cache_lookups(__global unsigned 
 //#pragma unroll
         for (int i = 0; i < NUM_COMPLEX_PAIRS; i++){
             //figure out the output addresses
-            //lookup_address          = get_group_id(0)*LOCAL_SIZE_x_COMPLEX_PAIRS + i*LOCAL_SIZE + get_local_id(0);
+            //lookup_address          = get_group_id(0)*LOCAL_SIZE_x_COMPLEX_PAIRS + i*LOCAL_SIZE_REORDER + get_local_id(0);
             //output_element_address  = remap_lookup[lookup_address];
             //output_timeshift        = timeshift_map[output_element_address]; //NOTE: the map for timeshifting is based on the remapped addressing
             output_address          = remap_address[i] +
-                                        get_group_id(1)*NUM_ELEMENTS_DIV_DATASIZE*NUM_COMPLEX_PAIRS +
+                                        get_group_id(1)*ACTUAL_NUM_ELEMENTS +
                                         (time_shift[i]+get_group_id(2)*TIME_REDUCTION_FACTOR+j)*NUM_ELEMENTS_DIV_DATASIZE*NUM_COMPLEX_PAIRS*NUM_FREQUENCIES;
             //save individually since scattering can go any which way with the remaps
             if (output_address >=0 && output_address < (NUM_ELEMENTS_DIV_DATASIZE*NUM_COMPLEX_PAIRS*NUM_FREQUENCIES*NUM_TIMESAMPLES))
-                output_data[output_address] = packed_temp[get_local_id(0)+i*LOCAL_SIZE];
+                output_data[output_address] = packed_temp[get_local_id(0)+i*LOCAL_SIZE_REORDER];
         }
     }
 }
+
+__kernel void reorder_input_data_with_timeshift_cache_lookups_time(__global unsigned int  *input_data,
+                                                __global unsigned char *output_data,
+                                                __global const    int  *remap_lookup, //a mapping of elements from FPGA ordering to natural cylinder ordering (or other)
+                                                __global const    char *timeshift_map //NOTE: the map for timeshifting is based on the remapped addressing
+                                                ) {
+    __local unsigned char packed_temp[LOCAL_SIZE_x_COMPLEX_PAIRS];
+
+    __local remap_address_local[4];
+    __local time_shift_local[4];
+
+    //load and cache the remaps in 4 steps
+    //__local int remap_lookup[LOCAL_SIZE_REORDER*4];
+    int remap_address[4];
+    int time_shift[4];
+
+    //attempt to share lookup table
+    if (get_local_id(2) < 4){
+        remap_address_local[get_local_id(2)] = remap_lookup[get_local_id(2)+get_group_id(0)*NUM_COMPLEX_PAIRS];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if (get_local_id(2) < 4){
+        time_shift_local[get_local_id(2)] = timeshift_map[remap_address_local[get_local_id(2)]];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    //put the values into registers
+    for (int i = 0; i < 4; i++){
+        remap_address[i] = remap_address_local[i];
+        time_shift[i] = time_shift_local[i];
+    }
+
+
+    //Load 4 packed pairs at a time (would it be best to up this to 16 to increase bus usage for GPUs like Fury?)
+    int input_address;
+    uint temp;
+
+    //Each output needs to be treated individually--things are not necessarily output in consecutive locations, and timeshifts make temporary arrays dangerous
+
+    //test this when unrolled, too.
+    for (int j = 0; j < TIME_REDUCTION_FACTOR; j++){
+        input_address = get_group_id(0) + get_group_id(1)*NUM_ELEMENTS_DIV_DATASIZE + (get_local_id(2)+ get_group_id(2)*TIME_REDUCTION_FACTOR*LOCAL_SIZE_REORDER+j*LOCAL_SIZE_REORDER)*NUM_ELEMENTS_DIV_DATASIZE*ACTUAL_NUM_FREQUENCIES;
+        temp = input_data[input_address]; //this would change with how things load (say if a vector were loaded instead)
+
+//#pragma unroll
+        for (int i = 0; i < NUM_COMPLEX_PAIRS; i++){
+            packed_temp[get_local_id(2)+i*LOCAL_SIZE_REORDER] = (temp >>(i*8)) & 0xFF;
+        }
+        int output_address;//
+//#pragma unroll
+        for (int i = 0; i < NUM_COMPLEX_PAIRS; i++){
+            output_address          = remap_address[i] +
+                                        get_group_id(1)*ACTUAL_NUM_ELEMENTS +
+                                        (time_shift[i]+get_group_id(2)*TIME_REDUCTION_FACTOR*LOCAL_SIZE_REORDER+j*LOCAL_SIZE_REORDER+get_local_id(2))*ACTUAL_NUM_ELEMENTS*ACTUAL_NUM_FREQUENCIES;
+            //save individually since scattering can go any which way with the remaps
+            if (output_address >=0 && output_address < (NUM_ELEMENTS_DIV_DATASIZE*NUM_COMPLEX_PAIRS*NUM_FREQUENCIES*NUM_TIMESAMPLES))
+                output_data[output_address] = packed_temp[get_local_id(2)+i*LOCAL_SIZE_REORDER];
+        }
+    }
+}
+
 //version two--without timeshifts--means that data can be moved temporarily in a local array and output in an essentially coalesced manner
 //__kernel void reorder_input_data(__global unsigned int  *input_data,
 //                                 __global unsigned char *output_data,

@@ -50,7 +50,7 @@
 #define NUM_TIMESAMPLES                 64u*1024u//1024u //32
 #define NUM_REPEATS_GPU                 100000u
 
-#define GEN_TYPE                        GENERATE_DATASET_RAMP_UP
+#define GEN_TYPE                        GENERATE_DATASET_RANDOM_SEEDED
 #define GEN_DEFAULT_SEED                42u
 #define GEN_DEFAULT_RE                  0u
 #define GEN_DEFAULT_IM                  0u
@@ -948,7 +948,7 @@ int main(int argc, char ** argv) {
     // 6. Set up Kernel parameters
 
 
-    size_t gws_reorder[3]={64*(NUM_ELEM/256), NUM_FREQ, NUM_TIMESAMPLES/4};
+    size_t gws_reorder[3]={1*(NUM_ELEM/4), NUM_FREQ, NUM_TIMESAMPLES/4};
     size_t lws_reorder[3]={64, 1, 1};
 
 

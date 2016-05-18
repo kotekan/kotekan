@@ -1,4 +1,4 @@
-// gcc -std=gnu99 -O3 -Wall fourierTesting.c -I/opt/AMDAPP/include -lOpenCL -lm -o fourierTest
+// gcc -std=gnu99 -O3 -Wall fourierTesting.c -I$AMDAPPSDKROOT/include -lOpenCL -lm -L$AMDAPPSDKROOT/lib/x86_64/ -o fourierTest
 
 #include <math.h>
 #include <unistd.h>
@@ -64,7 +64,7 @@ a real array of length 2*nn.  nn MUST be an integer power of 2
                 //printf("     data[%ld]_Im = data[%ld]_Im + (%f * data[%ld]_Im + %f * data[%ld]_Re)\n",(i-1)/2, (i-1)/2, wr, (j-1)/2, wi, (j-1)/2);
                 //printf("     data[%ld]_Re = data[%ld]_Re - (%f * data[%ld]_Re - %f * data[%ld]_Im)\n",(j-1)/2, (i-1)/2, wr, (j-1)/2, wi, (j-1)/2);
                 //printf("     data[%ld]_Im = data[%ld]_Im - (%f * data[%ld]_Im + %f * data[%ld]_Re)\n\n",(j-1)/2, (i-1)/2, wr, (j-1)/2, wi, (j-1)/2);
-                
+
                 tempr=wr*data[j-1]-wi*data[j];
                 tempi=wr*data[j]+wi*data[j-1];
                 //printf("%f %f %f %f\n",data[i-1], data[i], data[j-1], data[j]);
@@ -88,7 +88,7 @@ double e_time(void){
 }
 
 void fourier16complex(float *data, int sign){
-    
+
 }
 
 //int main(int argc, char ** argv){
@@ -104,28 +104,28 @@ int main_cpu(int argc, char ** argv){
             return -1;
         }
     }
-    
+
     index = 0;
     for(i = 0; i<n; i++){
         array1[index++] = rand()%32;
         array1[index++] = 0;
         //printf("%d %d\n",i, ((i<<1)&0x3c)+(i&0x1));
     }
-    
+
    printf("original data\n");
    for (i = 0; i< n; i++){
        printf("%03d: r %f, i %f\n",i,array1[i*2],array1[i*2+1]);
    }
-    
+
     four1(array1, n, 1);
-    
+
    printf("after transform\n");
    for (i = 0; i< n; i++){
        printf("r %f, i %f\n",array1[i*2],array1[i*2+1]);
    }
-    
+
 //    four1(array1, n, -1);
-    
+
 //    printf("after inverse transform\n");
 //    for (i = 0; i< n; i++){
 //        printf("r %f, i %f\n",array1[i*2],array1[i*2+1]);
@@ -138,7 +138,7 @@ int main(int argc, char **argv){
     double elapsed_time;
      //basic setup of CL devices
     cl_int err;
-    
+
     int dev_number = 0;
 
     // 1. Get a platform.
@@ -168,9 +168,9 @@ int main(int argc, char **argv){
     clGetDeviceInfo(deviceID[dev_number], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &mcm, NULL);
     float card_tflops = mcl*1e6 * mcm*16*4*2 / 1e12;
     printf("Testing on device 0: max %f TFLOPS\n\n", card_tflops);
-    printf ("Theoretical: 5 N log2 (N) = 5 x 64 x 6 = 1920 floating point operations\n%f us/FFT\n", 1920.f*1000000/(mcl*1e6 * mcm*16*4)); 
+    printf ("Theoretical: 5 N log2 (N) = 5 x 64 x 6 = 1920 floating point operations\n%f us/FFT\n", 1920.f*1000000/(mcl*1e6 * mcm*16*4));
 
-    
+
     // 3. Create a context and command queues on that device.
     cl_context context = clCreateContext( NULL, 1, &deviceID[dev_number], NULL, NULL, NULL);
     cl_command_queue queue[N_QUEUES];
@@ -264,25 +264,25 @@ int main(int argc, char **argv){
         srand(42); //seed it and make each of the subsequent arrays equal
         for (int i = 0; i < 64; i++){
             array1[index++] = rand()%32;
-            array1[index++] = 0;
+            array1[index++] = rand()%32;
         }
     }
-    
+
     cl_mem device_fourier64data, device_fourier64results;
     device_fourier64data = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, total_number_floats*sizeof(float), array1, &err); //note there was a typo previously that USED host memory instead of COPYing host memory.  Speeds are close to theoretical now.
     device_fourier64results = clCreateBuffer(context, CL_MEM_WRITE_ONLY, total_number_floats * sizeof(float), NULL, &err);
-    
+
     // Set up work sizes
     int num_data_sets_device = num_data_sets/2; //each work group processes two sets at once
     size_t gws[3]={64*num_data_sets_device, 1,1};
     size_t lws[3]={64, 1, 1};
-    
+
     //set parameters
     int sign = 1;
     clSetKernelArg(fft64, 0, sizeof (void *), (void *) &device_fourier64data);
     clSetKernelArg(fft64, 1, sizeof (int), &sign);
     clSetKernelArg(fft64, 2, sizeof (void *), (void *) &device_fourier64results);
-    
+
     //start the timer
     elapsed_time = e_time();
     //enqueue the kernel
@@ -304,10 +304,10 @@ int main(int argc, char **argv){
     printf ("Computed %d 64 element FFTs in %f s (%f us/FFT on average)\n",num_data_sets, elapsed_time, (double)elapsed_time*1000000/num_data_sets/extra_coef);
     //     sign = -1;
 //     clSetKernelArg(fft64, 1, sizeof (int), &sign);
-//     
+//
 //     //enqueue the kernel
 //     clEnqueueNDRangeKernel(queue[0],
-//                            fft64, 
+//                            fft64,
 //                            3, //dimension of GWS/LWS
 //                            NULL, //no offsets
 //                            gws,
@@ -315,16 +315,16 @@ int main(int argc, char **argv){
 //                            0,
 //                            NULL,
 //                            NULL);
-//     
+//
 //     clFinish(queue[0]);
-    
-    
+
+
     //read back the result
     err = clEnqueueReadBuffer(queue[0],device_fourier64results, CL_TRUE, 0, total_number_floats*sizeof(float), array1, 0, NULL, NULL);
     //printf("err: %d\n",err);
-    
+
     clFinish(queue[0]);
-    
+
     //compare results with cpu fft
     //calculate fft
     float array2 [128];
@@ -332,18 +332,18 @@ int main(int argc, char **argv){
     index = 0;
     for (int i = 0; i < 64; i++){
         array2[index++] = rand()%32;
-        array2[index++] = 0;
+        array2[index++] = rand()%32;
     }
     four1(array2, 64, 1);
     //
 
-    float eps = 0.00003;
+    float eps = 0.00005;
     int error_count = 0;
     for (int j = 0; j < num_data_sets; j++){
         //printf("j: %d \n",j);
         for (int i = 0; i < 64; i++){
-            //if (j == 0)
-            //    printf("i: %d, RE: %f, IM: %f\n", i, array1[j*64*2+i*2], array1[j*64*2+i*2+1]);
+            if (j == 0)
+                printf("i: %d, RE: %f, IM: %f\n", i, array1[j*64*2+i*2], array1[j*64*2+i*2+1]);
             if (fabs(array1[j*64*2+i*2] - array2[i*2]) > eps || fabs(array1[j*64*2+i*2+1]- array2[i*2+1]) > eps){
                 //printf("j: %d i: %d\n",j, i);
                 error_count++;
@@ -353,7 +353,7 @@ int main(int argc, char **argv){
     printf("#errors: %d\n", error_count);
     free(array1);
     //free(resultsArray);
-    
+
     clReleaseKernel(fft64);
     clReleaseProgram(program);
     clReleaseMemObject(device_fourier64data);

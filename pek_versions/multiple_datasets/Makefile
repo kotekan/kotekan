@@ -1,7 +1,7 @@
 CC	= gcc
 ATISDK	= /opt/AMDAPP
-INC	= -I$(ATISDK)/include -I$(ATISDK)/include/CAL
-LIBS	= -lOpenCL -L/opt/AMDAPP/lib/x86_64/ -lm
+INC	= -I$(ATISDK)/include -I$(ATISDK)/include/CAL -I$(AMDAPPSDKROOT)/include -I$(AMDAPPSDKROOT)/include/CAL
+LIBS	= -lOpenCL -L/opt/AMDAPP/lib/x86_64/ -L$(AMDAPPSDKROOT)/lib/x86_64/ -lm
 
 OPTIMIZE= -Wall -O4 -std=gnu99 -msse3 -DSFMT_MEXP=19937 -ggdb
 CFLAGS	= $(OPTIMIZE) $(INC)
@@ -12,7 +12,8 @@ CFLAGS	= $(OPTIMIZE) $(INC)
 
 #step 2: (to compile the program)
 #OBJS	= SFMT.o main_multi-freq-4interleaved_output_xor_multidataset.o
-OBJS	= SFMT.o main_multi-freq-4interleaved_output_xor_multidataset_alternate.o
+#OBJS	= SFMT.o  main_multi-freq-4interleaved_output_xor_multidataset_alternate.o
+OBJS	= main_multi-freq-4interleaved_output_xor_multidataset_alternate.o
 PROGRAM	= run
 
 $(PROGRAM) : $(OBJS)
@@ -24,7 +25,7 @@ clean:
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 
-SFMT.o : ./SFMT-src-1.4/SFMT.c
+#SFMT.o : ./SFMT-src-1.4/SFMT.c
 
 #main_multi-freq-4interleaved_output_xor_multidataset.o :  main_multi-freq-4interleaved_output_xor_multidataset.c #kernel.h kernel2.h
 main_multi-freq-4interleaved_output_xor_multidataset_alternate.o :  main_multi-freq-4interleaved_output_xor_multidataset_alternate.c #kernel.h kernel2.h

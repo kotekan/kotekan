@@ -52,8 +52,8 @@ __kernel void FFT64(__global float2 *data, int sign, __global float2 *results_ar
     //    printf("id %02d, index1: %02d, Re: %f Im %f ; index2: %02d, Re: %f Im %f\n",get_local_id(0),index1, local_data[index1].REAL, local_data[index1].IMAG, index2, local_data[index2].REAL, local_data[index2].IMAG);
     local_data[(local_address_shift1)+offset]   = temp1+temp2; //store according to local addresses
     local_data[(local_address_shift1)+offset+1] = temp1-temp2;
-    
- 
+
+
     //barrier(CLK_LOCAL_MEM_FENCE);
     //things are in lock-step so synch points at each stage aren't needed, right?
     //stage 1

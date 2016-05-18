@@ -18,7 +18,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <assert.h>
-#include "SFMT-src-1.4/SFMT.h" //Mersenne Twister library
+//#include "SFMT-src-1.4/SFMT.h" //Mersenne Twister library
 
 #define NUM_CL_FILES                    3u
 #define OPENCL_FILENAME_1               "test0xB_multifreq_multiple.cl"
@@ -238,7 +238,7 @@ void generate_char_data_set(int generation_Type,
                             int num_data_sets,
                             unsigned char *packed_data_set){
 
-    sfmt_t sfmt; //for the Mersenne Twister
+    //sfmt_t sfmt; //for the Mersenne Twister
     if (single_frequency > num_frequencies || single_frequency < 0)
         single_frequency = ALL_FREQUENCIES;
 
@@ -257,15 +257,15 @@ void generate_char_data_set(int generation_Type,
     //printf("clipped_offset_initial_real: %d, clipped_offset_initial_imaginary: %d, clipped_offset_default_real: %d, clipped_offset_default_imaginary: %d\n", clipped_offset_initial_real, clipped_offset_initial_imaginary, clipped_offset_default_real, clipped_offset_default_imaginary);
     for (int m = 0; m < num_data_sets; m++){
         if (generation_Type == GENERATE_DATASET_RANDOM_SEEDED){
-            sfmt_init_gen_rand(&sfmt, random_seed);
-            //srand(random_seed);
+            //sfmt_init_gen_rand(&sfmt, random_seed);
+            srand(random_seed);
         }
 
         for (int k = 0; k < num_timesteps; k++){
             //printf("k: %d\n",k);
             if (generation_Type == GENERATE_DATASET_RANDOM_SEEDED && GEN_REPEAT_RANDOM){
-                sfmt_init_gen_rand(&sfmt, random_seed);
-                //srand(random_seed);
+                //sfmt_init_gen_rand(&sfmt, random_seed);
+                srand(random_seed);
             }
             for (int j = 0; j < num_frequencies; j++){
                 if (DEBUG_GENERATOR && k == 0)
@@ -288,8 +288,10 @@ void generate_char_data_set(int generation_Type,
                             new_imaginary = 15 - ((j+clipped_offset_initial_imaginary+i)%16);
                             break;
                         case GENERATE_DATASET_RANDOM_SEEDED:
-                            new_real = (unsigned char)(floor(sfmt_genrand_res53(&sfmt)*16));//rand()%16; //to put the pseudorandom value in the range 0-15
-                            new_imaginary = (unsigned char)(floor(sfmt_genrand_res53(&sfmt)*16));//rand()%16;
+                            //new_real = (unsigned char)(floor(sfmt_genrand_res53(&sfmt)*16));//rand()%16; //to put the pseudorandom value in the range 0-15
+                            //new_imaginary = (unsigned char)(floor(sfmt_genrand_res53(&sfmt)*16));//rand()%16;
+                            new_real = (unsigned char)rand()%16; //to put the pseudorandom value in the range 0-15
+                            new_imaginary = (unsigned char)rand()%16;
                             break;
                         default: //shouldn't happen, but in case it does, just assign the default values everywhere
                             new_real = clipped_offset_default_real;
