@@ -188,6 +188,7 @@ struct RawCapture {
     int write_powers;
     int legacy_power_output;
     int samples_per_file;
+    int stream_vdif;
 };
 
 /// @brief Struct for holding static system configuration

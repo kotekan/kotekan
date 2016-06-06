@@ -252,7 +252,7 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
     const char * ram_disk_dir;
     const char * instrument_name;
 
-    error = json_unpack(json, "{s:i, s:i, s:s, s:s, s:s, s:s, s:s, s:i, s:i, s:i, s:i}",
+    error = json_unpack(json, "{s:i, s:i, s:s, s:s, s:s, s:s, s:s, s:i, s:i, s:i, s:i, s:i}",
                         "enabled", &config->raw_cap.enabled,
                         "num_disks", &config->raw_cap.num_disks,
                         "disk_base", &disk_base,
@@ -263,7 +263,8 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
                         "write_packets", &config->raw_cap.write_packets,
                         "write_powers", &config->raw_cap.write_powers,
                         "legacy_power_output", &config->raw_cap.legacy_power_output,
-                        "samples_per_file", &config->raw_cap.samples_per_file);
+                        "samples_per_file", &config->raw_cap.samples_per_file,
+                        "stream_vdif", &config->raw_cap.stream_vdif);
 
     if (error) {
         ERROR("Error parsing raw capture config, check config file, error: %d", error);

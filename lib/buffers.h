@@ -82,6 +82,9 @@ struct Buffer {
     /// The number of consumers done.
     int * num_consumers_done;
 
+    /// Should be buffer be zeroed at the end of its use.
+    int * zero_buffer;
+
     /// The array of buffers
     unsigned char ** data;
 
@@ -124,6 +127,8 @@ int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
  *  @return 0 if successful, or a non-zero standard error value if not.
  */
 void delete_buffer(struct Buffer * buf);
+
+void private_zero_buffer(struct Buffer * buf, const int ID);
 
 void zero_buffer(struct Buffer * buf, const int ID);
 

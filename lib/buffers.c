@@ -117,6 +117,14 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
     }
     memset(buf->num_consumers_done, 0, num_buf*sizeof(int));
 
+    // Create the zero when done array
+    buf->zero_buffer = malloc(num_buf*sizeof(int));
+    if ( buf->zero_buffer == NULL ) {
+        perror("Error creating num_consumers_done array");
+        return errno;
+    }
+    memset(buf->zero_buffer, 0, num_buf*sizeof(int));
+
     int err = 0;
 
     // Create the actual buffers.
@@ -155,6 +163,8 @@ void delete_buffer(struct Buffer* buf)
     free(buf->info);
 
     free(buf->producer_done);
+
+    free(buf->zero_buffer);
 
     // Free locks and cond vars
     CHECK_ERROR( pthread_mutex_destroy(&buf->lock_info) );
@@ -204,28 +214,43 @@ int get_full_buffer_ID(struct Buffer * buf)
     return fullBuf;
 }
 
-void zero_buffer(struct Buffer * buf, const int ID) {
-
+void private_zero_buffer(struct Buffer * buf, const int ID) {
     assert (ID >= 0);
     assert (ID <= buf->num_buffers);
 
     int div_256 = 256*(buf->buffer_size / 256);
     nt_memset((void *)buf->data[ID], 0x00, div_256);
     memset((void *)&buf->data[ID][div_256], 0x00, buf->buffer_size - div_256);
-    //memset((void *)buf->data[ID], 0, buf->buffer_size);
+}
 
-    for (int i = 0; i < buf->buffer_size; ++i) {
-        if (buf->data[ID][i] != 0) {
-            INFO("data[%d][%d] = %d; buffer_size: %d", ID, i, buf->data[ID][i], buf->buffer_size);
-        }
-        assert(buf->data[ID][i] == 0);
-    }
+void zero_buffer(struct Buffer * buf, const int ID) {
+
+    assert (ID >= 0);
+    assert (ID <= buf->num_buffers);
+
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    buf->zero_buffer[ID] = 1;
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 }
 
 void mark_buffer_empty(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
+
+    // If we've been asked to zero the buffer do it here.
+    // This needs to happen out side of the critical section
+    // so that we don't block for a long time here.
+    int do_zero = 0;
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    if (buf->zero_buffer[ID] == 1 &&
+            (buf->num_consumers_done[ID] + 1) == buf->num_consumers) {
+        do_zero = 1;
+    }
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+    if (do_zero == 1)
+        private_zero_buffer(buf, ID);
+
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
@@ -236,6 +261,8 @@ void mark_buffer_empty(struct Buffer* buf, const int ID)
         buf->is_full[ID] = 0;
         buf->num_producers_done[ID] = 0;
         buf->num_consumers_done[ID] = 0;
+        buf->zero_buffer[ID] = 0;
+
         broadcast = 1;
     }
 

@@ -8,6 +8,7 @@ struct raw_file_write_thread_arg {
     int diskID;
     int numDisks;
     int bufferDepth;
+    int write_packets;
     char * dataset_name;
     char * disk_base;
     char * disk_set;

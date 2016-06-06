@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-void reorganize_32_to_16_feed_GPU_Correlated_Data_Interleaved(int actual_num_frequencies, 
-                                                              int actual_num_elements, 
+void reorganize_32_to_16_feed_GPU_Correlated_Data_Interleaved(int actual_num_frequencies,
+                                                              int actual_num_elements,
                                                               int *correlated_data);
 
 void reorganize_32_to_16_feed_GPU_Correlated_Data(int actual_num_frequencies,

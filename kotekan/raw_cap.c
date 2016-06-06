@@ -23,6 +23,7 @@
 #include "network_dpdk.h"
 #include "raw_file_write.h"
 #include "output_power.h"
+#include "stream_raw_vdif.h"
 
 // This function is very much a hack to make life easier, but it should be replaced with something better
 void copy_gains(char * base_dir, char * data_set, char * gain_file_name) {
@@ -132,10 +133,15 @@ int raw_cap(struct Config * config) {
     create_info_pool(&pool, num_vdif_buf * 2, 1, 1);
 
     int num_consumers = 0;
-    if (config->raw_cap.write_packets) {
+    // We disable the packet writing inside the file write thread for now,
+    // so that we still get logging information.
+    //if (config->raw_cap.write_packets) {
+        num_consumers += 1;
+    //}
+    if (config->raw_cap.write_powers) {
         num_consumers += 1;
     }
-    if (config->raw_cap.write_powers) {
+    if (config->raw_cap.stream_vdif) {
         num_consumers += 1;
     }
 
@@ -176,7 +182,7 @@ int raw_cap(struct Config * config) {
     pthread_t file_write_t[config->raw_cap.num_disks];
     struct raw_file_write_thread_arg file_write_args[config->raw_cap.num_disks];
 
-    if (config->raw_cap.write_packets == 1) {
+    //if (config->raw_cap.write_packets == 1) {
         for (int i = 0; i < config->raw_cap.num_disks; ++i) {
             file_write_args[i].buf = &vdif_buf;
             file_write_args[i].diskID = i;
@@ -185,10 +191,11 @@ int raw_cap(struct Config * config) {
             file_write_args[i].dataset_name = data_set;
             file_write_args[i].disk_base = config->raw_cap.disk_base;
             file_write_args[i].disk_set = config->raw_cap.disk_set;
+            file_write_args[i].write_packets = config->raw_cap.write_packets;
             CHECK_ERROR( pthread_create(&file_write_t[i], NULL, (void *) &raw_file_write_thread, (void *)&file_write_args[i] ) );
             CHECK_ERROR( pthread_setaffinity_np(file_write_t[i], sizeof(cpu_set_t), &cpuset) );
         }
-    }
+    //}
 
     pthread_t output_power_t;
     struct output_power_thread_arg output_arg;
@@ -201,6 +208,14 @@ int raw_cap(struct Config * config) {
         output_arg.legacy_output = config->raw_cap.legacy_power_output;
         CHECK_ERROR( pthread_create(&output_power_t, NULL, (void *)&output_power_thread, (void *)&output_arg) );
         CHECK_ERROR( pthread_setaffinity_np(output_power_t, sizeof(cpu_set_t), &cpuset) );
+    }
+
+    pthread_t stream_raw_vdif_t;
+    struct stream_raw_vdif_arg stream_arg;
+    if (config->raw_cap.stream_vdif == 1) {
+        stream_arg.buf = &vdif_buf;
+        CHECK_ERROR( pthread_create(&stream_raw_vdif_t, NULL, (void *)&stream_raw_vdif, (void *)&stream_arg) );
+        CHECK_ERROR( pthread_setaffinity_np(stream_raw_vdif_t, sizeof(cpu_set_t), &cpuset) );
     }
 
     // Just block on the network thread for now.
