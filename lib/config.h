@@ -175,6 +175,13 @@ struct Beamforming {
     int fixed_time;
 };
 
+/// Gating
+struct Gating {
+    int enable_basic_gating;
+    int gate_cadence;
+    int gate_phase;
+};
+
 /// @brief Struct for holding static system configuration
 /// This struct should not be used for values which change in the course of
 /// operation - and should only change when system resets.
@@ -193,6 +200,9 @@ struct Config {
 
     /// The beamforming options
     struct Beamforming beamforming;
+
+    /// The gating options
+    struct Gating gating;
 };
 
 /// @brief Parses a json object which contains the configuration for kotekan

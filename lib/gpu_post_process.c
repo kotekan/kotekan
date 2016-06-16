@@ -28,7 +28,7 @@ void* gpu_post_process_thread(void* arg)
 
     struct Config * config = args->config;
 
-    int num_gpus = 1; // config->gpu.num_gpus;
+    int num_gpus = config->gpu.num_gpus;
 
     int useableBufferIDs[num_gpus][1];
     for (int i = 0; i < num_gpus; ++i) {
@@ -94,6 +94,18 @@ void* gpu_post_process_thread(void* arg)
     // Add version information to the header.
     strcpy(header->kotekan_git_hash, GIT_COMMIT_HASH);
     header->kotekan_version = KOTEKAN_VERSION;
+
+    // This is a bit of a hack for gating, there is are better ways to do this.
+    int gated_buf_size = sizeof(struct gate_frame_header)
+                                + num_values * sizeof(complex_int_t);
+    unsigned char * gated_buf = malloc(gated_buf_size);
+    CHECK_MEM(gated_buf);
+
+    struct gate_frame_header * gate_header = (struct gate_frame_header *)gated_buf;
+    complex_int_t * gated_vis = (complex_int_t *)(gated_buf + sizeof(struct gate_frame_header));
+
+    // Changing destination pointer for the different gates
+    complex_int_t * vis = visibilities;
 
     // Wait for full buffers.
     for (;;) {
@@ -177,16 +189,24 @@ void* gpu_post_process_thread(void* arg)
                     local_element_data[i][pos].fpga_scalar_count = 0;
                 }
             }
-            /*if (error_matrix->bad_timesamples != 0) {
-                INFO("Packet loss in link %d: %d packets, which is %.6f%%",
-                    link_id,
-                    error_matrix->bad_timesamples,
-                    100*(double)error_matrix->bad_timesamples/(double)config->processing.samples_per_data_set);
-            }*/
         }
 
         // Only happens once every time all the links have been read from.
         if (link_id + 1 == config->fpga_network.num_links) {
+
+            // Gating data.
+            if (config->gating.enable_basic_gating == 1) {
+                int64_t intergration_num = fpga_seq_number / config->processing.samples_per_data_set;
+
+                int64_t step = (intergration_num / config->gating.gate_cadence)
+                                + config->gating.gate_phase;
+
+                if (step % 2 == 0) {
+                    vis = gated_vis;
+                } else {
+                    vis = visibilities;
+                }
+            }
 
             // Happens once for each data set within the frames.
             for (int i = 0; i < config->processing.num_data_sets; ++i) {
@@ -202,8 +222,27 @@ void* gpu_post_process_thread(void* arg)
                     header->num_elements = config->processing.num_elements;
                     header->num_links = config->fpga_network.num_links;
 
+                    if (config->gating.enable_basic_gating == 1) {
+                        snprintf(gate_header->description, MAX_GATE_DESCRIPTION_LEN, "ON - OFF");
+                        gate_header->folding_period = (double)config->gating.gate_cadence *
+                                            2.56 * (double)config->processing.samples_per_data_set;
+                        gate_header->folding_start = (double)frame_start_time.tv_sec * 1000.0 * 1000.0 +
+                                                     (double)frame_start_time.tv_usec +
+                                                     gate_header->folding_period * config->gating.gate_phase;
+                        // Convert to seconds
+                        gate_header->folding_period /= 1000000.0;
+                        gate_header->folding_start /= 1000000.0;
+                        gate_header->fpga_count_start = fpga_seq_number +
+                                (config->gating.gate_cadence *
+                                 config->processing.samples_per_data_set *
+                                 config->gating.gate_phase);
+                        gate_header->set_num = 1; // TODO This shouldn't be hard coded!!
+
+                        header->num_gates = 1;
+                    }
+
                     for (int j = 0; j < num_values; ++j) {
-                        visibilities[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                        vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                         vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
@@ -217,8 +256,8 @@ void* gpu_post_process_thread(void* arg)
                     // Add to the visibilities.
                     for (int j = 0; j < num_values; ++j) {
                         complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
-                        visibilities[j].real += temp_vis.real;
-                        visibilities[j].imag += temp_vis.imag;
+                        vis[j].real += temp_vis.real;
+                        vis[j].imag += temp_vis.imag;
                         //if (temp_vis.real == 0) {
                         //    ERROR("Error there is a zero in the real values! at link_id %d and gpu_id %d, and frame %d", link_id, gpu_id, frame_number);
                         //}
@@ -247,9 +286,23 @@ void* gpu_post_process_thread(void* arg)
                     INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
+                    wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
+
+                    if (config->gating.enable_basic_gating == 1) {
+                        DEBUG("Copying gated data to the gate_buf!");
+                        for (int j = 0; j < num_values; ++j) {
+                            // Visibilities = OFF
+                            // gated_vis = ON - OFF
+                            gated_vis[j].real = gated_vis[j].real - visibilities[j].real;
+                            gated_vis[j].imag = gated_vis[j].imag - visibilities[j].imag;
+                        }
+                        memcpy(args->gate_buf->data[out_buffer_ID], gated_buf, gated_buf_size);
+                        mark_buffer_full(args->gate_buf, out_buffer_ID);
+                    }
 
                     memcpy(args->out_buf->data[out_buffer_ID], buf, buffer_size);
                     mark_buffer_full(args->out_buf, out_buffer_ID);
+
                     out_buffer_ID = (out_buffer_ID + 1) % args->out_buf->num_buffers;
                 }
             }

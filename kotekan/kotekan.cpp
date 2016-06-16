@@ -429,6 +429,7 @@ int main(int argc, char ** argv) {
     pthread_t vdif_output_t;
 
     struct Buffer network_output_buffer;
+    struct Buffer gated_output_buffer;
     struct gpuPostProcessThreadArg gpu_post_process_args;
     struct ch_acqUplinkThreadArg ch_acq_uplink_args;
     struct NullThreadArg null_thread_args;
@@ -448,15 +449,22 @@ int main(int argc, char ** argv) {
             config.processing.num_total_freq * config.processing.num_elements * sizeof(struct per_element_data) +
             num_values * sizeof(uint8_t);
 
+        const int gate_buffer_size = sizeof(struct gate_frame_header)
+                                + num_values * sizeof(complex_int_t);
+
         // TODO config file this.
         const int network_buffer_depth = 4;
 
         create_buffer(&network_output_buffer, network_buffer_depth, tcp_buffer_size,
                       1, 1, pool, "network_output_buffer");
 
+        create_buffer(&gated_output_buffer, network_buffer_depth, gate_buffer_size,
+                      1, 1, pool, "gated_output_buffer");
+
         // The thread which creates output frame.
         gpu_post_process_args.in_buf = gpu_output_buffer;
         gpu_post_process_args.out_buf = &network_output_buffer;
+        gpu_post_process_args.gate_buf = &gated_output_buffer;
         gpu_post_process_args.config = &config;
         CHECK_ERROR( pthread_create(&output_consumer_t, NULL,
                                     &gpu_post_process_thread,
@@ -466,6 +474,7 @@ int main(int argc, char ** argv) {
         if (config.ch_master_network.disable_upload == 0) {
             // The thread which sends it with TCP to ch_acq.
             ch_acq_uplink_args.buf = &network_output_buffer;
+            ch_acq_uplink_args.gate_buf = &gated_output_buffer;
             ch_acq_uplink_args.config = &config;
             CHECK_ERROR( pthread_create(&output_network_t, NULL,
                                         &ch_acq_uplink_thread,

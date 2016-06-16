@@ -5,10 +5,14 @@
 extern "C" {
 #endif
 
+#define MAX_GATE_DESCRIPTION_LEN 127
+#define HDF5_NAME_LEN   65
+
 struct gpuPostProcessThreadArg {
     struct Config * config;
     struct Buffer * in_buf;
     struct Buffer * out_buf;
+    struct Buffer * gate_buf;
 };
 
 // A TCP frame contains this header followed by the visibilities, and flags.
@@ -31,7 +35,7 @@ struct tcp_frame_header {
     uint32_t num_vis; // The number of visibilities per frequency.
     uint32_t num_elements;
     uint32_t num_links; // The number of GPU links in this frame.
-
+    uint32_t num_gates;
     struct timeval cpu_timestamp; // The time stamp as set by the GPU correlator - not accurate!
     double kotekan_version;
     char kotekan_git_hash[64];
@@ -49,6 +53,17 @@ struct per_element_data {
   uint32_t fpga_adc_count;
   uint32_t fpga_fft_count;
   uint32_t fpga_scalar_count;
+};
+#pragma pack(0)
+
+#pragma pack(1)
+struct gate_frame_header {
+    int set_num;
+    double folding_period;
+    double folding_start;
+    int64_t fpga_count_start;
+    char description[MAX_GATE_DESCRIPTION_LEN];
+    char gate_vis_name[HDF5_NAME_LEN];
 };
 #pragma pack(0)
 
