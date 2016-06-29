@@ -64,6 +64,7 @@ struct gate_frame_header {
     int64_t fpga_count_start;
     char description[MAX_GATE_DESCRIPTION_LEN];
     char gate_vis_name[HDF5_NAME_LEN];
+    double gate_weight[2]; // TODO This value should be made dynamic
 };
 #pragma pack(0)
 

@@ -195,6 +195,7 @@ void* gpu_post_process_thread(void* arg)
         if (link_id + 1 == config->fpga_network.num_links) {
 
             // Gating data.
+            // Phase = 0 means the noise source ON bin starts at 0
             if (config->gating.enable_basic_gating == 1) {
                 int64_t intergration_num = fpga_seq_number / config->processing.samples_per_data_set;
 
@@ -227,16 +228,14 @@ void* gpu_post_process_thread(void* arg)
                         gate_header->folding_period = (double)config->gating.gate_cadence *
                                             2.56 * (double)config->processing.samples_per_data_set;
                         gate_header->folding_start = (double)frame_start_time.tv_sec * 1000.0 * 1000.0 +
-                                                     (double)frame_start_time.tv_usec +
-                                                     gate_header->folding_period * config->gating.gate_phase;
+                                                     (double)frame_start_time.tv_usec;
                         // Convert to seconds
                         gate_header->folding_period /= 1000000.0;
                         gate_header->folding_start /= 1000000.0;
-                        gate_header->fpga_count_start = fpga_seq_number +
-                                (config->gating.gate_cadence *
-                                 config->processing.samples_per_data_set *
-                                 config->gating.gate_phase);
+                        gate_header->fpga_count_start = fpga_seq_number;
                         gate_header->set_num = 1; // TODO This shouldn't be hard coded!!
+                        gate_header->gate_weight[0] = (config->gating.gate_phase == 0) ? 1.0 : -1.0;
+                        gate_header->gate_weight[1] = (config->gating.gate_phase == 0) ? -1.0 : 1.0;
 
                         header->num_gates = 1;
                     }
@@ -252,15 +251,19 @@ void* gpu_post_process_thread(void* arg)
                         element_data[j] = local_element_data[i][j];
                     }
 
+                } else if (frame_number == config->gating.gate_cadence) {
+                    // This will either be start of the ON data or the first frame of OFF data
+                    // so we need to make sure we reset the values here.
+                    for (int j = 0; j < num_values; ++j) {
+                        vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                        vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
+                    }
                 } else {
                     // Add to the visibilities.
                     for (int j = 0; j < num_values; ++j) {
                         complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                         vis[j].real += temp_vis.real;
                         vis[j].imag += temp_vis.imag;
-                        //if (temp_vis.real == 0) {
-                        //    ERROR("Error there is a zero in the real values! at link_id %d and gpu_id %d, and frame %d", link_id, gpu_id, frame_number);
-                        //}
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
                       frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
