@@ -6,7 +6,7 @@ find_package( OpenCL REQUIRED )
 include_directories( ${OPENCL_INCLUDE_DIRS} )
 
 add_library ( chime buffers.c errors.c nt_memcpy.c nt_memset.c
-              gpu_thread.c util.c error_correction.c
+              gpu_thread.c util.c error_correction.c network_output_sim.c
               output_formating.c test_data_generation.c ch_acq_uplink.c gpu_post_process.c
               config.c beamforming.c beamforming_post_process.c time_tracking.c vdif_stream.c
               fpga_header_functions.c null.c file_write.c simple_udp_cap.c

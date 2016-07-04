@@ -16,6 +16,8 @@ typedef struct {
 
 uint32_t bin_number(const stream_id_t * stream_id, const int index);
 
+uint32_t bin_number_16_elem(const stream_id_t* stream_id, const int index);
+
 float freq_from_bin(const int bin);
 
 stream_id_t extract_stream_id(const uint16_t encoded_stream_id);

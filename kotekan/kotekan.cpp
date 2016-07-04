@@ -62,6 +62,7 @@ extern "C" {
 #include "network_dpdk.h"
 #include "version.h"
 #include "file_write.h"
+#include "network_output_sim.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -72,7 +73,6 @@ void print_help() {
     printf("    --daemon -d [root]              Run in daemon mode, disables output to stderr");
     printf("Testing Options:\n");
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
-    printf("    --read-file (-f) [file or dir]  Read a packet dump file or dir instead of using the network.\n");
     printf("    --save_vdif (-o)                Save the VDIF to disk, do not stream.\n");
 }
 
@@ -176,10 +176,10 @@ int main(int argc, char ** argv) {
     dpdk_setup();
 
     int use_ch_acq = 1;
-    int read_file = 0;
     char * input_file_name = NULL;
     int opt_val = 0;
     int no_network_test = 0;
+    int network_sim_pattern = 0;
     char * config_file_name = (char *)"kotekan.conf";
     struct Config config;
     int error = 0;
@@ -190,12 +190,12 @@ int main(int argc, char ** argv) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 4; j < 8; j++)
+    for (int j = 4; j < 12; j++)
         CPU_SET(j, &cpuset);
 
     for (;;) {
         static struct option long_options[] = {
-            {"no-network-test", no_argument, 0, 't'},
+            {"no-network-test", required_argument, 0, 't'},
             {"read-file", required_argument, 0, 'f'},
             {"config", required_argument, 0, 'c'},
             {"write-local", no_argument, 0, 'w'},
@@ -209,7 +209,7 @@ int main(int argc, char ** argv) {
         int option_index = 0;
         int option_value = 0;
 
-        opt_val = getopt_long (argc, argv, "htwosf:c:l:d:",
+        opt_val = getopt_long (argc, argv, "ht:wosc:l:d:",
                                long_options, &option_index);
 
         // End of args
@@ -224,13 +224,10 @@ int main(int argc, char ** argv) {
                 break;
             case 't':
                 no_network_test = 1;
+                network_sim_pattern = atoi(optarg);
                 break;
             case 's':
                 log_options = log_options | LOG_PERROR;
-                break;
-            case 'f':
-                read_file = 1;
-                input_file_name = strdup(optarg);
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
@@ -287,11 +284,6 @@ int main(int argc, char ** argv) {
     }
 
     //print_config(&config);
-
-    // If we are reading from a file, force the number of links to be 1.
-    if (read_file == 1) {
-        config.fpga_network.num_links = 1;
-    }
 
     // Create buffers.
     struct Buffer gpu_input_buffer[config.gpu.num_gpus];
@@ -399,28 +391,48 @@ int main(int argc, char ** argv) {
 
     // Create network threads
     pthread_t network_dpdk_t;
-    struct networkThreadArg network_args[config.fpga_network.num_links];
     struct networkDPDKArg network_dpdk_args;
-
     struct Buffer * tmp_buffer[config.fpga_network.num_links];
 
-    for (int i = 0; i < config.fpga_network.num_links; ++i) {
-        tmp_buffer[i] = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
-        network_dpdk_args.num_links_in_group[i] = num_links_in_group(&config, i);
-        network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
-    }
-    network_dpdk_args.buf = tmp_buffer;
-    network_dpdk_args.num_links = config.fpga_network.num_links;
-    network_dpdk_args.config = &config;
-    network_dpdk_args.num_lcores = 4;
-    network_dpdk_args.num_links_per_lcore = 2;
-    network_dpdk_args.port_offset[0] = 0;
-    network_dpdk_args.port_offset[1] = 2;
-    network_dpdk_args.port_offset[2] = 4;
-    network_dpdk_args.port_offset[3] = 6;
+    pthread_t network_sim_t[config.fpga_network.num_links];
+    struct networkOutputSim network_sim_args[config.fpga_network.num_links];
 
-    CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
-                                (void *)&network_dpdk_args ) );
+    if (no_network_test == 0) {
+        // Start DPDK
+        for (int i = 0; i < config.fpga_network.num_links; ++i) {
+            tmp_buffer[i] = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
+            network_dpdk_args.num_links_in_group[i] = num_links_in_group(&config, i);
+            network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
+        }
+        network_dpdk_args.buf = tmp_buffer;
+        network_dpdk_args.num_links = config.fpga_network.num_links;
+        network_dpdk_args.config = &config;
+        network_dpdk_args.num_lcores = 4;
+        network_dpdk_args.num_links_per_lcore = 2;
+        network_dpdk_args.port_offset[0] = 0;
+        network_dpdk_args.port_offset[1] = 2;
+        network_dpdk_args.port_offset[2] = 4;
+        network_dpdk_args.port_offset[3] = 6;
+
+        CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
+                                    (void *)&network_dpdk_args ) );
+
+    } else {
+        // Start network simulation
+        for (int i = 0; i < config.fpga_network.num_links; ++i) {
+            network_sim_args[i].buf = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
+            network_sim_args[i].config = &config;
+            network_sim_args[i].link_id = config.fpga_network.link_map[i].link_id;
+            network_sim_args[i].stream_id = i;
+            network_sim_args[i].num_links_in_group = num_links_in_group(&config, i);
+            network_sim_args[i].pattern = network_sim_pattern;
+
+            CHECK_ERROR( pthread_create(&network_sim_t[i], NULL, &network_output_sim,
+                                    (void *)&network_sim_args[i] ) );
+            CHECK_ERROR( pthread_setaffinity_np(network_sim_t[i], sizeof(cpu_set_t), &cpuset) );
+
+        }
+    }
 
     pthread_t output_consumer_t;
     pthread_t output_network_t;
