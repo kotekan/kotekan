@@ -29,9 +29,16 @@ void* network_output_sim(void * arg) {
     int buffer_id = args->link_id;
     int data_id = 0;
     uint64_t fpga_seq_num = 0;
+    int constant = 9;
 
     for (EVER) {
         wait_for_empty_buffer(args->buf, buffer_id);
+
+        if ((fpga_seq_num / args->config->processing.samples_per_data_set) % 2 == 0) {
+            constant = 10;
+        } else {
+            constant = 9;
+        }
 
         set_data_ID(args->buf, buffer_id, data_id++);
         set_stream_ID(args->buf, buffer_id, args->stream_id);
@@ -42,7 +49,7 @@ void* network_output_sim(void * arg) {
 
         if (args->pattern == SIM_CONSTANT) {
             //INFO("Generating a constant data set all (1,1).");
-            generate_const_data_set(9, 9,
+            generate_const_data_set(constant, constant,
                                 args->config->processing.samples_per_data_set,
                                 args->config->processing.num_local_freq,
                                 args->config->processing.num_elements,
@@ -73,6 +80,7 @@ void* network_output_sim(void * arg) {
         buffer_id = (buffer_id + args->num_links_in_group) % (args->buf->num_buffers);
 
         fpga_seq_num += args->config->processing.samples_per_data_set;
+
     }
 
     mark_producer_done(args->buf, args->link_id);

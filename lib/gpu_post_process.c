@@ -294,10 +294,12 @@ void* gpu_post_process_thread(void* arg)
                     if (config->gating.enable_basic_gating == 1) {
                         DEBUG("Copying gated data to the gate_buf!");
                         for (int j = 0; j < num_values; ++j) {
-                            // Visibilities = OFF
+                            // Visibilities = OFF + ON
                             // gated_vis = ON - OFF
                             gated_vis[j].real = gated_vis[j].real - visibilities[j].real;
                             gated_vis[j].imag = gated_vis[j].imag - visibilities[j].imag;
+                            visibilities[j].real = gated_vis[j].real + 2*visibilities[j].real;
+                            visibilities[j].imag = gated_vis[j].imag + 2*visibilities[j].imag;
                         }
                         memcpy(args->gate_buf->data[out_buffer_ID], gated_buf, gated_buf_size);
                         mark_buffer_full(args->gate_buf, out_buffer_ID);
