@@ -2,7 +2,7 @@
 
 ## Software:
 
-* CentOS 7.0
+* CentOS 7.*
 * Standard dev tools and kernel headers
 * DPDK 2.2.0
 * AMD OpenCL drivers and SDK
