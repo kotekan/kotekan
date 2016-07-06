@@ -21,7 +21,7 @@ Requirements can vary greatly based on required N (number of inputs).
 
 ## AMD OpenCL drivers and SDK
 
-* AMD Catalyst Drivers (required to use AMD OpenCL)
+**AMD Catalyst Drivers (required to use AMD OpenCL)**
 
 Download the RHEL 7 x86_64 rpm file from: http://support.amd.com/en-us/download/
 
@@ -33,7 +33,7 @@ Initialize the driver settings:
 
 	sudo amdconfig --initial --adapter=all
 
-* AMD OpenCL SDK
+**AMD OpenCL SDK**
 
 http://developer.amd.com/tools-and-sdks/heterogeneous-computing/amd-accelerated-parallel-processing-app-sdk/downloads/
 
@@ -120,7 +120,7 @@ To install the program (only works on CentOS at the moment):
 
 # Running kotekan
 
-* Using systemd (full install)
+**Using systemd (full install)**
 
 To start kotekan
 
@@ -130,7 +130,7 @@ To stop kotekan
 
     sudo systemctl stop kotekan
 
-* To run in debug mode, run from ch_gpu/build/kotekan/
+**To run in debug mode, run from ch_gpu/build/kotekan/**
 
     sudo ./kotekan -c ../kotekan/kotekan.conf -l 3 -s
 
