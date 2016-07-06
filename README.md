@@ -1,4 +1,3 @@
-
 # Build/Run Requirements
 
 ## Software:
@@ -16,7 +15,7 @@
 * NIC supporting DPDK, ideally Intel XL710 based
 * CPU supporting AVX2, 4 memory channels, and at least 4 real cores. e.g. Intel E5-2620 v3 or i7-5930K
 * AMD GPUs x280 or later, ideally R9 Fury (Nano).
-* >= 16GB of RAM
+* RAM >= 16GB
 
 Requirements can vary greatly based on required N (number of inputs).
 
