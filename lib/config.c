@@ -132,55 +132,18 @@ int parse_gpu_config(struct Config* config, json_t * json)
     return 0;
 }
 
-int parse_fpga_network_config(struct Config* config, json_t * json)
+int parse_gating_config(struct Config* config, json_t * json)
 {
     int error = 0;
-    json_t * link_map;
 
-    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:o}",
-        "num_links", &config->fpga_network.num_links,
-        "port_number", &config->fpga_network.port_number,
-        "timesamples_per_packet", &config->fpga_network.timesamples_per_packet,
-        "udp_frame_size", &config->fpga_network.udp_frame_size,
-        "udp_packet_size", &config->fpga_network.udp_packet_size,
-        "link_map", &link_map);
+    error = json_unpack(json, "{s:i, s:i, s:i}",
+        "enable_basic_gating", &config->gating.enable_basic_gating,
+        "gate_cadence", &config->gating.gate_cadence,
+        "gate_phase", &config->gating.gate_phase);
 
     if (error) {
-        ERROR("Error parsing fpga_network config section.");
+        ERROR("Error parsing gating config.");
         return -1;
-    }
-
-    int num_links_in_map = json_array_size(link_map);
-    if (num_links_in_map != config->fpga_network.num_links) {
-        ERROR("The size of the link map must be equal to the number of links");
-        return -2;
-    }
-
-    config->fpga_network.link_map = malloc(num_links_in_map * sizeof(struct LinkMap));
-    assert(config->fpga_network.link_map != NULL);
-
-    for (int i = 0; i < num_links_in_map; ++i) {
-        json_t * link;
-        char * link_name;
-
-        link = json_array_get(link_map, i);
-        if (link == NULL) {
-            ERROR("Error reading link_map check config file");
-            return -2;
-        }
-
-        error = json_unpack(link, "{s:s, s:i, s:i}",
-            "link_name", &link_name,
-            "gpu_id", &config->fpga_network.link_map[i].gpu_id,
-            "link_id", &config->fpga_network.link_map[i].link_id);
-
-        if (link_name == NULL) {
-            ERROR("Link name is null for link %d in config file.", i);
-            return -2;
-        }
-
-        config->fpga_network.link_map[i].link_name = strdup(link_name);
-        config->fpga_network.link_map[i].stream_id = 0;
     }
 
     return 0;
@@ -280,6 +243,59 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
     return 0;
 }
 
+int parse_fpga_network_config(struct Config* config, json_t * json)
+{
+    int error = 0;
+    json_t * link_map;
+
+    error = json_unpack(json, "{s:i, s:i, s:i, s:i, s:i, s:o}",
+        "num_links", &config->fpga_network.num_links,
+        "port_number", &config->fpga_network.port_number,
+        "timesamples_per_packet", &config->fpga_network.timesamples_per_packet,
+        "udp_frame_size", &config->fpga_network.udp_frame_size,
+        "udp_packet_size", &config->fpga_network.udp_packet_size,
+        "link_map", &link_map);
+
+    if (error) {
+        ERROR("Error parsing fpga_network config section.");
+        return -1;
+    }
+
+    int num_links_in_map = json_array_size(link_map);
+    if (num_links_in_map != config->fpga_network.num_links) {
+        ERROR("The size of the link map must be equal to the number of links");
+        return -2;
+    }
+
+    config->fpga_network.link_map = malloc(num_links_in_map * sizeof(struct LinkMap));
+    assert(config->fpga_network.link_map != NULL);
+
+    for (int i = 0; i < num_links_in_map; ++i) {
+        json_t * link;
+        char * link_name;
+
+        link = json_array_get(link_map, i);
+        if (link == NULL) {
+            ERROR("Error reading link_map check config file");
+            return -2;
+        }
+
+        error = json_unpack(link, "{s:s, s:i, s:i}",
+            "link_name", &link_name,
+            "gpu_id", &config->fpga_network.link_map[i].gpu_id,
+            "link_id", &config->fpga_network.link_map[i].link_id);
+
+        if (link_name == NULL) {
+            ERROR("Link name is null for link %d in config file.", i);
+            return -2;
+        }
+
+        config->fpga_network.link_map[i].link_name = strdup(link_name);
+        config->fpga_network.link_map[i].stream_id = 0;
+    }
+    return 0;
+}
+
 
 int parse_config(struct Config* config, json_t * json)
 {
@@ -294,15 +310,17 @@ int parse_config(struct Config* config, json_t * json)
     }
 
     json_t * gpu_json, * fpga_network_json, * processing_json,
-            * ch_master_network_json, * beamforming_json, * raw_cap_json;
+            * ch_master_network_json, * beamforming_json,
+            * raw_cap_json, * gating_json;
 
-    error = json_unpack(json, "{s:o, s:o, s:o, s:o, s:o, s:o}",
+    error = json_unpack(json, "{s:o, s:o, s:o, s:o, s:o, s:o, s:o}",
                         "gpu", &gpu_json,
                         "fpga_network", &fpga_network_json,
                         "processing", &processing_json,
                         "ch_master_network", &ch_master_network_json,
                         "beamforming", &beamforming_json,
-                        "raw_capture", &raw_cap_json);
+                        "raw_capture", &raw_cap_json,
+                        "gating", &gating_json);
 
     if (error) {
         ERROR("Error processing config root structure");
@@ -315,6 +333,7 @@ int parse_config(struct Config* config, json_t * json)
     error |= parse_fpga_network_config(config, fpga_network_json);
     error |= parse_beamforming_config(config, beamforming_json);
     error |= parse_raw_cap_config(config, raw_cap_json);
+    error |= parse_gating_config(config, gating_json);
 
     return error;
 }

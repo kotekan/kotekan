@@ -1,7 +1,94 @@
+# Build/Run Requirements
+
+## Software:
+
+* CentOS 7.*
+* Standard dev tools and kernel headers
+* DPDK 2.2.0
+* AMD OpenCL drivers and SDK
+* Jansson
+* GCC >= 4.8.5
+* Hugepage support
+
+## Hardware:
+
+* NIC supporting DPDK, ideally Intel XL710 based
+* CPU supporting AVX2, 4 memory channels, and at least 4 real cores. e.g. Intel E5-2620 v3 or i7-5930K
+* AMD GPUs x280 or later, ideally R9 Fury (Nano).
+* RAM >= 16GB
+
+Requirements can vary greatly based on required N (number of inputs).
+
+## AMD OpenCL drivers and SDK
+
+**AMD Catalyst Drivers (required to use AMD OpenCL)**
+
+Download the RHEL 7 x86_64 rpm file from: http://support.amd.com/en-us/download/
+
+Install fglrx
+
+	sudo yum install fglrx*.rpm
+
+Initialize the driver settings:
+
+	sudo amdconfig --initial --adapter=all
+
+**AMD OpenCL SDK**
+
+http://developer.amd.com/tools-and-sdks/heterogeneous-computing/amd-accelerated-parallel-processing-app-sdk/downloads/
+
+Run the .sh file to install the SDK in the default location.
+
+It might be necessary to reboot the computer after installing fglrx, before installing the SDK.
+
+## DPDK
+
+Install process.  Download the DPDK version 2.2.0 from:
+
+http://dpdk.org/browse/dpdk/snapshot/dpdk-2.2.0.tar.gz
+
+Unpack it and run:
+
+    make install T=x86_64-native-linuxapp-gcc
+
+Then export these variables before building the project:
+
+    export RTE_SDK=/<dpdk-location>/
+    export RTE_TARGET=x86_64-native-linuxapp-gcc
+
+To make life easy you can add the following to the new file /etc/profile.d/dpdk.sh,
+assuming dpdk lives at /data/dpdk-2.2.0/
+
+    export RTE_TARGET=x86_64-native-linuxapp-gcc
+    export RTE_SDK=/data/dpdk-2.2.0/
+
+## Install jansson
+
+    sudo yum install jansson*
+
+## Startup scripts to help load DPDK drivers and setup huge pages
+
+Add the following to /etc/rc.local, and make sure rc.local is executable, the following assumes
+that Intel XL710 based NIC cards are being used, and dpdk is installed at /data/dpdk-2.2.0/
+
+    echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+    modprobe uio_pci_generic
+    PCI_NIC_LIST=`/data/dpdk-2.2.0/tools/dpdk_nic_bind.py --status | grep X710 | cut -b 6-12 | tr '\n' ' '`
+    /data/dpdk-2.2.0/tools/dpdk_nic_bind.py --bind uio_pci_generic $PCI_NIC_LIST
+
+Also add the following line to /etc/fstab to enable huge pages
+
+    nodev   /mnt/huge   hugetlbfs   defaults        0 0
+
+And make the folder /mnt/huge
+
+    sudo mkdir /mnt/huge
+
 # Build Instructions
 
-The project is build using cmake, so you will need to install cmake 
-before starting a build. 
+The project is build using cmake, so you will need to install cmake
+before starting a build.
 
 To build everything:
 
@@ -25,163 +112,26 @@ To build with the project with debug symbols:
 
 	cd build
 	cmake -DCMAKE_BUILD_TYPE=Debug ..
-	make 
+	make
 
 To install the program (only works on CentOS at the moment):
 
 	make install
 
-# Build Requirements
+# Running kotekan
 
-* Standard dev tools and kernel headers
+**Using systemd (full install)**
 
-On CentOS:
+To start kotekan
 
-	yum update
-	yum groupinstall "Development tools"
-	yum install kernel-headers
+    sudo systemctl start kotekan
 
-* CMAKE 2.6+
+To stop kotekan
 
-* gcc 4.7+
+    sudo systemctl stop kotekan
 
-On CentOS 6.5 this requires installing dev tools and entering a different shell:
+**To run in debug mode, run from ch_gpu/build/kotekan/**
 
-	wget http://people.centos.org/tru/devtools-1.1/devtools-1.1.repo -O /etc/yum.repos.d/devtools-1.1.repo
-	yum install devtoolset-1.1
-	scl enable devtoolset-1.1 bash
+    sudo ./kotekan -c ../kotekan/kotekan.conf -l 3 -s
 
-Once devtools are installed, only the last line needs to be run before building
-
-* AMD Catalyst Drivers (required to use AMD OpenCL)
-
-http://support.amd.com/en-us/download/desktop?os=Linux%20x86_64
-
-Use the latest non-beta drivers, currently 13.12
-
-Install fglrx dependencies:
-
-	yum install compat-libstdc++-33 ld-linux.so.2 libX11.so.6 libXext.so.6 libc.so.6 libdl.so.2 libgcc_s.so.1 libm.so.6 libpthread.so.0 librt.so.1 libstdc++.so.6
-
-Build and install the fglrx RPM:
-
-	./amd-catalyst-13.12-linux-x86.x86_64.run --buildpkg RedHat/RHEL6_64a
-	sudo rpm -Uhv fglrx64_p_i_c-13.251-1.x86_64.rpm
-
-Initialize the driver settings:
-
-	sudo amdconfig --initial --adapter=all
-
-* AMD OpenCL SDK
-
-http://developer.amd.com/tools-and-sdks/heterogeneous-computing/amd-accelerated-parallel-processing-app-sdk/downloads/
-
-* DPDK
-
-Install process.  Download the DPDK version 2.0.0 from:
-
-http://dpdk.org/browse/dpdk/snapshot/dpdk-2.0.0.tar.gz
-
-Unpack it and run:
-
-        make install T=x86_64-native-linuxapp-gcc
-
-Then export these variables before building the project:
-
-        export RTE_SDK=/<dpdk-location>/
-        export RTE_TARGET=x86_64-native-linuxapp-gcc
-
-* PF_RING
-
-The lastest versions of PF_RING seem to have some large API changes, which have not been addressed.
-The version that does work is SVN #6818.  Checkout and install that version until the code has
-been updated to address the new API
-
-Install process:
-
-	svn co https://svn.ntop.org/svn/ntop/trunk/PF_RING/
-	cd PF_RING
-	svn up -r 6818
-
-
-	cd PF_RING/kernel
-	make && make install
-
-	(might need to update sim-links)
-
-    Edit PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/kcompat.h
-
-	    --- kcompat.h	(revision 6818)
-		+++ kcompat.h	(working copy)
-		@@ -3129,14 +3129,14 @@
-		 #endif
-		 
-		 /*****************************************************************************/
-		-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
-		-typedef u32 netdev_features_t;
-		-#else /* ! < 3.3.0 */
-		-#define HAVE_INT_NDO_VLAN_RX_ADD_VID
-		-#ifdef ETHTOOL_SRXNTUPLE
-		-#undef ETHTOOL_SRXNTUPLE
-		-#endif
-		-#endif /* < 3.3.0 */
-		+//#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
-		+//typedef u32 netdev_features_t;
-		+//#else /* ! < 3.3.0 */
-		+//#define HAVE_INT_NDO_VLAN_RX_ADD_VID
-		+//#ifdef ETHTOOL_SRXNTUPLE
-		+//#undef ETHTOOL_SRXNTUPLE
-		+//#endif
-		+//#endif /* < 3.3.0 */
-
-	cd PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/
-	make
-
-	cd PF_RING/userland/lib
-	./configure --disable-bpf
-	make && make install
-
-To load the kernel modules:
-
-	insmod /data/PF_RING/kernel/pf_ring.ko transparent_mode=2 quick_mode=1 enable_tx_capture=0 min_num_slots=4096
-	insmod /data/PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/ixgbe.ko mtu=16110 RSS=1,1,1,1,1,1,1,1 num_rx_slots=4096 num_tx_slots=0 
-
-To enable the library to be dynamicallyy loaded:
-
-	echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf
-	ldconfig
-
-To have everything running at startup add to /etc/rc.local:
-
-	insmod /data/PF_RING/kernel/pf_ring.ko transparent_mode=2 quick_mode=1 enable_tx_capture=0 min_num_slots=4096
-
-	rmmod ixgbe
-	insmod /data/PF_RING/drivers/DNA/ixgbe-3.10.16-DNA/src/ixgbe.ko mtu=16110 RSS=1,1,1,1,1,1,1,1 num_rx_slots=4096 num_tx_slots=0
-
-	ldconfig
-
-* HDF5 Development Libraries
-
-	rpm -Uvh http://download.fedoraproject.org/pub/epel/6/i386/epel-release-6-8.noarch.rpm
-	yum install hdf5-devel
-
-* Python 2.7+
-
-On CentOS follow the instructions here to get Python 2.7:
-http://toomuchdata.com/2014/02/16/how-to-install-python-on-centos/
-
-You can also install Enthought Canopy if you want to run ch_master on the same system.
-If you do install Canopy, you need to run the following cmake command to build the correlator:
-
-	cmake -DPYTHON_INCLUDE_DIRS:PATH=/<Canopy install path>/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/include -DPYTHON_EXECUTABLE:FILEPATH=/<Canopy install path>/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/bin/python2.7 ..
-
-Where <Canopy install path> is normally the home dir of the user who installed Canopy.>
-
-You may also need to run:
-
-	yum install python-libs python-devel
-
-# Net-to-disk
-
-This proect has not yet been intergrated with cmake, it just has a normal Makefile.
-
+When installed kotekan's config files are located at /etc/kotekan/

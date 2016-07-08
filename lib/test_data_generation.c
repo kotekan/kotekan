@@ -1,99 +1,82 @@
 
 #include "test_data_generation.h"
+#include "fpga_header_functions.h"
 
 #include <stdlib.h>
 
-int offset_and_clip_value(int input_value, int offset_value, int min_val, int max_val){
-    int offset_and_clipped = input_value + offset_value;
-    if (offset_and_clipped > max_val)
-        offset_and_clipped = max_val;
-    else if (offset_and_clipped < min_val)
-        offset_and_clipped = min_val;
-    return(offset_and_clipped);
-}
+// TODO replace these functions with C++11 style lambda functions.
 
+void generate_full_range_data_set(int offset,
+                                  int num_time_steps,
+                                  int num_freq,
+                                  int num_elem,
+                                  unsigned char *out_data) {
+    unsigned char real = 0;
+    unsigned char imag = offset;
+    int idx = 0;
 
-void generate_char_data_set(int generation_Type,
-                            int random_seed,
-                            int default_real,
-                            int default_imaginary,
-                            int initial_real,
-                            int initial_imaginary,
-                            int single_frequency,
-                            int num_timesteps,
-                            int num_frequencies,
-                            int num_elements,
-                            unsigned char *packed_data_set){
+    for (int time_step = 0; time_step < num_time_steps; ++time_step) {
+        for (int freq = 0; freq < num_freq; ++freq) {
+            for (int elem = 0; elem < num_elem; ++elem) {
+                idx = time_step * num_elem * num_freq
+                        + freq * num_elem
+                        + elem;
+                out_data[idx] = ((real<<4) & 0xF0) + (imag & 0x0F);
 
-    //sfmt_t sfmt; //for the Mersenne Twister
-    if (single_frequency > num_frequencies || single_frequency < 0)
-        single_frequency = ALL_FREQUENCIES;
-
-    //printf("single_frequency: %d \n",single_frequency);
-    default_real =offset_and_clip_value(default_real,8,0,15);
-    default_imaginary = offset_and_clip_value(default_imaginary,8,0,15);
-    initial_real = offset_and_clip_value(initial_real,8,0,15);
-    initial_imaginary = offset_and_clip_value(initial_imaginary,8,0,15);
-    unsigned char clipped_offset_default_real = (unsigned char) default_real;
-    unsigned char clipped_offset_default_imaginary = (unsigned char) default_imaginary;
-    unsigned char clipped_offset_initial_real = (unsigned char) initial_real;
-    unsigned char clipped_offset_initial_imaginary = (unsigned char) initial_imaginary;
-
-    //printf("clipped_offset_initial_real: %d, clipped_offset_initial_imaginary: %d, clipped_offset_default_real: %d, clipped_offset_default_imaginary: %d\n", clipped_offset_initial_real, clipped_offset_initial_imaginary, clipped_offset_default_real, clipped_offset_default_imaginary);
-
-    if (generation_Type == GENERATE_DATASET_RANDOM_SEEDED){
-        //sfmt_init_gen_rand(&sfmt, random_seed);
-        srand(random_seed);
-    }
-
-    for (int k = 0; k < num_timesteps; k++){
-        //printf("k: %d\n",k);
-        if (generation_Type == GENERATE_DATASET_RANDOM_SEEDED && GEN_REPEAT_RANDOM){
-            //sfmt_init_gen_rand(&sfmt, random_seed);
-            srand(random_seed);
-        }
-        for (int j = 0; j < num_frequencies; j++){
-            //printf("j: %d\n",j);
-            for (int i = 0; i < num_elements; i++){
-                int currentAddress = k*num_frequencies*num_elements + j*num_elements + i;
-                unsigned char new_real;
-                unsigned char new_imaginary;
-                switch (generation_Type){
-                    case GENERATE_DATASET_CONSTANT:
-                        new_real = 8; //clipped_offset_initial_real;
-                        new_imaginary = 8; //clipped_offset_initial_imaginary;
-                        break;
-                    case GENERATE_DATASET_RAMP_UP:
-                        new_real = (j+clipped_offset_initial_real+i)%16;
-                        new_imaginary = (j+clipped_offset_initial_imaginary+i)%16;
-                        break;
-                    case GENERATE_DATASET_RAMP_DOWN:
-                        new_real = 15-((j+clipped_offset_initial_real+i)%16);
-                        new_imaginary = 15 - ((j+clipped_offset_initial_imaginary+i)%16);
-                        break;
-                    case GENERATE_DATASET_RANDOM_SEEDED:
-                        new_real = (unsigned char)rand()%16; //to put the pseudorandom value in the range 0-15
-                        new_imaginary = (unsigned char)rand()%16;
-                        break;
-                    default: //shouldn't happen, but in case it does, just assign the default values everywhere
-                        new_real = clipped_offset_default_real;
-                        new_imaginary = clipped_offset_default_imaginary;
-                        break;
+                // Note this is the same as doing [0,255] in the char
+                // but this is more clear as to what the components are doing.
+                if (imag == 15) {
+                    real = (real + 1) % 16;
                 }
-
-                if (single_frequency == ALL_FREQUENCIES){
-                    packed_data_set[currentAddress] = ((new_real<<4) & 0xF0) + (new_imaginary & 0x0F);
-                }
-                else{
-                    if (j == single_frequency)
-                        packed_data_set[currentAddress] = ((new_real<<4) & 0xF0) + (new_imaginary & 0x0F);
-                    else
-                        packed_data_set[currentAddress] = ((clipped_offset_default_real<<4) & 0xF0) + (clipped_offset_default_imaginary & 0x0F);
-                }
-                //printf("%d ",data_set[currentAddress]);
+                imag = (imag + 1) % 16;
             }
         }
     }
+}
 
-    return;
+void generate_const_data_set(unsigned char real,
+                             unsigned char imag,
+                             int num_time_steps,
+                             int num_freq,
+                             int num_elem,
+                             unsigned char *out_data) {
+    int idx = 0;
+
+    for (int time_step = 0; time_step < num_time_steps; ++time_step) {
+        for (int freq = 0; freq < num_freq; ++freq) {
+            for (int elem = 0; elem < num_elem; ++elem) {
+                idx = time_step * num_elem * num_freq
+                        + freq * num_elem
+                        + elem;
+                out_data[idx] = ((real<<4) & 0xF0) + (imag & 0x0F);
+            }
+        }
+    }
+}
+
+void generate_complex_sine_data_set(stream_id_t stream_id,
+                             int num_time_steps,
+                             int num_freq,
+                             int num_elem,
+                             unsigned char *out_data) {
+    int idx = 0;
+    int imag = 0;
+    int real = 0;
+
+    for (int time_step = 0; time_step < num_time_steps; ++time_step) {
+        for (int freq = 0; freq < num_freq; ++freq) {
+            for (int elem = 0; elem < num_elem; ++elem) {
+                idx = time_step * num_elem * num_freq
+                        + freq * num_elem
+                        + elem;
+                if (num_elem == 16) {
+                    imag = bin_number_16_elem(&stream_id, freq) % 16;
+                } else {
+                    imag = bin_number(&stream_id, freq) % 16;
+                }
+                real = 9;
+                out_data[idx] = ((real<<4) & 0xF0) + (imag & 0x0F);
+            }
+        }
+    }
 }

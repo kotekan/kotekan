@@ -68,6 +68,25 @@ void* ch_acq_uplink_thread(void* arg)
             break;
         }
         INFO("Finished sending frame to ch_master");
+
+        if (args->config->gating.enable_basic_gating == 1) {
+            DEBUG("Getting gated buffer");
+            get_full_buffer_from_list(args->gate_buf, &buffer_ID, 1);
+
+            DEBUG("Sending gated buffer");
+            bytes_sent = send(tcp_fd, args->gate_buf->data[buffer_ID], args->gate_buf->buffer_size, 0);
+            if (bytes_sent <= 0) {
+                ERROR("Could not send gated date frame to ch_acq, error: %d", errno);
+                break;
+            }
+            if (bytes_sent != args->gate_buf->buffer_size) {
+                ERROR("Could not send all bytes in gated data frame: bytes sent = %d; buffer_size = %d", (int)bytes_sent, args->buf->buffer_size);
+                break;
+            }
+            INFO("Finished sending gated data frame to ch_master");
+            mark_buffer_empty(args->gate_buf, buffer_ID);
+        }
+
         mark_buffer_empty(args->buf, buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % args->buf->num_buffers;

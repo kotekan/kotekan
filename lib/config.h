@@ -176,7 +176,6 @@ struct Beamforming {
 };
 
 struct RawCapture {
-
     int enabled;
     int num_disks;
     char * disk_base;
@@ -189,6 +188,13 @@ struct RawCapture {
     int legacy_power_output;
     int samples_per_file;
     int stream_vdif;
+};
+
+/// Gating
+struct Gating {
+    int enable_basic_gating;
+    int gate_cadence;
+    int gate_phase;
 };
 
 /// @brief Struct for holding static system configuration
@@ -212,6 +218,9 @@ struct Config {
 
     /// The raw capture options.
     struct RawCapture raw_cap;
+
+    /// The gating options
+    struct Gating gating;
 };
 
 /// @brief Parses a json object which contains the configuration for kotekan
