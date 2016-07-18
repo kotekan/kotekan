@@ -49,7 +49,6 @@ extern "C" {
 #include "errors.h"
 #include "buffers.h"
 #include "gpu_thread.h"
-#include "network_dna.h"
 #include "error_correction.h"
 #include "ch_acq_uplink.h"
 #include "config.h"
