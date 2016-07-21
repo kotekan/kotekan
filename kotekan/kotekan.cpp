@@ -63,6 +63,7 @@ extern "C" {
 #include "file_write.h"
 #include "raw_cap.h"
 #include "network_output_sim.h"
+#include "SampleProcess.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -208,6 +209,10 @@ int main(int argc, char ** argv) {
     }
 
     //print_config(&config);
+
+    SampleProcess test(config);
+    test.start();
+    sleep(10);
 
     // TODO: allow raw capture in line with the correlator.
     if (config.raw_cap.enabled) {

@@ -13,7 +13,7 @@ add_library ( chime buffers.c errors.c nt_memcpy.c nt_memset.c raw_file_write.c
               network_dpdk.c gpu_thread.cpp gpu_command.cpp callbackdata.cpp device_interface.cpp
               finalqueuesequence_command.cpp gpu_command_factory.cpp initqueuesequence_command.cpp
               kernelcorrelator.cpp kerneloffset.cpp kernelpreseed.cpp vdif_functions.c
-              stream_raw_vdif.c )
+              stream_raw_vdif.c KotekanProcess.cpp SampleProcess.cpp )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
 

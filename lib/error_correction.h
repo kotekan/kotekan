@@ -1,17 +1,24 @@
 /// @file error_correction.h
 /// When correlating in the GPU errors are simply ignored for efficiency,
 /// this set of functions deals with tracking those errors, and normalizing
-/// the visibilities once the GPU is finished processing them. 
+/// the visibilities once the GPU is finished processing them.
 
 #ifndef ERROR_CORRECTION
 #define ERROR_CORRECTION
 
-#include <complex.h>
 #include <error.h>
 
+#define complex _Complex
+
+
 #ifdef __cplusplus
-extern "C" {
+   #define complex _Complex
+   extern "C" {
+#else
+   #include <complex.h>
 #endif
+
+
 
 struct ErrorMatrix {
 
@@ -20,7 +27,7 @@ struct ErrorMatrix {
 
     // Number of fully currupt timesamples
     // Used in cases when there is packet loss, or too
-    // many errors in the packet to be dealt with. 
+    // many errors in the packet to be dealt with.
     int bad_timesamples;
 
     // An array of length elements*freq, with an element-major encoding,
@@ -35,7 +42,7 @@ struct ErrorMatrix {
     int * correction_factors;
 };
 
-void initalize_error_matrix(struct ErrorMatrix* error_matrix, const int num_freq, 
+void initalize_error_matrix(struct ErrorMatrix* error_matrix, const int num_freq,
                          const int num_elements);
 
 void delete_error_matrix(struct ErrorMatrix * error_matrix);
@@ -49,7 +56,7 @@ void add_errors(struct ErrorMatrix* error_matrix, int freq, int * new_errors, co
 void finalize_error_matrix(struct ErrorMatrix* error_matrix);
 
 // Currently assumes the visibilities are ordered in the natural way.
-void apply_error_corrections(struct ErrorMatrix* error_matrix, 
+void apply_error_corrections(struct ErrorMatrix* error_matrix,
                              double complex * visibilities, int num_steps);
 
 #ifdef __cplusplus
