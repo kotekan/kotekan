@@ -1,27 +1,27 @@
-#include "initqueuesequence_command.h"
+#include "input_data_stage.h"
 
-initQueueSequence_command::initQueueSequence_command():gpu_command()
+input_data_stage::input_data_stage(char* param_name):gpu_command(param_name)
 {
 
 }
 
-initQueueSequence_command::~initQueueSequence_command()
+input_data_stage::~input_data_stage()
 {
 
 }
 
 
-void initQueueSequence_command::build(Config *param_Config, class device_interface &param_Device)
+void input_data_stage::build(Config *param_Config, class device_interface &param_Device)
 {
     gpu_command::build(param_Config, param_Device);
-    input_data_written = (cl_event *)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
+    data_staged_event = (cl_event *)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
     //input_data_written = (cl_event)malloc(sizeof(cl_event));
-    CHECK_MEM(input_data_written);
+    CHECK_MEM(data_staged_event);
 
     //gpu_command::createThisEvent(param_Device);
 }
 
-cl_event initQueueSequence_command::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event input_data_stage::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
 {
     cl_int err;
     int numEvents;
@@ -52,7 +52,7 @@ cl_event initQueueSequence_command::execute(int param_bufferID, class device_int
                                             0,NULL,
                                             //&precedeEvent[param_bufferID],
                                             //1, &param_PrecedeEvent,
-					    &input_data_written[param_bufferID]) );
+					    &data_staged_event[param_bufferID]) );
 
     CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),
                                             param_Device.getAccumulateBuffer(param_bufferID),
@@ -62,27 +62,25 @@ cl_event initQueueSequence_command::execute(int param_bufferID, class device_int
                                             param_Device.getAccumulateZeros(),
                                             1,
                                             //&input_data_written[param_bufferID],
-					    &input_data_written[param_bufferID],
+					    &data_staged_event[param_bufferID],
                                             &postEvent[param_bufferID]) );
 
     return postEvent[param_bufferID];
 }
 
-void initQueueSequence_command::cleanMe(int param_BufferID)
+void input_data_stage::cleanMe(int param_BufferID)
 {
     gpu_command::cleanMe(param_BufferID);
-  //assert(input_data_written[param_BufferID] != NULL);
+    
+    assert(data_staged_event[param_BufferID] != NULL);
 
- // clReleaseEvent(input_data_written[param_BufferID]);
-
-  assert(input_data_written[param_BufferID] != NULL);
-
-  clReleaseEvent(input_data_written[param_BufferID]);
+    clReleaseEvent(data_staged_event[param_BufferID]);
 
 }
 
-void initQueueSequence_command::freeMe()
+void input_data_stage::freeMe()
 {
     gpu_command::freeMe();
-    free(input_data_written);
+    free(data_staged_event);
 }
+

@@ -31,19 +31,19 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
         switch (i)
         {
                case 0:
-                   listCommands[i] = new initQueueSequence_command;
+                   listCommands[i] = new input_data_stage;
                    break;
                case 3:
-                   listCommands[i] = new kernelCorrelator(gpuKernels[1]);
+                   listCommands[i] = new correlator_kernel(gpuKernels[1]);
                    break;
               case 1:
-                   listCommands[i] = new kernelOffset(gpuKernels[2]);
+                   listCommands[i] = new offset_kernel(gpuKernels[2]);
                    break;
                case 2:
-                   listCommands[i] = new kernelPreseed(gpuKernels[0]);
+                   listCommands[i] = new preseed_kernel(gpuKernels[0]);
                    break;
                case 4:
-                   listCommands[i] = new finalQueueSequence_Command;
+                   listCommands[i] = new output_data_result;
                    break;
         }
         listCommands[i]->build(param_Config, param_Device);
@@ -60,7 +60,7 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
 
     switch (currentCommandCnt)
     {
-           case 0://initQueueSequence_command prep
+           case 0://input_data_stage prep
                currentCommand = listCommands[currentCommandCnt];
                break;
            case 3://THIRD KERNEL BY EVENTS SEQUENCE "corr"
@@ -102,6 +102,6 @@ void gpu_command_factory::deallocateResources()
 
     delete[] listCommands;
     DEBUG("ListCommandsDeleted\n");
-    //free(cb_data);//THIS IS ALSO DONE IN finalQueueSequence_Command. Should it be done twice? WHich object should manage that reference? I THINK THE
+    //free(cb_data);//THIS IS ALSO DONE IN output_data_result. Should it be done twice? WHich object should manage that reference? I THINK THE
     //ANSWER MIGHT BE YES, SINCE THE COMMAND OBJECT GETS THE REFERENCE BY BUFFERID, WHILE COMMAND FACTOR HAS ALL OF THE BUFFERIDs DEFINED FOR CB_DATA.
 }

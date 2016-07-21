@@ -4,7 +4,8 @@
 #include "math.h"
 #include <errno.h>
 
-device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config, int param_GPU_ID)
+device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf)
 {
     cl_int err;
 
@@ -12,6 +13,7 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
     out_buf = param_Out_Buf;
     config = param_Config;
     gpu_id = param_GPU_ID;
+    beamforming_out_buf = param_beamforming_out_buf;
 
       // TODO explain these numbers/formulas.
     num_blocks = (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size) *
@@ -22,6 +24,8 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));
     assert(aligned_accumulate_len >= accumulate_len);
 
+//    stream_info = malloc(in_buf->num_buffers * sizeof(struct StreamINFO));
+//    CHECK_MEM(stream_info);
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
@@ -45,53 +49,76 @@ int device_interface::getGpuID()
 
 Buffer* device_interface::getInBuf()
 {
-  return in_buf;
+    return in_buf;
 }
 
 Buffer* device_interface::getOutBuf()
 {
-  return out_buf;
+    return out_buf;
+}
+
+Buffer* device_interface::get_beamforming_out_buf()
+{
+    return beamforming_out_buf;
 }
 
 cl_context device_interface::getContext()
 {
-  return context;
+    return context;
 }
 
 cl_device_id device_interface::getDeviceID(int param_GPUID)
 {
-  return device_id[param_GPUID];
+    return device_id[param_GPUID];
 }
 
 cl_int* device_interface::getAccumulateZeros()
 {
-  return accumulate_zeros;
+    return accumulate_zeros;
 }
 
 int device_interface::getAlignedAccumulateLen() const
 {
-  return aligned_accumulate_len;
+    return aligned_accumulate_len;
+}
+
+void device_interface::set_stream_id(int param_buffer_id)
+{
+    // Set the stream ID for the link.
+    int32_t local_stream_id = get_streamID(in_buf, param_buffer_id);
+    assert(local_stream_id != -1);
+    stream_id = extract_stream_id(local_stream_id);
+}
+
+stream_id_t device_interface::get_stream_id()
+{    
+    return stream_id;
+}
+
+void device_interface::set_device_phases(cl_mem param_device_phases)
+{
+    device_phases = param_device_phases;
 }
 
 void device_interface::prepareCommandQueue()
 {
-  cl_int err;
+    cl_int err;
 
-  // Create command queues
-  for (int i = 0; i < NUM_QUEUES; ++i) {
-    queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err );
-    CHECK_CL_ERROR(err);
-  }
+    // Create command queues
+    for (int i = 0; i < NUM_QUEUES; ++i) {
+        queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err );
+        CHECK_CL_ERROR(err);
+    }
 }
 
 void device_interface::allocateMemory()
 {
-  //IN THE FUTURE, ANDRE TALKED ABOUT WANTING MEMORY TO BE DYNAMICALLY ALLOCATE BASED ON KERNEL STATES AND ASK FOR MEMORY BY SIZE AND HAVE THAT MEMORY NAMED BY THE KERNEL.
-  //KERNELS WOULD THEN BE PASSED INTO DEVICE_INTERFACE
-  //TO BE GIVEN MEMORY AND DEVICE_INTERFACE WOULD LOOP THROUGH THE KERNELS MEMORY STATES TO DETERMINE ALL THE MEMORY THAT KERNEL NEEDS.
+    //IN THE FUTURE, ANDRE TALKED ABOUT WANTING MEMORY TO BE DYNAMICALLY ALLOCATE BASED ON KERNEL STATES AND ASK FOR MEMORY BY SIZE AND HAVE THAT MEMORY NAMED BY THE KERNEL.
+    //KERNELS WOULD THEN BE PASSED INTO DEVICE_INTERFACE
+    //TO BE GIVEN MEMORY AND DEVICE_INTERFACE WOULD LOOP THROUGH THE KERNELS MEMORY STATES TO DETERMINE ALL THE MEMORY THAT KERNEL NEEDS.
 
 
-  cl_int err;
+    cl_int err;
     // TODO create a struct to contain all of these (including events) to make this memory allocation cleaner.
 
     // Setup device input buffers
@@ -133,21 +160,47 @@ void device_interface::allocateMemory()
         device_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, out_buf->aligned_buffer_size, NULL, &err);
         CHECK_CL_ERROR(err);
     }
+    
+    
+
+##OCCURS IN SETUP_OPEN_CL    
+    // Setup beamforming output buffers.
+    if (config->gpu.use_beamforming == 1) {
+        device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_buffers * sizeof(cl_mem));
+        CHECK_MEM(device_beamform_output_buffer);
+        for (int i = 0; i < beamforming_out_buf->num_buffers; ++i) {
+            device_beamform_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
+                    , beamforming_out_buf->aligned_buffer_size, NULL, &err);
+            CHECK_CL_ERROR(err);
+        }
+    }
+##
+    
 }
 
 cl_mem device_interface::getInputBuffer(int param_BufferID)
 {
-  return device_input_buffer[param_BufferID];
+    return device_input_buffer[param_BufferID];
 }
 
 cl_mem device_interface::getOutputBuffer(int param_BufferID)
 {
-  return device_output_buffer[param_BufferID];
+    return device_output_buffer[param_BufferID];
 }
 
 cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 {
   return device_accumulate_buffer[param_BufferID];
+}
+
+cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
+{
+    return device_beamform_output_buffer[param_BufferID];
+}
+
+cl_mem device_interface::get_device_phases()
+{
+    return device_phases;
 }
 
 void device_interface::deallocateResources()
@@ -173,11 +226,6 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-    /*for (int i = 0; i < MAX_GPUS; ++i) {
-        CHECK_CL_ERROR( clReleaseDevice(device_id[i]) );
-    }
-    free(device_id);*/
-
     err = munlock((void *) accumulate_zeros, aligned_accumulate_len);
     if ( err == -1 ) {
         ERROR("Error unlocking memory");
@@ -187,12 +235,11 @@ void device_interface::deallocateResources()
 
     CHECK_CL_ERROR( clReleaseContext(context) );
 
-
-    //RELEASE PLATFORM?
 }
 
 cl_command_queue device_interface::getQueue(int param_Dim)
 {
-  return queue[param_Dim];
+    return queue[param_Dim];
 }
+
 

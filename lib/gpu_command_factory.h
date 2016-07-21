@@ -6,12 +6,12 @@
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
 #include "gpu_command.h"
-#include "kernelcorrelator.h"
-#include "kerneloffset.h"
-#include "kernelpreseed.h"
+#include "correlator_kernel.h"
+#include "offset_kernel.h"
+#include "preseed_kernel.h"
 #include "device_interface.h"
-#include "initqueuesequence_command.h"
-#include "finalqueuesequence_command.h"
+#include "input_data_stage.h"
+#include "output_data_result.h"
 #include "callbackdata.h"
 
 
@@ -23,13 +23,11 @@ public:
     gpu_command* getNextCommand(device_interface& param_Device, int param_BufferID);
     cl_uint getNumCommands() const;
     void deallocateResources();
+
 protected:
     gpu_command ** listCommands;
     cl_uint numCommands = 0;
     cl_uint currentCommandCnt;
-
-    // Call back data.
-    //struct callBackData * cb_data;
 };
 
 #endif // GPU_COMMAND_FACTORY_H
