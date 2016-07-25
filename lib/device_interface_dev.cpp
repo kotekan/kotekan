@@ -35,6 +35,17 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
 
     context = clCreateContext( NULL, 1, &device_id[gpu_id], NULL, NULL, &err);
     CHECK_CL_ERROR(err);
+    
+    //Used for beamforming. Should this logic live in one of the beamforming command_objects?
+    //LOOK AT SETTING StreamID for all Num_buffers.
+    //device.set_stream_info(bufferID);    
+    for (int i = 0; i < in_buf->num_buffers; ++i) {    
+        // Set the stream ID for the link.
+        int32_t local_stream_id = get_streamID(in_buf, i);
+        assert(local_stream_id != -1);
+        stream_info[i].stream_id = extract_stream_id(local_stream_id);
+    }
+
 }
 
 int device_interface::getNumBlocks()
@@ -82,18 +93,18 @@ int device_interface::getAlignedAccumulateLen() const
     return aligned_accumulate_len;
 }
 
-void device_interface::set_stream_id(int param_buffer_id)
-{
-    // Set the stream ID for the link.
-    int32_t local_stream_id = get_streamID(in_buf, param_buffer_id);
-    assert(local_stream_id != -1);
-    stream_id = extract_stream_id(local_stream_id);
-}
-
-stream_id_t device_interface::get_stream_id()
-{    
-    return stream_id;
-}
+//void device_interface::set_stream_id(int param_buffer_id)
+//{
+//    // Set the stream ID for the link.
+//    int32_t local_stream_id = get_streamID(in_buf, param_buffer_id);
+//    assert(local_stream_id != -1);
+//    stream_id = extract_stream_id(local_stream_id);
+//}
+//
+//stream_id_t device_interface::get_stream_id()
+//{    
+//    return stream_id;
+//}
 
 void device_interface::set_device_phases(cl_mem param_device_phases)
 {
@@ -163,7 +174,7 @@ void device_interface::allocateMemory()
     
     
 
-##OCCURS IN SETUP_OPEN_CL    
+////##OCCURS IN SETUP_OPEN_CL    
     // Setup beamforming output buffers.
     if (config->gpu.use_beamforming == 1) {
         device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_buffers * sizeof(cl_mem));
@@ -173,8 +184,26 @@ void device_interface::allocateMemory()
                     , beamforming_out_buf->aligned_buffer_size, NULL, &err);
             CHECK_CL_ERROR(err);
         }
+        
+        device_freq_map = malloc(in_buf->num_buffers * sizeof(cl_mem));
+        CHECK_MEM(device_freq_map);
+        float freq[param_Config->processing.num_local_freq];
+        stream_id_t local_stream_id;
+
+        for (int i = 0; i < in_buf->num_buffers; ++i) {
+            local_stream_id = stream_info[i].stream_id;
+
+            for (int j = 0; j < param_Config->processing.num_local_freq; ++j) {
+                freq[j] = freq_from_bin(bin_number(&local_stream_id, j))/1000.0;
+            }
+            device_freq_map[i] = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                                param_Config->processing.num_local_freq * sizeof(float),
+                                                freq,
+                                                &err);
+            CHECK_CL_ERROR(err);
+        }
     }
-##
+////##
     
 }
 
@@ -203,6 +232,13 @@ cl_mem device_interface::get_device_phases()
     return device_phases;
 }
 
+cl_mem device_interface::get_device_freq_map(int param_BufferID)
+{
+    //Previous method for returning device_freq_map found in gpu_thread.c
+    //return device_freq_map[param_BufferID % in_buf->num_buffers])
+    return device_freq_map[param_BufferID];
+}
+
 void device_interface::deallocateResources()
 {
     cl_int err;
@@ -225,7 +261,19 @@ void device_interface::deallocateResources()
         CHECK_CL_ERROR( clReleaseMemObject(device_output_buffer[i]) );
     }
     free(device_output_buffer);
-
+    
+    if (config->gpu.use_beamforming == 1) {
+        for (int i = 0; i < beamforming_out_buf->num_buffers; ++i) {
+            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_buffer[i]) );
+        }
+        free(device_beamform_output_buffer);
+        
+        for (int i = 0; i < in_buf->num_buffers; ++i) {
+            CHECK_CL_ERROR( clReleaseMemObject(device_freq_map[i]) );
+        }
+        free(device_freq_map);
+    }
+    
     err = munlock((void *) accumulate_zeros, aligned_accumulate_len);
     if ( err == -1 ) {
         ERROR("Error unlocking memory");

@@ -8,3 +8,7 @@ void dummy_placeholder_kernel::build(Config* param_Config, class device_interfac
 
 cl_event dummy_placeholder_kernel::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
 {return param_PrecedeEvent;}
+
+void cleanMe(int param_BufferID){}
+
+void freeMe(){}

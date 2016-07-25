@@ -27,12 +27,14 @@ public:
     ~callBackData();
     int buffer_id;
     int numCommands;
+    int use_beamforming;
 
     gpu_command ** listCommands;
 
     // Buffer objects
     struct Buffer * in_buf;
     struct Buffer * out_buf;
+    struct Buffer * beamforming_out_buf;
 
     struct loopCounter * cnt;
 };

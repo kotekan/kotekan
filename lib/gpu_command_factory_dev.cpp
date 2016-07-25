@@ -112,27 +112,11 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
             break;
         case "beamform_tree_scale":
             if (cl_data->config->gpu.use_beamforming) {
-
-
-        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
-                                       0,
-                                       sizeof(void *),
-                                       (void*) &device_kernel_input_data) );
-
-        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
-                                       1,
-                                       sizeof(void *),
-                                       (void*) &cl_data->device_beamform_output_buffer[buffer_id]) );
-
-        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
-                                       2,
-                                       sizeof(cl_mem),
-                                       (void*) &cl_data->device_freq_map[buffer_id % cl_data->num_links]) );
-
-        CHECK_CL_ERROR( clSetKernelArg(cl_data->beamform_kernel,
-                               3,
-                               sizeof(cl_mem),
-                               (void*) &cl_data->device_phases) );
+                currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
+                currentCommand->setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_BufferID));
+                currentCommand->setKernelArg(2, param_Device.get_device_freq_map(param_BufferID));
+                currentCommand->setKernelArg(3, param_Device.get_device_phases());
+            }
             break;
         case "output_data_result":
             break;

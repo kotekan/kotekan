@@ -1,20 +1,21 @@
-#ifndef DUMMY_PLACEHOLDER_KERNEL_H
-#define DUMMY_PLACEHOLDER_KERNEL_H
+#ifndef BEAMFORM_KERNEL_H
+#define BEAMFORM_KERNEL_H
 
 #include "gpu_command.h"
 #include "device_interface.h"
 
-class dummy_placeholder_kernel: public gpu_command
+class beamform_kernel: public gpu_command
 {
 public:
-    dummy_placeholder_kernel(char* param_name);
-    ~dummy_placeholder_kernel();
+    beamform_kernel(char* param_name);
+    beamform_kernel(char* param_gpuKernel, char* param_name);
+    ~beamform_kernel();
     virtual void build(Config* param_Config, class device_interface& param_Device);
     virtual cl_event execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent);
-    virtual void cleanMe(int param_BufferID);
-    virtual void freeMe();
+protected:
+    cl_mem device_mask;
+        
 };
 
 #endif
-
 

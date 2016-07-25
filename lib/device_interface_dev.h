@@ -40,14 +40,16 @@ public:
     cl_mem getAccumulateBuffer(int param_BufferID);
     cl_mem get_device_beamform_output_buffer(int param_BufferID);
     cl_mem get_device_phases();
+    cl_mem get_device_freq_map(int param_BufferID);
+  
     cl_command_queue getQueue(int param_Dim);
     cl_int* getAccumulateZeros();
     int getNumBlocks();
     int getAlignedAccumulateLen() const;
     void prepareCommandQueue();
     void allocateMemory();
-    void set_stream_id(int param_buffer_id);
-    stream_id_t get_stream_id();
+//    void set_stream_id(int param_buffer_id);
+//    stream_id_t get_stream_id(int param_BufferID);
     void set_device_phases(cl_mem param_device_phases);
  
     void release_events_for_buffer(int param_BufferID);
@@ -59,7 +61,7 @@ protected:
     struct Buffer * beamforming_out_buf;
     // Extra data
     struct Config * config;
-//    struct StreamINFO * stream_info;
+    struct StreamINFO * stream_info;
 
     int accumulate_len;
     int aligned_accumulate_len;
@@ -77,13 +79,14 @@ protected:
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
     cl_mem device_phases;
+    cl_mem * device_freq_map;
 
     // Buffer of zeros to zero the accumulate buffer on the device.
     cl_int * accumulate_zeros;
 
     int output_len;
     
-    stream_id_t stream_id;
+    //stream_id_t stream_id;
 };
 
 #endif // DEVICE_INTERFACE_H

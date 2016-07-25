@@ -62,7 +62,6 @@ void* gpu_thread(void* arg)
         }
 
         // Todo get/set time information here as well.
-        device.set_stream_info(bufferID);
 
         CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock));
         loopCnt->iteration++;
@@ -74,6 +73,11 @@ void* gpu_thread(void* arg)
         cb_data[bufferID]->out_buf = device.getOutBuf();
         cb_data[bufferID]->numCommands = factory.getNumCommands();
         cb_data[bufferID]->cnt = loopCnt;
+        if (args->config->gpu.use_beamforming == 1)
+        {
+            cb_data[bufferID]->use_beamforming = args->config->gpu.use_beamforming;
+            cb_data[bufferID]->beamforming_out_buf = device.get_beamforming_out_buf();
+        }
 
         sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
 
@@ -101,9 +105,6 @@ void* gpu_thread(void* arg)
         }
 
         buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
-        
-        // Wait for the output buffer to be empty as well.
-        // This should almost never block, since the output buffer should clear quickly.
     }
 
     //LOOP THROUGH THE LOCKING ROUTINE
@@ -145,6 +146,17 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
 {
 
     struct callBackData * cb_data = (struct callBackData *) data;
+    
+        // Copy the information contained in the input buffer
+    if (cb_data->use_beamforming) {
+        copy_buffer_info(cb_data->in_buf, cb_data->buffer_id,
+                         cb_data->beamforming_out_buf, cb_data->buffer_id);
+    //}
+    
+        // Mark the beamforming buffer as full.
+    //if (cb_data->cl_data->config->gpu.use_beamforming) {
+        mark_buffer_full(cb_data->beamforming_out_buf, cb_data->buffer_id);
+    }
 
     // Copy the information contained in the input buffer
     move_buffer_info(cb_data->in_buf, cb_data->buffer_id,
