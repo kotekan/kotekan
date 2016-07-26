@@ -7,7 +7,6 @@
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
 #include <iostream>
-#include "beamforming.h"
 
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -22,7 +21,7 @@ void* gpu_thread(void* arg)
     cl_int err;
     loopCounter * loopCnt = new loopCounter;
 
-    device_interface device(args->in_buf, args->out_buf, args->config, args->gpu_id, args->beamforming_out_buf);
+    device_interface device(args->in_buf, args->out_buf, args->config, args->gpu_id);
 
     gpu_command_factory factory;
 
@@ -32,7 +31,6 @@ void* gpu_thread(void* arg)
 
     device.allocateMemory();
     DEBUG("Device Initialized\n");
-    //device.defineOutputDataMap();//COPY INTO OFFSET KERNEL AND CORRELATOR KERNEL
 
     callBackData ** cb_data = new callBackData * [device.getInBuf()->num_buffers];
 
@@ -55,39 +53,36 @@ void* gpu_thread(void* arg)
     for(;;) {
         // Wait for data, this call will block.
         bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
-        
+
         // If buffer id is -1, then all the producers are done.
         if (bufferID == -1) {
             break;
         }
 
-        // Todo get/set time information here as well.
-        device.set_stream_info(bufferID);
-
         CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock));
         loopCnt->iteration++;
         CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock));
 
-        // Set call back data
+	// Set call back data
         cb_data[bufferID]->buffer_id = bufferID;
         cb_data[bufferID]->in_buf = device.getInBuf();
         cb_data[bufferID]->out_buf = device.getOutBuf();
         cb_data[bufferID]->numCommands = factory.getNumCommands();
         cb_data[bufferID]->cnt = loopCnt;
 
-        sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
-
+	sequenceEvent = NULL; 
+        
         DEBUG("cb_data initialized\n");
 
-        for (int i = 0; i < factory.getNumCommands(); i++){
+	for (int i = 0; i < factory.getNumCommands(); i++){
             currentCommand = factory.getNextCommand(device, bufferID);
             sequenceEvent = currentCommand->execute(bufferID, device, sequenceEvent);
-            cb_data[bufferID]->listCommands[i] = currentCommand;
-        }
+	    cb_data[bufferID]->listCommands[i] = currentCommand;
+	}
 
-        DEBUG("Commands Queued\n");
-        // Setup call back.
-        CHECK_CL_ERROR( clSetEventCallback(sequenceEvent,
+	DEBUG("Commands Queued\n");
+	// Setup call back.
+	CHECK_CL_ERROR( clSetEventCallback(sequenceEvent,
                                             CL_COMPLETE,
                                             &read_complete,
                                             cb_data[bufferID]) );
@@ -96,14 +91,7 @@ void* gpu_thread(void* arg)
         // This should almost never block, since the output buffer should clear quickly.
         wait_for_empty_buffer(args->out_buf, bufferID);
 
-        if (args->config->gpu.use_beamforming) {
-            wait_for_empty_buffer(args->beamforming_out_buf, bufferID);
-        }
-
         buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
-        
-        // Wait for the output buffer to be empty as well.
-        // This should almost never block, since the output buffer should clear quickly.
     }
 
     //LOOP THROUGH THE LOCKING ROUTINE
@@ -166,4 +154,3 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
 
     CHECK_ERROR( pthread_cond_broadcast(&cb_data->cnt->cond) );
 }
-
