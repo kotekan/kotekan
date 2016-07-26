@@ -1,4 +1,3 @@
-
 #ifndef GPU_THREAD_H
 #define GPU_THREAD_H
 
@@ -16,7 +15,6 @@
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
 #include "pthread.h"
-#include "fpga_header_functions.h"
 
 // This adjusts the number of queues used by the OpenCL runtime
 // One queue is for data transfers to the GPU, one is for kernels,
@@ -40,6 +38,11 @@ struct gpuThreadArgs {
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
+};
+
+struct StreamINFO {
+    stream_id_t stream_id;
+    // Add time tracking of some kind.
 };
 void* gpu_thread(void * arg);
 void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);
