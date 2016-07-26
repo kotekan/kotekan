@@ -50,7 +50,7 @@ extern "C" {
 #include "buffers.h"
 #include "gpu_thread.h"
 #include "error_correction.h"
-#include "ch_acq_uplink.h"
+#include "chrxUplink.hpp"
 #include "config.h"
 #include "gpu_post_process.h"
 #include "beamforming.h"
@@ -209,10 +209,6 @@ int main(int argc, char ** argv) {
     }
 
     //print_config(&config);
-
-    SampleProcess test(config);
-    test.start();
-    sleep(10);
 
     // TODO: allow raw capture in line with the correlator.
     if (config.raw_cap.enabled) {
@@ -406,13 +402,8 @@ int main(int argc, char ** argv) {
         CHECK_ERROR( pthread_setaffinity_np(output_consumer_t, sizeof(cpu_set_t), &cpuset) );
 
         if (config.ch_master_network.disable_upload == 0) {
-            // The thread which sends it with TCP to ch_acq.
-            ch_acq_uplink_args.buf = &network_output_buffer;
-            ch_acq_uplink_args.gate_buf = &gated_output_buffer;
-            ch_acq_uplink_args.config = &config;
-            CHECK_ERROR( pthread_create(&output_network_t, NULL,
-                                        &ch_acq_uplink_thread,
-                                        (void *) &ch_acq_uplink_args ) );
+            chrxUplink chrx_uplink(config, network_output_buffer, gated_output_buffer);
+            chrx_uplink.start();
         } else {
             // Drop the data.
             null_thread_args.buf = &network_output_buffer;

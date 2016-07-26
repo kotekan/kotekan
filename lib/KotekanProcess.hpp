@@ -15,8 +15,8 @@ public:
     virtual void main_thread();
 protected:
     std::atomic_bool stop_thread;
-private:
     struct Config &config;
+private:
     std::thread this_thread;
     std::function<void(const KotekanProcess&)> main_thread_fn;
 };
