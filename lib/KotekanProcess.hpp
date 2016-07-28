@@ -11,7 +11,7 @@ public:
     KotekanProcess(struct Config &config,
                     std::function<void(const KotekanProcess&)> main_thread_ref);
     virtual ~KotekanProcess();
-    virtual void start() final;
+    virtual void start();
     virtual void main_thread();
 protected:
     std::atomic_bool stop_thread;

@@ -6,10 +6,7 @@
 #ifndef ERROR_CORRECTION
 #define ERROR_CORRECTION
 
-#include <error.h>
-
 #define complex _Complex
-
 
 #ifdef __cplusplus
    #define complex _Complex

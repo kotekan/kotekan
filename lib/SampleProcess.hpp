@@ -1,13 +1,13 @@
 #ifndef SAMPLEPROCESS_H
 #define SAMPLEPROCESS_H
 
-#include "KotekanProcess.h"
+#include "KotekanProcess.hpp"
 
 class SampleProcess : public KotekanProcess {
 public:
     SampleProcess(struct Config &config);
     virtual ~SampleProcess();
-    void main_thread() override;
+    void main_thread();
 private:
 
 };

@@ -1,7 +1,7 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
-#include "KotekanProcess.h"
+#include "KotekanProcess.hpp"
 
 class chrxUplink : public KotekanProcess {
 public:
@@ -9,7 +9,7 @@ public:
                   struct Buffer &buf,
                   struct Buffer &gate_buf);
     virtual ~chrxUplink();
-    void main_thread() override;
+    void main_thread();
 private:
     struct Buffer &vis_buf;
     struct Buffer &gate_buf;

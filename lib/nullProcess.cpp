@@ -2,24 +2,30 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <functional>
 
-#include "null.h"
+#include "nullProcess.hpp"
 #include "buffers.h"
 #include "errors.h"
 #include "output_formating.h"
 #include "config.h"
 
-void* null_thread(void* arg)
-{
-    struct NullThreadArg * args = (struct NullThreadArg *) arg;
+nullProcess::nullProcess(Config& config, struct Buffer &buf_) :
+    KotekanProcess(config, std::bind(&SampleProcess::main_thread, this)),
+    buf(buf_){
+}
 
+nullProcess::~nullProcess() {
+}
+
+void nullProcess::main_thread() {
     int buffer_ID = 0;
 
     // Wait for, and drop full buffers
-    for (;;) {
+    while (!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = get_full_buffer_from_list(args->buf, &buffer_ID, 1);
+        buffer_ID = get_full_buffer_from_list(&buf, &buffer_ID, 1);
 
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
@@ -30,8 +36,8 @@ void* null_thread(void* arg)
 
         INFO("Dropping frame in null thread.");
 
-        mark_buffer_empty(args->buf, buffer_ID);
+        mark_buffer_empty(&buf, buffer_ID);
 
-        buffer_ID = (buffer_ID + 1) % args->buf->num_buffers;
+        buffer_ID = (buffer_ID + 1) % buf.num_buffers;
     }
 }

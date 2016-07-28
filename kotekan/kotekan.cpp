@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <vector>
 
 extern "C" {
 #include <pthread.h>
@@ -56,14 +57,14 @@ extern "C" {
 #include "beamforming.h"
 #include "beamforming_post_process.h"
 #include "vdif_stream.h"
-#include "null.h"
+#include "nullProcess.hpp"
 #include "util.h"
 #include "network_dpdk.h"
 #include "version.h"
 #include "file_write.h"
 #include "raw_cap.h"
-#include "network_output_sim.h"
-#include "SampleProcess.h"
+#include "networkOutputSim.hpp"
+#include "SampleProcess.hpp"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -215,6 +216,8 @@ int main(int argc, char ** argv) {
         return raw_cap(&config);
     }
 
+    std::vector<KotekanProcess *> processes;
+
     // Create buffers.
     struct Buffer gpu_input_buffer[config.gpu.num_gpus];
     struct Buffer gpu_output_buffer[config.gpu.num_gpus];
@@ -338,22 +341,19 @@ int main(int argc, char ** argv) {
     } else {
         // Start network simulation
         for (int i = 0; i < config.fpga_network.num_links; ++i) {
-            network_sim_args[i].buf = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
-            network_sim_args[i].config = &config;
-            network_sim_args[i].link_id = config.fpga_network.link_map[i].link_id;
-            network_sim_args[i].stream_id = i;
-            network_sim_args[i].num_links_in_group = num_links_in_group(&config, i);
-            network_sim_args[i].pattern = network_sim_pattern;
-
-            CHECK_ERROR( pthread_create(&network_sim_t[i], NULL, &network_output_sim,
-                                    (void *)&network_sim_args[i] ) );
-            CHECK_ERROR( pthread_setaffinity_np(network_sim_t[i], sizeof(cpu_set_t), &cpuset) );
-
+            networkOutputSim * network_output_sim =
+                    new networkOutputSim(config,
+                                         gpu_input_buffer[config.fpga_network.link_map[i].gpu_id],
+                                         num_links_in_group(&config, i),
+                                         config.fpga_network.link_map[i].link_id,
+                                         network_sim_pattern,
+                                         i);
+            network_output_sim->start();
+            processes.push_back(network_output_sim);
         }
     }
 
     pthread_t output_consumer_t;
-    pthread_t output_network_t;
 
     pthread_t beamforming_comsumer_t;
     pthread_t vdif_output_t;
@@ -361,8 +361,6 @@ int main(int argc, char ** argv) {
     struct Buffer network_output_buffer;
     struct Buffer gated_output_buffer;
     struct gpuPostProcessThreadArg gpu_post_process_args;
-    struct ch_acqUplinkThreadArg ch_acq_uplink_args;
-    struct NullThreadArg null_thread_args;
     struct Buffer vdif_output_buffer;
     struct BeamformingPostProcessArgs beamforming_post_process_args;
     struct VDIFstreamArgs vdif_stream_args;
@@ -402,17 +400,15 @@ int main(int argc, char ** argv) {
         CHECK_ERROR( pthread_setaffinity_np(output_consumer_t, sizeof(cpu_set_t), &cpuset) );
 
         if (config.ch_master_network.disable_upload == 0) {
-            chrxUplink chrx_uplink(config, network_output_buffer, gated_output_buffer);
+            chrxUplink * chrx_uplink = new chrxUplink(config, network_output_buffer, gated_output_buffer);
             chrx_uplink.start();
+            processes.push_back(chrx_uplink);
         } else {
             // Drop the data.
-            null_thread_args.buf = &network_output_buffer;
-            null_thread_args.config = &config;
-            CHECK_ERROR( pthread_create(&output_network_t, NULL,
-                                        &null_thread,
-                                        (void *) &null_thread_args ) );
+            nullProcess null_process = new nullProcess(config, network_output_buffer);
+            null_process.start();
+            processes.push_back(null_process);
         }
-        CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
 
         // The beamforming thread
         /*

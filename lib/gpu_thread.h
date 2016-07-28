@@ -13,8 +13,13 @@
 // result: 4096
 #define PAGESIZE_MEM 4096
 
-#include <CL/cl.h>
-#include <CL/cl_ext.h>
+#ifdef __APPLE__
+    #include "OpenCL/opencl.h"
+#else
+    #include <CL/cl.h>
+    #include <CL/cl_ext.h>
+#endif
+
 #include "pthread.h"
 #include "fpga_header_functions.h"
 

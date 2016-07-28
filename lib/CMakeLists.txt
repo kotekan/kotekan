@@ -6,10 +6,10 @@ find_package( OpenCL REQUIRED )
 include_directories( ${OPENCL_INCLUDE_DIRS} )
 
 add_library ( chime buffers.c errors.c nt_memcpy.c nt_memset.c raw_file_write.c
-              util.c error_correction.c network_output_sim.c
+              util.c error_correction.c networkOutputSim.cpp
               output_formating.c test_data_generation.c chrxUplink.cpp gpu_post_process.c
               config.c beamforming.c beamforming_post_process.c time_tracking.c vdif_stream.c
-              fpga_header_functions.c null.c file_write.c simple_udp_cap.c output_power.c
+              fpga_header_functions.c null.cpp file_write.c simple_udp_cap.c output_power.c
               network_dpdk.c gpu_thread.cpp gpu_command.cpp callbackdata.cpp device_interface.cpp
               finalqueuesequence_command.cpp gpu_command_factory.cpp initqueuesequence_command.cpp
               kernelcorrelator.cpp kerneloffset.cpp kernelpreseed.cpp vdif_functions.c

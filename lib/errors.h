@@ -5,8 +5,13 @@
 // TODO set this via cmake build type!
 #define DEBUGING 0
 
-#include <CL/cl.h>
-#include <CL/cl_ext.h>
+#ifdef __APPLE__
+    #include "OpenCL/opencl.h"
+#else
+    #include <CL/cl.h>
+    #include <CL/cl_ext.h>
+#endif
+
 #include <syslog.h>
 
 #ifdef __cplusplus
@@ -39,7 +44,7 @@ extern int log_level_info;
                 __FILE__, __LINE__);                          \
         exit( -1 );                                        \
     }
-    
+
 #ifdef DEBUGING
 
 // Use this for messages that shouldn't be shown in the release version.

@@ -1,8 +1,4 @@
-
 #include "errors.h"
-#include <CL/cl.h>
-#include <CL/cl_ext.h>
-
 
 // Default values for log levels.
 int log_level_warn = 0;
