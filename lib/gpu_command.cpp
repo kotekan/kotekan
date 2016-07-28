@@ -22,7 +22,7 @@ gpu_command::~gpu_command()
         free(gpuKernel);
 }
 
-gpu_command::get_name()
+char* gpu_command::get_name()
 {
     return name;
 }
