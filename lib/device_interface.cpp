@@ -185,7 +185,7 @@ void device_interface::allocateMemory()
             CHECK_CL_ERROR(err);
         }
         
-        device_freq_map = malloc(in_buf->num_buffers * sizeof(cl_mem));
+        device_freq_map = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
         CHECK_MEM(device_freq_map);
         float freq[param_Config->processing.num_local_freq];
         stream_id_t local_stream_id;
