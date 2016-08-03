@@ -46,7 +46,7 @@ public:
     cl_int* getAccumulateZeros();
     int getNumBlocks();
     int getAlignedAccumulateLen() const;
-    int get_use_beamforming();
+//    int get_use_beamforming();
     void prepareCommandQueue();
     void allocateMemory();
 //    void set_stream_id(int param_buffer_id);
@@ -68,8 +68,8 @@ public:
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
     int num_blocks;
-    
-    int use_beamforming;
+//    
+//    int use_beamforming;
 
     cl_platform_id platform_id;
     cl_device_id device_id[MAX_GPUS];

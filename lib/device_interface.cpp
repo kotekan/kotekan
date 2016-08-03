@@ -14,7 +14,7 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
     config = param_Config;
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
-    use_beamforming = param_Config->gpu.use_beamforming;
+//    use_beamforming = param_Config->gpu.use_beamforming;
 
       // TODO explain these numbers/formulas.
     num_blocks = (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size) *
@@ -60,10 +60,10 @@ int device_interface::getGpuID()
     return gpu_id;
 }
 
-int device_interface::get_use_beamforming()
-{
-    return use_beamforming;
-}
+//int device_interface::get_use_beamforming()
+//{
+//    return use_beamforming;
+//}
 
 Buffer* device_interface::getInBuf()
 {

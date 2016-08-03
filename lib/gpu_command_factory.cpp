@@ -22,6 +22,7 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
     //numCommands = param_Config->gpu.num_kernels;
     numCommands = param_Config->gpu.num_kernels + 4;//THRE ADDITIONAL COMMANDS - Input, Input Beamform, & Output, Output Beamform
     
+    use_beamforming = param_Config->gpu.use_beamforming;
     listCommands =  new gpu_command * [numCommands];
 
     char** gpuKernels = param_Config->gpu.kernels;
@@ -115,7 +116,7 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
     }
     else if (currentCommand->get_name() == "beamform_tree_scale")
     {    
-       if (param_Device.get_use_beamforming()) {
+       if (use_beamforming == 1) {
             currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
             currentCommand->setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_BufferID));
             currentCommand->setKernelArg(2, param_Device.get_device_freq_map(param_BufferID));
