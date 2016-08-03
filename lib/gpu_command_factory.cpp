@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include "errors.h"
 #include <errno.h>
+#include <iostream>
+using namespace std;
 
 gpu_command_factory::gpu_command_factory()
 {
@@ -51,16 +53,18 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
             listCommands[i] = new output_data_result("output_data_result");
         }
         else {
-            if (std::gpuKernels[file_idx].find("offset_accumulator") != -1){
+            string kernel_name = gpuKernels[file_idx];
+            
+            if (kernel_name.find("offset_accumulator") != -1){
                 listCommands[i] = new offset_kernel(gpuKernels[file_idx], "offset_accumulator");
             }
-            else if (std::gpuKernels[file_idx].find("preseed_multifreq") != -1){
+            else if (kernel_name.find("preseed_multifreq") != -1){
                 listCommands[i] = new preseed_kernel(gpuKernels[file_idx], "preseed_multifreq");
             }
-            else if (std::gpuKernels[file_idx].find("pairwise_correlator") != -1){
+            else if (kernel_name.find("pairwise_correlator") != -1){
                 listCommands[i] = new correlator_kernel(gpuKernels[file_idx], "pairwise_correlator");
             }
-            else if (std::gpuKernels[file_idx].find("beamform_tree_scale") != -1){
+            else if (kernel_name.find("beamform_tree_scale") != -1){
                 if (param_Config->gpu.use_beamforming == 1){
                     listCommands[i] = new beamform_kernel(gpuKernels[file_idx], "beamform_tree_scale");
                 }
@@ -91,38 +95,35 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
     gpu_command* currentCommand;
 
     currentCommand = listCommands[currentCommandCnt];
-    
-    switch (currentCommand->get_name)
+
+    if (currentCommand->get_name() == "input_data_stage"){}//input_data_stage prep
+    else if (currentCommand->get_name() == "beamform_phase_data"){}
+    else if (currentCommand->get_name() ==  "pairwise_correlator")//THIRD KERNEL BY EVENTS SEQUENCE "corr"
     {
-        case "input_data_stage"://input_data_stage prep
-            break;
-        case "beamform_phase_data":
-            break;
-        case "pairwise_correlator"://THIRD KERNEL BY EVENTS SEQUENCE "corr"
+        currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
+        currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
+    }
+    else if (currentCommand->get_name() == "offset_accumulator")//FIRST KERNEL BY EVENTS SEQUENCE "offsetAccumulateElements"
+    {
+        currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
+        currentCommand->setKernelArg(1, param_Device.getAccumulateBuffer(param_BufferID));
+    }
+    else if (currentCommand->get_name() == "preseed_multifreq")//SECOND KERNEL BY EVENTS SEQUENCE "preseed"
+    {
+        currentCommand->setKernelArg(0, param_Device.getAccumulateBuffer(param_BufferID));
+        currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
+    }
+    else if (currentCommand->get_name() == "beamform_tree_scale")
+    {    
+       if (param_Device.get_use_beamforming()) {
             currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
-            currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
-            break;
-        case "offset_accumulator"://FIRST KERNEL BY EVENTS SEQUENCE "offsetAccumulateElements"
-            currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
-            currentCommand->setKernelArg(1, param_Device.getAccumulateBuffer(param_BufferID));
-            break;
-        case "preseed_multifreq"://SECOND KERNEL BY EVENTS SEQUENCE "preseed"
-            currentCommand->setKernelArg(0, param_Device.getAccumulateBuffer(param_BufferID));
-            currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
-            break;
-        case "beamform_tree_scale":
-            if (cl_data->config->gpu.use_beamforming) {
-                currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
-                currentCommand->setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_BufferID));
-                currentCommand->setKernelArg(2, param_Device.get_device_freq_map(param_BufferID));
-                currentCommand->setKernelArg(3, param_Device.get_device_phases());
-            }
-            break;
-        case "output_data_result":
-            break;
-        case"output_beamform_result":
-            break;
-      }
+            currentCommand->setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_BufferID));
+            currentCommand->setKernelArg(2, param_Device.get_device_freq_map(param_BufferID));
+            currentCommand->setKernelArg(3, param_Device.get_device_phases());
+        }
+    }
+    else if (currentCommand->get_name() == "output_data_result"){}
+    else if (currentCommand->get_name() == "output_beamform_result"){}
 
       currentCommandCnt++;
       if (currentCommandCnt >= numCommands)

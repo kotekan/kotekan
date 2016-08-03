@@ -46,6 +46,7 @@ public:
     cl_int* getAccumulateZeros();
     int getNumBlocks();
     int getAlignedAccumulateLen() const;
+    int get_use_beamforming();
     void prepareCommandQueue();
     void allocateMemory();
 //    void set_stream_id(int param_buffer_id);
@@ -54,7 +55,7 @@ public:
  
     void release_events_for_buffer(int param_BufferID);
     void deallocateResources();
-protected:
+ protected:
     // Buffer objects
     struct Buffer * in_buf;
     struct Buffer * out_buf;
@@ -67,6 +68,8 @@ protected:
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
     int num_blocks;
+    
+    int use_beamforming;
 
     cl_platform_id platform_id;
     cl_device_id device_id[MAX_GPUS];
@@ -78,9 +81,11 @@ protected:
     cl_mem * device_accumulate_buffer;
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
+    //cl_mem * device_freq_map;
+    cl_mem device_freq_map;
     cl_mem device_phases;
-    cl_mem * device_freq_map;
 
+    
     // Buffer of zeros to zero the accumulate buffer on the device.
     cl_int * accumulate_zeros;
 

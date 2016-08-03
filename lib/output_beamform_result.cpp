@@ -26,7 +26,7 @@ cl_event output_beamform_result::execute(int param_bufferID, class device_interf
                                             CL_FALSE,
                                             0,
                                             param_Device.get_beamforming_out_buf()->aligned_buffer_size,
-                                            param_Device.get_beamforming_out_buf()->data[buffer_id],
+                                            param_Device.get_beamforming_out_buf()->data[param_bufferID],
                                             1,
                                             &param_PrecedeEvent,
 					    &postEvent[param_bufferID]) );

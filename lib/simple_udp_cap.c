@@ -1,6 +1,5 @@
 #include "simple_udp_cap.h"
 
-#include "network.h"
 #include "buffers.h"
 #include "errors.h"
 

@@ -83,7 +83,7 @@ void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 
 char* gpu_command::get_cl_options(Config * param_Config)
 {
-    char cl_options[1024];
+    static char cl_options[1024];
     
     sprintf(cl_options, "-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du -D NUM_BUFFERS=%du",
         param_Config->processing.num_elements, param_Config->processing.num_local_freq,

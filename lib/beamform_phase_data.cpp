@@ -23,6 +23,8 @@ void beamform_phase_data::build(Config* param_Config, class device_interface &pa
 {
     gpu_command::build(param_Config, param_Device);
     
+    cl_int err;
+    
     beamforming_do_not_track = param_Config->beamforming.do_not_track;
     inst_lat = param_Config->beamforming.instrument_lat;
     inst_long = param_Config->beamforming.instrument_long;
@@ -33,7 +35,7 @@ void beamform_phase_data::build(Config* param_Config, class device_interface &pa
     feed_positions = param_Config->beamforming.element_positions; 
       
     // Setup beamforming output.
-    phases = malloc(num_elements * sizeof(float));
+    phases = (float *) malloc(num_elements * sizeof(float));
     beamform_time = time(NULL); // Current time.
     if (beamforming_do_not_track == 1) {
         if (param_Config->beamforming.fixed_time != 0){
@@ -72,7 +74,7 @@ cl_event beamform_phase_data::execute(int param_bufferID, class device_interface
         get_delays(phases);
         
         CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),
-                                            param_Device.device_phases(),
+                                            param_Device.get_device_phases(),
                                             CL_FALSE,
                                             0,
                                             num_elements * sizeof(float),
