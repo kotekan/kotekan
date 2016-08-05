@@ -56,12 +56,11 @@ extern "C" {
 #include "gpu_post_process.h"
 #include "beamforming.h"
 #include "beamforming_post_process.h"
-#include "vdif_stream.h"
+#include "vdifStream.hpp"
 #include "nullProcess.hpp"
 #include "util.h"
 #include "network_dpdk.h"
 #include "version.h"
-#include "file_write.h"
 #include "raw_cap.h"
 #include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
@@ -75,7 +74,6 @@ void print_help() {
     printf("    --daemon -d [root]              Run in daemon mode, disables output to stderr");
     printf("Testing Options:\n");
     printf("    --no-network-test (-t)          Generates fake data for testing.\n");
-    printf("    --save_vdif (-o)                Save the VDIF to disk, do not stream.\n");
 }
 
 void dpdk_setup() {
@@ -112,7 +110,6 @@ int main(int argc, char ** argv) {
     int error = 0;
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     int make_daemon = 0;
-    int save_vdif = 0;
     char * kotekan_root_dir = (char *)"./";
 
     cpu_set_t cpuset;
@@ -128,7 +125,6 @@ int main(int argc, char ** argv) {
             {"write-local", no_argument, 0, 'w'},
             {"log-level", required_argument, 0, 'l'},
             {"daemon", required_argument, 0, 'd'},
-            {"save-vdif", no_argument, 0, 'o'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
@@ -136,7 +132,7 @@ int main(int argc, char ** argv) {
         int option_index = 0;
         int option_value = 0;
 
-        opt_val = getopt_long (argc, argv, "ht:wosc:l:d:",
+        opt_val = getopt_long (argc, argv, "ht:wsc:l:d:",
                                long_options, &option_index);
 
         // End of args
@@ -175,9 +171,6 @@ int main(int argc, char ** argv) {
                     default:
                         break;
                 }
-                break;
-            case 'o':
-                save_vdif = 1;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -221,7 +214,7 @@ int main(int argc, char ** argv) {
     // Create buffers.
     struct Buffer gpu_input_buffer[config.gpu.num_gpus];
     struct Buffer gpu_output_buffer[config.gpu.num_gpus];
-//     struct Buffer gpu_beamform_output_buffer[config.gpu.num_gpus];
+    struct Buffer gpu_beamform_output_buffer[config.gpu.num_gpus];
 
     cl_int output_len = config.processing.num_adjusted_local_freq * config.processing.num_blocks*
                         (config.gpu.block_size*config.gpu.block_size)*2.;
@@ -272,19 +265,19 @@ int main(int argc, char ** argv) {
                       &pool[i],
                       buffer_name);
 
-//         snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
-//         create_buffer(&gpu_beamform_output_buffer[i],
-//                       links_per_gpu * config.processing.buffer_depth,
-//                       config.processing.samples_per_data_set * config.processing.num_data_sets *
-//                       config.processing.num_local_freq * 2,
-//                       1,
-//                       1,
-//                       &pool[i],
-//                       buffer_name);
+        snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
+        create_buffer(&gpu_beamform_output_buffer[i],
+                      links_per_gpu * config.processing.buffer_depth,
+                      config.processing.samples_per_data_set * config.processing.num_data_sets *
+                      config.processing.num_local_freq * 2,
+                      1,
+                      1,
+                      &pool[i],
+                      buffer_name);
 
         gpu_args[i].in_buf = &gpu_input_buffer[i];
         gpu_args[i].out_buf = &gpu_output_buffer[i];
-//      gpu_args[i].beamforming_out_buf = &gpu_beamform_output_buffer[i];
+        gpu_args[i].beamforming_out_buf = &gpu_beamform_output_buffer[i];
         gpu_args[i].gpu_id = i;
         gpu_args[i].started = 0;
         gpu_args[i].config = &config;
@@ -363,8 +356,6 @@ int main(int argc, char ** argv) {
     struct gpuPostProcessThreadArg gpu_post_process_args;
     struct Buffer vdif_output_buffer;
     struct BeamformingPostProcessArgs beamforming_post_process_args;
-    struct VDIFstreamArgs vdif_stream_args;
-    struct fileWriteThreadArg file_write_args;
 
     if (use_ch_acq == 1) {
         int num_values = ((config.processing.num_elements *
@@ -411,7 +402,7 @@ int main(int argc, char ** argv) {
         }
 
         // The beamforming thread
-        /*
+
         if (config.gpu.use_beamforming == 1) {
             create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
                           1, 1, pool, "vdif_output_buffer");
@@ -425,43 +416,12 @@ int main(int argc, char ** argv) {
                                         (void *) &beamforming_post_process_args ) );
             CHECK_ERROR( pthread_setaffinity_np(beamforming_comsumer_t, sizeof(cpu_set_t), &cpuset) );
 
-            if (save_vdif == 1) {
-                // Compute the data set name.
-                char data_set[150];
-                char data_time[64];
-                char disk_base[64];
-                time_t rawtime;
-                struct tm* timeinfo;
-                time(&rawtime);
-                timeinfo = gmtime(&rawtime);
 
-                strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-                snprintf(data_set, sizeof(data_set), "%s_chime_beamformed", data_time);
-                snprintf(disk_base, sizeof(disk_base), "/data/vdif/");
-
-                // Make dirs
-                make_dirs(disk_base, data_set, 1);
-
-                file_write_args.disk_ID = 0;
-                file_write_args.num_disks = 1;
-                file_write_args.buf = &vdif_output_buffer;
-                file_write_args.buffer_depth = network_buffer_depth;
-                file_write_args.disk_base = disk_base;
-                file_write_args.dataset_name = data_set;
-
-                CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
-                                            &file_write_thread,
-                                            (void *) &file_write_args ) );
-            } else {
-                // The thread which sends it with TCP
-                vdif_stream_args.buf = &vdif_output_buffer;
-                vdif_stream_args.config = &config;
-                CHECK_ERROR( pthread_create(&vdif_output_t, NULL,
-                                            &vdif_stream,
-                                            (void *) &vdif_stream_args ) );
-            }
-            CHECK_ERROR( pthread_setaffinity_np(vdif_output_t, sizeof(cpu_set_t), &cpuset) );
-        } */
+            // The thread which sends it with UDP to the VDIF collection server
+            vdifStream * vdif_stream = new vdifStream(config, vdif_output_buffer);
+            vdif_stream->start();
+            processes.push_back(vdif_stream);
+        }
     } else  {
         // TODO add local file output in some form here.
     }

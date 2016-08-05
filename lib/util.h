@@ -16,6 +16,7 @@ void make_dirs(char * disk_base, char * data_set, int num_disks);
 void make_raw_dirs(char * disk_base, char * disk_set, char * data_set, int num_disks);
 int cp(const char *to, const char *from);
 int64_t mod(int64_t a, int64_t b);
+double e_time(void);
 
 //! A complex integer datatype.
 typedef struct {

@@ -177,9 +177,6 @@ struct Beamforming {
 
 struct RawCapture {
     int enabled;
-    int num_disks;
-    char * disk_base;
-    char * disk_set;
     char * note;
     char * ram_disk_dir;
     char * instrument_name;
@@ -188,6 +185,12 @@ struct RawCapture {
     int legacy_power_output;
     int samples_per_file;
     int stream_vdif;
+};
+
+struct Disk {
+    int num_disks;
+    char * disk_base;
+    char * disk_set;
 };
 
 /// Gating
@@ -218,6 +221,8 @@ struct Config {
 
     /// The raw capture options.
     struct RawCapture raw_cap;
+
+    struct Disk disk;
 
     /// The gating options
     struct Gating gating;

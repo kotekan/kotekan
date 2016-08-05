@@ -206,20 +206,39 @@ int parse_beamforming_config(struct Config* config, json_t * json) {
     return 0;
 }
 
+int parse_disk_config(struct Config* config, json_t * json) {
+
+    int error = 0;
+
+    const char * disk_base;
+    const char * disk_set;
+
+    error = json_unpack(json, "{s:i, s:s, s:s}",
+                        "num_disks", &config->disk.num_disks,
+                        "disk_base", &disk_base,
+                        "disk_set", &disk_set,);
+
+    if (error) {
+        ERROR("Error parsing disk config, check config file, error: %d", error);
+        return error;
+    }
+
+    config->disk.disk_base = strdup(disk_base);
+    config->disk.disk_set = strdup(disk_set);
+
+    return 0;
+}
+
 int parse_raw_cap_config(struct Config* config, json_t * json) {
 
     int error = 0;
-    const char * disk_base;
-    const char * disk_set;
+
     const char * note;
     const char * ram_disk_dir;
     const char * instrument_name;
 
-    error = json_unpack(json, "{s:i, s:i, s:s, s:s, s:s, s:s, s:s, s:i, s:i, s:i, s:i, s:i}",
+    error = json_unpack(json, "{s:i, s:s, s:s, s:s, s:i, s:i, s:i, s:i, s:i}",
                         "enabled", &config->raw_cap.enabled,
-                        "num_disks", &config->raw_cap.num_disks,
-                        "disk_base", &disk_base,
-                        "disk_set", &disk_set,
                         "note", &note,
                         "ram_disk_dir", &ram_disk_dir,
                         "instrument_name", &instrument_name,
@@ -234,8 +253,6 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
         return error;
     }
 
-    config->raw_cap.disk_base = strdup(disk_base);
-    config->raw_cap.disk_set = strdup(disk_set);
     config->raw_cap.note = strdup(note);
     config->raw_cap.ram_disk_dir = strdup(ram_disk_dir);
     config->raw_cap.instrument_name = strdup(instrument_name);

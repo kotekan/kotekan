@@ -13,15 +13,16 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <vector>
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
-#include "raw_cap.h"
+#include "raw_cap.hpp"
 #include "util.h"
 #include "errors.h"
 #include "network_dpdk.h"
-#include "raw_file_write.h"
+#include "rawFileWrite.hpp"
 #include "output_power.h"
 #include "stream_raw_vdif.h"
 
@@ -55,6 +56,8 @@ int raw_cap(struct Config * config) {
     struct tm* timeinfo;
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
+
+    std::vector<KotekanProcess *> processes;
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -182,20 +185,15 @@ int raw_cap(struct Config * config) {
     pthread_t file_write_t[config->raw_cap.num_disks];
     struct raw_file_write_thread_arg file_write_args[config->raw_cap.num_disks];
 
-    //if (config->raw_cap.write_packets == 1) {
-        for (int i = 0; i < config->raw_cap.num_disks; ++i) {
-            file_write_args[i].buf = &vdif_buf;
-            file_write_args[i].diskID = i;
-            file_write_args[i].numDisks = config->raw_cap.num_disks;
-            file_write_args[i].bufferDepth = buffer_depth;
-            file_write_args[i].dataset_name = data_set;
-            file_write_args[i].disk_base = config->raw_cap.disk_base;
-            file_write_args[i].disk_set = config->raw_cap.disk_set;
-            file_write_args[i].write_packets = config->raw_cap.write_packets;
-            CHECK_ERROR( pthread_create(&file_write_t[i], NULL, (void *) &raw_file_write_thread, (void *)&file_write_args[i] ) );
-            CHECK_ERROR( pthread_setaffinity_np(file_write_t[i], sizeof(cpu_set_t), &cpuset) );
-        }
-    //}
+
+    for (int i = 0; i < config->disk.num_disks; ++i) {
+        rawFileWrite * file_write =
+                new rawFileWrite(config, vdif_buf,
+                                 i, ".vdif", config->raw_cap.write_packets,
+                                 data_set);
+        file_write->start();
+        processes.push_back(file_write);
+    }
 
     pthread_t output_power_t;
     struct output_power_thread_arg output_arg;
