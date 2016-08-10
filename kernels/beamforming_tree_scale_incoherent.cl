@@ -165,8 +165,8 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
             unsigned char temp2 = tempInt64
 
             //switch from two's complement encoding to offset encoding (i.e. swap the sign bit from 1 to 0 or vice versa)
-            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1^(0x88);
-            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] = temp2^(0x88);
+            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1;
+            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] = temp2;
 
         }
     }
