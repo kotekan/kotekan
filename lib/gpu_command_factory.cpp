@@ -20,7 +20,7 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
 {
     //X-Engine EXECUTION SEQUENCE IS OFFSET, PRESEED, CORRELATE.
     //numCommands = param_Config->gpu.num_kernels;
-    numCommands = param_Config->gpu.num_kernels + 4;//THRE ADDITIONAL COMMANDS - Input, Input Beamform, & Output, Output Beamform
+    numCommands = param_Config->gpu.num_kernels + 4;//THRE ADDITIONAL COMMANDS - Input & Output, Input_beamform_phase & Output Beamform
     
     use_beamforming = param_Config->gpu.use_beamforming;
     listCommands =  new gpu_command * [numCommands];

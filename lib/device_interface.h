@@ -7,6 +7,10 @@
 #include <CL/cl_platform.h>
 #endif
 
+//check pagesize:
+//getconf PAGESIZE
+// result: 4096
+#define PAGESIZE_MEM 4096
 
 // The maximum number of expected GPUs in a host.  Increase as needed.
 #define MAX_GPUS 4

@@ -8,25 +8,10 @@
 
 #define SDK_SUCCESS 0
 
-//check pagesize:
-//getconf PAGESIZE
-// result: 4096
-#define PAGESIZE_MEM 4096
-
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
 #include "pthread.h"
 #include "fpga_header_functions.h"
-
-// This adjusts the number of queues used by the OpenCL runtime
-// One queue is for data transfers to the GPU, one is for kernels,
-// and one is for data transfers from the GPU to host memory.
-// Unless you really know what you are doing, don't change this.
-#define NUM_QUEUES 3
-
-// The maximum number of expected GPUs in a host.  Increase as needed.
-#define MAX_GPUS 4
-
 
 struct gpuThreadArgs {
     struct Config * config;

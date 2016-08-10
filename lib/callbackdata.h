@@ -19,6 +19,20 @@ struct loopCounter {
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
 };
+struct buffer_id_lock {
+    buffer_id_lock(){
+        CHECK_ERROR( pthread_mutex_init(&lock, NULL) );
+        CHECK_ERROR( pthread_cond_init(&cond, NULL) );
+    }
+    ~buffer_id_lock() {
+        CHECK_ERROR( pthread_mutex_destroy(&lock) );
+        CHECK_ERROR( pthread_cond_destroy(&cond) );
+    }
+    int in_process = 0;
+
+    pthread_mutex_t lock;  // Lock for the is_ready function.
+    pthread_cond_t cond;
+};
 class callBackData {
 public:
     callBackData();
@@ -37,6 +51,7 @@ public:
     struct Buffer * beamforming_out_buf;
 
     struct loopCounter * cnt;
+    struct buffer_id_lock * buff_id_lock;
 };
 
 #endif // CALLBACKDATA_H

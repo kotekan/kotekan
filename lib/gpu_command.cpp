@@ -71,6 +71,8 @@ cl_event gpu_command::execute(int param_bufferID, device_interface& param_Device
 {
     assert(param_bufferID<param_Device.getInBuf()->num_buffers);
     assert(param_bufferID>=0);
+    
+//    DEBUG("Execute kernel: %s", name);
 }
 
 void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
@@ -92,6 +94,8 @@ char* gpu_command::get_cl_options(Config * param_Config)
         param_Config->processing.num_blocks,
         param_Config->processing.samples_per_data_set,
         param_Config->processing.buffer_depth);
+    
+//    DEBUG("kernel: %s. cl_options: %s", name, cl_options);
     
     return cl_options;
 }

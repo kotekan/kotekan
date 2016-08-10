@@ -109,6 +109,7 @@ cl_event correlator_kernel::execute(int param_bufferID, class device_interface& 
 {
     gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
+//    DEBUG("gws: %i, %i, %i. lws: %i, %i, %i", gws[0], gws[1], gws[2], lws[0], lws[1], lws[2]);
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                             kernel,
                                             3,

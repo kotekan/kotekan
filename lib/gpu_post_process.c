@@ -116,11 +116,16 @@ void* gpu_post_process_thread(void* arg)
         // This call is blocking!
         in_buffer_ID = get_full_buffer_from_list(&args->in_buf[gpu_id], useableBufferIDs[gpu_id], 1);
 
-        // _______________________
-        //release_info_object(&args->in_buf[gpu_id], in_buffer_ID);
-        //mark_buffer_empty(&args->in_buf[gpu_id], in_buffer_ID);
-
-        //continue;
+//        CODE FOR DEBUGGING PURPOSES
+//        INFO("GPU_POST_PROCESS: got bufferID %d", in_buffer_ID);
+//        // _______________________
+//        release_info_object(&args->in_buf[gpu_id], in_buffer_ID);
+//        mark_buffer_empty(&args->in_buf[gpu_id], in_buffer_ID);
+//        
+//        useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % args->in_buf->num_buffers;
+//        link_id = (link_id + 1) % config->fpga_network.num_links;
+//
+//        continue;
         // _______________________
 
         // Check if the producer has finished, and we should exit.
