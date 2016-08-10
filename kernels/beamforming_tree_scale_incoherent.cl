@@ -37,18 +37,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
     phase_im[1] = sincos(-phases[base_element_id+1]*freq, &phase_re[1]);
     phase_im[2] = sincos(-phases[base_element_id+2]*freq, &phase_re[2]);
     phase_im[3] = sincos(-phases[base_element_id+3]*freq, &phase_re[3]);
-//     if (FREQUENCY_BAND ==0){
-//         printf("%3i: angle: %10.6f sin: %10.6f cos: %10.6f unitary check:%f\n",get_local_id(0)*4,phases[base_element_id]*freq,phase_im[0], phase_re[0], phase_im[0]*phase_im[0]+phase_re[0]*phase_re[0]);
-//         printf("%3i: angle: %10.6f sin: %10.6f cos: %10.6f unitary check:%f\n",get_local_id(0)*4+1,phases[base_element_id+1]*freq,phase_im[1], phase_re[1], phase_im[1]*phase_im[1]+phase_re[1]*phase_re[1]);
-//         printf("%3i: angle: %10.6f sin: %10.6f cos: %10.6f unitary check:%f\n",get_local_id(0)*4+2,phases[base_element_id+2]*freq,phase_im[2], phase_re[2], phase_im[2]*phase_im[2]+phase_re[2]*phase_re[2]);
-//         printf("%3i: angle: %10.6f sin: %10.6f cos: %10.6f unitary check:%f\n",get_local_id(0)*4+3,phases[base_element_id+3]*freq,phase_im[3], phase_re[3], phase_im[3]*phase_im[3]+phase_re[3]*phase_re[3]);
-//     }
-//     if (FREQUENCY_BAND ==0){
-//         printf("%3i: angle: %10.6f freq:% 10.6f Base unix time: 1417819786 \n",get_local_id(0)*4,phases[base_element_id]*freq,freq);
-//         printf("%3i: angle: %10.6f freq:% 10.6f\n",get_local_id(0)*4+1,phases[base_element_id+1]*freq,freq);
-//         printf("%3i: angle: %10.6f freq:% 10.6f\n",get_local_id(0)*4+2,phases[base_element_id+2]*freq,freq);
-//         printf("%3i: angle: %10.6f freq:% 10.6f\n",get_local_id(0)*4+3,phases[base_element_id+3]*freq,freq);
-//     }
+
     unsigned int temp = element_mask[ELEMENT_ID_DIV_4];
     int mask[4];
     mask[0] = (temp>> 0)&0x1;
@@ -78,17 +67,8 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         // (A,B) x (C, D) = AC + i^2 BD + i(BC+AD)
         //      (AC - BD, BC + AD)
         // A is R, B is I, C is phase_re, and D is actually -phase_im
-        // Thus outR = R*phase_re + I*phase_im
-        // and  outI = I*phase_re - R*phase_im
-        // summing 4 products gives the following:
-        //outR = R[0]*phase_re[0] + I[0]*phase_im[0] +
-        //       R[1]*phase_re[1] + I[1]*phase_im[1] +
-        //       R[2]*phase_re[2] + I[2]*phase_im[2] +
-        //       R[3]*phase_re[3] + I[3]*phase_im[3];
-        //outI = I[0]*phase_re[0] - R[0]*phase_im[0] +
-        //       I[1]*phase_re[1] - R[1]*phase_im[1] +
-        //       I[2]*phase_re[2] - R[2]*phase_im[2] +
-        //       I[3]*phase_re[3] - R[3]*phase_im[3];
+        // Thus outR = R**2 + I**2
+        // and  outI = 0
 
         outR = R[0]*R[0] + I[0]*I[0] +
                R[1]*R[1] + I[1]*I[1] +
@@ -99,8 +79,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         //reorder the data to group polarizations for the reduction
 
         int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
-//         if (t == 0 && FREQUENCY_BAND==0)
-//             printf("%2i: %3i %3i\n", get_local_id(0), address, address + NUM_POL_ELEMENTS/4);
+
         lds_data[address]                    = outR;
         lds_data[address+NUM_POL_ELEMENTS/4] = outI; //offset by 32
 
@@ -121,14 +100,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         // CHECKED THE REDUCTION SECTION: a slow serial summation gives the same output as the tree.  So not the tree.  Could be the output or the above section.
         ////////////////////////////////
 
-//         if (get_local_id(0) == 0){
-//             for (int i = 1; i < 32; i++){
-//                 lds_data[0] += lds_data[i];
-//                 lds_data[32] += lds_data[i+32];
-//                 lds_data[64] += lds_data[i+64];
-//                 lds_data[96] += lds_data[i+96];
-//             }
-//         }
+
         for (uint i = NUM_POL_ELEMENTS/4; i>1; i = i/2){
             barrier(CLK_LOCAL_MEM_FENCE);
             if (get_local_id(0) >= i/2)
@@ -173,73 +145,28 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         // scale beamformed result by NUM_ELEMENTS/2 as a first guess, though signals from a single source, compared to the sky, should not be the WHOLE signal,
         // so integer divisions could go to 0 (int divide truncates the result (floor))
         if (get_local_id(0) == 0) {
-            ////////////////////////////// Bit shift method is not the ideal way--leads to other problems
 
-// //            printf("%3i: %3i: lds_data[0]: %10.6f, %3i\n",t+TIME_OFFSET_DIV_TIME_SCL*TIME_SCL,FREQUENCY_BAND,lds_data[0],((((int)lds_data[ 0])>>bit_shift_factor)&0x0f));
-//             unsigned char temp1 = (((((int)lds_data[ 0])>>bit_shift_factor)&0x0f)<<4) |
-//                   (((((int)lds_data[ 1])>>bit_shift_factor)&0x0f)>>0);
-//             unsigned char temp2 = (((((int)lds_data[64])>>bit_shift_factor)&0x0f)<<4) |
-//                  (((((int)lds_data[65])>>bit_shift_factor)&0x0f)>>0);
-//             output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1^(0x88);//255;
-// //                   (((((int)lds_data[ 0])>>bit_shift_factor)&0x0f)<<4) |
-// //                   (((((int)lds_data[ 1])>>bit_shift_factor)&0x0f)>>0);
-//
-//             output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] =temp2^(0x88);//51;
-// //                  (((((int)lds_data[64])>>bit_shift_factor)&0x0f)<<4) |
-// //                  (((((int)lds_data[65])>>bit_shift_factor)&0x0f)>>0);
-//
             ////////////////////////////// Scale and rail method
             lds_data[0]  *= scale_factor;
             lds_data[1]  *= scale_factor;
             lds_data[64] *= scale_factor;
             lds_data[65] *= scale_factor;
+
             //convert to integer
-            int tempInt0 = (int)round(lds_data[0]);
+            unsigned int tempInt0 = (unsigned int)round(lds_data[0]);
 
-//             if (tempInt0>7)
-//                 tempInt0 = 7;
-//             else if (tempInt0 <-7)
-//                 tempInt0 = -7;
+            tempInt0 = (tempInt0 >  255 ?  255 : tempInt0);
 
-            tempInt0 = (tempInt0 >  7 ?  7 : tempInt0);
-            tempInt0 = (tempInt0 < -7 ? -7 : tempInt0);
+            unsigned int tempInt64 = (unsigned int)round(lds_data[64]);
 
-            int tempInt1 = (int)round(lds_data[1]);
+            tempInt64 = (tempInt64 >  255 ?  255 : tempInt64);
 
-//             if (tempInt1 >7)
-//                 tempInt1 = 7;
-//             else if (tempInt1 <-7)
-//                 tempInt1 = -7;
-
-            tempInt1 = (tempInt1 >  7 ?  7 : tempInt1);
-            tempInt1 = (tempInt1 < -7 ? -7 : tempInt1);
-
-            int tempInt64 = (int)round(lds_data[64]);
-
-//             if (tempInt64>7)
-//                 tempInt64 = 7;
-//             else if (tempInt64 <-7)
-//                 tempInt64 = -7;
-
-            tempInt64 = (tempInt64 >  7 ?  7 : tempInt64);
-            tempInt64 = (tempInt64 < -7 ? -7 : tempInt64);
-
-            int tempInt65 = (int)round(lds_data[65]);
-
-//             if (tempInt65 >7)
-//                 tempInt65 = 7;
-//             else if (tempInt65 <-7)
-//                 tempInt65 = -7;
-
-            tempInt65 = (tempInt65 >  7 ?  7 : tempInt65);
-            tempInt65 = (tempInt65 < -7 ? -7 : tempInt65);
-
-            unsigned char temp1 = (((tempInt0 )&0x0f)<<4) | (((tempInt1 )&0x0f)>>0);
-            unsigned char temp2 = (((tempInt64)&0x0f)<<4) | (((tempInt65)&0x0f)>>0);
+            unsigned char temp1 = tempInt0
+            unsigned char temp2 = tempInt64
 
             //switch from two's complement encoding to offset encoding (i.e. swap the sign bit from 1 to 0 or vice versa)
             output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1^(0x88);
-            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] =temp2^(0x88);
+            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] = temp2^(0x88);
 
         }
     }
