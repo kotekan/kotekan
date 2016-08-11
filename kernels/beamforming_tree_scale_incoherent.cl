@@ -148,9 +148,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
 
             ////////////////////////////// Scale and rail method
             lds_data[0]  *= scale_factor;
-            lds_data[1]  *= scale_factor;
             lds_data[64] *= scale_factor;
-            lds_data[65] *= scale_factor;
 
             //convert to integer
             unsigned int tempInt0 = (unsigned int)round(lds_data[0]);
@@ -161,8 +159,8 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
 
             tempInt64 = (tempInt64 >  255 ?  255 : tempInt64);
 
-            unsigned char temp1 = tempInt0
-            unsigned char temp2 = tempInt64
+            unsigned char temp1 = tempInt0;
+            unsigned char temp2 = tempInt64;
 
             //switch from two's complement encoding to offset encoding (i.e. swap the sign bit from 1 to 0 or vice versa)
             output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1;
