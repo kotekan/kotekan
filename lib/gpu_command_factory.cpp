@@ -120,7 +120,7 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
             currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
             currentCommand->setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_BufferID));
             currentCommand->setKernelArg(2, param_Device.get_device_freq_map(param_BufferID));
-            currentCommand->setKernelArg(3, param_Device.get_device_phases());
+            currentCommand->setKernelArg(3, param_Device.get_device_phases(param_BufferID));
         }
     }
     else if (currentCommand->get_name() == "output_data_result"){}

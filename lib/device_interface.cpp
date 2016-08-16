@@ -113,10 +113,10 @@ int device_interface::getAlignedAccumulateLen() const
 //    return stream_id;
 //}
 
-void device_interface::set_device_phases(cl_mem param_device_phases)
-{
-    device_phases = param_device_phases;
-}
+//void device_interface::set_device_phases(cl_mem param_device_phases)
+//{
+//    device_phases = param_device_phases;
+//}
 
 void device_interface::prepareCommandQueue()
 {
@@ -191,27 +191,23 @@ void device_interface::allocateMemory()
                     , beamforming_out_buf->aligned_buffer_size, NULL, &err);
             CHECK_CL_ERROR(err);
         }
-                
-        /*
-        device_freq_map = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
-        CHECK_MEM(device_freq_map);
-        float freq[config->processing.num_local_freq];
-        stream_id_t local_stream_id;
 
+        device_phases = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
+        CHECK_MEM(device_phases);
         for (int i = 0; i < in_buf->num_buffers; ++i) {
-            local_stream_id = stream_info[i].stream_id;
-
-            for (int j = 0; j < config->processing.num_local_freq; ++j) {
-                freq[j] = freq_from_bin(bin_number(&local_stream_id, j))/1000.0;
-            }
-            device_freq_map[i] = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                                config->processing.num_local_freq * sizeof(float),
-                                                freq,
-                                                &err);
+            device_phases[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, config->processing.num_elements * sizeof(float)
+                    , NULL, &err);
             CHECK_CL_ERROR(err);
         }
-        */
-    }
+                
+        device_freq_map = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
+        CHECK_MEM(device_freq_map);        
+        for (int i = 0; i < in_buf->num_buffers; ++i) {
+            device_freq_map[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, config->processing.num_local_freq * sizeof(float)
+                    , NULL, &err);
+            CHECK_CL_ERROR(err);
+        }
+    }     
 ////##
     
 }
@@ -236,39 +232,14 @@ cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
     return device_beamform_output_buffer[param_BufferID];
 }
 
-cl_mem device_interface::get_device_phases()
+cl_mem device_interface::get_device_phases(int param_BufferID)
 {
-    return device_phases;
+    return device_phases[param_BufferID];
 }
 
 cl_mem device_interface::get_device_freq_map(int param_BufferID)
 {
-    cl_int err;
-    //Previous method for returning device_freq_map found in gpu_thread.c
-    //return device_freq_map[param_BufferID % in_buf->num_buffers])
-    
-    //device_freq_map = (cl_mem) malloc(in_buf->num_buffers * sizeof(cl_mem));
-    //CHECK_MEM(device_freq_map);
-    float freq[config->processing.num_local_freq];
-    stream_id_t local_stream_id;
-    
-    // Set the stream ID for the link.
-    int32_t encoded_stream_id = get_streamID(in_buf, param_BufferID);
-    assert(encoded_stream_id != -1);
-    local_stream_id = extract_stream_id(encoded_stream_id);
-
-    for (int j = 0; j < config->processing.num_local_freq; ++j) {
-        freq[j] = freq_from_bin(bin_number(&local_stream_id, j))/1000.0;
-    }
-    device_freq_map = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                        config->processing.num_local_freq * sizeof(float),
-                                        freq,
-                                        &err);
-    CHECK_CL_ERROR(err);
-    //}
-
-    //return device_freq_map[param_BufferID];
-    return device_freq_map;
+    return device_freq_map[param_BufferID];
 }
 
 void device_interface::deallocateResources()
@@ -295,15 +266,20 @@ void device_interface::deallocateResources()
     free(device_output_buffer);
     
     if (config->gpu.use_beamforming == 1) {
+        
+        for (int i = 0; i < in_buf->num_buffers; ++i) {
+            CHECK_CL_ERROR( clReleaseMemObject(device_phases[i]) );
+        }
+        free(device_phases);
+
         for (int i = 0; i < beamforming_out_buf->num_buffers; ++i) {
             CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_buffer[i]) );
         }
         free(device_beamform_output_buffer);
         
-        //for (int i = 0; i < in_buf->num_buffers; ++i) {
-            //CHECK_CL_ERROR( clReleaseMemObject(device_freq_map[i]) );
-        CHECK_CL_ERROR( clReleaseMemObject(device_freq_map) );
-        //}
+        for (int i = 0; i < in_buf->num_buffers; ++i) {
+            CHECK_CL_ERROR( clReleaseMemObject(device_freq_map[i]) );
+        }
         free(device_freq_map);
     }
     

@@ -14,7 +14,7 @@
 #include "buffers.h"
 #include "errors.h"
 
-void exit_thread(int error) {
+void exit_threadb(int error) {
     pthread_exit((void*) &error);
 }
 
@@ -27,7 +27,7 @@ void *stream_raw_vdif(void * arg)
 
     // Check if the producer has finished, and we should exit.
     if (bufferID == -1) {
-        exit_thread(0);
+        exit_threadb(0);
     }
 
     // Send files over the loop back address;
@@ -41,7 +41,7 @@ void *stream_raw_vdif(void * arg)
     socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_fd == -1) {
         ERROR("Could not create socket for VDIF output stream");
-        exit_thread(-1);
+        exit_threadb(-1);
     }
 
     memset((char *) &saddr_remote, 0, saddr_len);
@@ -49,7 +49,7 @@ void *stream_raw_vdif(void * arg)
     saddr_remote.sin_port = htons(10050);
     if (inet_aton("127.0.0.1", &saddr_remote.sin_addr) == 0) {
         ERROR("Invalid address given for remote VDIF server");
-        exit_thread(-1);
+        exit_threadb(-1);
     }
 
     for(;;) {
@@ -68,7 +68,7 @@ void *stream_raw_vdif(void * arg)
 
             if (bytes_sent == -1) {
                 ERROR("Cannot set VDIF packet");
-                exit_thread(-1);
+                exit_threadb(-1);
             }
 
             if (bytes_sent != packet_size) {

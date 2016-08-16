@@ -86,9 +86,6 @@ void beamform_kernel::build(Config* param_Config, class device_interface& param_
 cl_event beamform_kernel::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
 {
     gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
-  
-////##OCCURS IN add_queue_set
-    // The beamforming kernel.
 
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                     kernel,
