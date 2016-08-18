@@ -322,6 +322,7 @@ int main(int argc, char ** argv) {
             network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
         }
         network_dpdk_args.buf = tmp_buffer;
+        network_dpdk_args.vdif_buf = NULL;
         network_dpdk_args.num_links = config.fpga_network.num_links;
         network_dpdk_args.config = &config;
         network_dpdk_args.num_lcores = 4;

@@ -172,7 +172,7 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
         phases[i] = TAU*cos(effective_angle)*offset_distance*one_over_c;
     }
 
-    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f", (int)time(NULL), inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
+    // INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f", (int)time(NULL), inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
 
     return;
 }
