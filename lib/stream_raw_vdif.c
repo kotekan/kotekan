@@ -30,13 +30,13 @@ void *stream_raw_vdif(void * arg)
         exit_thread(0);
     }
 
-    // Send files over the loop back address;
     // UDP variables
     struct sockaddr_in saddr_remote;
     int socket_fd;
     const size_t saddr_len = sizeof(saddr_remote);
 
-    const uint32_t packet_size = 1056*32;
+    // Max for jumbo frame.
+    const uint32_t packet_size = 1056*8;
 
     socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_fd == -1) {
@@ -46,8 +46,8 @@ void *stream_raw_vdif(void * arg)
 
     memset((char *) &saddr_remote, 0, saddr_len);
     saddr_remote.sin_family = AF_INET;
-    saddr_remote.sin_port = htons(10050);
-    if (inet_aton("127.0.0.1", &saddr_remote.sin_addr) == 0) {
+    saddr_remote.sin_port = htons(args->config->raw_cap.vdif_port);
+    if (inet_aton(args->config->raw_cap.vdif_server, &saddr_remote.sin_addr) == 0) {
         ERROR("Invalid address given for remote VDIF server");
         exit_thread(-1);
     }

@@ -184,6 +184,8 @@ struct RawCapture {
     char * note;
     char * ram_disk_dir;
     char * instrument_name;
+    char * vdif_server;
+    int vdif_port;
     int write_packets;
     int write_powers;
     int legacy_power_output;

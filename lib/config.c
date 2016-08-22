@@ -251,8 +251,9 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
     const char * note;
     const char * ram_disk_dir;
     const char * instrument_name;
+    const char * vdif_server;
 
-    error = json_unpack(json, "{s:i, s:i, s:s, s:s, s:s, s:s, s:s, s:i, s:i, s:i, s:i, s:i}",
+    error = json_unpack(json, "{s:i, s:i, s:s, s:s, s:s, s:s, s:s, s:s, s:i, s:i, s:i, s:i, s:i, s:i}",
                         "enabled", &config->raw_cap.enabled,
                         "num_disks", &config->raw_cap.num_disks,
                         "disk_base", &disk_base,
@@ -260,6 +261,8 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
                         "note", &note,
                         "ram_disk_dir", &ram_disk_dir,
                         "instrument_name", &instrument_name,
+                        "vdif_server", &vdif_server,
+                        "vdif_port", &config->raw_cap.vdif_port,
                         "write_packets", &config->raw_cap.write_packets,
                         "write_powers", &config->raw_cap.write_powers,
                         "legacy_power_output", &config->raw_cap.legacy_power_output,
@@ -276,6 +279,7 @@ int parse_raw_cap_config(struct Config* config, json_t * json) {
     config->raw_cap.note = strdup(note);
     config->raw_cap.ram_disk_dir = strdup(ram_disk_dir);
     config->raw_cap.instrument_name = strdup(instrument_name);
+    config->raw_cap.vdif_server = strdup(vdif_server);
 
     return 0;
 }

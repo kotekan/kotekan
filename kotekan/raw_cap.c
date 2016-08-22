@@ -214,6 +214,7 @@ int raw_cap(struct Config * config) {
     struct stream_raw_vdif_arg stream_arg;
     if (config->raw_cap.stream_vdif == 1) {
         stream_arg.buf = &vdif_buf;
+        stream_arg.config = config;
         CHECK_ERROR( pthread_create(&stream_raw_vdif_t, NULL, (void *)&stream_raw_vdif, (void *)&stream_arg) );
         CHECK_ERROR( pthread_setaffinity_np(stream_raw_vdif_t, sizeof(cpu_set_t), &cpuset) );
     }
