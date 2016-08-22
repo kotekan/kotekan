@@ -61,7 +61,7 @@ extern "C" {
 #include "util.h"
 #include "network_dpdk.h"
 #include "version.h"
-#include "raw_cap.h"
+#include "raw_cap.hpp"
 #include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
 
@@ -225,7 +225,6 @@ int main(int argc, char ** argv) {
 
     pthread_t gpu_t[config.gpu.num_gpus];
     struct gpuThreadArgs gpu_args[config.gpu.num_gpus];
-    struct NullThreadArg gpu_null_thread_args[config.gpu.num_gpus];
 
     INFO("Starting GPU threads...");
     char buffer_name[100];
@@ -309,7 +308,6 @@ int main(int argc, char ** argv) {
     struct Buffer * tmp_buffer[config.fpga_network.num_links];
 
     pthread_t network_sim_t[config.fpga_network.num_links];
-    struct networkOutputSim network_sim_args[config.fpga_network.num_links];
 
     if (no_network_test == 0) {
         // Start DPDK
@@ -342,7 +340,7 @@ int main(int argc, char ** argv) {
                                          network_sim_pattern,
                                          i);
             network_output_sim->start();
-            processes.push_back(network_output_sim);
+            processes.push_back((KotekanProcess*)network_output_sim);
         }
     }
 
@@ -392,13 +390,13 @@ int main(int argc, char ** argv) {
 
         if (config.ch_master_network.disable_upload == 0) {
             chrxUplink * chrx_uplink = new chrxUplink(config, network_output_buffer, gated_output_buffer);
-            chrx_uplink.start();
-            processes.push_back(chrx_uplink);
+            chrx_uplink->start();
+            processes.push_back((KotekanProcess*)chrx_uplink);
         } else {
             // Drop the data.
-            nullProcess null_process = new nullProcess(config, network_output_buffer);
-            null_process.start();
-            processes.push_back(null_process);
+            nullProcess * null_process = new nullProcess(config, network_output_buffer);
+            null_process->start();
+            processes.push_back((KotekanProcess*)null_process);
         }
 
         // The beamforming thread
@@ -420,7 +418,7 @@ int main(int argc, char ** argv) {
             // The thread which sends it with UDP to the VDIF collection server
             vdifStream * vdif_stream = new vdifStream(config, vdif_output_buffer);
             vdif_stream->start();
-            processes.push_back(vdif_stream);
+            processes.push_back((KotekanProcess*)vdif_stream);
         }
     } else  {
         // TODO add local file output in some form here.

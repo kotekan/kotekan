@@ -25,6 +25,7 @@
 #include "rawFileWrite.hpp"
 #include "output_power.h"
 #include "stream_raw_vdif.h"
+#include "vdifStream.hpp"
 
 // This function is very much a hack to make life easier, but it should be replaced with something better
 void copy_gains(char * base_dir, char * data_set, char * gain_file_name) {
@@ -68,15 +69,15 @@ int raw_cap(struct Config * config) {
     snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, config->raw_cap.instrument_name);
 
     if (config->raw_cap.write_packets) {
-        make_raw_dirs(config->raw_cap.disk_base,
-                config->raw_cap.disk_set,
+        make_raw_dirs(config->disk.disk_base,
+                config->disk.disk_set,
                 data_set,
-                config->raw_cap.num_disks);
+                config->disk.num_disks);
 
-        for (int i = 0; i < config->raw_cap.num_disks; ++i) {
+        for (int i = 0; i < config->disk.num_disks; ++i) {
             char disk_base_dir[256];
             snprintf(disk_base_dir, sizeof(disk_base_dir), "%s/%s/%d/",
-                    config->raw_cap.disk_base, config->raw_cap.disk_set, i);
+                    config->disk.disk_base, config->disk.disk_set, i);
             copy_gains(disk_base_dir, data_set, "gains_slotNone.pkl");
             copy_gains(disk_base_dir, data_set, "gains_noisy_slotNone.pkl");
         }
@@ -104,18 +105,18 @@ int raw_cap(struct Config * config) {
         fprintf(info_file, "stream_id=n/a\n");
         fprintf(info_file, "note=\"%s\"\n", config->raw_cap.note);
         fprintf(info_file, "start_time=%s\n", data_time);
-        fprintf(info_file, "num_disks=%d\n", config->raw_cap.num_disks);
-        fprintf(info_file, "disk_set=%s\n", config->raw_cap.disk_set);
+        fprintf(info_file, "num_disks=%d\n", config->disk.num_disks);
+        fprintf(info_file, "disk_set=%s\n", config->disk.disk_set);
         fprintf(info_file, "# Warning: The start time is when the program starts it, the time recorded in the packets is more accurate\n");
 
         fclose(info_file);
 
         INFO("Created meta data file: settings.txt\n");
 
-        for (int i = 0; i < config->raw_cap.num_disks; ++i) {
+        for (int i = 0; i < config->disk.num_disks; ++i) {
             char to_file[256];
             snprintf(to_file, sizeof(to_file), "%s/%s/%d/%s/settings.txt",
-                    config->raw_cap.disk_base, config->raw_cap.disk_set, i, data_set);
+                    config->disk.disk_base, config->disk.disk_set, i, data_set);
             int err = cp(to_file, "settings.txt");
             if (err != 0) {
                 ERROR("could not copy settings");
@@ -128,7 +129,7 @@ int raw_cap(struct Config * config) {
     struct Buffer vdif_buf;
     struct InfoObjectPool pool;
 
-    const int num_vdif_buf = buffer_depth * config->raw_cap.num_disks;
+    const int num_vdif_buf = buffer_depth * config->disk.num_disks;
     const int buffer_len = ( config->processing.num_total_freq + vdif_header_len ) *
                             num_elements * config->raw_cap.samples_per_file;
 
@@ -182,17 +183,13 @@ int raw_cap(struct Config * config) {
                                 (void *)&network_dpdk_args ) );
 
     // Create the file writing threads.
-    pthread_t file_write_t[config->raw_cap.num_disks];
-    struct raw_file_write_thread_arg file_write_args[config->raw_cap.num_disks];
-
-
     for (int i = 0; i < config->disk.num_disks; ++i) {
         rawFileWrite * file_write =
-                new rawFileWrite(config, vdif_buf,
+                new rawFileWrite(*config, vdif_buf,
                                  i, ".vdif", config->raw_cap.write_packets,
                                  data_set);
         file_write->start();
-        processes.push_back(file_write);
+        processes.push_back((KotekanProcess *)file_write);
     }
 
     pthread_t output_power_t;
@@ -204,16 +201,15 @@ int raw_cap(struct Config * config) {
         output_arg.integration_samples = 512;
         output_arg.num_timesamples = config->raw_cap.samples_per_file;
         output_arg.legacy_output = config->raw_cap.legacy_power_output;
-        CHECK_ERROR( pthread_create(&output_power_t, NULL, (void *)&output_power_thread, (void *)&output_arg) );
+        CHECK_ERROR( pthread_create(&output_power_t, NULL, &output_power_thread, (void *)&output_arg) );
         CHECK_ERROR( pthread_setaffinity_np(output_power_t, sizeof(cpu_set_t), &cpuset) );
     }
 
-    pthread_t stream_raw_vdif_t;
-    struct stream_raw_vdif_arg stream_arg;
+
     if (config->raw_cap.stream_vdif == 1) {
-        stream_arg.buf = &vdif_buf;
-        CHECK_ERROR( pthread_create(&stream_raw_vdif_t, NULL, (void *)&stream_raw_vdif, (void *)&stream_arg) );
-        CHECK_ERROR( pthread_setaffinity_np(stream_raw_vdif_t, sizeof(cpu_set_t), &cpuset) );
+        vdifStream * stream_vdif = new vdifStream(*config, vdif_buf);
+        stream_vdif->start();
+        processes.push_back((KotekanProcess *)stream_vdif);
     }
 
     // Just block on the network thread for now.

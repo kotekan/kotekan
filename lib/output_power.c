@@ -20,7 +20,7 @@
 #define VDIF_HEADER_LEN 32
 #define NUM_FREQ 1024
 
-void fast_square_and_sum_vdif(int integration_time,
+void *fast_square_and_sum_vdif(int integration_time,
         unsigned char * data, int * temp_buf, int * xx, int * yy) {
 
 

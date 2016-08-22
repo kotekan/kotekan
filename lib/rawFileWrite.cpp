@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <functional>
@@ -16,7 +17,7 @@ rawFileWrite::rawFileWrite(Config& config,
                     char* extension_,
                     int write_data_,
                     char* dataset_name_) :
-        KotekanProcess(config, std::bind(&SampleProcess::main_thread, this)),
+        KotekanProcess(config, std::bind(&rawFileWrite::main_thread, this)),
         buf(buf_),
         disk_id(disk_id_),
         write_data(write_data_)

@@ -1,4 +1,4 @@
-#include "SampleProcess.h"
+#include "SampleProcess.hpp"
 #include "errors.h"
 
 SampleProcess::SampleProcess(struct Config &config) :

@@ -9,7 +9,7 @@ add_library ( chime buffers.c errors.c nt_memcpy.c nt_memset.c rawFileWrite.cpp
               util.c error_correction.c networkOutputSim.cpp
               output_formating.c test_data_generation.c chrxUplink.cpp gpu_post_process.c
               config.c beamforming.c beamforming_post_process.c time_tracking.c vdifStream.cpp
-              fpga_header_functions.c null.cpp simple_udp_cap.c output_power.c
+              fpga_header_functions.c nullProcess.cpp simple_udp_cap.c output_power.c
               network_dpdk.c gpu_thread.cpp gpu_command.cpp callbackdata.cpp device_interface.cpp
               gpu_command_factory.cpp vdif_functions.c stream_raw_vdif.c beamform_data_stage.cpp
               beamform_kernel.cpp beamform_phase_data.cpp correlator_kernel.cpp

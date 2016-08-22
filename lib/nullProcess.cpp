@@ -11,7 +11,7 @@
 #include "config.h"
 
 nullProcess::nullProcess(Config& config, struct Buffer &buf_) :
-    KotekanProcess(config, std::bind(&SampleProcess::main_thread, this)),
+    KotekanProcess(config, std::bind(&nullProcess::main_thread, this)),
     buf(buf_){
 }
 

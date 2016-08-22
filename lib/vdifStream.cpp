@@ -13,7 +13,7 @@
 #include "errors.h"
 
 vdifStream::vdifStream(Config& config, struct Buffer &buf_) :
-    KotekanProcess(config, std::bind(&SampleProcess::main_thread, this)),
+    KotekanProcess(config, std::bind(&vdifStream::main_thread, this)),
     buf(buf_){
 }
 vdifStream::~vdifStream() {
@@ -64,9 +64,9 @@ void vdifStream::main_thread() {
         for (int i = 0; i < 16*625; ++i) {
 
             int bytes_sent = sendto(socket_fd,
-                             (void *)buf.data[bufferID[0]][packet_size*i],
+                             (void *)(buf.data[bufferID[0]][packet_size*i]),
                              packet_size, 0,
-                             &saddr_remote, saddr_len);
+                             (struct sockaddr *) &saddr_remote, saddr_len);
 
             if (i % 50 == 0) {
                 usleep(sleep_period);

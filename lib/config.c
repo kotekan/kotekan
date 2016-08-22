@@ -216,7 +216,7 @@ int parse_disk_config(struct Config* config, json_t * json) {
     error = json_unpack(json, "{s:i, s:s, s:s}",
                         "num_disks", &config->disk.num_disks,
                         "disk_base", &disk_base,
-                        "disk_set", &disk_set,);
+                        "disk_set", &disk_set);
 
     if (error) {
         ERROR("Error parsing disk config, check config file, error: %d", error);

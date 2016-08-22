@@ -76,10 +76,10 @@ void networkOutputSim::main_thread() {
                                 config.processing.samples_per_data_set,
                                 config.processing.num_local_freq,
                                 config.processing.num_elements,
-                                buf->data[buffer_id]);
+                                buf.data[buffer_id]);
         } else if (pattern == SIM_SINE) {
             stream_id_t stream_id;
-            stream_id.link_id = stream_id;
+            stream_id.link_id = link_id;
             //INFO("Generating data with a complex sine in frequency.");
             generate_complex_sine_data_set(stream_id,
                                 config.processing.samples_per_data_set,
