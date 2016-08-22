@@ -73,15 +73,15 @@ void* gpu_thread(void* arg)
         cb_data[bufferID]->out_buf = device.getOutBuf();
         cb_data[bufferID]->numCommands = factory.getNumCommands();
         cb_data[bufferID]->cnt = loopCnt;
+        cb_data[bufferID]->use_beamforming = args->config->gpu.use_beamforming;
         if (args->config->gpu.use_beamforming == 1)
         {
-            cb_data[bufferID]->use_beamforming = args->config->gpu.use_beamforming;
             cb_data[bufferID]->beamforming_out_buf = device.get_beamforming_out_buf();
         }
 
         sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
 
-        DEBUG("cb_data initialized\n");
+        //DEBUG("cb_data initialized\n");
 
         for (int i = 0; i < factory.getNumCommands(); i++){
             currentCommand = factory.getNextCommand(device, bufferID);
@@ -89,7 +89,7 @@ void* gpu_thread(void* arg)
             cb_data[bufferID]->listCommands[i] = currentCommand;
         }
 
-        DEBUG("Commands Queued\n");
+        //DEBUG("Commands Queued\n");
         // Setup call back.
         CHECK_CL_ERROR( clSetEventCallback(sequenceEvent,
                                             CL_COMPLETE,
@@ -148,11 +148,11 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
     struct callBackData * cb_data = (struct callBackData *) data;
     
         // Copy the information contained in the input buffer
-    if (cb_data->use_beamforming) {
+    if (cb_data->use_beamforming == 1)
+    {
         copy_buffer_info(cb_data->in_buf, cb_data->buffer_id,
-                         cb_data->beamforming_out_buf, cb_data->buffer_id);
-    //}
-    
+            cb_data->beamforming_out_buf, cb_data->buffer_id);
+
         // Mark the beamforming buffer as full.
     //if (cb_data->cl_data->config->gpu.use_beamforming) {
         mark_buffer_full(cb_data->beamforming_out_buf, cb_data->buffer_id);

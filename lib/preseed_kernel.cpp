@@ -28,7 +28,17 @@ void preseed_kernel::build(Config* param_Config, class device_interface &param_D
     
     
     char * cl_options = gpu_command::get_cl_options(param_Config);
-
+    
+//        char cl_options[1024];
+//    
+//    sprintf(cl_options, "-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du -D NUM_BUFFERS=%du",
+//        param_Config->processing.num_elements, param_Config->processing.num_local_freq,
+//        param_Config->processing.num_adjusted_elements,
+//        param_Config->processing.num_adjusted_local_freq,
+//        param_Config->processing.num_blocks,
+//        param_Config->processing.samples_per_data_set,
+//        param_Config->processing.buffer_depth);
+    
     valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
 
     CHECK_CL_ERROR ( clBuildProgram( program, 1, &valDeviceID, cl_options, NULL, NULL ) );
