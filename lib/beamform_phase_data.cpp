@@ -1,5 +1,5 @@
 #include "beamform_phase_data.h"
-    
+
 #include <math.h>
 #include <time.h>
 #include "errors.h"
@@ -21,27 +21,29 @@ beamform_phase_data::~beamform_phase_data()
 void beamform_phase_data::build(Config* param_Config, class device_interface &param_Device)
 {
     gpu_command::build(param_Config, param_Device);
-    
+
     data_staged_event = (cl_event *)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
     //input_data_written = (cl_event)malloc(sizeof(cl_event));
     CHECK_MEM(data_staged_event);
 
     cl_int err;
-    
+
     beamforming_do_not_track = param_Config->beamforming.do_not_track;
     inst_lat = param_Config->beamforming.instrument_lat;
     inst_long = param_Config->beamforming.instrument_long;
     num_elements = param_Config->processing.num_elements;
     num_local_freq = param_Config->processing.num_local_freq;
     fixed_time = param_Config->beamforming.fixed_time;
-    
+
     ra = param_Config->beamforming.ra;
     dec = param_Config->beamforming.dec;
-    feed_positions = param_Config->beamforming.element_positions; 
-    
+    feed_positions = param_Config->beamforming.element_positions;
+
+    last_phase_update_seq = 0;
+
     // Setup beamforming output.
     phases = (float *) malloc(num_elements * sizeof(float));
-    
+
     start_beamform_time = time(NULL); // Current time.
 }
 
@@ -54,8 +56,11 @@ cl_event beamform_phase_data::execute(int param_bufferID, class device_interface
     float freq[num_local_freq];
     stream_id_t local_stream_id;
     int32_t encoded_stream_id;
-    
-    
+    uint64_t current_seq;
+    // TODO Make this a config file option
+    // 390625 == 1 second.
+    const uint64_t phase_update_period = 390625;
+
     ////##OCCURS IN add_queue_set
     // The beamforming kernel.
     // Set the stream ID for the link.
@@ -97,8 +102,14 @@ cl_event beamform_phase_data::execute(int param_bufferID, class device_interface
         local_beamform_time = get_first_packet_recv_time(param_Device.getInBuf(), param_bufferID).tv_sec;
     }
 
-    //INFO("gpu_thread; updating delays!");
-    get_delays(phases, local_beamform_time);
+    // Update the phases only every "phase_update_period"
+    current_seq = get_fpga_seq_num(param_Device.getInBuf(), param_bufferID);
+    if ((current_seq - last_phase_update_seq) >= phase_update_period
+         || last_phase_update_seq == 0) {
+
+        get_delays(phases, local_beamform_time);
+        last_phase_update_seq = current_seq;
+    }
 
     CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),
                                         param_Device.get_device_phases(param_bufferID),
@@ -110,18 +121,7 @@ cl_event beamform_phase_data::execute(int param_bufferID, class device_interface
                                         &data_staged_event[param_bufferID],
                                         &postEvent[param_bufferID]));
 
-    //last_event = postEvent[param_bufferID];
     return postEvent[param_bufferID];
-
-//    }
-//    else
-//    {
-//        last_event = param_PrecedeEvent; 
-//    }
-
-    //return last_event;
-//## 
-    
 }
 
 void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
@@ -139,9 +139,9 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
 ////    const double inst_lat = config->beamforming.instrument_lat;
 ////    const double inst_long = config->beamforming.instrument_long;
 
-    // This accounts for LST difference between J2000 and UNIX_Time in beamform_time. 
-    // It was verified with Kiyo's python code ch_util.ephemeris.transit_RA(), which 
-    // should account for both precession and nutation. Needs to be tested here though. 
+    // This accounts for LST difference between J2000 and UNIX_Time in beamform_time.
+    // It was verified with Kiyo's python code ch_util.ephemeris.transit_RA(), which
+    // should account for both precession and nutation. Needs to be tested here though.
     double precession_offset = (beamform_time - j2000_unix) * 0.012791 / (365 * 24 * 3600);
 
     //calculate and modulate local sidereal time
@@ -159,7 +159,7 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
     az = acos(az);
     if(sin(hour_angle*D2R) >= 0){az = TAU - az;}
 
-    //project, determine phases for each element 
+    //project, determine phases for each element
     //return geometric phase that instrument sees, i.e. -phases will be applied in beamformer
     double projection_angle, effective_angle, offset_distance;
     for(int i = 0; i < num_elements; ++i)
@@ -172,7 +172,7 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
         phases[i] = TAU*cos(effective_angle)*offset_distance*one_over_c;
     }
 
-    // INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f", (int)time(NULL), inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
+    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f", (int)time(NULL), inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
 
     return;
 }
@@ -180,7 +180,7 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
 void beamform_phase_data::cleanMe(int param_BufferID)
 {
     gpu_command::cleanMe(param_BufferID);
-    
+
     assert(data_staged_event[param_BufferID] != NULL);
 
     clReleaseEvent(data_staged_event[param_BufferID]);

@@ -16,7 +16,7 @@ public:
     virtual void freeMe();
 protected:
     void get_delays(float * phases, time_t beamform_time);
-    
+
     // phase data
     float * phases;
     int beamforming_do_not_track;
@@ -30,6 +30,7 @@ protected:
     float * feed_positions;
     cl_event * data_staged_event;
     time_t start_beamform_time;
+    uint64_t last_phase_update_seq;
 };
 
 #endif
