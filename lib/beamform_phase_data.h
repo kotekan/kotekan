@@ -18,7 +18,7 @@ protected:
     void get_delays(float * phases, time_t beamform_time);
 
     // phase data
-    float * phases;
+    float * phases[2];
     int beamforming_do_not_track;
     double inst_lat;
     double inst_long;
@@ -28,9 +28,8 @@ protected:
     double ra;
     double dec;
     float * feed_positions;
-    cl_event * data_staged_event;
     time_t start_beamform_time;
-    uint64_t last_phase_update_seq;
+    int64_t last_bankID;
 };
 
 #endif
