@@ -61,6 +61,17 @@ cl_event beamform_phase_data::execute(int param_bufferID, class device_interface
     current_seq = get_fpga_seq_num(param_Device.getInBuf(), param_bufferID);
     int64_t bankID = (current_seq / phase_update_period) % 2;
     if(bankID != last_bankID) {
+
+        if (beamforming_do_not_track == 1) {
+            if (fixed_time != 0){
+                local_beamform_time = fixed_time;
+            } else {
+                local_beamform_time = start_beamform_time; // Current time.
+            }
+        } else {
+            local_beamform_time = get_first_packet_recv_time(param_Device.getInBuf(), param_bufferID).tv_sec;
+        }
+
         get_delays(phases[bankID], local_beamform_time);
 
         CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),
@@ -127,7 +138,7 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
         phases[i] = TAU*cos(effective_angle)*offset_distance*one_over_c;
     }
 
-    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f", (int)time(NULL), inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
+    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f", (int)beamform_time, inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
 
     return;
 }
