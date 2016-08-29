@@ -244,24 +244,26 @@ void *output_power_thread(void * arg)
                 line_idx = 0;
                 num_rolls += 1;
             }
+        
 
             if (args->legacy_output == 1) {
-                for (int i = 0; i < args->num_freq; ++i) {
-                    xx_legacy[i] += xx[i];
-                    yy_legacy[i] += yy[i];
-                }
-
-                ssize_t ints_written = fwrite((void*)out_buf_legacy, sizeof(int), args->num_freq*2, fd_legacy);
-                if (ints_written != args->num_freq*2) {
-                    ERROR("Failed to write power data to legacy ram disk!!!");
-                    fclose(fd);
-                }
+                 for (int i = 0; i < args->num_freq; ++i) {
+                     xx_legacy[i] += xx[i];
+                     yy_legacy[i] += yy[i];
+                 }
             }
+        }
+        
+        if (args->legacy_output == 1) {
+             ssize_t ints_written = fwrite((void*)out_buf_legacy, sizeof(int), args->num_freq*2, fd_legacy);
+             if (ints_written != args->num_freq*2) {
+                 ERROR("Failed to write power data to legacy ram disk!!!");
+                 fclose(fd);
+             }
         }
 
         mark_buffer_empty(args->buf, bufferID);
 
         useableBufferIDs[0] = ( useableBufferIDs[0] + 1 ) % ( args->buf->num_buffers );
     }
-
 }
