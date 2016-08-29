@@ -238,22 +238,6 @@ void mark_buffer_empty(struct Buffer* buf, const int ID)
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
 
-    // If we've been asked to zero the buffer do it here.
-    // This needs to happen out side of the critical section
-    // so that we don't block for a long time here.
-    int do_zero = 0;
-    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
-    if (buf->zero_buffer[ID] == 1 &&
-            (buf->num_consumers_done[ID] + 1) == buf->num_consumers) {
-        do_zero = 1;
-    }
-    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
-    if (do_zero == 1)
-        private_zero_buffer(buf, ID);
-
-
-    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
-
     int broadcast = 0;
 
     buf->num_consumers_done[ID]++;
@@ -261,6 +245,10 @@ void mark_buffer_empty(struct Buffer* buf, const int ID)
         buf->is_full[ID] = 0;
         buf->num_producers_done[ID] = 0;
         buf->num_consumers_done[ID] = 0;
+        
+        if (buf->zero_buffer[ID] == 1) {
+            private_zero_buffer(buf, ID);
+        }
         buf->zero_buffer[ID] = 0;
 
         broadcast = 1;
