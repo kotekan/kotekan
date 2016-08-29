@@ -240,6 +240,8 @@ void mark_buffer_empty(struct Buffer* buf, const int ID)
 
     int broadcast = 0;
 
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
     buf->num_consumers_done[ID]++;
     if (buf->num_consumers_done[ID] == buf->num_consumers) {
         buf->is_full[ID] = 0;
