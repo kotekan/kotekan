@@ -58,7 +58,7 @@ int raw_cap(struct Config * config) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 8; j < 12; j++)
+    for (int j = 4; j < 12; j++)
         CPU_SET(j, &cpuset);
 
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
@@ -168,16 +168,10 @@ int raw_cap(struct Config * config) {
     network_dpdk_args.vdif_buf = &vdif_buf;
     network_dpdk_args.num_links = config->fpga_network.num_links;
     network_dpdk_args.config = config;
-    network_dpdk_args.num_lcores = 8;
-    network_dpdk_args.num_links_per_lcore = 1;
+    network_dpdk_args.num_lcores = 2;
+    network_dpdk_args.num_links_per_lcore = 4;
     network_dpdk_args.port_offset[0] = 0;
-    network_dpdk_args.port_offset[1] = 1;
-    network_dpdk_args.port_offset[2] = 2;
-    network_dpdk_args.port_offset[3] = 3;
-    network_dpdk_args.port_offset[4] = 4;
-    network_dpdk_args.port_offset[5] = 5;
-    network_dpdk_args.port_offset[6] = 6;
-    network_dpdk_args.port_offset[7] = 7;
+    network_dpdk_args.port_offset[1] = 4;
 
     CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
                                 (void *)&network_dpdk_args ) );
