@@ -83,7 +83,7 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-    char  arg4[] = "F";
+    char  arg4[] = "FF";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], NULL };
     int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 

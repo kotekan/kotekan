@@ -223,6 +223,9 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
                           const int port,
                           uint64_t new_seq) {
 
+    struct ErrorMatrix * error_matrix = get_error_matrix(dpdk_net->args->vdif_buf, dpdk_net->link_data[port].vdif_buffer_id);
+    DEBUG("dpdk: advance_vdif_frame: port %d: lost packets from last frame: %d", port, error_matrix->bad_timesamples);
+
     // TODO it is really bad to have a blocking call here(!)
     //DEBUG("Port %d, marking buffer %d as full", port, dpdk_net->link_data[port].vdif_buffer_id);
     mark_buffer_full(dpdk_net->args->vdif_buf, dpdk_net->link_data[port].vdif_buffer_id);
