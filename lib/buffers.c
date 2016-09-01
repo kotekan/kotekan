@@ -507,7 +507,7 @@ void print_buffer_status(struct Buffer* buf)
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
-    char status_string[buf->num_buffers];
+    char status_string[buf->num_buffers + 1];
 
     for (int i = 0; i < buf->num_buffers; ++i) {
         if (buf->is_full[i] == 1) {
@@ -516,6 +516,7 @@ void print_buffer_status(struct Buffer* buf)
             status_string[i] = '_';
         }
     }
+    status_string[buf->num_buffers] = '\0';
     DEBUG("Buffer %s status: %s", buf->buffer_name, status_string);
 }
 
