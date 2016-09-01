@@ -63,6 +63,7 @@ extern "C" {
 #include "file_write.h"
 #include "raw_cap.h"
 #include "network_output_sim.h"
+#include "stat_monitor.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -420,7 +421,7 @@ int main(int argc, char ** argv) {
         CHECK_ERROR( pthread_setaffinity_np(output_network_t, sizeof(cpu_set_t), &cpuset) );
 
         // The beamforming thread
-        
+
         if (config.gpu.use_beamforming == 1) {
             create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
                           1, 1, pool, "vdif_output_buffer");
@@ -474,6 +475,28 @@ int main(int argc, char ** argv) {
     } else  {
         // TODO add local file output in some form here.
     }
+
+    // stat monitor
+    pthread_t stat_monitor_t;
+    struct stat_monitor_arg stat_args;
+    int buf_id = 0;
+    for (int i = 0; i < config.gpu.num_gpus; ++i) {
+        stat_args.bufs[buf_id++] = &gpu_input_buffer[i];
+        stat_args.bufs[buf_id++] = &gpu_output_buffer[i];
+        if(config.gpu.use_beamforming == 1)
+            stat_args.bufs[buf_id++] = &gpu_beamform_output_buffer[i];
+    }
+    if (config.ch_master_network.disable_upload == 0)
+        stat_args.bufs[buf_id++] = &network_output_buffer;
+    if (config.gpu.use_beamforming == 1)
+        stat_args.bufs[buf_id++] = &vdif_output_buffer;
+    if (config.gating.enable_basic_gating && config.ch_master_network.disable_upload == 0)
+        stat_args.bufs[buf_id++] = &gated_output_buffer;
+    stat_args.num_buffer_objects = buf_id;
+    CHECK_ERROR( pthread_create(&stat_monitor_t, NULL,
+                            &stat_monitor,
+                            (void *) &stat_args ) );
+    CHECK_ERROR( pthread_setaffinity_np(stat_monitor_t, sizeof(cpu_set_t), &cpuset) );
 
     // Join with threads.
     int * ret;

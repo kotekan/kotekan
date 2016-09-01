@@ -201,8 +201,6 @@ void device_interface::allocateMemory()
                     , NULL, &err);
             CHECK_CL_ERROR(err);
         }
-
-
     }
 ////##
 
