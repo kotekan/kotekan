@@ -10,7 +10,7 @@
 
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
-#include "pthread.h"
+#include <pthread.h>
 #include "fpga_header_functions.h"
 
 struct gpuThreadArgs {
@@ -25,6 +25,8 @@ struct gpuThreadArgs {
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
+
+    pthread_barrier_t * barrier;
 };
 void* gpu_thread(void * arg);
 void wait_for_gpu_thread_ready(struct gpuThreadArgs * args);

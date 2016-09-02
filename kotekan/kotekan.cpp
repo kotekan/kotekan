@@ -235,6 +235,9 @@ int main(int argc, char ** argv) {
     char buffer_name[100];
     int num_working_gpus = 3;
 
+    pthread_barrier_t gpu_thread_barrier;
+    pthread_barrier_init(&gpu_thread_barrier, NULL, config.gpu.num_gpus);
+
     for (int i = 0; i < config.gpu.num_gpus; ++i) {
 
         DEBUG("Creating buffers...");
@@ -282,6 +285,7 @@ int main(int argc, char ** argv) {
         gpu_args[i].gpu_id = i;
         gpu_args[i].started = 0;
         gpu_args[i].config = &config;
+        gpu_args[i].barrier = &gpu_thread_barrier;
 
 	CHECK_ERROR( pthread_mutex_init(&gpu_args[i].lock, NULL) );
 	CHECK_ERROR( pthread_cond_init(&gpu_args[i].cond, NULL) );

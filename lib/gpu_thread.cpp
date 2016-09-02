@@ -21,6 +21,8 @@ void* gpu_thread(void* arg)
     cl_event sequenceEvent;
     cl_int err;
 
+    int num_links = num_links_per_gpu(args->config, args->gpu_id);
+
     loopCounter * loopCnt = new loopCounter;
 
     device_interface device(args->in_buf, args->out_buf, args->config, args->gpu_id, args->beamforming_out_buf);
@@ -36,11 +38,11 @@ void* gpu_thread(void* arg)
     //device.defineOutputDataMap();//COPY INTO OFFSET KERNEL AND CORRELATOR KERNEL
 
     callBackData ** cb_data = new callBackData * [device.getInBuf()->num_buffers];
-    CHECK_MEM(cb_data); 
-    
+    CHECK_MEM(cb_data);
+
     buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device.getInBuf()->num_buffers];
     CHECK_MEM(buff_id_lock_list);
-    
+
     for (int j=0;j<device.getInBuf()->num_buffers;j++)
     {
         cb_data[j] = new callBackData(factory.getNumCommands());
@@ -61,19 +63,20 @@ void* gpu_thread(void* arg)
     for(;;) {
         // Wait for data, this call will block.
         bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
-       
+
         //INFO("GPU_THREAD: got full buffer ID %d", bufferID);
         // If buffer id is -1, then all the producers are done.
         if (bufferID == -1) {
             break;
         }
-        
+
         CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[bufferID]->lock) );
         while (buff_id_lock_list[bufferID]->in_process == 1) {
+            DEBUG("gpu_thread%d: waiting for in flight queue to finish(!)", args->gpu_id);
             pthread_cond_wait(&buff_id_lock_list[bufferID]->cond, &buff_id_lock_list[bufferID]->lock);
         }
         CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[bufferID]->lock) );
-        
+
         buff_id_lock_list[bufferID]->in_process = 1;
 
         // Wait for the output buffer to be empty as well.
@@ -121,6 +124,12 @@ void* gpu_thread(void* arg)
                                             cb_data[bufferID]) );
 
         buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
+
+        // Don't allow starvation between GPU threads.
+        // Note starvation is still possible from other threads.
+        if (buffer_list[0] % num_links == 0) {
+            pthread_barrier_wait(args->barrier);
+        }
     }
 
     //LOOP THROUGH THE LOCKING ROUTINE
@@ -161,7 +170,7 @@ void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
 {
     struct callBackData * cb_data = (struct callBackData *) data;
-    
+
     //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
     // Copy the information contained in the input buffer
     if (cb_data->use_beamforming == 1)
@@ -191,12 +200,12 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
     CHECK_ERROR( pthread_mutex_unlock(&cb_data->cnt->lock));
 
     CHECK_ERROR( pthread_cond_broadcast(&cb_data->cnt->cond) );
-    
+
     CHECK_ERROR( pthread_mutex_lock(&cb_data->buff_id_lock->lock));
     cb_data->buff_id_lock->in_process = 0;
     CHECK_ERROR( pthread_mutex_unlock(&cb_data->buff_id_lock->lock));
 
     CHECK_ERROR( pthread_cond_broadcast(&cb_data->buff_id_lock->cond) );
-    
+
 }
 
