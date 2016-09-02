@@ -116,8 +116,13 @@ int main(int argc, char ** argv) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 4; j < 12; j++)
+    for (int j = 6; j < 12; j++)
         CPU_SET(j, &cpuset);
+
+    cpu_set_t cpuset_gpu;
+    CPU_ZERO(&cpuset_gpu);
+    for (int j = 4; j < 6; j++)
+        CPU_SET(j, &cpuset_gpu);
 
     for (;;) {
         static struct option long_options[] = {
@@ -293,7 +298,7 @@ int main(int argc, char ** argv) {
 	DEBUG("Setting up GPU thread %d\n", i);
 
 	pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
-	CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
+	CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset_gpu) );
 
 	// Block until the OpenCL thread is read to read data.
 	wait_for_gpu_thread_ready(&gpu_args[i]);
