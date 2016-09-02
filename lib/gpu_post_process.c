@@ -121,7 +121,7 @@ void* gpu_post_process_thread(void* arg)
 //        // _______________________
 //        release_info_object(&args->in_buf[gpu_id], in_buffer_ID);
 //        mark_buffer_empty(&args->in_buf[gpu_id], in_buffer_ID);
-//        
+//
 //        useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % args->in_buf->num_buffers;
 //        link_id = (link_id + 1) % config->fpga_network.num_links;
 //
@@ -320,7 +320,7 @@ void* gpu_post_process_thread(void* arg)
         release_info_object(&args->in_buf[gpu_id], in_buffer_ID);
         mark_buffer_empty(&args->in_buf[gpu_id], in_buffer_ID);
 
-        useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % args->in_buf->num_buffers;
+        useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % args->in_buf[gpu_id].num_buffers;
 
         link_id = (link_id + 1) % config->fpga_network.num_links;
     }

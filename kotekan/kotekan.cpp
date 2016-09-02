@@ -239,11 +239,8 @@ int main(int argc, char ** argv) {
 
         DEBUG("Creating buffers...");
 
-        // TODO Figure out why this value currently needs to be constant.
         int links_per_gpu = num_links_per_gpu(&config, i);
-        if (config.gpu.num_gpus > 1) {
-            links_per_gpu = 4;
-        }
+
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
         create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
