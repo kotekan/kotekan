@@ -70,39 +70,26 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         // Thus outR = R*phase_re + I*phase_im
         // and  outI = I*phase_re - R*phase_im
         // summing 4 products gives the following:
-/*OLD
-        outR = R[0]*phase_re[0] + I[0]*phase_im[0] +
-               R[1]*phase_re[1] + I[1]*phase_im[1] +
-               R[2]*phase_re[2] + I[2]*phase_im[2] +
-               R[3]*phase_re[3] + I[3]*phase_im[3];
-        outI = I[0]*phase_re[0] - R[0]*phase_im[0] +
-               I[1]*phase_re[1] - R[1]*phase_im[1] +
-               I[2]*phase_re[2] - R[2]*phase_im[2] +
-               I[3]*phase_re[3] - R[3]*phase_im[3];
-*/
-/*NEW
 
-DID I CHOOSE THE RIGHT INDEXES FOR POL? IT'S EVEN/OLD, CORRECT?
         outR_coh = R[0]*phase_re[0] + I[0]*phase_im[0] +
-               R[1]*phase_re[1] + I[1]*phase_im[1] +
+                   R[1]*phase_re[1] + I[1]*phase_im[1] +
+                   R[2]*phase_re[2] + I[2]*phase_im[2] +
+                   R[3]*phase_re[3] + I[3]*phase_im[3];
         outI_coh = I[0]*phase_re[0] - R[0]*phase_im[0] +
-               I[1]*phase_re[1] - R[1]*phase_im[1] +
+                   I[1]*phase_re[1] - R[1]*phase_im[1] +
+                   I[2]*phase_re[2] - R[2]*phase_im[2] +
+                   I[3]*phase_re[3] - R[3]*phase_im[3];
 
-        outR_incoh = R[2]*R[2] + I[2]*I[2] +
-               R[3]*R[3] + I[3]*I[3];
+        outR_incoh = R[0]*R[0] + I[0]*I[0] +
+                     R[1]*R[1] + I[1]*I[1]
+                     R[2]*R[2] + I[2]*I[2] +
+                     R[3]*R[3] + I[3]*I[3];
         outI_incoh = 0;
-*/
+
         barrier(CLK_LOCAL_MEM_FENCE);
         //reorder the data to group polarizations for the reduction
 
-/*OLD
-        int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
 
-        lds_data[address]                    = outR;
-        lds_data[address+NUM_POL_ELEMENTS/4] = outI; //offset by 32
-*/
-
-/*NEW
         if (polarized == 0)
         {
             int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
@@ -115,7 +102,7 @@ DID I CHOOSE THE RIGHT INDEXES FOR POL? IT'S EVEN/OLD, CORRECT?
             lds_data[address]                    = outR_incoh;
             lds_data[address+NUM_POL_ELEMENTS/4] = outI_incoh; //offset by 32
         }
-*/
+
         //need to calculate reduction for 2 polarizations, 128 elements each, real and imaginary.
         //do not want to have blocks that need to be calculated separately
         //at worst, calculate an offset to split the job to use the work items efficiently
@@ -174,8 +161,8 @@ DID I CHOOSE THE RIGHT INDEXES FOR POL? IT'S EVEN/OLD, CORRECT?
             ////////////////////////////// Scale and rail method
             lds_data[0]  *= scale_factor; //Re_Pol1
             lds_data[1]  *= scale_factor; //Img_Pol1
-            lds_data[64] *= scale_factor; //Re_Pol2
-            lds_data[65] *= scale_factor; //Img_Pol2
+            //lds_data[64] *= scale_factor; //Re_Pol2
+            //lds_data[65] *= scale_factor; //Img_Pol2
             //convert to integer
             int tempInt0 = (int)round(lds_data[0]);
 
@@ -187,41 +174,18 @@ DID I CHOOSE THE RIGHT INDEXES FOR POL? IT'S EVEN/OLD, CORRECT?
             tempInt1 = (tempInt1 >  7 ?  7 : tempInt1);
             tempInt1 = (tempInt1 < -7 ? -7 : tempInt1);
 
-/*OLD
-            int tempInt64 = (int)round(lds_data[64]);
-
-            tempInt64 = (tempInt64 >  7 ?  7 : tempInt64);
-            tempInt64 = (tempInt64 < -7 ? -7 : tempInt64);
-
-            int tempInt65 = (int)round(lds_data[65]);
-
-            tempInt65 = (tempInt65 >  7 ?  7 : tempInt65);
-            tempInt65 = (tempInt65 < -7 ? -7 : tempInt65);
-*/
-
-/*NEW
             unsigned int tempInt64 = (unsigned int)round(lds_data[64]);
 
             // Adding one to all values so that 0x00 is reserved 
             tempInt64 += 1
             tempInt64 = (tempInt64 >  255 ?  255 : tempInt64);
 
-            //LIKELY DON'T NEED BELOW. CONFIRM POL FIRST.
-            unsigned int tempInt65 = (unsigned int)round(lds_data[65]);
-
-            // Adding one to all values so that 0x00 is reserved 
-            tempInt65 += 1
-            tempInt65 = (tempInt65 >  255 ?  255 : tempInt65);
-*/
-
             unsigned char temp1 = (((tempInt0 )&0x0f)<<4) | (((tempInt1 )&0x0f)>>0);
-//OLD            unsigned char temp2 = (((tempInt64)&0x0f)<<4) | (((tempInt65)&0x0f)>>0);
-//NEW            unsigned char temp2 = tempInt64;
+            unsigned char temp2 = tempInt64;
 
             //switch from two's complement encoding to offset encoding (i.e. swap the sign bit from 1 to 0 or vice versa)
             output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1^(0x88);
-//OLD            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] =temp2^(0x88);
-//NEW            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] =temp2;
+            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] =temp2;
 
         }
     }
