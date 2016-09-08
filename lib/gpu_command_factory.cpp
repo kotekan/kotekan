@@ -73,6 +73,14 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
                     listCommands[i] = new dummy_placeholder_kernel("dummy");
                 }
             }
+            else if (kernel_name.find("beamform_incoherent") != -1){
+                if (param_Config->gpu.use_beamforming == 1){
+                    listCommands[i] = new beamform_incoherent_kernel(gpuKernels[file_idx], "beamform_incoherent");
+                }
+                else{
+                    listCommands[i] = new dummy_placeholder_kernel("dummy");
+                }
+            }
             file_idx++;
         }
 
@@ -115,6 +123,9 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
         currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
     }
     else if (currentCommand->get_name() == "beamform_tree_scale")
+    {    
+    }
+    else if (currentCommand->get_name() == "beamform_incoherent")
     {    
     }
     else if (currentCommand->get_name() == "output_data_result"){}
