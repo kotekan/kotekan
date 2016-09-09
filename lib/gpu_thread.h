@@ -19,6 +19,7 @@ struct gpuThreadArgs {
     struct Buffer * in_buf;
     struct Buffer * out_buf;
     struct Buffer * beamforming_out_buf;
+    struct Buffer * beamforming_out_incoh_buf;
 
     int started;
     int gpu_id;

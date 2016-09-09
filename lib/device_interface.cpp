@@ -5,7 +5,7 @@
 #include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf)
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf)
 {
     cl_int err;
 

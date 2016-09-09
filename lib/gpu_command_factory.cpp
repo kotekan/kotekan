@@ -4,7 +4,6 @@
 #include "errors.h"
 #include <errno.h>
 #include <iostream>
-#include "beamform_incoherent_kernel.h"
 
 using namespace std;
 
@@ -140,6 +139,7 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
     }
     else if (currentCommand->get_name() == "output_data_result"){}
     else if (currentCommand->get_name() == "output_beamform_result"){}
+    else if (currentCommand->get_name() == "output_beamform_incoh_result"){}
 
       currentCommandCnt++;
       if (currentCommandCnt >= numCommands)

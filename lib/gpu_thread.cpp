@@ -25,7 +25,8 @@ void* gpu_thread(void* arg)
 
     loopCounter * loopCnt = new loopCounter;
 
-    device_interface device(args->in_buf, args->out_buf, args->config, args->gpu_id, args->beamforming_out_buf);
+    device_interface device(args->in_buf, args->out_buf, args->config
+    , args->gpu_id, args->beamforming_out_buf, args->beamforming_out_incoh_buf);
 
     gpu_command_factory factory;
 

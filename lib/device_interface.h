@@ -34,7 +34,9 @@ class device_interface
 {
 public:
     device_interface();
-    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf, Config* param_Config, int param_GPU_ID, struct Buffer * param_beamforming_out_buf);
+    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf
+            , Config* param_Config, int param_GPU_ID
+            , struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf);
     Buffer* getInBuf();
     Buffer* getOutBuf();
     Buffer* get_beamforming_out_buf();
