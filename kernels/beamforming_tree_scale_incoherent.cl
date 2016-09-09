@@ -154,12 +154,12 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
             unsigned int tempInt0 = (unsigned int)round(lds_data[0]);
             
             // Adding one to all values so that 0x00 is reserved 
-            tempInt0 += 1
+            tempInt0 += 1;
             tempInt0 = (tempInt0 >  255 ?  255 : tempInt0);
 
             unsigned int tempInt64 = (unsigned int)round(lds_data[64]);
 
-            tempInt64 += 1
+            tempInt64 += 1;
             tempInt64 = (tempInt64 >  255 ?  255 : tempInt64);
 
             unsigned char temp1 = tempInt0;
