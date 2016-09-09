@@ -15,7 +15,7 @@ add_library ( chime buffers.c errors.c nt_memcpy.c nt_memset.c raw_file_write.c
 	      beamform_kernel.cpp beamform_phase_data.cpp correlator_kernel.cpp
 	      dummy_placeholder_kernel.cpp input_data_stage.cpp offset_kernel.cpp
 	      output_beamform_result.cpp output_data_result.cpp preseed_kernel.cpp
-          stat_monitor.c )
+              beamform_incoherent_kernel.cpp stat_monitor.c )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
 

@@ -4,6 +4,8 @@
 #include "errors.h"
 #include <errno.h>
 #include <iostream>
+#include "beamform_incoherent_kernel.h"
+
 using namespace std;
 
 gpu_command_factory::gpu_command_factory()
