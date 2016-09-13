@@ -5,7 +5,7 @@
 #include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf)
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf)
 {
     cl_int err;
 
@@ -14,6 +14,7 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
     config = param_Config;
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
+    beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
 //    use_beamforming = param_Config->gpu.use_beamforming;
 
       // TODO explain these numbers/formulas.
@@ -78,6 +79,11 @@ Buffer* device_interface::getOutBuf()
 Buffer* device_interface::get_beamforming_out_buf()
 {
     return beamforming_out_buf;
+}
+
+Buffer* device_interface::get_beamforming_out_incoh_buf()
+{
+    return beamforming_out_incoh_buf;
 }
 
 cl_context device_interface::getContext()
@@ -191,6 +197,14 @@ void device_interface::allocateMemory()
                     , beamforming_out_buf->aligned_buffer_size, NULL, &err);
             CHECK_CL_ERROR(err);
         }
+        
+        device_beamform_output_incoh_buffer = (cl_mem *) malloc(beamforming_out_incoh_buf->num_buffers * sizeof(cl_mem));
+        CHECK_MEM(device_beamform_output_incoh_buffer);
+        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
+            device_beamform_output_incoh_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
+                    , beamforming_out_incoh_buf->aligned_buffer_size, NULL, &err);
+            CHECK_CL_ERROR(err);
+        }
 
         // We have two phase blanks
         const int num_phase_blanks = 2;
@@ -224,6 +238,11 @@ cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
 {
     return device_beamform_output_buffer[param_BufferID];
+}
+
+cl_mem device_interface::get_device_beamform_output_incoh_buffer(int param_BufferID)
+{
+    return device_beamform_output_incoh_buffer[param_BufferID];
 }
 
 cl_mem device_interface::get_device_phases(int param_bankID)
@@ -288,6 +307,11 @@ void device_interface::deallocateResources()
         }
         free(device_beamform_output_buffer);
 
+        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
+            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
+        }
+        free(device_beamform_output_incoh_buffer);
+        
         for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
             CHECK_CL_ERROR( clReleaseMemObject(it->second) );
         }

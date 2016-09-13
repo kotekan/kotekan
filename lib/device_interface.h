@@ -34,10 +34,13 @@ class device_interface
 {
 public:
     device_interface();
-    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf, Config* param_Config, int param_GPU_ID, struct Buffer * param_beamforming_out_buf);
+    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf
+            , Config* param_Config, int param_GPU_ID
+            , struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf);
     Buffer* getInBuf();
     Buffer* getOutBuf();
     Buffer* get_beamforming_out_buf();
+    Buffer* get_beamforming_out_incoh_buf();
     cl_context getContext();
     int getGpuID();
     cl_device_id getDeviceID(int param_GPUID);
@@ -45,6 +48,7 @@ public:
     cl_mem getOutputBuffer(int param_BufferID);
     cl_mem getAccumulateBuffer(int param_BufferID);
     cl_mem get_device_beamform_output_buffer(int param_BufferID);
+    cl_mem get_device_beamform_output_incoh_buffer(int param_BufferID);
     cl_mem get_device_phases(int param_bankID);
     cl_mem get_device_freq_map(int32_t encoded_stream_id);
 
@@ -66,6 +70,7 @@ public:
     struct Buffer * in_buf;
     struct Buffer * out_buf;
     struct Buffer * beamforming_out_buf;
+    struct Buffer * beamforming_out_incoh_buf;
     // Extra data
     struct Config * config;
     struct StreamINFO * stream_info;
@@ -87,6 +92,7 @@ public:
     cl_mem * device_accumulate_buffer;
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
+    cl_mem * device_beamform_output_incoh_buffer;
     // <streamID, freq_map>
     std::map<int32_t, cl_mem> device_freq_map;
     cl_mem * device_phases;

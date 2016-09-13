@@ -4,7 +4,6 @@
 #include "errors.h"
 #include <errno.h>
 #include <iostream>
-#include "beamform_incoherent_kernel.h"
 
 using namespace std;
 
@@ -21,7 +20,7 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
 {
     //X-Engine EXECUTION SEQUENCE IS OFFSET, PRESEED, CORRELATE.
     //numCommands = param_Config->gpu.num_kernels;
-    numCommands = param_Config->gpu.num_kernels + 4;//THRE ADDITIONAL COMMANDS - Input & Output, Input_beamform_phase & Output Beamform
+    numCommands = param_Config->gpu.num_kernels + 5;//ADDITIONAL COMMANDS - Input & Output, Input_beamform_phase & Output Beamform, Output Beamform incoh
 
     use_beamforming = param_Config->gpu.use_beamforming;
     listCommands =  new gpu_command * [numCommands];
@@ -43,9 +42,17 @@ void gpu_command_factory::initializeCommands(class device_interface & param_Devi
             }
         }
         //IN THE ORIGINAL VERSION, THE SQUENCE IS X-ENGINE --> READ, THEN BEAMFORM --> READ. HERE, X-ENGINE AND BEAMFORM HAPPEND TOGETHER AS DO THE READS. WILL THIS BE SLOWER?
-        else if (i == (numCommands - 2)){
+        else if (i == (numCommands - 3)){
             if (param_Config->gpu.use_beamforming == 1){
                 listCommands[i] = new output_beamform_result("output_beamform_result");
+            }
+            else{
+                listCommands[i] = new dummy_placeholder_kernel("dummy");
+            }
+        }
+        else if (i == (numCommands - 2)){
+            if (param_Config->gpu.use_beamforming == 1){
+                listCommands[i] = new output_beamform_incoh_result("output_beamform_incoh_result");
             }
             else{
                 listCommands[i] = new dummy_placeholder_kernel("dummy");
@@ -131,8 +138,10 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
     else if (name == "beamform_incoherent")
     {    
     }
+
     else if (name == "output_data_result"){}
     else if (name == "output_beamform_result"){}
+    else if (name == "output_beamform_incoh_result"){}
 
       currentCommandCnt++;
       if (currentCommandCnt >= numCommands)
