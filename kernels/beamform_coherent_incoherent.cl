@@ -22,7 +22,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
     const float freq = freq_band_GHz[FREQUENCY_BAND];//this currently is a small array (for the subset of frequency bands handled by the kernel invocation)
     float R[4], I[4];
     //float R_0, R_1, R_2, R_3, I_0, I_1, I_2, I_3;//try this?
-    float outR_coh, outI_coh, outR_incoh, outI_incoh;
+    float outR_coh, outI_coh, outR_incoh, outI_incoh, outR, outI;
 
     //determine the polarization and assign an offset for usage later: groups of 16 elements per slot noting we load 4 values per load.
     //Even numbered slots correspond to one polarization
@@ -67,41 +67,40 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         // (A,B) x (C, D) = AC + i^2 BD + i(BC+AD)
         //      (AC - BD, BC + AD)
         // A is R, B is I, C is phase_re, and D is actually -phase_im
-        // Thus outR = R*phase_re + I*phase_im
-        // and  outI = I*phase_re - R*phase_im
-        // summing 4 products gives the following:
+        // Thus outR = R**2 + I**2
+        // and  outI = 0
 
         outR_coh = R[0]*phase_re[0] + I[0]*phase_im[0] +
                    R[1]*phase_re[1] + I[1]*phase_im[1] +
                    R[2]*phase_re[2] + I[2]*phase_im[2] +
                    R[3]*phase_re[3] + I[3]*phase_im[3];
+
         outI_coh = I[0]*phase_re[0] - R[0]*phase_im[0] +
                    I[1]*phase_re[1] - R[1]*phase_im[1] +
                    I[2]*phase_re[2] - R[2]*phase_im[2] +
                    I[3]*phase_re[3] - R[3]*phase_im[3];
 
         outR_incoh = R[0]*R[0] + I[0]*I[0] +
-                     R[1]*R[1] + I[1]*I[1]
-                     R[2]*R[2] + I[2]*I[2] +
-                     R[3]*R[3] + I[3]*I[3];
-        outI_incoh = 0;
+               R[1]*R[1] + I[1]*I[1] +
+               R[2]*R[2] + I[2]*I[2] +
+               R[3]*R[3] + I[3]*I[3];
+
+	outI_incoh = 0.0;
 
         barrier(CLK_LOCAL_MEM_FENCE);
         //reorder the data to group polarizations for the reduction
 
+        int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
 
-        if (polarized == 0)
-        {
-            int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
-            lds_data[address]                    = outR_coh;
-            lds_data[address+NUM_POL_ELEMENTS/4] = outI_coh; //offset by 32
-        }
-        if (polarized == 1)
-        {
-            int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
-            lds_data[address]                    = outR_incoh;
-            lds_data[address+NUM_POL_ELEMENTS/4] = outI_incoh; //offset by 32
-        }
+	if (polarized == 0){
+        	lds_data[address]                    = outR_coh;
+        	lds_data[address+NUM_POL_ELEMENTS/4] = outI_coh; //offset by 32
+	}
+
+	if (polarized == 1){
+		lds_data[address]                    = outR_incoh;
+                lds_data[address+NUM_POL_ELEMENTS/4] = outI_incoh;
+	}
 
         //need to calculate reduction for 2 polarizations, 128 elements each, real and imaginary.
         //do not want to have blocks that need to be calculated separately
@@ -118,6 +117,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         ////////////////////////////////
         // CHECKED THE REDUCTION SECTION: a slow serial summation gives the same output as the tree.  So not the tree.  Could be the output or the above section.
         ////////////////////////////////
+
 
         for (uint i = NUM_POL_ELEMENTS/4; i>1; i = i/2){
             barrier(CLK_LOCAL_MEM_FENCE);
@@ -155,14 +155,21 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
             lds_data[get_local_id(0)+i/2+64]=outI;//I[0];
         }
 
+        // write output to buffer as an int, shift 16 bits up (perhaps to save as a fixed pt floating point number? Max val possible is NUM_ELEMENTS/2 * 5.6*2
+        //NUM_ELEMENTS_PER_POLARIZATION = NUM_ELEMENTS/2
+        //max_expected = NUM_ELEMENTS_PER_POLARIZATION* 8*(2^(-1/2)) *2
+        //=NUM_ELEMENTS/2* 8*(2^(-1/2)) *2
+        //=NUM_ELEMENTS/2 * 2^(7/2)
         // scale beamformed result by NUM_ELEMENTS/2 as a first guess, though signals from a single source, compared to the sky, should not be the WHOLE signal,
         // so integer divisions could go to 0 (int divide truncates the result (floor))
         if (get_local_id(0) == 0) {
+
             ////////////////////////////// Scale and rail method
-            lds_data[0]  *= scale_factor; //Re_Pol1
-            lds_data[1]  *= scale_factor; //Img_Pol1
+            lds_data[0]  *= scale_factor; //Re_pol1
+            lds_data[1] *= scale_factor;  //Img_pol2
             //lds_data[64] *= scale_factor; //Re_Pol2
             //lds_data[65] *= scale_factor; //Img_Pol2
+
             //convert to integer
             int tempInt0 = (int)round(lds_data[0]);
 
@@ -177,7 +184,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
             unsigned int tempInt64 = (unsigned int)round(lds_data[64]);
 
             // Adding one to all values so that 0x00 is reserved 
-            tempInt64 += 1
+            tempInt64 += 1;
             tempInt64 = (tempInt64 >  255 ?  255 : tempInt64);
 
             unsigned char temp1 = (((tempInt0 )&0x0f)<<4) | (((tempInt1 )&0x0f)>>0);
@@ -185,11 +192,9 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
 
             //switch from two's complement encoding to offset encoding (i.e. swap the sign bit from 1 to 0 or vice versa)
             output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)] = temp1^(0x88);
-            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] =temp2;
-
+            output[2*(FREQUENCY_BAND + (TIME_OFFSET_DIV_TIME_SCL*TIME_SCL+t)*NUM_FREQUENCIES)+1] = temp2;
         }
     }
 
     return;
 }
-
