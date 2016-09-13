@@ -30,7 +30,7 @@ public:
 
 protected:
     gpu_command ** listCommands;
-    cl_uint numCommands = 0;
+    cl_uint numCommands;
     cl_uint currentCommandCnt;
     
     int use_beamforming;

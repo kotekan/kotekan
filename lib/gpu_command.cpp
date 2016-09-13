@@ -2,28 +2,31 @@
 #include <string.h>
 #include <iostream>
 
-gpu_command::gpu_command(char* param_name)
+gpu_command::gpu_command(char* param_name) :gpuCommandState(0) , gpuKernel(NULL)
 {
-    name = param_name;
+    name = strdup(param_name);
+    INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(char * param_gpuKernel, char* param_name)
+gpu_command::gpu_command(char * param_gpuKernel, char* param_name) : gpuCommandState(0), gpuKernel(NULL)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
     strcpy(gpuKernel, param_gpuKernel);
     gpuCommandState=1;
-    
-    name = param_name;
+    name = strdup(param_name);
+    INFO("Name: %s, %s", param_name, name);
 }
 
 gpu_command::~gpu_command()
 {
     if (gpuCommandState==1)
         free(gpuKernel);
+    free(name);
 }
 
 char* gpu_command::get_name()
 {
+//    INFO("get_name(): %s", name);
     return name;
 }
 

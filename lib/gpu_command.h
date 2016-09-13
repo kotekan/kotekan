@@ -39,9 +39,9 @@ protected:
     cl_event * precedeEvent;
     cl_event * postEvent;
 
-    int gpuCommandState = 0;//Default state to non-kernel executing command. 1 means kernel is defined with this command.
+    int gpuCommandState;//Default state to non-kernel executing command. 1 means kernel is defined with this command.
 
-    char * gpuKernel = NULL;
+    char * gpuKernel;
     char* name;
 };
 

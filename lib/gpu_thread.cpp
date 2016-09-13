@@ -8,10 +8,15 @@
 #include "fpga_header_functions.h"
 #include <iostream>
 #include "beamforming.h"
-
-pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
+#include <sys/time.h>
 
 using namespace std;
+
+double e_time(void){
+    static struct timeval now;
+    gettimeofday(&now, NULL);
+    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
+}
 
 void* gpu_thread(void* arg)
 {
@@ -60,9 +65,15 @@ void* gpu_thread(void* arg)
     // Signal consumer (main thread in this case).
     CHECK_ERROR( pthread_cond_broadcast(&args->cond) );
     // Main loop for collecting data from producers.
+    
+    double last_time = e_time();
+
     for(;;) {
         // Wait for data, this call will block.
         bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
+        double cur_time = e_time();
+        INFO("Got full buffer after time: %f", cur_time - last_time );
+        last_time = cur_time;
 
         //INFO("GPU_THREAD: got full buffer ID %d", bufferID);
         // If buffer id is -1, then all the producers are done.
@@ -101,6 +112,7 @@ void* gpu_thread(void* arg)
         cb_data[bufferID]->cnt = loopCnt;
         cb_data[bufferID]->buff_id_lock = buff_id_lock_list[bufferID];
         cb_data[bufferID]->use_beamforming = args->config->gpu.use_beamforming;
+        cb_data[bufferID]->start_time = e_time();
         if (args->config->gpu.use_beamforming == 1)
         {
             cb_data[bufferID]->beamforming_out_buf = device.get_beamforming_out_buf();
@@ -136,12 +148,14 @@ void* gpu_thread(void* arg)
 
     DEBUG("Closing\n");
 
+    
     CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock) );
     DEBUG("LockCnt\n");
     while ( loopCnt->iteration > 0) {
         pthread_cond_wait(&loopCnt->cond, &loopCnt->lock);
     }
     CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock) );
+    
 
     DEBUG("LockConditionReleased\n");
     factory.deallocateResources();
@@ -170,6 +184,8 @@ void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
 {
     struct callBackData * cb_data = (struct callBackData *) data;
+
+    double end_time_1 = e_time();
 
     //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
     // Copy the information contained in the input buffer
@@ -207,5 +223,8 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
 
     CHECK_ERROR( pthread_cond_broadcast(&cb_data->buff_id_lock->cond) );
 
+    double end_time_2 = e_time();
+    //INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data->start_time, end_time_2 - cb_data->start_time, end_time_2 - end_time_1); 
+   
 }
 

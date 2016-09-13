@@ -6,7 +6,7 @@
 #include "pthread.h"
 
 struct loopCounter {
-    loopCounter(){
+    loopCounter() : iteration(0) {
         CHECK_ERROR( pthread_mutex_init(&lock, NULL) );
         CHECK_ERROR( pthread_cond_init(&cond, NULL) );
     }
@@ -14,13 +14,13 @@ struct loopCounter {
         CHECK_ERROR( pthread_mutex_destroy(&lock) );
         CHECK_ERROR( pthread_cond_destroy(&cond) );
     }
-    int iteration=0;
+    int iteration;
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
 };
 struct buffer_id_lock {
-    buffer_id_lock(){
+    buffer_id_lock() : in_process(0) {
         CHECK_ERROR( pthread_mutex_init(&lock, NULL) );
         CHECK_ERROR( pthread_cond_init(&cond, NULL) );
     }
@@ -28,7 +28,7 @@ struct buffer_id_lock {
         CHECK_ERROR( pthread_mutex_destroy(&lock) );
         CHECK_ERROR( pthread_cond_destroy(&cond) );
     }
-    int in_process = 0;
+    int in_process;
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
     pthread_cond_t cond;
@@ -42,6 +42,7 @@ public:
     int buffer_id;
     int numCommands;
     int use_beamforming;
+    double start_time;
 
     gpu_command ** listCommands;
 

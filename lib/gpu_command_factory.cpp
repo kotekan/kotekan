@@ -8,9 +8,8 @@
 
 using namespace std;
 
-gpu_command_factory::gpu_command_factory()
+gpu_command_factory::gpu_command_factory() : numCommands(0), currentCommandCnt(0)
 {
-    currentCommandCnt = 0;
 }
 
 cl_uint gpu_command_factory::getNumCommands() const
@@ -107,31 +106,33 @@ gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_
 
     currentCommand = listCommands[currentCommandCnt];
 
-    if (currentCommand->get_name() == "input_data_stage"){}//input_data_stage prep
-    else if (currentCommand->get_name() == "beamform_phase_data"){}
-    else if (currentCommand->get_name() ==  "pairwise_correlator")//THIRD KERNEL BY EVENTS SEQUENCE "corr"
+    string name(currentCommand->get_name());
+
+    if (name == "input_data_stage"){}//input_data_stage prep
+    else if (name == "beamform_phase_data"){}
+    else if (name ==  "pairwise_correlator")//THIRD KERNEL BY EVENTS SEQUENCE "corr"
     {
         currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
         currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
     }
-    else if (currentCommand->get_name() == "offset_accumulator")//FIRST KERNEL BY EVENTS SEQUENCE "offsetAccumulateElements"
+    else if (name == "offset_accumulator")//FIRST KERNEL BY EVENTS SEQUENCE "offsetAccumulateElements"
     {
         currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
         currentCommand->setKernelArg(1, param_Device.getAccumulateBuffer(param_BufferID));
     }
-    else if (currentCommand->get_name() == "preseed_multifreq")//SECOND KERNEL BY EVENTS SEQUENCE "preseed"
+    else if (name == "preseed_multifreq")//SECOND KERNEL BY EVENTS SEQUENCE "preseed"
     {
         currentCommand->setKernelArg(0, param_Device.getAccumulateBuffer(param_BufferID));
         currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
     }
-    else if (currentCommand->get_name() == "beamform_tree_scale")
+    else if (name == "beamform_tree_scale")
     {    
     }
-    else if (currentCommand->get_name() == "beamform_incoherent")
+    else if (name == "beamform_incoherent")
     {    
     }
-    else if (currentCommand->get_name() == "output_data_result"){}
-    else if (currentCommand->get_name() == "output_beamform_result"){}
+    else if (name == "output_data_result"){}
+    else if (name == "output_beamform_result"){}
 
       currentCommandCnt++;
       if (currentCommandCnt >= numCommands)

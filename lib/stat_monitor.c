@@ -15,7 +15,7 @@ void* stat_monitor(void* arg)
     struct stat_monitor_arg * args = (struct stat_monitor_arg *) arg;
 
     for (;;) {
-        sleep(5);
+        usleep(100000);
         for (int i = 0; i < args->num_buffer_objects; ++i) {
             print_buffer_status(args->bufs[i]);
         }
