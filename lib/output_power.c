@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -20,7 +19,8 @@
 #define VDIF_HEADER_LEN 32
 #define NUM_FREQ 1024
 
-void *fast_square_and_sum_vdif(int integration_time,
+#ifdef __AVX2__
+void fast_square_and_sum_vdif(int integration_time,
         unsigned char * data, int * temp_buf, int * xx, int * yy) {
 
 
@@ -209,6 +209,13 @@ inline void u4_square_and_sum(const int integration_time, const int num_freq,
     }
 }
 
+#else
+void fast_square_and_sum_vdif(int integration_time,
+        unsigned char * data, int * temp_buf, int * xx, int * yy)
+{
+    ERROR("This system does not support AVX2, square and sum will not work");
+}
+#endif
 
 void *output_power_thread(void * arg)
 {
@@ -312,8 +319,8 @@ void *output_power_thread(void * arg)
             //*((uint32_t *) out_buf + 1) = *(uint32_t *)&data[integration*packet_len*integration_time/args->num_frames + 46];
 
             fast_square_and_sum_vdif(integration_time,
-                                    &data[integration * integration_time * PACKET_LEN * NUM_POL],
-                                    temp_buf, xx, yy);
+                                     &data[integration * integration_time * PACKET_LEN * NUM_POL],
+                                     temp_buf, xx, yy);
 
             fseek(fd, sizeof(int) * (line_size * line_idx  + head_size), SEEK_SET);
             ssize_t ints_written = fwrite(out_buf, sizeof(int), line_size, fd);

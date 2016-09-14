@@ -1,18 +1,18 @@
 
-#include "beamform_kernel.h"
+#include "beamform_incoherent_kernel.h"
 #include "fpga_header_functions.h"
 
-beamform_kernel::beamform_kernel(char * param_gpuKernel, char* param_name):gpu_command(param_gpuKernel, param_name)
+beamform_incoherent_kernel::beamform_incoherent_kernel(char * param_gpuKernel, char* param_name):gpu_command(param_gpuKernel, param_name)
 {
 
 }
 
-beamform_kernel::~beamform_kernel()
+beamform_incoherent_kernel::~beamform_incoherent_kernel()
 {
     clReleaseMemObject(device_mask);
 }
 
-void beamform_kernel::build(Config* param_Config, class device_interface& param_Device)
+void beamform_incoherent_kernel::build(Config* param_Config, class device_interface& param_Device)
 {
 
     gpu_command::build(param_Config, param_Device);
@@ -28,7 +28,7 @@ void beamform_kernel::build(Config* param_Config, class device_interface& param_
 
     CHECK_CL_ERROR ( clBuildProgram( program, 1, &valDeviceID, cl_options, NULL, NULL ) );
 
-    kernel = clCreateKernel( program, "gpu_beamforming", &err );
+    kernel = clCreateKernel( program, "gpu_beamforming_incoherent", &err );
     CHECK_CL_ERROR(err);
 
 ////##OCCURS IN SETUP_OPEN_CL
@@ -57,13 +57,13 @@ void beamform_kernel::build(Config* param_Config, class device_interface& param_
 
 ////##
 
-////##OCCURS IN setup_beamform_kernel_worksize
+////##OCCURS IN setup_beamform_incoherent_kernel_worksize
 
 //streamID NEEDS TO BE SET FOR ALL NUM_BUFFERS.
 //DEVICE_FREQ_MAP NEEDS TO BE AN ARRAY OF DIMESION EQUAL TO NUM_BUFFERS. IT ALSO NEEDS TO LIKELY LIVE IN DEVICE_INTERFACE.
 
 
-    INFO("setup_beamform_kernel_worksize, setting scale factor to %f",
+    INFO("setup_beamform_incoherent_kernel_worksize, setting scale factor to %f",
          param_Config->beamforming.scale_factor);
     float scale_factor = param_Config->beamforming.scale_factor;
     CHECK_CL_ERROR( clSetKernelArg(kernel,
@@ -83,7 +83,7 @@ void beamform_kernel::build(Config* param_Config, class device_interface& param_
 ////##
 }
 
-cl_event beamform_kernel::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event beamform_incoherent_kernel::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
 {
     gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 

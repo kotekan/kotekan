@@ -52,7 +52,7 @@ void offset_kernel::build(Config *param_Config, class device_interface &param_De
     gws[0] = 64*param_Config->processing.num_data_sets;
     gws[1] = (int)ceil(param_Config->processing.num_adjusted_elements *
     param_Config->processing.num_adjusted_local_freq/256.0);
-    gws[2] = param_Config->processing.samples_per_data_set/32;
+    gws[2] = param_Config->processing.samples_per_data_set/1024;
 
     lws[0] = 64;
     lws[1] = 1;
@@ -61,14 +61,10 @@ void offset_kernel::build(Config *param_Config, class device_interface &param_De
 
 cl_event offset_kernel::execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-  //cl_event *postEvent;
-
-  //postEvent = thisPostEvent[param_bufferID];
-  //  cl_int err;
-
     gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
-  CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
+//    DEBUG("gws: %i, %i, %i. lws: %i, %i, %i", gws[0], gws[1], gws[2], lws[0], lws[1], lws[2]);
+    CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                             kernel,
                                             3,
                                             NULL,
@@ -79,9 +75,6 @@ cl_event offset_kernel::execute(int param_bufferID, class device_interface &para
                                             &param_PrecedeEvent,
                                             &postEvent[param_bufferID]));
 
-  //postEvent[param_bufferID]=clCreateUserEvent(param_Device.getContext(), &err);
-  //CHECK_CL_ERROR(err);
-
-  return postEvent[param_bufferID];
+    return postEvent[param_bufferID];
 }
 

@@ -1,12 +1,18 @@
 #ifndef DEVICE_INTERFACE_H
 #define DEVICE_INTERFACE_H
 
+#include <map>
+
 #ifdef __APPLE__
 #include <OpenCL/cl_platform.h>
 #else
 #include <CL/cl_platform.h>
 #endif
 
+//check pagesize:
+//getconf PAGESIZE
+// result: 4096
+#define PAGESIZE_MEM 4096
 
 // The maximum number of expected GPUs in a host.  Increase as needed.
 #define MAX_GPUS 4
@@ -28,10 +34,13 @@ class device_interface
 {
 public:
     device_interface();
-    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf, Config* param_Config, int param_GPU_ID, struct Buffer * param_beamforming_out_buf);
+    device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf
+            , Config* param_Config, int param_GPU_ID
+            , struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf);
     Buffer* getInBuf();
     Buffer* getOutBuf();
     Buffer* get_beamforming_out_buf();
+    Buffer* get_beamforming_out_incoh_buf();
     cl_context getContext();
     int getGpuID();
     cl_device_id getDeviceID(int param_GPUID);
@@ -39,9 +48,10 @@ public:
     cl_mem getOutputBuffer(int param_BufferID);
     cl_mem getAccumulateBuffer(int param_BufferID);
     cl_mem get_device_beamform_output_buffer(int param_BufferID);
-    cl_mem get_device_phases();
-    cl_mem get_device_freq_map(int param_BufferID);
-  
+    cl_mem get_device_beamform_output_incoh_buffer(int param_BufferID);
+    cl_mem get_device_phases(int param_bankID);
+    cl_mem get_device_freq_map(int32_t encoded_stream_id);
+
     cl_command_queue getQueue(int param_Dim);
     cl_int* getAccumulateZeros();
     int getNumBlocks();
@@ -51,8 +61,8 @@ public:
     void allocateMemory();
 //    void set_stream_id(int param_buffer_id);
 //    stream_id_t get_stream_id(int param_BufferID);
-    void set_device_phases(cl_mem param_device_phases);
- 
+//    void set_device_phases(cl_mem param_device_phases);
+
     void release_events_for_buffer(int param_BufferID);
     void deallocateResources();
  protected:
@@ -60,6 +70,7 @@ public:
     struct Buffer * in_buf;
     struct Buffer * out_buf;
     struct Buffer * beamforming_out_buf;
+    struct Buffer * beamforming_out_incoh_buf;
     // Extra data
     struct Config * config;
     struct StreamINFO * stream_info;
@@ -68,7 +79,7 @@ public:
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
     int num_blocks;
-//    
+//
 //    int use_beamforming;
 
     cl_platform_id platform_id;
@@ -81,16 +92,15 @@ public:
     cl_mem * device_accumulate_buffer;
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
-    //cl_mem * device_freq_map;
-    cl_mem device_freq_map;
-    cl_mem device_phases;
-
-    
+    cl_mem * device_beamform_output_incoh_buffer;
+    // <streamID, freq_map>
+    std::map<int32_t, cl_mem> device_freq_map;
+    cl_mem * device_phases;
     // Buffer of zeros to zero the accumulate buffer on the device.
     cl_int * accumulate_zeros;
 
     int output_len;
-    
+
     //stream_id_t stream_id;
 };
 

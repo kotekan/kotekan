@@ -2,28 +2,31 @@
 #include <string.h>
 #include <iostream>
 
-gpu_command::gpu_command(char* param_name)
+gpu_command::gpu_command(char* param_name) :gpuCommandState(0) , gpuKernel(NULL)
 {
-    name = param_name;
+    name = strdup(param_name);
+    INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(char * param_gpuKernel, char* param_name)
+gpu_command::gpu_command(char * param_gpuKernel, char* param_name) : gpuCommandState(0), gpuKernel(NULL)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
     strcpy(gpuKernel, param_gpuKernel);
     gpuCommandState=1;
-    
-    name = param_name;
+    name = strdup(param_name);
+    INFO("Name: %s, %s", param_name, name);
 }
 
 gpu_command::~gpu_command()
 {
     if (gpuCommandState==1)
         free(gpuKernel);
+    free(name);
 }
 
 char* gpu_command::get_name()
 {
+//    INFO("get_name(): %s", name);
     return name;
 }
 
@@ -71,6 +74,8 @@ cl_event gpu_command::execute(int param_bufferID, device_interface& param_Device
 {
     assert(param_bufferID<param_Device.getInBuf()->num_buffers);
     assert(param_bufferID>=0);
+    
+//    DEBUG("Execute kernel: %s", name);
 }
 
 void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
@@ -92,6 +97,8 @@ char* gpu_command::get_cl_options(Config * param_Config)
         param_Config->processing.num_blocks,
         param_Config->processing.samples_per_data_set,
         param_Config->processing.buffer_depth);
+    
+//    DEBUG("kernel: %s. cl_options: %s", name, cl_options);
     
     return cl_options;
 }

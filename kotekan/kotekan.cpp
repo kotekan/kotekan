@@ -64,6 +64,7 @@ extern "C" {
 #include "raw_cap.hpp"
 #include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
+#include "stat_monitor.h"
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -114,8 +115,13 @@ int main(int argc, char ** argv) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 4; j < 12; j++)
+    for (int j = 6; j < 12; j++)
         CPU_SET(j, &cpuset);
+
+    cpu_set_t cpuset_gpu;
+    CPU_ZERO(&cpuset_gpu);
+    for (int j = 4; j < 6; j++)
+        CPU_SET(j, &cpuset_gpu);
 
     for (;;) {
         static struct option long_options[] = {
@@ -230,15 +236,15 @@ int main(int argc, char ** argv) {
     char buffer_name[100];
     int num_working_gpus = 3;
 
+    pthread_barrier_t gpu_thread_barrier;
+    pthread_barrier_init(&gpu_thread_barrier, NULL, config.gpu.num_gpus);
+
     for (int i = 0; i < config.gpu.num_gpus; ++i) {
 
         DEBUG("Creating buffers...");
 
-        // TODO Figure out why this value currently needs to be constant.
         int links_per_gpu = num_links_per_gpu(&config, i);
-        if (config.gpu.num_gpus > 1) {
-            links_per_gpu = 4;
-        }
+
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
         create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
@@ -264,15 +270,15 @@ int main(int argc, char ** argv) {
                       &pool[i],
                       buffer_name);
 
-        snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
-        create_buffer(&gpu_beamform_output_buffer[i],
-                      links_per_gpu * config.processing.buffer_depth,
-                      config.processing.samples_per_data_set * config.processing.num_data_sets *
-                      config.processing.num_local_freq * 2,
-                      1,
-                      1,
-                      &pool[i],
-                      buffer_name);
+         snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
+         create_buffer(&gpu_beamform_output_buffer[i],
+                       links_per_gpu * config.processing.buffer_depth,
+                       config.processing.samples_per_data_set * config.processing.num_data_sets *
+                       config.processing.num_local_freq * 2,
+                       1,
+                       1,
+                       &pool[i],
+                       buffer_name);
 
         gpu_args[i].in_buf = &gpu_input_buffer[i];
         gpu_args[i].out_buf = &gpu_output_buffer[i];
@@ -280,23 +286,23 @@ int main(int argc, char ** argv) {
         gpu_args[i].gpu_id = i;
         gpu_args[i].started = 0;
         gpu_args[i].config = &config;
+        gpu_args[i].barrier = &gpu_thread_barrier;
 
-	CHECK_ERROR( pthread_mutex_init(&gpu_args[i].lock, NULL) );
-	CHECK_ERROR( pthread_cond_init(&gpu_args[i].cond, NULL) );
+        CHECK_ERROR( pthread_mutex_init(&gpu_args[i].lock, NULL) );
+        CHECK_ERROR( pthread_cond_init(&gpu_args[i].cond, NULL) );
 
-	DEBUG("Setting up GPU thread %d\n", i);
+        DEBUG("Setting up GPU thread %d\n", i);
 
-	pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
-	CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset) );
+        pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
+        CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset_gpu) );
 
-	// Block until the OpenCL thread is read to read data.
-	wait_for_gpu_thread_ready(&gpu_args[i]);
+        // Block until the OpenCL thread is read to read data.
+        wait_for_gpu_thread_ready(&gpu_args[i]);
 
-	CHECK_ERROR( pthread_mutex_destroy(&gpu_args[i].lock) );
-	CHECK_ERROR( pthread_cond_destroy(&gpu_args[i].cond) );
+        CHECK_ERROR( pthread_mutex_destroy(&gpu_args[i].lock) );
+        CHECK_ERROR( pthread_cond_destroy(&gpu_args[i].cond) );
 
-	INFO("GPU thread %d ready.", i);
-
+        INFO("GPU thread %d ready.", i);
     }
 
     //sleep(5);
@@ -317,6 +323,7 @@ int main(int argc, char ** argv) {
             network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
         }
         network_dpdk_args.buf = tmp_buffer;
+        network_dpdk_args.vdif_buf = NULL;
         network_dpdk_args.num_links = config.fpga_network.num_links;
         network_dpdk_args.config = &config;
         network_dpdk_args.num_lcores = 4;
@@ -414,7 +421,6 @@ int main(int argc, char ** argv) {
                                         (void *) &beamforming_post_process_args ) );
             CHECK_ERROR( pthread_setaffinity_np(beamforming_comsumer_t, sizeof(cpu_set_t), &cpuset) );
 
-
             // The thread which sends it with UDP to the VDIF collection server
             vdifStream * vdif_stream = new vdifStream(config, vdif_output_buffer);
             vdif_stream->start();
@@ -423,6 +429,28 @@ int main(int argc, char ** argv) {
     } else  {
         // TODO add local file output in some form here.
     }
+
+    // stat monitor
+    pthread_t stat_monitor_t;
+    struct stat_monitor_arg stat_args;
+    int buf_id = 0;
+    for (int i = 0; i < config.gpu.num_gpus; ++i) {
+        stat_args.bufs[buf_id++] = &gpu_input_buffer[i];
+        stat_args.bufs[buf_id++] = &gpu_output_buffer[i];
+        if(config.gpu.use_beamforming == 1)
+            stat_args.bufs[buf_id++] = &gpu_beamform_output_buffer[i];
+    }
+    if (config.ch_master_network.disable_upload == 0)
+        stat_args.bufs[buf_id++] = &network_output_buffer;
+    if (config.gpu.use_beamforming == 1)
+        stat_args.bufs[buf_id++] = &vdif_output_buffer;
+    if (config.gating.enable_basic_gating && config.ch_master_network.disable_upload == 0)
+        stat_args.bufs[buf_id++] = &gated_output_buffer;
+    stat_args.num_buffer_objects = buf_id;
+    CHECK_ERROR( pthread_create(&stat_monitor_t, NULL,
+                            &stat_monitor,
+                            (void *) &stat_args ) );
+    CHECK_ERROR( pthread_setaffinity_np(stat_monitor_t, sizeof(cpu_set_t), &cpuset) );
 
     // Join with threads.
     int * ret;

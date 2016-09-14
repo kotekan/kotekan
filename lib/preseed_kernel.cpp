@@ -81,13 +81,10 @@ void preseed_kernel::build(Config* param_Config, class device_interface &param_D
 
 cl_event preseed_kernel::execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-  //cl_event *postEvent;
-
-  //postEvent = thisPostEvent[param_bufferID];
-
     gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
-  CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
+//    DEBUG("gws: %i, %i, %i. lws: %i, %i, %i", gws[0], gws[1], gws[2], lws[0], lws[1], lws[2]);
+    CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                             kernel,
                                             3,
                                             NULL,
@@ -98,7 +95,7 @@ cl_event preseed_kernel::execute(int param_bufferID, class device_interface &par
                                             &param_PrecedeEvent,
                                             &postEvent[param_bufferID]));
 
-  return postEvent[param_bufferID];
+    return postEvent[param_bufferID];
 }
 void preseed_kernel::defineOutputDataMap(Config* param_Config, int param_num_blocks, device_interface& param_Device)
 {

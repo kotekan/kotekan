@@ -18,6 +18,8 @@
 #include "beamform_phase_data.h"
 #include "output_beamform_result.h"
 #include "dummy_placeholder_kernel.h"
+#include "beamform_incoherent_kernel.h"
+#include "output_beamform_incoh_result.h"
 
 class gpu_command_factory
 {
@@ -30,7 +32,7 @@ public:
 
 protected:
     gpu_command ** listCommands;
-    cl_uint numCommands = 0;
+    cl_uint numCommands;
     cl_uint currentCommandCnt;
     
     int use_beamforming;

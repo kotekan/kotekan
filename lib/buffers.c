@@ -279,16 +279,23 @@ void wait_for_empty_buffer(struct Buffer* buf, const int ID)
     assert (ID >= 0);
     assert (ID < buf->num_buffers);
 
+    int print_stat = 0;
+
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     while (buf->is_full[ID] == 1) {
         DEBUG("wait_for_empty_buffer: waiting for empty buffer ID = %d in buffer %s",
               ID, buf->buffer_name);
+        print_stat = 1;
         pthread_cond_wait(&buf->empty_cond, &buf->lock);
     }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    if (print_stat == 1)
+        print_buffer_status(buf);
+
 }
 
 
@@ -500,7 +507,7 @@ void print_buffer_status(struct Buffer* buf)
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
-    char status_string[buf->num_buffers];
+    char status_string[buf->num_buffers + 1];
 
     for (int i = 0; i < buf->num_buffers; ++i) {
         if (buf->is_full[i] == 1) {
@@ -509,7 +516,8 @@ void print_buffer_status(struct Buffer* buf)
             status_string[i] = '_';
         }
     }
-    DEBUG("Buffer Status: %s", status_string);
+    status_string[buf->num_buffers] = '\0';
+    DEBUG("Buffer %s status: %s", buf->buffer_name, status_string);
 }
 
 void move_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int to_id)
