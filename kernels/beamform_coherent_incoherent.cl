@@ -167,8 +167,8 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
             ////////////////////////////// Scale and rail method
             lds_data[0]  *= scale_factor; //Re_pol1
             lds_data[1] *= scale_factor;  //Img_pol2
-            //lds_data[64] *= scale_factor; //Re_Pol2
-            //lds_data[65] *= scale_factor; //Img_Pol2
+            lds_data[64] *= 0.05; //Re_Pol2
+            lds_data[65] *= 0.05; //Img_Pol2
 
             //convert to integer
             int tempInt0 = (int)round(lds_data[0]);
