@@ -90,17 +90,21 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         barrier(CLK_LOCAL_MEM_FENCE);
         //reorder the data to group polarizations for the reduction
 
-        int address = get_local_id(0) + (polarized*60) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
+        int address_coh = get_local_id(0) - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
+        int address_incoh = get_local_id(0) + 60 - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
 
 	if (polarized == 0){
-        	lds_data[address]                    = outR_coh;
-        	lds_data[address+NUM_POL_ELEMENTS/4] = outI_coh; //offset by 32
+        	lds_data[address_coh]                    = outR_coh;
+        	lds_data[address_coh+NUM_POL_ELEMENTS/4] = outI_coh; //offset by 32
+
+                lds_data[address_incoh]                    = outR_incoh;
+        	lds_data[address_incoh+NUM_POL_ELEMENTS/4] = outI_incoh; //offset by 32
 	}
 
-	if (polarized == 1){
-		lds_data[address]                    = outR_incoh;
-                lds_data[address+NUM_POL_ELEMENTS/4] = outI_incoh;
-	}
+//	if (polarized == 1){
+//		lds_data[address]                    = outR_incoh;
+//                lds_data[address+NUM_POL_ELEMENTS/4] = outI_incoh;
+//	}
 
         //need to calculate reduction for 2 polarizations, 128 elements each, real and imaginary.
         //do not want to have blocks that need to be calculated separately
