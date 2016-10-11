@@ -70,23 +70,6 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         // Thus outR = R**2 + I**2
         // and  outI = 0
 
-        outR_coh = R[0]*phase_re[0] + I[0]*phase_im[0] +
-                   R[1]*phase_re[1] + I[1]*phase_im[1] +
-                   R[2]*phase_re[2] + I[2]*phase_im[2] +
-                   R[3]*phase_re[3] + I[3]*phase_im[3];
-
-        outI_coh = I[0]*phase_re[0] - R[0]*phase_im[0] +
-                   I[1]*phase_re[1] - R[1]*phase_im[1] +
-                   I[2]*phase_re[2] - R[2]*phase_im[2] +
-                   I[3]*phase_re[3] - R[3]*phase_im[3];
-
-        outR_incoh = R[0]*R[0] + I[0]*I[0] +
-               R[1]*R[1] + I[1]*I[1] +
-               R[2]*R[2] + I[2]*I[2] +
-               R[3]*R[3] + I[3]*I[3];
-
-	outI_incoh = 0.0;
-
         barrier(CLK_LOCAL_MEM_FENCE);
         //reorder the data to group polarizations for the reduction
 
@@ -94,11 +77,28 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         int address_incoh = get_local_id(0) + 60 - ((get_local_id(0)>>3)*4); //ELEMENT_ID_DIV_4 + polarized*(NUM_POL_ELEMENTS/4*2-4) - (ELEMENT_ID_DIV_4>>3)*4
 
 	if (polarized == 0){
-        	lds_data[address_coh]                    = outR_coh;
-        	lds_data[address_coh+NUM_POL_ELEMENTS/4] = outI_coh; //offset by 32
+            outR_coh = R[0]*phase_re[0] + I[0]*phase_im[0] +
+                       R[1]*phase_re[1] + I[1]*phase_im[1] +
+                       R[2]*phase_re[2] + I[2]*phase_im[2] +
+                       R[3]*phase_re[3] + I[3]*phase_im[3];
 
-                lds_data[address_incoh]                    = outR_incoh;
-        	lds_data[address_incoh+NUM_POL_ELEMENTS/4] = outI_incoh; //offset by 32
+            outI_coh = I[0]*phase_re[0] - R[0]*phase_im[0] +
+                       I[1]*phase_re[1] - R[1]*phase_im[1] +
+                       I[2]*phase_re[2] - R[2]*phase_im[2] +
+                       I[3]*phase_re[3] - R[3]*phase_im[3];
+
+            outR_incoh = R[0]*R[0] + I[0]*I[0] +
+                   R[1]*R[1] + I[1]*I[1] +
+                   R[2]*R[2] + I[2]*I[2] +
+                   R[3]*R[3] + I[3]*I[3];
+
+            outI_incoh = 0.0;
+
+            lds_data[address_coh]                    = outR_coh;
+            lds_data[address_coh+NUM_POL_ELEMENTS/4] = outI_coh; //offset by 32
+
+            lds_data[address_incoh]                    = outR_incoh;
+            lds_data[address_incoh+NUM_POL_ELEMENTS/4] = outI_incoh; //offset by 32
 	}
 
 //	if (polarized == 1){
@@ -123,42 +123,24 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
         ////////////////////////////////
 
 
-        for (uint i = NUM_POL_ELEMENTS/4; i>1; i = i/2){
-            barrier(CLK_LOCAL_MEM_FENCE);
-            if (get_local_id(0) >= i/2)
-                continue;
-
-            //load and accumulate 2 items
-            R[0]=lds_data[get_local_id(0)*2+0];
-            R[1]=lds_data[get_local_id(0)*2+1];
-
-            I[0]=lds_data[get_local_id(0)*2+i+0];
-            I[1]=lds_data[get_local_id(0)*2+i+1];
-
-            outR = R[0]+R[1];
-            outI = I[0]+I[1];
-
-            //output
-            barrier(CLK_LOCAL_MEM_FENCE);//this barrier is not likely needed, but to be safe...
-            lds_data[get_local_id(0)]=outR;//R[0];
-            lds_data[get_local_id(0)+i/2]=outI;//I[0];
-
-            //second polarization
-            R[2]=lds_data[get_local_id(0)*2+0+64];
-            R[3]=lds_data[get_local_id(0)*2+1+64];
-
-            I[2]=lds_data[get_local_id(0)*2+i+0+64];
-            I[3]=lds_data[get_local_id(0)*2+i+1+64];
-
-            outR = R[2]+R[3];
-            outI = I[2]+I[3];
-
-            //output
-            barrier(CLK_LOCAL_MEM_FENCE);//this barrier is not likely needed, but to be safe...
-            lds_data[get_local_id(0)+64]=outR;//R[0];
-            lds_data[get_local_id(0)+i/2+64]=outI;//I[0];
+        for (uint i = 16; i>0; i = i/2){
+            if (get_local_id(0) < i){
+                lds_data[get_local_id(0)] += lds_data[get_local_id(0) + i];
+                lds_data[get_local_id(0)+64] += lds_data[get_local_id(0)+64 + i];
+            }
+            barrier(CLK_LOCAL_MEM_FENCE);    
         }
 
+        for (uint i = 16; i>0; i = i/2){
+            if (get_local_id(0) < i){
+                lds_data[get_local_id(0) + 32] += lds_data[get_local_id(0) + 32 + i];
+                lds_data[get_local_id(0)+96] += lds_data[get_local_id(0)+96 + i];
+            }
+            barrier(CLK_LOCAL_MEM_FENCE);
+        }
+
+
+        barrier(CLK_LOCAL_MEM_FENCE);
         // write output to buffer as an int, shift 16 bits up (perhaps to save as a fixed pt floating point number? Max val possible is NUM_ELEMENTS/2 * 5.6*2
         //NUM_ELEMENTS_PER_POLARIZATION = NUM_ELEMENTS/2
         //max_expected = NUM_ELEMENTS_PER_POLARIZATION* 8*(2^(-1/2)) *2
@@ -170,9 +152,9 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
 
             ////////////////////////////// Scale and rail method
             lds_data[0]  *= scale_factor; //Re_pol1
-            lds_data[1] *= scale_factor;  //Img_pol2
-            lds_data[64] *= 0.05; //Re_Pol2
-            lds_data[65] *= 0.05; //Img_Pol2
+            lds_data[32] *= scale_factor;  //Img_pol2
+            lds_data[64] *= 0.0375; //Re_Pol2
+            lds_data[96] *= 0.0375; //Img_Pol2
 
             //convert to integer
             int tempInt0 = (int)round(lds_data[0]);
