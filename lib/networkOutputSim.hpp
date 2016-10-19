@@ -19,12 +19,21 @@ public:
                      int stream_id);
     virtual ~networkOutputSim();
     void main_thread();
+
+    virtual void apply_config(uint64_t fpga_seq);
+
 private:
     struct Buffer &buf;
     int num_links_in_group;
     int link_id;
     int pattern;
     int stream_id;
+
+    // Config variables.
+    int32_t _samples_per_data_set;
+    int32_t _num_local_freq;
+    int32_t _num_elem;
+
 };
 
 #endif

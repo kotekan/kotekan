@@ -4,30 +4,32 @@
 #include "math.h"
 #include <errno.h>
 
-device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config * param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf)
+device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config & param_Config
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf) :
+config(param_Config)
 {
     cl_int err;
 
     in_buf = param_In_Buf;
     out_buf = param_Out_Buf;
-    config = param_Config;
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
     beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
-//    use_beamforming = param_Config->gpu.use_beamforming;
 
-      // TODO explain these numbers/formulas.
-    num_blocks = (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size) *
-    (param_Config->processing.num_adjusted_elements / param_Config->gpu.block_size + 1) / 2.;
+    // Config variables
+    enable_beamforming = config.get_bool("/gpu/enable_beamforming");
+    num_adjusted_elements = config.get_int("/processing/num_adjusted_elements");
+    num_adjusted_local_freq = config.get_int("/processing/num_adjusted_local_freq");
+    num_local_freq = config.get_int("/processing/num_local_freq");
+    block_size = config.get_int("/gpu/block_size");
+    num_data_sets = config.get_int("/processing/num_data_sets");
+    num_elements = config.get_int("/processing/num_elements");
+    num_blocks = config.get_int("/gpu/num_blocks");
 
-    accumulate_len = config->processing.num_adjusted_local_freq *
-    config->processing.num_adjusted_elements * 2 * config->processing.num_data_sets * sizeof(cl_int);
+    accumulate_len = num_adjusted_local_freq *
+        num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));
     assert(aligned_accumulate_len >= accumulate_len);
-
-//    stream_info = malloc(in_buf->num_buffers * sizeof(struct StreamINFO));
-//    CHECK_MEM(stream_info);
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
@@ -37,18 +39,6 @@ device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer *
 
     context = clCreateContext( NULL, 1, &device_id[gpu_id], NULL, NULL, &err);
     CHECK_CL_ERROR(err);
-
-    //Used for beamforming. Should this logic live in one of the beamforming command_objects?
-    //LOOK AT SETTING StreamID for all Num_buffers.
-    //device.set_stream_info(bufferID);
-    /*
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
-        // Set the stream ID for the link.
-        int32_t local_stream_id = get_streamID(in_buf, i);
-        assert(local_stream_id != -1);
-        stream_info[i].stream_id = extract_stream_id(local_stream_id);
-    }
-    */
 }
 
 int device_interface::getNumBlocks()
@@ -60,11 +50,6 @@ int device_interface::getGpuID()
 {
     return gpu_id;
 }
-
-//int device_interface::get_use_beamforming()
-//{
-//    return use_beamforming;
-//}
 
 Buffer* device_interface::getInBuf()
 {
@@ -105,24 +90,6 @@ int device_interface::getAlignedAccumulateLen() const
 {
     return aligned_accumulate_len;
 }
-
-//void device_interface::set_stream_id(int param_buffer_id)
-//{
-//    // Set the stream ID for the link.
-//    int32_t local_stream_id = get_streamID(in_buf, param_buffer_id);
-//    assert(local_stream_id != -1);
-//    stream_id = extract_stream_id(local_stream_id);
-//}
-//
-//stream_id_t device_interface::get_stream_id()
-//{
-//    return stream_id;
-//}
-
-//void device_interface::set_device_phases(cl_mem param_device_phases)
-//{
-//    device_phases = param_device_phases;
-//}
 
 void device_interface::prepareCommandQueue()
 {
@@ -185,11 +152,8 @@ void device_interface::allocateMemory()
         CHECK_CL_ERROR(err);
     }
 
-
-
-////##OCCURS IN SETUP_OPEN_CL
     // Setup beamforming output buffers.
-    if (config->gpu.use_beamforming == 1) {
+    if (enable_beamforming) {
         device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_buffers * sizeof(cl_mem));
         CHECK_MEM(device_beamform_output_buffer);
         for (int i = 0; i < beamforming_out_buf->num_buffers; ++i) {
@@ -197,27 +161,26 @@ void device_interface::allocateMemory()
                     , beamforming_out_buf->aligned_buffer_size, NULL, &err);
             CHECK_CL_ERROR(err);
         }
-        
+
+        /*
         device_beamform_output_incoh_buffer = (cl_mem *) malloc(beamforming_out_incoh_buf->num_buffers * sizeof(cl_mem));
         CHECK_MEM(device_beamform_output_incoh_buffer);
         for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
             device_beamform_output_incoh_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
                     , beamforming_out_incoh_buf->aligned_buffer_size, NULL, &err);
             CHECK_CL_ERROR(err);
-        }
+        }*/
 
         // We have two phase blanks
         const int num_phase_blanks = 2;
         device_phases = (cl_mem *) malloc(num_phase_blanks * sizeof(cl_mem));
         CHECK_MEM(device_phases);
         for (int i = 0; i < num_phase_blanks; ++i) {
-            device_phases[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, config->processing.num_elements * sizeof(float)
+            device_phases[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, num_elements * sizeof(float)
                     , NULL, &err);
             CHECK_CL_ERROR(err);
         }
     }
-////##
-
 }
 
 cl_mem device_interface::getInputBuffer(int param_BufferID)
@@ -258,7 +221,6 @@ cl_mem device_interface::get_device_freq_map(int32_t encoded_stream_id)
         // Create the freq map for the first time.
         cl_int err;
         stream_id_t stream_id = extract_stream_id(encoded_stream_id);
-        uint32_t num_local_freq = config->processing.num_local_freq;
         float freq[num_local_freq];
 
         for (int j = 0; j < num_local_freq; ++j) {
@@ -296,7 +258,7 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-    if (config->gpu.use_beamforming == 1) {
+    if (enable_beamforming) {
 
         for (int i = 0; i < 2; ++i) {
             CHECK_CL_ERROR( clReleaseMemObject(device_phases[i]) );
@@ -311,7 +273,7 @@ void device_interface::deallocateResources()
             CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
         }
         free(device_beamform_output_incoh_buffer);
-        
+
         for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
             CHECK_CL_ERROR( clReleaseMemObject(it->second) );
         }

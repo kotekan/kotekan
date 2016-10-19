@@ -2,11 +2,15 @@
 #define DEVICE_INTERFACE_H
 
 #include <map>
+#include <sys/mman.h>
 
 #ifdef __APPLE__
-#include <OpenCL/cl_platform.h>
+    #include <OpenCL/cl_platform.h>
+    #include "OpenCL/opencl.h"
 #else
-#include <CL/cl_platform.h>
+    #include <CL/cl_platform.h>
+    #include <CL/cl.h>
+    #include <CL/cl_ext.h>
 #endif
 
 //check pagesize:
@@ -23,8 +27,9 @@
 // Unless you really know what you are doing, don't change this.
 #define NUM_QUEUES 3
 
-#include "gpu_command.h"
 #include "fpga_header_functions.h"
+#include "Config.hpp"
+#include "buffers.h"
 
 struct StreamINFO {
     stream_id_t stream_id;
@@ -35,7 +40,7 @@ class device_interface
 public:
     device_interface();
     device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf
-            , Config* param_Config, int param_GPU_ID
+            , Config& param_Config, int param_GPU_ID
             , struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf);
     Buffer* getInBuf();
     Buffer* getOutBuf();
@@ -56,12 +61,8 @@ public:
     cl_int* getAccumulateZeros();
     int getNumBlocks();
     int getAlignedAccumulateLen() const;
-//    int get_use_beamforming();
     void prepareCommandQueue();
     void allocateMemory();
-//    void set_stream_id(int param_buffer_id);
-//    stream_id_t get_stream_id(int param_BufferID);
-//    void set_device_phases(cl_mem param_device_phases);
 
     void release_events_for_buffer(int param_BufferID);
     void deallocateResources();
@@ -72,15 +73,13 @@ public:
     struct Buffer * beamforming_out_buf;
     struct Buffer * beamforming_out_incoh_buf;
     // Extra data
-    struct Config * config;
+    struct Config &config;
     struct StreamINFO * stream_info;
 
     int accumulate_len;
     int aligned_accumulate_len;
     int gpu_id; // Internal GPU ID.
     int num_blocks;
-//
-//    int use_beamforming;
 
     cl_platform_id platform_id;
     cl_device_id device_id[MAX_GPUS];
@@ -101,29 +100,15 @@ public:
 
     int output_len;
 
-    //stream_id_t stream_id;
+    // Config variables
+    bool enable_beamforming;
+    int32_t num_adjusted_elements;
+    int32_t num_adjusted_local_freq;
+    int32_t num_local_freq;
+    int32_t num_elements;
+    int32_t block_size;
+    int32_t num_data_sets;
+
 };
 
 #endif // DEVICE_INTERFACE_H
-
-#ifndef DEVICE_INTERFACE
-#define DEVICE_INTERFACE
-
-#include <CL/cl.h>
-#include <CL/cl_ext.h>
-
-#include "buffers.h"
-#include "config.h"
-#include "errors.h"
-#include <assert.h>
-#include <sys/mman.h>
-#include <errno.h>
-#include "string.h"
-#include <stdio.h>
-
-//check pagesize:
-//getconf PAGESIZE
-// result: 4096
-#define PAGESIZE_MEM 4096
-
-#endif // DEVICE_INTERFACE

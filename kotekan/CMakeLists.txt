@@ -2,9 +2,12 @@ cmake_minimum_required(VERSION 2.8)
 
 PROJECT (kotekan)
 
-SET(SOURCE_EXE kotekan.cpp raw_cap.cpp)
+SET(SOURCE_EXE kotekan.cpp)
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
+
+include_directories (${CHIME_SOURCE_DIR}/include)
 
 link_directories (${CHIME_BINARY_DIR}/lib)
 

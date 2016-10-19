@@ -4,7 +4,7 @@
 #include "test_data_generation.h"
 #include "error_correction.h"
 #include "nt_memcpy.h"
-#include "config.h"
+#include "Config.hpp"
 #include "util.h"
 #include "time_tracking.h"
 
@@ -37,9 +37,21 @@ networkOutputSim::networkOutputSim(struct Config &config_,
                   stream_id(stream_id_) {
 }
 
-networkOutputSim::~networkOutputSim() {}
+networkOutputSim::~networkOutputSim() {
+}
+
+void networkOutputSim::apply_config(uint64_t fpga_seq) {
+    if (!config.update_needed(fpga_seq))
+        return;
+
+    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
+    _num_local_freq = config.get_int("/processing/num_local_freq");
+    _num_elem = config.get_int("/processing/num_elements");
+}
 
 void networkOutputSim::main_thread() {
+
+    apply_config(0);
 
     int buffer_id = link_id;
     int data_id = 0;
@@ -49,7 +61,7 @@ void networkOutputSim::main_thread() {
     for (EVER) {
         wait_for_empty_buffer(&buf, buffer_id);
 
-        if ((fpga_seq_num / config.processing.samples_per_data_set) % 2 == 0) {
+        if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
             constant = 10;
         } else {
             constant = 9;
@@ -66,25 +78,25 @@ void networkOutputSim::main_thread() {
         if (pattern == SIM_CONSTANT) {
             //INFO("Generating a constant data set all (1,1).");
             generate_const_data_set(constant, constant,
-                                config.processing.samples_per_data_set,
-                                config.processing.num_local_freq,
-                                config.processing.num_elements,
+                                _samples_per_data_set,
+                                _num_local_freq,
+                                _num_elem,
                                 buf.data[buffer_id]);
         } else if (pattern == SIM_FULL_RANGE) {
             //INFO("Generating a full range of all possible values.");
             generate_full_range_data_set(0,
-                                config.processing.samples_per_data_set,
-                                config.processing.num_local_freq,
-                                config.processing.num_elements,
+                                _samples_per_data_set,
+                                _num_local_freq,
+                                _num_elem,
                                 buf.data[buffer_id]);
         } else if (pattern == SIM_SINE) {
             stream_id_t stream_id;
             stream_id.link_id = link_id;
             //INFO("Generating data with a complex sine in frequency.");
             generate_complex_sine_data_set(stream_id,
-                                config.processing.samples_per_data_set,
-                                config.processing.num_local_freq,
-                                config.processing.num_elements,
+                                _samples_per_data_set,
+                                _num_local_freq,
+                                _num_elem,
                                 buf.data[buffer_id]);
         } else {
             ERROR("Invalid Pattern");
@@ -95,7 +107,7 @@ void networkOutputSim::main_thread() {
 
         buffer_id = (buffer_id + num_links_in_group) % (buf.num_buffers);
 
-        fpga_seq_num += config.processing.samples_per_data_set;
+        fpga_seq_num += _samples_per_data_set;
 
     }
 

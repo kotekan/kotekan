@@ -13,7 +13,6 @@
 #include "buffers.h"
 #include "errors.h"
 #include "output_formating.h"
-#include "config.h"
 
 chrxUplink::chrxUplink(struct Config &config_,
                   struct Buffer &vis_buf_,
@@ -26,7 +25,19 @@ chrxUplink::chrxUplink(struct Config &config_,
 chrxUplink::~chrxUplink() {
 }
 
+void chrxUplink::apply_config(uint64_t fpga_seq) {
+    if (!config.update_needed(fpga_seq))
+        return;
+
+    _collection_server_ip = config.get_string("/ch_master_network/collection_server_ip");
+    _collection_server_port = config.get_int("/ch_master_network/collection_server_port");
+    _enable_gating = config.get_bool("/gating/enable_gating");
+}
+
+// TODO make this more robust to network errors.
 void chrxUplink::main_thread() {
+    apply_config(0);
+
     int buffer_ID = 0;
 
     // Connect to server.
@@ -40,15 +51,15 @@ void chrxUplink::main_thread() {
 
     bzero(&ch_acq_addr, sizeof(ch_acq_addr));
     ch_acq_addr.sin_family = AF_INET;
-    ch_acq_addr.sin_addr.s_addr = inet_addr(config.ch_master_network.collection_server_ip);
-    ch_acq_addr.sin_port = htons(config.ch_master_network.collection_server_port);
+    ch_acq_addr.sin_addr.s_addr = inet_addr(_collection_server_ip.c_str());
+    ch_acq_addr.sin_port = htons(_collection_server_port);
 
     if (connect(tcp_fd, (struct sockaddr *)&ch_acq_addr, sizeof(ch_acq_addr)) == -1) {
         ERROR("Could not connect to collection server, error: %d", errno);
     }
     INFO("Connected to collection server on: %s:%d",
-         config.ch_master_network.collection_server_ip,
-         config.ch_master_network.collection_server_port);
+         _collection_server_ip.c_str(),
+         _collection_server_port);
 
     // Wait for, and transmit, full buffers.
     while(!stop_thread) {
@@ -58,7 +69,7 @@ void chrxUplink::main_thread() {
 
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
-            INFO("Closing ch_acq_uplink");
+            INFO("Closing chrx_uplink");
             break;
         }
 
@@ -66,7 +77,7 @@ void chrxUplink::main_thread() {
 
         ssize_t bytes_sent = send(tcp_fd,vis_buf.data[buffer_ID], vis_buf.buffer_size, 0);
         if (bytes_sent <= 0) {
-            ERROR("Could not send frame to ch_acq, error: %d", errno);
+            ERROR("Could not send frame to chrx, error: %d", errno);
             break;
         }
         if (bytes_sent != vis_buf.buffer_size) {
@@ -74,9 +85,9 @@ void chrxUplink::main_thread() {
                     (int)bytes_sent, vis_buf.buffer_size);
             break;
         }
-        INFO("Finished sending frame to ch_master");
+        INFO("Finished sending frame to chrx");
 
-        if (config.gating.enable_basic_gating == 1) {
+        if (_enable_gating) {
             DEBUG("Getting gated buffer");
             get_full_buffer_from_list(&gate_buf, &buffer_ID, 1);
 
@@ -91,7 +102,7 @@ void chrxUplink::main_thread() {
                         (int)bytes_sent, gate_buf.buffer_size);
                 break;
             }
-            INFO("Finished sending gated data frame to ch_master");
+            INFO("Finished sending gated data frame to chrx");
             mark_buffer_empty(&gate_buf, buffer_ID);
         }
 

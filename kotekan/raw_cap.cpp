@@ -42,7 +42,7 @@ void copy_gains(char * base_dir, char * data_set, char * gain_file_name) {
     }
 }
 
-int raw_cap(struct Config * config) {
+int raw_cap(Config * config) {
 
     // Some constants
     const int num_elements = 2;

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <functional>
+#include <string>
 
 #include "vdifStream.hpp"
 #include "util.h"
@@ -19,7 +20,17 @@ vdifStream::vdifStream(Config& config, struct Buffer &buf_) :
 vdifStream::~vdifStream() {
 }
 
+void vdifStream::apply_config(uint64_t fpga_seq) {
+    if (!config.update_needed(fpga_seq))
+        return;
+
+    _vdif_port = config.get_int("/beamforming/vdif_port");
+    _vdif_server_ip = config.get_string("/beamforming/vdif_server_ip");
+}
+
 void vdifStream::main_thread() {
+
+    apply_config(0);
 
     int bufferID[1] = {0};
 
@@ -41,29 +52,29 @@ void vdifStream::main_thread() {
 
     memset((char *) &saddr_remote, 0, saddr_len);
     saddr_remote.sin_family = AF_INET;
-    saddr_remote.sin_port = htons(config.beamforming.vdif_port);
-    if (inet_aton(config.beamforming.vdif_server_ip, &saddr_remote.sin_addr) == 0) {
+    saddr_remote.sin_port = htons(_vdif_port);
+    if (inet_aton(_vdif_server_ip.c_str(), &saddr_remote.sin_addr) == 0) {
         ERROR("Invalid address given for remote VDIF server");
         return;
     }
 
     while(!stop_thread) {
 
-        //INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
-        //     config.beamforming.vdif_server_ip,
-        //     config.beamforming.vdif_port);
+        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
+             _vdif_server_ip.c_str(),
+             _vdif_port);
 
         // Wait for a full buffer.
         get_full_buffer_from_list(&buf, bufferID, 1);
 
-        //INFO("vdif_stream; got full buffer, sending to VDIF server.");
+        INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
         start_t = e_time();
 
         // Send data to remote server.
         for (int i = 0; i < 16*625; ++i) {
 
-            int bytes_sent = sendto(socket_fd,
+            /*int bytes_sent = sendto(socket_fd,
                              (void *)(buf.data[bufferID[0]][packet_size*i]),
                              packet_size, 0,
                              (struct sockaddr *) &saddr_remote, saddr_len);
@@ -73,19 +84,19 @@ void vdifStream::main_thread() {
             }
 
             if (bytes_sent == -1) {
-                ERROR("Cannot set VDIF packet");
+                ERROR("Cannot send VDIF packet");
                 return;
             }
 
             if (bytes_sent != packet_size) {
                 ERROR("Did not send full vdif packet.");
-            }
+            }*/
         }
 
         diff_t = e_time() - start_t;
         INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d microseconds",
-              config.beamforming.vdif_server_ip,
-              config.beamforming.vdif_port,
+              _vdif_server_ip.c_str(),
+              _vdif_port,
               diff_t, sleep_period);
 
         if (diff_t < 0.96) {

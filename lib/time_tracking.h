@@ -12,8 +12,8 @@ extern "C" {
 /// The functions in this file work like a static class.
 // Time is represented as nanoseconds since the j2000 epoch.
 
-uint32_t first_fpga_seq_num;
-uint64_t first_fpga_seq_num_time;
+static uint32_t first_fpga_seq_num;
+static uint64_t first_fpga_seq_num_time;
 
 void set_fpga_num_and_time(const struct timeval * time, const uint32_t fpga_seq_num);
 

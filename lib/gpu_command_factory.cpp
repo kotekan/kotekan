@@ -4,160 +4,82 @@
 #include "errors.h"
 #include <errno.h>
 #include <iostream>
+#include <vector>
+
+#include "json.hpp"
 
 using namespace std;
 
-gpu_command_factory::gpu_command_factory() : numCommands(0), currentCommandCnt(0)
+gpu_command_factory::gpu_command_factory() : num_commands(0), current_command_cnt(0)
 {
 }
 
 cl_uint gpu_command_factory::getNumCommands() const
 {
-    return numCommands;
+    return num_commands;
 }
 
-void gpu_command_factory::initializeCommands(class device_interface & param_Device, Config * param_Config)
+void gpu_command_factory::initializeCommands(class device_interface & param_Device, Config &config)
 {
-    //X-Engine EXECUTION SEQUENCE IS OFFSET, PRESEED, CORRELATE.
-    //numCommands = param_Config->gpu.num_kernels;
-    numCommands = param_Config->gpu.num_kernels + 5;//ADDITIONAL COMMANDS - Input & Output, Input_beamform_phase & Output Beamform, Output Beamform incoh
+    vector<json> commands = config.get_json_array("/gpu/commands");
+    num_commands = commands.size();
+    use_beamforming = config.get_bool("/gpu/enable_beamforming");
 
-    use_beamforming = param_Config->gpu.use_beamforming;
-    listCommands =  new gpu_command * [numCommands];
+    list_commands =  new gpu_command * [num_commands];
 
-    char** gpuKernels = param_Config->gpu.kernels;
+    for (uint32_t i = 0; i < num_commands; i++){
 
-    int file_idx = 0;
-
-    for (int i = 0; i < numCommands; i++){
-        if (i==0){
-            listCommands[i] = new input_data_stage("input_data_stage");
-        }
-        else if (i==1){
-            if (param_Config->gpu.use_beamforming == 1){
-                listCommands[i] = new beamform_phase_data("beamform_phase_data");
-            }
-            else{
-                listCommands[i] = new dummy_placeholder_kernel("dummy");
-            }
-        }
-        //IN THE ORIGINAL VERSION, THE SQUENCE IS X-ENGINE --> READ, THEN BEAMFORM --> READ. HERE, X-ENGINE AND BEAMFORM HAPPEND TOGETHER AS DO THE READS. WILL THIS BE SLOWER?
-        else if (i == (numCommands - 3)){
-            if (param_Config->gpu.use_beamforming == 1){
-                listCommands[i] = new output_beamform_result("output_beamform_result");
-            }
-            else{
-                listCommands[i] = new dummy_placeholder_kernel("dummy");
-            }
-        }
-        else if (i == (numCommands - 2)){
-            if (param_Config->gpu.use_beamforming == 1){
-                listCommands[i] = new output_beamform_incoh_result("output_beamform_incoh_result");
-            }
-            else{
-                listCommands[i] = new dummy_placeholder_kernel("dummy");
-            }
-        }
-        else if (i == (numCommands - 1)){
-            listCommands[i] = new output_data_result("output_data_result");
-        }
-        else {
-            string kernel_name = gpuKernels[file_idx];
-
-            if (kernel_name.find("offset_accumulator") != -1){
-                listCommands[i] = new offset_kernel(gpuKernels[file_idx], "offset_accumulator");
-            }
-            else if (kernel_name.find("preseed_multifreq") != -1){
-                listCommands[i] = new preseed_kernel(gpuKernels[file_idx], "preseed_multifreq");
-            }
-            else if (kernel_name.find("pairwise_correlator") != -1){
-                listCommands[i] = new correlator_kernel(gpuKernels[file_idx], "pairwise_correlator");
-            }
-            else if (kernel_name.find("beamform_tree_scale") != -1){
-                if (param_Config->gpu.use_beamforming == 1){
-                    listCommands[i] = new beamform_kernel(gpuKernels[file_idx], "beamform_tree_scale");
-                }
-                else{
-                    listCommands[i] = new dummy_placeholder_kernel("dummy");
-                }
-            }
-            else if (kernel_name.find("beamform_incoherent") != -1){
-                if (param_Config->gpu.use_beamforming == 1){
-                    listCommands[i] = new beamform_incoherent_kernel(gpuKernels[file_idx], "beamform_incoherent");
-                }
-                else{
-                    listCommands[i] = new dummy_placeholder_kernel("dummy");
-                }
-            }
-            file_idx++;
+        if (commands[i]["name"] == "beamform_phase_data") {
+            list_commands[i] = new beamform_phase_data("beamform_phase_data", config);
+        } else if (commands[i]["name"] == "beamform_incoherent_kernel") {
+            list_commands[i] = new beamform_incoherent_kernel(commands[i]["kernel"].get<string>().c_str(), "beamform_incoherent_kernel", config);
+        } else if (commands[i]["name"] == "beamform_kernel") {
+            list_commands[i] = new beamform_kernel(commands[i]["kernel"].get<string>().c_str(), "beamform_kernel", config);
+        } else if (commands[i]["name"] == "correlator_kernel") {
+            list_commands[i] = new correlator_kernel(commands[i]["kernel"].get<string>().c_str(), "correlator_kernel", config);
+        } else if (commands[i]["name"] == "input_data_stage") {
+            list_commands[i] = new input_data_stage("input_data_stage", config);
+        } else if (commands[i]["name"] == "offset_kernel") {
+            list_commands[i] = new offset_kernel(commands[i]["kernel"].get<string>().c_str(), "offset_kernel", config);
+        } else if (commands[i]["name"] == "output_beamform_incoh_result") {
+            list_commands[i] = new output_beamform_incoh_result("output_beamform_incoh_result", config);
+        } else if (commands[i]["name"] == "output_beamform_result") {
+            list_commands[i] = new output_beamform_result("output_beamform_result", config);
+        } else if (commands[i]["name"] == "output_data_result") {
+            list_commands[i] = new output_data_result("output_data_result", config);
+        } else if (commands[i]["name"] == "preseed_kernel") {
+            list_commands[i] = new preseed_kernel(commands[i]["kernel"].get<string>().c_str(), "preseed_kernel", config);
         }
 
-        listCommands[i]->build(param_Config, param_Device);
+        // TODO This should just be part of the constructor.
+        list_commands[i]->build(param_Device);
     }
 
-    currentCommandCnt = 0;
+    current_command_cnt = 0;
 }
 
 gpu_command* gpu_command_factory::getNextCommand(class device_interface & param_Device, int param_BufferID)
 {
-  //LEAVE THIS AS IS FOR NOW, BUT LATER WILL WANT TO DYNAMICALLY REQUEST FOR MEMORY BASED ON KERNEL STATE AND SET PRE AND POST CL_EVENT BASED ON EVENTS RETURNED BY INDIVIDUAL KERNAL OBJECTS.
-  //KERNELS WILL TRACK SETTING THEIR OWN PRE AND POST EVENTS, BUT WILL RETURN THOSE EVENTS TO BE PASSED TO THE NEXT KERNEL IN THE SEQUENCE
+    gpu_command* current_command;
 
-//  TO ADDRESS THE ISSUE OF COMMAND_OBJECTS NEEDING TO PASS BUFFERS TO EACH OTHER (IE BEAMFORM PHASE AND BEAMFORM KERNEL)
-//  IT MAY BE A GOOD IDEA TO INTRODUCE AN OBJECT THAT LIVES IN COMMAND_FACTOR CALLED RESOURCE_ALLOCATION. IT WILL SERVE
-//  AS AN INTERFACE BETWEEN DEVICE_INTERFACE - RESPONSIBLE FOR ALLOCATING MEMORY, AND COMMAND_OBJECTS - RESPONSIBLE FOR MANAGING
-//  MEMORY OBJECTS. MEMORY WILL BE ALLOCATED BY DEVICE_INTERFACE FOR A BUFFER THAT IS STORED AND MAINTAINED BY COMMAND_OBJECT,
-//  BUT THE RESOURCE_ALLOCATION OBJECT WILL RECEIVE A REFERENCE TO THESE MEMORY OBJECTS AND WILL BE RESPONSIBLE FOR DISTRIBUTING
-//  THOSE MEMORY BUFFERS TO THE DIFFERENT COMMAND_OBJECTS TAHT NEED THEM.
-    gpu_command* currentCommand;
+    current_command = list_commands[current_command_cnt];
 
-    currentCommand = listCommands[currentCommandCnt];
+    current_command_cnt++;
+      if (current_command_cnt >= num_commands)
+	current_command_cnt = 0;
 
-    string name(currentCommand->get_name());
-
-    if (name == "input_data_stage"){}//input_data_stage prep
-    else if (name == "beamform_phase_data"){}
-    else if (name ==  "pairwise_correlator")//THIRD KERNEL BY EVENTS SEQUENCE "corr"
-    {
-        currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
-        currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
-    }
-    else if (name == "offset_accumulator")//FIRST KERNEL BY EVENTS SEQUENCE "offsetAccumulateElements"
-    {
-        currentCommand->setKernelArg(0, param_Device.getInputBuffer(param_BufferID));
-        currentCommand->setKernelArg(1, param_Device.getAccumulateBuffer(param_BufferID));
-    }
-    else if (name == "preseed_multifreq")//SECOND KERNEL BY EVENTS SEQUENCE "preseed"
-    {
-        currentCommand->setKernelArg(0, param_Device.getAccumulateBuffer(param_BufferID));
-        currentCommand->setKernelArg(1, param_Device.getOutputBuffer(param_BufferID));
-    }
-    else if (name == "beamform_tree_scale")
-    {    
-    }
-    else if (name == "beamform_incoherent")
-    {    
-    }
-
-    else if (name == "output_data_result"){}
-    else if (name == "output_beamform_result"){}
-    else if (name == "output_beamform_incoh_result"){}
-
-      currentCommandCnt++;
-      if (currentCommandCnt >= numCommands)
-	currentCommandCnt = 0;
-
-  return currentCommand;
+  return current_command;
 
 }
 void gpu_command_factory::deallocateResources()
 {
-    for (int i = 0; i < numCommands; i++){
-     listCommands[i]->freeMe();
+    // TODO freeMe should just be a part of the destructor
+    for (uint32_t i = 0; i < num_commands; i++){
+        list_commands[i]->freeMe();
     }
     DEBUG("CommandsFreed\n");
 
-    delete[] listCommands;
+    delete[] list_commands;
     DEBUG("ListCommandsDeleted\n");
 }
 

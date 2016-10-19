@@ -22,10 +22,15 @@ struct networkDPDKArg {
     int num_lcores;
     int num_links_per_lcore;
 
-    struct Config * config;
     uint32_t num_links_in_group[NUM_LINKS];
     uint32_t link_id[NUM_LINKS];
     uint32_t port_offset[NUM_LCORES];
+
+    int32_t timesamples_per_packet;
+    int32_t samples_per_data_set;
+    int32_t num_data_sets;
+    int32_t num_gpu_frames;
+    int32_t udp_packet_size;
 
     // Used for the vdif generation
     struct Buffer * vdif_buf;

@@ -6,8 +6,10 @@
 #include "unistd.h"
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
+#include "KotekanProcess.hpp"
+#include "device_interface.h"
+
 #include <iostream>
-#include "beamforming.h"
 #include <sys/time.h>
 
 using namespace std;
@@ -18,30 +20,50 @@ double e_time(void){
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 }
 
-void* gpu_thread(void* arg)
+gpuThread::gpuThread(Config& config_,
+        Buffer& in_buf_,
+        Buffer& out_buf_,
+        Buffer& beamforming_out_buf_,
+        Buffer& beamforming_out_incoh_buf_,
+        uint32_t gpu_id_):
+    KotekanProcess(config_, std::bind(&gpuThread::main_thread, this)),
+    in_buf(in_buf_),
+    out_buf(out_buf_),
+    beamforming_out_buf(beamforming_out_buf_),
+    beamforming_out_incoh_buf(beamforming_out_incoh_buf_),
+    gpu_id(gpu_id_)
 {
-    struct gpuThreadArgs * args = (struct gpuThreadArgs *) arg;
+
+}
+
+void gpuThread::apply_config(uint64_t fpga_seq) {
+    _use_beamforming = config.get_bool("/gpu/enable_beamforming");
+}
+
+gpuThread::~gpuThread() {
+
+}
+
+void gpuThread::main_thread()
+{
+    apply_config(0);
 
     gpu_command * currentCommand;
     cl_event sequenceEvent;
-    cl_int err;
-
-    int num_links = num_links_per_gpu(args->config, args->gpu_id);
 
     loopCounter * loopCnt = new loopCounter;
 
-    device_interface device(args->in_buf, args->out_buf, args->config
-    , args->gpu_id, args->beamforming_out_buf, args->beamforming_out_incoh_buf);
+    device_interface device(&in_buf, &out_buf, config, gpu_id,
+                            &beamforming_out_buf, &beamforming_out_incoh_buf);
 
     gpu_command_factory factory;
 
-    factory.initializeCommands(device, args->config);
+    factory.initializeCommands(device, config);
 
     device.prepareCommandQueue();
 
     device.allocateMemory();
     DEBUG("Device Initialized\n");
-    //device.defineOutputDataMap();//COPY INTO OFFSET KERNEL AND CORRELATOR KERNEL
 
     callBackData ** cb_data = new callBackData * [device.getInBuf()->num_buffers];
     CHECK_MEM(cb_data);
@@ -59,19 +81,11 @@ void* gpu_thread(void* arg)
     int buffer_list[1] = {0};
     int bufferID = 0;
 
-    CHECK_ERROR( pthread_mutex_lock(&args->lock) );
-    args->started = 1;
-    CHECK_ERROR( pthread_mutex_unlock(&args->lock) );
-
-    // Signal consumer (main thread in this case).
-    CHECK_ERROR( pthread_cond_broadcast(&args->cond) );
-    // Main loop for collecting data from producers.
-    
     double last_time = e_time();
 
     for(;;) {
         // Wait for data, this call will block.
-        bufferID = get_full_buffer_from_list(args->in_buf, buffer_list, 1);
+        bufferID = get_full_buffer_from_list(&in_buf, buffer_list, 1);
         double cur_time = e_time();
         INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
@@ -84,7 +98,7 @@ void* gpu_thread(void* arg)
 
         CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[bufferID]->lock) );
         while (buff_id_lock_list[bufferID]->in_process == 1) {
-            DEBUG("gpu_thread%d: waiting for in flight queue to finish(!)", args->gpu_id);
+            DEBUG("gpu_thread%d: waiting for in flight queue to finish(!)", gpu_id);
             pthread_cond_wait(&buff_id_lock_list[bufferID]->cond, &buff_id_lock_list[bufferID]->lock);
         }
         CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[bufferID]->lock) );
@@ -93,10 +107,10 @@ void* gpu_thread(void* arg)
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        wait_for_empty_buffer(args->out_buf, bufferID);
+        wait_for_empty_buffer(&out_buf, bufferID);
 
-        if (args->config->gpu.use_beamforming) {
-            wait_for_empty_buffer(args->beamforming_out_buf, bufferID);
+        if (_use_beamforming) {
+            wait_for_empty_buffer(&beamforming_out_buf, bufferID);
         }
 
         // Todo get/set time information here as well.
@@ -112,9 +126,9 @@ void* gpu_thread(void* arg)
         cb_data[bufferID]->numCommands = factory.getNumCommands();
         cb_data[bufferID]->cnt = loopCnt;
         cb_data[bufferID]->buff_id_lock = buff_id_lock_list[bufferID];
-        cb_data[bufferID]->use_beamforming = args->config->gpu.use_beamforming;
+        cb_data[bufferID]->use_beamforming = _use_beamforming;
         cb_data[bufferID]->start_time = e_time();
-        if (args->config->gpu.use_beamforming == 1)
+        if (_use_beamforming == 1)
         {
             cb_data[bufferID]->beamforming_out_buf = device.get_beamforming_out_buf();
         }
@@ -125,7 +139,7 @@ void* gpu_thread(void* arg)
 
         for (int i = 0; i < factory.getNumCommands(); i++){
             currentCommand = factory.getNextCommand(device, bufferID);
-            sequenceEvent = currentCommand->execute(bufferID, device, sequenceEvent);
+            sequenceEvent = currentCommand->execute(bufferID, 0, device, sequenceEvent);
             cb_data[bufferID]->listCommands[i] = currentCommand;
         }
 
@@ -136,27 +150,19 @@ void* gpu_thread(void* arg)
                                             &read_complete,
                                             cb_data[bufferID]) );
 
-        buffer_list[0] = (buffer_list[0] + 1) % args->in_buf->num_buffers;
+        buffer_list[0] = (buffer_list[0] + 1) % in_buf.num_buffers;
 
-        // Don't allow starvation between GPU threads.
-        // Note starvation is still possible from other threads.
-        if (buffer_list[0] % num_links == 0) {
-            pthread_barrier_wait(args->barrier);
-        }
     }
-
-    //LOOP THROUGH THE LOCKING ROUTINE
 
     DEBUG("Closing\n");
 
-    
     CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock) );
     DEBUG("LockCnt\n");
     while ( loopCnt->iteration > 0) {
         pthread_cond_wait(&loopCnt->cond, &loopCnt->lock);
     }
     CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock) );
-    
+
 
     DEBUG("LockConditionReleased\n");
     factory.deallocateResources();
@@ -164,7 +170,7 @@ void* gpu_thread(void* arg)
     device.deallocateResources();
     DEBUG("DeviceDone\n");
 
-    mark_producer_done(args->out_buf, 0);
+    mark_producer_done(&out_buf, 0);
 
     delete loopCnt;
     delete[] cb_data;
@@ -172,23 +178,14 @@ void* gpu_thread(void* arg)
     int ret;
     pthread_exit((void *) &ret);
 }
-void wait_for_gpu_thread_ready(struct gpuThreadArgs * args)
-{
-    CHECK_ERROR( pthread_mutex_lock(&args->lock) );
 
-    while ( args->started == 0 ) {
-        pthread_cond_wait(&args->cond, &args->lock);
-    }
-
-    CHECK_ERROR( pthread_mutex_unlock(&args->lock) );
-}
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
 {
     struct callBackData * cb_data = (struct callBackData *) data;
 
     double end_time_1 = e_time();
 
-    //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
+    INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
     // Copy the information contained in the input buffer
     if (cb_data->use_beamforming == 1)
     {
@@ -225,7 +222,6 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
     CHECK_ERROR( pthread_cond_broadcast(&cb_data->buff_id_lock->cond) );
 
     double end_time_2 = e_time();
-    //INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data->start_time, end_time_2 - cb_data->start_time, end_time_2 - end_time_1); 
-   
+    INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data->start_time, end_time_2 - cb_data->start_time, end_time_2 - end_time_1);
 }
 

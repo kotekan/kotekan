@@ -8,7 +8,6 @@
 #include "buffers.h"
 #include "errors.h"
 #include "output_formating.h"
-#include "config.h"
 
 nullProcess::nullProcess(Config& config, struct Buffer &buf_) :
     KotekanProcess(config, std::bind(&nullProcess::main_thread, this)),
@@ -18,7 +17,12 @@ nullProcess::nullProcess(Config& config, struct Buffer &buf_) :
 nullProcess::~nullProcess() {
 }
 
+void nullProcess::apply_config(uint64_t fpga_seq) {
+    (void)fpga_seq;
+}
+
 void nullProcess::main_thread() {
+    apply_config(0);
     int buffer_ID = 0;
 
     // Wait for, and drop full buffers

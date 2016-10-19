@@ -20,7 +20,6 @@ execute_process(
 # Include the version string
 #add_definitions("-DGIT_COMMIT_HASH=${GIT_COMMIT_HASH}")
 #add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
-
 configure_file(
   ${CMAKE_SOURCE_DIR}/lib/version.h.in
   ${CMAKE_BINARY_DIR}/generated/version.h
@@ -30,6 +29,11 @@ include_directories(${CMAKE_BINARY_DIR}/generated)
 
 find_package(Threads REQUIRED)
 
+# Include external software.
+include_directories (${CHIME_SOURCE_DIR}/include)
+include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
+
+# DPDK Includes
 include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
 link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
 
@@ -41,10 +45,11 @@ set (DPDK_LIST
         rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
 )
 
-add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 set (DPDK_LIBS
         -Wl,--start-group ${DPDK_LIST} -Wl,--end-group )
 
+# Required for some SSE/AVX intrinsics
+add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
 
@@ -52,6 +57,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
+# Note C++11
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
@@ -66,4 +72,4 @@ add_subdirectory(lib)
 add_subdirectory(kotekan)
 add_subdirectory(tools)
 add_subdirectory(scripts)
-add_subdirectory(vdif_dump)
+#add_subdirectory(vdif_dump)

@@ -37,7 +37,6 @@
 
 #include "packet_copy.h"
 #include "network_dpdk.h"
-#include "config.h"
 #include "nt_memset.h"
 #include "fpga_header_functions.h"
 #include "vdif_functions.h"
@@ -259,7 +258,7 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
     int offset = 58;
 
     for (int frame = 0;
-         frame < dpdk_net->args->config->fpga_network.timesamples_per_packet;
+         frame < dpdk_net->args->timesamples_per_packet;
          ++frame) {
 
         // TODO this should only mark the buffers as full once we have
@@ -293,7 +292,7 @@ static inline void set_vdif_header_options(struct NetworkDPDK * dpdk_net,
 
     int buffer_id = dpdk_net->link_data[port].vdif_buffer_id;
     for(int time_step = 0;
-            time_step < dpdk_net->args->config->fpga_network.timesamples_per_packet; ++time_step) {
+            time_step < dpdk_net->args->timesamples_per_packet; ++time_step) {
         for (int elem = 0; elem < num_elements; ++elem) {
             int header_idx = vdif_frame_location +
                 vdif_packet_len * num_elements * time_step +
@@ -368,7 +367,7 @@ static inline void copy_data_to_vdif(struct NetworkDPDK * dpdk_net,
     //if (port == 0) DEBUG("vdif_frame_location * frame_size = %lld; buffer size = %lld; frame_size = %lld; seq = %lld ",
     //        vdif_frame_location * frame_size, dpdk_net->args->vdif_buf->buffer_size,
     //        frame_size, dpdk_net->link_data[port].seq);
-    assert(((vdif_frame_location + dpdk_net->args->config->fpga_network.timesamples_per_packet)* frame_size) <= dpdk_net->args->vdif_buf->buffer_size);
+    assert(((vdif_frame_location + dpdk_net->args->timesamples_per_packet)* frame_size) <= dpdk_net->args->vdif_buf->buffer_size);
 
     // Setup the VDIF headers
     if (port == 0) {
@@ -382,7 +381,7 @@ static inline void copy_data_to_vdif(struct NetworkDPDK * dpdk_net,
     int from_idx = fpga_header_len + offset;
     int mbuf_len = cur_mbuf->data_len;
     for (int time_step = 0;
-            time_step < dpdk_net->args->config->fpga_network.timesamples_per_packet; ++time_step ){
+            time_step < dpdk_net->args->timesamples_per_packet; ++time_step ){
         for (int freq = 0; freq < 128; ++freq) {
             for (int elem = 0; elem < num_elements; ++elem) {
 
@@ -420,12 +419,10 @@ static inline void copy_data_no_shuffle(struct NetworkDPDK * dpdk_net,
 
     // TODO Don't hard code.
     const int frame_size = 2048;
-    const int packet_data_size = frame_size * dpdk_net->args->config->fpga_network.timesamples_per_packet;
+    const int packet_data_size = frame_size * dpdk_net->args->timesamples_per_packet;
 
     int buffer_id = dpdk_net->link_data[port].buffer_id;
 
-    //fprintf(stderr, "seq64: %llu, start_fpga_seq64: %llu", dpdk_net->link_data[port].seq64,
-    //        get_fpga_seq64_num(dpdk_net->args->buf[port], dpdk_net->link_data[port].buffer_id));
     int64_t frame_location = dpdk_net->link_data[port].seq -
                             get_fpga_seq_num(dpdk_net->args->buf[port],
                                                dpdk_net->link_data[port].buffer_id);
@@ -471,9 +468,9 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                                       int port) {
     uint64_t seq = get_mbuf_seq_num(cur_mbuf);
     uint16_t stream_id = get_mbuf_stream_id(cur_mbuf);
-    uint64_t integration_period = dpdk_net->args->config->processing.samples_per_data_set *
-                                    dpdk_net->args->config->processing.num_data_sets *
-                                    dpdk_net->args->config->processing.num_gpu_frames;
+    uint64_t integration_period = dpdk_net->args->samples_per_data_set *
+                                    dpdk_net->args->num_data_sets *
+                                    dpdk_net->args->num_gpu_frames;
 
     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
 
@@ -550,7 +547,7 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net,
                                 int port) {
     // TODO Consider extracting this to another thread since it is non-deterministic.
     int lost_frames = dpdk_net->link_data[port].seq - dpdk_net->link_data[port].last_seq;
-    const int64_t timesamples_per_packet = dpdk_net->args->config->fpga_network.timesamples_per_packet;
+    const int64_t timesamples_per_packet = dpdk_net->args->timesamples_per_packet;
     const int64_t frame_size = 2048;
 
     int64_t frame_location = dpdk_net->link_data[port].last_seq +
@@ -584,7 +581,7 @@ static void handle_lost_raw_packets(struct NetworkDPDK * dpdk_net,
                                 int port) {
     // TODO Consider extracting this to another thread since it is non-deterministic.
     int lost_frames = dpdk_net->link_data[port].seq - dpdk_net->link_data[port].last_seq;
-    const int64_t timesamples_per_packet = dpdk_net->args->config->fpga_network.timesamples_per_packet;
+    const int64_t timesamples_per_packet = dpdk_net->args->timesamples_per_packet;
     const int vdif_header_len = 32;
     const int vdif_packet_len = vdif_header_len + 1024;
     const int num_elements = 2; // This is also the number of threads.
@@ -668,10 +665,10 @@ int lcore_recv_pkt(void *args)
                 }
 
                 if (unlikely( mbufs[i]->pkt_len
-                        != dpdk_net->args->config->fpga_network.udp_packet_size)) {
+                        != dpdk_net->args->udp_packet_size)) {
                     WARN("Got packet with incorrect length: %d; expected: %d",
                             mbufs[i]->pkt_len,
-                            dpdk_net->args->config->fpga_network.udp_packet_size);
+                            dpdk_net->args->udp_packet_size);
                     goto release_frame;
                 }
 
@@ -694,7 +691,7 @@ int lcore_recv_pkt(void *args)
 
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
-                    if (unlikely(diff > (int64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet)) {
+                    if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
                         handle_lost_packets(dpdk_net, mbufs[i], port);
                     }
 
@@ -702,7 +699,7 @@ int lcore_recv_pkt(void *args)
                     copy_data_no_shuffle(dpdk_net, mbufs[i], port);
                 }
                 if (dpdk_net->args->vdif_buf != NULL) {
-                    if (unlikely(diff > (int64_t)dpdk_net->args->config->fpga_network.timesamples_per_packet)) {
+                    if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
                         handle_lost_raw_packets(dpdk_net, mbufs[i], port);
                     }
                     copy_data_to_vdif(dpdk_net, mbufs[i], port);

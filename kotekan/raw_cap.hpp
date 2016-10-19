@@ -1,7 +1,7 @@
 #ifndef RAW_CAP_H
 #define RAW_CAP_H
 
-#include"config.h"
+#include"Config.hpp"
 
 int raw_cap(struct Config * config);
 

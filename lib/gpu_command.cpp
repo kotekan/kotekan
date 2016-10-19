@@ -1,14 +1,18 @@
 #include "gpu_command.h"
 #include <string.h>
 #include <iostream>
+#include <string>
 
-gpu_command::gpu_command(char* param_name) :gpuCommandState(0) , gpuKernel(NULL)
+using std::string;
+using std::to_string;
+
+gpu_command::gpu_command(const char* param_name, Config &param_config) :gpuCommandState(0) , gpuKernel(NULL), config(param_config)
 {
     name = strdup(param_name);
     INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(char * param_gpuKernel, char* param_name) : gpuCommandState(0), gpuKernel(NULL)
+gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config) : gpuCommandState(0), gpuKernel(NULL), config(param_config)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
     strcpy(gpuKernel, param_gpuKernel);
@@ -30,7 +34,20 @@ char* gpu_command::get_name()
     return name;
 }
 
-void gpu_command::build(Config * param_Config, class device_interface &param_Device)
+void gpu_command::apply_config(const uint64_t& fpga_seq) {
+    (void)fpga_seq;
+    _num_adjusted_elements = config.get_int("/processing/num_adjusted_elements");
+    _num_elements = config.get_int("/processing/num_elements");
+    _num_local_freq = config.get_int("/processing/num_local_freq");
+    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
+    _num_data_sets = config.get_int("/processing/num_data_sets");
+    _num_adjusted_local_freq = config.get_int("/processing/num_adjusted_local_freq");
+    _block_size = config.get_int("/gpu/block_size");
+    _num_blocks = config.get_int("/gpu/num_blocks");
+    _buffer_depth = config.get_int("/processing/buffer_depth");
+}
+
+void gpu_command::build(class device_interface &param_Device)
 {
     size_t program_size;
     FILE *fp;
@@ -70,11 +87,11 @@ void gpu_command::build(Config * param_Config, class device_interface &param_Dev
     }
 }
 
-cl_event gpu_command::execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
     assert(param_bufferID<param_Device.getInBuf()->num_buffers);
     assert(param_bufferID>=0);
-    
+
 //    DEBUG("Execute kernel: %s", name);
 }
 
@@ -86,20 +103,22 @@ void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
     (void*) &param_Buffer) );
 }
 
-char* gpu_command::get_cl_options(Config * param_Config)
+// TODO This could be on a per command object basis,
+// it doesn't really need to be at this level.
+string gpu_command::get_cl_options()
 {
-    static char cl_options[1024];
-    
-    sprintf(cl_options, "-D ACTUAL_NUM_ELEMENTS=%du -D ACTUAL_NUM_FREQUENCIES=%du -D NUM_ELEMENTS=%du -D NUM_FREQUENCIES=%du -D NUM_BLOCKS=%du -D NUM_TIMESAMPLES=%du -D NUM_BUFFERS=%du",
-        param_Config->processing.num_elements, param_Config->processing.num_local_freq,
-        param_Config->processing.num_adjusted_elements,
-        param_Config->processing.num_adjusted_local_freq,
-        param_Config->processing.num_blocks,
-        param_Config->processing.samples_per_data_set,
-        param_Config->processing.buffer_depth);
-    
-//    DEBUG("kernel: %s. cl_options: %s", name, cl_options);
-    
+    string cl_options = "";
+
+    cl_options += "-D ACTUAL_NUM_ELEMENTS=" + to_string(_num_elements);
+    cl_options += " -D ACTUAL_NUM_FREQUENCIES=" + to_string(_num_local_freq);
+    cl_options += " -D NUM_ELEMENTS=" + to_string(_num_adjusted_elements);
+    cl_options += " -D NUM_FREQUENCIES=" + to_string(_num_adjusted_local_freq);
+    cl_options += " -D NUM_BLOCKS=" + to_string(_num_blocks);
+    cl_options += " -D NUM_TIMESAMPLES=" + to_string(_samples_per_data_set);
+    cl_options += " -D NUM_BUFFERS=" + to_string(_buffer_depth);
+
+    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
+
     return cl_options;
 }
 

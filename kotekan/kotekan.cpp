@@ -14,6 +14,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <vector>
+#include <iostream>
+#include <fstream>
 
 extern "C" {
 #include <pthread.h>
@@ -52,10 +54,9 @@ extern "C" {
 #include "gpu_thread.h"
 #include "error_correction.h"
 #include "chrxUplink.hpp"
-#include "config.h"
-#include "gpu_post_process.h"
-#include "beamforming.h"
-#include "beamforming_post_process.h"
+#include "Config.hpp"
+#include "gpuPostProcess.hpp"
+#include "beamformingPostProcess.hpp"
 #include "vdifStream.hpp"
 #include "nullProcess.hpp"
 #include "util.h"
@@ -64,7 +65,11 @@ extern "C" {
 #include "raw_cap.hpp"
 #include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
-#include "stat_monitor.h"
+#include "json.hpp"
+#include "gpuPostProcess.hpp"
+#include "beamformingPostProcess.hpp"
+
+using json = nlohmann::json;
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -102,13 +107,10 @@ int main(int argc, char ** argv) {
 
     dpdk_setup();
 
-    int use_ch_acq = 1;
     int opt_val = 0;
     int no_network_test = 0;
     int network_sim_pattern = 0;
     char * config_file_name = (char *)"kotekan.conf";
-    struct Config config;
-    int error = 0;
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     int make_daemon = 0;
     char * kotekan_root_dir = (char *)"./";
@@ -201,70 +203,83 @@ int main(int argc, char ** argv) {
     //INFO("Kotekan starting with config file %s", config_file_name);
     const char git_hash[] = GIT_COMMIT_HASH;
     const char git_branch[] = GIT_BRANCH;
-    INFO("Kotekan %f starting build: %s, on branch: %s, with config file: %s", KOTEKAN_VERSION, git_hash, git_branch, config_file_name);
-    error = load_config_from_file(&config, config_file_name);
-    if (error) {
-        ERROR("Error processing config file, exiting...");
-        return -1;
-    }
+    INFO("Kotekan %f starting build: %s, on branch: %s, with config file: %s",
+            KOTEKAN_VERSION, git_hash, git_branch, config_file_name);
 
-    //print_config(&config);
+    Config config;
+
+    config.parse_file(config_file_name, 0);
+    config.generate_extra_options();
+    config.dump_config();
 
     // TODO: allow raw capture in line with the correlator.
-    if (config.raw_cap.enabled) {
-        return raw_cap(&config);
-    }
+    //if (config.get_bool("/raw_capture/enabled")) {
+    //    return raw_cap(&config);
+    //}
 
     std::vector<KotekanProcess *> processes;
 
-    // Create buffers.
-    struct Buffer gpu_input_buffer[config.gpu.num_gpus];
-    struct Buffer gpu_output_buffer[config.gpu.num_gpus];
-    struct Buffer gpu_beamform_output_buffer[config.gpu.num_gpus];
+    // Config values:
+    int32_t num_gpus = config.get_int("/gpu/num_gpus");
+    int32_t num_local_freq = config.get_int("/processing/num_local_freq");
+    int32_t num_total_freq = config.get_int("/processing/num_total_freq");
+    int32_t num_elements = config.get_int("/processing/num_elements");
+    int32_t num_adjusted_local_freq = config.get_int("/processing/num_adjusted_local_freq");
+    int32_t num_adjusted_elements = config.get_int("/processing/num_adjusted_elements");
+    int32_t block_size = config.get_int("/gpu/block_size");
+    int32_t num_blocks = config.get_int("/gpu/num_blocks");
+    int32_t num_data_sets = config.get_int("/processing/num_data_sets");
+    int32_t samples_per_data_set = config.get_int("/processing/samples_per_data_set");
+    int32_t buffer_depth = config.get_int("/processing/buffer_depth");
+    int32_t num_fpga_links = config.get_int("/fpga_network/num_links");
+    int32_t network_buffer_depth = config.get_int("/ch_master_network/network_buffer_depth");
+    vector<int32_t> link_map = config.get_int_array("/gpu/link_map");
+    bool enable_upload = config.get_bool("/ch_master_network/enable_upload");
+    bool enable_beamforming = config.get_bool("/gpu/enable_beamforming");
 
-    cl_int output_len = config.processing.num_adjusted_local_freq * config.processing.num_blocks*
-                        (config.gpu.block_size*config.gpu.block_size)*2.;
+    // Create buffers.
+    struct Buffer gpu_input_buffer[num_gpus];
+    struct Buffer gpu_output_buffer[num_gpus];
+    struct Buffer gpu_beamform_output_buffer[num_gpus];
+    struct Buffer gpu_incoh_beamform_output_buffer[num_gpus];
+
+    cl_int output_len = num_adjusted_local_freq * num_blocks* (block_size*block_size)*2.;
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
-    struct InfoObjectPool pool[config.gpu.num_gpus];
+    struct InfoObjectPool pool[num_gpus];
 
-    pthread_t gpu_t[config.gpu.num_gpus];
-    struct gpuThreadArgs gpu_args[config.gpu.num_gpus];
+    gpuThread * gpu_threads[num_gpus];
 
     INFO("Starting GPU threads...");
     char buffer_name[100];
-    int num_working_gpus = 3;
 
-    pthread_barrier_t gpu_thread_barrier;
-    pthread_barrier_init(&gpu_thread_barrier, NULL, config.gpu.num_gpus);
-
-    for (int i = 0; i < config.gpu.num_gpus; ++i) {
+    for (int i = 0; i < num_gpus; ++i) {
 
         DEBUG("Creating buffers...");
 
-        int links_per_gpu = num_links_per_gpu(&config, i);
+        int links_per_gpu = config.num_links_per_gpu(i);
 
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
-        create_info_pool(&pool[i], 2 * links_per_gpu * config.processing.buffer_depth,
-                                    config.processing.num_adjusted_local_freq,
-                                    config.processing.num_adjusted_elements);
+        create_info_pool(&pool[i], 2 * links_per_gpu * buffer_depth,
+                                    num_adjusted_local_freq,
+                                    num_adjusted_elements);
 
         snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
         create_buffer(&gpu_input_buffer[i],
-                      links_per_gpu * config.processing.buffer_depth,
-                      config.processing.samples_per_data_set * config.processing.num_adjusted_elements *
-                      config.processing.num_adjusted_local_freq * config.processing.num_data_sets,
-                      1, //num_links_per_gpu(&config, i),
+                      links_per_gpu * buffer_depth,
+                      samples_per_data_set * num_adjusted_elements *
+                      num_adjusted_local_freq * num_data_sets,
+                      1,
                       1,
                       &pool[i],
                       buffer_name);
 
         snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
         create_buffer(&gpu_output_buffer[i],
-                      links_per_gpu * config.processing.buffer_depth,
-                      output_len * config.processing.num_data_sets * sizeof(cl_int),
+                      links_per_gpu * buffer_depth,
+                      output_len * num_data_sets * sizeof(cl_int),
                       1,
                       1,
                       &pool[i],
@@ -272,35 +287,25 @@ int main(int argc, char ** argv) {
 
          snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
          create_buffer(&gpu_beamform_output_buffer[i],
-                       links_per_gpu * config.processing.buffer_depth,
-                       config.processing.samples_per_data_set * config.processing.num_data_sets *
-                       config.processing.num_local_freq * 2,
+                       links_per_gpu * buffer_depth,
+                       samples_per_data_set * num_data_sets *
+                       num_local_freq * 2,
                        1,
                        1,
                        &pool[i],
                        buffer_name);
 
-        gpu_args[i].in_buf = &gpu_input_buffer[i];
-        gpu_args[i].out_buf = &gpu_output_buffer[i];
-        gpu_args[i].beamforming_out_buf = &gpu_beamform_output_buffer[i];
-        gpu_args[i].gpu_id = i;
-        gpu_args[i].started = 0;
-        gpu_args[i].config = &config;
-        gpu_args[i].barrier = &gpu_thread_barrier;
-
-        CHECK_ERROR( pthread_mutex_init(&gpu_args[i].lock, NULL) );
-        CHECK_ERROR( pthread_cond_init(&gpu_args[i].cond, NULL) );
+        // TODO better management of the buffers so this list doesn't have to change size...
+        gpu_threads[i] = new gpuThread(config,
+                                        gpu_input_buffer[i],
+                                        gpu_output_buffer[i],
+                                        gpu_beamform_output_buffer[i],
+                                        gpu_incoh_beamform_output_buffer[i], i);
 
         DEBUG("Setting up GPU thread %d\n", i);
 
-        pthread_create(&gpu_t[i], NULL, &gpu_thread, (void *)&gpu_args[i] );
-        CHECK_ERROR( pthread_setaffinity_np(gpu_t[i], sizeof(cpu_set_t), &cpuset_gpu) );
-
-        // Block until the OpenCL thread is read to read data.
-        wait_for_gpu_thread_ready(&gpu_args[i]);
-
-        CHECK_ERROR( pthread_mutex_destroy(&gpu_args[i].lock) );
-        CHECK_ERROR( pthread_cond_destroy(&gpu_args[i].cond) );
+        gpu_threads[i]->start();
+        processes.push_back((KotekanProcess*)gpu_threads[i]);
 
         INFO("GPU thread %d ready.", i);
     }
@@ -311,21 +316,36 @@ int main(int argc, char ** argv) {
     // Create network threads
     pthread_t network_dpdk_t;
     struct networkDPDKArg network_dpdk_args;
-    struct Buffer * tmp_buffer[config.fpga_network.num_links];
+    struct Buffer * tmp_buffer[num_fpga_links];
 
-    pthread_t network_sim_t[config.fpga_network.num_links];
+    // TODO move to function
+    int current_gpu_id = 0;
+    int current_link_id = 0;
+    int32_t link_ids[num_fpga_links];
+    for (int i = 0; i < num_fpga_links; ++i) {
+        if (current_gpu_id != link_map[i]) {
+            current_gpu_id = link_map[i];
+            current_link_id = 0;
+        }
+        link_ids[i] = current_link_id++;
+        INFO("link_ids[%d] = %d", i, link_ids[i]);
+    }
 
     if (no_network_test == 0) {
         // Start DPDK
-        for (int i = 0; i < config.fpga_network.num_links; ++i) {
-            tmp_buffer[i] = &gpu_input_buffer[config.fpga_network.link_map[i].gpu_id];
-            network_dpdk_args.num_links_in_group[i] = num_links_in_group(&config, i);
-            network_dpdk_args.link_id[i] = config.fpga_network.link_map[i].link_id;
+        for (int i = 0; i < num_fpga_links; ++i) {
+            tmp_buffer[i] = &gpu_input_buffer[link_map[i]];
+            network_dpdk_args.num_links_in_group[i] = config.num_links_per_gpu(i);
+            network_dpdk_args.link_id[i] = link_ids[i];
         }
         network_dpdk_args.buf = tmp_buffer;
         network_dpdk_args.vdif_buf = NULL;
-        network_dpdk_args.num_links = config.fpga_network.num_links;
-        network_dpdk_args.config = &config;
+        network_dpdk_args.num_links = num_fpga_links;
+        network_dpdk_args.timesamples_per_packet = config.get_int("/fpga_network/timesamples_per_packet");
+        network_dpdk_args.samples_per_data_set = samples_per_data_set;
+        network_dpdk_args.num_data_sets = num_data_sets;
+        network_dpdk_args.num_gpu_frames = config.get_int("/processing/num_gpu_frames");
+        network_dpdk_args.udp_packet_size = config.get_int("/fpga_network/udp_packet_size");
         network_dpdk_args.num_lcores = 4;
         network_dpdk_args.num_links_per_lcore = 2;
         network_dpdk_args.port_offset[0] = 0;
@@ -338,12 +358,12 @@ int main(int argc, char ** argv) {
 
     } else {
         // Start network simulation
-        for (int i = 0; i < config.fpga_network.num_links; ++i) {
+        for (int i = 0; i < num_fpga_links; ++i) {
             networkOutputSim * network_output_sim =
                     new networkOutputSim(config,
-                                         gpu_input_buffer[config.fpga_network.link_map[i].gpu_id],
-                                         num_links_in_group(&config, i),
-                                         config.fpga_network.link_map[i].link_id,
+                                         gpu_input_buffer[link_map[i]],
+                                         config.num_links_per_gpu(link_map[i]),
+                                         link_ids[i],
                                          network_sim_pattern,
                                          i);
             network_output_sim->start();
@@ -351,122 +371,74 @@ int main(int argc, char ** argv) {
         }
     }
 
-    pthread_t output_consumer_t;
-
-    pthread_t beamforming_comsumer_t;
-    pthread_t vdif_output_t;
-
     struct Buffer network_output_buffer;
     struct Buffer gated_output_buffer;
-    struct gpuPostProcessThreadArg gpu_post_process_args;
     struct Buffer vdif_output_buffer;
-    struct BeamformingPostProcessArgs beamforming_post_process_args;
 
-    if (use_ch_acq == 1) {
-        int num_values = ((config.processing.num_elements *
-        (config.processing.num_elements + 1)) / 2 ) *
-        config.processing.num_total_freq;
+    int num_values = ((num_elements * (num_elements + 1)) / 2 ) * num_total_freq;
 
-        const int tcp_buffer_size = sizeof(struct tcp_frame_header) +
-            num_values * sizeof(complex_int_t) +
-            config.processing.num_total_freq * sizeof(struct per_frequency_data) +
-            config.processing.num_total_freq * config.processing.num_elements * sizeof(struct per_element_data) +
-            num_values * sizeof(uint8_t);
+    const int tcp_buffer_size = sizeof(struct tcp_frame_header) +
+        num_values * sizeof(complex_int_t) +
+        num_total_freq * sizeof(struct per_frequency_data) +
+        num_total_freq * num_elements * sizeof(struct per_element_data) +
+        num_values * sizeof(uint8_t);
 
-        const int gate_buffer_size = sizeof(struct gate_frame_header)
-                                + num_values * sizeof(complex_int_t);
+    const int gate_buffer_size = sizeof(struct gate_frame_header)
+                            + num_values * sizeof(complex_int_t);
 
-        // TODO config file this.
-        const int network_buffer_depth = 4;
+    create_buffer(&network_output_buffer, network_buffer_depth, tcp_buffer_size,
+                  1, 1, pool, "network_output_buffer");
 
-        create_buffer(&network_output_buffer, network_buffer_depth, tcp_buffer_size,
-                      1, 1, pool, "network_output_buffer");
+    create_buffer(&gated_output_buffer, network_buffer_depth, gate_buffer_size,
+                  1, 1, pool, "gated_output_buffer");
 
-        create_buffer(&gated_output_buffer, network_buffer_depth, gate_buffer_size,
-                      1, 1, pool, "gated_output_buffer");
+    // The thread which creates output frame.
+    gpuPostProcess * gpu_post_process = new gpuPostProcess(config,
+                                                            gpu_output_buffer,
+                                                            network_output_buffer,
+                                                            gated_output_buffer);
+
+    gpu_post_process->start();
+    processes.push_back((KotekanProcess*)gpu_post_process);
+
+    if (enable_upload) {
+        chrxUplink * chrx_uplink = new chrxUplink(config, network_output_buffer, gated_output_buffer);
+        chrx_uplink->start();
+        processes.push_back((KotekanProcess*)chrx_uplink);
+    } else {
+        // Drop the data.
+        nullProcess * null_process1 = new nullProcess(config, network_output_buffer);
+        null_process1->start();
+        processes.push_back((KotekanProcess*)null_process1);
+
+        nullProcess * null_process2 = new nullProcess(config, gated_output_buffer);
+        null_process2->start();
+        processes.push_back((KotekanProcess*)null_process2);
+    }
+
+    // The beamforming output thread
+    if (enable_beamforming) {
+        INFO("Creating vdif output threads")
+
+        create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
+                      1, 1, pool, "vdif_output_buffer");
 
         // The thread which creates output frame.
-        gpu_post_process_args.in_buf = gpu_output_buffer;
-        gpu_post_process_args.out_buf = &network_output_buffer;
-        gpu_post_process_args.gate_buf = &gated_output_buffer;
-        gpu_post_process_args.config = &config;
-        CHECK_ERROR( pthread_create(&output_consumer_t, NULL,
-                                    &gpu_post_process_thread,
-                                    (void *) &gpu_post_process_args ) );
-        CHECK_ERROR( pthread_setaffinity_np(output_consumer_t, sizeof(cpu_set_t), &cpuset) );
+        beamformingPostProcess * beamform_post_process = new beamformingPostProcess(config,
+                                                            gpu_beamform_output_buffer,
+                                                            vdif_output_buffer);
+        beamform_post_process->start();
+        processes.push_back((KotekanProcess*)beamform_post_process);
 
-        if (config.ch_master_network.disable_upload == 0) {
-            chrxUplink * chrx_uplink = new chrxUplink(config, network_output_buffer, gated_output_buffer);
-            chrx_uplink->start();
-            processes.push_back((KotekanProcess*)chrx_uplink);
-        } else {
-            // Drop the data.
-            nullProcess * null_process = new nullProcess(config, network_output_buffer);
-            null_process->start();
-            processes.push_back((KotekanProcess*)null_process);
-        }
-
-        // The beamforming thread
-
-        if (config.gpu.use_beamforming == 1) {
-            create_buffer(&vdif_output_buffer, network_buffer_depth, 625*16*5032,
-                          1, 1, pool, "vdif_output_buffer");
-
-            // The thread which creates output frame.
-            beamforming_post_process_args.in_buf = gpu_beamform_output_buffer;
-            beamforming_post_process_args.out_buf = &vdif_output_buffer;
-            beamforming_post_process_args.config = &config;
-            CHECK_ERROR( pthread_create(&beamforming_comsumer_t, NULL,
-                                        &beamforming_post_process,
-                                        (void *) &beamforming_post_process_args ) );
-            CHECK_ERROR( pthread_setaffinity_np(beamforming_comsumer_t, sizeof(cpu_set_t), &cpuset) );
-
-            // The thread which sends it with UDP to the VDIF collection server
-            vdifStream * vdif_stream = new vdifStream(config, vdif_output_buffer);
-            vdif_stream->start();
-            processes.push_back((KotekanProcess*)vdif_stream);
-        }
-    } else  {
-        // TODO add local file output in some form here.
+        // The thread which sends it with UDP to the VDIF collection server
+        vdifStream * vdif_stream = new vdifStream(config, vdif_output_buffer);
+        vdif_stream->start();
+        processes.push_back((KotekanProcess*)vdif_stream);
     }
 
-    // stat monitor
-    pthread_t stat_monitor_t;
-    struct stat_monitor_arg stat_args;
-    int buf_id = 0;
-    for (int i = 0; i < config.gpu.num_gpus; ++i) {
-        stat_args.bufs[buf_id++] = &gpu_input_buffer[i];
-        stat_args.bufs[buf_id++] = &gpu_output_buffer[i];
-        if(config.gpu.use_beamforming == 1)
-            stat_args.bufs[buf_id++] = &gpu_beamform_output_buffer[i];
-    }
-    if (config.ch_master_network.disable_upload == 0)
-        stat_args.bufs[buf_id++] = &network_output_buffer;
-    if (config.gpu.use_beamforming == 1)
-        stat_args.bufs[buf_id++] = &vdif_output_buffer;
-    if (config.gating.enable_basic_gating && config.ch_master_network.disable_upload == 0)
-        stat_args.bufs[buf_id++] = &gated_output_buffer;
-    stat_args.num_buffer_objects = buf_id;
-    CHECK_ERROR( pthread_create(&stat_monitor_t, NULL,
-                            &stat_monitor,
-                            (void *) &stat_args ) );
-    CHECK_ERROR( pthread_setaffinity_np(stat_monitor_t, sizeof(cpu_set_t), &cpuset) );
+    // Join the threads.
 
-    // Join with threads.
-    int * ret;
-
-    for (int i = 0; i < config.gpu.num_gpus; ++i) {
-        CHECK_ERROR( pthread_join(gpu_t[i], (void **) &ret) );
-    }
-
-    CHECK_ERROR( pthread_join(network_dpdk_t, (void **) &ret) );
-
-    CHECK_ERROR( pthread_join(output_consumer_t, (void **) &ret) );
-
-    if (config.gpu.use_beamforming == 1) {
-        CHECK_ERROR( pthread_join(beamforming_comsumer_t, (void **) &ret) );
-        CHECK_ERROR( pthread_join(vdif_output_t, (void **) &ret) );
-    }
+    processes[0]->join();
 
     INFO("kotekan shutdown successfully.");
 

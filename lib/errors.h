@@ -1,4 +1,3 @@
-
 #ifndef ERRORS
 #define ERRORS
 
@@ -13,6 +12,13 @@
 #endif
 
 #include <syslog.h>
+#include <stdlib.h>
+
+#ifdef __cplusplus
+#include <cstring>
+#include <cerrno>
+using std::strerror;
+#endif
 
 #ifdef __cplusplus
 extern "C" {
