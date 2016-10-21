@@ -8,7 +8,7 @@
 
 class rawFileWrite : public KotekanProcess {
 public:
-    rawFileWrite(struct Config &config,
+    rawFileWrite(Config &config,
                  struct Buffer &buf,
                  int disk_id,
                  char * extension,

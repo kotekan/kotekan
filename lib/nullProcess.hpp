@@ -5,7 +5,7 @@
 
 class nullProcess : public KotekanProcess {
 public:
-    nullProcess(struct Config &config, struct Buffer &buf);
+    nullProcess(Config &config, struct Buffer &buf);
     virtual ~nullProcess();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);

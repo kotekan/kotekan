@@ -23,7 +23,7 @@
 #include <inttypes.h>
 #include <functional>
 
-networkOutputSim::networkOutputSim(struct Config &config_,
+networkOutputSim::networkOutputSim(Config &config_,
                      struct Buffer &buf_,
                      int num_links_in_group_,
                      int link_id_,

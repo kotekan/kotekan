@@ -11,7 +11,7 @@
 
 class networkOutputSim : public KotekanProcess {
 public:
-    networkOutputSim(struct Config &config,
+    networkOutputSim(Config &config,
                      struct Buffer &buf,
                      int num_links_in_group,
                      int link_id,

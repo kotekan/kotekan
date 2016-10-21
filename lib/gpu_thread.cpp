@@ -181,7 +181,7 @@ void gpuThread::main_thread()
 
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
 {
-    struct callBackData * cb_data = (struct callBackData *) data;
+    callBackData * cb_data = (callBackData *) data;
 
     double end_time_1 = e_time();
 

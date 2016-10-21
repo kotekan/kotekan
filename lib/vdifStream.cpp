@@ -74,7 +74,7 @@ void vdifStream::main_thread() {
         // Send data to remote server.
         for (int i = 0; i < 16*625; ++i) {
 
-            /*int bytes_sent = sendto(socket_fd,
+            int bytes_sent = sendto(socket_fd,
                              (void *)(buf.data[bufferID[0]][packet_size*i]),
                              packet_size, 0,
                              (struct sockaddr *) &saddr_remote, saddr_len);
@@ -90,7 +90,7 @@ void vdifStream::main_thread() {
 
             if (bytes_sent != packet_size) {
                 ERROR("Did not send full vdif packet.");
-            }*/
+            }
         }
 
         diff_t = e_time() - start_t;

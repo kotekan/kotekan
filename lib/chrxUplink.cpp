@@ -14,7 +14,7 @@
 #include "errors.h"
 #include "output_formating.h"
 
-chrxUplink::chrxUplink(struct Config &config_,
+chrxUplink::chrxUplink(Config &config_,
                   struct Buffer &vis_buf_,
                   struct Buffer &gate_buf_) :
                   KotekanProcess(config_, std::bind(&chrxUplink::main_thread, this)),

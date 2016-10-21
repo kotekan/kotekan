@@ -5,7 +5,7 @@
 
 class SampleProcess : public KotekanProcess {
 public:
-    SampleProcess(struct Config &config);
+    SampleProcess(Config &config);
     virtual ~SampleProcess();
     void main_thread();
 private:

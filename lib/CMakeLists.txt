@@ -36,4 +36,3 @@ add_library ( chime
 target_link_libraries( chime ${OPENCL_LIBRARIES} )
 target_link_libraries( chime ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( chime m rt dl ${DPDK_LIBS} )
-target_link_libraries( chime jansson )

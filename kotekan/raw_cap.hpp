@@ -3,7 +3,7 @@
 
 #include"Config.hpp"
 
-int raw_cap(struct Config * config);
+int raw_cap(Config * config);
 
 #endif /* RAW_CAP_H */
 

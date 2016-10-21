@@ -6,13 +6,15 @@
 using std::string;
 using std::to_string;
 
-gpu_command::gpu_command(const char* param_name, Config &param_config) :gpuCommandState(0) , gpuKernel(NULL), config(param_config)
+gpu_command::gpu_command(const char* param_name, Config &param_config) :
+    config(param_config), gpuCommandState(0) , gpuKernel(NULL)
 {
     name = strdup(param_name);
     INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config) : gpuCommandState(0), gpuKernel(NULL), config(param_config)
+gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config) :
+    config(param_config), gpuCommandState(0), gpuKernel(NULL)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
     strcpy(gpuKernel, param_gpuKernel);
@@ -92,6 +94,7 @@ cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, devi
     assert(param_bufferID<param_Device.getInBuf()->num_buffers);
     assert(param_bufferID>=0);
 
+    return NULL;
 //    DEBUG("Execute kernel: %s", name);
 }
 

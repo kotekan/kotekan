@@ -1,7 +1,7 @@
 #include "SampleProcess.hpp"
 #include "errors.h"
 
-SampleProcess::SampleProcess(struct Config &config) :
+SampleProcess::SampleProcess(Config &config) :
     KotekanProcess(config, std::bind(&SampleProcess::main_thread, this)) {
 }
 

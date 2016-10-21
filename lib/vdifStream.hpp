@@ -7,7 +7,7 @@
 
 class vdifStream : public KotekanProcess {
 public:
-    vdifStream(struct Config &config, struct Buffer &buf);
+    vdifStream(Config &config, struct Buffer &buf);
     virtual ~vdifStream();
     void main_thread();
 

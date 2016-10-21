@@ -9,7 +9,7 @@ using string = std::string;
 
 class chrxUplink : public KotekanProcess {
 public:
-    chrxUplink(struct Config &config,
+    chrxUplink(Config &config,
                   struct Buffer &buf,
                   struct Buffer &gate_buf);
     virtual ~chrxUplink();

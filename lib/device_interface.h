@@ -73,7 +73,7 @@ public:
     struct Buffer * beamforming_out_buf;
     struct Buffer * beamforming_out_incoh_buf;
     // Extra data
-    struct Config &config;
+    Config &config;
     struct StreamINFO * stream_info;
 
     int accumulate_len;
