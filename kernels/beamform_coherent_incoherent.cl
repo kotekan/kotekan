@@ -152,7 +152,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
 
             ////////////////////////////// Scale and rail method
             lds_data[0]  *= scale_factor; //Re_pol1
-            lds_data[32] *= scale_factor;  //Img_pol2
+            lds_data[32] *= scale_factor;  //Img_pol1
             lds_data[64] *= 0.0375; //Re_Pol2
             lds_data[96] *= 0.0375; //Img_Pol2
 
@@ -162,7 +162,7 @@ __kernel void gpu_beamforming(__global   unsigned int  *data,
             tempInt0 = (tempInt0 >  7 ?  7 : tempInt0);
             tempInt0 = (tempInt0 < -7 ? -7 : tempInt0);
 
-            int tempInt1 = (int)round(lds_data[1]);
+            int tempInt1 = (int)round(lds_data[32]);
 
             tempInt1 = (tempInt1 >  7 ?  7 : tempInt1);
             tempInt1 = (tempInt1 < -7 ? -7 : tempInt1);
