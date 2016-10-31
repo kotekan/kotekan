@@ -30,12 +30,9 @@ void nullProcess::main_thread() {
 
         // This call is blocking!
         buffer_ID = get_full_buffer_from_list(&buf, &buffer_ID, 1);
-
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
-            INFO("Closing null thread");
-            int ret;
-            pthread_exit((void *) &ret);
+            break;
         }
 
         INFO("Dropping frame in null thread.");
@@ -44,4 +41,5 @@ void nullProcess::main_thread() {
 
         buffer_ID = (buffer_ID + 1) % buf.num_buffers;
     }
+    INFO("Closing null thread");
 }

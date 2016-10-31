@@ -22,7 +22,12 @@ void KotekanProcess::start() {
 }
 
 void KotekanProcess::join() {
-    this_thread.join();
+    if (this_thread.joinable())
+        this_thread.join();
+}
+
+void KotekanProcess::stop() {
+    stop_thread = true;
 }
 
 void KotekanProcess::main_thread() {}

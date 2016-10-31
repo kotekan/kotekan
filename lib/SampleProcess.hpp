@@ -8,6 +8,7 @@ public:
     SampleProcess(Config &config);
     virtual ~SampleProcess();
     void main_thread();
+    void apply_config(uint64_t fpga_seq) override;
 private:
 
 };

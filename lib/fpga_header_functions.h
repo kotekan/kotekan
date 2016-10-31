@@ -27,6 +27,7 @@ inline uint32_t bin_number_16_elem(const stream_id_t * stream_id, const int inde
 float freq_from_bin(const int bin);
 
 stream_id_t extract_stream_id(const uint16_t encoded_stream_id);
+uint16_t encode_stream_id(const stream_id_t s_stream_id);
 
 #ifdef __cplusplus
 }

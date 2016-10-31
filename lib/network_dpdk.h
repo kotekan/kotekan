@@ -6,8 +6,9 @@
 #include "fpga_header_functions.h"
 
 // TODO Make these dynamic.
-#define NUM_LINKS (8)
+#define NUM_LINKS (4)
 #define NUM_LCORES (4)
+#define NUM_FREQ (4)
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,7 +16,9 @@ extern "C" {
 
 struct networkDPDKArg {
     // Array of output buffers
-    struct Buffer ** buf;
+    // TODO Not sure I like a triple pointer.
+    // *[port][freq]
+    struct Buffer *** buf;
 
     // These should take over the defines.
     int num_links;
@@ -50,7 +53,7 @@ struct LinkData {
 
 struct NetworkDPDK {
 
-    struct LinkData link_data[NUM_LINKS];
+    struct LinkData link_data[NUM_LINKS][NUM_FREQ];
 
     double start_time;
     double end_time;

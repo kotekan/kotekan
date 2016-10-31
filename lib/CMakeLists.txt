@@ -18,6 +18,7 @@ add_library ( chime
               beamformingPostProcess.cpp time_tracking.c vdifStream.cpp
               fpga_header_functions.c nullProcess.cpp simple_udp_cap.c output_power.c
               network_dpdk.c gpu_thread.cpp gpu_command.cpp callbackdata.cpp device_interface.cpp
+              hccGPUThread.cpp
               gpu_command_factory.cpp vdif_functions.c stream_raw_vdif.c
               gpu_command_objects/beamform_kernel.cpp
               gpu_command_objects/beamform_phase_data.cpp

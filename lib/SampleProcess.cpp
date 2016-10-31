@@ -8,6 +8,10 @@ SampleProcess::SampleProcess(Config &config) :
 SampleProcess::~SampleProcess() {
 }
 
+void SampleProcess::apply_config(uint64_t fpga_seq) {
+    (void)fpga_seq;
+}
+
 void SampleProcess::main_thread() {
     INFO("Sample Process, reached main_thread!");
     while (!stop_thread) {

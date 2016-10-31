@@ -16,6 +16,7 @@ public:
     // This should only happen if config.update_needed(fpga_seq) is true.
     virtual void apply_config(uint64_t fpga_seq) = 0;
     void join();
+    void stop();
 protected:
     std::atomic_bool stop_thread;
     Config &config;
