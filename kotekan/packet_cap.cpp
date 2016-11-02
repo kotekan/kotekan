@@ -67,10 +67,9 @@ void packet_cap(Config &config) {
     }
 
     // TODO move to function
-    int current_link_id = 0;
     int32_t link_ids[num_fpga_links];
     for (int i = 0; i < num_fpga_links; ++i) {
-        link_ids[i] = current_link_id++;
+        link_ids[i] = 0;
     }
 
     // Start DPDK

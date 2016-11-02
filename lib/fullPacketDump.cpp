@@ -53,6 +53,7 @@ void fullPacketDump::main_thread() {
 
         // This call is blocking!
         buffer_ID = get_full_buffer_from_list(&buf, &buffer_ID, 1);
+        //INFO("fullPacketDump: link %d got full full buffer ID %d", link_id, buffer_ID);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
             break;

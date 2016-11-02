@@ -60,19 +60,22 @@ void restServer::handle_packet_grab(mg_connection* nc, int ev, void* ev_data) {
     int num_packets = -1;
 
     try {
-        json message = json::parse(string(msg->body.p));
+        json message = json::parse(string(msg->body.p, msg->body.len));
         port = message["port"];
         num_packets = message["num_packets"];
     } catch (...) {
+        INFO("restServer: Parse failed handle_packet_grab, message %s");
         mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
         return;
     }
 
     if (num_packets < 0 || num_packets > 100) {
+        INFO("restServer: handle_packet_grap: num_packets=%d out of range", num_packets);
         mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
         return;
     }
     if (port < 0 || port > 8) {
+        INFO("restServer: handle_packet_grap: port=%d out of range", port);
         mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
         return;
     }

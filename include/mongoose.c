@@ -5311,8 +5311,14 @@ void mg_send_response_line_s(struct mg_connection *nc, int status_code,
     case 302:
       status_message = "Found";
       break;
+    case 400:
+      status_message = "Bad Request";
+      break;
     case 401:
       status_message = "Unauthorized";
+      break;
+    case 402:
+      status_message = "Request Failed";
       break;
     case 403:
       status_message = "Forbidden";

@@ -719,6 +719,7 @@ int lcore_recv_pkt_dump(void *args) {
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
                     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
                         dpdk_net->link_data[port][0].first_packet = 0;
+                        INFO("Got first packet on port %d, with seq %d", port, seq);
                     } else {
                         goto release_frame;
                     }
@@ -731,12 +732,15 @@ int lcore_recv_pkt_dump(void *args) {
                 assert((dump_location + dpdk_net->args->udp_packet_size)
                         <= dpdk_net->args->buf[port][0]->buffer_size);
 
-                copy_block(&mbufs[i],
-                           (uint8_t *)dpdk_net->args->buf[port][0]->data[buffer_id][dump_location],
+                struct rte_mbuf * pkt = mbufs[i];
+                copy_block(&pkt,
+                           (uint8_t *)&dpdk_net->args->buf[port][0]->data[buffer_id][dump_location],
                            dpdk_net->args->udp_packet_size,
                            (int *)&offset);
 
                 dpdk_net->link_data[port][0].dump_location += dpdk_net->args->udp_packet_size;
+
+                //INFO("Port %d dump location %d, buffer size %d", port, dpdk_net->link_data[port][0].dump_location, dpdk_net->args->buf[port][0]->buffer_size);
 
                 if (dpdk_net->link_data[port][0].dump_location ==
                         dpdk_net->args->buf[port][0]->buffer_size) {
@@ -748,6 +752,8 @@ int lcore_recv_pkt_dump(void *args) {
                             dpdk_net->args->buf[port][0]->num_buffers;
 
                     wait_for_empty_buffer(dpdk_net->args->buf[port][0], buffer_id);
+                    dpdk_net->link_data[port][0].dump_location = 0;
+                    set_data_ID(dpdk_net->args->buf[port][0], buffer_id, dpdk_net->data_id++);
                 }
 
                 release_frame:
@@ -877,7 +883,7 @@ network_dpdk_thread(void * args)
 {
 
     INFO("reached dpdk thread");
-    
+
     struct NetworkDPDK dpdk_net;
 
     dpdk_net.args = (struct networkDPDKArg *)args;
