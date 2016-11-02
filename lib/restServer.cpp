@@ -46,6 +46,48 @@ void restServer::handle_notfound(mg_connection* nc, int ev, void* ev_data) {
     }
 }
 
+void restServer::register_packet_callback(std::function<uint8_t*(int, int&) > callback, int port) {
+    packet_callbacks[port] = callback;
+}
+
+void restServer::handle_packet_grab(mg_connection* nc, int ev, void* ev_data) {
+
+    struct http_message *msg = (struct http_message *)ev_data;
+
+    INFO("Handle packet grab message details: %s", msg->message.p);
+
+    int port = -1;
+    int num_packets = -1;
+
+    try {
+        json message = json::parse(string(msg->body.p));
+        port = message["port"];
+        num_packets = message["num_packets"];
+    } catch (...) {
+        mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
+        return;
+    }
+
+    if (num_packets < 0 || num_packets > 100) {
+        mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
+        return;
+    }
+    if (port < 0 || port > 8) {
+        mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
+        return;
+    }
+
+    int len;
+    uint8_t * packets = __rest_server->packet_callbacks[port](num_packets, len);
+
+    if (packets != nullptr) {
+        mg_send_head(nc, STATUS_OK, len, "Content-Type: application/octet-stream");
+        mg_send(nc, (void *)packets, len);
+    } else {
+        mg_send_head(nc, STATUS_REQUEST_FAILED, 0, NULL);
+    }
+}
+
 void restServer::mongoose_thread() {
 
     // init http server
@@ -59,6 +101,7 @@ void restServer::mongoose_thread() {
 
     // add endpoints
     mg_register_http_endpoint(nc, "/status", handle_status);
+    mg_register_http_endpoint(nc, "/packet_grab", handle_packet_grab);
 
     INFO("restServer: started server on port %s", port);
 

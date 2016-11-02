@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 PROJECT (kotekan)
 
-SET(SOURCE_EXE kotekan.cpp chime_shuffle.cpp)
+SET(SOURCE_EXE kotekan.cpp chime_shuffle.cpp packet_cap.cpp)
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
 include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)

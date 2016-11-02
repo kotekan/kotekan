@@ -6,6 +6,10 @@
 #include "json.hpp"
 
 #include <thread>
+#include <functional>
+#include <map>
+
+using std::map;
 
 class restServer {
 
@@ -18,8 +22,14 @@ public:
     void mongoose_thread();
 
     static void handle_status(struct mg_connection *nc, int ev, void *ev_data);
+
+    static void handle_packet_grab(struct mg_connection *nc, int ev, void *ev_data);
+
+    void register_packet_callback(std::function<uint8_t*(int, int&)> callback, int port);
+
     static void handle_notfound(struct mg_connection *nc, int ev, void *ev_data);
 
+    std::map<int, std::function<uint8_t*(int, int&)> > packet_callbacks;
 private:
     struct mg_mgr mgr;
     struct mg_connection *nc;

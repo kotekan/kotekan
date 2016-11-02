@@ -192,7 +192,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                           uint64_t new_seq) {
 
     // TODO it is really bad to have a blocking call here(!)
-    mark_buffer_full(dpdk_net->args->buf[port], dpdk_net->link_data[port][freq].buffer_id);
+    mark_buffer_full(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id);
 
     dpdk_net->link_data[port][freq].buffer_id =
         (dpdk_net->link_data[port][freq].buffer_id + dpdk_net->args->num_links_in_group[port]) % dpdk_net->args->buf[port][freq]->num_buffers;
@@ -652,6 +652,9 @@ static void handle_lost_raw_packets(struct NetworkDPDK * dpdk_net, int port) {
 }
 
 int lcore_recv_pkt_dump(void *args) {
+
+    INFO("Reached lcore_recv_pkt_dump");
+
     struct rte_mbuf *mbufs[BURST_SIZE];
 
     struct NetworkDPDK * dpdk_net = (struct NetworkDPDK *)args;
@@ -873,6 +876,8 @@ void*
 network_dpdk_thread(void * args)
 {
 
+    INFO("reached dpdk thread");
+    
     struct NetworkDPDK dpdk_net;
 
     dpdk_net.args = (struct networkDPDKArg *)args;
@@ -916,6 +921,8 @@ network_dpdk_thread(void * args)
     if (rte_lcore_count() != dpdk_net.args->num_lcores) {
         INFO("WARNING: The number of lcores %d doesn't match the expected value %d", rte_lcore_count(), dpdk_net.args->num_lcores);
     }
+
+    INFO("Starting lcores!")
 
     // Start the packet receiving lcores (basically pthreads)
     if (dpdk_net.args->dump_full_packets == 1) {

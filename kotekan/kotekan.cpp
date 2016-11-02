@@ -70,6 +70,7 @@ extern "C" {
 #include "beamformingPostProcess.hpp"
 #include "chime_shuffle.hpp"
 #include "restServer.hpp"
+#include "packet_cap.hpp"
 
 using json = nlohmann::json;
 
@@ -222,7 +223,7 @@ int main(int argc, char ** argv) {
     restServer *rest_server = get_rest_server();
     rest_server->start();
 
-    chime_shuffle_setup(config);
+    packet_cap(config);
 
     INFO("kotekan shutdown successfully.");
 
