@@ -77,12 +77,7 @@ using json = nlohmann::json;
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]            The local JSON config file to use\n");
-    printf("    --log-to-screen (-s)            Output log messages to stderr\n");
-    printf("    --log-level (-l) [level]        0 = errors only, 1 = +warnings, 2 = +info, 3 = +debug\n\n");
-    printf("    --daemon -d [root]              Run in daemon mode, disables output to stderr");
-    printf("Testing Options:\n");
-    printf("    --no-network-test (-t)          Generates fake data for testing.\n");
+    printf("    --config (-c) [file]            The local JSON config file to use\n\n");
 }
 
 void dpdk_setup() {
@@ -111,39 +106,19 @@ int main(int argc, char ** argv) {
     dpdk_setup();
 
     int opt_val = 0;
-    int no_network_test = 0;
-    int network_sim_pattern = 0;
     char * config_file_name = (char *)"kotekan.conf";
-    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
-    int make_daemon = 0;
-    char * kotekan_root_dir = (char *)"./";
-
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (int j = 6; j < 12; j++)
-        CPU_SET(j, &cpuset);
-
-    cpu_set_t cpuset_gpu;
-    CPU_ZERO(&cpuset_gpu);
-    for (int j = 4; j < 6; j++)
-        CPU_SET(j, &cpuset_gpu);
+    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
 
     for (;;) {
         static struct option long_options[] = {
-            {"no-network-test", required_argument, 0, 't'},
-            {"read-file", required_argument, 0, 'f'},
             {"config", required_argument, 0, 'c'},
-            {"write-local", no_argument, 0, 'w'},
-            {"log-level", required_argument, 0, 'l'},
-            {"daemon", required_argument, 0, 'd'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
-        int option_value = 0;
 
-        opt_val = getopt_long (argc, argv, "ht:wsc:l:d:",
+        opt_val = getopt_long (argc, argv, "hc:",
                                long_options, &option_index);
 
         // End of args
@@ -156,32 +131,8 @@ int main(int argc, char ** argv) {
                 print_help();
                 return 0;
                 break;
-            case 't':
-                no_network_test = 1;
-                network_sim_pattern = atoi(optarg);
-                break;
-            case 's':
-                log_options = log_options | LOG_PERROR;
-                break;
             case 'c':
                 config_file_name = strdup(optarg);
-                break;
-            case 'd':
-                make_daemon = 1;
-                kotekan_root_dir = strdup(optarg);
-                break;
-            case 'l':
-                option_value = atoi(optarg);
-                switch (option_value) {
-                    case 3:
-                        log_level_debug = 1;
-                    case 2:
-                        log_level_info = 1;
-                    case 1:
-                        log_level_warn = 1;
-                    default:
-                        break;
-                }
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -190,17 +141,7 @@ int main(int argc, char ** argv) {
         }
     }
 
-    if (make_daemon) {
-        // Do not use LOG_CONS or LOG_PERROR, since stderr does not exist in daemon mode.
-        openlog ("kotekan", log_options, LOG_PID | LOG_NDELAY);
-        if ((chdir(kotekan_root_dir)) < 0) {
-            ERROR("Cannot change directory to %s", kotekan_root_dir);
-            exit(EXIT_FAILURE);
-        }
-    } else {
-        // Setup syslog
-        openlog ("kotekan", log_options, LOG_LOCAL1);
-    }
+    openlog ("kotekan", log_options, LOG_LOCAL1);
 
     // Load configuration file.
     //INFO("Kotekan starting with config file %s", config_file_name);
@@ -211,19 +152,39 @@ int main(int argc, char ** argv) {
 
     Config config;
 
+    restServer *rest_server = get_rest_server();
+    rest_server->start();
+
     config.parse_file(config_file_name, 0);
     config.generate_extra_options();
     config.dump_config();
 
-    // TODO: allow raw capture in line with the correlator.
-    //if (config.get_bool("/raw_capture/enabled")) {
-    //    return raw_cap(&config);
-    //}
+    // Adjust the log level
+    int log_level = config.get_int("/system/log_level");
 
-    restServer *rest_server = get_rest_server();
-    rest_server->start();
+    log_level_warn = 0;
+    log_level_debug = 0;
+    log_level_info = 0;
+    switch (log_level) {
+        case 3:
+            log_level_debug = 1;
+        case 2:
+            log_level_info = 1;
+        case 1:
+            log_level_warn = 1;
+        default:
+            break;
+    }
 
-    packet_cap(config);
+    string mode = config.get_string("/system/mode");
+
+    if (mode == "packet_cap") {
+        packet_cap(config);
+    } else if (mode == "chime_shuffle") {
+        chime_shuffle_setup(config);
+    } else {
+        ERROR("Mode = %s does not exist", mode.c_str());
+    }
 
     INFO("kotekan shutdown successfully.");
 

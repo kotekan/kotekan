@@ -1,9 +1,9 @@
 #include "errors.h"
 
 // Default values for log levels.
-int log_level_warn = 0;
-int log_level_debug = 0;
-int log_level_info = 0;
+int log_level_warn = 1;
+int log_level_debug = 1;
+int log_level_info = 1;
 
 //from amd firepro demo:
 char* oclGetOpenCLErrorCodeStr(cl_int input)
