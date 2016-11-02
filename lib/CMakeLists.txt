@@ -12,7 +12,7 @@ include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
 
 add_library ( chime
               KotekanProcess.cpp SampleProcess.cpp Config.cpp
-              buffers.c errors.c nt_memcpy.c nt_memset.c
+              buffers.c errors.c nt_memcpy.c nt_memset.c restServer.cpp
               util.c error_correction.c networkOutputSim.cpp
               output_formating.c test_data_generation.c chrxUplink.cpp gpuPostProcess.cpp
               beamformingPostProcess.cpp time_tracking.c vdifStream.cpp
@@ -37,3 +37,4 @@ add_library ( chime
 target_link_libraries( chime ${OPENCL_LIBRARIES} )
 target_link_libraries( chime ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( chime m rt dl ${DPDK_LIBS} )
+target_link_libraries( chime libinclude )

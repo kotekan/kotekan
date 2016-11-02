@@ -177,6 +177,7 @@ static void init_network_object(struct NetworkDPDK * net_dpdk) {
             net_dpdk->link_data[i][j].first_packet = 1;
             net_dpdk->link_data[i][j].finished_buffer = 0;
             net_dpdk->link_data[i][j].vdif_buffer_id = 0;
+            net_dpdk->link_data[i][j].dump_location = 0;
         }
     }
 
@@ -200,7 +201,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
     static struct timeval now;
     gettimeofday(&now, NULL);
 
-    wait_for_empty_buffer(dpdk_net->args->buf[port], dpdk_net->link_data[port][freq].buffer_id);
+    wait_for_empty_buffer(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id);
     set_data_ID(dpdk_net->args->buf[port][freq],
                 dpdk_net->link_data[port][freq].buffer_id,
                 dpdk_net->link_data[port][freq].data_id++);
@@ -650,6 +651,110 @@ static void handle_lost_raw_packets(struct NetworkDPDK * dpdk_net, int port) {
     }
 }
 
+int lcore_recv_pkt_dump(void *args) {
+    struct rte_mbuf *mbufs[BURST_SIZE];
+
+    struct NetworkDPDK * dpdk_net = (struct NetworkDPDK *)args;
+
+    uint8_t port;
+    unsigned int lcore;
+
+    lcore = rte_lcore_id();
+    INFO("lcore ID: %d", lcore);
+    // Because of the way that we launch the network thread we run the master cores out
+    // side of the DPDK RTE framework, so the lcore id of the master core becomes -1.
+    if (lcore == -1)
+        lcore = 0;
+
+    const int port_offset = dpdk_net->args->port_offset[lcore];
+    for (port = port_offset;
+         port < dpdk_net->args->num_links_per_lcore + port_offset;
+         ++port) {
+        setup_for_first_packet(dpdk_net, port);
+        INFO("port reached %d", port);
+    }
+
+    uint64_t integration_period = dpdk_net->args->samples_per_data_set *
+                                    dpdk_net->args->num_data_sets *
+                                    dpdk_net->args->num_gpu_frames;
+
+    /* Run until the application is quit or killed. */
+    for (;;) {
+
+        // For each port.
+        for (port = port_offset;
+             port < dpdk_net->args->num_links_per_lcore + port_offset;
+             ++port) {
+
+            const int32_t nb_rx = rte_eth_rx_burst(port, 0, mbufs, BURST_SIZE);
+
+            if (likely(nb_rx == 0)) {
+                //dpdk_net.num_unused_cycles++;
+                continue;
+            }
+
+            // For each packet on that port.
+            for (int i = 0; i < nb_rx; ++i) {
+
+                if (unlikely((mbufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
+                    ERROR("network_dpdk: Got bad packet checksum!");
+                    goto release_frame;
+                }
+
+                if (unlikely( mbufs[i]->pkt_len
+                        != dpdk_net->args->udp_packet_size)) {
+                    WARN("Got packet with incorrect length: %d; expected: %d",
+                            mbufs[i]->pkt_len,
+                            dpdk_net->args->udp_packet_size);
+                    goto release_frame;
+                }
+
+                //INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
+                uint64_t seq = get_mbuf_seq_num(mbufs[i]);
+
+                // Align first frame
+                if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
+                    if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
+                        dpdk_net->link_data[port][0].first_packet = 0;
+                    } else {
+                        goto release_frame;
+                    }
+                }
+
+                int buffer_id = dpdk_net->link_data[port][0].buffer_id;
+                int dump_location = dpdk_net->link_data[port][0].dump_location;
+                int offset = 0;
+
+                assert((dump_location + dpdk_net->args->udp_packet_size)
+                        <= dpdk_net->args->buf[port][0]->buffer_size);
+
+                copy_block(&mbufs[i],
+                           (uint8_t *)dpdk_net->args->buf[port][0]->data[buffer_id][dump_location],
+                           dpdk_net->args->udp_packet_size,
+                           (int *)&offset);
+
+                dpdk_net->link_data[port][0].dump_location += dpdk_net->args->udp_packet_size;
+
+                if (dpdk_net->link_data[port][0].dump_location ==
+                        dpdk_net->args->buf[port][0]->buffer_size) {
+
+                    mark_buffer_full(dpdk_net->args->buf[port][0], buffer_id);
+
+                    buffer_id = dpdk_net->link_data[port][0].buffer_id =
+                            (dpdk_net->link_data[port][0].buffer_id + 1) %
+                            dpdk_net->args->buf[port][0]->num_buffers;
+
+                    wait_for_empty_buffer(dpdk_net->args->buf[port][0], buffer_id);
+                }
+
+                release_frame:
+                rte_pktmbuf_free(mbufs[i]);
+            }
+        }
+    }
+}
+
+
 /*
  * The lcore main. This is the main thread that does the work, reading from
  * an input port and writing to an output port.
@@ -737,7 +842,11 @@ int lcore_recv_pkt(void *args)
                     }
 
                     // Copy the packet to the GPU staging buffer.
-                    copy_data_no_shuffle(dpdk_net, mbufs[i], port);
+                    if (dpdk_net->args->enable_shuffle == 1) {
+                        copy_data_with_shuffle(dpdk_net, mbufs[i], port);
+                    } else {
+                        copy_data_no_shuffle(dpdk_net, mbufs[i], port);
+                    }
                 }
                 if (dpdk_net->args->vdif_buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
@@ -767,10 +876,6 @@ network_dpdk_thread(void * args)
     struct NetworkDPDK dpdk_net;
 
     dpdk_net.args = (struct networkDPDKArg *)args;
-
-    for (int port = 0; port < 4; ++port)
-        for (int freq = 0; freq < 4; ++freq)
-            INFO("dpdk.args.buf[%d][%d] = %p", port, freq, dpdk_net.args->buf[port][freq]);
 
     // Shared between all threads.
     dpdk_net.vdif_time_set = 0;
@@ -813,7 +918,11 @@ network_dpdk_thread(void * args)
     }
 
     // Start the packet receiving lcores (basically pthreads)
-    rte_eal_mp_remote_launch(lcore_recv_pkt, (void *) &dpdk_net, CALL_MASTER);
+    if (dpdk_net.args->dump_full_packets == 1) {
+        rte_eal_mp_remote_launch(lcore_recv_pkt_dump, (void *) &dpdk_net, CALL_MASTER);
+    } else {
+        rte_eal_mp_remote_launch(lcore_recv_pkt, (void *) &dpdk_net, CALL_MASTER);
+    }
 
     rte_eal_mp_wait_lcore();
 

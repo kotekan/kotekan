@@ -22,7 +22,6 @@ void chime_shuffle_setup(Config &config) {
 
     // Config values:
     int32_t num_gpus = config.get_int("/gpu/num_gpus");
-    int32_t num_local_freq = config.get_int("/processing/num_local_freq");
     int32_t num_total_freq = config.get_int("/processing/num_total_freq");
     int32_t num_elements = config.get_int("/processing/num_elements");
     int32_t num_adjusted_local_freq = config.get_int("/processing/num_adjusted_local_freq");
@@ -36,7 +35,6 @@ void chime_shuffle_setup(Config &config) {
     int32_t network_buffer_depth = config.get_int("/ch_master_network/network_buffer_depth");
     vector<int32_t> link_map = config.get_int_array("/gpu/link_map");
     bool enable_upload = config.get_bool("/ch_master_network/enable_upload");
-    bool enable_beamforming = config.get_bool("/gpu/enable_beamforming");
     bool no_network_test = config.get_bool("/processing/no_network_test");
     int32_t network_test_pattern = config.get_int("/processing/network_test_pattern");
 

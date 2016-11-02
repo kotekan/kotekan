@@ -69,6 +69,7 @@ extern "C" {
 #include "gpuPostProcess.hpp"
 #include "beamformingPostProcess.hpp"
 #include "chime_shuffle.hpp"
+#include "restServer.hpp"
 
 using json = nlohmann::json;
 
@@ -217,6 +218,9 @@ int main(int argc, char ** argv) {
     //if (config.get_bool("/raw_capture/enabled")) {
     //    return raw_cap(&config);
     //}
+
+    restServer *rest_server = get_rest_server();
+    rest_server->start();
 
     chime_shuffle_setup(config);
 

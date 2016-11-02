@@ -25,6 +25,7 @@ add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
 
 target_link_libraries( kotekan ${DPDK_LIB} m rt dl pthread )
 target_link_libraries( kotekan chime )
+target_link_libraries( kotekan libinclude )
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory

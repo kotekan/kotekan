@@ -3,7 +3,8 @@
 
 // The Kotekan major release number is only used for very large changes,
 // and the Kotekan minor release number is used for anything that changes data output
-#define KOTEKAN_VERSION (1.2)
+#define KOTEKAN_VERSION (1.3)
+#define KOTEKAN_VERSION_STR "1.3"
 
 #define GIT_BRANCH "@GIT_BRANCH@"
 #define GIT_COMMIT_HASH "@GIT_COMMIT_HASH@"

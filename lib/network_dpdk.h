@@ -35,6 +35,9 @@ struct networkDPDKArg {
     int32_t num_gpu_frames;
     int32_t udp_packet_size;
 
+    int dump_full_packets;
+    int enable_shuffle;
+
     // Used for the vdif generation
     struct Buffer * vdif_buf;
 };
@@ -49,6 +52,7 @@ struct LinkData {
     int32_t vdif_buffer_id;
     int32_t finished_buffer;
     int32_t data_id;
+    int32_t dump_location;
 };
 
 struct NetworkDPDK {
