@@ -15,6 +15,10 @@
 #include <vector>
 #include <string>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 
 using std::string;
 using std::vector;
@@ -31,6 +35,28 @@ void packet_cap(Config &config) {
     int32_t samples_per_data_set = config.get_int("/processing/samples_per_data_set");
     int32_t buffer_depth = config.get_int("/processing/buffer_depth");
     int32_t num_fpga_links = config.get_int("/fpga_network/num_links");
+    bool dump_to_disk = config.get_bool("/packet_cap/dump_to_disk");
+    string file_base = config.get_string("/packet_cap/file_base");
+    string data_set = config.get_string("/packet_cap/data_set");
+
+
+    // Create dump folder
+    if (dump_to_disk) {
+        char dir_name[100];
+        snprintf(dir_name, 100, "%s/%s", file_base.c_str(), data_set.c_str());
+
+        struct stat st = {0};
+
+        if (stat(dir_name, &st) == -1) {
+            if (mkdir(dir_name, 0777) == -1) {
+                ERROR("Could not create directory %s", dir_name);
+                return;
+            }
+        } else {
+            ERROR("Directory %s already exists", dir_name);
+            return;
+        }
+    }
 
     // Create buffers.
     struct Buffer network_input_buffer[num_fpga_links];
@@ -112,7 +138,6 @@ void packet_cap(Config &config) {
     }
 
     // Join the threads.
-
-    processes[0]->join();
-
+    for (auto&& process : processes)
+        process->join();
 }

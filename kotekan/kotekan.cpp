@@ -106,7 +106,7 @@ int main(int argc, char ** argv) {
     dpdk_setup();
 
     int opt_val = 0;
-    char * config_file_name = (char *)"kotekan.conf";
+    char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
 
     for (;;) {
@@ -147,8 +147,8 @@ int main(int argc, char ** argv) {
     //INFO("Kotekan starting with config file %s", config_file_name);
     const char git_hash[] = GIT_COMMIT_HASH;
     const char git_branch[] = GIT_BRANCH;
-    INFO("Kotekan %f starting build: %s, on branch: %s, with config file: %s",
-            KOTEKAN_VERSION, git_hash, git_branch, config_file_name);
+    INFO("Kotekan %f starting build: %s, on branch: %s",
+            KOTEKAN_VERSION, git_hash, git_branch);
 
     Config config;
 

@@ -28,6 +28,9 @@ fullPacketDump::~fullPacketDump() {
 void fullPacketDump::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
     _packet_size = config.get_int("/fpga_network/udp_packet_size");
+    _dump_to_disk = config.get_bool("/packet_cap/dump_to_disk");
+    _file_base = config.get_string("/packet_cap/file_base");
+    _data_set = config.get_string("/packet_cap/data_set");
 }
 
 uint8_t* fullPacketDump::packet_grab_callback(int num_packets, int& len) {
@@ -48,6 +51,10 @@ void fullPacketDump::main_thread() {
     restServer * rest_server = get_rest_server();
     rest_server->register_packet_callback(std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2), link_id);
 
+    int file_num = 0;
+    char host_name[100];
+    gethostname(host_name, 100);
+
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
@@ -62,10 +69,45 @@ void fullPacketDump::main_thread() {
         memcpy(_packet_frame, buf.data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
         if (!got_packets) got_packets = true;
 
+        if (_dump_to_disk) {
+
+            const int file_name_len = 200;
+            char file_name[file_name_len];
+
+            snprintf(file_name, file_name_len, "%s/%s/%s_%d_%07d.pkt",
+                _file_base.c_str(),
+                _data_set.c_str(),
+                host_name,
+                link_id,
+                file_num);
+
+            int fd = open(file_name, O_WRONLY | O_CREAT, 0666);
+
+            if (fd == -1) {
+                ERROR("Cannot open file");
+                ERROR("File name was: %s", file_name);
+                exit(errno);
+            }
+
+            ssize_t bytes_writen = write(fd, buf.data[buffer_ID], buf.buffer_size);
+
+            if (bytes_writen != buf.buffer_size) {
+                ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
+                exit(-1);
+            }
+
+            if (close(fd) == -1) {
+                ERROR("Cannot close file %s", file_name);
+            }
+
+            INFO("Data file write done for %s", file_name);
+            file_num++;
+        }
+
         release_info_object(&buf, buffer_ID);
         mark_buffer_empty(&buf, buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % buf.num_buffers;
     }
-    INFO("Closing full packet dump thread");
+    INFO("Closing full packet dump thread...");
 }

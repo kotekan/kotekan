@@ -560,7 +560,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 dpdk_net->vdif_time_set = 1;
 
                 // Debug test to make sure this works.
-                DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %d, data frame %d, vdif_time: %f",
+                DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %" PRIu64 ", data frame %d, vdif_time: %f",
                         (double)now.tv_sec+(double)now.tv_usec/1000000.0,
                         dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
                         (seq - dpdk_net->vdif_offset) % 390625,
@@ -699,6 +699,10 @@ int lcore_recv_pkt_dump(void *args) {
             // For each packet on that port.
             for (int i = 0; i < nb_rx; ++i) {
 
+                if (unlikely(dpdk_net->link_data[port][0].finished_buffer == 1)) {
+                    goto release_frame;
+                }
+
                 if (unlikely((mbufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
                     ERROR("network_dpdk: Got bad packet checksum!");
                     goto release_frame;
@@ -719,7 +723,7 @@ int lcore_recv_pkt_dump(void *args) {
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
                     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
                         dpdk_net->link_data[port][0].first_packet = 0;
-                        INFO("Got first packet on port %d, with seq %d", port, seq);
+                        INFO("Got first packet on port %d, with seq%" PRIu64 " ", port, seq);
                     } else {
                         goto release_frame;
                     }
@@ -751,6 +755,13 @@ int lcore_recv_pkt_dump(void *args) {
                             (dpdk_net->link_data[port][0].buffer_id + 1) %
                             dpdk_net->args->buf[port][0]->num_buffers;
 
+                    if (is_buffer_empty(dpdk_net->args->buf[port][0], buffer_id) == 0) {
+                        INFO("dpdk: finishing capture on port %d", port);
+                        mark_producer_done(dpdk_net->args->buf[port][0], 0);
+                        dpdk_net->link_data[port][0].finished_buffer = 1;
+                        goto release_frame;
+                    }
+
                     wait_for_empty_buffer(dpdk_net->args->buf[port][0], buffer_id);
                     dpdk_net->link_data[port][0].dump_location = 0;
                     set_data_ID(dpdk_net->args->buf[port][0], buffer_id, dpdk_net->data_id++);
@@ -762,7 +773,6 @@ int lcore_recv_pkt_dump(void *args) {
         }
     }
 }
-
 
 /*
  * The lcore main. This is the main thread that does the work, reading from

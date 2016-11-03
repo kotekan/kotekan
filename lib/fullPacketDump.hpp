@@ -2,6 +2,7 @@
 #define FULL_PACKET_DUMP_HPP
 
 #include "KotekanProcess.hpp"
+#include <string>
 
 class fullPacketDump : public KotekanProcess {
 public:
@@ -20,6 +21,9 @@ private:
 
     int _packet_size;
     uint8_t * _packet_frame;
+    bool _dump_to_disk = true;
+    std::string _file_base;
+    std::string _data_set;
 };
 
 #endif

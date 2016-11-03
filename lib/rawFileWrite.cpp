@@ -45,8 +45,7 @@ void rawFileWrite::main_thread() {
 
         // Check if the producer has finished, and we should exit.
         if (bufferID == -1) {
-            int ret;
-            pthread_exit((void *) &ret);
+            return;
         }
 
         const int file_name_len = 200;
