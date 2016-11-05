@@ -12,6 +12,31 @@
 using json = nlohmann::json;
 using std::map;
 
+#define STATUS_OK 200
+#define STATUS_BAD_REQUEST 400
+#define STATUS_REQUEST_FAILED 402
+#define STATUS_NOT_FOUND 404
+#define STATUS_INTERNAL_ERROR 500
+
+class connectionInstance {
+public:
+    connectionInstance(mg_connection *nc, int ev, void * ev_data);
+    ~connectionInstance();
+
+    void send_error(const string &message, int status_code);
+    void send_json_reply(json &json_reply);
+    void send_binary_reply(uint8_t * data, int len);
+    void send_empty_reply(int status_code);
+
+    // TODO use move constructors with this.
+    string get_body();
+    string get_full_message();
+private:
+    mg_connection *nc;
+    int ev;
+    void * ev_data;
+};
+
 class restServer {
 
 public:
@@ -22,19 +47,11 @@ public:
 
     void mongoose_thread();
 
-    static void handle_status(struct mg_connection *nc, int ev, void *ev_data);
-    static void handle_packet_grab(struct mg_connection *nc, int ev, void *ev_data);
-    static void handle_notfound(struct mg_connection *nc, int ev, void *ev_data);
-    static void handle_start(struct mg_connection *nc, int ev, void *ev_data);
+    void register_json_callback(string endpoint,
+                        std::function<void(connectionInstance &, json &)> callback);
+    std::map<string, std::function<void(connectionInstance &, json &)>> json_callbacks;
 
-    void register_packet_callback(std::function<uint8_t*(int, int&)> callback, int port);
-
-    // Provides json object and returns 0 if loading kotekan is successful.
-    // Returns -1 on failure and sets string to error message.
-    void register_start_callback(std::function<int(json &, string&)> callback);
-
-    std::map<int, std::function<uint8_t*(int, int&)> > packet_callbacks;
-    std::function<int(json&, string&)> start_callback;
+    static void handle_request(struct mg_connection *nc, int ev, void *ev_data);
 
 private:
 

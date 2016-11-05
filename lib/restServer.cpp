@@ -8,12 +8,6 @@
 using json = nlohmann::json;
 using std::string;
 
-#define STATUS_OK 200
-#define STATUS_BAD_REQUEST 400
-#define STATUS_REQUEST_FAILED 402
-#define STATUS_NOT_FOUND 404
-#define STATUS_INTERNAL_ERROR 500
-
 restServer * __rest_server = new restServer();
 
 restServer * get_rest_server() {
@@ -26,32 +20,32 @@ restServer::restServer() : main_thread() {
 restServer::~restServer() {
 }
 
-void restServer::handle_status(mg_connection* nc, int ev, void* ev_data) {
+void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
+    if (ev != MG_EV_HTTP_REQUEST)
+        return;
+
     struct http_message *msg = (struct http_message *)ev_data;
-    INFO("Message details: uri %s", msg->message.p);
+    string url = string(msg->uri.p, msg->uri.len);
 
-    json status = {{"status", "ok"}};
-    string status_str = status.dump(0);
-    int len = status_str.length();
-
-    mg_send_head(nc, STATUS_OK, len, "Content-Type: application/json");
-    mg_send(nc, status_str.c_str(), len);
-}
-
-void restServer::handle_notfound(mg_connection* nc, int ev, void* ev_data) {
-    switch (ev) {
-        case MG_EV_HTTP_REQUEST:
-            mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
-            break;
+    if (!__rest_server->json_callbacks.count(url)) {
+        mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
+        return;
     }
+
+    json json_request;
+    if (__rest_server->handle_json(nc, ev, ev_data, json_request) != 0) {
+        return;
+    }
+
+    connectionInstance conn(nc, ev, ev_data);
+    __rest_server->json_callbacks[url](conn, json_request);
 }
 
-void restServer::register_packet_callback(std::function<uint8_t*(int, int&) > callback, int port) {
-    packet_callbacks[port] = callback;
-}
-
-void restServer::register_start_callback(std::function<int(json&, string&) > callback) {
-    start_callback = callback;
+void restServer::register_json_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
+    if (json_callbacks.count(endpoint)) {
+        WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
+    }
+    json_callbacks[endpoint] = callback;
 }
 
 int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json_parse) {
@@ -68,82 +62,16 @@ int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json
     return 0;
 }
 
-
-void restServer::handle_start(mg_connection* nc, int ev, void* ev_data) {
-
-    json * json_parse = new json();
-
-    if (__rest_server->handle_json(nc, ev, ev_data, *json_parse) == -1) {
-        delete json_parse;
-        return;
-    }
-
-    string error_msg;
-
-    if (__rest_server->start_callback(*json_parse, error_msg) == -1) {
-        string message = "Error Message: kotekan failed to start, error: " + error_msg;
-        mg_send_head(nc, STATUS_REQUEST_FAILED, 0, message.c_str());
-    } else {
-        mg_send_head(nc, STATUS_OK, 0, NULL);
-    }
-}
-
-void restServer::handle_packet_grab(mg_connection* nc, int ev, void* ev_data) {
-
-    struct http_message *msg = (struct http_message *)ev_data;
-
-    INFO("Handle packet grab message details: %s", msg->message.p);
-
-    int port = -1;
-    int num_packets = -1;
-
-    try {
-        json message = json::parse(string(msg->body.p, msg->body.len));
-        port = message["port"];
-        num_packets = message["num_packets"];
-    } catch (std::exception ex) {
-        INFO("restServer: Parse failed handle_packet_grab, message %s", ex.what());
-        mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
-        return;
-    }
-
-    if (num_packets < 0 || num_packets > 100) {
-        INFO("restServer: handle_packet_grap: num_packets=%d out of range", num_packets);
-        mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
-        return;
-    }
-    if (port < 0 || port > 8) {
-        INFO("restServer: handle_packet_grap: port=%d out of range", port);
-        mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
-        return;
-    }
-
-    int len;
-    uint8_t * packets = __rest_server->packet_callbacks[port](num_packets, len);
-
-    if (packets != nullptr) {
-        mg_send_head(nc, STATUS_OK, len, "Content-Type: application/octet-stream");
-        mg_send(nc, (void *)packets, len);
-    } else {
-        mg_send_head(nc, STATUS_REQUEST_FAILED, 0, NULL);
-    }
-}
-
 void restServer::mongoose_thread() {
 
     // init http server
     mg_mgr_init(&mgr, NULL);
-    nc = mg_bind(&mgr, port, handle_notfound);
+    nc = mg_bind(&mgr, port, handle_request);
     if (!nc) {
         INFO("restServer: cannot bind to %s", port);
         return;
     }
     mg_set_protocol_http_websocket(nc);
-
-    // add endpoints
-    mg_register_http_endpoint(nc, "/status", handle_status);
-    mg_register_http_endpoint(nc, "/start", handle_start);
-    mg_register_http_endpoint(nc, "/packet_grab", handle_packet_grab);
 
     INFO("restServer: started server on port %s", port);
 
@@ -165,3 +93,44 @@ void restServer::start() {
     pthread_setaffinity_np(main_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 }
 
+// *** Connection Instance functions ***
+
+connectionInstance::connectionInstance(mg_connection* nc_, int ev_, void* ev_data_) :
+    nc(nc_), ev(ev_), ev_data(ev_data_) {
+    (void)ev; // No warning
+}
+
+connectionInstance::~connectionInstance() {
+
+}
+
+string connectionInstance::get_body() {
+    struct http_message *msg = (struct http_message *)ev_data;
+    return string(msg->body.p, msg->body.len);
+}
+
+string connectionInstance::get_full_message() {
+    struct http_message *msg = (struct http_message *)ev_data;
+    return string(msg->message.p, msg->message.len);
+}
+
+void connectionInstance::send_empty_reply(int status_code) {
+    mg_send_head(nc, status_code, 0, NULL);
+}
+
+void connectionInstance::send_binary_reply(uint8_t * data, int len) {
+    assert(data != nullptr);
+    assert(len > 0);
+
+    mg_send_head(nc, STATUS_OK, len, "Content-Type: application/octet-stream");
+    mg_send(nc, (void *)data, len);
+}
+
+void connectionInstance::send_error(const string& message, int status_code) {
+    string error_message = "Error: " + message;
+    mg_send_head(nc, status_code, 0, error_message.c_str());
+}
+
+void connectionInstance::send_json_reply(json &json_reply) {
+    string json_string = json_reply.dump(0);
+}

@@ -33,15 +33,27 @@ void fullPacketDump::apply_config(uint64_t fpga_seq) {
     _data_set = config.get_string("/packet_cap/data_set");
 }
 
-uint8_t* fullPacketDump::packet_grab_callback(int num_packets, int& len) {
-    assert(num_packets <= MAX_NUM_PACKETS);
+void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_request) {
 
-    if (!got_packets)
-        return nullptr;
+    if (!got_packets) {
+        conn.send_error("no packets captured yet.", STATUS_REQUEST_FAILED);
+        return;
+    }
 
-    len = num_packets * _packet_size;
+    int num_packets = 0;
+    try {
+        num_packets = json_request["num_packets"];
+    } catch (...) {
+        conn.send_error("could not parse/find num_packets parameter", STATUS_BAD_REQUEST);
+        return;
+    }
 
-    return _packet_frame;
+    if (num_packets > MAX_NUM_PACKETS || num_packets < 0) {
+        conn.send_error("num_packets out of range", STATUS_BAD_REQUEST);
+        return;
+    }
+    int len = num_packets * _packet_size;
+    conn.send_binary_reply((uint8_t *)_packet_frame, len);
 }
 
 void fullPacketDump::main_thread() {
@@ -49,7 +61,9 @@ void fullPacketDump::main_thread() {
 
     using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
-    rest_server->register_packet_callback(std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2), link_id);
+    string endpoint = "/packet_grab/" + std::to_string(link_id);
+    rest_server->register_json_callback(endpoint,
+            std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 
     int file_num = 0;
     char host_name[100];

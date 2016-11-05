@@ -179,76 +179,65 @@ int main(int argc, char ** argv) {
     std::atomic<bool> running;
     running = false;
 
-    for(EVER) {
 
-        if (string(config_file_name) != "none") {
-            config.parse_file(config_file_name, 0);
-            // TODO this should be moved into one of the modes.
+    if (string(config_file_name) != "none") {
+        config.parse_file(config_file_name, 0);
+        // TODO this should be moved into one of the modes.
+        config.generate_extra_options();
+        config.dump_config();
+    } else {
+
+        rest_server->register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
+
+            if (running) {
+                conn.send_error("Already running", STATUS_REQUEST_FAILED);
+            }
+
+            config.update_config(json_config, 0);
             config.generate_extra_options();
             config.dump_config();
-        } else {
 
-            rest_server->register_start_callback( [&] (json &json_config, string& error)->int {
+            try {
+                string mode = config.get_string("/system/mode");
 
-                if (running) {
-                    error = "Already running";
-                    return -1;
+                if (mode == "packet_cap") {
+                    kotekan_mode = (kotekanMode *) new packetCapMode(config);
+                } else {
+                    conn.send_error("Mode not supported", STATUS_BAD_REQUEST);
+                    return;
                 }
-
-                config.update_config(json_config, 0);
-                config.dump_config();
-
-                try {
-                    string mode = config.get_string("/system/mode");
-
-                    if (mode == "packet_cap") {
-                        kotekan_mode = (kotekanMode *) new packetCapMode(config);
-                    } else {
-                        error = "Mode not supported";
-                        return -1;
-                    }
-                    kotekan_mode->initalize_processes();
-                    kotekan_mode->start_processes();
-                    running = true;
-                } catch (std::out_of_range ex) {
-                    DEBUG("Out of range exception %s", ex.what());
-                    error = ex.what();
-                    delete kotekan_mode;
-                    kotekan_mode = nullptr;
-                    return -1;
-                } catch (std::runtime_error ex) {
-                    DEBUG("Runtime error %s", ex.what());
-                    error = ex.what();
-                    delete kotekan_mode;
-                    kotekan_mode = nullptr;
-                    return -1;
-                } catch (std::exception ex) {
-                    DEBUG("Generic exception %s", ex.what());
-                    error = ex.what();
-                    delete kotekan_mode;
-                    kotekan_mode = nullptr;
-                    return -1;
-                }
-                return 0;
-            });
-
-        }
-
-        for(EVER){
-            sleep(10);
-            if (running) {
-                INFO("Running!!");
+                kotekan_mode->initalize_processes();
+                kotekan_mode->start_processes();
+                running = true;
+            } catch (std::out_of_range ex) {
+                DEBUG("Out of range exception %s", ex.what());
+                delete kotekan_mode;
+                kotekan_mode = nullptr;
+                conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+                return;
+            } catch (std::runtime_error ex) {
+                DEBUG("Runtime error %s", ex.what());
+                delete kotekan_mode;
+                kotekan_mode = nullptr;
+                conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+                return;
+            } catch (std::exception ex) {
+                DEBUG("Generic exception %s", ex.what());
+                delete kotekan_mode;
+                kotekan_mode = nullptr;
+                conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+                return;
             }
+            conn.send_empty_reply(STATUS_OK);
+        });
+
+    }
+
+    for(EVER){
+        sleep(10);
+        if (running) {
+            INFO("Running!!");
         }
-        /*
-        string mode = config.get_string("/system/mode");
-        if (mode == "packet_cap") {
-            //packet_cap(config);
-        } else if (mode == "chime_shuffle") {
-            chime_shuffle_setup(config);
-        } else {
-            ERROR("Mode = %s does not exist", mode.c_str());
-        }*/
     }
 
     INFO("kotekan shutdown successfully.");

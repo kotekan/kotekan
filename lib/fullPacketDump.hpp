@@ -2,6 +2,7 @@
 #define FULL_PACKET_DUMP_HPP
 
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
 #include <string>
 
 class fullPacketDump : public KotekanProcess {
@@ -11,7 +12,7 @@ public:
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
 
-    uint8_t * packet_grab_callback(int num_packets, int &len);
+    void packet_grab_callback(connectionInstance& conn, json& json_request);
 
 private:
     struct Buffer &buf;
