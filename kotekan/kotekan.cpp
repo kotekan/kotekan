@@ -16,6 +16,7 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <atomic>
 
 extern "C" {
 #include <pthread.h>
@@ -101,6 +102,25 @@ void dpdk_setup() {
 
 }
 
+void update_log_levels(Config &config) {
+    // Adjust the log level
+    int log_level = config.get_int("/system/log_level");
+
+    log_level_warn = 0;
+    log_level_debug = 0;
+    log_level_info = 0;
+    switch (log_level) {
+        case 3:
+            log_level_debug = 1;
+        case 2:
+            log_level_info = 1;
+        case 1:
+            log_level_warn = 1;
+        default:
+            break;
+    }
+}
+
 int main(int argc, char ** argv) {
 
     dpdk_setup();
@@ -155,35 +175,80 @@ int main(int argc, char ** argv) {
     restServer *rest_server = get_rest_server();
     rest_server->start();
 
-    config.parse_file(config_file_name, 0);
-    config.generate_extra_options();
-    config.dump_config();
+    kotekanMode * kotekan_mode = nullptr;
+    std::atomic<bool> running;
+    running = false;
 
-    // Adjust the log level
-    int log_level = config.get_int("/system/log_level");
+    for(EVER) {
 
-    log_level_warn = 0;
-    log_level_debug = 0;
-    log_level_info = 0;
-    switch (log_level) {
-        case 3:
-            log_level_debug = 1;
-        case 2:
-            log_level_info = 1;
-        case 1:
-            log_level_warn = 1;
-        default:
-            break;
-    }
+        if (string(config_file_name) != "none") {
+            config.parse_file(config_file_name, 0);
+            // TODO this should be moved into one of the modes.
+            config.generate_extra_options();
+            config.dump_config();
+        } else {
 
-    string mode = config.get_string("/system/mode");
+            rest_server->register_start_callback( [&] (json &json_config, string& error)->int {
 
-    if (mode == "packet_cap") {
-        packet_cap(config);
-    } else if (mode == "chime_shuffle") {
-        chime_shuffle_setup(config);
-    } else {
-        ERROR("Mode = %s does not exist", mode.c_str());
+                if (running) {
+                    error = "Already running";
+                    return -1;
+                }
+
+                config.update_config(json_config, 0);
+                config.dump_config();
+
+                try {
+                    string mode = config.get_string("/system/mode");
+
+                    if (mode == "packet_cap") {
+                        kotekan_mode = (kotekanMode *) new packetCapMode(config);
+                    } else {
+                        error = "Mode not supported";
+                        return -1;
+                    }
+                    kotekan_mode->initalize_processes();
+                    kotekan_mode->start_processes();
+                    running = true;
+                } catch (std::out_of_range ex) {
+                    DEBUG("Out of range exception %s", ex.what());
+                    error = ex.what();
+                    delete kotekan_mode;
+                    kotekan_mode = nullptr;
+                    return -1;
+                } catch (std::runtime_error ex) {
+                    DEBUG("Runtime error %s", ex.what());
+                    error = ex.what();
+                    delete kotekan_mode;
+                    kotekan_mode = nullptr;
+                    return -1;
+                } catch (std::exception ex) {
+                    DEBUG("Generic exception %s", ex.what());
+                    error = ex.what();
+                    delete kotekan_mode;
+                    kotekan_mode = nullptr;
+                    return -1;
+                }
+                return 0;
+            });
+
+        }
+
+        for(EVER){
+            sleep(10);
+            if (running) {
+                INFO("Running!!");
+            }
+        }
+        /*
+        string mode = config.get_string("/system/mode");
+        if (mode == "packet_cap") {
+            //packet_cap(config);
+        } else if (mode == "chime_shuffle") {
+            chime_shuffle_setup(config);
+        } else {
+            ERROR("Mode = %s does not exist", mode.c_str());
+        }*/
     }
 
     INFO("kotekan shutdown successfully.");

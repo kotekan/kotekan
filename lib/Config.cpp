@@ -126,7 +126,9 @@ uint64_t Config::get_switch_fpga_seq() {
 }
 
 void Config::update_config(json updates, uint64_t switch_fpga_seq) {
-    (void)updates;
+
+    // TODO enable config banks
+    _json[0] = updates;
     (void)switch_fpga_seq;
     // Switch gain banks here.
     return;

@@ -238,7 +238,6 @@ void chime_setup(Config &config) {
     }
 
     // Join the threads.
-
-    processes[0]->join();
-
+    for (auto&& process : processes)
+        process->join();
 }

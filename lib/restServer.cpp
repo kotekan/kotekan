@@ -50,6 +50,44 @@ void restServer::register_packet_callback(std::function<uint8_t*(int, int&) > ca
     packet_callbacks[port] = callback;
 }
 
+void restServer::register_start_callback(std::function<int(json&, string&) > callback) {
+    start_callback = callback;
+}
+
+int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json_parse) {
+
+    struct http_message *msg = (struct http_message *)ev_data;
+
+    try {
+        json_parse = json::parse(string(msg->body.p, msg->body.len));
+    } catch (std::exception ex) {
+        string message =  string("Error Message: JSON failed to parse, error: ") + string(ex.what());
+        mg_send_head(nc, STATUS_BAD_REQUEST, 0, message.c_str());
+        return -1;
+    }
+    return 0;
+}
+
+
+void restServer::handle_start(mg_connection* nc, int ev, void* ev_data) {
+
+    json * json_parse = new json();
+
+    if (__rest_server->handle_json(nc, ev, ev_data, *json_parse) == -1) {
+        delete json_parse;
+        return;
+    }
+
+    string error_msg;
+
+    if (__rest_server->start_callback(*json_parse, error_msg) == -1) {
+        string message = "Error Message: kotekan failed to start, error: " + error_msg;
+        mg_send_head(nc, STATUS_REQUEST_FAILED, 0, message.c_str());
+    } else {
+        mg_send_head(nc, STATUS_OK, 0, NULL);
+    }
+}
+
 void restServer::handle_packet_grab(mg_connection* nc, int ev, void* ev_data) {
 
     struct http_message *msg = (struct http_message *)ev_data;
@@ -63,8 +101,8 @@ void restServer::handle_packet_grab(mg_connection* nc, int ev, void* ev_data) {
         json message = json::parse(string(msg->body.p, msg->body.len));
         port = message["port"];
         num_packets = message["num_packets"];
-    } catch (...) {
-        INFO("restServer: Parse failed handle_packet_grab, message %s");
+    } catch (std::exception ex) {
+        INFO("restServer: Parse failed handle_packet_grab, message %s", ex.what());
         mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
         return;
     }
@@ -104,6 +142,7 @@ void restServer::mongoose_thread() {
 
     // add endpoints
     mg_register_http_endpoint(nc, "/status", handle_status);
+    mg_register_http_endpoint(nc, "/start", handle_start);
     mg_register_http_endpoint(nc, "/packet_grab", handle_packet_grab);
 
     INFO("restServer: started server on port %s", port);

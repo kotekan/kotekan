@@ -2,7 +2,20 @@
 #define PACKET_CAP_HPP
 
 #include "Config.hpp"
+#include "kotekanMode.hpp"
 
-void packet_cap(Config &config);
+class packetCapMode : public kotekanMode {
+
+public:
+    packetCapMode(Config &config);
+    virtual ~packetCapMode();
+
+    void initalize_processes();
+
+private:
+    
+
+
+};
 
 #endif /* PACKET_CAP_HPP */
