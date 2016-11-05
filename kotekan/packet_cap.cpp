@@ -11,6 +11,7 @@
 #include "util.h"
 #include "packet_cap.hpp"
 #include "fullPacketDump.hpp"
+#include "dpdkWrapper.hpp"
 
 #include <vector>
 #include <string>
@@ -37,14 +38,12 @@ void packetCapMode::initalize_processes() {
 
     // Config values:
     int32_t fpga_packet_lenght = config.get_int("/fpga_network/udp_packet_size");
-    int32_t num_data_sets = config.get_int("/processing/num_data_sets");
     int32_t samples_per_data_set = config.get_int("/processing/samples_per_data_set");
     int32_t buffer_depth = config.get_int("/processing/buffer_depth");
     int32_t num_fpga_links = config.get_int("/fpga_network/num_links");
     bool dump_to_disk = config.get_bool("/packet_cap/dump_to_disk");
     string file_base = config.get_string("/packet_cap/file_base");
     string data_set = config.get_string("/packet_cap/data_set");
-
 
     // Create dump folder
     if (dump_to_disk) {
@@ -95,57 +94,7 @@ void packetCapMode::initalize_processes() {
                       buffer_name);
     }
 
-    INFO("Starting up network threads...");
-
-    // Create network threads
-    pthread_t network_dpdk_t;
-    struct networkDPDKArg * network_dpdk_args = (struct networkDPDKArg *)malloc(sizeof(struct networkDPDKArg));
-    struct Buffer *** tmp_buffer;
-    tmp_buffer = (struct Buffer ***)malloc(num_fpga_links * sizeof(struct Buffer *));
-    for (int port = 0; port < num_fpga_links; ++port) {
-        tmp_buffer[port] = (struct Buffer **)malloc(NUM_FREQ * sizeof(struct Buffer *));
-    }
-
-    // TODO move to function
-    int32_t link_ids[num_fpga_links];
-    for (int i = 0; i < num_fpga_links; ++i) {
-        link_ids[i] = 0;
-    }
-
-    // Start DPDK
-    for (int i = 0; i < num_fpga_links; ++i) {
-        for (int freq = 0; freq < NUM_FREQ; ++freq) {
-            tmp_buffer[i][freq] = network_input_buffer[i];
-            INFO ("tmp_buffer[%d][%d] = %p", i, freq, tmp_buffer[i][freq]);
-        }
-        network_dpdk_args->num_links_in_group[i] = 1;
-        network_dpdk_args->link_id[i] = link_ids[i];
-    }
-    network_dpdk_args->buf = tmp_buffer;
-    network_dpdk_args->vdif_buf = NULL;
-    network_dpdk_args->num_links = num_fpga_links;
-    network_dpdk_args->timesamples_per_packet = config.get_int("/fpga_network/timesamples_per_packet");
-    network_dpdk_args->samples_per_data_set = samples_per_data_set;
-    network_dpdk_args->num_data_sets = num_data_sets;
-    network_dpdk_args->num_gpu_frames = config.get_int("/processing/num_gpu_frames");
-    network_dpdk_args->udp_packet_size = fpga_packet_lenght;
-    network_dpdk_args->num_lcores = 4;
-    network_dpdk_args->num_links_per_lcore = 1;
-    network_dpdk_args->port_offset[0] = 0;
-    network_dpdk_args->port_offset[1] = 1;
-    network_dpdk_args->port_offset[2] = 2;
-    network_dpdk_args->port_offset[3] = 3;
-    network_dpdk_args->enable_shuffle = 0;
-    network_dpdk_args->dump_full_packets = 1;
-
-    CHECK_ERROR( pthread_create(&network_dpdk_t, NULL, &network_dpdk_thread,
-                                (void *)network_dpdk_args ) );
-
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (int j = 0; j < 1; j++)
-        CPU_SET(j, &cpuset);
-    CHECK_ERROR( pthread_setaffinity_np(network_dpdk_t, sizeof(cpu_set_t), &cpuset) );
+    add_process((KotekanProcess *) new dpdkWrapper(config, network_input_buffer));
 
     // The thread which creates output frame.
     for (int i = 0; i < num_fpga_links; ++i) {

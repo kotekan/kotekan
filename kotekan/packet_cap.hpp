@@ -14,8 +14,6 @@ public:
 
 private:
     
-
-
 };
 
 #endif /* PACKET_CAP_HPP */
