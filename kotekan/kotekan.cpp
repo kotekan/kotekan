@@ -127,6 +127,8 @@ int start_new_kotekan_mode(Config &config) {
 
     if (mode == "packet_cap") {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
+    } else if (mode == "chime_shuffle") {
+        kotekan_mode = (kotekanMode *) new chimeShuffle(config);
     } else {
         return -1;
     }

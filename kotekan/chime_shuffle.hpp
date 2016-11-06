@@ -1,8 +1,20 @@
 #ifndef CHIME_SHUFFLE_HPP
 #define CHIME_SHUFFLE_HPP
 
-#include "Config.hpp"
+#include "kotekanMode.hpp"
 
-void chime_shuffle_setup(Config &config);
+class chimeShuffle : public kotekanMode {
+
+public:
+    chimeShuffle(Config &config);
+    virtual ~chimeShuffle();
+
+    void initalize_processes();
+
+private:
+
+};
+
+
 
 #endif /* CHIME_HPP */

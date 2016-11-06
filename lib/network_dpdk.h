@@ -8,7 +8,7 @@
 // TODO Make these dynamic.
 #define NUM_LINKS (4)
 #define NUM_LCORES (4)
-#define NUM_FREQ (1)
+#define NUM_FREQ (4)
 
 #ifdef __cplusplus
 extern "C" {

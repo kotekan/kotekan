@@ -5,8 +5,8 @@
 
 #include <unistd.h>
 
-dpdkWrapper::dpdkWrapper(Config& config, Buffer* network_input_buffer_[]) :
-    KotekanProcess(config, std::bind(&dpdkWrapper::main_thread, this)) {
+dpdkWrapper::dpdkWrapper(Config& config, Buffer* network_input_buffer_[], string mode) :
+    KotekanProcess(config, std::bind(&dpdkWrapper::main_thread, this)), _mode(mode) {
 
     apply_config(0);
 
@@ -40,7 +40,6 @@ void dpdkWrapper::apply_config(uint64_t fpga_seq) {
     _timesamples_per_packet = config.get_int("/dpdk/timesamples_per_packet");
     _num_gpu_frames = config.get_int("/processing/num_gpu_frames");
     _num_lcores = config.get_int("/dpdk/num_lcores");
-    _mode = config.get_string("/dpdk/mode");
     _link_map = config.get_int_array("/gpu/link_map");
 }
 
