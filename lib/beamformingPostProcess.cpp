@@ -54,7 +54,7 @@ void beamformingPostProcess::apply_config(uint64_t fpga_seq) {
     if (!config.update_needed(fpga_seq))
         return;
 
-    _num_fpga_links = config.get_int("/fpga_network/num_links");
+    _num_fpga_links = config.get_int("/dpdk/num_links");
     _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
     _num_data_sets = config.get_int("/processing/num_data_sets");
     _link_map = config.get_int_array("/gpu/link_map");

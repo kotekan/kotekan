@@ -25,6 +25,9 @@ private:
     int32_t _num_fpga_links;
     int32_t _timesamples_per_packet;
     int32_t _num_gpu_frames;
+    int32_t _num_lcores;
+    string _mode;
+    vector<int32_t> _link_map;
 };
 
 

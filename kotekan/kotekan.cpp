@@ -44,11 +44,7 @@ extern "C" {
 #include <rte_pci.h>
 #include <rte_random.h>
 #include <rte_debug.h>
-#include <rte_ether.h>
-#include <rte_ethdev.h>
 #include <rte_ring.h>
-#include <rte_mempool.h>
-#include <rte_mbuf.h>
 }
 
 #include "errors.h"
@@ -100,11 +96,6 @@ void dpdk_setup() {
     int ret2 = rte_eal_init(argc2, argv2);
     if (ret2 < 0)
         exit(EXIT_FAILURE);
-
-    // Can we see ports here?
-    int nb_ports = rte_eth_dev_count();
-    fprintf(stdout, "kotekan; Number of ports: %d\n", nb_ports);
-
 }
 
 void update_log_levels(Config &config) {

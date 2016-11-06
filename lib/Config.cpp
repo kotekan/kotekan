@@ -143,7 +143,7 @@ bool Config::update_needed(uint32_t fpga_seq) {
 
 int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
 
-    int32_t num_links = get_int("/fpga_network/num_links");
+    int32_t num_links = get_int("/dpdk/num_links");
     vector<int32_t> link_map = get_int_array("/gpu/link_map");
     int32_t gpus_in_link = 0;
 

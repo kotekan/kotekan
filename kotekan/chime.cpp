@@ -30,7 +30,7 @@ void chime_setup(Config &config) {
     int32_t num_data_sets = config.get_int("/processing/num_data_sets");
     int32_t samples_per_data_set = config.get_int("/processing/samples_per_data_set");
     int32_t buffer_depth = config.get_int("/processing/buffer_depth");
-    int32_t num_fpga_links = config.get_int("/fpga_network/num_links");
+    int32_t num_fpga_links = config.get_int("/dpdk/num_links");
     int32_t network_buffer_depth = config.get_int("/ch_master_network/network_buffer_depth");
     vector<int32_t> link_map = config.get_int_array("/gpu/link_map");
     bool enable_upload = config.get_bool("/ch_master_network/enable_upload");
@@ -142,11 +142,11 @@ void chime_setup(Config &config) {
         network_dpdk_args.buf = tmp_buffer;
         network_dpdk_args.vdif_buf = NULL;
         network_dpdk_args.num_links = num_fpga_links;
-        network_dpdk_args.timesamples_per_packet = config.get_int("/fpga_network/timesamples_per_packet");
+        network_dpdk_args.timesamples_per_packet = config.get_int("/dpdk/timesamples_per_packet");
         network_dpdk_args.samples_per_data_set = samples_per_data_set;
         network_dpdk_args.num_data_sets = num_data_sets;
         network_dpdk_args.num_gpu_frames = config.get_int("/processing/num_gpu_frames");
-        network_dpdk_args.udp_packet_size = config.get_int("/fpga_network/udp_packet_size");
+        network_dpdk_args.udp_packet_size = config.get_int("/dpdk/udp_packet_size");
         network_dpdk_args.num_lcores = 4;
         network_dpdk_args.num_links_per_lcore = 2;
         network_dpdk_args.port_offset[0] = 0;

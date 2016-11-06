@@ -48,7 +48,7 @@ void gpuPostProcess::apply_config(uint64_t fpga_seq) {
     _num_blocks = config.get_int("/gpu/num_blocks");
     _block_size = config.get_int("/gpu/block_size");
     _link_map = config.get_int_array("/gpu/link_map");
-    _num_fpga_links = config.get_int("/fpga_network/num_links");
+    _num_fpga_links = config.get_int("/dpdk/num_links");
     _enable_basic_gating = config.get_bool("/gating/enable_gating");
     _gate_phase = config.get_int("/gating/gate_phase");
     _gate_cadence = config.get_int("/gating/gate_cadence");

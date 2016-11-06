@@ -27,7 +27,7 @@ fullPacketDump::~fullPacketDump() {
 
 void fullPacketDump::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    _packet_size = config.get_int("/fpga_network/udp_packet_size");
+    _packet_size = config.get_int("/dpdk/udp_packet_size");
     _dump_to_disk = config.get_bool("/packet_cap/dump_to_disk");
     _file_base = config.get_string("/packet_cap/file_base");
     _data_set = config.get_string("/packet_cap/data_set");

@@ -37,10 +37,10 @@ void packetCapMode::initalize_processes() {
     INFO("starting packet cap");
 
     // Config values:
-    int32_t fpga_packet_lenght = config.get_int("/fpga_network/udp_packet_size");
+    int32_t fpga_packet_lenght = config.get_int("/dpdk/udp_packet_size");
     int32_t samples_per_data_set = config.get_int("/processing/samples_per_data_set");
     int32_t buffer_depth = config.get_int("/processing/buffer_depth");
-    int32_t num_fpga_links = config.get_int("/fpga_network/num_links");
+    int32_t num_fpga_links = config.get_int("/dpdk/num_links");
     bool dump_to_disk = config.get_bool("/packet_cap/dump_to_disk");
     string file_base = config.get_string("/packet_cap/file_base");
     string data_set = config.get_string("/packet_cap/data_set");
