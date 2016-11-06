@@ -11,9 +11,6 @@ public:
     virtual ~packetCapMode();
 
     void initalize_processes();
-
-private:
-    
 };
 
 #endif /* PACKET_CAP_HPP */

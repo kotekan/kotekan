@@ -1,4 +1,4 @@
-#include "chime_shuffle.hpp"
+#include "chimeShuffleMode.hpp"
 #include "buffers.h"
 #include "gpu_thread.h"
 #include "chrxUplink.hpp"
@@ -9,7 +9,7 @@
 #include "network_dpdk.h"
 #include "hccGPUThread.hpp"
 #include "util.h"
-#include "packet_cap.hpp"
+#include "packetCapMode.hpp"
 #include "fullPacketDump.hpp"
 #include "dpdkWrapper.hpp"
 

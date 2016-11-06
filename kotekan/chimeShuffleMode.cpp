@@ -1,4 +1,4 @@
-#include "chime_shuffle.hpp"
+#include "chimeShuffleMode.hpp"
 #include "buffers.h"
 #include "gpu_thread.h"
 #include "chrxUplink.hpp"
@@ -17,13 +17,13 @@
 using std::string;
 using std::vector;
 
-chimeShuffle::chimeShuffle(Config& config) : kotekanMode(config) {
+chimeShuffleMode::chimeShuffleMode(Config& config) : kotekanMode(config) {
 }
 
-chimeShuffle::~chimeShuffle() {
+chimeShuffleMode::~chimeShuffleMode() {
 }
 
-void chimeShuffle::initalize_processes() {
+void chimeShuffleMode::initalize_processes() {
 
     // Config values:
     int32_t num_gpus = config.get_int("/gpu/num_gpus");

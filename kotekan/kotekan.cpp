@@ -66,9 +66,9 @@ extern "C" {
 #include "json.hpp"
 #include "gpuPostProcess.hpp"
 #include "beamformingPostProcess.hpp"
-#include "chime_shuffle.hpp"
+#include "chimeShuffleMode.hpp"
 #include "restServer.hpp"
-#include "packet_cap.hpp"
+#include "packetCapMode.hpp"
 
 using json = nlohmann::json;
 
@@ -128,7 +128,7 @@ int start_new_kotekan_mode(Config &config) {
     if (mode == "packet_cap") {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
     } else if (mode == "chime_shuffle") {
-        kotekan_mode = (kotekanMode *) new chimeShuffle(config);
+        kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
     } else {
         return -1;
     }

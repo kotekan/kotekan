@@ -3,18 +3,13 @@
 
 #include "kotekanMode.hpp"
 
-class chimeShuffle : public kotekanMode {
+class chimeShuffleMode : public kotekanMode {
 
 public:
-    chimeShuffle(Config &config);
-    virtual ~chimeShuffle();
+    chimeShuffleMode(Config &config);
+    virtual ~chimeShuffleMode();
 
     void initalize_processes();
-
-private:
-
 };
-
-
 
 #endif /* CHIME_HPP */
