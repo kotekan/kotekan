@@ -17,6 +17,7 @@
 #include <iostream>
 #include <fstream>
 #include <atomic>
+#include <mutex>
 
 extern "C" {
 #include <pthread.h>
@@ -75,6 +76,10 @@ extern "C" {
 
 using json = nlohmann::json;
 
+kotekanMode * kotekan_mode = nullptr;
+bool running = false;
+std::mutex kotekan_state_lock;
+
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
@@ -119,6 +124,26 @@ void update_log_levels(Config &config) {
         default:
             break;
     }
+}
+
+int start_new_kotekan_mode(Config &config) {
+
+    config.generate_extra_options();
+    config.dump_config();
+    update_log_levels(config);
+
+    string mode = config.get_string("/system/mode");
+
+    if (mode == "packet_cap") {
+        kotekan_mode = (kotekanMode *) new packetCapMode(config);
+    } else {
+        return -1;
+    }
+    kotekan_mode->initalize_processes();
+    kotekan_mode->start_processes();
+    running = true;
+
+    return 0;
 }
 
 int main(int argc, char ** argv) {
@@ -175,69 +200,81 @@ int main(int argc, char ** argv) {
     restServer *rest_server = get_rest_server();
     rest_server->start();
 
-    kotekanMode * kotekan_mode = nullptr;
-    std::atomic<bool> running;
-    running = false;
-
 
     if (string(config_file_name) != "none") {
+        // TODO should be in a try catch block, to make failures cleaner.
+        std::lock_guard<std::mutex> lock(kotekan_state_lock);
         config.parse_file(config_file_name, 0);
-        // TODO this should be moved into one of the modes.
-        config.generate_extra_options();
-        config.dump_config();
-    } else {
-
-        rest_server->register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
-
-            if (running) {
-                conn.send_error("Already running", STATUS_REQUEST_FAILED);
-            }
-
-            config.update_config(json_config, 0);
-            config.generate_extra_options();
-            config.dump_config();
-
-            try {
-                string mode = config.get_string("/system/mode");
-
-                if (mode == "packet_cap") {
-                    kotekan_mode = (kotekanMode *) new packetCapMode(config);
-                } else {
-                    conn.send_error("Mode not supported", STATUS_BAD_REQUEST);
-                    return;
-                }
-                kotekan_mode->initalize_processes();
-                kotekan_mode->start_processes();
-                running = true;
-            } catch (std::out_of_range ex) {
-                DEBUG("Out of range exception %s", ex.what());
-                delete kotekan_mode;
-                kotekan_mode = nullptr;
-                conn.send_error(ex.what(), STATUS_BAD_REQUEST);
-                return;
-            } catch (std::runtime_error ex) {
-                DEBUG("Runtime error %s", ex.what());
-                delete kotekan_mode;
-                kotekan_mode = nullptr;
-                conn.send_error(ex.what(), STATUS_BAD_REQUEST);
-                return;
-            } catch (std::exception ex) {
-                DEBUG("Generic exception %s", ex.what());
-                delete kotekan_mode;
-                kotekan_mode = nullptr;
-                conn.send_error(ex.what(), STATUS_BAD_REQUEST);
-                return;
-            }
-            conn.send_empty_reply(STATUS_OK);
-        });
-
+        if (start_new_kotekan_mode(config) == -1) {
+            ERROR("Mode not supported");
+            return -1;
+        }
     }
 
-    for(EVER){
-        sleep(10);
+    // Main REST callbacks.
+    rest_server->register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
+        std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
-            INFO("Running!!");
+            conn.send_error("Already running", STATUS_REQUEST_FAILED);
         }
+
+        config.update_config(json_config, 0);
+
+        try {
+            if (!start_new_kotekan_mode(config)) {
+                conn.send_error("Mode not supported", STATUS_BAD_REQUEST);
+                return;
+            }
+        } catch (std::out_of_range ex) {
+            DEBUG("Out of range exception %s", ex.what());
+            delete kotekan_mode;
+            kotekan_mode = nullptr;
+            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            return;
+        } catch (std::runtime_error ex) {
+            DEBUG("Runtime error %s", ex.what());
+            delete kotekan_mode;
+            kotekan_mode = nullptr;
+            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            return;
+        } catch (std::exception ex) {
+            DEBUG("Generic exception %s", ex.what());
+            delete kotekan_mode;
+            kotekan_mode = nullptr;
+            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            return;
+        }
+        conn.send_empty_reply(STATUS_OK);
+    });
+
+    rest_server->register_json_callback("/stop", [&](connectionInstance &conn, json &json_request) {
+        std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        if (!running) {
+            conn.send_error("kotekan is already stopped", STATUS_REQUEST_FAILED);
+            return;
+        }
+        assert(kotekan_mode != nullptr);
+        kotekan_mode->stop_processes();
+        // TODO should we have three states (running, shutting down, and stoped)?
+        // This would prevent this function from blocking on join.
+        kotekan_mode->join();
+        delete kotekan_mode;
+        kotekan_mode = nullptr;
+        conn.send_empty_reply(STATUS_OK);
+    });
+
+    rest_server->register_json_callback("/status", [&](connectionInstance &conn, json &json_request){
+        std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        json reply;
+        reply["running"] = running;
+        conn.send_json_reply(reply);
+    });
+
+    for(EVER){
+        // Note you cannot actaully kill kotekan from the REST interface, it's always running.
+        // Maybe we should transfer control to the reserver loop here, but this isn't expensive,
+        // and might be a useful loop for other things.
+        sleep(1000);
     }
 
     INFO("kotekan shutdown successfully.");

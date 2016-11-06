@@ -133,4 +133,6 @@ void connectionInstance::send_error(const string& message, int status_code) {
 
 void connectionInstance::send_json_reply(json &json_reply) {
     string json_string = json_reply.dump(0);
+    mg_send_head(nc, STATUS_OK, json_string.size(), NULL);
+    mg_send(nc, (void*) json_string.c_str(), json_string.size());
 }

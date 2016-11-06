@@ -53,6 +53,7 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
         return;
     }
     int len = num_packets * _packet_size;
+    std::lock_guard<std::mutex> lock(_packet_frame_lock);
     conn.send_binary_reply((uint8_t *)_packet_frame, len);
 }
 
@@ -80,8 +81,11 @@ void fullPacketDump::main_thread() {
             break;
         }
 
-        memcpy(_packet_frame, buf.data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
-        if (!got_packets) got_packets = true;
+        {
+            std::lock_guard<std::mutex> lock(_packet_frame_lock);
+            memcpy(_packet_frame, buf.data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
+            if (!got_packets) got_packets = true;
+        }
 
         if (_dump_to_disk) {
 
