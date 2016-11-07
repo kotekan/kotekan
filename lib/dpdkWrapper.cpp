@@ -120,6 +120,7 @@ void dpdkWrapper::main_thread() {
     network_dpdk_args->udp_packet_size = _udp_packet_size;
     network_dpdk_args->num_lcores = _num_lcores;
     network_dpdk_args->num_links_per_lcore = _num_fpga_links / _num_lcores;
+    network_dpdk_args->stop_capture = 0;
     for (int i = 0; i < _num_lcores; ++i) {
         network_dpdk_args->port_offset[i] = i * network_dpdk_args->num_links_per_lcore;
     }
@@ -134,7 +135,12 @@ void dpdkWrapper::main_thread() {
     CHECK_ERROR( pthread_setaffinity_np(network_dpdk_t, sizeof(cpu_set_t), &cpuset) );
 
     while(!stop_thread) {
-        sleep(1000);
-        // TODO shutdown dpdk here.
+        sleep(10);
     }
+
+    // Start exit
+    network_dpdk_args->stop_capture = 1;
+    int *ret;
+    CHECK_ERROR( pthread_join (network_dpdk_t, (void **)  &ret) );
+    INFO("DPDK Wrapper finished");
 }

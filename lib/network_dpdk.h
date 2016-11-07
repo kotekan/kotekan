@@ -38,6 +38,12 @@ struct networkDPDKArg {
     int dump_full_packets;
     int enable_shuffle;
 
+    // Note ideally this would hvae atomic access,
+    // but since only one tread writes and others
+    // read it should be safe and much more efficent
+    // to have it not be atomic. 
+    int stop_capture;
+
     // Used for the vdif generation
     struct Buffer * vdif_buf;
 };

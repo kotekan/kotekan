@@ -69,7 +69,9 @@ static const struct rte_eth_conf port_conf_default = {
     }
 };
 
-/* basicfwd.c: Basic DPDK skeleton forwarding example. */
+// Annoyingly DPDK doesn't seem to have a stop function
+// So we make sure we only start it once...
+int __dpdk_internal_started = 0;
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -681,8 +683,7 @@ int lcore_recv_pkt_dump(void *args) {
                                     dpdk_net->args->num_data_sets *
                                     dpdk_net->args->num_gpu_frames;
 
-    /* Run until the application is quit or killed. */
-    for (;;) {
+    for (;;) { // Main DPDK loop.
 
         // For each port.
         for (port = port_offset;
@@ -691,9 +692,11 @@ int lcore_recv_pkt_dump(void *args) {
 
             const int32_t nb_rx = rte_eth_rx_burst(port, 0, mbufs, BURST_SIZE);
 
-            if (likely(nb_rx == 0)) {
-                //dpdk_net.num_unused_cycles++;
-                continue;
+            if (unlikely(dpdk_net->args->stop_capture == 1)) {
+                for (int i = 0; i < nb_rx; ++i) {
+                    rte_pktmbuf_free(mbufs[i]);
+                }
+                goto exit_dpdk_lcore_loop;
             }
 
             // For each packet on that port.
@@ -771,7 +774,15 @@ int lcore_recv_pkt_dump(void *args) {
                 rte_pktmbuf_free(mbufs[i]);
             }
         }
+    } // Main DPDK lcore loop
+    exit_dpdk_lcore_loop:
+    INFO("Existing DPDK on lcore: %d", lcore);
+    for (port = port_offset;
+             port < dpdk_net->args->num_links_per_lcore + port_offset;
+             ++port) {
+        mark_producer_done(dpdk_net->args->buf[port][0], 0);
     }
+    return 0;
 }
 
 /*
@@ -802,7 +813,7 @@ int lcore_recv_pkt(void *args)
         INFO("port reached %d", port);
     }
 
-    /* Run until the application is quit or killed. */
+    // Main DPDK lcore loop
     for (;;) {
 
         // For each port.
@@ -812,9 +823,11 @@ int lcore_recv_pkt(void *args)
 
             const int32_t nb_rx = rte_eth_rx_burst(port, 0, mbufs, BURST_SIZE);
 
-            if (likely(nb_rx == 0)) {
-                //dpdk_net.num_unused_cycles++;
-                continue;
+            if (unlikely(dpdk_net->args->stop_capture == 1)) {
+                for (int i = 0; i < nb_rx; ++i) {
+                    rte_pktmbuf_free(mbufs[i]);
+                }
+                goto exit_dpdk_lcore_loop;
             }
 
             // For each packet on that port.
@@ -881,7 +894,16 @@ int lcore_recv_pkt(void *args)
                 rte_pktmbuf_free(mbufs[i]);
             }
         }
+    } // Main DPDK lcore loop
+    exit_dpdk_lcore_loop:
+    INFO("Existing DPDK on lcore: %d", lcore);
+    for (port = port_offset;
+             port < dpdk_net->args->num_links_per_lcore + port_offset;
+             ++port) {
+        for (int freq = 0; freq < NUM_FREQ; ++freq)
+            mark_producer_done(dpdk_net->args->buf[port][freq], freq);
     }
+    return 0;
 }
 
 /*
@@ -903,42 +925,46 @@ network_dpdk_thread(void * args)
 
     init_network_object(&dpdk_net);
 
-    check_port_socket_assignment();
+    if (__dpdk_internal_started == 0) {
 
-    struct rte_mempool *mbuf_pool;
-    unsigned nb_ports;
-    uint8_t portid;
+        check_port_socket_assignment();
 
-    /* Check that there is an even number of ports to send/receive on. */
-    nb_ports = rte_eth_dev_count();
-    INFO("Number of ports: %d", nb_ports);
+        struct rte_mempool *mbuf_pool;
+        unsigned nb_ports;
+        uint8_t portid;
 
-    /* Creates a new mempool in memory to hold the mbufs. */
-    mbuf_pool = rte_mempool_create("MBUF_POOL",
-                                   NUM_MBUFS * nb_ports,
-                                   MBUF_SIZE,
-                                   MBUF_CACHE_SIZE,
-                                   sizeof(struct rte_pktmbuf_pool_private),
-                                   rte_pktmbuf_pool_init, NULL,
-                                   rte_pktmbuf_init,      NULL,
-                                   rte_socket_id(),
-                                   0);
+        /* Check that there is an even number of ports to send/receive on. */
+        nb_ports = rte_eth_dev_count();
+        INFO("Number of ports: %d", nb_ports);
 
-    if (mbuf_pool == NULL)
-        rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+        /* Creates a new mempool in memory to hold the mbufs. */
+        mbuf_pool = rte_mempool_create("MBUF_POOL",
+                                       NUM_MBUFS * nb_ports,
+                                       MBUF_SIZE,
+                                       MBUF_CACHE_SIZE,
+                                       sizeof(struct rte_pktmbuf_pool_private),
+                                       rte_pktmbuf_pool_init, NULL,
+                                       rte_pktmbuf_init,      NULL,
+                                       rte_socket_id(),
+                                       0);
 
-    /* Initialize all ports. */
-    for (portid = 0; portid < nb_ports; portid++){
-        if (port_init(portid, mbuf_pool) != 0) {
-            rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
+        if (mbuf_pool == NULL)
+            rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+
+        /* Initialize all ports. */
+        for (portid = 0; portid < nb_ports; portid++){
+            if (port_init(portid, mbuf_pool) != 0) {
+                rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
+            }
+        }
+
+        if (rte_lcore_count() != dpdk_net.args->num_lcores) {
+            INFO("WARNING: The number of lcores %d doesn't match the expected value %d", rte_lcore_count(), dpdk_net.args->num_lcores);
         }
     }
+    __dpdk_internal_started = 1;
 
-    if (rte_lcore_count() != dpdk_net.args->num_lcores) {
-        INFO("WARNING: The number of lcores %d doesn't match the expected value %d", rte_lcore_count(), dpdk_net.args->num_lcores);
-    }
-
-    INFO("Starting lcores!")
+    INFO("DPDK: Starting lcores!")
 
     // Start the packet receiving lcores (basically pthreads)
     if (dpdk_net.args->dump_full_packets == 1) {
@@ -948,6 +974,8 @@ network_dpdk_thread(void * args)
     }
 
     rte_eal_mp_wait_lcore();
+
+    INFO("DPDK stoped lcores!");
 
     return NULL;
 }

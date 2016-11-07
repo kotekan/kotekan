@@ -657,7 +657,8 @@ void delete_info_object_pool(struct InfoObjectPool * pool)
     for (int i = 0; i < pool->pool_size; ++i) {
         delete_error_matrix( &pool->info_objects[i].error_matrix );
     }
-    CHECK_ERROR( pthread_mutex_destroy(&pool->in_use_lock) );
+    free(pool->info_objects);
+    pthread_mutex_destroy(&pool->in_use_lock);
 }
 
 int private_get_full_buffer(struct Buffer* buf)
