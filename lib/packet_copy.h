@@ -17,6 +17,8 @@
 extern "C" {
 #endif
 
+#include "errors.h"
+
 // Copy 8 bytes from one location to another,
 // locations should not overlap.
 // Output must be 4 bytes aligned.
@@ -127,7 +129,8 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
         }
         len -= n; // We will copy at least n;
         assert(len >= 0);
-        src = rte_pktmbuf_mtod(*pkt, uint8_t *) + local_offset;
+        //INFO("copy_block pointer %p", *pkt);
+        src = rte_pktmbuf_mtod_offset(*pkt, uint8_t *, local_offset);
 
         //fprintf(stderr, "pkt_data_len = %d, n = %d, local_offset = %d\n", pkt->data_len, n, local_offset);
 
@@ -215,6 +218,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
             //assert(n <= pkt->data_len);
 
             // Get the first 8 bytes of the next frame.
+            //INFO("copy_block pointer 2 %p", *pkt);
             src = rte_pktmbuf_mtod(*pkt, uint8_t *);
             //fprintf(stderr, "new src: 0x%016llX\n", );
             //second_val = (*(const uint64_t *)src) >> n*8;

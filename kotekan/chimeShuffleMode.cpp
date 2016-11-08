@@ -56,8 +56,8 @@ void chimeShuffleMode::initalize_processes() {
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
-    struct InfoObjectPool * pool[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
+    struct InfoObjectPool * pool[1];
+    for (int i = 0; i < 1; ++i) {
         pool[i] = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
         add_info_object_pool(pool[i]);
     }
@@ -65,6 +65,10 @@ void chimeShuffleMode::initalize_processes() {
     cl_int output_len = num_adjusted_local_freq * num_blocks * (block_size*block_size)*2.;
 
     char buffer_name[100];
+
+    create_info_pool(pool[0], 5 * buffer_depth,
+                                    num_adjusted_local_freq,
+                                    num_adjusted_elements);
 
     for (int i = 0; i < num_gpus; ++i) {
 
@@ -74,10 +78,6 @@ void chimeShuffleMode::initalize_processes() {
 
         INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
 
-        create_info_pool(pool[i], 2 * links_per_gpu * buffer_depth,
-                                    num_adjusted_local_freq,
-                                    num_adjusted_elements);
-
         snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
         create_buffer(network_input_buffer[i],
                       links_per_gpu * buffer_depth,
@@ -85,16 +85,16 @@ void chimeShuffleMode::initalize_processes() {
                       num_adjusted_local_freq * num_data_sets,
                       4,
                       1,
-                      pool[i],
+                      pool[0],
                       buffer_name);
 
         snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
-        create_buffer(network_input_buffer[i],
+        create_buffer(gpu_output_buffer[i],
                       links_per_gpu * buffer_depth,
                       output_len * num_data_sets * sizeof(cl_int),
                       1,
                       1,
-                      pool[i],
+                      pool[0],
                       buffer_name);
 
         // TODO better management of the buffers so this list doesn't have to change size...
@@ -128,7 +128,7 @@ void chimeShuffleMode::initalize_processes() {
 
     // The thread which creates output frame.
     gpuPostProcess * gpu_post_process = new gpuPostProcess(config,
-                                                            *gpu_output_buffer,
+                                                            gpu_output_buffer,
                                                             *network_output_buffer,
                                                             *gated_output_buffer);
     add_process((KotekanProcess*)gpu_post_process);

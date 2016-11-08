@@ -2,6 +2,8 @@
 #define GPU_POST_PROCESS
 
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
+#include "util.h"
 
 #include <vector>
 
@@ -13,15 +15,16 @@ using std::vector;
 class gpuPostProcess : public KotekanProcess {
 public:
     gpuPostProcess(Config &config,
-                  struct Buffer *in_buf, // This is an array, to be fixed with vector.
+                  struct Buffer **in_buf, // This is an array, to be fixed with vector.
                   struct Buffer &out_buf,
                   struct Buffer &gate_buf);
     virtual ~gpuPostProcess();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
 
+    void vis_endpoint(connectionInstance &conn, json &json_request);
 private:
-    struct Buffer *in_buf;
+    struct Buffer **in_buf;
     struct Buffer &out_buf;
     struct Buffer &gate_buf;
 
@@ -44,6 +47,9 @@ private:
     int32_t _gate_cadence;
     int32_t _num_gpus;
 
+    // REST server end point
+    complex_int_t * _rest_copy_vis = nullptr;
+    std::mutex _rest_copy_lock;
 };
 
 // A TCP frame contains this header followed by the visibilities, and flags.

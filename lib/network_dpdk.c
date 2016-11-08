@@ -193,7 +193,10 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                           const int freq,
                           uint64_t new_seq) {
 
-    // TODO it is really bad to have a blocking call here(!)
+
+    //
+    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id &d; new_seq %d",
+            port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
     mark_buffer_full(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id);
 
     dpdk_net->link_data[port][freq].buffer_id =
@@ -203,6 +206,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
     static struct timeval now;
     gettimeofday(&now, NULL);
 
+    // TODO it is really bad to have a blocking call here(!)
     wait_for_empty_buffer(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id);
     set_data_ID(dpdk_net->args->buf[port][freq],
                 dpdk_net->link_data[port][freq].buffer_id,
@@ -261,36 +265,41 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
                                           struct rte_mbuf * cur_mbuf,
                                           int port) {
     const int header_offset = 58;  //FPGA/UDP/IP/Ethernet headers
-    int pkt_offset = 0;
+    int pkt_offset = header_offset;
 
     // TODO Don't hard code.
     const int frame_size = 2048;
     // == 512, number of elements in an fpga crate pair
     const int sub_frame_size = 2048 / NUM_FREQ;
 
+    int buffer_id[NUM_FREQ];
+    int64_t frame_location[NUM_FREQ];
+
+    // Get buffers IDs and advance if needed.
     for (int freq = 0; freq < NUM_FREQ; ++freq) {
+        buffer_id[freq] = dpdk_net->link_data[port][freq].buffer_id;
 
-        int buffer_id = dpdk_net->link_data[port][freq].buffer_id;
-
-        int64_t frame_location = dpdk_net->link_data[port][freq].seq -
+        frame_location[freq] = dpdk_net->link_data[port][freq].seq -
                                 get_fpga_seq_num(dpdk_net->args->buf[port][freq],
                                                    dpdk_net->link_data[port][freq].buffer_id);
 
-        if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port][freq]->buffer_size)) {
+        if (unlikely(frame_location[freq] * frame_size == dpdk_net->args->buf[port][freq]->buffer_size)) {
             advance_frame(dpdk_net, port, freq, dpdk_net->link_data[port][freq].seq);
-            frame_location = 0;
-            buffer_id = dpdk_net->link_data[port][freq].buffer_id;
+            frame_location[freq] = 0;
+            buffer_id[freq] = dpdk_net->link_data[port][freq].buffer_id;
         }
+    }
 
-        for (int frame = 0;
+    // Copy the packet in packet memory order.
+    for (int frame = 0;
              frame < dpdk_net->args->timesamples_per_packet;
              ++frame) {
 
-            uint64_t copy_location = frame_location + frame * frame_size + freq * sub_frame_size;
-            pkt_offset = header_offset + frame_size * frame + freq * sub_frame_size;
-
+        for (int freq = 0; freq < NUM_FREQ; ++freq) {
+            uint64_t copy_location = frame_location[freq] * frame_size + frame * frame_size + freq * sub_frame_size;
+            //DEBUG("Port %d; frame %d, freq %d; cur_mbuf %p; offset %d, copy location: %d", port, frame, freq, cur_mbuf, pkt_offset, copy_location);
             copy_block(&cur_mbuf,
-                       (uint8_t *) &dpdk_net->args->buf[port][freq]->data[buffer_id][copy_location],
+                       (uint8_t *) &dpdk_net->args->buf[port][freq]->data[buffer_id[freq]][copy_location],
                        sub_frame_size,
                        &pkt_offset);
         }

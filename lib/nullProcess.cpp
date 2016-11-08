@@ -28,6 +28,7 @@ void nullProcess::main_thread() {
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
+        INFO("null_process: waiting for buffer");
         // This call is blocking!
         buffer_ID = get_full_buffer_from_list(&buf, &buffer_ID, 1);
         // Check if the producer has finished, and we should exit.
@@ -35,7 +36,7 @@ void nullProcess::main_thread() {
             break;
         }
 
-        INFO("Dropping frame in null thread.");
+        INFO("null_process: Dropping frame %d", buffer_ID);
 
         mark_buffer_empty(&buf, buffer_ID);
 

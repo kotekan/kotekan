@@ -1,5 +1,6 @@
 #include "hccGPUThread.hpp"
 #include "errors.h"
+#include "util.h"
 
 #include <cstdio>
 #include <vector>
@@ -7,13 +8,12 @@
 #include <algorithm>
 #include <ctime>
 #include <hc.hpp>
-/**/
+
 #define n_timesteps 65536//256*1024
 #define n_integrate 32768
 #define n_presum 1024//16384
 #define n_elem 2048
 #define n_blk 2080//(n_elem/32)*(n_elem/32+1)/2
-//#define VERIFY
 
 hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_) :
     KotekanProcess(config_, std::bind(&hccGPUThread::main_thread, this)),
@@ -83,12 +83,13 @@ void hccGPUThread::main_thread() {
     while (!stop_thread) {
 
         in_buffer_id = get_full_buffer_from_list(&in_buf, &in_buffer_id, 1);
-
-        INFO("hccGPUThread: got full buffer ID %d", in_buffer_id);
         // If buffer id is -1, then all the producers are done.
         if (in_buffer_id == -1) {
             break;
         }
+        
+        INFO("hccGPUThread: gpu %d; got full buffer ID %d", gpu_id, in_buffer_id);
+        double start_time = e_time();
 
         int * in = (int *)in_buf.data[in_buffer_id];
 
@@ -281,13 +282,21 @@ void hccGPUThread::main_thread() {
             }
         });
         kernel_future.wait();
-        INFO("hccGPUThread: Finished GPU exec!");
+
         // ----------------- End Kernels ----------------
+
+        double end_time = e_time();
+        INFO("hccGPUThread: gpu %d; Finished GPU exec for buffer id %d, time %fs, expected time %fs", gpu_id, in_buffer_id, end_time-start_time, 0.00000256 * (double)65536);
+
+        INFO("hccGPUTHread: gpu %d; Wait for empty output buffer id %d", gpu_id ,out_buffer_id);
+        wait_for_empty_buffer(&out_buf, out_buffer_id);
 
         // copy the data on the GPU back to the host
         int * out = (int*)out_buf.data[out_buffer_id];
         hc::completion_future corr_f = hc::copy_async(a_corr, out);
         corr_f.wait();
+
+        INFO("hccGPUThread: gpu %d; copied data back with buffer id %d", gpu_id ,in_buffer_id);
 
         // Copy the information contained in the input buffer
         move_buffer_info(&in_buf, in_buffer_id,
