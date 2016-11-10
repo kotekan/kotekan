@@ -672,8 +672,10 @@ int lcore_recv_pkt_dump(void *args) {
 
     uint8_t port;
     unsigned int lcore;
-    uint64_t last_seq = 0;
-    uint64_t lost_frames = 0;
+    int64_t lost_frames[dpdk_net->args->num_links];
+    for (int i = 0; i < dpdk_net->args->num_links; ++i){
+        lost_frames[i] = 0;
+    }
 
     lcore = rte_lcore_id();
     INFO("lcore ID: %d", lcore);
@@ -738,7 +740,7 @@ int lcore_recv_pkt_dump(void *args) {
                     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
                         dpdk_net->link_data[port][0].first_packet = 0;
                         INFO("Got first packet on port %d, with seq%" PRIu64 " ", port, seq);
-                        last_seq = seq;
+                        dpdk_net->link_data[port][0].last_seq = seq - dpdk_net->args->timesamples_per_packet;
                     } else {
                         goto release_frame;
                     }
@@ -746,13 +748,13 @@ int lcore_recv_pkt_dump(void *args) {
 
                 // Assumes that packet numbers only go up...
                 // TODO add case to handle FPGA reset
-                int64_t diff = last_seq - seq;
-                lost_frames += diff - dpdk_net->args->timesamples_per_packet;
-                last_seq = seq;
+                int64_t diff = seq - dpdk_net->link_data[port][0].last_seq;
+                lost_frames[port] += diff - dpdk_net->args->timesamples_per_packet;
+                dpdk_net->link_data[port][0].last_seq = seq;
                 if (unlikely((seq % integration_period) == 0)) {
-                    INFO("Lost frames: lost_frames %" PRIu64 ",  %lf% of total", lost_frames,
-                            100.0*((double)lost_frames/(double)integration_period) );
-                    lost_frames = 0;
+                    INFO("Lost frames: lost_frames %" PRIi64 ",  %lf%% of total", lost_frames[port],
+                            100.0*((double)lost_frames[port]/(double)integration_period) );
+                    lost_frames[port] = 0;
                 }
 
                 int buffer_id = dpdk_net->link_data[port][0].buffer_id;
