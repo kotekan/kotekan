@@ -7,6 +7,9 @@
 #include <random>
 #include <algorithm>
 #include <ctime>
+
+#ifdef WITH_HCC
+
 #include <hc.hpp>
 
 #define n_timesteps 65536//256*1024
@@ -87,7 +90,7 @@ void hccGPUThread::main_thread() {
         if (in_buffer_id == -1) {
             break;
         }
-        
+
         INFO("hccGPUThread: gpu %d; got full buffer ID %d", gpu_id, in_buffer_id);
         double start_time = e_time();
 
@@ -285,9 +288,6 @@ void hccGPUThread::main_thread() {
 
         // ----------------- End Kernels ----------------
 
-        double end_time = e_time();
-        INFO("hccGPUThread: gpu %d; Finished GPU exec for buffer id %d, time %fs, expected time %fs", gpu_id, in_buffer_id, end_time-start_time, 0.00000256 * (double)65536);
-
         INFO("hccGPUTHread: gpu %d; Wait for empty output buffer id %d", gpu_id ,out_buffer_id);
         wait_for_empty_buffer(&out_buf, out_buffer_id);
 
@@ -295,6 +295,10 @@ void hccGPUThread::main_thread() {
         int * out = (int*)out_buf.data[out_buffer_id];
         hc::completion_future corr_f = hc::copy_async(a_corr, out);
         corr_f.wait();
+
+        double end_time = e_time();
+        INFO("hccGPUThread: gpu %d; Finished GPU exec for buffer id %d, time %fs, expected time %fs", gpu_id, in_buffer_id, end_time-start_time, 0.00000256 * (double)65536);
+
 
         INFO("hccGPUThread: gpu %d; copied data back with buffer id %d", gpu_id ,in_buffer_id);
 
@@ -314,3 +318,26 @@ void hccGPUThread::main_thread() {
 
     INFO("hccGPUThread: exited main thread");
 }
+
+#else  // For building on systems without HCC.
+
+void hccGPUThread::apply_config(uint64_t fpga_seq) {
+}
+
+hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_):
+    KotekanProcess(config_, std::bind(&hccGPUThread::main_thread, this)),
+    in_buf(in_buf_), out_buf(out_buf_), gpu_id(gpu_id_) {
+
+    ERROR("HCC wasn't built.");
+}
+
+void hccGPUThread::main_thread() {
+    ERROR("HCC wasn't built.")
+}
+
+hccGPUThread::~hccGPUThread() {
+}
+
+#endif
+
+

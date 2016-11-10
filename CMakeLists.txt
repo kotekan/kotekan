@@ -58,7 +58,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note C++11
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -Wall -march=native -mtune=native")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
 
@@ -78,6 +78,8 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     # set the link options for hcc
     execute_process(COMMAND hcc-config --ldflags OUTPUT_VARIABLE HCC_LINKER_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
     set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${HCC_LINKER_FLAGS} ")
+
+    add_definitions(-DWITH_HCC)
 else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif()
