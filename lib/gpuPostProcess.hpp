@@ -6,6 +6,7 @@
 #include "util.h"
 
 #include <vector>
+#include <mutex>
 
 using std::vector;
 

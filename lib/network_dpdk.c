@@ -751,9 +751,9 @@ int lcore_recv_pkt_dump(void *args) {
                 int64_t diff = seq - dpdk_net->link_data[port][0].last_seq;
                 lost_frames[port] += diff - dpdk_net->args->timesamples_per_packet;
                 dpdk_net->link_data[port][0].last_seq = seq;
-                if (unlikely((seq % integration_period) == 0)) {
-                    INFO("Lost frames: lost_frames %" PRIi64 ",  %lf%% of total", lost_frames[port],
-                            100.0*((double)lost_frames[port]/(double)integration_period) );
+                if (unlikely((seq % 65536) == 0)) {
+                    INFO("Lost frames: Port %d; lost_frames %" PRIi64 ",  %lf%% of total", port,
+			lost_frames[port], 100.0*((double)lost_frames[port]/(double)65536) );
                     lost_frames[port] = 0;
                 }
 

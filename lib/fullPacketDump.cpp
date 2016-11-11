@@ -69,6 +69,9 @@ void fullPacketDump::main_thread() {
     int file_num = 0;
     char host_name[100];
     gethostname(host_name, 100);
+ 
+
+    int first_time = 1;
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
@@ -81,13 +84,18 @@ void fullPacketDump::main_thread() {
             break;
         }
 
-        {
+        if (!_dump_to_disk) {
             std::lock_guard<std::mutex> lock(_packet_frame_lock);
             memcpy(_packet_frame, buf.data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
             if (!got_packets) got_packets = true;
         }
 
         if (_dump_to_disk) {
+
+	    if(first_time == 1) {
+		sleep(5);
+		first_time = 0;
+	    }
 
             const int file_name_len = 200;
             char file_name[file_name_len];

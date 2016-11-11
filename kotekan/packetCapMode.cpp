@@ -58,8 +58,8 @@ void packetCapMode::initalize_processes() {
                 return;
             }
         } else {
-            ERROR("Directory %s already exists", dir_name);
-            return;
+            INFO("Note: directory %s already exists", dir_name);
+            // return;
         }
     }
 

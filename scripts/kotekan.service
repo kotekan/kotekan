@@ -5,7 +5,8 @@ After=syslog.target network.target
 [Service]
 Type=simple
 Environment="DISPLAY=:0"
-ExecStart=/usr/sbin/kotekan -d /var/lib/kotekan -c /etc/kotekan/kotekan.conf -l 3
+WorkingDirectory=/var/lib/kotekan
+ExecStart=/usr/sbin/kotekan
 PIDFile=/var/run/kotekan.pid
 
 [Install]

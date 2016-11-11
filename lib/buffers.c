@@ -132,7 +132,7 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
 
         // Create a page alligned block of memory for the buffer
         err = posix_memalign((void **) &(buf->data[i]), PAGESIZE_MEM, buf->aligned_buffer_size);
-
+	CHECK_MEM(buf->data[i]);
         if ( err != 0 ) {
             ERROR("Error creating alligned memory");
             return err;
