@@ -1,5 +1,5 @@
-#ifndef CHIME_SHUFFLE_HPP
-#define CHIME_SHUFFLE_HPP
+#ifndef GPU_TEST_MODE_HPP
+#define GPU_TEST_MODE_HPP
 
 #include "kotekanMode.hpp"
 #include "bufferContainer.hpp"
@@ -8,11 +8,11 @@
 // Make this dynamic
 #define NUM_GPUS 4
 
-class chimeShuffleMode : public kotekanMode {
+class gpuTestMode : public kotekanMode {
 
 public:
-    chimeShuffleMode(Config &config);
-    virtual ~chimeShuffleMode();
+    gpuTestMode(Config &config);
+    virtual ~gpuTestMode();
 
     void initalize_processes();
 
@@ -21,4 +21,4 @@ private:
     bufferContainer host_buffers[NUM_GPUS];
 };
 
-#endif /* CHIME_SHUFFLE_HPP */
+#endif /* GPU_TEST_MODE_HPP */

@@ -1,0 +1,41 @@
+#ifndef HSA_CORRELATOR_KERNEL_H
+#define HSA_CORRELATOR_KERNEL_H
+
+#include "gpuHSACommand.hpp"
+
+struct corr_kernel_config_t {
+    uint32_t n_elem;
+    uint32_t n_intg;
+    uint32_t n_iter;
+    uint32_t n_blk;
+};
+
+class hsaCorrelatorKernel: public gpuHSAcommand
+{
+public:
+
+    hsaCorrelatorKernel(const string &kernel_name, const string &kernel_file_name,
+                        gpuHSADeviceInterface &device, Config &config,
+                        bufferContainer &host_buffers);
+
+    virtual ~hsaCorrelatorKernel();
+
+    void apply_config(const uint64_t& fpga_seq) override;
+
+    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+                         hsa_signal_t precede_signal) override;
+
+private:
+    int32_t input_frame_len;
+    int32_t presum_len;
+    int32_t corr_frame_len;
+    int32_t block_map_len;
+
+    // TODO maybe factor these into a CHIME command object class?
+    int32_t _num_local_freq;
+    int32_t _num_elements;
+    int32_t _samples_per_data_set;
+    int32_t _num_blocks;
+};
+
+#endif

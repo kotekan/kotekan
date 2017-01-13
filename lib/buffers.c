@@ -2,6 +2,7 @@
 #include "errors.h"
 #include "error_correction.h"
 #include "nt_memset.h"
+#include "hsaBase.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -130,6 +131,14 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
     // Create the actual buffers.
     for (int i = 0; i < num_buf; ++i) {
 
+        #ifdef WITH_HSA
+
+        // Is this memory aligned?
+
+        buf->data[i] = hsa_host_malloc(buf->aligned_buffer_size);
+        INFO("Using hsa_host_malloc in buffers.c: %p", buf->data[i]);
+
+        #else
         // Create a page alligned block of memory for the buffer
         err = posix_memalign((void **) &(buf->data[i]), PAGESIZE_MEM, buf->aligned_buffer_size);
 	CHECK_MEM(buf->data[i]);
@@ -145,6 +154,7 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
             ERROR("Error locking memory - check ulimit -a to check memlock limits");
             return errno;
         }
+        #endif
     }
 
     return 0;

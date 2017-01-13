@@ -1,0 +1,63 @@
+#include "hsaInputData.hpp"
+#include "buffers.h"
+#include "bufferContainer.hpp"
+#include "hsaBase.h"
+
+hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_name,
+                            gpuHSADeviceInterface& device, Config& config,
+                            bufferContainer& host_buffers) :
+    gpuHSAcommand(kernel_name, kernel_file_name, device, config, host_buffers){
+    apply_config(0);
+    network_buf = host_buffers.get_buffer("network_buf");
+    network_buffer_id = 0;
+}
+
+
+hsaInputData::~hsaInputData() {
+    hsa_host_free(presum_zeros);
+}
+
+void hsaInputData::apply_config(const uint64_t& fpga_seq) {
+    gpuHSAcommand::apply_config(fpga_seq);
+    _num_elements = config.get_int("/processing/num_elements");
+    _num_local_freq = config.get_int("/processing/num_local_freq");
+    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
+    input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
+}
+
+void hsaInputData::wait_on_precondition(int gpu_frame_id)
+{
+    // Wait for there to be data in the input (network) buffer.
+    get_full_buffer_from_list(network_buf, &network_buffer_id, 1);
+}
+
+hsa_signal_t hsaInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq,
+                                   hsa_signal_t precede_signal) {
+
+    // Get the gpu and cpu memory pointers.
+    void * gpu_memory_frame = device.get_gpu_memory_array("input",
+                                                gpu_frame_id, input_frame_len);
+    void * host_memory_frame = (void *)network_buf->data[network_buffer_id];
+
+    // Do the input data copy.
+    signals[gpu_frame_id] = device.async_copy_host_to_gpu(gpu_memory_frame,
+                                        host_memory_frame, input_frame_len, precede_signal);
+
+    network_buffer_id = (network_buffer_id + 1) % network_buf->num_buffers;
+
+    return signals[gpu_frame_id];
+}
+
+void hsaInputData::finalize_frame(int frame_id)
+{
+    gpuHSAcommand::finalize_frame(frame_id);
+    // This is currently done in output data because we need to move the
+    // info object first, this should be fixed at the buffer level somehow.
+    //mark_buffer_empty(network_buf, network_buffer_id);
+}
+
+
+
+
+
+

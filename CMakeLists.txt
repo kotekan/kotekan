@@ -51,14 +51,14 @@ set (DPDK_LIBS
 # Required for some SSE/AVX intrinsics
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note C++11
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -Wall -march=native -mtune=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
 
@@ -68,9 +68,11 @@ SET(CMAKE_INSTALL_PREFIX "/")
 
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lhsa-runtime64 -lm")
+
 #/// AMD hcc options
 
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+if (CMAKE_CXX_COMPILER MATCHES ".*hcc")
     # set the compile options for hcc
     execute_process(COMMAND hcc-config --cxxflags OUTPUT_VARIABLE HCC_COMPILE_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
     set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${HCC_COMPILE_FLAGS} " )
@@ -84,10 +86,13 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif()
 
+add_definitions(-DWITH_HSA)
+
 #/// end AMD hcc options
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
+add_subdirectory(hsa_kernels)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)

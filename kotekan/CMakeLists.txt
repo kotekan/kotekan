@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 PROJECT (kotekan)
 
-SET(SOURCE_EXE kotekan.cpp chimeShuffleMode.cpp packetCapMode.cpp kotekanMode.cpp)
+SET(SOURCE_EXE kotekan.cpp chimeShuffleMode.cpp packetCapMode.cpp kotekanMode.cpp
+                            gpuTestMode.cpp)
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
 include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
@@ -32,6 +33,7 @@ add_custom_target(kernel_copy
         "${CHIME_SOURCE_DIR}/kernels"
         "kernels")
 
+add_dependencies( kotekan makeHSACOKernels )
 add_dependencies( kotekan kernel_copy )
 
 install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)

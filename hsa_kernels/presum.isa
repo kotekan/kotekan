@@ -1,0 +1,304 @@
+	.text
+	.hsa_code_object_version 2,1
+	.hsa_code_object_isa 8,0,3,"AMD","AMDGPU"
+	.section	.AMDGPU.config
+	.text
+	.globl	ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+	.p2align	8
+	.type	ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii,@function
+	.amdgpu_hsa_kernel ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii: ; @ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+	.amd_kernel_code_t
+		kernel_code_version_major = 1
+		kernel_code_version_minor = 0
+		machine_kind = 1
+		machine_version_major = 8
+		machine_version_minor = 0
+		machine_version_stepping = 3
+		kernel_code_entry_byte_offset = 256
+		kernel_code_prefetch_byte_size = 0
+		max_scratch_backing_memory_byte_size = 0
+		compute_pgm_rsrc1_vgprs = 6
+		compute_pgm_rsrc1_sgprs = 1
+		compute_pgm_rsrc1_priority = 0
+		compute_pgm_rsrc1_float_mode = 192
+		compute_pgm_rsrc1_priv = 0
+		compute_pgm_rsrc1_dx10_clamp = 1
+		compute_pgm_rsrc1_debug_mode = 0
+		compute_pgm_rsrc1_ieee_mode = 0
+		compute_pgm_rsrc2_scratch_en = 0
+		compute_pgm_rsrc2_user_sgpr = 8
+		compute_pgm_rsrc2_tgid_x_en = 1
+		compute_pgm_rsrc2_tgid_y_en = 1
+		compute_pgm_rsrc2_tgid_z_en = 0
+		compute_pgm_rsrc2_tg_size_en = 0
+		compute_pgm_rsrc2_tidig_comp_cnt = 1
+		compute_pgm_rsrc2_excp_en_msb = 0
+		compute_pgm_rsrc2_lds_size = 0
+		compute_pgm_rsrc2_excp_en = 0
+		enable_sgpr_private_segment_buffer = 1
+		enable_sgpr_dispatch_ptr = 1
+		enable_sgpr_queue_ptr = 0
+		enable_sgpr_kernarg_segment_ptr = 1
+		enable_sgpr_dispatch_id = 0
+		enable_sgpr_flat_scratch_init = 0
+		enable_sgpr_private_segment_size = 0
+		enable_sgpr_grid_workgroup_count_x = 0
+		enable_sgpr_grid_workgroup_count_y = 0
+		enable_sgpr_grid_workgroup_count_z = 0
+		enable_ordered_append_gds = 0
+		private_element_size = 1
+		is_ptr64 = 1
+		is_dynamic_callstack = 0
+		is_debug_enabled = 0
+		is_xnack_enabled = 0
+		workitem_private_segment_byte_size = 0
+		workgroup_group_segment_byte_size = 0
+		gds_segment_byte_size = 0
+		kernarg_segment_byte_size = 48
+		workgroup_fbarrier_count = 0
+		wavefront_sgpr_count = 16
+		workitem_vgpr_count = 27
+		reserved_vgpr_first = 0
+		reserved_vgpr_count = 0
+		reserved_sgpr_first = 0
+		reserved_sgpr_count = 0
+		debug_wavefront_private_segment_offset_sgpr = 0
+		debug_private_segment_buffer_sgpr = 0
+		kernarg_segment_alignment = 4
+		group_segment_alignment = 4
+		private_segment_alignment = 4
+		wavefront_size = 6
+		call_convention = 0
+		runtime_loader_kernel_symbol = 0
+	.end_amd_kernel_code_t
+; BB#0:
+	s_load_dword s4, s[4:5], 0x4
+	s_load_dwordx2 s[2:3], s[6:7], 0x0
+	s_load_dword s5, s[6:7], 0x10
+	s_load_dwordx2 s[0:1], s[6:7], 0x18
+	s_mov_b32 s7, 0
+	s_waitcnt lgkmcnt(0)
+	s_lshr_b32 s6, s4, 16
+	s_mul_i32 s9, s9, s6
+	v_add_i32_e32 v4, vcc, s9, v1
+	v_lshlrev_b32_e32 v3, 10, v4
+	v_or_b32_e32 v5, 2, v3
+	v_mul_lo_i32 v5, s5, v5
+	s_and_b32 s4, s4, 0xffff
+	v_or_b32_e32 v1, 3, v3
+	s_mul_i32 s8, s8, s4
+	v_or_b32_e32 v3, 1, v3
+	v_add_i32_e32 v5, vcc, v0, v5
+	v_mul_lo_i32 v6, s5, v3
+	v_add_i32_e32 v3, vcc, s8, v5
+	v_mul_lo_i32 v5, s5, v4
+	v_mul_lo_i32 v2, s5, v1
+	v_add_i32_e32 v4, vcc, v0, v6
+	v_add_i32_e32 v1, vcc, s8, v0
+	v_lshlrev_b32_e32 v5, 10, v5
+	v_add_i32_e32 v2, vcc, v0, v2
+	v_add_i32_e32 v0, vcc, v0, v5
+	s_movk_i32 s6, 0x400
+	v_mov_b32_e32 v8, s7
+	v_add_i32_e32 v2, vcc, s8, v2
+	s_lshl_b32 s4, s5, 2
+	v_add_i32_e32 v4, vcc, s8, v4
+	v_add_i32_e32 v0, vcc, s8, v0
+	v_mov_b32_e32 v6, 0
+	v_mov_b32_e32 v7, s6
+	v_mov_b32_e32 v9, 0
+	v_mov_b32_e32 v5, 0
+	v_mov_b32_e32 v11, 0
+	v_mov_b32_e32 v10, 0
+	v_mov_b32_e32 v13, 0
+	v_mov_b32_e32 v12, 0
+	v_mov_b32_e32 v15, 0
+	v_mov_b32_e32 v14, 0
+BB0_1:                                  ; =>This Inner Loop Header: Depth=1
+	v_add_i32_e32 v16, vcc, v6, v0
+	v_ashrrev_i32_e32 v17, 31, v16
+	v_lshlrev_b64 v[16:17], 2, v[16:17]
+	v_mov_b32_e32 v20, s3
+	v_add_i32_e32 v18, vcc, s2, v16
+	v_addc_u32_e32 v19, vcc, v17, v20, vcc
+	flat_load_dword v18, v[18:19]
+	v_add_i32_e32 v16, vcc, v6, v4
+	v_ashrrev_i32_e32 v17, 31, v16
+	v_lshlrev_b64 v[16:17], 2, v[16:17]
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_and_b32_e32 v19, 15, v18
+	v_bfe_u32 v21, v18, 4, 4
+	v_bfe_u32 v22, v18, 8, 4
+	v_bfe_u32 v23, v18, 12, 4
+	v_bfe_u32 v25, v18, 20, 4
+	v_bfe_u32 v26, v18, 24, 4
+	v_bfe_u32 v24, v18, 16, 4
+	v_lshrrev_b32_e32 v18, 28, v18
+	v_add_i32_e32 v14, vcc, v19, v14
+	v_add_i32_e32 v15, vcc, v21, v15
+	v_add_i32_e32 v12, vcc, v22, v12
+	v_add_i32_e32 v13, vcc, v23, v13
+	v_add_i32_e32 v19, vcc, v24, v10
+	v_add_i32_e32 v11, vcc, v25, v11
+	v_add_i32_e32 v5, vcc, v26, v5
+	v_add_i32_e32 v18, vcc, v18, v9
+	v_add_i32_e32 v9, vcc, s2, v16
+	v_addc_u32_e32 v10, vcc, v20, v17, vcc
+	flat_load_dword v16, v[9:10]
+	v_add_i32_e32 v9, vcc, v6, v3
+	v_ashrrev_i32_e32 v10, 31, v9
+	v_lshlrev_b64 v[9:10], 2, v[9:10]
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_and_b32_e32 v17, 15, v16
+	v_bfe_u32 v21, v16, 4, 4
+	v_bfe_u32 v23, v16, 12, 4
+	v_bfe_u32 v24, v16, 16, 4
+	v_bfe_u32 v26, v16, 24, 4
+	v_bfe_u32 v22, v16, 8, 4
+	v_bfe_u32 v25, v16, 20, 4
+	v_lshrrev_b32_e32 v16, 28, v16
+	v_add_i32_e32 v14, vcc, v17, v14
+	v_add_i32_e32 v15, vcc, v21, v15
+	v_add_i32_e32 v17, vcc, v22, v12
+	v_add_i32_e32 v13, vcc, v23, v13
+	v_add_i32_e32 v19, vcc, v24, v19
+	v_add_i32_e32 v21, vcc, v25, v11
+	v_add_i32_e32 v5, vcc, v26, v5
+	v_add_i32_e32 v16, vcc, v16, v18
+	v_add_i32_e32 v11, vcc, s2, v9
+	v_addc_u32_e32 v12, vcc, v20, v10, vcc
+	flat_load_dword v11, v[11:12]
+	v_add_i32_e32 v9, vcc, v6, v2
+	v_ashrrev_i32_e32 v10, 31, v9
+	v_lshlrev_b64 v[9:10], 2, v[9:10]
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_and_b32_e32 v12, 15, v11
+	v_bfe_u32 v18, v11, 4, 4
+	v_bfe_u32 v22, v11, 8, 4
+	v_bfe_u32 v23, v11, 12, 4
+	v_bfe_u32 v26, v11, 24, 4
+	v_bfe_u32 v24, v11, 16, 4
+	v_bfe_u32 v25, v11, 20, 4
+	v_lshrrev_b32_e32 v11, 28, v11
+	v_add_i32_e32 v15, vcc, v18, v15
+	v_add_i32_e32 v18, vcc, v24, v19
+	v_add_i32_e32 v14, vcc, v12, v14
+	v_add_i32_e32 v17, vcc, v22, v17
+	v_add_i32_e32 v13, vcc, v23, v13
+	v_add_i32_e32 v19, vcc, v25, v21
+	v_add_i32_e32 v5, vcc, v26, v5
+	v_add_i32_e32 v16, vcc, v11, v16
+	v_add_i32_e32 v11, vcc, s2, v9
+	v_addc_u32_e32 v12, vcc, v20, v10, vcc
+	flat_load_dword v9, v[11:12]
+	v_add_i32_e32 v6, vcc, s4, v6
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_bfe_u32 v12, v9, 8, 4
+	v_and_b32_e32 v10, 15, v9
+	v_bfe_u32 v11, v9, 4, 4
+	v_bfe_u32 v20, v9, 12, 4
+	v_bfe_u32 v23, v9, 24, 4
+	v_bfe_u32 v21, v9, 16, 4
+	v_bfe_u32 v22, v9, 20, 4
+	v_lshrrev_b32_e32 v9, 28, v9
+	v_add_i32_e32 v14, vcc, v10, v14
+	v_add_i32_e32 v15, vcc, v11, v15
+	v_add_i32_e32 v12, vcc, v12, v17
+	v_add_i32_e32 v13, vcc, v20, v13
+	v_add_i32_e32 v10, vcc, v21, v18
+	v_add_i32_e32 v11, vcc, v22, v19
+	v_add_i32_e32 v5, vcc, v23, v5
+	v_add_i32_e32 v9, vcc, v9, v16
+	v_add_i32_e32 v7, vcc, -4, v7
+	v_addc_u32_e32 v8, vcc, -1, v8, vcc
+	v_cmp_ne_i64_e32 vcc, 0, v[7:8]
+	s_and_b64 vcc, exec, vcc
+	s_cbranch_vccnz BB0_1
+; BB#2:                                 ; %"_ZZ4mainENK3$_0clEN2hc11tiled_indexILi2EEE.exit"
+	v_lshlrev_b32_e32 v0, 3, v1
+	v_mov_b32_e32 v1, 0
+	v_or_b32_e32 v2, 1, v0
+	v_mov_b32_e32 v3, v1
+	v_lshlrev_b64 v[2:3], 2, v[2:3]
+	v_add_i32_e32 v6, vcc, s0, v2
+	v_mov_b32_e32 v4, s1
+	v_addc_u32_e32 v7, vcc, v3, v4, vcc
+	v_lshlrev_b32_e32 v2, 3, v15
+	flat_atomic_add v[6:7], v2
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_lshlrev_b64 v[2:3], 2, v[0:1]
+	v_add_i32_e32 v6, vcc, s0, v2
+	v_addc_u32_e32 v7, vcc, v4, v3, vcc
+	v_lshlrev_b32_e32 v2, 3, v14
+	flat_atomic_add v[6:7], v2
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_or_b32_e32 v6, 3, v0
+	v_mov_b32_e32 v7, v1
+	v_lshlrev_b64 v[6:7], 2, v[6:7]
+	v_add_i32_e32 v14, vcc, s0, v6
+	v_or_b32_e32 v2, 2, v0
+	v_mov_b32_e32 v3, v1
+	v_addc_u32_e32 v15, vcc, v4, v7, vcc
+	v_lshlrev_b32_e32 v6, 3, v13
+	v_lshlrev_b64 v[2:3], 2, v[2:3]
+	flat_atomic_add v[14:15], v6
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_add_i32_e32 v6, vcc, s0, v2
+	v_addc_u32_e32 v7, vcc, v4, v3, vcc
+	v_lshlrev_b32_e32 v2, 3, v12
+	flat_atomic_add v[6:7], v2
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_or_b32_e32 v6, 5, v0
+	v_mov_b32_e32 v7, v1
+	v_lshlrev_b64 v[6:7], 2, v[6:7]
+	v_add_i32_e32 v12, vcc, s0, v6
+	v_or_b32_e32 v2, 4, v0
+	v_mov_b32_e32 v3, v1
+	v_addc_u32_e32 v13, vcc, v4, v7, vcc
+	v_lshlrev_b32_e32 v6, 3, v11
+	v_lshlrev_b64 v[2:3], 2, v[2:3]
+	flat_atomic_add v[12:13], v6
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_add_i32_e32 v6, vcc, s0, v2
+	v_addc_u32_e32 v7, vcc, v4, v3, vcc
+	v_lshlrev_b32_e32 v2, 3, v10
+	flat_atomic_add v[6:7], v2
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_or_b32_e32 v2, 6, v0
+	v_or_b32_e32 v0, 7, v0
+	v_mov_b32_e32 v3, v1
+	v_lshlrev_b64 v[0:1], 2, v[0:1]
+	v_add_i32_e32 v6, vcc, s0, v0
+	v_addc_u32_e32 v7, vcc, v4, v1, vcc
+	v_lshlrev_b32_e32 v0, 3, v9
+	flat_atomic_add v[6:7], v0
+	s_waitcnt vmcnt(0) lgkmcnt(0)
+	v_lshlrev_b64 v[0:1], 2, v[2:3]
+	v_add_i32_e32 v2, vcc, s0, v0
+	v_addc_u32_e32 v3, vcc, v4, v1, vcc
+	v_lshlrev_b32_e32 v0, 3, v5
+	flat_atomic_add v[2:3], v0
+	s_endpgm
+.Lfunc_end0:
+	.size	ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii, .Lfunc_end0-ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+
+	.section	.AMDGPU.csdata
+; Kernel info:
+; codeLenInByte = 1044
+; NumSgprs: 16
+; NumVgprs: 27
+; FloatMode: 192
+; IeeeMode: 0
+; ScratchSize: 0
+; LDSByteSize: 0 bytes/workgroup (compile time only)
+; ReservedVGPRFirst: 0
+; ReservedVGPRCount: 0
+; COMPUTE_PGM_RSRC2:USER_SGPR: 8
+; COMPUTE_PGM_RSRC2:TGID_X_EN: 1
+; COMPUTE_PGM_RSRC2:TGID_Y_EN: 1
+; COMPUTE_PGM_RSRC2:TGID_Z_EN: 0
+; COMPUTE_PGM_RSRC2:TIDIG_COMP_CNT: 1
+
+	.ident	"HCC clang version 3.5.0  (based on HCC 0.10.16313-d90738a-10704f4 LLVM 3.5.0svn)"
+	.section	".note.GNU-stack"

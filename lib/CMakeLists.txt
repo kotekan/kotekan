@@ -12,7 +12,7 @@ include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
 
 add_library ( chime
               KotekanProcess.cpp SampleProcess.cpp Config.cpp
-              buffers.c errors.c nt_memcpy.c nt_memset.c restServer.cpp
+              buffers.c hsaBase.c errors.c nt_memcpy.c nt_memset.c restServer.cpp
               util.c error_correction.c networkOutputSim.cpp
               output_formating.c test_data_generation.c chrxUplink.cpp gpuPostProcess.cpp
               beamformingPostProcess.cpp time_tracking.c vdifStream.cpp
@@ -23,13 +23,29 @@ add_library ( chime
               gpu_command_objects/beamform_kernel.cpp
               gpu_command_objects/beamform_phase_data.cpp
               gpu_command_objects/correlator_kernel.cpp
-	          gpu_command_objects/input_data_stage.cpp
+	      gpu_command_objects/input_data_stage.cpp
               gpu_command_objects/offset_kernel.cpp
-	          gpu_command_objects/output_beamform_result.cpp
+	      gpu_command_objects/output_beamform_result.cpp
               gpu_command_objects/output_data_result.cpp
               gpu_command_objects/preseed_kernel.cpp
               gpu_command_objects/beamform_incoherent_kernel.cpp
               gpu_command_objects/output_beamform_incoh_result.cpp
+              gpuHSACommand.cpp
+              gpuHSACommandFactory.cpp
+              gpuHSADeviceInterface.cpp
+              gpuHSAThread.cpp
+              gpuSimulate.cpp
+              bufferContainer.cpp
+              signalContainer.cpp
+              testDataCheck.cpp
+              testDataGen.cpp
+              gpu_command_objects/hsaBarrier.cpp
+              gpu_command_objects/hsaCorrelatorKernel.cpp
+              gpu_command_objects/hsaInputData.cpp
+              gpu_command_objects/hsaOutputData.cpp
+              gpu_command_objects/hsaOutputDataZero.cpp
+              gpu_command_objects/hsaPreseedKernel.cpp
+              gpu_command_objects/hsaPresumZero.cpp
               )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )

@@ -69,6 +69,7 @@ extern "C" {
 #include "chimeShuffleMode.hpp"
 #include "restServer.hpp"
 #include "packetCapMode.hpp"
+#include "gpuTestMode.hpp"
 
 using json = nlohmann::json;
 
@@ -129,6 +130,8 @@ int start_new_kotekan_mode(Config &config) {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
     } else if (mode == "chime_shuffle") {
         kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
+    } else if (mode == "gpu_test") {
+        kotekan_mode = (kotekanMode *) new gpuTestMode(config);
     } else {
         return -1;
     }
