@@ -1,4 +1,5 @@
 #include "hsaOutputData.hpp"
+#include <unistd.h>
 
 hsaOutputData::hsaOutputData(const string& kernel_name, const string& kernel_file_name,
                             gpuHSADeviceInterface& device, Config& config,

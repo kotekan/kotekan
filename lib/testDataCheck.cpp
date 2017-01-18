@@ -22,6 +22,7 @@ void testDataCheck::main_thread() {
 
     int first_buf_id = 0;
     int second_buf_id = 0;
+    int num_errors = 0;
 
     assert(first_buf.buffer_size == second_buf.buffer_size);
 
@@ -33,16 +34,18 @@ void testDataCheck::main_thread() {
         get_full_buffer_from_list(&second_buf, &second_buf_id, 1);
         INFO("testDataCheck: Got the second buffer %s", second_buf.buffer_name);
         bool error = false;
+        num_errors = 0;
 
         INFO("Checking that the buffers %s[%d] and %s[%d] match, this could take a while...",
                 first_buf.buffer_name, first_buf_id,
                 second_buf.buffer_name, second_buf_id);
-        for (int i = 0; i < first_buf.buffer_size; ++i) {
+        for (int i = 0; i < first_buf.buffer_size/4; ++i) {
             // This could be made much faster with higher bit depth checks
-            uint8_t first_value = (uint8_t)first_buf.data[first_buf_id][i];
-            uint8_t second_value = (uint8_t)second_buf.data[second_buf_id][i];
+            int32_t first_value = *((int32_t *)&(first_buf.data[first_buf_id][i*4]));
+            int32_t second_value = *((int32_t *)&(second_buf.data[second_buf_id][i*4]));
             if (first_value != second_value) {
-                ERROR("%s[%d][%d] != %s[%d][%d]; values: (%x, %x)",
+                if (num_errors++ < 100000)
+                ERROR("%s[%d][%d] != %s[%d][%d]; values: (%d, %d)",
                     first_buf.buffer_name, first_buf_id, i,
                     second_buf.buffer_name, second_buf_id, i,
                     first_value, second_value);

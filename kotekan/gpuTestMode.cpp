@@ -12,6 +12,8 @@
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
 #include "gpuSimulate.hpp"
+#include "rawFileRead.hpp"
+#include "rawFileWrite.hpp"
 
 #include <vector>
 #include <string>
@@ -115,13 +117,22 @@ void gpuTestMode::initalize_processes() {
                       buffer_name);
 
         // TODO better management of the buffers so this list doesn't have to change size...
-        add_process((KotekanProcess*) new gpuHSAThread(config, host_buffers[i], i));
-        add_process((KotekanProcess*) new gpuSimulate(config, *network_input_buffer[i], *simulate_output_buffer[i]));
 
-        add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));
+        // GPU Test
+        add_process((KotekanProcess*) new rawFileRead(config, *network_input_buffer[i], true,
+                                                        "/data/test_data/", "gpu_input_frame_const", "dat"));
+        add_process((KotekanProcess*) new gpuHSAThread(config, host_buffers[i], i));
+        add_process((KotekanProcess*) new rawFileRead(config, *simulate_output_buffer[i], false,
+                                                        "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
         add_process((KotekanProcess*) new testDataCheck(config, *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
 
-    }
 
+        // Processes to generate test data
+        //add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));
+        //add_process((KotekanProcess*) new gpuSimulate(config, *network_input_buffer[i], *simulate_output_buffer[i]));
+        //add_process((KotekanProcess*) new rawFileWrite(config, *network_input_buffer[i], "/data/test_data/", "gpu_input_frame_const", "dat"));
+        //add_process((KotekanProcess*) new rawFileWrite(config, *simulate_output_buffer[i], "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
+
+    }
 }
 

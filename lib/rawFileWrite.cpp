@@ -11,93 +11,81 @@
 #include "buffers.h"
 #include "errors.h"
 
-rawFileWrite::rawFileWrite(Config& config,
-                    Buffer& buf_,
-                    int disk_id_,
-                    char* extension_,
-                    int write_data_,
-                    char* dataset_name_) :
+rawFileWrite::rawFileWrite(Config& config, Buffer& buf_,
+                 const std::string &base_dir_,
+                 const std::string &file_name_,
+                 const std::string &file_ext_) :
         KotekanProcess(config, std::bind(&rawFileWrite::main_thread, this)),
         buf(buf_),
-        disk_id(disk_id_),
-        write_data(write_data_)
+        base_dir(base_dir_),
+        file_name(file_name_),
+        file_ext(file_ext_)
 {
-    strncpy(extension, extension_, RAW_FILE_STR_LEN);
-    strncpy(dataset_name, dataset_name_, RAW_FILE_STR_LEN);
 }
 
 rawFileWrite::~rawFileWrite() {
 }
 
+void rawFileWrite::apply_config(uint64_t fpga_seq) {
+}
+
 void rawFileWrite::main_thread() {
 
     int fd;
-    int file_num = disk_id;
-    int useable_buffer_IDs[1] = {disk_id};
-    int bufferID = disk_id;
+    int file_num = 0;
+    int buffer_id = 0;
 
     for (;;) {
 
         // This call is blocking.
-        bufferID = get_full_buffer_from_list(&buf, useable_buffer_IDs, 1);
+        buffer_id = get_full_buffer_from_list(&buf, &buffer_id, 1);
 
         //INFO("Got buffer, id: %d", bufferID);
 
         // Check if the producer has finished, and we should exit.
-        if (bufferID == -1) {
+        if (buffer_id == -1) {
             return;
         }
 
-        const int file_name_len = 200;
-        char file_name[file_name_len];
+        const int full_path_len = 200;
+        char full_path[full_path_len];
 
-        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%07d.%s",
-                config.disk.disk_base,
-                config.disk.disk_set,
-                disk_id,
-                dataset_name,
+        snprintf(full_path, full_path_len, "%s/%s_%07d.%s",
+                base_dir.c_str(),
+                file_name.c_str(),
                 file_num,
-                extension);
+                file_ext.c_str());
 
-        struct ErrorMatrix * error_matrix = get_error_matrix(&buf, bufferID);
+        fd = open(full_path, O_WRONLY | O_CREAT, 0666);
 
-        // Open the file to write
-        if (write_data == 1) {
-
-            fd = open(file_name, O_WRONLY | O_CREAT, 0666);
-
-            if (fd == -1) {
-                ERROR("Cannot open file");
-                ERROR("File name was: %s", file_name);
-                exit(errno);
-            }
-
-            ssize_t bytes_writen = write(fd, buf.data[bufferID], buf.buffer_size);
-
-            if (bytes_writen != buf.buffer_size) {
-                ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
-                exit(-1);
-            } else {
-                 //fprintf(stderr, "Data writen to file!");
-            }
-
-            if (close(fd) == -1) {
-                ERROR("Cannot close file %s", file_name);
-            }
-
-            INFO("Data file write done for %s, lost_packets %d", file_name, error_matrix->bad_timesamples);
-        } else {
-            INFO("Lost Packets %d", error_matrix->bad_timesamples );
+        if (fd == -1) {
+            ERROR("Cannot open file");
+            ERROR("File name was: %s", full_path);
+            exit(errno);
         }
 
-        // Zero the buffer
-        zero_buffer(&buf, bufferID);
+        ssize_t bytes_writen = write(fd, buf.data[buffer_id], buf.buffer_size);
+
+        if (bytes_writen != buf.buffer_size) {
+            ERROR("Failed to write buffer to disk for file %s", full_path);
+            exit(-1);
+        }
+
+        INFO("Data file write done for %s", full_path);
+
+        //for (int i = 0; i < 10; ++i) {
+        //    INFO("%s[%d][%d] = %d", buf.buffer_name, buffer_id, i, *((int *)&buf.data[buffer_id][i * sizeof(int)]));
+        //}
+
+        if (close(fd) == -1) {
+            ERROR("Cannot close file %s", full_path);
+        }
 
         // TODO make release_info_object work for nConsumers.
-        release_info_object(&buf, bufferID);
-        mark_buffer_empty(&buf, bufferID);
+        //release_info_object(&buf, buffer_id);
+        mark_buffer_empty(&buf, buffer_id);
 
-        useable_buffer_IDs[0] = ( useable_buffer_IDs[0] + config.disk.num_disks ) % buf.num_buffers;
-        file_num += config.disk.num_disks;
+        buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
+        file_num++;
     }
 }

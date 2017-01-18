@@ -24,6 +24,7 @@ public:
 
 private:
     int32_t network_buffer_id;
+    int32_t network_buffer_precondition_id;
     Buffer * network_buf;
     int32_t input_frame_len;
 

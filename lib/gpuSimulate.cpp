@@ -42,8 +42,8 @@ void gpuSimulate::main_thread() {
         get_full_buffer_from_list(&input_buf, &input_buf_id, 1);
         wait_for_empty_buffer(&output_buf, output_buf_id);
 
-        unsigned char * input = input_buf.data[input_buf_id];
-        unsigned char * output = output_buf.data[output_buf_id];
+        int * input = (int *)input_buf.data[input_buf_id];
+        int * output = (int *)output_buf.data[output_buf_id];
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
@@ -65,16 +65,21 @@ void gpuSimulate::main_thread() {
                     }
                     output[b*32*32*2 + x*2 + y*32*2 + 0] = imag;
                     output[b*32*32*2 + x*2 + y*32*2 + 1] = real;
+                    //INFO("real: %d, imag: %d", real, imag);
                 }
             }
+            INFO("Done block %d of %d...", b, _num_blocks);
         }
 
         INFO("Simulating GPU processing done for %s[%d] result is in %s[%d]",
                 input_buf.buffer_name, input_buf_id,
                 output_buf.buffer_name, output_buf_id);
 
-        //copy_buffer_info(&input_buf, input_buf_id, &output_buf, output_buf_id);
+        move_buffer_info(&input_buf, input_buf_id, &output_buf, output_buf_id);
         mark_buffer_empty(&input_buf, input_buf_id);
         mark_buffer_full(&output_buf, output_buf_id);
+
+        input_buf_id = (input_buf_id + 1) % input_buf.num_buffers;
+        output_buf_id = (output_buf_id + 1) % output_buf.num_buffers;
     }
 }

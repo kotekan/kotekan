@@ -131,3 +131,23 @@ int64_t mod(int64_t a, int64_t b)
         ret+=b;
     return ret;
 }
+
+void hex_dump (const int rows, void *addr, int len) {
+    int i;
+    unsigned char *char_buf = (unsigned char*)addr;
+
+    for (i = 0; i < len; i++) {
+        if ((i % rows) == 0) {
+            // Add a new line as needed.
+            if (i != 0)
+                printf ("\n");
+
+            // Print the offset.
+            printf ("  %04x ", i);
+        }
+
+        // Print the hex value
+        printf (" %02x", char_buf[i]);
+    }
+    printf("\n");
+}

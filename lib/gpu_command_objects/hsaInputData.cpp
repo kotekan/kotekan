@@ -10,6 +10,7 @@ hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_
     apply_config(0);
     network_buf = host_buffers.get_buffer("network_buf");
     network_buffer_id = 0;
+    network_buffer_precondition_id = 0;
 }
 
 
@@ -28,7 +29,9 @@ void hsaInputData::apply_config(const uint64_t& fpga_seq) {
 void hsaInputData::wait_on_precondition(int gpu_frame_id)
 {
     // Wait for there to be data in the input (network) buffer.
-    get_full_buffer_from_list(network_buf, &network_buffer_id, 1);
+    //INFO("hsaInputData precondition waiting for full buffer id %d, frame id %d", network_buffer_precondition_id, gpu_frame_id);
+    get_full_buffer_from_list(network_buf, &network_buffer_precondition_id, 1);
+    network_buffer_precondition_id = (network_buffer_precondition_id + 1) % network_buf->num_buffers;
 }
 
 hsa_signal_t hsaInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq,

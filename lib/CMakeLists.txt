@@ -19,6 +19,7 @@ add_library ( chime
               fpga_header_functions.c nullProcess.cpp simple_udp_cap.c output_power.c
               network_dpdk.c gpu_thread.cpp gpu_command.cpp callbackdata.cpp device_interface.cpp
               hccGPUThread.cpp fullPacketDump.cpp dpdkWrapper.cpp
+              rawFileRead.cpp rawFileWrite.cpp
               gpu_command_factory.cpp vdif_functions.c stream_raw_vdif.c
               gpu_command_objects/beamform_kernel.cpp
               gpu_command_objects/beamform_phase_data.cpp
