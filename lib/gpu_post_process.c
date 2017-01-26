@@ -323,6 +323,19 @@ void* gpu_post_process_thread(void* arg)
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
                     wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
 
+                    if (enable_half_duty_gating) {
+                        double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2;
+                        double gated_vis_reweight = (double) integrations_gated_vis / mean_integrations;
+                        double visibilities_reweight = (double) integrations_visibilities / mean_integrations;
+                        for (int j = 0; j < num_values; ++j) {
+                            // XXX I don't know what to cast to here -KM
+                            gated_vis[j].real = (CAST) round(gated_vis_reweight * (double) gated_vis[j].real);
+                            gated_vis[j].imag = (CAST) round(gated_vis_reweight * (double) gated_vis[j].imag);
+                            visibilities[j].real = (CAST) round(visibilities_reweight * (double) gated_vis[j].real);
+                            visibilities[j].imag = (CAST) round(visibilities_reweight * (double) gated_vis[j].imag);
+                        }
+                    }
+
                     if (gating) {
                         DEBUG("Copying gated data to the gate_buf!");
                         for (int j = 0; j < num_values; ++j) {
