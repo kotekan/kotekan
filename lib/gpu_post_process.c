@@ -251,8 +251,19 @@ void* gpu_post_process_thread(void* arg)
                     }
 
                     for (int j = 0; j < num_values; ++j) {
-                        vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                        visibilities[j].real = 0;
+                        visibilities[j].imag = 0;
                         vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
+                    }
+                    if (config->gating.enable_basic_gating == 1) {
+                        for (int j = 0; j < num_values; ++j) {
+                            gated_vis[j].real = 0;
+                            gated_vis[j].imag = 0;
+                        }
+                    }
+                    for (int j = 0; j < num_values; ++j) {
+                        // XXX I would be in favour of removing this loop and the next and taking the "add to visibilities" loop out of the `else` clause. -KM
+                        vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
                         frequency_data[j] = local_freq_data[i][j];
@@ -261,13 +272,6 @@ void* gpu_post_process_thread(void* arg)
                         element_data[j] = local_element_data[i][j];
                     }
 
-                } else if (frame_number == config->gating.gate_cadence) {
-                    // This will either be start of the ON data or the first frame of OFF data
-                    // so we need to make sure we reset the values here.
-                    for (int j = 0; j < num_values; ++j) {
-                        vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
-                        vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
-                    }
                 } else {
                     // Add to the visibilities.
                     for (int j = 0; j < num_values; ++j) {
