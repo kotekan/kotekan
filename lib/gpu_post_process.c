@@ -110,6 +110,7 @@ void* gpu_post_process_thread(void* arg)
     // Counting integrations in on and off gates.
     int64_t integrations_visibilities = 0;
     int64_t integrations_gated_vis = 0;
+    int64_t * integrations_vis_ptr = &integrations_visibilities;
 
     // Wait for full buffers.
     for (;;) {
@@ -223,8 +224,10 @@ void* gpu_post_process_thread(void* arg)
 
                 if (step % 2 == 0) {
                     vis = gated_vis;
+                    integrations_vis_ptr = &integrations_gated_vis;
                 } else {
                     vis = visibilities;
+                    integrations_vis_ptr = &integrations_visibilities;
                 }
             }
 
@@ -264,17 +267,20 @@ void* gpu_post_process_thread(void* arg)
                     for (int j = 0; j < num_values; ++j) {
                         visibilities[j].real = 0;
                         visibilities[j].imag = 0;
+                        integrations_visibilities = 0;
                         vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
                     }
                     if (gating) {
                         for (int j = 0; j < num_values; ++j) {
                             gated_vis[j].real = 0;
                             gated_vis[j].imag = 0;
+                            integrations_gated_vis = 0;
                         }
                     }
                     for (int j = 0; j < num_values; ++j) {
                         // XXX I would be in favour of removing this loop and the next and taking the "add to visibilities" loop out of the `else` clause. -KM
                         vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                        *integrations_vis_ptr = 1;
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
                         frequency_data[j] = local_freq_data[i][j];
@@ -289,6 +295,7 @@ void* gpu_post_process_thread(void* arg)
                         complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                         vis[j].real += temp_vis.real;
                         vis[j].imag += temp_vis.imag;
+                        *integrations_vis_ptr ++;
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
                       frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
