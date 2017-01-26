@@ -206,11 +206,20 @@ void* gpu_post_process_thread(void* arg)
             double gating_phase = 0.;    // seconds, provided in config by user.
 
             // Gating data.
-            int64_t intergration_num = fpga_seq_number / config->processing.samples_per_data_set;
-            if (config->gating.enable_basic_gating == 1) {
-                // Phase = 0 means the noise source ON bin starts at 0
-                int64_t step = (intergration_num / config->gating.gate_cadence)
-                                + config->gating.gate_phase;
+            bool gating = config->gating.enable_basic_gating == 1 || enable_half_duty_gating == 1;
+            if (gating) {
+                int64_t integration_num = fpga_seq_number / config->processing.samples_per_data_set;
+                int64_t step;
+
+                if (config->gating.enable_basic_gating == 1) {
+                    // Phase = 0 means the noise source ON bin starts at 0
+                    step = (integration_num / config->gating.gate_cadence)
+                                    + config->gating.gate_phase;
+                    }
+                } else if (enable_half_duty_gating == 1) {
+                    double period_integrations = gating_period / integration_len;
+                    step = (int64_t) round(((double) integration_num) / period_integrations * 2);
+                }
 
                 if (step % 2 == 0) {
                     vis = gated_vis;
@@ -248,6 +257,8 @@ void* gpu_post_process_thread(void* arg)
                         gate_header->gate_weight[1] = (config->gating.gate_phase == 0) ? -1.0 : 1.0;
 
                         header->num_gates = 1;
+                    } else if (enable_half_duty_gating == 1) {
+                        // XXX Stuff -KM
                     }
 
                     for (int j = 0; j < num_values; ++j) {
@@ -255,7 +266,7 @@ void* gpu_post_process_thread(void* arg)
                         visibilities[j].imag = 0;
                         vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
                     }
-                    if (config->gating.enable_basic_gating == 1) {
+                    if (gating) {
                         for (int j = 0; j < num_values; ++j) {
                             gated_vis[j].real = 0;
                             gated_vis[j].imag = 0;
@@ -305,7 +316,7 @@ void* gpu_post_process_thread(void* arg)
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
                     wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
 
-                    if (config->gating.enable_basic_gating == 1) {
+                    if (gating) {
                         DEBUG("Copying gated data to the gate_buf!");
                         for (int j = 0; j < num_values; ++j) {
                             // Visibilities = OFF + ON
