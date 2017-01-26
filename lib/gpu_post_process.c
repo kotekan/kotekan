@@ -107,6 +107,10 @@ void* gpu_post_process_thread(void* arg)
     // Changing destination pointer for the different gates
     complex_int_t * vis = visibilities;
 
+    // Counting integrations in on and off gates.
+    int64_t integrations_visibilities = 0;
+    int64_t integrations_gated_vis = 0;
+
     // Wait for full buffers.
     for (;;) {
 
@@ -194,11 +198,17 @@ void* gpu_post_process_thread(void* arg)
         // Only happens once every time all the links have been read from.
         if (link_id + 1 == config->fpga_network.num_links) {
 
-            // Gating data.
-            // Phase = 0 means the noise source ON bin starts at 0
-            if (config->gating.enable_basic_gating == 1) {
-                int64_t intergration_num = fpga_seq_number / config->processing.samples_per_data_set;
 
+            // XXX Gating parameters needed for second gating mode. To be provided and logged by Andre. -KM
+            int enable_half_duty_gating = 1;    // excludes `enable_basic_gating`
+            double integration_len = 0.08389;    // seconds, probably `samples_per_data_set / fpga_clock_rate` (in Hz)
+            double gating_period = 0.71452;    // seconds, provided in config by user.
+            double gating_phase = 0.;    // seconds, provided in config by user.
+
+            // Gating data.
+            int64_t intergration_num = fpga_seq_number / config->processing.samples_per_data_set;
+            if (config->gating.enable_basic_gating == 1) {
+                // Phase = 0 means the noise source ON bin starts at 0
                 int64_t step = (intergration_num / config->gating.gate_cadence)
                                 + config->gating.gate_phase;
 
