@@ -136,15 +136,22 @@ int parse_gating_config(struct Config* config, json_t * json)
 {
     int error = 0;
 
-    error = json_unpack(json, "{s:i, s:i, s:i}",
+    char * gate_note;
+
+    error = json_unpack(json, "{s:i, s:i, s:i, s:F, s:i, s:s}",
         "enable_basic_gating", &config->gating.enable_basic_gating,
+        "enable_half_duty_gating", &config->gating.enable_half_duty_gating,
         "gate_cadence", &config->gating.gate_cadence,
-        "gate_phase", &config->gating.gate_phase);
+        "gate_cadence_real", &config->gating.gate_cadence_real,
+        "gate_phase", &config->gating.gate_phase,
+        "gate_note", &gate_note);
 
     if (error) {
         ERROR("Error parsing gating config.");
         return -1;
     }
+
+    config->gating.gate_note = strdup(gate_note);
 
     return 0;
 }

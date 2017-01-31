@@ -9,6 +9,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <math.h>
 
 #include "buffers.h"
 #include "errors.h"
@@ -142,7 +143,6 @@ void* gpu_post_process_thread(void* arg)
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
         uint64_t fpga_seq_number = get_fpga_seq_num(&args->in_buf[gpu_id], in_buffer_ID);
         struct timeval frame_start_time = get_first_packet_recv_time(&args->in_buf[gpu_id], in_buffer_ID);
-
         for (int i = 0; i < config->processing.num_data_sets; ++i) {
 
             if (config->processing.num_elements <= 16) {
@@ -196,15 +196,13 @@ void* gpu_post_process_thread(void* arg)
             }
         }
 
-        // Only happens once every time all the links have been read from.
+        // Only happens once after all the links have been read from.
         if (link_id + 1 == config->fpga_network.num_links) {
 
-
-            // XXX Gating parameters needed for second gating mode. To be provided and logged by Andre. -KM
-            int enable_half_duty_gating = 1;    // excludes `enable_basic_gating`
-            double integration_len = 0.08389;    // seconds, probably `samples_per_data_set / fpga_clock_rate` (in Hz)
-            double gating_period = 0.71452;    // seconds, provided in config by user.
-            double gating_phase = 0.;    // seconds, provided in config by user.
+            // Gating parameters needed for second gating mode.
+            int enable_half_duty_gating = config->gating.enable_half_duty_gating;    // excludes `enable_basic_gating`
+            double integration_len = (double)config->processing.samples_per_data_set / (double)390625.0;
+            double gating_period = config->gating.gate_cadence_real;    // seconds, provided in config by user.
 
             // Gating data.
             bool gating = config->gating.enable_basic_gating == 1 || enable_half_duty_gating == 1;
@@ -219,7 +217,7 @@ void* gpu_post_process_thread(void* arg)
                     }
                 } else if (enable_half_duty_gating == 1) {
                     double period_integrations = gating_period / integration_len;
-                    step = (int64_t) round(((double) integration_num) / period_integrations * 2);
+                    step = (int64_t) round(((double) integration_num) / (double) period_integrations * 2.0);
                 }
 
                 if (step % 2 == 0) {
@@ -261,46 +259,52 @@ void* gpu_post_process_thread(void* arg)
 
                         header->num_gates = 1;
                     } else if (enable_half_duty_gating == 1) {
-                        // XXX Stuff -KM
+                        snprintf(gate_header->description, MAX_GATE_DESCRIPTION_LEN, config->gating.gate_note);
+                        gate_header->folding_period = (double)config->gating.gate_cadence_real;
+                        gate_header->folding_start = (double)frame_start_time.tv_sec * 1000.0 * 1000.0 +
+                                                     (double)frame_start_time.tv_usec;
+                        // Convert to seconds
+                        gate_header->folding_start /= 1000000.0;
+                        gate_header->fpga_count_start = fpga_seq_number;
+                        gate_header->set_num = 1; // TODO This shouldn't be hard coded!!
+                        gate_header->gate_weight[0] = (config->gating.gate_phase == 0) ? 1.0 : -1.0;
+                        gate_header->gate_weight[1] = (config->gating.gate_phase == 0) ? -1.0 : 1.0;
+                        header->num_gates = 1;
                     }
 
+                    // Zero values for first run.
                     for (int j = 0; j < num_values; ++j) {
                         visibilities[j].real = 0;
                         visibilities[j].imag = 0;
-                        integrations_visibilities = 0;
                         vis_weight[j] = 0xFF;  // TODO Set this with the error matrix
                     }
                     if (gating) {
                         for (int j = 0; j < num_values; ++j) {
                             gated_vis[j].real = 0;
                             gated_vis[j].imag = 0;
-                            integrations_gated_vis = 0;
                         }
-                    }
-                    for (int j = 0; j < num_values; ++j) {
-                        // XXX I would be in favour of removing this loop and the next and taking the "add to visibilities" loop out of the `else` clause. -KM
-                        vis[j] = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
-                        *integrations_vis_ptr = 1;
+                        integrations_gated_vis = 0;
+                        integrations_visibilities = 0;
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
-                        frequency_data[j] = local_freq_data[i][j];
+                        frequency_data[j].lost_packet_count = 0;
+                        frequency_data[j].rfi_count = 0;
                     }
                     for (int j = 0; j < config->processing.num_elements * config->processing.num_total_freq; ++j) {
                         element_data[j] = local_element_data[i][j];
                     }
 
-                } else {
-                    // Add to the visibilities.
-                    for (int j = 0; j < num_values; ++j) {
-                        complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
-                        vis[j].real += temp_vis.real;
-                        vis[j].imag += temp_vis.imag;
-                        *integrations_vis_ptr ++;
-                    }
-                    for (int j = 0; j < config->processing.num_total_freq; ++j) {
-                      frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
-                      frequency_data[j].rfi_count += local_freq_data[i][j].rfi_count;
-                    }
+                }
+                // Add to the visibilities.
+                for (int j = 0; j < num_values; ++j) {
+                    complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
+                    vis[j].real += temp_vis.real;
+                    vis[j].imag += temp_vis.imag;
+                    *integrations_vis_ptr ++;
+                }
+                for (int j = 0; j < config->processing.num_total_freq; ++j) {
+                    frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
+                    frequency_data[j].rfi_count += local_freq_data[i][j].rfi_count;
                 }
 
                 // If we are on the last frame in the set, push the buffer to the network thread.
@@ -324,15 +328,14 @@ void* gpu_post_process_thread(void* arg)
                     wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
 
                     if (enable_half_duty_gating) {
-                        double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2;
-                        double gated_vis_reweight = (double) integrations_gated_vis / mean_integrations;
-                        double visibilities_reweight = (double) integrations_visibilities / mean_integrations;
+                        double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2.0;
+                        double gated_vis_reweight = (double) integrations_gated_vis / (double) mean_integrations;
+                        double visibilities_reweight = (double) integrations_visibilities / (double) mean_integrations;
                         for (int j = 0; j < num_values; ++j) {
-                            // XXX I don't know what to cast to here -KM
-                            gated_vis[j].real = (CAST) round(gated_vis_reweight * (double) gated_vis[j].real);
-                            gated_vis[j].imag = (CAST) round(gated_vis_reweight * (double) gated_vis[j].imag);
-                            visibilities[j].real = (CAST) round(visibilities_reweight * (double) gated_vis[j].real);
-                            visibilities[j].imag = (CAST) round(visibilities_reweight * (double) gated_vis[j].imag);
+                            gated_vis[j].real = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].real);
+                            gated_vis[j].imag = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].imag);
+                            visibilities[j].real = (int32_t) round(visibilities_reweight * (double) visibilities[j].real);
+                            visibilities[j].imag = (int32_t) round(visibilities_reweight * (double) visibilities[j].imag);
                         }
                     }
 

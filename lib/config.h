@@ -178,8 +178,11 @@ struct Beamforming {
 /// Gating
 struct Gating {
     int enable_basic_gating;
+    int enable_half_duty_gating;
     int gate_cadence;
+    double gate_cadence_real;
     int gate_phase;
+    char * gate_note;
 };
 
 /// @brief Struct for holding static system configuration
