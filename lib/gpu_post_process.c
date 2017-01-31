@@ -205,7 +205,7 @@ void* gpu_post_process_thread(void* arg)
             double gating_period = config->gating.gate_cadence_real;    // seconds, provided in config by user.
 
             // Gating data.
-            bool gating = config->gating.enable_basic_gating == 1 || enable_half_duty_gating == 1;
+            int gating = config->gating.enable_basic_gating == 1 || enable_half_duty_gating == 1;
             if (gating) {
                 int64_t integration_num = fpga_seq_number / config->processing.samples_per_data_set;
                 int64_t step;
@@ -214,7 +214,6 @@ void* gpu_post_process_thread(void* arg)
                     // Phase = 0 means the noise source ON bin starts at 0
                     step = (integration_num / config->gating.gate_cadence)
                                     + config->gating.gate_phase;
-                    }
                 } else if (enable_half_duty_gating == 1) {
                     double period_integrations = gating_period / integration_len;
                     step = (int64_t) round(((double) integration_num) / (double) period_integrations * 2.0);
@@ -300,7 +299,7 @@ void* gpu_post_process_thread(void* arg)
                     complex_int_t temp_vis = *(complex_int_t *)(data_sets_buf + i * (num_values * sizeof(complex_int_t)) + j * sizeof(complex_int_t));
                     vis[j].real += temp_vis.real;
                     vis[j].imag += temp_vis.imag;
-                    *integrations_vis_ptr ++;
+                    *integrations_vis_ptr = (*integrations_vis_ptr) + 1;
                 }
                 for (int j = 0; j < config->processing.num_total_freq; ++j) {
                     frequency_data[j].lost_packet_count += local_freq_data[i][j].lost_packet_count;
