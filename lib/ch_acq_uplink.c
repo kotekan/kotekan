@@ -69,7 +69,7 @@ void* ch_acq_uplink_thread(void* arg)
         }
         INFO("Finished sending frame to ch_master");
 
-        if (args->config->gating.enable_basic_gating == 1) {
+        if (args->config->gating.enable_basic_gating == 1 || args->config->gating.enable_half_duty_gating == 1) {
             DEBUG("Getting gated buffer");
             get_full_buffer_from_list(args->gate_buf, &buffer_ID, 1);
 

@@ -324,7 +324,7 @@ void* gpu_post_process_thread(void* arg)
                     INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
-                    wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
+                    if (gating) wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
 
                     if (enable_half_duty_gating) {
                         double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2.0;
