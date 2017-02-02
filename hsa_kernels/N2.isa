@@ -469,6 +469,9 @@ CHIME_X:
       v_mov_b32 v8, v45
       v_mov_b32 v9, v46
 
+    s_add_u32 s4, 8, s4
+    s_cmp_ge_u32 s4, s15 ;N_INTG
+    s_cbranch_scc1 SKIP_LOAD
       ;CAN THESE READ OFF THE END? PAD INPUT DATA?
       ;**X** Load 4-byte from T*N_ELEM + input_x*4 (addr in bytes)
       v_add_i32_e32 v4, vcc, s14, v4
@@ -479,6 +482,8 @@ CHIME_X:
       v_add_i32_e32 v6, vcc, s14, v6
       v_addc_u32 v7, vcc, v7, 0, vcc
       flat_load_dword v46, v[6:7]
+
+    SKIP_LOAD:
 
       ;unpack X_000i000r (v10-13) & X_000i000i (v14-15)
       ;rewrite for v2, v3
@@ -708,7 +713,7 @@ CHIME_X:
 
   s_waitcnt 0
 
-    s_add_u32 s4, 64, s4
+;    s_add_u32 s4, 64, s4
     s_cmp_lt_u32 s4, s15 ;N_INTG
   s_cbranch_scc1 LOOP_OUTER
   ;END OF OUTER LOOP
