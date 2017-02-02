@@ -9,6 +9,9 @@ hsaOutputDataZero::hsaOutputDataZero(const string& kernel_name, const string& ke
     apply_config(0);
 
     output_zeros = hsa_host_malloc(output_len);
+    INFO("hsaOutputDataZero gpu[%d], Creating the output zero buffer: %p, len: %d",
+            device.get_gpu_id(), output_zeros, output_len);
+
     memset(output_zeros, 0, output_len);
 }
 

@@ -35,7 +35,7 @@ void testDataGen::main_thread() {
         std::uniform_int_distribution<> dis(0, 255);
 
         for (int j = 0; j < buf.buffer_size; ++j) {
-            buf.data[buf_id][j] = 0x9A; //(unsigned char)dis(gen);
+            buf.data[buf_id][j] = (unsigned char)dis(gen);
         }
 
         INFO("Generated a test data set in %s[%d]", buf.buffer_name, buf_id);

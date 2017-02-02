@@ -59,10 +59,8 @@ void rawFileRead::main_thread() {
         }
 
         INFO("rawFileRead: read data from %s", full_path)
-        //if (!generate_info_object)
+        //if (generate_info_object)
         //    hex_dump(8, (void *)buf.data[buffer_id], 8096);
-
-        sleep(5);
 
         // The details don't matter for most subsystems
         if (generate_info_object) {

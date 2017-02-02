@@ -58,7 +58,10 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
     // is the actual size of the memory space.
     // To make CPU-GPU transfers more efficient, it is recommended to use the aligned value
     // so that no partial pages are send in the DMA copy.
-    buf->aligned_buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
+    // NOTE (17/02/02) This may not be needed any more, changed to make aligned
+    // len == requested len.  This should be checked in more detail.
+    buf->aligned_buffer_size = len;
+    //buf->aligned_buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
     buf->num_producers = num_producers;
     buf->num_consumers = num_consumers;
 
@@ -137,6 +140,8 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
 
         buf->data[i] = hsa_host_malloc(buf->aligned_buffer_size);
         INFO("Using hsa_host_malloc in buffers.c: %p", buf->data[i]);
+
+        memset(buf->data[i], 0, buf->aligned_buffer_size);
 
         #else
         // Create a page alligned block of memory for the buffer

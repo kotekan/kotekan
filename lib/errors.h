@@ -13,6 +13,7 @@
 
 #include <syslog.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #ifdef __cplusplus
 #include <cstring>

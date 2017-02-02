@@ -90,7 +90,9 @@ void dpdk_setup() {
     char  arg2[] = "4";
     char  arg3[] = "-c";
     char  arg4[] = "F";
-    char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], NULL };
+    char  arg5[] = "-m";
+    char  arg6[] = "256";
+    char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };
     int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
     /* Initialize the Environment Abstraction Layer (EAL). */

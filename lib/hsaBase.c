@@ -1,4 +1,5 @@
 #include "hsaBase.h"
+#include <sys/mman.h>
 
 hsa_agent_t cpu_agent;
 hsa_amd_memory_pool_t host_region;
@@ -71,6 +72,11 @@ void * hsa_host_malloc(size_t len) {
     hsa_status_t hsa_status;
     hsa_status = hsa_amd_memory_pool_allocate(host_region, len, 0, &ptr);
     assert(hsa_status == HSA_STATUS_SUCCESS);
+
+    if ( mlock(ptr, len) != 0 ) {
+        ERROR("Error locking memory - check ulimit -a to check memlock limits");
+        return NULL;
+    }
 
     return ptr;
 }

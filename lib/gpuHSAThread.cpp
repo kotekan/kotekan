@@ -98,9 +98,9 @@ void gpuHSAThread::results_thread() {
 
     for(;;) {
         // Wait for a signal to be completed
-        INFO("Waiting for signal for gpu[%d], frame %d", gpu_id, gpu_frame_id);
+        INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
         final_signals[gpu_frame_id].wait_for_signal();
-        INFO("Got final signal for gpu[%d], frame %d", gpu_id, gpu_frame_id);
+        INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (int i = 0; i < commands.size(); ++i) {
             commands[i]->finalize_frame(gpu_frame_id);

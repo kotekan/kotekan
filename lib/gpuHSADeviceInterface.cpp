@@ -79,8 +79,6 @@ hsa_signal_t gpuHSADeviceInterface::async_copy_host_to_gpu(void* dst, void* src,
     hsa_status_t hsa_status;
     int num_precede_signals = 0;
 
-    INFO("ASync host->gpu[%d] copy %p -> %p", gpu_id, src, dst);
-
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
@@ -106,6 +104,8 @@ hsa_signal_t gpuHSADeviceInterface::async_copy_host_to_gpu(void* dst, void* src,
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
+    INFO("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, post_sig.handle);
+
     return post_sig;
 }
 
@@ -113,8 +113,6 @@ hsa_signal_t gpuHSADeviceInterface::async_copy_gpu_to_host(void* dst, void* src,
     hsa_signal_t post_sig;
     hsa_status_t hsa_status;
     int num_precede_signals = 0;
-
-    INFO("ASync gpu[%d]->host copy %p -> %p", gpu_id, src, dst);
 
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
@@ -140,6 +138,8 @@ hsa_signal_t gpuHSADeviceInterface::async_copy_gpu_to_host(void* dst, void* src,
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
+    INFO("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, post_sig.handle);
+
     return post_sig;
 }
 
@@ -147,7 +147,7 @@ void gpuHSADeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int leng
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
-    INFO("Sync host->gpu[%d] copy %p -> %p", gpu_id, src, dst);
+    INFO("Sync host->gpu[%d] copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -172,7 +172,7 @@ void gpuHSADeviceInterface::sync_copy_gpu_to_host(void *dst, void *src, int leng
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
-    INFO("Sync gpu[%d]->host copy %p -> %p", gpu_id, src, dst);
+    INFO("Sync gpu[%d]->host copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -280,6 +280,7 @@ void* gpuHSADeviceInterface::get_gpu_memory_array(const string& name, const int 
         for (int i = 0; i < _gpu_buffer_depth; ++i) {
             void * ptr;
             hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
+            DEBUG("Allocating GPU[%d] memory: %s[%d], len: %d, ptr: %p", gpu_id, name.c_str(), i, len, ptr);
             assert(hsa_status == HSA_STATUS_SUCCESS);
             gpu_memory[name].len = len;
             gpu_memory[name].gpu_pointers.push_back(ptr);
@@ -301,6 +302,7 @@ void* gpuHSADeviceInterface::get_gpu_memory(const string& name, const int len) {
     if (gpu_memory.count(name) == 0) {
         void * ptr;
         hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
+        DEBUG("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
         assert(hsa_status == HSA_STATUS_SUCCESS);
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);

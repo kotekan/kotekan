@@ -1,5 +1,7 @@
 # Build/Run Requirements
 
+NOTE: This README needs to be updated for HSA
+
 ## Software:
 
 * CentOS 7.*
@@ -93,7 +95,7 @@ before starting a build.
 To build everything:
 
 	cd build
-	cmake ..
+	cmake -DRTE_SDK=/data/dpdk-2.2.0/ -DRTE_TARGET=x86_64-native-linuxapp-gcc ..
 	make
 
 The binaries will be located in subdirs mirroring the source tree.
@@ -102,7 +104,7 @@ For example the correlator binary will be in build/correlator/
 To just build one project:
 
 	cd build
-	cmake ..
+	cmake -DRTE_SDK=/data/dpdk-2.2.0/ -DRTE_TARGET=x86_64-native-linuxapp-gcc ..
 	cd <project you want to build>
 	make
 
@@ -111,7 +113,7 @@ This will build just that project plus any dependencies it has.
 To build with the project with debug symbols:
 
 	cd build
-	cmake -DCMAKE_BUILD_TYPE=Debug ..
+	cmake -DRTE_SDK=/data/dpdk-2.2.0/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DCMAKE_BUILD_TYPE=Debug ..
 	make
 
 To install the program (only works on CentOS at the moment):

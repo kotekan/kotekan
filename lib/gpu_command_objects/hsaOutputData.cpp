@@ -13,6 +13,7 @@ hsaOutputData::hsaOutputData(const string& kernel_name, const string& kernel_fil
     network_buffer_id = 0;
     output_buffer_id = 0;
     output_buffer_precondition_id = 0;
+    output_buffer_excute_id = 0;
 }
 
 hsaOutputData::~hsaOutputData() {
@@ -30,10 +31,12 @@ hsa_signal_t hsaOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
 
     void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_buffer->buffer_size);
 
-    void * host_output_ptr = (void *)output_buffer->data[output_buffer_id];
+    void * host_output_ptr = (void *)output_buffer->data[output_buffer_excute_id];
 
     signals[gpu_frame_id] = device.async_copy_gpu_to_host(host_output_ptr,
             gpu_output_ptr, output_buffer->buffer_size, precede_signal);
+
+    output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_buffers;
 
     return signals[gpu_frame_id];
 }

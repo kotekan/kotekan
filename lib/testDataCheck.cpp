@@ -1,5 +1,6 @@
 #include "testDataCheck.hpp"
 #include "errors.h"
+#include "util.h"
 
 testDataCheck::testDataCheck(Config& config,
                              Buffer& first_buf_,
@@ -39,12 +40,21 @@ void testDataCheck::main_thread() {
         INFO("Checking that the buffers %s[%d] and %s[%d] match, this could take a while...",
                 first_buf.buffer_name, first_buf_id,
                 second_buf.buffer_name, second_buf_id);
+        //hex_dump(16, (void*)first_buf.data[first_buf_id], 1024);
+        //hex_dump(16, (void*)second_buf.data[second_buf_id], 1024);
         for (int i = 0; i < first_buf.buffer_size/4; ++i) {
             // This could be made much faster with higher bit depth checks
             int32_t first_value = *((int32_t *)&(first_buf.data[first_buf_id][i*4]));
-            int32_t second_value = *((int32_t *)&(second_buf.data[second_buf_id][i*4]));
+            int32_t second_value;
+            second_value = *((int32_t *)&(second_buf.data[second_buf_id][i*4]));
+            //if (i % 2 == 0) {
+            //    second_value = 0;
+            //} else {
+            //    second_value = 294912; //10256384; //163840;
+            //}
+
             if (first_value != second_value) {
-                if (num_errors++ < 100000)
+                if (num_errors++ < 10000)
                 ERROR("%s[%d][%d] != %s[%d][%d]; values: (%d, %d)",
                     first_buf.buffer_name, first_buf_id, i,
                     second_buf.buffer_name, second_buf_id, i,

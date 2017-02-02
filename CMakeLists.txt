@@ -34,8 +34,8 @@ include_directories (${CHIME_SOURCE_DIR}/include)
 include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
 
 # DPDK Includes
-include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
-link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
+include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
+link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
 
 set (DPDK_LIST
         ethdev       rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
