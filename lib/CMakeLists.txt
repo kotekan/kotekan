@@ -24,9 +24,9 @@ add_library ( chime
               gpu_command_objects/beamform_kernel.cpp
               gpu_command_objects/beamform_phase_data.cpp
               gpu_command_objects/correlator_kernel.cpp
-	      gpu_command_objects/input_data_stage.cpp
+	          gpu_command_objects/input_data_stage.cpp
               gpu_command_objects/offset_kernel.cpp
-	      gpu_command_objects/output_beamform_result.cpp
+	          gpu_command_objects/output_beamform_result.cpp
               gpu_command_objects/output_data_result.cpp
               gpu_command_objects/preseed_kernel.cpp
               gpu_command_objects/beamform_incoherent_kernel.cpp
@@ -36,6 +36,7 @@ add_library ( chime
               gpuHSADeviceInterface.cpp
               gpuHSAThread.cpp
               gpuSimulate.cpp
+              gpuBeamformSimulate.cpp
               bufferContainer.cpp
               signalContainer.cpp
               testDataCheck.cpp
@@ -47,6 +48,8 @@ add_library ( chime
               gpu_command_objects/hsaOutputDataZero.cpp
               gpu_command_objects/hsaPreseedKernel.cpp
               gpu_command_objects/hsaPresumZero.cpp
+              gpu_command_objects/hsaBeamformKernel.cpp
+              gpu_command_objects/hsaBeamformOutput.cpp
               )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )

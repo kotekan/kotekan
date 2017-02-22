@@ -136,7 +136,6 @@ void gpuThread::main_thread()
         sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
 
         //DEBUG("cb_data initialized\n");
-
         for (int i = 0; i < factory.getNumCommands(); i++){
             currentCommand = factory.getNextCommand(device, bufferID);
             sequenceEvent = currentCommand->execute(bufferID, 0, device, sequenceEvent);

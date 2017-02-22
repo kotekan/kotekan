@@ -13,6 +13,7 @@ public:
     rawFileRead(Config &config,
                  struct Buffer &buf,
                  bool generate_info_object,
+                 bool repeat_frame,
                  const std::string &base_dir,
                  const std::string &file_name,
                  const std::string &file_ext);
@@ -21,7 +22,9 @@ public:
     void main_thread();
 private:
     struct Buffer &buf;
+    void * tmp_buf;
     bool generate_info_object;
+    bool repeat_frame;
     std::string base_dir;
     std::string file_name;
     std::string file_ext;

@@ -31,9 +31,9 @@ void testDataCheck::main_thread() {
 
         // Get both full frames
         get_full_buffer_from_list(&first_buf, &first_buf_id, 1);
-        INFO("testDataCheck: Got the first buffer %s", first_buf.buffer_name);
+        INFO("testDataCheck: Got the first buffer %s[%d]", first_buf.buffer_name, first_buf_id);
         get_full_buffer_from_list(&second_buf, &second_buf_id, 1);
-        INFO("testDataCheck: Got the second buffer %s", second_buf.buffer_name);
+        INFO("testDataCheck: Got the second buffer %s[%d]", second_buf.buffer_name, second_buf_id);
         bool error = false;
         num_errors = 0;
 
@@ -42,26 +42,26 @@ void testDataCheck::main_thread() {
                 second_buf.buffer_name, second_buf_id);
         //hex_dump(16, (void*)first_buf.data[first_buf_id], 1024);
         //hex_dump(16, (void*)second_buf.data[second_buf_id], 1024);
-        for (int i = 0; i < first_buf.buffer_size/4; ++i) {
-            // This could be made much faster with higher bit depth checks
-            int32_t first_value = *((int32_t *)&(first_buf.data[first_buf_id][i*4]));
-            int32_t second_value;
-            second_value = *((int32_t *)&(second_buf.data[second_buf_id][i*4]));
+        /*for (int i = 0; i < first_buf.buffer_size/4; ++i) {
+
+            float first_value = *((float *)&(first_buf.data[first_buf_id][i*4]));
+            float second_value;
+            second_value = *((float *)&(second_buf.data[second_buf_id][i*4]));
             //if (i % 2 == 0) {
             //    second_value = 0;
             //} else {
-            //    second_value = 294912; //10256384; //163840;
+            //    second_value = 163840; //294912; //10256384; //163840;
             //}
 
             if (first_value != second_value) {
                 if (num_errors++ < 10000)
-                ERROR("%s[%d][%d] != %s[%d][%d]; values: (%d, %d)",
+                ERROR("%s[%d][%d] != %s[%d][%d]; values: (%f, %f)",
                     first_buf.buffer_name, first_buf_id, i,
                     second_buf.buffer_name, second_buf_id, i,
                     first_value, second_value);
                 error = true;
             }
-        }
+        }*/
 
         if (!error)
             INFO("The buffers %s[%d] and %s[%d] are equal",

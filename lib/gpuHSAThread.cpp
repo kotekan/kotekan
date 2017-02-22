@@ -48,6 +48,8 @@ void gpuHSAThread::main_thread()
     int gpu_frame_id = 0;
     bool first_run = true;
 
+    sleep(10);
+
     for(;;) {
 
         // Wait for all the required preconditions
@@ -62,7 +64,8 @@ void gpuHSAThread::main_thread()
 
         hsa_signal_t signal;
         signal.handle = 0;
-        INFO("Adding commands to GPU[%d] queues", gpu_id);
+        INFO("Adding commands to GPU[%d][%d] queues", gpu_id, gpu_frame_id);
+
         for (int i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
             signal = commands[i]->execute(gpu_frame_id, 0, signal);
@@ -105,7 +108,7 @@ void gpuHSAThread::results_thread() {
         for (int i = 0; i < commands.size(); ++i) {
             commands[i]->finalize_frame(gpu_frame_id);
         }
-        INFO("Finished finalizing frames for gpu[%d]", gpu_id);
+        INFO("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
 
         final_signals[gpu_frame_id].reset();
 

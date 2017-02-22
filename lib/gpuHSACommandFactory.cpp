@@ -14,6 +14,8 @@
 #include "gpu_command_objects/hsaOutputData.hpp"
 #include "gpu_command_objects/hsaOutputDataZero.hpp"
 #include "gpu_command_objects/hsaBarrier.hpp"
+#include "hsaBeamformKernel.hpp"
+#include "hsaBeamformOutput.hpp"
 
 using namespace std;
 
@@ -54,6 +56,14 @@ gpuHSACommandFactory::gpuHSACommandFactory(Config& config_,
                     device, config, host_buffers));
         } else if (commands[i]["name"] == "hsa_output_data_zero") {
             list_commands.push_back(new hsaOutputDataZero("hsa_output_data_zero",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers));
+        } else if (commands[i]["name"] == "hsa_beamform_kernel") {
+            list_commands.push_back(new hsaBeamformKernel("zero_padded_FFT512",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers));
+        } else if (commands[i]["name"] == "hsa_beamfrom_output") {
+            list_commands.push_back(new hsaBeamformOutputData("hsa_beamfrom_output",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers));
         } else {

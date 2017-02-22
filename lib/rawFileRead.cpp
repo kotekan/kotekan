@@ -9,18 +9,29 @@ inline bool file_exists(char * name) {
 
 rawFileRead::rawFileRead(Config& config, Buffer& buf_,
         bool generate_info_object_,
+        bool repeat_frame_,
         const std::string &base_dir_,
         const std::string &file_name_,
         const std::string &file_ext_) :
     KotekanProcess(config, std::bind(&rawFileRead::main_thread, this)),
     buf(buf_),
     generate_info_object(generate_info_object_),
+    repeat_frame(repeat_frame_),
     base_dir(base_dir_),
     file_name(file_name_),
     file_ext(file_ext_) {
+
+    tmp_buf = nullptr;
+    if (repeat_frame) {
+        tmp_buf = malloc(buf.buffer_size);
+        assert(tmp_buf != nullptr);
+    }
 }
 
 rawFileRead::~rawFileRead() {
+    if (tmp_buf != nullptr) {
+        free(tmp_buf);
+    }
 }
 
 void rawFileRead::apply_config(uint64_t fpga_seq) {
@@ -42,7 +53,7 @@ void rawFileRead::main_thread() {
                 file_num,
                 file_ext.c_str());
 
-        if (!file_exists(full_path)) {
+        if (!repeat_frame && !file_exists(full_path)) {
             INFO("rawFileRead: No file named %s, exiting read thread.", full_path);
             break;
         }
@@ -50,15 +61,30 @@ void rawFileRead::main_thread() {
         // Get an empty buffer to write into
         wait_for_empty_buffer(&buf, buffer_id);
 
-        FILE * fp = fopen(full_path, "rb");
-        int bytes_read = fread((void *)buf.data[buffer_id], sizeof (char), buf.buffer_size, fp);
+        if (repeat_frame) {
+            if (file_num == 0) {
+                FILE * fp = fopen(full_path, "rb");
+                int bytes_read = fread(tmp_buf, sizeof (char), buf.buffer_size, fp);
 
-        if (bytes_read != buf.buffer_size) {
-            ERROR("rawFileRead: Failed to read file %s!", full_path);
-            break;
+                if (bytes_read != buf.buffer_size) {
+                    ERROR("rawFileRead: Failed to read file %s!", full_path);
+                    break;
+                }
+
+                INFO("rawFileRead: read data from %s, repeating data this in each frame.", full_path);
+            }
+            memcpy((void *)buf.data[buffer_id], tmp_buf, buf.buffer_size);
+        } else {
+            FILE * fp = fopen(full_path, "rb");
+            int bytes_read = fread((void *)buf.data[buffer_id], sizeof (char), buf.buffer_size, fp);
+
+            if (bytes_read != buf.buffer_size) {
+                ERROR("rawFileRead: Failed to read file %s!", full_path);
+                break;
+            }
+
+            INFO("rawFileRead: read data from %s", full_path);
         }
-
-        INFO("rawFileRead: read data from %s", full_path)
         //if (generate_info_object)
         //    hex_dump(8, (void *)buf.data[buffer_id], 8096);
 
