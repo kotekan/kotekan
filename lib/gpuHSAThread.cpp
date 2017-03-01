@@ -48,7 +48,7 @@ void gpuHSAThread::main_thread()
     int gpu_frame_id = 0;
     bool first_run = true;
 
-    sleep(10);
+    sleep(5);
 
     for(;;) {
 
