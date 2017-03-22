@@ -50,8 +50,8 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
         // Get both full frames
         get_full_buffer_from_list(&first_buf, &first_buf_id, 1);
         INFO("testDataCheck: Got the first buffer %s[%d]", first_buf.buffer_name, first_buf_id);
-        get_full_buffer_from_list(&second_buf, &second_buf_id, 1);
-        INFO("testDataCheck: Got the second buffer %s[%d]", second_buf.buffer_name, second_buf_id);
+//        get_full_buffer_from_list(&second_buf, &second_buf_id, 1);
+//        INFO("testDataCheck: Got the second buffer %s[%d]", second_buf.buffer_name, second_buf_id);
         bool error = false;
         num_errors = 0;
 
@@ -66,9 +66,9 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
             A_Type second_value;
             //second_value = *((A_Type *)&(second_buf.data[second_buf_id][i*sizeof(A_Type)]));
             if (i % 2 == 0) {
-                second_value = 0;
+                second_value = 0.; //real part
             } else {
-                second_value = 9502720.0; //294912; //10256384; //163840;
+                second_value = 65536;//1605632.0;//9502720.0; //294912; //10256384; //163840;
             }
 
             if (first_value != second_value) {
@@ -87,7 +87,7 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
                     second_buf.buffer_name, second_buf_id);
 
         mark_buffer_empty(&first_buf, first_buf_id);
-        mark_buffer_empty(&second_buf, second_buf_id);
+//        mark_buffer_empty(&second_buf, second_buf_id);
 
         first_buf_id = (first_buf_id + 1) % first_buf.num_buffers;
         second_buf_id = (second_buf_id +1) % second_buf.num_buffers;

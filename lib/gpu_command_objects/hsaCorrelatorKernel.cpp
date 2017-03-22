@@ -1,8 +1,11 @@
 
 #include "hsaCorrelatorKernel.hpp"
 #include "hsaBase.h"
-
+#include <unistd.h>
 // What does this mean?
+//N_INTG is the number summed in each workitem
+//if there are more, they get split across multiple workitems
+//time slice id is identified by the Y group.
 #define N_INTG 16384
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string& kernel_file_name,
@@ -92,7 +95,7 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
 
     hsa_kernel_dispatch_packet_t* dispatch_packet = (hsa_kernel_dispatch_packet_t*)device.get_queue()->base_address +
                                                             (index % device.get_queue()->size);
-    INFO("hsaCorrelatorKernel got write index: %" PRIu64 ", packet_address: %p, post_signal: %lu", index, dispatch_packet, signals[gpu_frame_id].handle);
+    INFO("hsaCorrelatorKernel got write index: %" PRIu64 ", packet_address: %p, post_signal: %lu", index, dispatch_packet, signals[gpu_frame_id].handle);    
 
     dispatch_packet->setup  |= 3 << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
     dispatch_packet->workgroup_size_x = (uint16_t)16;
@@ -105,7 +108,7 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
     dispatch_packet->kernel_object = kernel_object;
     dispatch_packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
     dispatch_packet->private_segment_size = 0;
-    dispatch_packet->group_segment_size = 0;
+    dispatch_packet->group_segment_size = (uint32_t)3136;
     dispatch_packet-> header =
       (HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE) |
       (1 << HSA_PACKET_HEADER_BARRIER) |
@@ -114,6 +117,8 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
 
     hsa_queue_add_write_index_acquire(device.get_queue(), 1);
     hsa_signal_store_relaxed(device.get_queue()->doorbell_signal, index);
+
+//    hsa_signal_value_t value = hsa_signal_wait_acquire(signals[gpu_frame_id], HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
 
     return signals[gpu_frame_id];
 }

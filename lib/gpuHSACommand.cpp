@@ -132,6 +132,15 @@ uint64_t gpuHSAcommand::load_hsaco_file(string& file_name, string& kernel_name) 
     hsa_status = hsa_executable_symbol_get_info(kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &codeHandle);
     assert(HSA_STATUS_SUCCESS == hsa_status);
 
+    uint32_t group_segment_size;
+    hsa_status = hsa_executable_symbol_get_info(kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE, &group_segment_size);
+
+    uint32_t priv_segment_size;
+    hsa_status = hsa_executable_symbol_get_info(kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE, &priv_segment_size);
+
+
+
+
     // Free raw code object memory.
     free((void*)raw_code_object);
 
