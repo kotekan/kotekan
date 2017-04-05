@@ -14,6 +14,7 @@
 #include "gpuSimulate.hpp"
 #include "rawFileRead.hpp"
 #include "rawFileWrite.hpp"
+#include "pyPlotResult.hpp"
 #include "gpuBeamformSimulate.hpp"
 
 #include <vector>
@@ -56,7 +57,7 @@ void gpuTestMode::initalize_processes() {
         add_buffer(gpu_output_buffer[i]);
     }
 
-        // Create simulation output buffers.
+    // Create simulation output buffers.
     struct Buffer * simulate_output_buffer[num_gpus];
     for (int i = 0; i < num_gpus; ++i) {
         simulate_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
@@ -115,7 +116,7 @@ void gpuTestMode::initalize_processes() {
                       links_per_gpu * buffer_depth,
                       output_len * num_data_sets * sizeof(cl_int),
                       1,
-                      1,
+                      2,
                       pool[0],
                       buffer_name);
         host_buffers[i].add_buffer("output_buf", gpu_output_buffer[i]);
@@ -166,6 +167,8 @@ void gpuTestMode::initalize_processes() {
         add_process((KotekanProcess*) new gpuHSAThread(config, host_buffers[i], i));
         add_process((KotekanProcess*) new rawFileRead(config, *simulate_output_buffer[i], false, false,
                                                         "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
+        add_process((KotekanProcess*) new pyPlotResult(config, *gpu_output_buffer[i], i, "/data/test_data/", "beamform_gpu_output_99", "dat") );
+//        add_process((KotekanProcess*) new pyPlotOutputError(config, *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
         add_process((KotekanProcess*) new testDataCheck<int>(config, *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
 
         // Processes to generate test data

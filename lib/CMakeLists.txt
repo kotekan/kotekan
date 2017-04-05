@@ -20,6 +20,7 @@ add_library ( chime
               network_dpdk.c gpu_thread.cpp gpu_command.cpp callbackdata.cpp device_interface.cpp
               hccGPUThread.cpp fullPacketDump.cpp dpdkWrapper.cpp
               rawFileRead.cpp rawFileWrite.cpp
+              pyPlotResult.cpp 
               gpu_command_factory.cpp vdif_functions.c stream_raw_vdif.c
               gpu_command_objects/beamform_kernel.cpp
               gpu_command_objects/beamform_phase_data.cpp
