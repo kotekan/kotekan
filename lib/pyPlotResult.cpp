@@ -45,6 +45,8 @@ void pyPlotResult::main_thread() {
 
     int buffer_id = 0;
 
+
+
     for (;;) {
 
         // This call is blocking.
@@ -62,25 +64,34 @@ void pyPlotResult::main_thread() {
         {
             dump_plot=false;
 
-            FILE *pytest;
-            pytest = popen("python -u pyPlotResult.py","w");
+            FILE *python_script;
+            python_script = popen("python -u pyPlotResult.py","w");
 
-            usleep(10000);
+            { // N^2
+                uint num_elements = config.get_int("/processing/num_elements");
+                uint block_dim = 32;
+                uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
+                uint block_size = block_dim*block_dim*2; //real, complex
 
-            typedef struct {
-               int data_length;
-               int dims[3];
-            } header_t;
+                usleep(10000);
 
-            header_t header = {buf.buffer_size/(int)sizeof(int),{2080,1024,2}};
-            int header_length = sizeof(header);
+                typedef struct {
+                   uint data_length;
+                   uint type;
+                   uint num_elements;
+                   uint block_dim[3];
+                } header_t;
 
-            fwrite(&header_length,sizeof(int),1,pytest);
-            fwrite(&header,sizeof(int),sizeof(header),pytest);
+                header_t header = {num_blocks*block_size, PLOT_CORR_MATRIX,num_elements,{block_dim,block_dim,2}};
+                int header_length = sizeof(header);
 
-            for (int i=0; i<header.dims[0]; i++) {
-                fwrite(buf.data[buffer_id]+i*sizeof(int)*header.dims[0],sizeof(int),buf.buffer_size/sizeof(int)/header.dims[0],pytest);
-                fflush(pytest);
+                fwrite(&header_length,sizeof(int),1,python_script);
+                fwrite(&header,sizeof(int),sizeof(header),python_script);
+
+                for (int i=0; i<num_blocks; i++) {
+                    fwrite(buf.data[buffer_id]+i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
+                    fflush(python_script);
+                }
             }
         }
 
