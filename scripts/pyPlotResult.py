@@ -1,21 +1,22 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
+import sys, json
 import time
 
-header_length = np.fromfile(sys.stdin, dtype=np.uint32, count=1, sep='')
-header = np.fromfile(sys.stdin, dtype=np.uint32, count=header_length, sep='')
+header = json.loads(sys.stdin.readline())
 
-data_length = header[0]
-data_type = header[1]
+target = open("result", 'w')
+target.write("Start!\n")
+target.write("{}\n".format(header))
 
-if (data_type == 0x12340001): #N^2
-	num_elements = header[2]
-	block_dims = header[3:6]
+data_length = header["data_length"]
+data_type = header["type"]
+
+if (data_type == "CORR_MATRIX"): #N^2
+	num_elements = header["num_elements"]
+	block_dims = header["block_dim"]
 	num_blocks = (num_elements/block_dims[0]) * (num_elements/block_dims[0]+1)/2
 
-	target = open("result", 'w')
-	target.write("Start!\n")
 	target.write("Data Length: {}\n".format(data_length))
 	target.write("Elements: {}\n".format(num_elements))
 	target.write("Block Dims: {}\n".format(block_dims))

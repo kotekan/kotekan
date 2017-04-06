@@ -11,6 +11,8 @@
 #include "buffers.h"
 #include "errors.h"
 
+using json = nlohmann::json;
+
 pyPlotResult::pyPlotResult(Config& config, Buffer& buf_, int gpu_id_,
                  const std::string &base_dir_,
                  const std::string &file_name_,
@@ -75,19 +77,14 @@ void pyPlotResult::main_thread() {
 
                 usleep(10000);
 
-                typedef struct {
-                   uint data_length;
-                   uint type;
-                   uint num_elements;
-                   uint block_dim[3];
-                } header_t;
-
-                header_t header = {num_blocks*block_size, PLOT_CORR_MATRIX,num_elements,{block_dim,block_dim,2}};
-                int header_length = sizeof(header);
-
-                fwrite(&header_length,sizeof(int),1,python_script);
-                fwrite(&header,sizeof(int),sizeof(header),python_script);
-
+                json header = {
+                    {"data_length",num_blocks*block_size},
+                    {"type","CORR_MATRIX"},
+                    {"num_elements",num_elements},
+                    {"block_dim",{block_dim,block_dim,2}}
+                };
+                std::string s = header.dump()+"\n";
+                fwrite(s.c_str(),1,s.length(),python_script);
                 for (int i=0; i<num_blocks; i++) {
                     fwrite(buf.data[buffer_id]+i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
                     fflush(python_script);

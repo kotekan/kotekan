@@ -9,8 +9,6 @@
 #include <unistd.h>
 #include <cstdio>
 
-#define PLOT_CORR_MATRIX 0x12340001
-
 class pyPlotResult : public KotekanProcess {
 public:
     pyPlotResult(Config &config,
