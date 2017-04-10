@@ -1,5 +1,23 @@
 cmake_minimum_required (VERSION 2.8)
 project (CHIME)
+set(CMAKE_MODULE_PATH ${CHIME_SOURCE_DIR}/cmake)
+
+option(USE_HCC "Build HCC GPU Framework" OFF)
+option(USE_HSA "Build HSA GPU Framework" ON)
+option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
+
+if (${USE_HCC})
+  find_package( HCC )
+  set(USE_HCC ${HCC_fOUND})
+endif ()
+if (${USE_HSA})
+  find_package( HSA )
+  set(USE_HSA ${HSA_FOUND})
+endif ()
+if (${USE_OPENCL})
+  find_package( OpenCL )
+  set(USE_OPENCL ${OPENCL_FOUND})
+endif ()
 
 # Get the current working branch
 execute_process(
@@ -31,7 +49,24 @@ find_package(Threads REQUIRED)
 
 # Include external software.
 include_directories (${CHIME_SOURCE_DIR}/include)
-include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
+if (${USE_HCC})
+  include_directories (${CHIME_SOURCE_DIR}/lib/hcc)
+endif ()
+
+if (${USE_HSA})
+  include_directories (${CHIME_SOURCE_DIR}/lib/hsa)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lhsa-runtime64 ")
+  add_definitions(-DWITH_HSA)
+endif ()
+
+if (${USE_OPENCL})
+  include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
+  include_directories (${CHIME_SOURCE_DIR}/lib/old_opencl)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lcl ")
+  add_definitions(-DWITH_OPENCL)
+endif ()
+
+#include_directories (${CHIME_SOURCE_DIR}/lib/sim_output)
 
 # DPDK Includes
 include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
@@ -68,7 +103,7 @@ SET(CMAKE_INSTALL_PREFIX "/")
 
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lhsa-runtime64 -lm")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 
 #/// AMD hcc options
 
@@ -86,13 +121,10 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif()
 
-add_definitions(-DWITH_HSA)
-
 #/// end AMD hcc options
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
-add_subdirectory(hsa_kernels)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)

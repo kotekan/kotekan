@@ -7,13 +7,13 @@
 #include <vector>
 
 #include "json.hpp"
-#include "gpu_command_objects/hsaCorrelatorKernel.hpp"
-#include "gpu_command_objects/hsaPreseedKernel.hpp"
-#include "gpu_command_objects/hsaInputData.hpp"
-#include "gpu_command_objects/hsaPresumZero.hpp"
-#include "gpu_command_objects/hsaOutputData.hpp"
-#include "gpu_command_objects/hsaOutputDataZero.hpp"
-#include "gpu_command_objects/hsaBarrier.hpp"
+#include "hsaCorrelatorKernel.hpp"
+#include "hsaPreseedKernel.hpp"
+#include "hsaInputData.hpp"
+#include "hsaPresumZero.hpp"
+#include "hsaOutputData.hpp"
+#include "hsaOutputDataZero.hpp"
+#include "hsaBarrier.hpp"
 #include "hsaBeamformKernel.hpp"
 #include "hsaBeamformOutput.hpp"
 

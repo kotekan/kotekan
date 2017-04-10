@@ -49,7 +49,7 @@ extern "C" {
 
 #include "errors.h"
 #include "buffers.h"
-#include "gpu_thread.h"
+
 #include "error_correction.h"
 #include "chrxUplink.hpp"
 #include "Config.hpp"
@@ -70,6 +70,10 @@ extern "C" {
 #include "restServer.hpp"
 #include "packetCapMode.hpp"
 #include "gpuTestMode.hpp"
+
+#ifdef WITH_OPENCL
+    #include "gpu_thread.h"
+#endif
 
 using json = nlohmann::json;
 

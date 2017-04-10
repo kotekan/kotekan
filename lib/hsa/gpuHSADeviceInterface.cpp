@@ -1,6 +1,5 @@
 #include "gpuHSADeviceInterface.hpp"
-#include "gpu_command.h"
-#include "callbackdata.h"
+#include "errors.h"
 #include "math.h"
 #include <errno.h>
 

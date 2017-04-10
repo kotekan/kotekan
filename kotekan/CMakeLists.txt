@@ -28,13 +28,7 @@ target_link_libraries( kotekan ${DPDK_LIB} m rt dl pthread )
 target_link_libraries( kotekan chime )
 target_link_libraries( kotekan libinclude )
 
-add_custom_target(kernel_copy
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CHIME_SOURCE_DIR}/kernels"
-        "kernels")
-
-add_dependencies( kotekan makeHSACOKernels )
-add_dependencies( kotekan kernel_copy )
+add_dependencies( kotekan libchime )
 
 install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
 install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
