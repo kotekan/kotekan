@@ -1,12 +1,9 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libchime )
 
-include_directories( ${OPENCL_INCLUDE_DIRS} )
-
 include_directories (${CHIME_SOURCE_DIR}/include)
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
 
 add_library ( chime
               KotekanProcess.cpp
@@ -49,17 +46,22 @@ target_link_libraries( chime ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( chime m rt dl ${DPDK_LIBS} )
 target_link_libraries( chime libinclude )
 
-#add_subdirectory(hcc)
-#target_link_libraries( chime kotekan_hcc )
+if (${USE_HCC})
+       add_subdirectory(hcc)
+       target_link_libraries( chime kotekan_hcc )
+endif ()
 
-add_subdirectory(hsa)
-target_link_libraries( chime kotekan_hsa )
+if (${USE_HSA})
+       add_subdirectory(hsa)
+       target_link_libraries( chime kotekan_hsa )
+endif ()
 
-#add_subdirectory(opencl)
-#target_link_libraries( chime kotekan_opencl )
-
-#add_subdirectory(old_opencl)
-#target_link_libraries( chime kotekan_old_opencl )
+if (${USE_OPENCL})
+#       add_subdirectory(opencl)
+#       target_link_libraries( chime kotekan_opencl )
+       add_subdirectory(old_opencl)
+       target_link_libraries( chime kotekan_old_opencl )
+endif ()
 
 add_subdirectory(sim_output)
 target_link_libraries( chime kotekan_sim_output )
