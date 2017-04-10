@@ -1,13 +1,9 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_old_opencl )
-set(CMAKE_MODULE_PATH ${CHIME_SOURCE_DIR}/cmake)
-find_package( OpenCL REQUIRED )
-
 
 include_directories( ${OPENCL_INCLUDE_DIRS} )
 
 include_directories (${CHIME_SOURCE_DIR}/include)
-
 include_directories (${CHIME_SOURCE_DIR}/lib)
 include_directories (${CHIME_SOURCE_DIR}/lib/old_opencl)
 

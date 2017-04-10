@@ -9,8 +9,7 @@
 #include <ctime>
 
 #ifdef WITH_HCC
-
-#include <hc.hpp>
+#include <hcc/hc.hpp>
 
 #define n_timesteps 65536//256*1024
 #define n_integrate 32768
