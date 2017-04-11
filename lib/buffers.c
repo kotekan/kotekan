@@ -2,7 +2,9 @@
 #include "errors.h"
 #include "error_correction.h"
 #include "nt_memset.h"
+#ifdef WITH_HSA
 #include "hsaBase.h"
+#endif
 
 #include <assert.h>
 #include <stdlib.h>

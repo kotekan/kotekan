@@ -4,13 +4,6 @@
 // TODO set this via cmake build type!
 #define DEBUGING 0
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include <CL/cl.h>
-    #include <CL/cl_ext.h>
-#endif
-
 #include <syslog.h>
 #include <stdlib.h>
 #include <inttypes.h>
@@ -25,11 +18,21 @@ using std::strerror;
 extern "C" {
 #endif
 
-char* oclGetOpenCLErrorCodeStr(cl_int input);
-
 extern int log_level_warn;
 extern int log_level_debug;
 extern int log_level_info;
+
+
+#ifdef WITH_OPENCL
+
+#ifdef __APPLE__
+    #include "OpenCL/opencl.h"
+#else
+    #include <CL/cl.h>
+    #include <CL/cl_ext.h>
+#endif
+
+char* oclGetOpenCLErrorCodeStr(cl_int input);
 
 #define CHECK_CL_ERROR( err )                                      \
     if ( err ) {                                                    \
@@ -51,6 +54,8 @@ extern int log_level_info;
                 __FILE__, __LINE__);                          \
         exit( -1 );                                        \
     }
+//WITH_OPENCL
+#endif
 
 #ifdef DEBUGING
 

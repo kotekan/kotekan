@@ -135,9 +135,17 @@ int start_new_kotekan_mode(Config &config) {
     if (mode == "packet_cap") {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
     } else if (mode == "chime_shuffle") {
+        #ifdef WITH_HSA
         kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
+        #else
+        return -1;
+        #endif
     } else if (mode == "gpu_test") {
+        #ifdef WITH_HSA
         kotekan_mode = (kotekanMode *) new gpuTestMode(config);
+        #else
+        return -1;
+        #endif
     } else {
         return -1;
     }
