@@ -1,21 +1,27 @@
 #include "gpuTestMode.hpp"
 #include "buffers.h"
-#include "gpuHSAThread.hpp"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
 #include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
-#include "hccGPUThread.hpp"
 #include "util.h"
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
-#include "gpuSimulate.hpp"
 #include "rawFileRead.hpp"
 #include "rawFileWrite.hpp"
 #include "pyPlotResult.hpp"
-#include "gpuBeamformSimulate.hpp"
+#include "sim_output/gpuSimulate.hpp"
+#include "sim_output/gpuBeamformSimulate.hpp"
+
+#ifdef WITH_HCC
+  #include "hccGPUThread.hpp"
+#endif
+#ifdef WITH_HSA
+  #include "gpuHSAThread.hpp"
+#endif
+
 
 #include <vector>
 #include <string>

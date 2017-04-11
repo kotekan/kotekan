@@ -1,5 +1,51 @@
 cmake_minimum_required (VERSION 2.8)
 project (CHIME)
+set(CMAKE_MODULE_PATH ${CHIME_SOURCE_DIR}/cmake)
+
+
+#optional modules for GPUs and the like
+option(USE_HCC "Build HCC GPU Framework" OFF)
+option(USE_HSA "Build HSA GPU Framework" ON)
+option(USE_OPENCL "Build OpenCL GPU Framework" ON)
+
+if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
+  find_package( HCC )
+  set(USE_HCC ${HCC_fOUND})
+else ()
+  set(USE_HCC FALSE)
+endif ()
+if (${USE_HSA})
+  find_package( HSA )
+  set(USE_HSA ${HSA_FOUND})
+endif ()
+if (${USE_OPENCL})
+  find_package( OpenCL )
+  set(USE_OPENCL ${OPENCL_FOUND})
+endif ()
+
+
+set(MODULES "")
+if (${USE_HCC})
+  include_directories (${CHIME_SOURCE_DIR}/lib/hcc)
+  add_definitions(-DWITH_HCC)
+  set(MODULES ${MODULES} "HCC ")
+endif ()
+if (${USE_HSA})
+  include_directories (${CHIME_SOURCE_DIR}/lib/hsa)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lhsa-runtime64 ")
+  add_definitions(-DWITH_HSA)
+  set(MODULES ${MODULES} "HSA ")
+endif ()
+if (${USE_OPENCL})
+  include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
+  include_directories (${CHIME_SOURCE_DIR}/lib/old_opencl)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
+  add_definitions(-DWITH_OPENCL)
+  set(MODULES ${MODULES} "OpenCL")
+endif ()
+MESSAGE("MODULES Included: " ${MODULES})
+
+
 
 # Get the current working branch
 execute_process(
@@ -29,9 +75,8 @@ include_directories(${CMAKE_BINARY_DIR}/generated)
 
 find_package(Threads REQUIRED)
 
-# Include external software.
 include_directories (${CHIME_SOURCE_DIR}/include)
-include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
+#include_directories (${CHIME_SOURCE_DIR}/lib/sim_output)
 
 # DPDK Includes
 include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
@@ -68,31 +113,12 @@ SET(CMAKE_INSTALL_PREFIX "/")
 
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lhsa-runtime64 -lm")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 
-#/// AMD hcc options
-
-if (CMAKE_CXX_COMPILER MATCHES ".*hcc")
-    # set the compile options for hcc
-    execute_process(COMMAND hcc-config --cxxflags OUTPUT_VARIABLE HCC_COMPILE_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-    set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${HCC_COMPILE_FLAGS} " )
-
-    # set the link options for hcc
-    execute_process(COMMAND hcc-config --ldflags OUTPUT_VARIABLE HCC_LINKER_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-    set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${HCC_LINKER_FLAGS} ")
-
-    add_definitions(-DWITH_HCC)
-else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-endif()
-
-add_definitions(-DWITH_HSA)
-
-#/// end AMD hcc options
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
-add_subdirectory(hsa_kernels)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)

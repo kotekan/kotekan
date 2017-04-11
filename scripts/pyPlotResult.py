@@ -58,11 +58,6 @@ if (data_type == "CORR_MATRIX"): #N^2
 
 
 
-
-
-
-
-
 '''
 target.write("{}\n".format(data.shape));
 target.write("{}\n".format(np.amin(data)));

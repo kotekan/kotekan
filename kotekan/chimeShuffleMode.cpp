@@ -7,7 +7,6 @@
 #include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
-#include "hccGPUThread.hpp"
 #include "util.h"
 #include "dpdkWrapper.hpp"
 
