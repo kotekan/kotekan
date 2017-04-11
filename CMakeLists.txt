@@ -5,7 +5,7 @@ set(CMAKE_MODULE_PATH ${CHIME_SOURCE_DIR}/cmake)
 
 #optional modules for GPUs and the like
 option(USE_HCC "Build HCC GPU Framework" OFF)
-option(USE_HSA "Build HSA GPU Framework" ON)
+option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" ON)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
@@ -39,7 +39,8 @@ endif ()
 if (${USE_OPENCL})
   include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
   include_directories (${CHIME_SOURCE_DIR}/lib/old_opencl)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
+  include_directories( ${OPENCL_INCLUDE_DIRS} )
+  #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
   add_definitions(-DWITH_OPENCL)
   set(MODULES ${MODULES} "OpenCL")
 endif ()

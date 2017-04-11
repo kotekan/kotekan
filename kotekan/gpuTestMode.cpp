@@ -1,4 +1,7 @@
 #include "gpuTestMode.hpp"
+
+#ifdef WITH_HSA
+
 #include "buffers.h"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
@@ -186,3 +189,4 @@ void gpuTestMode::initalize_processes() {
     }
 }
 
+#endif /* WITH_HSA */

@@ -3,6 +3,9 @@
 
 #include "kotekanMode.hpp"
 #include "bufferContainer.hpp"
+
+#ifdef WITH_HSA
+
 #include "hsaBase.h"
 
 // Make this dynamic
@@ -20,5 +23,7 @@ private:
 
     bufferContainer host_buffers[NUM_GPUS];
 };
+
+#endif /* WITH_HSA */
 
 #endif /* CHIME_SHUFFLE_HPP */
