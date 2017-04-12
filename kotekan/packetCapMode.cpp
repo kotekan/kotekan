@@ -1,4 +1,3 @@
-#include "chimeShuffleMode.hpp"
 #include "buffers.h"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
@@ -10,13 +9,6 @@
 #include "packetCapMode.hpp"
 #include "fullPacketDump.hpp"
 #include "dpdkWrapper.hpp"
-
-#ifdef WITH_OPENCL
-    #include "gpu_thread.h"
-#endif
-#ifdef WITH_HCC
-    #include "hccGPUThread.hpp"
-#endif
 
 #include <vector>
 #include <string>

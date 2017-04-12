@@ -1,0 +1,55 @@
+import time
+import threading
+import socket
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+UDP_IP="127.0.0.1"
+UDP_PORT = 2054
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind((UDP_IP, UDP_PORT))
+
+length =8192
+freqs=1024
+times=128
+integration=128
+waterfall = np.zeros((freqs,times),dtype=np.float32)
+
+'''
+idx=0
+while True:
+	idx=(idx+1)%times
+	print(idx)
+	for i in np.arange(integration):
+		data, addr = sock.recvfrom(length)
+		d=np.fromstring(data,dtype=np.int8)
+		waterfall[:,idx]+=d
+'''
+
+def updatefig(*args):
+    global waterfall
+    p.set_data(waterfall)
+    return p,
+
+def data_listener():
+	idx=0
+	debuf=False
+	while True:
+		idx=(idx+1)%times
+		for i in np.arange(integration):
+			data, addr = sock.recvfrom(length)
+			d=np.fromstring(data,dtype=np.int8)
+			waterfall[:,idx]+=d
+
+
+thread = threading.Thread(target=data_listener)
+thread.daemon = True
+thread.start()
+
+
+f, ax = plt.subplots()
+plt.ioff()
+p=ax.imshow(waterfall,aspect='auto',animated=True)
+ani = animation.FuncAnimation(f, updatefig, frames=100, interval=100)
+f.show()

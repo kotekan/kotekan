@@ -1,11 +1,11 @@
 cmake_minimum_required( VERSION 2.8 )
-project( libchime )
+project( kotekan_libs )
 
-include_directories (${CHIME_SOURCE_DIR}/include)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
-add_library ( chime
+add_library ( kotekan_libs
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp
@@ -37,34 +37,36 @@ add_library ( chime
               bufferContainer.cpp
               testDataCheck.cpp
               testDataGen.cpp
+              simVdifData.cpp
+              networkPowerStream.cpp
               computeDualpolPower.cpp
               )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
 
-target_link_libraries( chime ${OPENCL_LIBRARIES} )
-target_link_libraries( chime ${CMAKE_THREAD_LIBS_INIT} )
-target_link_libraries( chime m rt dl ${DPDK_LIBS} )
-target_link_libraries( chime libinclude )
+target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
+target_link_libraries( kotekan_libs m rt dl ${DPDK_LIBS} )
+target_link_libraries( kotekan_libs libinclude )
 
 if (${USE_HCC})
        add_subdirectory(hcc)
-       target_link_libraries( chime kotekan_hcc )
+       target_link_libraries( kotekan_libs kotekan_hcc )
 endif ()
 
 if (${USE_HSA})
        add_subdirectory(hsa)
-       target_link_libraries( chime kotekan_hsa )
+       target_link_libraries( kotekan_libs kotekan_hsa )
 endif ()
 
 if (${USE_OPENCL})
 #       add_subdirectory(opencl)
-#       target_link_libraries( chime kotekan_opencl )
+#       target_link_libraries( kotekan_libs kotekan_opencl )
        add_subdirectory(old_opencl)
-       target_link_libraries( chime kotekan_old_opencl )
+       target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
+       target_link_libraries( kotekan_libs kotekan_old_opencl )
 endif ()
 
 add_subdirectory(sim_output)
-target_link_libraries( chime kotekan_sim_output )
+target_link_libraries( kotekan_libs kotekan_sim_output )
 
 

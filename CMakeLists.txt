@@ -1,12 +1,13 @@
 cmake_minimum_required (VERSION 2.8)
-project (CHIME)
-set(CMAKE_MODULE_PATH ${CHIME_SOURCE_DIR}/cmake)
+project (KOTEKAN)
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
 
 #optional modules for GPUs and the like
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" ON)
+option(USE_DPDK ON)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -26,19 +27,19 @@ endif ()
 
 set(MODULES "")
 if (${USE_HCC})
-  include_directories (${CHIME_SOURCE_DIR}/lib/hcc)
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
   add_definitions(-DWITH_HCC)
   set(MODULES ${MODULES} "HCC ")
 endif ()
 if (${USE_HSA})
-  include_directories (${CHIME_SOURCE_DIR}/lib/hsa)
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lhsa-runtime64 ")
   add_definitions(-DWITH_HSA)
   set(MODULES ${MODULES} "HSA ")
 endif ()
 if (${USE_OPENCL})
-  include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
-  include_directories (${CHIME_SOURCE_DIR}/lib/old_opencl)
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/old_opencl)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
   #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
   add_definitions(-DWITH_OPENCL)
@@ -76,8 +77,8 @@ include_directories(${CMAKE_BINARY_DIR}/generated)
 
 find_package(Threads REQUIRED)
 
-include_directories (${CHIME_SOURCE_DIR}/include)
-#include_directories (${CHIME_SOURCE_DIR}/lib/sim_output)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
+#include_directories (${KOTEKAN_SOURCE_DIR}/lib/sim_output)
 
 # DPDK Includes
 include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )

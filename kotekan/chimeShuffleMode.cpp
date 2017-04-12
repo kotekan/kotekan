@@ -1,7 +1,5 @@
 #include "chimeShuffleMode.hpp"
 
-#ifdef WITH_HSA
-
 #include "buffers.h"
 #include "gpuHSAThread.hpp"
 #include "chrxUplink.hpp"
@@ -152,5 +150,3 @@ void chimeShuffleMode::initalize_processes() {
         }
     }
 }
-
-#endif /* WITH_HSA */

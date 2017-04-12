@@ -66,14 +66,21 @@ extern "C" {
 #include "json.hpp"
 #include "gpuPostProcess.hpp"
 #include "beamformingPostProcess.hpp"
-#include "chimeShuffleMode.hpp"
 #include "restServer.hpp"
-#include "packetCapMode.hpp"
-#include "gpuTestMode.hpp"
 
+
+#ifdef WITH_HSA
+    #include "chimeShuffleMode.hpp"
+    #include "gpuTestMode.hpp"
+#endif
 #ifdef WITH_OPENCL
     #include "gpu_thread.h"
 #endif
+
+#include "packetCapMode.hpp"
+#include "singleDishMode.hpp"
+
+
 
 using json = nlohmann::json;
 
@@ -136,7 +143,7 @@ int start_new_kotekan_mode(Config &config) {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
     } else if (mode == "chime_shuffle") {
         #ifdef WITH_HSA
-        kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
+            kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
         #else
         return -1;
         #endif
@@ -146,6 +153,8 @@ int start_new_kotekan_mode(Config &config) {
         #else
         return -1;
         #endif
+    } else if (mode == "single_dish") {
+        kotekan_mode = (kotekanMode *) new singleDishMode(config);
     } else {
         return -1;
     }
