@@ -10,11 +10,11 @@ UDP_PORT = 2054
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 
-length =8192
+length =1024
 freqs=1024
 times=128
 integration=128
-waterfall = np.zeros((freqs,times),dtype=np.float32)
+waterfall = np.zeros((freqs/4,times),dtype=np.float32)
 
 '''
 idx=0
@@ -40,13 +40,11 @@ def data_listener():
 		for i in np.arange(integration):
 			data, addr = sock.recvfrom(length)
 			d=np.fromstring(data,dtype=np.int8)
-			waterfall[:,idx]+=d
-
+			waterfall[:,idx]+=d.reshape(-1,4).mean(axis=1)
 
 thread = threading.Thread(target=data_listener)
 thread.daemon = True
 thread.start()
-
 
 f, ax = plt.subplots()
 plt.ioff()

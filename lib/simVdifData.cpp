@@ -75,8 +75,9 @@ void simVdifData::main_thread() {
             for (int e = 0; e < elements; e++){
                 memcpy(buf_ptr,(void*)&header,sizeof(header));
                 buf_ptr+=sizeof(header);
-                memset(buf_ptr,0x99,freqs*sizeof(char));
-//                for (int f = 0; f < freqs; f+=4) buf_ptr[f] = 0x88;//(unsigned char)dis(gen);
+                memset(buf_ptr,(unsigned char)dis(gen),freqs*sizeof(char));
+//                for (int f = 0; f < freqs; f++) buf_ptr[f] = (f/4 % 16);
+//                for (int f = 0; f < freqs; f++) buf_ptr[f] = (unsigned char)dis(gen);
                 buf_ptr+=freqs;
             }
         }

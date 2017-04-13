@@ -96,8 +96,8 @@ void computeDualpolPower::main_thread() {
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
 
-    double stop_time = e_time();
-    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+    double stop_time = e_time(); 
+//    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
         mark_buffer_empty(&buf_in, buf_in_id);
         mark_buffer_full(&buf_out, buf_out_id);
