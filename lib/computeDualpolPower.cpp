@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include <inttypes.h>
 #include <functional>
+#include <thread>
 
 #define PACKET_OFFSET 58
 #define NUM_POL 2
@@ -37,8 +38,8 @@ computeDualpolPower::computeDualpolPower(Config &config_,
                   buf_out(buf_out_)
 {
     timesteps_in = config.get_int("/processing/samples_per_data_set");
-    timesteps_out = timesteps_in / integration_length;
     integration_length = config.get_int("/raw_capture/integration_length");
+    timesteps_out = timesteps_in / integration_length;
     num_freq = config.get_int("/processing/num_local_freq");
 
     if (timesteps_in % timesteps_out)
@@ -47,57 +48,90 @@ computeDualpolPower::computeDualpolPower(Config &config_,
     }
 }
 
+
+void computeDualpolPower::apply_config(uint64_t fpga_seq) {
+}
+
+
 computeDualpolPower::~computeDualpolPower() {
 }
 
 void computeDualpolPower::main_thread() {
-    int temp_buffer[num_freq*2];
+//    in_local = (unsigned char*)malloc(buf_in.buffer_size);
+  //  out_local = (unsigned char*)malloc(buf_out.buffer_size);
 
-    int buf_in_id;
+    int buf_in_id=0;
     int buf_out_id=0;
 
+    static int nthreads=8;
+    int nloop = timesteps_out/nthreads;
+    std::thread this_thread[nthreads];
+
     for (EVER) {
-        // These calls are blocking.
+/*
+        buf_in_id = get_full_buffer_from_list(&buf_in, &buf_in_id, 1);
+        memcpy(in_local,buf_in.data[buf_in_id],buf_in.buffer_size);
+        mark_buffer_empty(&buf_in, buf_in_id);
+        buf_in_id = ( buf_in_id + 1 ) % buf_in.num_buffers;
+
+        for (int j=0; j<nthreads; j++)
+            this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
+        for (int j=0; j<nthreads; j++)
+            this_thread[j].join();
+  
+        wait_for_empty_buffer(&buf_out, buf_out_id);
+        memcpy(buf_out.data[buf_out_id],out_local,buf_out.buffer_size);
+        mark_buffer_full(&buf_out, buf_out_id);
+        buf_out_id = (buf_out_id + 1) % (buf_out.num_buffers);
+*/
         buf_in_id = get_full_buffer_from_list(&buf_in, &buf_in_id, 1);
         wait_for_empty_buffer(&buf_out, buf_out_id);
+        in_local = buf_in.data[buf_in_id];
+        out_local = buf_out.data[buf_out_id];
 
-        for (int i=0; i < timesteps_in / integration_length; i++){
-            fastSqSumVdif(buf_in.data[buf_in_id]+(i*PACKET_LEN*NUM_POL),
-                    temp_buffer, (float*)buf_out.data[buf_out_id]);
-            // Ready for downstream!
-            mark_buffer_full(&buf_out, buf_out_id);
-            buf_out_id = (buf_out_id + 1) % (buf_out.num_buffers);
-        }
-    }
+    double start_time = e_time();
+
+        for (int j=0; j<nthreads; j++)
+            this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
+        for (int j=0; j<nthreads; j++)
+            this_thread[j].join();
+
+    double stop_time = e_time(); 
+//    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+
+        mark_buffer_empty(&buf_in, buf_in_id);
+        mark_buffer_full(&buf_out, buf_out_id);
+        buf_in_id = ( buf_in_id + 1 ) % buf_in.num_buffers;
+        buf_out_id = (buf_out_id + 1) % (buf_out.num_buffers);
+
+   }
 
     mark_producer_done(&buf_out, 0);
-//    int ret = 0;
-//    pthread_exit((void *) &ret);
+
+//    free(in_local);
+  //  free(out_local);
 }
 
 
-
-
-//
-//HELPER FUNCTIONS:
-//
+void computeDualpolPower::parallelSqSumVdif(int loop_idx, int loop_length){
+    int temp_buffer[num_freq*2];
+    for (int i=loop_idx*loop_length; i<(loop_idx+1)*loop_length; i++)
+        fastSqSumVdif(in_local+(i*integration_length*PACKET_LEN*NUM_POL),
+                temp_buffer, (float*)(out_local+i*num_freq*sizeof(float)));
+}
 
 #ifdef __AVX2__
-void computeDualpolPower::fastSqSumVdif(
-        unsigned char * data, int * temp_buf, float *out) {
+void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, float *out) {
+    int *integration_count=(int*)calloc(NUM_POL,sizeof(int));
 
-    int integration_count=0;
-
-    for (int packet = 0; packet < integration_length; packet++) {
+    for (int packet = 0; packet < integration_length; ++packet) {
         for (int pol = 0; pol < NUM_POL; ++pol) {
+            const int idx_header = packet * PACKET_LEN * NUM_POL +
+                                    pol * PACKET_LEN;
+            if (((struct VDIFHeader*)&data[idx_header])->invalid) continue;
+            integration_count[pol]++;
+
             for (int freq = 0; freq < num_freq / 32; ++freq) {
-
-                const int idx_header = packet * PACKET_LEN * NUM_POL +
-                                    pol * PACKET_LEN
-                                     + freq*32;
-                if (((struct VDIFHeader*)&data[idx_header])->invalid) continue;
-                integration_count++;
-
                 const int index = packet * PACKET_LEN * NUM_POL +
                                     pol * PACKET_LEN
                                      + freq*32 + VDIF_HEADER_LEN;
@@ -161,14 +195,24 @@ void computeDualpolPower::fastSqSumVdif(
         }
     }
 
+//    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1])
     // Reorder the numbers.
     for (int i = 0; i < num_freq; ++i) {
         // Fix stupid index problem
         int m32 = i % 32;
         if (m32 < 16) m32 = (m32/4)*4;
         else m32 = -12 + ((m32 - 16)/4)*4;
-        out[i         ] = ((float)temp_buf[i+m32         ]) / integration_count; //XX
-        out[i+num_freq] = ((float)temp_buf[i+m32+num_freq]) / integration_count; //YY
+        out[i         ] = ((float)temp_buf[i+m32         ]) / integration_count[0]; //XX
+    }
+
+//INFO("Value: %i, Count: %i\n",temp_buf[0], integration_count[0]);
+
+    for (int i = 0; i < num_freq; ++i) {
+        // Fix stupid index problem
+        int m32 = i % 32;
+        if (m32 < 16) m32 = (m32/4)*4;
+        else m32 = -12 + ((m32 - 16)/4)*4;
+        out[i+num_freq] = ((float)temp_buf[i+m32+num_freq]) / integration_count[1]; //YY
     }
 }
 #else

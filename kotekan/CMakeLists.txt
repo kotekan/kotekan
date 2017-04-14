@@ -2,33 +2,45 @@ cmake_minimum_required(VERSION 2.8)
 
 PROJECT (kotekan)
 
-SET(SOURCE_EXE kotekan.cpp chimeShuffleMode.cpp packetCapMode.cpp kotekanMode.cpp
-                            gpuTestMode.cpp singleDishVDIFMode.cpp)
+SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/gpu_command_objects)
+#CUSTOM MODES:
+SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
 
-include_directories (${CHIME_SOURCE_DIR}/include)
+if (${USE_HCC})
+	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
+endif ()
+if (${USE_HSA})
+	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp chimeShuffleMode.cpp)
+endif ()
+if (${USE_OPENCL})
+	SET(SOURCE_EXE ${SOURCE_EXE} )
+endif ()
 
-link_directories (${CHIME_BINARY_DIR}/lib)
 
-include_directories( ${OPENCL_INCLUDE_DIRS} )
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
-link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
+link_directories (${KOTEKAN_BINARY_DIR}/lib)
+
+
+if (${USE_DPDK})
+	include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
+	link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
+endif ()
 
 ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
 SET( DPDK_LIB  "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_mempool -lrte_pmd_i40e -lrte_ring -lethdev -lrte_pmd_ixgbe -Wl,--no-whole-archive" )
 
-file(GLOB open_cl_kernels "${CHIME_SOURCE_DIR}/kernels/*.cl")
+file(GLOB open_cl_kernels "${KOTEKAN_SOURCE_DIR}/kernels/*.cl")
 
 add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
 
 target_link_libraries( kotekan ${DPDK_LIB} m rt dl pthread )
-target_link_libraries( kotekan chime )
+target_link_libraries( kotekan kotekan_libs )
 target_link_libraries( kotekan libinclude )
 
-add_dependencies( kotekan libchime )
+add_dependencies( kotekan libkotekan_libs )
 
 install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
 install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
