@@ -78,7 +78,7 @@ void computeDualpolPower::main_thread() {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
-  
+
         wait_for_empty_buffer(&buf_out, buf_out_id);
         memcpy(buf_out.data[buf_out_id],out_local,buf_out.buffer_size);
         mark_buffer_full(&buf_out, buf_out_id);
@@ -96,8 +96,8 @@ void computeDualpolPower::main_thread() {
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
 
-    double stop_time = e_time(); 
-//    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+    double stop_time = e_time();
+    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
         mark_buffer_empty(&buf_in, buf_in_id);
         mark_buffer_full(&buf_out, buf_out_id);
@@ -122,7 +122,7 @@ void computeDualpolPower::parallelSqSumVdif(int loop_idx, int loop_length){
 
 #ifdef __AVX2__
 void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, float *out) {
-    int *integration_count=(int*)calloc(NUM_POL,sizeof(int));
+    int integration_count[NUM_POL];
 
     for (int packet = 0; packet < integration_length; ++packet) {
         for (int pol = 0; pol < NUM_POL; ++pol) {
