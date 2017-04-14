@@ -70,6 +70,7 @@ extern "C" {
 #include "restServer.hpp"
 #include "packetCapMode.hpp"
 #include "gpuTestMode.hpp"
+#include "singleDishVDIFMode.hpp"
 
 #ifdef WITH_OPENCL
     #include "gpu_thread.h"
@@ -146,6 +147,8 @@ int start_new_kotekan_mode(Config &config) {
         #else
         return -1;
         #endif
+    } else if (mode == "single_dish_vdif") {
+        kotekan_mode = (kotekanMode *) new singleDishVDIFMode(config);
     } else {
         return -1;
     }

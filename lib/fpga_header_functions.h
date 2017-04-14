@@ -10,7 +10,7 @@ extern "C" {
 typedef struct {
     uint8_t link_id;
     uint8_t slot_id;
-    uint8_t create_id;
+    uint8_t crate_id;
     uint8_t unused;
 } stream_id_t;
 

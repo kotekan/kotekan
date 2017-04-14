@@ -58,6 +58,7 @@ void dpdkWrapper::main_thread() {
     // This is a bit ugly because of its complexity,
     // and it's not obvious how it works.
     // TODO clean up.
+    network_dpdk_args->fake_stream_ids = 0;
     if (_mode == "shuffle4") {
         INFO("DPDK mode: shuffle4");
         for (int i = 0; i < _num_fpga_links; ++i) {
@@ -70,6 +71,7 @@ void dpdkWrapper::main_thread() {
         }
         network_dpdk_args->enable_shuffle = 1;
         network_dpdk_args->dump_full_packets = 0;
+        network_dpdk_args->fake_stream_ids = 1;
 
     } else if (_mode == "packet_cap") {
         INFO("DPDK mode: packet_cap");
@@ -105,13 +107,27 @@ void dpdkWrapper::main_thread() {
         }
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
+    } else if (_mode == "vdif") {
+        INFO("DPDK mode: vdif");
+        for (int i = 0; i < _num_fpga_links; ++i) {
+            network_dpdk_args->link_id[i] = i;
+            network_dpdk_args->num_links_in_group[i] = _num_fpga_links;
+        }
+        network_dpdk_args->enable_shuffle = 0;
+        network_dpdk_args->dump_full_packets = 0;
     } else {
         ERROR("DPDK Mode %s not supported!", _mode.c_str());
         return;
     }
 
-    network_dpdk_args->buf = tmp_buffer;
-    network_dpdk_args->vdif_buf = NULL;
+    if (_mode == "vdif") {
+        network_dpdk_args->buf = NULL;
+        network_dpdk_args->vdif_buf = network_input_buffer[0];
+    } else {
+        network_dpdk_args->buf = tmp_buffer;
+        network_dpdk_args->vdif_buf = NULL;
+    }
+
     network_dpdk_args->num_links = _num_fpga_links;
     network_dpdk_args->timesamples_per_packet = _timesamples_per_packet;
     network_dpdk_args->samples_per_data_set = _samples_per_data_set;

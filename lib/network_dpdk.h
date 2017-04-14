@@ -6,9 +6,11 @@
 #include "fpga_header_functions.h"
 
 // TODO Make these dynamic.
-#define NUM_LINKS (4)
+#define NUM_LINKS (8)
 #define NUM_LCORES (4)
-#define NUM_FREQ (4)
+// This shouldn't go above 4, since it's for the shuffle.
+// A better name might be SHUFFLE_SIZE?
+#define NUM_FREQ (1)
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,11 +43,14 @@ struct networkDPDKArg {
     // Note ideally this would hvae atomic access,
     // but since only one tread writes and others
     // read it should be safe and much more efficent
-    // to have it not be atomic. 
+    // to have it not be atomic.
     int stop_capture;
 
     // Used for the vdif generation
     struct Buffer * vdif_buf;
+
+    // Fake stream ids
+    int fake_stream_ids;
 };
 
 struct LinkData {
