@@ -27,7 +27,8 @@
 
 #define PACKET_OFFSET 58
 #define NUM_POL 2
-#define PACKET_LEN 1056
+#define PACKET_LEN (num_freq+VDIF_HEADER_LEN)
+//#define PACKET_LEN 1056
 #define VDIF_HEADER_LEN 32
 //#define NUM_FREQ 1024
 
@@ -133,8 +134,9 @@ void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, fl
 
             for (int freq = 0; freq < num_freq / 32; ++freq) {
                 const int index = packet * PACKET_LEN * NUM_POL +
-                                    pol * PACKET_LEN
-                                     + freq*32 + VDIF_HEADER_LEN;
+                                     pol * PACKET_LEN +
+                                    freq * 32 +
+                                    VDIF_HEADER_LEN;
 
                 __m256i ymm0, ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7;
 
