@@ -41,11 +41,13 @@
 #include "fpga_header_functions.h"
 #include "vdif_functions.h"
 
-#define RX_RING_SIZE 64
+// 256
+#define RX_RING_SIZE 512
 #define TX_RING_SIZE 512
 
 #define DATA_MAX_SIZE 2048
-#define NUM_MBUFS 256
+// 512
+#define NUM_MBUFS 1024
 #define MBUF_SIZE (DATA_MAX_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
@@ -232,7 +234,7 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
                           uint64_t new_seq) {
 
     // TODO it is really bad to have a blocking call here(!)
-    //DEBUG("Port %d, marking buffer %d as full", port, dpdk_net->link_data[port].vdif_buffer_id);
+    //DEBUG("Port %d, marking buffer %d as full\n", port, dpdk_net->link_data[port][0].vdif_buffer_id);
     mark_buffer_full(dpdk_net->args->vdif_buf, dpdk_net->link_data[port][0].vdif_buffer_id);
 
     dpdk_net->link_data[port][0].vdif_buffer_id =

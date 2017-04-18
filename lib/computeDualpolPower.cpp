@@ -24,6 +24,8 @@
 #include <inttypes.h>
 #include <functional>
 #include <thread>
+#include <pthread.h>
+#include <sched.h>
 
 #define PACKET_OFFSET 58
 #define NUM_POL 2
@@ -63,7 +65,7 @@ void computeDualpolPower::main_thread() {
     int buf_in_id=0;
     int buf_out_id=0;
 
-    static int nthreads=8;
+    static int nthreads=1;
     int nloop = timesteps_out/nthreads;
     std::thread this_thread[nthreads];
 
@@ -91,8 +93,14 @@ void computeDualpolPower::main_thread() {
 
     double start_time = e_time();
 
-        for (int j=0; j<nthreads; j++)
+        for (int j=0; j<nthreads; j++) {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            for (int j = 7; j < 8; j++)
+                CPU_SET(j, &cpuset);
+            pthread_setaffinity_np(this_thread[j].native_handle(), sizeof(cpu_set_t), &cpuset);
+        }
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
 
@@ -121,7 +129,7 @@ void computeDualpolPower::parallelSqSumVdif(int loop_idx, int loop_length){
 }
 
 #ifdef __AVX2__
-void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, float *out) {
+inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, float *out) {
     int integration_count[NUM_POL];
 
     for (int packet = 0; packet < integration_length; ++packet) {
@@ -216,7 +224,7 @@ void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, fl
     }
 }
 #else
-void computeDualpolPower::fastSqSumVdif(int integration_time,
+inline void computeDualpolPower::fastSqSumVdif(int integration_time,
         unsigned char * data, int * temp_buf, int * xx, int * yy)
 {
     ERROR("This system does not support AVX2, fast square-and-sum will not work");
