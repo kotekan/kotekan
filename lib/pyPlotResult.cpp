@@ -46,8 +46,7 @@ void pyPlotResult::main_thread() {
             std::bind(&pyPlotResult::request_plot_callback, this, _1, _2));
 
     int buffer_id = 0;
-
-
+    unsigned char *in_local = (unsigned char*)malloc(buf.buffer_size);
 
     for (;;) {
 
@@ -65,6 +64,10 @@ void pyPlotResult::main_thread() {
         if (dump_plot)
         {
             dump_plot=false;
+            //make a local copy so the rest of kotekan can carry along happily.
+            memcpy(in_local,buf.data[buffer_id],buf.buffer_size);
+            mark_buffer_empty(&buf, buffer_id);
+            buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
 
             FILE *python_script;
             python_script = popen("python -u pyPlotResult.py","w");
@@ -86,16 +89,15 @@ void pyPlotResult::main_thread() {
                 std::string s = header.dump()+"\n";
                 fwrite(s.c_str(),1,s.length(),python_script);
                 for (int i=0; i<num_blocks; i++) {
-                    fwrite(buf.data[buffer_id]+i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
+                    fwrite(in_local+i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
                     fflush(python_script);
                 }
             }
         }
-
-        // TODO make release_info_object work for nConsumers.
-        //release_info_object(&buf, buffer_id);
-        mark_buffer_empty(&buf, buffer_id);
-
-        buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
+        else{
+            mark_buffer_empty(&buf, buffer_id);
+            buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
+        }
     }
+    free(in_local);
 }
