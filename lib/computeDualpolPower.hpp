@@ -15,7 +15,7 @@ public:
     void apply_config(uint64_t fpga_seq);
 
 private:
-    void fastSqSumVdif(unsigned char *data, int *temp_buf, float *output);
+    inline void fastSqSumVdif(unsigned char *data, int *temp_buf, float *output);
     void parallelSqSumVdif(int loop_idx, int loop_length);
     struct Buffer &buf_in;
     struct Buffer &buf_out;

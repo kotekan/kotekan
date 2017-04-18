@@ -41,11 +41,13 @@
 #include "fpga_header_functions.h"
 #include "vdif_functions.h"
 
-#define RX_RING_SIZE 64
+// 256
+#define RX_RING_SIZE 512
 #define TX_RING_SIZE 512
 
 #define DATA_MAX_SIZE 2048
-#define NUM_MBUFS 256
+// 512
+#define NUM_MBUFS 1024
 #define MBUF_SIZE (DATA_MAX_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
@@ -232,7 +234,7 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
                           uint64_t new_seq) {
 
     // TODO it is really bad to have a blocking call here(!)
-    //DEBUG("Port %d, marking buffer %d as full", port, dpdk_net->link_data[port].vdif_buffer_id);
+    //DEBUG("Port %d, marking buffer %d as full\n", port, dpdk_net->link_data[port][0].vdif_buffer_id);
     mark_buffer_full(dpdk_net->args->vdif_buf, dpdk_net->link_data[port][0].vdif_buffer_id);
 
     dpdk_net->link_data[port][0].vdif_buffer_id =
@@ -511,16 +513,20 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
         static struct timeval now;
         gettimeofday(&now, NULL);
 
+        stream_id_t s_stream_id;
+
         for (int freq = 0; freq < NUM_FREQ; ++freq) {
-            stream_id_t s_stream_id = extract_stream_id(stream_id);
-            INFO("dpdk: Got StreamID: create: %d, slot: %d, link: %d, unused: %d",
-                    s_stream_id.create_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
-            s_stream_id.unused = freq;
-            // HACK for 2048 with one pair of crates
-            s_stream_id.create_id = port * 2;
-            s_stream_id.link_id = 0;
-            INFO("dpdk: Faked StreamID: create: %d, slot: %d, link: %d, unused: %d",
-                    s_stream_id.create_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
+            s_stream_id = extract_stream_id(stream_id);
+            INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+                    port, s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
+            if (dpdk_net->args->fake_stream_ids == 1) {
+                s_stream_id.unused = freq;
+                // HACK for 2048 with one pair of crates
+                s_stream_id.crate_id = port * 2;
+                s_stream_id.link_id = 0;
+                INFO("dpdk: Faked StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+                        s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
+            }
             stream_id = encode_stream_id(s_stream_id);
 
             dpdk_net->link_data[port][freq].stream_ID = stream_id;
@@ -580,8 +586,8 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                         (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
             }
         }
-        INFO("Got first packet: port: %d; link id: %d, seq: %" PRId64 ", last_seq: %" PRId64 "",
-                port, dpdk_net->args->link_id[port], dpdk_net->link_data[port][0].seq, dpdk_net->link_data[port][0].last_seq);
+        INFO("Got first packet: port: %d, seq: %" PRId64 "\n",
+                port, dpdk_net->link_data[port][0].seq);
 
         return 1;
     }

@@ -235,9 +235,14 @@ void private_zero_buffer(struct Buffer * buf, const int ID) {
     assert (ID >= 0);
     assert (ID <= buf->num_buffers);
 
-    int div_256 = 256*(buf->buffer_size / 256);
-    nt_memset((void *)buf->data[ID], 0x00, div_256);
-    memset((void *)&buf->data[ID][div_256], 0x00, buf->buffer_size - div_256);
+    //int div_256 = 256*(buf->buffer_size / 256);
+    //nt_memset((void *)buf->data[ID], 0x00, div_256);
+    //memset((void *)&buf->data[ID][div_256], 0x00, buf->buffer_size - div_256);
+
+    // HACK: Just zero the first two words of the VDIF header
+    for (int i = 0; i < buf->buffer_size/1056; ++i) {
+        *((uint64_t*)&buf->data[ID][i*1056]) = 0;
+    }
 }
 
 void zero_buffer(struct Buffer * buf, const int ID) {

@@ -68,7 +68,6 @@ extern "C" {
 #include "beamformingPostProcess.hpp"
 #include "restServer.hpp"
 
-
 #ifdef WITH_HSA
     #include "chimeShuffleMode.hpp"
     #include "gpuTestMode.hpp"
@@ -79,8 +78,6 @@ extern "C" {
 
 #include "packetCapMode.hpp"
 #include "singleDishMode.hpp"
-
-
 
 using json = nlohmann::json;
 

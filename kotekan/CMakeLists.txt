@@ -15,7 +15,7 @@ if (${USE_HSA})
 endif ()
 if (${USE_OPENCL})
 	SET(SOURCE_EXE ${SOURCE_EXE} )
-endif () 
+endif ()
 
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)

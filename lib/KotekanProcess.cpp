@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <sched.h>
+#include "errors.h"
 
 #include "KotekanProcess.hpp"
 
@@ -16,7 +17,8 @@ void KotekanProcess::start() {
     // TODO Move to config
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int j = 4; j < 12; j++)
+    INFO("Setting thread affinity");
+    for (int j = 4; j < 8; j++)
         CPU_SET(j, &cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 }
