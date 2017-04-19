@@ -21,10 +21,12 @@ private:
     struct Buffer &buf_out;
 
     int num_freq;
+    int num_elem;
     int timesteps_in;
     int timesteps_out;
     int integration_length;
 
+    unsigned int *integration_count;
     unsigned char *in_local;
     unsigned char *out_local;
 };

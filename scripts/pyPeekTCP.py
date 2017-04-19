@@ -5,7 +5,8 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import json
+import matplotlib.dates as md
+import datetime
 import struct
 
 #struct IntensityHeader {
@@ -22,7 +23,7 @@ import struct
 #							//	-8	-7	-6	-5	-4	-3	-2	-1	1	2	3	4
 #							//	YX	XY	YY	XX	LR	RL	LL	RR	I	Q	U	V
 #};
-header_fmt = '=iiiidiiIdb'
+header_fmt = '=iiiidiiiIdb'
 
 TCP_IP="127.0.0.1"
 TCP_PORT = 2054
@@ -31,12 +32,17 @@ sock.bind((TCP_IP, TCP_PORT))
 sock.listen(1)
 
 def updatefig(*args):
-    global waterfall
-    p.set_data(waterfall)
+    global waterfall, times
+    tmin=md.date2num(datetime.datetime.fromtimestamp(np.amin(times)))
+    tmax=md.date2num(datetime.datetime.fromtimestamp(np.amax(times)))
+    for i in np.arange(pkt_elems):
+	    p[i].set_data(waterfall[:,:,i]-np.nanmedian(waterfall[:,:,i],axis=0)[np.newaxis,:])
+	    p[i].set_extent([0,256, tmin,tmax])
     return p,
 
 connection, client_address = sock.accept()
 packed_header = connection.recv(1024)
+print(len(packed_header),packed_header)
 tcp_header  = struct.unpack(header_fmt,packed_header)
 
 pkt_length  = tcp_header[0] # packet_length
@@ -45,16 +51,20 @@ pkt_samples = tcp_header[2] # samples_per_packet
 pkt_dtype   = tcp_header[3] # sample_type
 pkt_raw_cad = tcp_header[4] # raw_cadence
 pkt_freqs   = tcp_header[5] # num_freqs
-pkt_int_len = tcp_header[6] # samples_summed
-pkt_idx0	= tcp_header[7] # handshake_idx
-pkt_utc0	= tcp_header[8] # handshake_utc
-pkt_stokes  = tcp_header[9] # stokes_type
+pkt_elems   = tcp_header[6] # num_freqs
+pkt_int_len = tcp_header[7] # samples_summed
+pkt_idx0	= tcp_header[8] # handshake_idx
+pkt_utc0	= tcp_header[9] # handshake_utc
+pkt_stokes  = tcp_header[10] # stokes_type
+
+sec_per_pkt_frame = pkt_raw_cad * pkt_int_len
 
 plot_freqs=pkt_freqs/4
-plot_times=128
-plot_integration=64
+plot_times=1024
+plot_integration=16
 
-waterfall = np.zeros((plot_times,plot_freqs),dtype=np.float32)
+waterfall = np.zeros((plot_times,plot_freqs,2),dtype=np.float32) + np.nan;
+times = np.zeros(plot_times)
 
 def receive(connection,length):
     chunks = []
@@ -69,23 +79,27 @@ def receive(connection,length):
 
 
 def data_listener():
-	global waterfall
+	global waterfall, times
 	data_pkt_frame_idx = 0;
 	data_pkt_samples_summed = 1;
 	idx=0
 	while True:
-		d=np.zeros(pkt_freqs)
+		d=np.zeros([pkt_freqs,pkt_elems])
+		t=np.zeros(plot_times)
 		for i in np.arange(plot_integration):
 			data = receive(connection,pkt_length+pkt_header)
 			if (len(data) != pkt_length+pkt_header):
-				print("Lost Conenction!")
+				print("Lost Connection!")
 				connection.close()
 				return;
-			data_pkt_frame_idx, data_pkt_samples_summed = struct.unpack('ii',data[:pkt_header])
-			d += np.fromstring(data[pkt_header:],dtype=np.float32) / data_pkt_samples_summed
-		idx=(data_pkt_frame_idx/plot_integration) % plot_times
+			data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack('III',data[:pkt_header])
+#			if (data_pkt_samples_summed != pkt_int_len):
+#				print(data_pkt_frame_idx, data_pkt_samples_summed)
+			d[:,data_pkt_elem_idx] += np.fromstring(data[pkt_header:],dtype=np.float32) / data_pkt_samples_summed / plot_integration
+		times = np.roll(times,1)
+		times[0] = sec_per_pkt_frame * (data_pkt_frame_idx - pkt_idx0) + pkt_utc0
 		waterfall = np.roll(waterfall,1,axis=0)
-		waterfall[0,:]=10*np.log10(d.reshape(-1,pkt_freqs / plot_freqs).mean(axis=1)/plot_integration) 
+		waterfall[0,:,:]=10*np.log10(d.reshape(-1,pkt_freqs / plot_freqs,pkt_elems).mean(axis=1)) 
 
 thread = threading.Thread(target=data_listener)
 thread.daemon = True
@@ -93,13 +107,33 @@ thread.start()
 
 time.sleep(1)
 
-f, ax = plt.subplots()
+f, ax = plt.subplots(1,pkt_elems)
+f.subplots_adjust(right=0.8)
+if (pkt_elems == 1):
+	ax=[ax]
 plt.ioff()
-p=ax.imshow(waterfall,aspect='auto',animated=True,origin='lower',interpolation='nearest', \
-			cmap='gray',vmin=16, vmax=17)
-c = f.colorbar(p)
-ax.set_xlabel('Freq')
-ax.set_ylabel('Time')
+p=[]
+tmin=md.date2num(datetime.datetime.fromtimestamp(pkt_utc0))
+tmax=md.date2num(datetime.datetime.fromtimestamp(pkt_utc0 + plot_times*plot_integration*sec_per_pkt_frame))
+date_format = md.DateFormatter('%H:%M:%S')
+for i in np.arange(pkt_elems):
+	p.append(ax[i].imshow(waterfall[:,:,i],aspect='auto',animated=True,origin='upper',interpolation='nearest', \
+			cmap='gray',vmin=-0.5, vmax=0.5, extent=[0,256,tmin,tmax]))
+	ax[i].set_xlabel('Freq')
+	ax[i].set_yticklabels([])
+	ax[i].yaxis_date()
+
+cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
+c = f.colorbar(p[0], cax=cbar_ax)
+
+ax[0].set_ylabel('Time')
+ax[0].yaxis_date()
+ax[0].yaxis.set_major_formatter(date_format)
+
+
+
+
+
 c.set_label('Power (dB, arbitrary)')
 ani = animation.FuncAnimation(f, updatefig, frames=100, interval=100)
 f.show()

@@ -27,11 +27,11 @@
 #include <pthread.h>
 #include <sched.h>
 
-#define PACKET_OFFSET 58
-#define NUM_POL 2
+//#define PACKET_OFFSET 58
+//#define NUM_POL 2
 #define PACKET_LEN (num_freq+VDIF_HEADER_LEN)
 //#define PACKET_LEN 1056
-#define VDIF_HEADER_LEN 32
+#define VDIF_HEADER_LEN sizeof(VDIFHeader)
 //#define NUM_FREQ 1024
 
 computeDualpolPower::computeDualpolPower(Config &config_,
@@ -44,11 +44,14 @@ computeDualpolPower::computeDualpolPower(Config &config_,
     integration_length = config.get_int("/raw_capture/integration_length");
     timesteps_out = timesteps_in / integration_length;
     num_freq = config.get_int("/processing/num_local_freq");
+    num_elem = config.get_int("/processing/num_elements");
 
     if (timesteps_in % timesteps_out)
     {
         ERROR("BAD COMBINATION OF BUFFER & INTEGRATION LENGTHS!");
     }
+
+    integration_count = (uint*)malloc(num_elem*sizeof(uint));
 }
 
 
@@ -57,6 +60,7 @@ void computeDualpolPower::apply_config(uint64_t fpga_seq) {
 
 
 computeDualpolPower::~computeDualpolPower() {
+    free(integration_count);
 }
 
 void computeDualpolPower::main_thread() {
@@ -71,22 +75,6 @@ void computeDualpolPower::main_thread() {
     std::thread this_thread[nthreads];
 
     for (EVER) {
-/*
-        buf_in_id = get_full_buffer_from_list(&buf_in, &buf_in_id, 1);
-        memcpy(in_local,buf_in.data[buf_in_id],buf_in.buffer_size);
-        mark_buffer_empty(&buf_in, buf_in_id);
-        buf_in_id = ( buf_in_id + 1 ) % buf_in.num_buffers;
-
-        for (int j=0; j<nthreads; j++)
-            this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
-        for (int j=0; j<nthreads; j++)
-            this_thread[j].join();
-
-        wait_for_empty_buffer(&buf_out, buf_out_id);
-        memcpy(buf_out.data[buf_out_id],out_local,buf_out.buffer_size);
-        mark_buffer_full(&buf_out, buf_out_id);
-        buf_out_id = (buf_out_id + 1) % (buf_out.num_buffers);
-*/
         buf_in_id = get_full_buffer_from_list(&buf_in, &buf_in_id, 1);
         wait_for_empty_buffer(&buf_out, buf_out_id);
         in_local = buf_in.data[buf_in_id];
@@ -106,7 +94,7 @@ void computeDualpolPower::main_thread() {
             this_thread[j].join();
 
     double stop_time = e_time();
-    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+//    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
         mark_buffer_empty(&buf_in, buf_in_id);
         mark_buffer_full(&buf_out, buf_out_id);
@@ -123,25 +111,27 @@ void computeDualpolPower::main_thread() {
 
 
 void computeDualpolPower::parallelSqSumVdif(int loop_idx, int loop_length){
-    int temp_buffer[num_freq*2];
+    int temp_buffer[num_freq*num_elem];
     for (int i=loop_idx*loop_length; i<(loop_idx+1)*loop_length; i++)
-        fastSqSumVdif(in_local+(i*integration_length*PACKET_LEN*NUM_POL),
-                temp_buffer, (float*)(out_local+i*num_freq*sizeof(float)));
+        fastSqSumVdif(in_local+(i*integration_length*PACKET_LEN*num_elem),
+                temp_buffer, (float*)(out_local+i*(1+num_freq)*num_elem*sizeof(float)));
 }
 
 #ifdef __AVX2__
 inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, float *out) {
-    int integration_count[NUM_POL];
+//    float integration_count[NUM_POL] = {0.0,0.0};
+
+    memset((void*)integration_count,0,num_elem*sizeof(uint));
 
     for (int packet = 0; packet < integration_length; ++packet) {
-        for (int pol = 0; pol < NUM_POL; ++pol) {
-            const int idx_header = packet * PACKET_LEN * NUM_POL +
+        for (int pol = 0; pol < num_elem; ++pol) {
+            const int idx_header = packet * PACKET_LEN * num_elem +
                                     pol * PACKET_LEN;
             if (((struct VDIFHeader*)&data[idx_header])->invalid) continue;
             integration_count[pol]++;
 
-            for (int freq = 0; freq < num_freq / 32; ++freq) {
-                const int index = packet * PACKET_LEN * NUM_POL +
+            for (int freq = 0; freq < num_freq / 32; freq++) {
+                const int index = packet * PACKET_LEN * num_elem +
                                      pol * PACKET_LEN +
                                     freq * 32 +
                                     VDIF_HEADER_LEN;
@@ -205,25 +195,20 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_
         }
     }
 
-//    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1])
+//    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1]);
+
     // Reorder the numbers.
-    for (int i = 0; i < num_freq; ++i) {
-        // Fix stupid index problem
-        int m32 = i % 32;
-        if (m32 < 16) m32 = (m32/4)*4;
-        else m32 = -12 + ((m32 - 16)/4)*4;
-        out[i         ] = ((float)temp_buf[i+m32         ]) / integration_count[0]; //XX
+    for (int p = 0; p<num_elem; p++) {
+        for (int i = 0; i < num_freq; ++i) {
+            // Fix stupid index problem
+            int m32 = i % 32;
+            if (m32 < 16) m32 = (m32/4)*4;
+            else m32 = -12 + ((m32 - 16)/4)*4;
+            out[i+p*(num_freq+1)] = ((float)temp_buf[i+m32 + p*(num_freq+1)]);
+        }
+        ((uint*)out)[p*(num_freq+1) + num_freq] = integration_count[p];
     }
 
-//INFO("Value: %i, Count: %i\n",temp_buf[0], integration_count[0]);
-
-    for (int i = 0; i < num_freq; ++i) {
-        // Fix stupid index problem
-        int m32 = i % 32;
-        if (m32 < 16) m32 = (m32/4)*4;
-        else m32 = -12 + ((m32 - 16)/4)*4;
-        out[i+num_freq] = ((float)temp_buf[i+m32+num_freq]) / integration_count[1]; //YY
-    }
 }
 #else
 inline void computeDualpolPower::fastSqSumVdif(int integration_time,

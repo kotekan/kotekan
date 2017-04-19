@@ -68,7 +68,7 @@ void singleDishMode::initalize_processes() {
     add_buffer(output_buffer);
     create_buffer(output_buffer,
                   buffer_depth,
-                  num_total_freq * 2 * sizeof(float) * timesteps_out,
+                  timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
                   1,
                   1,
                   pool,

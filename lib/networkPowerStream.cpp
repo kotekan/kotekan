@@ -21,6 +21,7 @@ networkPowerStream::networkPowerStream(Config& config, struct Buffer &buf_) :
     times = config.get_int("/processing/samples_per_data_set") /
             config.get_int("/raw_capture/integration_length");
     freqs = config.get_int("/processing/num_local_freq");
+    elems = config.get_int("/processing/num_elements");
 
     dest_port = config.get_int("/raw_capture/destination_port");
     dest_server_ip = config.get_string("/raw_capture/destination_ip");
@@ -33,7 +34,8 @@ networkPowerStream::networkPowerStream(Config& config, struct Buffer &buf_) :
     header.samples_per_packet = freqs;
     header.sample_type = 4;//float32
     header.raw_cadence = 2.56e-6;
-    header.num_freqs = config.get_int("/processing/num_local_freq");
+    header.num_freqs = freqs;
+    header.num_elems = elems;
     header.samples_summed = config.get_int("/raw_capture/integration_length");
     header.handshake_idx = -1;
     header.handshake_utc = -1;
@@ -109,22 +111,32 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
                 for (int t=0; t<times; t++){
                     packet_header->frame_idx = frame_idx++;
-                    packet_header->samples_summed = 1;
-                    for (int f=0; f<freqs; f++)
-                        local_data[f] = ((float*)buf.data[buffer_id])[f];
-                    // Send data to remote server.
-                    int bytes_sent = send(socket_fd,
-                                            packet_buffer,
-                                            packet_length,
-                                            0);
-//                    INFO("packet length %i\n",packet_length);
-                    if (bytes_sent != packet_length) {
-//                        ERROR("Lost TCP connection");
-                        while (atomic_flag_test_and_set(&socket_lock)) {}
-                        close(socket_fd);
-                        tcp_connected=false;
-                        atomic_flag_clear(&socket_lock);
-                        break;
+                    for (int p=0; p<elems; p++){
+                        packet_header->elem_idx = p;
+                        packet_header->samples_summed = ((uint*)buf.data[buffer_id])[
+                                                                t*elems*(freqs+1) + p*(freqs+1) + freqs];
+//                        INFO("FI %d %d",packet_header->samples_summed,t);
+                        memcpy(local_data,
+                                buf.data[buffer_id]+t*elems*(freqs+1)*sizeof(float)+
+                                                          p*(freqs+1)*sizeof(float),
+                                freqs*sizeof(float));
+    //                    memset(local_data,4,freqs*sizeof(float));
+    //                    for (int f=0; f<freqs; f++)
+    //                        local_data[f] = ((float*)buf.data[buffer_id])[f];
+                        // Send data to remote server.
+                        int bytes_sent = send(socket_fd,
+                                                packet_buffer,
+                                                packet_length,
+                                                0);
+    //                    INFO("local data %f\n",local_data[0]);
+                        if (bytes_sent != packet_length) {
+    //                        ERROR("Lost TCP connection");
+                            while (atomic_flag_test_and_set(&socket_lock)) {}
+                            close(socket_fd);
+                            tcp_connected=false;
+                            atomic_flag_clear(&socket_lock);
+                            break;
+                        }
                     }
                 }
             }
@@ -187,7 +199,7 @@ void networkPowerStream::tcpConnect()
     }
     setsockopt (socket_fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
-    { //put together handshkae
+    { //put together handshake
         while (atomic_flag_test_and_set(&socket_lock)) {}
             header.handshake_idx = handshake_idx;
             header.handshake_utc  = handshake_utc;
