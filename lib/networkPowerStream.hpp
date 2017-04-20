@@ -18,9 +18,6 @@ struct  __attribute__((__packed__)) IntensityHeader {
 	int samples_summed;		// - samples summed for each datum
 	uint handshake_idx;		// - frame idx at handshake
 	double handshake_utc;	// - UTC time at handshake
-	char stokes_type; 		// - description of stream (e.g. V / H pol, Stokes-I / Q / U / V)
-							//	-8	-7	-6	-5	-4	-3	-2	-1	1	2	3	4
-							//	YX	XY	YY	XX	LR	RL	LL	RR	I	Q	U	V
 };
 
 struct  __attribute__((__packed__)) IntensityPacketHeader {

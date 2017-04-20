@@ -32,14 +32,13 @@ networkPowerStream::networkPowerStream(Config& config, struct Buffer &buf_) :
     header.packet_length = freqs * sizeof(float);
     header.header_length = sizeof(IntensityPacketHeader);
     header.samples_per_packet = freqs;
-    header.sample_type = 4;//float32
+    header.sample_type = 4;//uint32
     header.raw_cadence = 2.56e-6;
     header.num_freqs = freqs;
     header.num_elems = elems;
     header.samples_summed = config.get_int("/raw_capture/integration_length");
     header.handshake_idx = -1;
     header.handshake_utc = -1;
-    header.stokes_type = -5; //for XX; or -6 for YY
 
     frame_idx=0;
 
@@ -115,22 +114,15 @@ void networkPowerStream::main_thread() {
                         packet_header->elem_idx = p;
                         packet_header->samples_summed = ((uint*)buf.data[buffer_id])[
                                                                 t*elems*(freqs+1) + p*(freqs+1) + freqs];
-//                        INFO("FI %d %d",packet_header->samples_summed,t);
                         memcpy(local_data,
-                                buf.data[buffer_id]+t*elems*(freqs+1)*sizeof(float)+
-                                                          p*(freqs+1)*sizeof(float),
-                                freqs*sizeof(float));
-    //                    memset(local_data,4,freqs*sizeof(float));
-    //                    for (int f=0; f<freqs; f++)
-    //                        local_data[f] = ((float*)buf.data[buffer_id])[f];
-                        // Send data to remote server.
+                                buf.data[buffer_id]+t*elems*(freqs+1)*sizeof(uint)+
+                                                          p*(freqs+1)*sizeof(uint),
+                                freqs*sizeof(uint));
                         int bytes_sent = send(socket_fd,
                                                 packet_buffer,
                                                 packet_length,
                                                 0);
-    //                    INFO("local data %f\n",local_data[0]);
                         if (bytes_sent != packet_length) {
-    //                        ERROR("Lost TCP connection");
                             while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
                             tcp_connected=false;
@@ -164,15 +156,8 @@ void networkPowerStream::main_thread() {
     free(packet_buffer);
 }
 
-
-
-//    while (atomic_flag_test_and_set(&socket_lock));
-//      do stuff!
-//    atomic_flag_clear(&socket_lock);
-
 void networkPowerStream::tcpConnect()
 {
-
 //    INFO("Connecting TCP Power Stream!");
     struct sockaddr_in address; 
     address.sin_addr.s_addr = inet_addr(dest_server_ip.c_str());
@@ -183,7 +168,7 @@ void networkPowerStream::tcpConnect()
     if (socket_fd == -1) {
         ERROR("Could not create TCP socket for output stream");
         return;
-    } 
+    }
 
     //TODO: handle errors, make dynamic
     struct timeval timeout;      
@@ -209,6 +194,31 @@ void networkPowerStream::tcpConnect()
                                 sizeof(header),
                                 0);
         if (bytes_sent != sizeof(header)) {
+            ERROR("Could not send TCP header for output stream");
+            while (atomic_flag_test_and_set(&socket_lock)) {}
+            close(socket_fd);
+            tcp_connected=false;
+            atomic_flag_clear(&socket_lock);
+            return;
+        }
+        //FIXME: remove hardcoding of freq & Stokes
+        int info_size = freqs*2*sizeof(float) + elems*sizeof(char);
+        void *info = malloc(info_size);
+        for (int f=0; f<freqs; f++) {
+            ((float*)info)[2*f]   = 800e6 - 400e6* f   /1024;
+            ((float*)info)[2*f+1] = 800e6 - 400e6*(f+1)/1024;
+        }
+        // - description of stream (e.g. V / H pol, Stokes-I / Q / U / V)
+        //  -8  -7  -6  -5  -4  -3  -2  -1  1   2   3   4
+        //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
+        for (int e=0; e<elems; e++)
+            ((char*)(info+info_size - elems*sizeof(char)))[e]=-5-e;
+        bytes_sent = send(socket_fd,
+                                info,
+                                info_size,
+                                0);
+        free(info);
+        if (bytes_sent != info_size) {
             ERROR("Could not send TCP header for output stream");
             while (atomic_flag_test_and_set(&socket_lock)) {}
             close(socket_fd);

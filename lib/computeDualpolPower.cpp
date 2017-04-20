@@ -111,16 +111,14 @@ void computeDualpolPower::main_thread() {
 
 
 void computeDualpolPower::parallelSqSumVdif(int loop_idx, int loop_length){
-    int temp_buffer[num_freq*num_elem];
+    uint temp_buffer[num_freq*num_elem];
     for (int i=loop_idx*loop_length; i<(loop_idx+1)*loop_length; i++)
         fastSqSumVdif(in_local+(i*integration_length*PACKET_LEN*num_elem),
-                temp_buffer, (float*)(out_local+i*(1+num_freq)*num_elem*sizeof(float)));
+                temp_buffer, (uint*)(out_local+i*(1+num_freq)*num_elem*sizeof(uint)));
 }
 
 #ifdef __AVX2__
-inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_buf, float *out) {
-//    float integration_count[NUM_POL] = {0.0,0.0};
-
+inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp_buf, uint *out) {
     memset((void*)integration_count,0,num_elem*sizeof(uint));
 
     for (int packet = 0; packet < integration_length; ++packet) {
@@ -204,9 +202,9 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, int * temp_
             int m32 = i % 32;
             if (m32 < 16) m32 = (m32/4)*4;
             else m32 = -12 + ((m32 - 16)/4)*4;
-            out[i+p*(num_freq+1)] = ((float)temp_buf[i+m32 + p*(num_freq+1)]);
+            out[i+p*(num_freq+1)] = temp_buf[i+m32 + p*(num_freq+1)];
         }
-        ((uint*)out)[p*(num_freq+1) + num_freq] = integration_count[p];
+        out[p*(num_freq+1) + num_freq] = integration_count[p];
     }
 
 }
