@@ -42,6 +42,19 @@ void singleDishMode::initalize_processes() {
     int integration_length = config.get_int("/raw_capture/integration_length");
     int timesteps_in = config.get_int("/processing/samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
+    string instrument_name = config.get_string("/raw_capture/instrument_name");
+
+    // TODO This needs to move outside of this function, but that
+    // requires some more refactoring of the nDisk thread.
+    char data_time[64];
+    char data_set[150];
+    time_t rawtime;
+    struct tm* timeinfo;
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+
+    strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
+    snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, instrument_name.c_str());
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -81,7 +94,7 @@ void singleDishMode::initalize_processes() {
     for (int i = 0; i < num_disks; ++i) {
         // See nDiskFileWrite.cpp, this will be changed to just one process.
         INFO("Adding nDiskFileWrite with ID %d", i);
-        add_process((KotekanProcess*) new nDiskFileWrite(config, *vdif_input_buffer, i, "test_dataset"));
+        add_process((KotekanProcess*) new nDiskFileWrite(config, *vdif_input_buffer, i, data_set));
     }
     add_process((KotekanProcess*) new computeDualpolPower(config, *vdif_input_buffer, *output_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *output_buffer));
