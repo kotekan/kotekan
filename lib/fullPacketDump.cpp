@@ -69,7 +69,7 @@ void fullPacketDump::main_thread() {
     int file_num = 0;
     char host_name[100];
     gethostname(host_name, 100);
- 
+
 
     int first_time = 1;
 

@@ -17,7 +17,8 @@
 #include "networkPowerStream.hpp"
 #include "vdif_functions.h"
 #include "dpdkWrapper.hpp"
-#include "nDiskFileWrite.cpp"
+#include "nDiskFileWrite.hpp"
+#include "streamSingleDishVDIF.hpp"
 
 #include <vector>
 #include <string>
@@ -96,7 +97,8 @@ void singleDishMode::initalize_processes() {
         INFO("Adding nDiskFileWrite with ID %d", i);
         add_process((KotekanProcess*) new nDiskFileWrite(config, *vdif_input_buffer, i, data_set));
     }
-    add_process((KotekanProcess*) new computeDualpolPower(config, *vdif_input_buffer, *output_buffer));
+    add_process((KotekanProcess*) new streamSingleDishVDIF(config, *vdif_input_buffer));
+    //add_process((KotekanProcess*) new computeDualpolPower(config, *vdif_input_buffer, *output_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *output_buffer));
     add_process((KotekanProcess*) new networkPowerStream(config, *output_buffer));
 
