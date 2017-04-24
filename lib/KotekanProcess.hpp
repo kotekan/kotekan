@@ -18,10 +18,10 @@ public:
     void join();
     void stop();
 protected:
+    std::thread this_thread;
     std::atomic_bool stop_thread;
     Config &config;
 private:
-    std::thread this_thread;
     std::function<void(const KotekanProcess&)> main_thread_fn;
 };
 

@@ -18,7 +18,7 @@ void KotekanProcess::start() {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     INFO("Setting thread affinity");
-    for (int j = 4; j < 8; j++)
+    for (int j = 4; j < 12; j++)
         CPU_SET(j, &cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 }
