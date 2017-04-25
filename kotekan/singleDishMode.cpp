@@ -17,7 +17,8 @@
 #include "networkPowerStream.hpp"
 #include "vdif_functions.h"
 #include "dpdkWrapper.hpp"
-#include "nDiskFileWrite.cpp"
+#include "nDiskFileWrite.hpp"
+#include "streamSingleDishVDIF.hpp"
 
 #include <vector>
 #include <string>
@@ -72,7 +73,7 @@ void singleDishMode::initalize_processes() {
                   buffer_depth * num_disks,
                   timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
                   num_fpga_links,
-                  2,
+                  3,
                   pool,
                   "vdif_buf");
     host_buffers.add_buffer("vdif_buf", vdif_input_buffer);
@@ -82,8 +83,8 @@ void singleDishMode::initalize_processes() {
     create_buffer(output_buffer,
                   buffer_depth,
                   timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
-                  1,
-                  1,
+                  1, //producers
+                  2, //consumers
                   pool,
                   "output_power_buf");
     host_buffers.add_buffer("output_power_buf", output_buffer);
@@ -91,6 +92,7 @@ void singleDishMode::initalize_processes() {
     add_process((KotekanProcess *) new dpdkWrapper(config, &vdif_input_buffer, "vdif"));
     //add_process((KotekanProcess*) new simVdifData(config, *vdif_input_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *vdif_input_buffer));
+    add_process((KotekanProcess*) new streamSingleDishVDIF(config, *vdif_input_buffer));
     for (int i = 0; i < num_disks; ++i) {
         // See nDiskFileWrite.cpp, this will be changed to just one process.
         INFO("Adding nDiskFileWrite with ID %d", i);
@@ -98,7 +100,9 @@ void singleDishMode::initalize_processes() {
     }
     add_process((KotekanProcess*) new computeDualpolPower(config, *vdif_input_buffer, *output_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *output_buffer));
-    add_process((KotekanProcess*) new networkPowerStream(config, *output_buffer));
 
-
+//    string instrument_name = config.get_string("/raw_capture/instrument_name");
+    for (int i = 0; i<2; i++){
+      add_process((KotekanProcess*) new networkPowerStream(config, i, *output_buffer));
+    }
 }

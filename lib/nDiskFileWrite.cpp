@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 
 #include "nDiskFileWrite.hpp"
-#include "stream_raw_vdif.h"
 #include "buffers.h"
 #include "errors.h"
 #include "util.h"
@@ -143,8 +142,8 @@ void nDiskFileWrite::main_thread() {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     INFO("Setting thread affinity");
-    for (int j = 10; j < 12; j++)
-        CPU_SET(j, &cpuset);
+    for (int j = 10; j < 12; j++) CPU_SET(j, &cpuset);
+//    CPU_SET(11-(disk_id%2),&cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
     for (;;) {

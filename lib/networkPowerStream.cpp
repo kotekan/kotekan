@@ -13,19 +13,21 @@
 #include "util.h"
 #include "errors.h"
 
-networkPowerStream::networkPowerStream(Config& config, struct Buffer &buf_) :
+networkPowerStream::networkPowerStream(Config& config, int id_, struct Buffer &buf_) :
     KotekanProcess(config, std::bind(&networkPowerStream::main_thread, this)),
-    buf(buf_){
+    buf(buf_),
+    id(id_){
 
     //PER BUFFER
+    string config_base = string("/raw_capture/stream_")+std::to_string(id);
     times = config.get_int("/processing/samples_per_data_set") /
             config.get_int("/raw_capture/integration_length");
     freqs = config.get_int("/processing/num_local_freq");
     elems = config.get_int("/processing/num_elements");
 
-    dest_port = config.get_int("/raw_capture/destination_port");
-    dest_server_ip = config.get_string("/raw_capture/destination_ip");
-    dest_protocol = config.get_string("/raw_capture/destination_protocol");
+    dest_port = config.get_int(config_base+"/destination_port");
+    dest_server_ip = config.get_string(config_base+"/destination_ip");
+    dest_protocol = config.get_string(config_base+"/destination_protocol");
 
     atomic_flag_clear(&socket_lock);
 
@@ -57,6 +59,14 @@ void networkPowerStream::main_thread() {
         IntensityPacketHeader *packet_header = (IntensityPacketHeader *)packet_buffer;
         float *local_data = (float*)(packet_buffer + sizeof(IntensityPacketHeader));
     struct timeval tv;
+
+    sleep(1);
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    INFO("Setting thread affinity");
+    CPU_SET(8, &cpuset);
+    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+
 
     if (dest_protocol == "UDP")
     {

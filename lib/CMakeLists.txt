@@ -41,6 +41,7 @@ add_library ( kotekan_libs
               networkPowerStream.cpp
               computeDualpolPower.cpp
               nDiskFileWrite.cpp
+              streamSingleDishVDIF.cpp
               )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
