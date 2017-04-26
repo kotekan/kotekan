@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 
 #include "nDiskFileWrite.hpp"
-#include "stream_raw_vdif.h"
 #include "buffers.h"
 #include "errors.h"
 #include "util.h"

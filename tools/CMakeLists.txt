@@ -21,5 +21,5 @@ include_directories( ${OPENCL_INCLUDE_DIRS} )
 #target_link_libraries(adc_dump chime)
 #target_link_libraries(adc_dump pfring.a)
 
-target_link_libraries(gpu_stream_dump hdf5)
-target_link_libraries(gpu_stream_dump hdf5_hl)
+#target_link_libraries(gpu_stream_dump hdf5)
+#target_link_libraries(gpu_stream_dump hdf5_hl)

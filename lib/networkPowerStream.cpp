@@ -55,7 +55,7 @@ void networkPowerStream::main_thread() {
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     void *packet_buffer = malloc(packet_length);
         IntensityPacketHeader *packet_header = (IntensityPacketHeader *)packet_buffer;
-        float *local_data = (float*)(packet_buffer + sizeof(IntensityPacketHeader));
+        float *local_data = (float*)(((char*)packet_buffer) + sizeof(IntensityPacketHeader));
     struct timeval tv;
 
     if (dest_protocol == "UDP")
@@ -212,7 +212,7 @@ void networkPowerStream::tcpConnect()
         //  -8  -7  -6  -5  -4  -3  -2  -1  1   2   3   4
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
         for (int e=0; e<elems; e++)
-            ((char*)(info+info_size - elems*sizeof(char)))[e]=-5-e;
+            (((char*)info)+info_size - elems)[e]=-5-e;
         bytes_sent = send(socket_fd,
                                 info,
                                 info_size,

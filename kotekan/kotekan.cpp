@@ -23,7 +23,10 @@ extern "C" {
 #include <pthread.h>
 }
 
+#include "intensityReceiverMode.hpp"
+
 // DPDK!
+#ifdef WITH_DPDK
 extern "C" {
 #include <rte_config.h>
 #include <rte_common.h>
@@ -46,6 +49,11 @@ extern "C" {
 #include <rte_debug.h>
 #include <rte_ring.h>
 }
+#include "network_dpdk.h"
+#include "raw_cap.hpp"
+#include "packetCapMode.hpp"
+#include "singleDishMode.hpp"
+#endif
 
 #include "errors.h"
 #include "buffers.h"
@@ -58,9 +66,7 @@ extern "C" {
 #include "vdifStream.hpp"
 #include "nullProcess.hpp"
 #include "util.h"
-#include "network_dpdk.h"
 #include "version.h"
-#include "raw_cap.hpp"
 #include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
 #include "json.hpp"
@@ -76,8 +82,6 @@ extern "C" {
     #include "gpu_thread.h"
 #endif
 
-#include "packetCapMode.hpp"
-#include "singleDishMode.hpp"
 
 using json = nlohmann::json;
 
@@ -91,6 +95,7 @@ void print_help() {
     printf("    --config (-c) [file]            The local JSON config file to use\n\n");
 }
 
+#ifdef WITH_DPDK
 void dpdk_setup() {
 
     char  arg0[] = "./kotekan";
@@ -108,6 +113,7 @@ void dpdk_setup() {
     if (ret2 < 0)
         exit(EXIT_FAILURE);
 }
+#endif
 
 void update_log_levels(Config &config) {
     // Adjust the log level
@@ -136,23 +142,32 @@ int start_new_kotekan_mode(Config &config) {
 
     string mode = config.get_string("/system/mode");
 
-    if (mode == "packet_cap") {
+    if (mode == "intensity_receiver") {
+        kotekan_mode = (kotekanMode *) new intensityReceiverMode(config);
+    }
+#ifdef WITH_DPDK
+    else if (mode == "packet_cap") {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
-    } else if (mode == "chime_shuffle") {
+    }
+    else if (mode == "chime_shuffle") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
         #else
         return -1;
         #endif
-    } else if (mode == "gpu_test") {
+    }
+    else if (mode == "single_dish") {
+        kotekan_mode = (kotekanMode *) new singleDishMode(config);
+    }
+    else if (mode == "gpu_test") {
         #ifdef WITH_HSA
         kotekan_mode = (kotekanMode *) new gpuTestMode(config);
         #else
         return -1;
         #endif
-    } else if (mode == "single_dish") {
-        kotekan_mode = (kotekanMode *) new singleDishMode(config);
-    } else {
+    }
+#endif
+    else {
         return -1;
     }
     kotekan_mode->initalize_processes();
@@ -163,9 +178,9 @@ int start_new_kotekan_mode(Config &config) {
 }
 
 int main(int argc, char ** argv) {
-
+#ifdef WITH_DPDK
     dpdk_setup();
-
+#endif
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;

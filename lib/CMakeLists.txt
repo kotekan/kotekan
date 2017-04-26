@@ -5,7 +5,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
-add_library ( kotekan_libs
+set (KOTEKAN_LIB_SOURCES 
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp
@@ -26,11 +26,8 @@ add_library ( kotekan_libs
               vdifStream.cpp
               fpga_header_functions.c
               nullProcess.cpp
-              simple_udp_cap.c
               output_power.c
-              network_dpdk.c
               fullPacketDump.cpp
-              dpdkWrapper.cpp
               rawFileRead.cpp
               rawFileWrite.cpp
               pyPlotResult.cpp
@@ -41,14 +38,29 @@ add_library ( kotekan_libs
               networkPowerStream.cpp
               computeDualpolPower.cpp
               nDiskFileWrite.cpp
-              streamSingleDishVDIF.cpp
-              )
+       )
 
-#set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
+if (${WITH_DPDK})
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} 
+              dpdkWrapper.cpp
+              network_dpdk.c)
+       target_link_libraries( kotekan_libs rt dl ${DPDK_LIBS} )
+endif ()
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} osxBindCPU.cpp)
+else ()
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} simple_udp_cap.c)
+endif ()
+
+add_library ( kotekan_libs
+              ${KOTEKAN_LIB_SOURCES})
+              
+
+
 
 target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
-target_link_libraries( kotekan_libs m rt dl ${DPDK_LIBS} )
 target_link_libraries( kotekan_libs libinclude )
+target_link_libraries( kotekan_libs m )
 
 if (${USE_HCC})
        add_subdirectory(hcc)

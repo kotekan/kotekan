@@ -40,6 +40,8 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
                 __FILE__, __LINE__, oclGetOpenCLErrorCodeStr(err)); \
         exit( err );                                                \
     }
+//WITH_OPENCL
+#endif
 
 #define CHECK_ERROR( err )                                         \
     if ( err ) {                                                    \
@@ -54,8 +56,6 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
                 __FILE__, __LINE__);                          \
         exit( -1 );                                        \
     }
-//WITH_OPENCL
-#endif
 
 #ifdef DEBUGING
 

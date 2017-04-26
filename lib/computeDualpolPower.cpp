@@ -8,6 +8,10 @@
 #include "util.h"
 #include "vdif_functions.h"
 #include "time_tracking.h"
+#ifdef MAC_OSX
+    #include "osxBindCPU.hpp"
+    #include <immintrin.h>
+#endif
 
 #include <dirent.h>
 #include <sys/socket.h>
@@ -70,7 +74,7 @@ void computeDualpolPower::main_thread() {
     int buf_in_id=0;
     int buf_out_id=0;
 
-    static int nthreads=1;
+    const int nthreads=1;
     int nloop = timesteps_out/nthreads;
     std::thread this_thread[nthreads];
 
