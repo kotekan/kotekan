@@ -7,13 +7,13 @@ inline bool file_exists(char * name) {
     return (stat (name, &buf) == 0);
 }
 
-rawFileRead::rawFileRead(Config& config, Buffer& buf_,
+rawFileRead::rawFileRead(Config& config, const string& unique_name, Buffer& buf_,
         bool generate_info_object_,
         bool repeat_frame_,
         const std::string &base_dir_,
         const std::string &file_name_,
         const std::string &file_ext_) :
-    KotekanProcess(config, std::bind(&rawFileRead::main_thread, this)),
+    KotekanProcess(config, unique_name, std::bind(&rawFileRead::main_thread, this)),
     buf(buf_),
     generate_info_object(generate_info_object_),
     repeat_frame(repeat_frame_),

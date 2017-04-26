@@ -24,7 +24,7 @@
 
 class gpuThread : public KotekanProcess {
 public:
-    gpuThread(Config &config,
+    gpuThread(Config &config, const string& unique_name,
                 struct Buffer &in_buf,
                 struct Buffer &out_buf,
                 struct Buffer &beamforming_out_buf,

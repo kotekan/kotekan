@@ -169,13 +169,13 @@ void gpuTestMode::initalize_processes() {
         // GPU Test
         //add_process((KotekanProcess*) new rawFileRead(config, *network_input_buffer[i], true, false,
         //                                                "/data/test_data/", "gpu_input_frame_const", "dat"));
-        add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));
-        add_process((KotekanProcess*) new gpuHSAThread(config, host_buffers[i], i));
-        add_process((KotekanProcess*) new rawFileRead(config, *simulate_output_buffer[i], false, false,
+        add_process((KotekanProcess*) new testDataGen(config, "test_data", *network_input_buffer[i]));
+        add_process((KotekanProcess*) new gpuHSAThread(config, "hsa_gpu", host_buffers[i], i));
+        add_process((KotekanProcess*) new rawFileRead(config, "rawfile", *simulate_output_buffer[i], false, false,
                                                         "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
-        add_process((KotekanProcess*) new pyPlotResult(config, *gpu_output_buffer[i], i, "/data/test_data/", "beamform_gpu_output_99", "dat") );
+        add_process((KotekanProcess*) new pyPlotResult(config, "plot_n2", *gpu_output_buffer[i], i, "/data/test_data/", "beamform_gpu_output_99", "dat") );
 //        add_process((KotekanProcess*) new pyPlotOutputError(config, *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
-        add_process((KotekanProcess*) new testDataCheck<int>(config, *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
+        add_process((KotekanProcess*) new testDataCheck<int>(config, "check_result", *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
 
         // Processes to generate test data
         //add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));

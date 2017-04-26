@@ -7,6 +7,7 @@
 class testDataGen : public KotekanProcess {
 public:
     testDataGen(Config &config,
+    			const string& unique_name,
                  struct Buffer &buf);
     ~testDataGen();
     void apply_config(uint64_t fpga_seq) override;

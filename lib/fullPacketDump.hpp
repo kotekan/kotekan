@@ -8,7 +8,7 @@
 
 class fullPacketDump : public KotekanProcess {
 public:
-    fullPacketDump(Config &config, struct Buffer &buf, int link_id);
+    fullPacketDump(Config &config, const string& unique_name, struct Buffer &buf, int link_id);
     virtual ~fullPacketDump();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);

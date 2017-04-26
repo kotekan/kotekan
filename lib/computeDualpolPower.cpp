@@ -34,9 +34,9 @@
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
 //#define NUM_FREQ 1024
 
-computeDualpolPower::computeDualpolPower(Config &config_,
+computeDualpolPower::computeDualpolPower(Config &config_, const string& unique_name,
                      struct Buffer &buf_in_, struct Buffer &buf_out_) :
-                  KotekanProcess(config_, std::bind(&computeDualpolPower::main_thread, this)),
+                  KotekanProcess(config_, unique_name, std::bind(&computeDualpolPower::main_thread, this)),
                   buf_in(buf_in_),
                   buf_out(buf_out_)
 {

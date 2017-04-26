@@ -8,6 +8,7 @@
 class rawFileWrite : public KotekanProcess {
 public:
     rawFileWrite(Config &config,
+                const string& unique_name,
                  struct Buffer &buf,
                  const std::string &base_dir,
                  const std::string &file_name,

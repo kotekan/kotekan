@@ -11,8 +11,9 @@
 #define Freq_ref 492.125984252 //1./ (np.sin(90*D2R) / c / (N_feeds/2) * d * N_feeds *1.e6)
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
+        const string& unique_name,
         Buffer& input_buf_, Buffer& output_buf_) :
-    KotekanProcess(config, std::bind(&gpuBeamformSimulate::main_thread, this)),
+    KotekanProcess(config, unique_name, std::bind(&gpuBeamformSimulate::main_thread, this)),
     input_buf(input_buf_),
     output_buf(output_buf_) {
 

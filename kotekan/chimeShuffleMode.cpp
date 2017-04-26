@@ -103,10 +103,10 @@ void chimeShuffleMode::initalize_processes() {
         host_buffers[i].add_buffer("output_buf", gpu_output_buffer[i]);
 
         // TODO better management of the buffers so this list doesn't have to change size...
-        add_process((KotekanProcess*) new gpuHSAThread(config, host_buffers[i], i));
+        add_process((KotekanProcess*) new gpuHSAThread(config, "hsa", host_buffers[i], i));
     }
 
-    add_process((KotekanProcess *) new dpdkWrapper(config, network_input_buffer, "shuffle4") );
+    add_process((KotekanProcess *) new dpdkWrapper(config, "dpdk_input", network_input_buffer, "shuffle4") );
 
     struct Buffer * network_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     struct Buffer * gated_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
@@ -132,21 +132,21 @@ void chimeShuffleMode::initalize_processes() {
                   1, 1, pool[0], "gated_output_buffer");
 
     // The thread which creates output frame.
-    gpuPostProcess * gpu_post_process = new gpuPostProcess(config,
+    gpuPostProcess * gpu_post_process = new gpuPostProcess(config, "gpu_post_process",
                                                             gpu_output_buffer,
                                                             *network_output_buffer,
                                                             *gated_output_buffer);
     add_process((KotekanProcess*)gpu_post_process);
 
     if (enable_upload) {
-        add_process((KotekanProcess*) new chrxUplink(config,
+        add_process((KotekanProcess*) new chrxUplink(config, "chrx_uplink",
                                             *network_output_buffer, *gated_output_buffer));
     } else {
         // Drop the data.
-        add_process((KotekanProcess*) new nullProcess(config, *network_output_buffer));
+        add_process((KotekanProcess*) new nullProcess(config, "null", *network_output_buffer));
 
         if (enable_gating) {
-            add_process((KotekanProcess*) new nullProcess(config, *gated_output_buffer));
+            add_process((KotekanProcess*) new nullProcess(config, "gated_output", *gated_output_buffer));
         }
     }
 }

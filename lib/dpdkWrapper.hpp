@@ -8,7 +8,7 @@ using std::string;
 
 class dpdkWrapper : public KotekanProcess {
 public:
-    dpdkWrapper(Config &config, struct Buffer *network_input_buffer[], string mode);
+    dpdkWrapper(Config &config, const string& unique_name, struct Buffer *network_input_buffer[], string mode);
     virtual ~dpdkWrapper();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);

@@ -13,11 +13,11 @@
 
 using json = nlohmann::json;
 
-pyPlotResult::pyPlotResult(Config& config, Buffer& buf_, int gpu_id_,
+pyPlotResult::pyPlotResult(Config& config, const string& unique_name, Buffer& buf_, int gpu_id_,
                  const std::string &base_dir_,
                  const std::string &file_name_,
                  const std::string &file_ext_) :
-        KotekanProcess(config, std::bind(&pyPlotResult::main_thread, this)),
+        KotekanProcess(config, unique_name, std::bind(&pyPlotResult::main_thread, this)),
         buf(buf_),
         base_dir(base_dir_),
         file_name(file_name_),

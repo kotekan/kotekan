@@ -13,8 +13,8 @@
 
 #define MAX_NUM_PACKETS 100
 
-fullPacketDump::fullPacketDump(Config& config, struct Buffer &buf_, int link_id_) :
-    KotekanProcess(config, std::bind(&fullPacketDump::main_thread, this)),
+fullPacketDump::fullPacketDump(Config& config, const string& unique_name, struct Buffer &buf_, int link_id_) :
+    KotekanProcess(config, unique_name, std::bind(&fullPacketDump::main_thread, this)),
     buf(buf_), link_id(link_id_){
 
     apply_config(0);

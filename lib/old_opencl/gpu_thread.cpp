@@ -21,12 +21,13 @@ double e_time(void){
 }
 
 gpuThread::gpuThread(Config& config_,
+        const string& unique_name,
         Buffer& in_buf_,
         Buffer& out_buf_,
         Buffer& beamforming_out_buf_,
         Buffer& beamforming_out_incoh_buf_,
         uint32_t gpu_id_):
-    KotekanProcess(config_, std::bind(&gpuThread::main_thread, this)),
+    KotekanProcess(config_, unique_name, std::bind(&gpuThread::main_thread, this)),
     in_buf(in_buf_),
     out_buf(out_buf_),
     beamforming_out_buf(beamforming_out_buf_),

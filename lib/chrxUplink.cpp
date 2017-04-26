@@ -15,9 +15,10 @@
 #include "output_formating.h"
 
 chrxUplink::chrxUplink(Config &config_,
+                  const string& unique_name,
                   struct Buffer &vis_buf_,
                   struct Buffer &gate_buf_) :
-                  KotekanProcess(config_, std::bind(&chrxUplink::main_thread, this)),
+                  KotekanProcess(config_, unique_name, std::bind(&chrxUplink::main_thread, this)),
                   vis_buf(vis_buf_),
                   gate_buf(gate_buf_) {
 }

@@ -11,6 +11,7 @@ using std::vector;
 class beamformingPostProcess : public KotekanProcess {
 public:
     beamformingPostProcess(Config &config,
+                  const string& unique_name,
                   struct Buffer *in_buf,
                   struct Buffer &vdif_buf);
     virtual ~beamformingPostProcess();

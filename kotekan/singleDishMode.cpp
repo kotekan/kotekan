@@ -32,6 +32,9 @@ singleDishMode::~singleDishMode() {
 }
 
 void singleDishMode::initalize_processes() {
+    config.dump_config();
+//    config.find_parameter("dualpol_sumsq","integration_length");
+
     // Config values:
     int num_total_freq = config.get_int("/processing/num_total_freq");
     int num_elements = config.get_int("/processing/num_elements");
@@ -75,17 +78,17 @@ void singleDishMode::initalize_processes() {
                   "output_power_buf");
     host_buffers.add_buffer("output_power_buf", output_buffer);
 
-    add_process((KotekanProcess *) new dpdkWrapper(config, &vdif_input_buffer, "vdif"));
+    add_process((KotekanProcess *) new dpdkWrapper(config, "vdif_capture", &vdif_input_buffer, "vdif"));
     //add_process((KotekanProcess*) new simVdifData(config, *vdif_input_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *vdif_input_buffer));
     for (int i = 0; i < num_disks; ++i) {
         // See nDiskFileWrite.cpp, this will be changed to just one process.
         INFO("Adding nDiskFileWrite with ID %d", i);
-        add_process((KotekanProcess*) new nDiskFileWrite(config, *vdif_input_buffer, i, "test_dataset"));
+        add_process((KotekanProcess*) new nDiskFileWrite(config, "disk_writer_i", *vdif_input_buffer, i, "test_dataset"));
     }
-    add_process((KotekanProcess*) new computeDualpolPower(config, *vdif_input_buffer, *output_buffer));
+    add_process((KotekanProcess*) new computeDualpolPower(config, "compute_power", *vdif_input_buffer, *output_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *output_buffer));
-    add_process((KotekanProcess*) new networkPowerStream(config, *output_buffer));
+    add_process((KotekanProcess*) new networkPowerStream(config, "stream_power", *output_buffer));
 
 
 }

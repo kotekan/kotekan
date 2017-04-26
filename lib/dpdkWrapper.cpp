@@ -5,8 +5,8 @@
 
 #include <unistd.h>
 
-dpdkWrapper::dpdkWrapper(Config& config, Buffer* network_input_buffer_[], string mode) :
-    KotekanProcess(config, std::bind(&dpdkWrapper::main_thread, this)), _mode(mode) {
+dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name, Buffer* network_input_buffer_[], string mode) :
+    KotekanProcess(config, unique_name, std::bind(&dpdkWrapper::main_thread, this)), _mode(mode) {
 
     apply_config(0);
 

@@ -2,8 +2,8 @@
 #include <random>
 #include "errors.h"
 
-testDataGen::testDataGen(Config& config, Buffer& buf_) :
-    KotekanProcess(config, std::bind(&testDataGen::main_thread, this)),
+testDataGen::testDataGen(Config& config, const string& unique_name, Buffer& buf_) :
+    KotekanProcess(config, unique_name, std::bind(&testDataGen::main_thread, this)),
     buf(buf_) {
 
 }

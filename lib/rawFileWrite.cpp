@@ -11,11 +11,13 @@
 #include "buffers.h"
 #include "errors.h"
 
-rawFileWrite::rawFileWrite(Config& config, Buffer& buf_,
+rawFileWrite::rawFileWrite(Config& config, 
+                 const string& unique_name,
+                 Buffer& buf_,
                  const std::string &base_dir_,
                  const std::string &file_name_,
                  const std::string &file_ext_) :
-        KotekanProcess(config, std::bind(&rawFileWrite::main_thread, this)),
+        KotekanProcess(config, unique_name,std::bind(&rawFileWrite::main_thread, this)),
         buf(buf_),
         base_dir(base_dir_),
         file_name(file_name_),

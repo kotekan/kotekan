@@ -11,8 +11,8 @@
 #include "buffers.h"
 #include "errors.h"
 
-nDiskFileWrite::nDiskFileWrite(Config& config, Buffer& buf_, int disk_id_, const string &dataset_name_) :
-        KotekanProcess(config, std::bind(&nDiskFileWrite::main_thread, this)),
+nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name, Buffer& buf_, int disk_id_, const string &dataset_name_) :
+        KotekanProcess(config, unique_name, std::bind(&nDiskFileWrite::main_thread, this)),
         buf(buf_),
         disk_id(disk_id_),
         dataset_name(dataset_name_)

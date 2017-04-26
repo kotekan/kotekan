@@ -7,6 +7,7 @@
 class gpuSimulate : public KotekanProcess {
 public:
     gpuSimulate(Config &config,
+                const string& unique_name,
                 struct Buffer &input_buf,
                 struct Buffer &output_buf);
     ~gpuSimulate();

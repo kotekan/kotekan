@@ -4,7 +4,7 @@
 
 #include "KotekanProcess.hpp"
 
-KotekanProcess::KotekanProcess(Config &config,
+KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
                 std::function<void(const KotekanProcess&)> main_thread_ref) :
     stop_thread(false), config(config),
     this_thread(), main_thread_fn(main_thread_ref) {

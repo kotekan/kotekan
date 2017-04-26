@@ -7,7 +7,7 @@
 
 class computeDualpolPower : public KotekanProcess {
 public:
-    computeDualpolPower(Config &config,
+    computeDualpolPower(Config &config, const string& unique_name,
                      struct Buffer &buf_in,
                      struct Buffer &buf_out);
     ~computeDualpolPower();

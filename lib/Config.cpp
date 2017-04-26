@@ -154,10 +154,23 @@ int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
     return gpus_in_link;
 }
 
+string Config::find_parameter(const string& process_name, const string& parameter){
+    DEBUG("FINDING PARAMETER!");
+
+    json::iterator process_json = _json[0].find(process_name);
+    if (process_json == _json[0].end()) {
+        throw std::runtime_error("The kotekan process '" + process_name + "' isn't in the config file!");
+        exit(0);
+    }
+    INFO ("Found %d instances.",_json[0].count(process_name));
+
+    return process_json.key();
+}
+
 void Config::generate_extra_options() {
 
     // Create the inverse remap
-    vector<int32_t> remap = get_int_array("/processing/product_remap");
+    vector<int32_t> remap = get_int_array("/product_remap");
     vector<int32_t> inverse_remap;
     inverse_remap.resize(remap.size());
 
@@ -168,14 +181,15 @@ void Config::generate_extra_options() {
     _json[0]["processing"]["inverse_product_remap"] = inverse_remap;
 
     // Special case for 16-element version
-    if (_json[0]["processing"]["num_elements"].get<int>() < 32) {
-        _json[0]["processing"]["num_adjusted_elements"] = 32;
-        _json[0]["processing"]["num_adjusted_local_freq"] = 64;
-    } else {
-        _json[0]["processing"]["num_adjusted_elements"] = _json[0]["processing"]["num_elements"];
-        _json[0]["processing"]["num_adjusted_local_freq"] = _json[0]["processing"]["num_local_freq"];
-    }
+//    if (_json[0]["processing"]["num_elements"].get<int>() < 32) {
+//        _json[0]["processing"]["num_adjusted_elements"] = 32;
+//        _json[0]["processing"]["num_adjusted_local_freq"] = 64;
+//    } else {
+//        _json[0]["processing"]["num_adjusted_elements"] = _json[0]["processing"]["num_elements"];
+//        _json[0]["processing"]["num_adjusted_local_freq"] = _json[0]["processing"]["num_local_freq"];
+//    }
 
+/*
     // Generate number of blocks.
     int num_adj_elements = _json[0]["processing"]["num_adjusted_elements"].get<int>();
     int block_size = _json[0]["gpu"]["block_size"].get<int>();
@@ -183,6 +197,7 @@ void Config::generate_extra_options() {
         (num_adj_elements / block_size + 1) / 2.;
     int num_blocks = get_float("/gpu/num_blocks");
     (void)num_blocks;
+*/
 }
 
 void Config::dump_config() {

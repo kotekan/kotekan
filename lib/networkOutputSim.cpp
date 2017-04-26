@@ -24,12 +24,13 @@
 #include <functional>
 
 networkOutputSim::networkOutputSim(Config &config_,
+                     const string& unique_name,
                      struct Buffer &buf_,
                      int num_links_in_group_,
                      int link_id_,
                      int pattern_,
                      int stream_id_) :
-                  KotekanProcess(config_, std::bind(&networkOutputSim::main_thread, this)),
+                  KotekanProcess(config_, unique_name, std::bind(&networkOutputSim::main_thread, this)),
                   buf(buf_),
                   num_links_in_group(num_links_in_group_),
                   link_id(link_id_),

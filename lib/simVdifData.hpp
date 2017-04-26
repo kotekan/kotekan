@@ -8,6 +8,7 @@
 class simVdifData : public KotekanProcess {
 public:
     simVdifData(Config &config,
+    			 const string& unique_name,
                  struct Buffer &buf);
     ~simVdifData();
     void apply_config(uint64_t fpga_seq) override;

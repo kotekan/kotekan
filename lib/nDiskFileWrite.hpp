@@ -10,6 +10,7 @@ using std::string;
 class nDiskFileWrite : public KotekanProcess {
 public:
     nDiskFileWrite(Config &config,
+                   const string& unique_name,
                    struct Buffer &buf,
                    int disk_id,
                    const string &dataset_name);

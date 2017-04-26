@@ -2,9 +2,10 @@
 #include "errors.h"
 
 gpuSimulate::gpuSimulate(Config& config,
+                         const string& unique_name,
                          struct Buffer &input_buf_,
                          struct Buffer &output_buf_) :
-    KotekanProcess(config, std::bind(&gpuSimulate::main_thread, this)),
+    KotekanProcess(config, unique_name, std::bind(&gpuSimulate::main_thread, this)),
     input_buf(input_buf_),
     output_buf(output_buf_) {
     apply_config(0);

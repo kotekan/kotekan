@@ -13,8 +13,8 @@
 #include "util.h"
 #include "errors.h"
 
-vdifStream::vdifStream(Config& config, struct Buffer &buf_) :
-    KotekanProcess(config, std::bind(&vdifStream::main_thread, this)),
+vdifStream::vdifStream(Config& config, const string& unique_name, struct Buffer &buf_) :
+    KotekanProcess(config, unique_name, std::bind(&vdifStream::main_thread, this)),
     buf(buf_){
 }
 vdifStream::~vdifStream() {

@@ -7,6 +7,7 @@
 class gpuBeamformSimulate : public KotekanProcess {
 public:
     gpuBeamformSimulate(Config &config,
+                const string& unique_name,
                 struct Buffer &input_buf,
                 struct Buffer &output_buf);
     ~gpuBeamformSimulate();

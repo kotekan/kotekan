@@ -11,6 +11,7 @@
 class rawFileRead : public KotekanProcess {
 public:
     rawFileRead(Config &config,
+                const string& unique_name,
                  struct Buffer &buf,
                  bool generate_info_object,
                  bool repeat_frame,

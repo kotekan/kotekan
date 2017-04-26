@@ -8,7 +8,7 @@
 
 class KotekanProcess {
 public:
-    KotekanProcess(Config &config,
+    KotekanProcess(Config &config, const string& unique_name,
                     std::function<void(const KotekanProcess&)> main_thread_ref);
     virtual ~KotekanProcess();
     virtual void start();

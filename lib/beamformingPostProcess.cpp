@@ -15,8 +15,9 @@
 #include "vdif_functions.h"
 
 beamformingPostProcess::beamformingPostProcess(Config& config_,
+        const string& unique_name,
         Buffer* in_buf_, Buffer& vdif_buf_) :
-        KotekanProcess(config_, std::bind(&beamformingPostProcess::main_thread, this)),
+        KotekanProcess(config_, unique_name, std::bind(&beamformingPostProcess::main_thread, this)),
         in_buf(in_buf_), vdif_buf(vdif_buf_)
 {
 }

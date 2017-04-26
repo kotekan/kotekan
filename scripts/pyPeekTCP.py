@@ -25,7 +25,7 @@ import struct
 #};
 header_fmt = '=iiiidiiiId'
 
-TCP_IP="127.0.0.1"
+TCP_IP="0.0.0.0"
 TCP_PORT = 2054
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((TCP_IP, TCP_PORT))
@@ -68,10 +68,10 @@ freqlist = np.fromstring(info_header[:pkt_freqs * 4*2],dtype=np.float32).reshape
 freqlist = freqlist/1e6
 elemlist = np.fromstring(info_header[pkt_freqs*4*2:],dtype=np.uint8)
 
-plot_freqs=pkt_freqs/16
+plot_freqs=pkt_freqs/8
 #freqlist = freqlist.reshape(-1,plot_freqs).mean(axis=1)
 
-plot_times=128
+plot_times=128*4
 
 plot_integration=2
 

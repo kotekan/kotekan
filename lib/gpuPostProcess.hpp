@@ -16,6 +16,7 @@ using std::vector;
 class gpuPostProcess : public KotekanProcess {
 public:
     gpuPostProcess(Config &config,
+                const string& unique_name,
                   struct Buffer **in_buf, // This is an array, to be fixed with vector.
                   struct Buffer &out_buf,
                   struct Buffer &gate_buf);

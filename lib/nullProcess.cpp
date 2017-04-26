@@ -9,8 +9,8 @@
 #include "errors.h"
 #include "output_formating.h"
 
-nullProcess::nullProcess(Config& config, struct Buffer &buf_) :
-    KotekanProcess(config, std::bind(&nullProcess::main_thread, this)),
+nullProcess::nullProcess(Config& config, const string& unique_name, struct Buffer &buf_) :
+    KotekanProcess(config, unique_name, std::bind(&nullProcess::main_thread, this)),
     buf(buf_){
 }
 

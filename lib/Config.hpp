@@ -52,6 +52,8 @@ public:
     // it should be moved out of this object at some point.
     void generate_extra_options();
 
+    string find_parameter(const string& process_name, const string& parameter);
+
     // Debug
     void dump_config();
 private:

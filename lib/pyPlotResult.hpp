@@ -12,6 +12,7 @@
 class pyPlotResult : public KotekanProcess {
 public:
     pyPlotResult(Config &config,
+                 const string& unique_name,
                  struct Buffer &buf,
                  int gpu_id,
                  const std::string &base_dir,

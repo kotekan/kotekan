@@ -13,8 +13,8 @@
 #include "util.h"
 #include "errors.h"
 
-networkPowerStream::networkPowerStream(Config& config, struct Buffer &buf_) :
-    KotekanProcess(config, std::bind(&networkPowerStream::main_thread, this)),
+networkPowerStream::networkPowerStream(Config& config, const string& unique_name, struct Buffer &buf_) :
+    KotekanProcess(config, unique_name, std::bind(&networkPowerStream::main_thread, this)),
     buf(buf_){
 
     //PER BUFFER

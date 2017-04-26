@@ -91,11 +91,11 @@ void packetCapMode::initalize_processes() {
                       buffer_name);
     }
 
-    add_process((KotekanProcess *) new dpdkWrapper(config, network_input_buffer, "packet_cap"));
+    add_process((KotekanProcess *) new dpdkWrapper(config, "packet_capture", network_input_buffer, "packet_cap"));
 
     // The thread which creates output frame.
     for (int i = 0; i < num_fpga_links; ++i) {
-        fullPacketDump * full_packet_dump = new fullPacketDump(config,
+        fullPacketDump * full_packet_dump = new fullPacketDump(config, "packet_dump",
                                                             *network_input_buffer[i],
                                                             i);
         add_process((KotekanProcess*)full_packet_dump);

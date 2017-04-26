@@ -21,10 +21,11 @@
 #include "version.h"
 
 gpuPostProcess::gpuPostProcess(Config& config_,
+        const string& unique_name,
         struct Buffer** in_buf_,
         struct Buffer& out_buf_,
         struct Buffer& gate_buf_) :
-        KotekanProcess(config_, std::bind(&gpuPostProcess::main_thread, this)),
+        KotekanProcess(config_, unique_name, std::bind(&gpuPostProcess::main_thread, this)),
         out_buf(out_buf_), gate_buf(gate_buf_)
 {
     apply_config(0);

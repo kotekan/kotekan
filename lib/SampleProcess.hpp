@@ -5,7 +5,7 @@
 
 class SampleProcess : public KotekanProcess {
 public:
-    SampleProcess(Config &config);
+    SampleProcess(Config &config, const string& unique_name);
     virtual ~SampleProcess();
     void main_thread();
     void apply_config(uint64_t fpga_seq) override;
