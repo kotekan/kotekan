@@ -327,27 +327,31 @@ void* gpu_post_process_thread(void* arg)
                     wait_for_empty_buffer(args->out_buf, out_buffer_ID);
                     if (gating) wait_for_empty_buffer(args->gate_buf, out_buffer_ID);
 
-                    if (enable_half_duty_gating) {
-                        double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2.0;
-                        double gated_vis_reweight =  (double) mean_integrations / (double) integrations_gated_vis;
-                        double visibilities_reweight = (double) mean_integrations / (double) integrations_visibilities ;
-                        for (int j = 0; j < num_values; ++j) {
-                            gated_vis[j].real = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].real);
-                            gated_vis[j].imag = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].imag);
-                            visibilities[j].real = (int32_t) round(visibilities_reweight * (double) visibilities[j].real);
-                            visibilities[j].imag = (int32_t) round(visibilities_reweight * (double) visibilities[j].imag);
-                        }
-                    }
-
                     if (gating) {
                         DEBUG("Copying gated data to the gate_buf!");
-                        for (int j = 0; j < num_values; ++j) {
-                            // Visibilities = OFF + ON
-                            // gated_vis = ON - OFF
-                            gated_vis[j].real = gated_vis[j].real - visibilities[j].real;
-                            gated_vis[j].imag = gated_vis[j].imag - visibilities[j].imag;
-                            visibilities[j].real = gated_vis[j].real + 2*visibilities[j].real;
-                            visibilities[j].imag = gated_vis[j].imag + 2*visibilities[j].imag;
+                        // Visibilities = OFF + ON
+                        // gated_vis = ON - OFF
+                        if (enable_half_duty_gating) {
+                            double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2.0;
+                            double gated_vis_reweight =  (double) mean_integrations / (double) integrations_gated_vis;
+                            double visibilities_reweight = (double) mean_integrations / (double) integrations_visibilities ;
+                            for (int j = 0; j < num_values; ++j) {
+                                int32_t tmp_gate1_vis_real = visibilities[j].real;
+                                int32_t tmp_gate1_vis_imag = visibilities[j].imag;
+                                visibilities[j].real = gated_vis[j].real + visibilities[j].real;
+                                visibilities[j].imag = gated_vis[j].imag + visibilities[j].imag;
+                                gated_vis[j].real = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].real
+                                        - visibilities_reweight * (double) tmp_gate1_vis_real);
+                                gated_vis[j].imag = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].imag
+                                        - visibilities_reweight * (double) tmp_gate1_vis_imag);
+                            }
+                        } else {
+                            for (int j = 0; j < num_values; ++j) {
+                                gated_vis[j].real = gated_vis[j].real - visibilities[j].real;
+                                gated_vis[j].imag = gated_vis[j].imag - visibilities[j].imag;
+                                visibilities[j].real = gated_vis[j].real + 2*visibilities[j].real;
+                                visibilities[j].imag = gated_vis[j].imag + 2*visibilities[j].imag;
+                            }
                         }
                         memcpy(args->gate_buf->data[out_buffer_ID], gated_buf, gated_buf_size);
                         mark_buffer_full(args->gate_buf, out_buffer_ID);
