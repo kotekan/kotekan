@@ -286,6 +286,7 @@ void* gpu_post_process_thread(void* arg)
                         integrations_visibilities = 0;
                     }
                     for (int j = 0; j < config->processing.num_total_freq; ++j) {
+                        frequency_data[j] = local_freq_data[i][j];  // This line required. Struct contains members other than those below.
                         frequency_data[j].lost_packet_count = 0;
                         frequency_data[j].rfi_count = 0;
                     }
