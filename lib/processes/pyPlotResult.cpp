@@ -7,7 +7,6 @@
 #include <functional>
 
 #include "pyPlotResult.hpp"
-#include "stream_raw_vdif.h"
 #include "buffers.h"
 #include "errors.h"
 

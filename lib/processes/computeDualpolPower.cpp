@@ -1,13 +1,10 @@
 #include "computeDualpolPower.hpp"
 #include "buffers.h"
 #include "errors.h"
-#include "test_data_generation.h"
-#include "error_correction.h"
 #include "nt_memcpy.h"
 #include "Config.hpp"
 #include "util.h"
 #include "vdif_functions.h"
-#include "time_tracking.h"
 
 #include <dirent.h>
 #include <sys/socket.h>

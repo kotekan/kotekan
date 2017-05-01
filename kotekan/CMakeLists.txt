@@ -19,6 +19,11 @@ endif ()
 
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 link_directories (${KOTEKAN_BINARY_DIR}/lib)

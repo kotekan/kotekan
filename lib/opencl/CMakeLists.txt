@@ -1,13 +1,13 @@
 cmake_minimum_required( VERSION 2.8 )
-project( libkotekan_old_opencl )
+project( libkotekan_opencl )
 
 include_directories( ${OPENCL_INCLUDE_DIRS} )
 
 include_directories (${CHIME_SOURCE_DIR}/include)
 include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/old_opencl)
+include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
 
-add_library ( kotekan_old_opencl
+add_library ( kotekan_opencl
               device_interface.cpp
               callbackdata.cpp
               beamform_kernel.cpp
@@ -33,4 +33,4 @@ add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CHIME_SOURCE_DIR}/kernels"
         "kernels")
-add_dependencies( kotekan_old_opencl kernel_copy )
+add_dependencies( kotekan_opencl kernel_copy )

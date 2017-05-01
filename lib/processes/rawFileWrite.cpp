@@ -7,11 +7,10 @@
 #include <functional>
 
 #include "rawFileWrite.hpp"
-#include "stream_raw_vdif.h"
 #include "buffers.h"
 #include "errors.h"
 
-rawFileWrite::rawFileWrite(Config& config, 
+rawFileWrite::rawFileWrite(Config& config,
                  const string& unique_name,
                  Buffer& buf_,
                  const std::string &base_dir_,

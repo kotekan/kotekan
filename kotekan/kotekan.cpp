@@ -50,22 +50,11 @@ extern "C" {
 #include "errors.h"
 #include "buffers.h"
 
-#include "error_correction.h"
-#include "chrxUplink.hpp"
 #include "Config.hpp"
-#include "gpuPostProcess.hpp"
-#include "beamformingPostProcess.hpp"
-#include "vdifStream.hpp"
-#include "nullProcess.hpp"
 #include "util.h"
-#include "network_dpdk.h"
 #include "version.h"
-#include "raw_cap.hpp"
-#include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
 #include "json.hpp"
-#include "gpuPostProcess.hpp"
-#include "beamformingPostProcess.hpp"
 #include "restServer.hpp"
 
 #ifdef WITH_HSA
