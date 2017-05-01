@@ -329,8 +329,8 @@ void* gpu_post_process_thread(void* arg)
 
                     if (enable_half_duty_gating) {
                         double mean_integrations = (double) (integrations_gated_vis + integrations_visibilities) / 2.0;
-                        double gated_vis_reweight = (double) integrations_gated_vis / (double) mean_integrations;
-                        double visibilities_reweight = (double) integrations_visibilities / (double) mean_integrations;
+                        double gated_vis_reweight =  (double) mean_integrations / (double) integrations_gated_vis;
+                        double visibilities_reweight = (double) mean_integrations / (double) integrations_visibilities ;
                         for (int j = 0; j < num_values; ++j) {
                             gated_vis[j].real = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].real);
                             gated_vis[j].imag = (int32_t) round(gated_vis_reweight * (double) gated_vis[j].imag);
