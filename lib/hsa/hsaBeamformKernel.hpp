@@ -1,7 +1,7 @@
 #ifndef HSA_BEAMFORM_KERNEL_H
 #define HSA_BEAMFORM_KERNEL_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
 // #define N_ELEM 2048
 // #define N_ITER 38400 // 32768
@@ -11,11 +11,11 @@
 #define PI 3.14159265
 #define FREQ1 450.0
 
-class hsaBeamformKernel: public gpuHSAcommand
+class hsaBeamformKernel: public hsaCommand
 {
 public:
     hsaBeamformKernel(const string &kernel_name, const string &kernel_file_name,
-                        gpuHSADeviceInterface &device, Config &config,
+                        hsaDeviceInterface &device, Config &config,
                         bufferContainer &host_buffers);
 
     virtual ~hsaBeamformKernel();

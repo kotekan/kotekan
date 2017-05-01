@@ -8,19 +8,19 @@
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
-#include "gpuHSADeviceInterface.hpp"
-#include "gpuHSACommandFactory.hpp"
-#include "gpuHSACommand.hpp"
+#include "hsaDeviceInterface.hpp"
+#include "hsaCommandFactory.hpp"
+#include "hsaCommand.hpp"
 #include "signalContainer.hpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
 
-class gpuHSAThread : public KotekanProcess {
+class hsaThread : public KotekanProcess {
 public:
-    gpuHSAThread(Config &config, bufferContainer &host_buffers, uint32_t gpu_id);
-    virtual ~gpuHSAThread();
+    hsaThread(Config &config, bufferContainer &host_buffers, uint32_t gpu_id);
+    virtual ~hsaThread();
 
     void main_thread();
 
@@ -34,8 +34,8 @@ private:
 
     vector<signalContainer> final_signals;
 
-    gpuHSACommandFactory * factory;
-    gpuHSADeviceInterface * device;
+    hsaCommandFactory * factory;
+    hsaDeviceInterface * device;
 
     std::thread results_thread_handle;
 

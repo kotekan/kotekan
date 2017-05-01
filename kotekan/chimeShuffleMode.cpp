@@ -1,7 +1,7 @@
 #include "chimeShuffleMode.hpp"
 
 #include "buffers.h"
-#include "gpuHSAThread.hpp"
+#include "hsaThread.hpp"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
@@ -103,7 +103,7 @@ void chimeShuffleMode::initalize_processes() {
         host_buffers[i].add_buffer("output_buf", gpu_output_buffer[i]);
 
         // TODO better management of the buffers so this list doesn't have to change size...
-        add_process((KotekanProcess*) new gpuHSAThread(config, "hsa", host_buffers[i], i));
+        add_process((KotekanProcess*) new hsaThread(config, "hsa", host_buffers[i], i));
     }
 
     add_process((KotekanProcess *) new dpdkWrapper(config, "dpdk_input", network_input_buffer, "shuffle4") );

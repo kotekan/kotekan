@@ -1,4 +1,4 @@
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 #include <string.h>
 #include <iostream>
 #include <fstream>
@@ -10,8 +10,8 @@ using std::string;
 
 #define MAX_ARGS_LEN 64
 
-gpuHSAcommand::gpuHSAcommand(const string &command_name_, const string &kernel_file_name_,
-        gpuHSADeviceInterface& device_, Config& config_,
+hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_name_,
+        hsaDeviceInterface& device_, Config& config_,
         bufferContainer &host_buffers_) :
         command_name(command_name_),
         kernel_file_name(kernel_file_name_),
@@ -36,7 +36,7 @@ gpuHSAcommand::gpuHSAcommand(const string &command_name_, const string &kernel_f
     }
 }
 
-gpuHSAcommand::~gpuHSAcommand() {
+hsaCommand::~hsaCommand() {
     hsa_host_free(signals);
     hsa_status_t hsa_status;
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
@@ -49,16 +49,16 @@ gpuHSAcommand::~gpuHSAcommand() {
 
 }
 
-string &gpuHSAcommand::get_name() {
+string &hsaCommand::get_name() {
     return command_name;
 }
 
-void gpuHSAcommand::apply_config(const uint64_t& fpga_seq) {
+void hsaCommand::apply_config(const uint64_t& fpga_seq) {
     _gpu_buffer_depth = config.get_int("/gpu/buffer_depth");
     //INFO("GPU Buffer depth: %d", _gpu_buffer_depth);
 }
 
-void gpuHSAcommand::allocate_kernel_arg_memory(int max_size) {
+void hsaCommand::allocate_kernel_arg_memory(int max_size) {
     hsa_status_t hsa_status;
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
 
@@ -68,7 +68,7 @@ void gpuHSAcommand::allocate_kernel_arg_memory(int max_size) {
     }
 }
 
-void gpuHSAcommand::finalize_frame(int frame_id) {
+void hsaCommand::finalize_frame(int frame_id) {
     if (signals[frame_id].handle != 0) {
         hsa_status_t hsa_status;
         hsa_status = hsa_signal_destroy(signals[frame_id]);
@@ -76,11 +76,11 @@ void gpuHSAcommand::finalize_frame(int frame_id) {
     }
 }
 
-void gpuHSAcommand::wait_on_precondition(int gpu_frame_id) {
+void hsaCommand::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 }
 
-uint64_t gpuHSAcommand::load_hsaco_file(string& file_name, string& kernel_name) {
+uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
 
     hsa_status_t hsa_status;
 

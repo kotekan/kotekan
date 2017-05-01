@@ -9,9 +9,9 @@
 #define N_INTG 16384
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string& kernel_file_name,
-                            gpuHSADeviceInterface& device, Config& config,
+                            hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers) :
-    gpuHSAcommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
 
     apply_config(0);
 
@@ -43,7 +43,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string
 }
 
 void hsaCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
-    gpuHSAcommand::apply_config(fpga_seq);
+    hsaCommand::apply_config(fpga_seq);
 
     _num_elements = config.get_int("/processing/num_elements");
     _num_local_freq = config.get_int("/processing/num_local_freq");

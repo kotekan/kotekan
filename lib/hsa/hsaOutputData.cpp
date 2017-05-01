@@ -2,9 +2,9 @@
 #include <unistd.h>
 
 hsaOutputData::hsaOutputData(const string& kernel_name, const string& kernel_file_name,
-                            gpuHSADeviceInterface& device, Config& config,
+                            hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers) :
-    gpuHSAcommand(kernel_name, kernel_file_name, device, config, host_buffers){
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers){
     apply_config(0);
 
     network_buffer = host_buffers.get_buffer("network_buf");
@@ -43,7 +43,7 @@ hsa_signal_t hsaOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
 
 
 void hsaOutputData::finalize_frame(int frame_id) {
-    gpuHSAcommand::finalize_frame(frame_id);
+    hsaCommand::finalize_frame(frame_id);
 
     // Copy the information contained in the input buffer
     //copy_buffer_info(network_buffer, network_buffer_id,

@@ -1,9 +1,9 @@
 #include "hsaBeamformOutput.hpp"
 
 hsaBeamformOutputData::hsaBeamformOutputData(const string& kernel_name,
-        const string& kernel_file_name, gpuHSADeviceInterface& device,
+        const string& kernel_file_name, hsaDeviceInterface& device,
         Config& config, bufferContainer& host_buffers) :
-    gpuHSAcommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
 
     apply_config(0);
 
@@ -41,7 +41,7 @@ hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fp
 }
 
 void hsaBeamformOutputData::finalize_frame(int frame_id) {
-    gpuHSAcommand::finalize_frame(frame_id);
+    hsaCommand::finalize_frame(frame_id);
 
     mark_buffer_full(output_buffer, output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_buffers;

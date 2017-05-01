@@ -5,7 +5,7 @@
 #include "errors.h"
 #include "assert.h"
 #include "buffers.h"
-#include "gpuHSADeviceInterface.hpp"
+#include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
 
 #include <stdio.h>
@@ -26,14 +26,14 @@ using std::string;
 //
 // This allow us to have host->gpu copies, kernels, and gpu->host copies
 // running co-currently, at the expense of some complexity and extra memory.
-class gpuHSAcommand
+class hsaCommand
 {
 public:
     // Kernel file name is optional.
-    gpuHSAcommand(const string &kernel_name, const string &kernel_file_name,
-                gpuHSADeviceInterface &device, Config &config,
+    hsaCommand(const string &kernel_name, const string &kernel_file_name,
+                hsaDeviceInterface &device, Config &config,
                 bufferContainer &host_buffers);
-    virtual ~gpuHSAcommand();
+    virtual ~hsaCommand();
     string &get_name();
 
     // This function blocks on whatever resource is required by this command
@@ -62,7 +62,7 @@ protected:
     void allocate_kernel_arg_memory(int max_size);
 
     Config &config;
-    gpuHSADeviceInterface &device;
+    hsaDeviceInterface &device;
     bufferContainer host_buffers;
 
     // Final signals array

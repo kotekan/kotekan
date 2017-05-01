@@ -20,10 +20,10 @@ add_library ( kotekan_hsa
               hsaPresumZero.cpp
               hsaBeamformKernel.cpp
               hsaBeamformOutput.cpp
-              gpuHSACommand.cpp
-              gpuHSACommandFactory.cpp
-              gpuHSADeviceInterface.cpp
-              gpuHSAThread.cpp
+              hasCommand.cpp
+              hsaCommandFactory.cpp
+              hsaDeviceInterface.cpp
+              hsaThread.cpp
               )
 
 add_subdirectory(kernels)

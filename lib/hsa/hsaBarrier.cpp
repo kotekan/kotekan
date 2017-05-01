@@ -35,6 +35,6 @@ hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
 
 // If a completion signal was created this would clean it.
 void hsaBarrier::finalize_frame(int frame_id) {
-    gpuHSAcommand::finalize_frame(frame_id);
+    hsaCommand::finalize_frame(frame_id);
 }
 

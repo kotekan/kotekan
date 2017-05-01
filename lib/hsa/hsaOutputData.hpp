@@ -1,14 +1,14 @@
 #ifndef HSA_OUTPUT_DATA_H
 #define HSA_OUTPUT_DATA_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaOutputData: public gpuHSAcommand
+class hsaOutputData: public hsaCommand
 {
 public:
 
     hsaOutputData(const string &kernel_name, const string &kernel_file_name,
-                  gpuHSADeviceInterface &device, Config &config,
+                  hsaDeviceInterface &device, Config &config,
                   bufferContainer &host_buffers);
 
     virtual ~hsaOutputData();

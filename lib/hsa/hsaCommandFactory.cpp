@@ -1,4 +1,4 @@
-#include "gpuHSACommandFactory.hpp"
+#include "hsaCommandFactory.hpp"
 #include <stdio.h>
 #include <stdlib.h>
 #include "errors.h"
@@ -19,8 +19,8 @@
 
 using namespace std;
 
-gpuHSACommandFactory::gpuHSACommandFactory(Config& config_,
-                                            gpuHSADeviceInterface& device_,
+hsaCommandFactory::hsaCommandFactory(Config& config_,
+                                            hsaDeviceInterface& device_,
                                             bufferContainer &host_buffers_) :
     config(config_),
     device(device_),
@@ -72,13 +72,13 @@ gpuHSACommandFactory::gpuHSACommandFactory(Config& config_,
     }
 }
 
-gpuHSACommandFactory::~gpuHSACommandFactory() {
+hsaCommandFactory::~hsaCommandFactory() {
     // Does this work?
     for (auto command : list_commands) {
         delete command;
     }
 }
 
-vector<gpuHSAcommand*>& gpuHSACommandFactory::get_commands() {
+vector<hsaCommand*>& hsaCommandFactory::get_commands() {
     return list_commands;
 }

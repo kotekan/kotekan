@@ -1,14 +1,14 @@
 #ifndef HSA_INPUT_DATA_H
 #define HSA_INPUT_DATA_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaInputData: public gpuHSAcommand
+class hsaInputData: public hsaCommand
 {
 public:
 
     hsaInputData(const string &kernel_name, const string &kernel_file_name,
-                  gpuHSADeviceInterface &device, Config &config,
+                  hsaDeviceInterface &device, Config &config,
                   bufferContainer &host_buffers);
 
     virtual ~hsaInputData();

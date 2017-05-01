@@ -2,9 +2,9 @@
 #include "hsaBase.h"
 
 hsaOutputDataZero::hsaOutputDataZero(const string& kernel_name, const string& kernel_file_name,
-                            gpuHSADeviceInterface& device, Config& config,
+                            hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers) :
-    gpuHSAcommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
 
     apply_config(0);
 
@@ -20,7 +20,7 @@ hsaOutputDataZero::~hsaOutputDataZero() {
 }
 
 void hsaOutputDataZero::apply_config(const uint64_t& fpga_seq) {
-    gpuHSAcommand::apply_config(fpga_seq);
+    hsaCommand::apply_config(fpga_seq);
     _num_blocks = config.get_int("/gpu/num_blocks");
     output_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
 }

@@ -1,7 +1,7 @@
 #ifndef HSA_CORRELATOR_KERNEL_H
 #define HSA_CORRELATOR_KERNEL_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
 #pragma pack(4)
 struct corr_kernel_config_t {
@@ -12,12 +12,12 @@ struct corr_kernel_config_t {
 };
 #pragma pack(0)
 
-class hsaCorrelatorKernel: public gpuHSAcommand
+class hsaCorrelatorKernel: public hsaCommand
 {
 public:
 
     hsaCorrelatorKernel(const string &kernel_name, const string &kernel_file_name,
-                        gpuHSADeviceInterface &device, Config &config,
+                        hsaDeviceInterface &device, Config &config,
                         bufferContainer &host_buffers);
 
     virtual ~hsaCorrelatorKernel();

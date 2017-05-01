@@ -1,14 +1,14 @@
 #ifndef HSA_PRESUM_ZERO_H
 #define HSA_PRESUM_ZERO_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaPresumZero: public gpuHSAcommand
+class hsaPresumZero: public hsaCommand
 {
 public:
 
     hsaPresumZero(const string &kernel_name, const string &kernel_file_name,
-                  gpuHSADeviceInterface &device, Config &config,
+                  hsaDeviceInterface &device, Config &config,
                   bufferContainer &host_buffers);
 
     virtual ~hsaPresumZero();

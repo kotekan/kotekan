@@ -1,14 +1,14 @@
 #ifndef HSA_PRESEED_KERNEL_H
 #define HSA_PRESEED_KERNEL_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaPreseedKernel: public gpuHSAcommand
+class hsaPreseedKernel: public hsaCommand
 {
 public:
 
     hsaPreseedKernel(const string &kernel_name, const string &kernel_file_name,
-                  gpuHSADeviceInterface &device, Config &config,
+                  hsaDeviceInterface &device, Config &config,
                   bufferContainer &host_buffers);
 
     virtual ~hsaPreseedKernel();

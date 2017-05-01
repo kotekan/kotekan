@@ -1,14 +1,14 @@
 #ifndef HSA_BEAMFORM_OUTPUT_DATA_H
 #define HSA_BEAMFORM_OUTPUT_DATA_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaBeamformOutputData: public gpuHSAcommand
+class hsaBeamformOutputData: public hsaCommand
 {
 public:
 
     hsaBeamformOutputData(const string &kernel_name, const string &kernel_file_name,
-                  gpuHSADeviceInterface &device, Config &config,
+                  hsaDeviceInterface &device, Config &config,
                   bufferContainer &host_buffers);
 
     virtual ~hsaBeamformOutputData();

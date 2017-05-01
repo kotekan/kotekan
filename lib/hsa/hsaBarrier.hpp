@@ -1,14 +1,14 @@
 #ifndef HSA_BARRIER_H
 #define HSA_BARRIER_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaBarrier: public gpuHSAcommand
+class hsaBarrier: public hsaCommand
 {
 public:
 
     // Pull constructors.
-    using gpuHSAcommand::gpuHSAcommand;
+    using hsaCommand::hsaCommand;
 
     void wait_on_precondition(int gpu_frame_id) override;
 

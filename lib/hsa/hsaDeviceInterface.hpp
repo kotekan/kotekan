@@ -38,11 +38,11 @@ struct gpuMemoryBlock {
     ~gpuMemoryBlock();
 };
 
-class gpuHSADeviceInterface
+class hsaDeviceInterface
 {
 public:
-    gpuHSADeviceInterface(Config& config, int gpu_id);
-    virtual ~gpuHSADeviceInterface();
+    hsaDeviceInterface(Config& config, int gpu_id);
+    virtual ~hsaDeviceInterface();
     int get_gpu_id();
     int get_gpu_buffer_depth();
 

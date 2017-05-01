@@ -1,14 +1,14 @@
 #ifndef HSA_OUTPUT_DATA_ZERO_H
 #define HSA_OUTPUT_DATA_ZERO_H
 
-#include "gpuHSACommand.hpp"
+#include "hsaCommand.hpp"
 
-class hsaOutputDataZero: public gpuHSAcommand
+class hsaOutputDataZero: public hsaCommand
 {
 public:
 
     hsaOutputDataZero(const string &kernel_name, const string &kernel_file_name,
-                  gpuHSADeviceInterface &device, Config &config,
+                  hsaDeviceInterface &device, Config &config,
                   bufferContainer &host_buffers);
 
     virtual ~hsaOutputDataZero();

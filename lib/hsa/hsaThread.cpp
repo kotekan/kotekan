@@ -1,4 +1,4 @@
-#include "gpuHSAThread.hpp"
+#include "hsaThread.hpp"
 #include "unistd.h"
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
@@ -15,9 +15,9 @@ double e_time(void){
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 }
 
-gpuHSAThread::gpuHSAThread(Config& config_, bufferContainer &host_buffers_,
+hsaThread::hsaThread(Config& config_, bufferContainer &host_buffers_,
         uint32_t gpu_id_):
-    KotekanProcess(config_, std::bind(&gpuHSAThread::main_thread, this)),
+    KotekanProcess(config_, std::bind(&hsaThread::main_thread, this)),
     host_buffers(host_buffers_),
     gpu_id(gpu_id_)
 {
@@ -25,24 +25,24 @@ gpuHSAThread::gpuHSAThread(Config& config_, bufferContainer &host_buffers_,
 
     final_signals.resize(_gpu_buffer_depth);
 
-    device = new gpuHSADeviceInterface(config, gpu_id);
-    factory = new gpuHSACommandFactory(config, *device, host_buffers);
+    device = new hsaDeviceInterface(config, gpu_id);
+    factory = new hsaCommandFactory(config, *device, host_buffers);
 }
 
-void gpuHSAThread::apply_config(uint64_t fpga_seq) {
+void hsaThread::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
     _gpu_buffer_depth = config.get_int("/gpu/buffer_depth");
 }
 
-gpuHSAThread::~gpuHSAThread() {
+hsaThread::~hsaThread() {
     delete factory;
     delete device;
 }
 
-void gpuHSAThread::main_thread()
+void hsaThread::main_thread()
 {
 
-    vector<gpuHSAcommand *> &commands = factory->get_commands();
+    vector<hsaCommand *> &commands = factory->get_commands();
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
@@ -73,7 +73,7 @@ void gpuHSAThread::main_thread()
         final_signals[gpu_frame_id].set_signal(signal);
 
         if (first_run) {
-            results_thread_handle = std::thread(&gpuHSAThread::results_thread, std::ref(*this));
+            results_thread_handle = std::thread(&hsaThread::results_thread, std::ref(*this));
 
             // Requires Linux, this could possibly be made more general someday.
             // TODO Move to config
@@ -92,9 +92,9 @@ void gpuHSAThread::main_thread()
     results_thread_handle.join();
 }
 
-void gpuHSAThread::results_thread() {
+void hsaThread::results_thread() {
 
-    vector<gpuHSAcommand *> &commands = factory->get_commands();
+    vector<hsaCommand *> &commands = factory->get_commands();
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;

@@ -19,7 +19,7 @@
   #include "hccGPUThread.hpp"
 #endif
 #ifdef WITH_HSA
-  #include "gpuHSAThread.hpp"
+  #include "hsaThread.hpp"
 #endif
 
 
@@ -159,7 +159,7 @@ void gpuTestMode::initalize_processes() {
 
         // Beamform test
         //add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));
-        //add_process((KotekanProcess*) new gpuHSAThread(config, host_buffers[i], i));
+        //add_process((KotekanProcess*) new hsaThread(config, host_buffers[i], i));
         //add_process((KotekanProcess*) new rawFileRead(config, *beamform_output_simulate_buffer[i], false, true,
         //                                                 "/data/test_data/", "beamform_gpu_output_99", "dat"));
         ////add_process((KotekanProcess*) new gpuBeamformSimulate(config, *network_input_buffer[i], *beamform_output_simulate_buffer[i]));
@@ -170,7 +170,7 @@ void gpuTestMode::initalize_processes() {
         //add_process((KotekanProcess*) new rawFileRead(config, *network_input_buffer[i], true, false,
         //                                                "/data/test_data/", "gpu_input_frame_const", "dat"));
         add_process((KotekanProcess*) new testDataGen(config, "test_data", *network_input_buffer[i]));
-        add_process((KotekanProcess*) new gpuHSAThread(config, "hsa_gpu", host_buffers[i], i));
+        add_process((KotekanProcess*) new hsaThread(config, "hsa_gpu", host_buffers[i], i));
         add_process((KotekanProcess*) new rawFileRead(config, "rawfile", *simulate_output_buffer[i], false, false,
                                                         "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
         add_process((KotekanProcess*) new pyPlotResult(config, "plot_n2", *gpu_output_buffer[i], i, "/data/test_data/", "beamform_gpu_output_99", "dat") );
