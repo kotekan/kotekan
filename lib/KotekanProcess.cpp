@@ -5,8 +5,10 @@
 #include "KotekanProcess.hpp"
 
 KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
+                bufferContainer &buffer_container_,
                 std::function<void(const KotekanProcess&)> main_thread_ref) :
     stop_thread(false), config(config),
+    buffer_container(buffer_container_),
     this_thread(), main_thread_fn(main_thread_ref) {
 
     set_cpu_affinity(config.get_int_array("/processing/cpu_affinity"));

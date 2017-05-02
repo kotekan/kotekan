@@ -15,11 +15,9 @@ using std::vector;
 
 class gpuPostProcess : public KotekanProcess {
 public:
-    gpuPostProcess(Config &config,
-                const string& unique_name,
-                  struct Buffer **in_buf, // This is an array, to be fixed with vector.
-                  struct Buffer &out_buf,
-                  struct Buffer &gate_buf);
+    gpuPostProcess(Config& config_,
+                    const string& unique_name,
+                    bufferContainer &buffer_container);
     virtual ~gpuPostProcess();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
@@ -27,8 +25,8 @@ public:
     void vis_endpoint(connectionInstance &conn, json &json_request);
 private:
     struct Buffer **in_buf;
-    struct Buffer &out_buf;
-    struct Buffer &gate_buf;
+    struct Buffer *out_buf;
+    struct Buffer *gate_buf;
 
     // Config variables
     // Aside (wow this stage needs a lot of configuration options)

@@ -62,7 +62,7 @@ extern "C" {
     #include "gpuTestMode.hpp"
 #endif
 #ifdef WITH_OPENCL
-    #include "gpu_thread.h"
+    #include "clProcess.h"
 #endif
 
 #include "packetCapMode.hpp"

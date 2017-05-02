@@ -10,19 +10,13 @@
 
 class rawFileRead : public KotekanProcess {
 public:
-    rawFileRead(Config &config,
-                const string& unique_name,
-                 struct Buffer &buf,
-                 bool generate_info_object,
-                 bool repeat_frame,
-                 const std::string &base_dir,
-                 const std::string &file_name,
-                 const std::string &file_ext);
+    rawFileRead(Config& config, const string& unique_name,
+                bufferContainer &buffer_container);
     virtual ~rawFileRead();
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();
 private:
-    struct Buffer &buf;
+    struct Buffer *buf;
     void * tmp_buf;
     bool generate_info_object;
     bool repeat_frame;

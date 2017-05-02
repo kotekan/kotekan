@@ -19,7 +19,8 @@
 
 class hsaThread : public KotekanProcess {
 public:
-    hsaThread(Config &config, bufferContainer &host_buffers, uint32_t gpu_id);
+    hsaThread(Config& config, const string& unique_name,
+              bufferContainer &buffer_container);
     virtual ~hsaThread();
 
     void main_thread();
@@ -29,8 +30,6 @@ public:
     virtual void apply_config(uint64_t fpga_seq);
 
 private:
-
-    bufferContainer &host_buffers;
 
     vector<signalContainer> final_signals;
 

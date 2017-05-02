@@ -31,12 +31,14 @@
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
 //#define NUM_FREQ 1024
 
-computeDualpolPower::computeDualpolPower(Config &config_, const string& unique_name,
-                     struct Buffer &buf_in_, struct Buffer &buf_out_) :
-                  KotekanProcess(config_, unique_name, std::bind(&computeDualpolPower::main_thread, this)),
-                  buf_in(buf_in_),
-                  buf_out(buf_out_)
+computeDualpolPower::computeDualpolPower(Config &config, const string& unique_name,
+                        bufferContainer &buffer_container) :
+                  KotekanProcess(config, unique_name, buffer_container,
+                                 std::bind(&computeDualpolPower::main_thread, this))
 {
+    buf_in = buffer_container.get_buffer("vdif_buf");
+    buf_out = buffer_container.get_buffer("power_buf");
+
     timesteps_in = config.get_int("/processing/samples_per_data_set");
     integration_length = config.get_int("/raw_capture/integration_length");
     timesteps_out = timesteps_in / integration_length;
@@ -67,17 +69,17 @@ void computeDualpolPower::main_thread() {
     int buf_in_id=0;
     int buf_out_id=0;
 
-    static int nthreads=1;
+    const int nthreads=1;
     int nloop = timesteps_out/nthreads;
     std::thread this_thread[nthreads];
 
     for (EVER) {
-        buf_in_id = get_full_buffer_from_list(&buf_in, &buf_in_id, 1);
-        wait_for_empty_buffer(&buf_out, buf_out_id);
-        in_local = buf_in.data[buf_in_id];
-        out_local = buf_out.data[buf_out_id];
+        buf_in_id = get_full_buffer_from_list(buf_in, &buf_in_id, 1);
+        wait_for_empty_buffer(buf_out, buf_out_id);
+        in_local = buf_in->data[buf_in_id];
+        out_local = buf_out->data[buf_out_id];
 
-    double start_time = e_time();
+    //double start_time = e_time();
 
         for (int j=0; j<nthreads; j++) {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
@@ -90,20 +92,17 @@ void computeDualpolPower::main_thread() {
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
 
-    double stop_time = e_time();
-//    INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+    //double stop_time = e_time();
+    //INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
-        mark_buffer_empty(&buf_in, buf_in_id);
-        mark_buffer_full(&buf_out, buf_out_id);
-        buf_in_id = ( buf_in_id + 1 ) % buf_in.num_buffers;
-        buf_out_id = (buf_out_id + 1) % (buf_out.num_buffers);
+        mark_buffer_empty(buf_in, buf_in_id);
+        mark_buffer_full(buf_out, buf_out_id);
+        buf_in_id = ( buf_in_id + 1 ) % buf_in->num_buffers;
+        buf_out_id = (buf_out_id + 1) % (buf_out->num_buffers);
 
    }
 
-    mark_producer_done(&buf_out, 0);
-
-//    free(in_local);
-  //  free(out_local);
+    mark_producer_done(buf_out, 0);
 }
 
 

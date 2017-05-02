@@ -13,11 +13,16 @@
 
 #define MAX_NUM_PACKETS 100
 
-fullPacketDump::fullPacketDump(Config& config, const string& unique_name, struct Buffer &buf_, int link_id_) :
-    KotekanProcess(config, unique_name, std::bind(&fullPacketDump::main_thread, this)),
-    buf(buf_), link_id(link_id_){
+fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
+                               bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                    std::bind(&fullPacketDump::main_thread, this)) {
+
+    link_id = config.get_int("link_id");
+    buf = buffer_container.get_buffer("network_buffer");
 
     apply_config(0);
+
     _packet_frame = (uint8_t*)malloc(_packet_size * MAX_NUM_PACKETS);
 }
 
@@ -69,7 +74,7 @@ void fullPacketDump::main_thread() {
     int file_num = 0;
     char host_name[100];
     gethostname(host_name, 100);
- 
+
 
     int first_time = 1;
 
@@ -77,7 +82,7 @@ void fullPacketDump::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = get_full_buffer_from_list(&buf, &buffer_ID, 1);
+        buffer_ID = get_full_buffer_from_list(buf, &buffer_ID, 1);
         //INFO("fullPacketDump: link %d got full full buffer ID %d", link_id, buffer_ID);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
@@ -86,7 +91,7 @@ void fullPacketDump::main_thread() {
 
         if (!_dump_to_disk) {
             std::lock_guard<std::mutex> lock(_packet_frame_lock);
-            memcpy(_packet_frame, buf.data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
+            memcpy(_packet_frame, buf->data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
             if (!got_packets) got_packets = true;
         }
 
@@ -115,9 +120,9 @@ void fullPacketDump::main_thread() {
                 exit(errno);
             }
 
-            ssize_t bytes_writen = write(fd, buf.data[buffer_ID], buf.buffer_size);
+            ssize_t bytes_writen = write(fd, buf->data[buffer_ID], buf->buffer_size);
 
-            if (bytes_writen != buf.buffer_size) {
+            if (bytes_writen != buf->buffer_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             }
@@ -130,10 +135,10 @@ void fullPacketDump::main_thread() {
             file_num++;
         }
 
-        release_info_object(&buf, buffer_ID);
-        mark_buffer_empty(&buf, buffer_ID);
+        release_info_object(buf, buffer_ID);
+        mark_buffer_empty(buf, buffer_ID);
 
-        buffer_ID = (buffer_ID + 1) % buf.num_buffers;
+        buffer_ID = (buffer_ID + 1) % buf->num_buffers;
     }
     INFO("Closing full packet dump thread...");
 }

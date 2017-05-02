@@ -12,8 +12,7 @@ class beamformingPostProcess : public KotekanProcess {
 public:
     beamformingPostProcess(Config &config,
                   const string& unique_name,
-                  struct Buffer *in_buf,
-                  struct Buffer &vdif_buf);
+                  bufferContainer &buffer_container);
     virtual ~beamformingPostProcess();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
@@ -26,8 +25,8 @@ private:
                   const uint32_t num_links,
                   uint32_t *thread_id);
 
-    struct Buffer *in_buf;
-    struct Buffer &vdif_buf;
+    struct Buffer **in_buf;
+    struct Buffer *vdif_buf;
 
     // Config variables
     int32_t _num_fpga_links;

@@ -10,12 +10,15 @@
 #include "buffers.h"
 #include "errors.h"
 
-nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name, Buffer& buf_, int disk_id_, const string &dataset_name_) :
-        KotekanProcess(config, unique_name, std::bind(&nDiskFileWrite::main_thread, this)),
-        buf(buf_),
+nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
+                                bufferContainer &buffer_containter,
+                                int disk_id_, const string &dataset_name_) :
+        KotekanProcess(config, unique_name, buffer_containter,
+                       std::bind(&nDiskFileWrite::main_thread, this)),
         disk_id(disk_id_),
         dataset_name(dataset_name_)
 {
+    buf = buffer_containter.get_buffer("network_buffer");
     apply_config(0);
 }
 
@@ -40,7 +43,7 @@ void nDiskFileWrite::main_thread() {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = get_full_buffer_from_list(&buf, &buffer_id, 1);
+        buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
 
         //INFO("Got buffer id: %d, disk id %d", buffer_id, disk_id);
 
@@ -59,7 +62,7 @@ void nDiskFileWrite::main_thread() {
                 dataset_name.c_str(),
                 file_num);
 
-        struct ErrorMatrix * error_matrix = get_error_matrix(&buf, buffer_id);
+        struct ErrorMatrix * error_matrix = get_error_matrix(buf, buffer_id);
 
         // Open the file to write
         if (write_to_disk) {
@@ -72,9 +75,9 @@ void nDiskFileWrite::main_thread() {
                 exit(errno);
             }
 
-            ssize_t bytes_writen = write(fd, buf.data[buffer_id], buf.buffer_size);
+            ssize_t bytes_writen = write(fd, buf->data[buffer_id], buf->buffer_size);
 
-            if (bytes_writen != buf.buffer_size) {
+            if (bytes_writen != buf->buffer_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
@@ -92,13 +95,13 @@ void nDiskFileWrite::main_thread() {
         }
 
         // Zero the buffer (needed for VDIF packet processing)
-        zero_buffer(&buf, buffer_id);
+        zero_buffer(buf, buffer_id);
 
         // TODO make release_info_object work for nConsumers.
-        release_info_object(&buf, buffer_id);
-        mark_buffer_empty(&buf, buffer_id);
+        release_info_object(buf, buffer_id);
+        mark_buffer_empty(buf, buffer_id);
 
-        buffer_id = ( buffer_id + num_disks ) % buf.num_buffers;
+        buffer_id = ( buffer_id + num_disks ) % buf->num_buffers;
         file_num += num_disks;
     }
 }

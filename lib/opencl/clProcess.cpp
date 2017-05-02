@@ -1,4 +1,4 @@
-#include "gpu_thread.h"
+#include "clProcess.h"
 #include "device_interface.h"
 #include "gpu_command.h"
 #include "gpu_command_factory.h"
@@ -20,32 +20,29 @@ double e_time(void){
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 }
 
-gpuThread::gpuThread(Config& config_,
+// TODO Remove the GPU_ID from this constructor
+clProcess::clProcess(Config& config_,
         const string& unique_name,
-        Buffer& in_buf_,
-        Buffer& out_buf_,
-        Buffer& beamforming_out_buf_,
-        Buffer& beamforming_out_incoh_buf_,
-        uint32_t gpu_id_):
-    KotekanProcess(config_, unique_name, std::bind(&gpuThread::main_thread, this)),
-    in_buf(in_buf_),
-    out_buf(out_buf_),
-    beamforming_out_buf(beamforming_out_buf_),
-    beamforming_out_incoh_buf(beamforming_out_incoh_buf_),
-    gpu_id(gpu_id_)
+        bufferContainer &buffer_container):
+    KotekanProcess(config_, unique_name, buffer_container, std::bind(&clProcess::main_thread, this))
 {
-
+    // TODO Remove this and move it to the command objects (see hsaThread).
+    gpu_id = config.get_int("gpu_id");
+    in_buf = buffer_container.get_buffer("network_buf");
+    out_buf = buffer_container.get_buffer("corr_buf");
+    beamforming_out_buf = buffer_container.get_buffer("beamforming_out_buf");
+    beamforming_out_incoh_buf = buffer_container.get_buffer("beamforming_out_buf");
 }
 
-void gpuThread::apply_config(uint64_t fpga_seq) {
+void clProcess::apply_config(uint64_t fpga_seq) {
     _use_beamforming = config.get_bool("/gpu/enable_beamforming");
 }
 
-gpuThread::~gpuThread() {
+clProcess::~clProcess() {
 
 }
 
-void gpuThread::main_thread()
+void clProcess::main_thread()
 {
     apply_config(0);
 
@@ -54,8 +51,8 @@ void gpuThread::main_thread()
 
     loopCounter * loopCnt = new loopCounter;
 
-    device_interface device(&in_buf, &out_buf, config, gpu_id,
-                            &beamforming_out_buf, &beamforming_out_incoh_buf);
+    device_interface device(in_buf, out_buf, config, gpu_id,
+                            beamforming_out_buf, beamforming_out_incoh_buf);
 
     gpu_command_factory factory;
 
@@ -86,7 +83,7 @@ void gpuThread::main_thread()
 
     for(;;) {
         // Wait for data, this call will block.
-        bufferID = get_full_buffer_from_list(&in_buf, buffer_list, 1);
+        bufferID = get_full_buffer_from_list(in_buf, buffer_list, 1);
         double cur_time = e_time();
         INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
@@ -108,10 +105,10 @@ void gpuThread::main_thread()
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        wait_for_empty_buffer(&out_buf, bufferID);
+        wait_for_empty_buffer(out_buf, bufferID);
 
         if (_use_beamforming) {
-            wait_for_empty_buffer(&beamforming_out_buf, bufferID);
+            wait_for_empty_buffer(beamforming_out_buf, bufferID);
         }
 
         // Todo get/set time information here as well.
@@ -150,7 +147,7 @@ void gpuThread::main_thread()
                                             &read_complete,
                                             cb_data[bufferID]) );
 
-        buffer_list[0] = (buffer_list[0] + 1) % in_buf.num_buffers;
+        buffer_list[0] = (buffer_list[0] + 1) % in_buf->num_buffers;
 
     }
 
@@ -170,7 +167,7 @@ void gpuThread::main_thread()
     device.deallocateResources();
     DEBUG("DeviceDone\n");
 
-    mark_producer_done(&out_buf, 0);
+    mark_producer_done(out_buf, 0);
 
     delete loopCnt;
     delete[] cb_data;

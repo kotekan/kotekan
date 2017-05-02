@@ -9,9 +9,11 @@
 #include "errors.h"
 #include "output_formating.h"
 
-nullProcess::nullProcess(Config& config, const string& unique_name, struct Buffer &buf_) :
-    KotekanProcess(config, unique_name, std::bind(&nullProcess::main_thread, this)),
-    buf(buf_){
+nullProcess::nullProcess(Config& config, const string& unique_name,
+                         bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&nullProcess::main_thread, this)){
+    buf = buffer_container.get_buffer("buf");
 }
 
 nullProcess::~nullProcess() {
@@ -30,7 +32,7 @@ void nullProcess::main_thread() {
 
         INFO("null_process: waiting for buffer");
         // This call is blocking!
-        buffer_ID = get_full_buffer_from_list(&buf, &buffer_ID, 1);
+        buffer_ID = get_full_buffer_from_list(buf, &buffer_ID, 1);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
             break;
@@ -38,9 +40,9 @@ void nullProcess::main_thread() {
 
         INFO("null_process: Dropping frame %d", buffer_ID);
 
-        mark_buffer_empty(&buf, buffer_ID);
+        mark_buffer_empty(buf, buffer_ID);
 
-        buffer_ID = (buffer_ID + 1) % buf.num_buffers;
+        buffer_ID = (buffer_ID + 1) % buf->num_buffers;
     }
     INFO("Closing null thread");
 }

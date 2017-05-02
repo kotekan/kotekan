@@ -12,12 +12,13 @@
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         const string& unique_name,
-        Buffer& input_buf_, Buffer& output_buf_) :
-    KotekanProcess(config, unique_name, std::bind(&gpuBeamformSimulate::main_thread, this)),
-    input_buf(input_buf_),
-    output_buf(output_buf_) {
+        bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container, std::bind(&gpuBeamformSimulate::main_thread, this)) {
 
     apply_config(0);
+
+    input_buf = buffer_container.get_buffer("network_input");
+    output_buf = buffer_container.get_buffer("beamform_output");
 
     input_len = _samples_per_data_set * _num_elements * 2;
     // Padded and extracted
@@ -175,21 +176,21 @@ void gpuBeamformSimulate::main_thread() {
     float freq1 = 450;
 
     for (;;) {
-        get_full_buffer_from_list(&input_buf, &input_buf_id, 1);
-        wait_for_empty_buffer(&output_buf, output_buf_id);
+        get_full_buffer_from_list(input_buf, &input_buf_id, 1);
+        wait_for_empty_buffer(output_buf, output_buf_id);
 
-        unsigned char * input = (unsigned char *)input_buf.data[input_buf_id];
-        float * output = (float *)output_buf.data[output_buf_id];
+        unsigned char * input = (unsigned char *)input_buf->data[input_buf_id];
+        float * output = (float *)output_buf->data[output_buf_id];
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU beamform processing for %s[%d] putting result in %s[%d]",
-                input_buf.buffer_name, input_buf_id,
-                output_buf.buffer_name, output_buf_id);
+                input_buf->buffer_name, input_buf_id,
+                output_buf->buffer_name, output_buf_id);
 
         // Unpack and pad the input data
         int dest_idx = 0;
-        for (int i = 0; i < input_buf.buffer_size; ++i) {
+        for (int i = 0; i < input_buf->buffer_size; ++i) {
             input_unpacked[dest_idx++] = HI_NIBBLE(input[i])-8;
             input_unpacked[dest_idx++] = LO_NIBBLE(input[i])-8;
         }
@@ -221,20 +222,20 @@ void gpuBeamformSimulate::main_thread() {
 
         cpu_beamform_ew(clamping_output, final_output, coff, nbeamsNS, nbeamsEW, npol, _samples_per_data_set);
 
-        for (int i = 0; i < output_buf.buffer_size; i += sizeof(float)) {
-            *((float *)(&output_buf.data[output_buf_id][i])) = (float)final_output[i/sizeof(float)];
+        for (int i = 0; i < output_buf->buffer_size; i += sizeof(float)) {
+            *((float *)(&output_buf->data[output_buf_id][i])) = (float)final_output[i/sizeof(float)];
         }
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
-                input_buf.buffer_name, input_buf_id,
-                output_buf.buffer_name, output_buf_id);
+                input_buf->buffer_name, input_buf_id,
+                output_buf->buffer_name, output_buf_id);
 
         //move_buffer_info(&input_buf, input_buf_id, &output_buf, output_buf_id);
-        mark_buffer_empty(&input_buf, input_buf_id);
-        mark_buffer_full(&output_buf, output_buf_id);
+        mark_buffer_empty(input_buf, input_buf_id);
+        mark_buffer_full(output_buf, output_buf_id);
 
-        input_buf_id = (input_buf_id + 1) % input_buf.num_buffers;
-        output_buf_id = (output_buf_id + 1) % output_buf.num_buffers;
+        input_buf_id = (input_buf_id + 1) % input_buf->num_buffers;
+        output_buf_id = (output_buf_id + 1) % output_buf->num_buffers;
     }
 }
 

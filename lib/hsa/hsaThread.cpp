@@ -15,18 +15,17 @@ double e_time(void){
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 }
 
-hsaThread::hsaThread(Config& config_, bufferContainer &host_buffers_,
-        uint32_t gpu_id_):
-    KotekanProcess(config_, std::bind(&hsaThread::main_thread, this)),
-    host_buffers(host_buffers_),
-    gpu_id(gpu_id_)
-{
+hsaThread::hsaThread(Config& config, const string& unique_name,
+                     bufferContainer &buffer_container):
+        KotekanProcess(config_, unique_name, buffer_container,
+                     std::bind(&hsaThread::main_thread, this)) {
+
     apply_config(0);
 
     final_signals.resize(_gpu_buffer_depth);
 
     device = new hsaDeviceInterface(config, gpu_id);
-    factory = new hsaCommandFactory(config, *device, host_buffers);
+    factory = new hsaCommandFactory(config, *device, buffer_container);
 }
 
 void hsaThread::apply_config(uint64_t fpga_seq) {

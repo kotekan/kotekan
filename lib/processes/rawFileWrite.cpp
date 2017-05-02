@@ -12,16 +12,14 @@
 
 rawFileWrite::rawFileWrite(Config& config,
                  const string& unique_name,
-                 Buffer& buf_,
-                 const std::string &base_dir_,
-                 const std::string &file_name_,
-                 const std::string &file_ext_) :
-        KotekanProcess(config, unique_name,std::bind(&rawFileWrite::main_thread, this)),
-        buf(buf_),
-        base_dir(base_dir_),
-        file_name(file_name_),
-        file_ext(file_ext_)
-{
+                 bufferContainer &buffer_container) :
+        KotekanProcess(config, unique_name, buffer_container,
+                       std::bind(&rawFileWrite::main_thread, this)) {
+
+    buf = buffer_container.get_buffer("buf");
+    base_dir = config.get_string("base_dir");
+    file_name = config.get_string("file_name");
+    file_ext = config.get_string("file_ext");
 }
 
 rawFileWrite::~rawFileWrite() {
@@ -39,7 +37,7 @@ void rawFileWrite::main_thread() {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = get_full_buffer_from_list(&buf, &buffer_id, 1);
+        buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
 
         //INFO("Got buffer, id: %d", bufferID);
 
@@ -65,9 +63,9 @@ void rawFileWrite::main_thread() {
             exit(errno);
         }
 
-        ssize_t bytes_writen = write(fd, buf.data[buffer_id], buf.buffer_size);
+        ssize_t bytes_writen = write(fd, buf->data[buffer_id], buf->buffer_size);
 
-        if (bytes_writen != buf.buffer_size) {
+        if (bytes_writen != buf->buffer_size) {
             ERROR("Failed to write buffer to disk for file %s", full_path);
             exit(-1);
         }
@@ -84,9 +82,9 @@ void rawFileWrite::main_thread() {
 
         // TODO make release_info_object work for nConsumers.
         //release_info_object(&buf, buffer_id);
-        mark_buffer_empty(&buf, buffer_id);
+        mark_buffer_empty(buf, buffer_id);
 
-        buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
+        buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
         file_num++;
     }
 }

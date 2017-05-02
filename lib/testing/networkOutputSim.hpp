@@ -13,18 +13,14 @@ class networkOutputSim : public KotekanProcess {
 public:
     networkOutputSim(Config &config,
                      const string& unique_name,
-                     struct Buffer &buf,
-                     int num_links_in_group,
-                     int link_id,
-                     int pattern,
-                     int stream_id);
+                     bufferContainer &buffer_container);
     virtual ~networkOutputSim();
     void main_thread();
 
     virtual void apply_config(uint64_t fpga_seq);
 
 private:
-    struct Buffer &buf;
+    struct Buffer * buf;
     int num_links_in_group;
     int link_id;
     int pattern;

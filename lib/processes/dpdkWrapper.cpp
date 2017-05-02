@@ -5,14 +5,17 @@
 
 #include <unistd.h>
 
-dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name, Buffer* network_input_buffer_[], string mode) :
-    KotekanProcess(config, unique_name, std::bind(&dpdkWrapper::main_thread, this)), _mode(mode) {
+dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name,
+                         bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&dpdkWrapper::main_thread, this)) {
 
     apply_config(0);
 
+    _mode = config.get_string("mode");
     network_input_buffer = (struct Buffer **)malloc(_num_fpga_links * sizeof (struct Buffer *));
     for (int i = 0; i < _num_fpga_links; ++i) {
-        network_input_buffer[i] = network_input_buffer_[i];
+        network_input_buffer[i] = buffer_container.get_buffer("network_buffer_" + std::to_string(i));
     }
 }
 

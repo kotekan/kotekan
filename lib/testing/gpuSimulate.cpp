@@ -3,12 +3,13 @@
 
 gpuSimulate::gpuSimulate(Config& config,
                          const string& unique_name,
-                         struct Buffer &input_buf_,
-                         struct Buffer &output_buf_) :
-    KotekanProcess(config, unique_name, std::bind(&gpuSimulate::main_thread, this)),
-    input_buf(input_buf_),
-    output_buf(output_buf_) {
+                         bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container, std::bind(&gpuSimulate::main_thread, this)) {
+
     apply_config(0);
+
+    input_buf = buffer_container.get_buffer("network_buf");
+    output_buf = buffer_container.get_buffer("corr_buf");
 
     int block_map_len = _num_blocks * 2 * sizeof(uint32_t);
     host_block_map = (uint32_t *)malloc(block_map_len);
@@ -40,17 +41,17 @@ void gpuSimulate::main_thread() {
     int output_buf_id = 0;
 
     for (;;) {
-        get_full_buffer_from_list(&input_buf, &input_buf_id, 1);
-        wait_for_empty_buffer(&output_buf, output_buf_id);
+        get_full_buffer_from_list(input_buf, &input_buf_id, 1);
+        wait_for_empty_buffer(output_buf, output_buf_id);
 
-        int * input = (int *)input_buf.data[input_buf_id];
-        int * output = (int *)output_buf.data[output_buf_id];
+        int * input = (int *)input_buf->data[input_buf_id];
+        int * output = (int *)output_buf->data[output_buf_id];
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU processing for %s[%d] putting result in %s[%d]",
-                input_buf.buffer_name, input_buf_id,
-                output_buf.buffer_name, output_buf_id);
+                input_buf->buffer_name, input_buf_id,
+                output_buf->buffer_name, output_buf_id);
         for (int b = 0; b < _num_blocks; ++b){
             for (int y = 0; y < 32; ++y){
                 for (int x = 0; x < 32; ++x){
@@ -73,14 +74,14 @@ void gpuSimulate::main_thread() {
         }
 
         INFO("Simulating GPU processing done for %s[%d] result is in %s[%d]",
-                input_buf.buffer_name, input_buf_id,
-                output_buf.buffer_name, output_buf_id);
+                input_buf->buffer_name, input_buf_id,
+                output_buf->buffer_name, output_buf_id);
 
-        move_buffer_info(&input_buf, input_buf_id, &output_buf, output_buf_id);
-        mark_buffer_empty(&input_buf, input_buf_id);
-        mark_buffer_full(&output_buf, output_buf_id);
+        move_buffer_info(input_buf, input_buf_id, output_buf, output_buf_id);
+        mark_buffer_empty(input_buf, input_buf_id);
+        mark_buffer_full(output_buf, output_buf_id);
 
-        input_buf_id = (input_buf_id + 1) % input_buf.num_buffers;
-        output_buf_id = (output_buf_id + 1) % output_buf.num_buffers;
+        input_buf_id = (input_buf_id + 1) % input_buf->num_buffers;
+        output_buf_id = (output_buf_id + 1) % output_buf->num_buffers;
     }
 }

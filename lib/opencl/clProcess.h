@@ -22,23 +22,20 @@
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
 
-class gpuThread : public KotekanProcess {
+class clProcess : public KotekanProcess {
 public:
-    gpuThread(Config &config, const string& unique_name,
-                struct Buffer &in_buf,
-                struct Buffer &out_buf,
-                struct Buffer &beamforming_out_buf,
-                struct Buffer &beamforming_out_incoh_buf,
-                uint32_t gpu_id);
-    virtual ~gpuThread();
+    clProcess(Config& config,
+        const string& unique_name,
+        bufferContainer &buffer_container);
+    virtual ~clProcess();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
 
 private:
-    struct Buffer &in_buf;
-    struct Buffer &out_buf;
-    struct Buffer &beamforming_out_buf;
-    struct Buffer &beamforming_out_incoh_buf;
+    struct Buffer *in_buf;
+    struct Buffer *out_buf;
+    struct Buffer *beamforming_out_buf;
+    struct Buffer *beamforming_out_incoh_buf;
 
     uint32_t gpu_id;
 

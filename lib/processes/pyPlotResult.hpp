@@ -11,19 +11,14 @@
 
 class pyPlotResult : public KotekanProcess {
 public:
-    pyPlotResult(Config &config,
-                 const string& unique_name,
-                 struct Buffer &buf,
-                 int gpu_id,
-                 const std::string &base_dir,
-                 const std::string &file_name,
-                 const std::string &file_ext);
+    pyPlotResult(Config& config, const string& unique_name,
+                 bufferContainer &buffer_container);
     virtual ~pyPlotResult();
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();
     void request_plot_callback(connectionInstance& conn, json& json_request);
 private:
-    struct Buffer &buf;
+    struct Buffer *buf;
     std::string base_dir;
     std::string file_name;
     std::string file_ext;

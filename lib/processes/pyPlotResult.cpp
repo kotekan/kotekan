@@ -12,17 +12,17 @@
 
 using json = nlohmann::json;
 
-pyPlotResult::pyPlotResult(Config& config, const string& unique_name, Buffer& buf_, int gpu_id_,
-                 const std::string &base_dir_,
-                 const std::string &file_name_,
-                 const std::string &file_ext_) :
-        KotekanProcess(config, unique_name, std::bind(&pyPlotResult::main_thread, this)),
-        buf(buf_),
-        base_dir(base_dir_),
-        file_name(file_name_),
-        file_ext(file_ext_),
-        gpu_id(gpu_id_)
+pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
+                           bufferContainer &buffer_container) :
+        KotekanProcess(config, unique_name, buffer_container,
+                       std::bind(&pyPlotResult::main_thread, this))
+
 {
+    buf = buffer_container.get_buffer("buf");
+    base_dir = config.get_string("base_dir");
+    file_name = config.get_string("file_name");
+    file_ext = config.get_string("file_ext");
+    gpu_id = config.get_int("gpu_id");
 }
 
 pyPlotResult::~pyPlotResult() {
@@ -45,12 +45,12 @@ void pyPlotResult::main_thread() {
             std::bind(&pyPlotResult::request_plot_callback, this, _1, _2));
 
     int buffer_id = 0;
-    unsigned char *in_local = (unsigned char*)malloc(buf.buffer_size);
+    unsigned char *in_local = (unsigned char*)malloc(buf->buffer_size);
 
     for (;;) {
 
         // This call is blocking.
-        buffer_id = get_full_buffer_from_list(&buf, &buffer_id, 1);
+        buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
 
         //INFO("Got buffer, id: %d", bufferID);
 
@@ -64,9 +64,9 @@ void pyPlotResult::main_thread() {
         {
             dump_plot=false;
             //make a local copy so the rest of kotekan can carry along happily.
-            memcpy(in_local,buf.data[buffer_id],buf.buffer_size);
-            mark_buffer_empty(&buf, buffer_id);
-            buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
+            memcpy(in_local,buf->data[buffer_id],buf->buffer_size);
+            mark_buffer_empty(buf, buffer_id);
+            buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
 
             FILE *python_script;
             python_script = popen("python -u pyPlotResult.py","w");
@@ -94,8 +94,8 @@ void pyPlotResult::main_thread() {
             }
         }
         else{
-            mark_buffer_empty(&buf, buffer_id);
-            buffer_id = ( buffer_id + 1 ) % buf.num_buffers;
+            mark_buffer_empty(buf, buffer_id);
+            buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
         }
     }
     free(in_local);

@@ -14,13 +14,14 @@
 #include "errors.h"
 #include "output_formating.h"
 
-chrxUplink::chrxUplink(Config &config_,
+chrxUplink::chrxUplink(Config &config,
                   const string& unique_name,
-                  struct Buffer &vis_buf_,
-                  struct Buffer &gate_buf_) :
-                  KotekanProcess(config_, unique_name, std::bind(&chrxUplink::main_thread, this)),
-                  vis_buf(vis_buf_),
-                  gate_buf(gate_buf_) {
+                  bufferContainer &buffer_container) :
+                  KotekanProcess(config, unique_name, buffer_container,
+                                 std::bind(&chrxUplink::main_thread, this)) {
+
+    vis_buf = buffer_container.get_buffer("vis_buf");
+    gate_buf = buffer_container.get_buffer("gate_buf");
 }
 
 chrxUplink::~chrxUplink() {
@@ -66,7 +67,7 @@ void chrxUplink::main_thread() {
     while(!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = get_full_buffer_from_list(&vis_buf, &buffer_ID, 1);
+        buffer_ID = get_full_buffer_from_list(vis_buf, &buffer_ID, 1);
 
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
@@ -76,39 +77,39 @@ void chrxUplink::main_thread() {
 
         // INFO("Sending TCP frame to ch_master. frame size: %d", vis_buf->buffer_size);
 
-        ssize_t bytes_sent = send(tcp_fd,vis_buf.data[buffer_ID], vis_buf.buffer_size, 0);
+        ssize_t bytes_sent = send(tcp_fd,vis_buf->data[buffer_ID], vis_buf->buffer_size, 0);
         if (bytes_sent <= 0) {
             ERROR("Could not send frame to chrx, error: %d", errno);
             break;
         }
-        if (bytes_sent != vis_buf.buffer_size) {
+        if (bytes_sent != vis_buf->buffer_size) {
             ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d",
-                    (int)bytes_sent, vis_buf.buffer_size);
+                    (int)bytes_sent, vis_buf->buffer_size);
             break;
         }
         INFO("Finished sending frame to chrx");
 
         if (_enable_gating) {
             DEBUG("Getting gated buffer");
-            get_full_buffer_from_list(&gate_buf, &buffer_ID, 1);
+            get_full_buffer_from_list(gate_buf, &buffer_ID, 1);
 
             DEBUG("Sending gated buffer");
-            bytes_sent = send(tcp_fd, gate_buf.data[buffer_ID], gate_buf.buffer_size, 0);
+            bytes_sent = send(tcp_fd, gate_buf->data[buffer_ID], gate_buf->buffer_size, 0);
             if (bytes_sent <= 0) {
                 ERROR("Could not send gated date frame to ch_acq, error: %d", errno);
                 break;
             }
-            if (bytes_sent != gate_buf.buffer_size) {
+            if (bytes_sent != gate_buf->buffer_size) {
                 ERROR("Could not send all bytes in gated data frame: bytes sent = %d; buffer_size = %d",
-                        (int)bytes_sent, gate_buf.buffer_size);
+                        (int)bytes_sent, gate_buf->buffer_size);
                 break;
             }
             INFO("Finished sending gated data frame to chrx");
-            mark_buffer_empty(&gate_buf, buffer_ID);
+            mark_buffer_empty(gate_buf, buffer_ID);
         }
 
-        mark_buffer_empty(&vis_buf, buffer_ID);
+        mark_buffer_empty(vis_buf, buffer_ID);
 
-        buffer_ID = (buffer_ID + 1) % vis_buf.num_buffers;
+        buffer_ID = (buffer_ID + 1) % vis_buf->num_buffers;
     }
 }

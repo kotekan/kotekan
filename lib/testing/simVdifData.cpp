@@ -4,10 +4,11 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-simVdifData::simVdifData(Config& config, const string& unique_name, Buffer& buf_) :
-    KotekanProcess(config, unique_name, std::bind(&simVdifData::main_thread, this)),
-    buf(buf_)
+simVdifData::simVdifData(Config& config, const string& unique_name,
+                        bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this))
     {
+    buf = buffer_container.get_buffer("network_buf");
 }
 
 simVdifData::~simVdifData() {
@@ -63,14 +64,14 @@ void simVdifData::main_thread() {
     start_time = e_time();
 //    for (int ct=0; ct<100; ct++) {
     for (;;) {
-        wait_for_empty_buffer(&buf, buf_id);
+        wait_for_empty_buffer(buf, buf_id);
         stop_time = e_time();
         double dt = stop_time-start_time;
         if (dt < time_available) {
             usleep((time_available-dt) * 1e6);
             stop_time = e_time();
         }
-        unsigned char* buf_ptr = buf.data[buf_id];
+        unsigned char* buf_ptr = buf->data[buf_id];
         for (int t = 0; t < times; t++) {
             for (int e = 0; e < elements; e++){
                 memcpy(buf_ptr,(void*)&header,sizeof(header));
@@ -83,13 +84,13 @@ void simVdifData::main_thread() {
         }
 //        INFO("Generated a test data set in %s[%d]", buf.buffer_name, buf_id);
 
-        mark_buffer_full(&buf, buf_id);
-        buf_id = (buf_id + 1) % buf.num_buffers;
+        mark_buffer_full(buf, buf_id);
+        buf_id = (buf_id + 1) % buf->num_buffers;
         header.data_frame++;
 
         INFO("%4.1f%% of %6.4fs available.\n",dt/time_available*100,time_available);
         start_time=stop_time;
     }
-    mark_producer_done(&buf, 0);
+    mark_producer_done(buf, 0);
 }
 

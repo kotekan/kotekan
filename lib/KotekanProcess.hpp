@@ -7,10 +7,12 @@
 #include <mutex>
 #include <vector>
 #include "Config.hpp"
+#include "bufferContainer.hpp"
 
 class KotekanProcess {
 public:
     KotekanProcess(Config &config, const string& unique_name,
+                    bufferContainer &buffer_container,
                     std::function<void(const KotekanProcess&)> main_thread_ref);
     virtual ~KotekanProcess();
     virtual void start();
@@ -22,6 +24,8 @@ public:
 protected:
     std::atomic_bool stop_thread;
     Config &config;
+
+    bufferContainer &buffer_container;
 
     // Set the cores the main thread is allowed to run on to the
     // cores given in cpu_affinity_

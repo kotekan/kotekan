@@ -1,8 +1,8 @@
 #include "SampleProcess.hpp"
 #include "errors.h"
 
-SampleProcess::SampleProcess(Config &config, const string& unique_name) :
-    KotekanProcess(config, unique_name, std::bind(&SampleProcess::main_thread, this)) {
+SampleProcess::SampleProcess(Config &config, const string& unique_name, bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container, std::bind(&SampleProcess::main_thread, this)) {
 }
 
 SampleProcess::~SampleProcess() {

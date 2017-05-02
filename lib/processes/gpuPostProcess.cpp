@@ -22,21 +22,22 @@
 
 gpuPostProcess::gpuPostProcess(Config& config_,
         const string& unique_name,
-        struct Buffer** in_buf_,
-        struct Buffer& out_buf_,
-        struct Buffer& gate_buf_) :
-        KotekanProcess(config_, unique_name, std::bind(&gpuPostProcess::main_thread, this)),
-        out_buf(out_buf_), gate_buf(gate_buf_)
-{
+        bufferContainer &buffer_container) :
+        KotekanProcess(config_, unique_name, buffer_container,
+                       std::bind(&gpuPostProcess::main_thread, this)) {
     apply_config(0);
+
+    out_buf = buffer_container.get_buffer("chrx_buf");
+    gate_buf = buffer_container.get_buffer("gate_buf");
+
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof(struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = in_buf_[i];
+        in_buf[i] = buffer_container.get_buffer("corr_buf_" + std::to_string(i));
     }
 }
 
 gpuPostProcess::~gpuPostProcess() {
-    if (_product_remap_c != NULL)
+    if (_product_remap_c != nullptr)
         delete _product_remap_c;
 
     if (_rest_copy_vis != nullptr)
@@ -113,7 +114,7 @@ void gpuPostProcess::main_thread() {
         _num_total_freq * _num_elem * sizeof(struct per_element_data) +
         num_values * sizeof(uint8_t);
 
-    assert(buffer_size == out_buf.buffer_size);
+    assert(buffer_size == out_buf->buffer_size);
 
     const int num_vis = ((_num_elem * (_num_elem + 1)) / 2 );
     const int num_values_per_link = num_vis * _num_local_freq;
@@ -194,7 +195,7 @@ void gpuPostProcess::main_thread() {
 
         // Check if the producer has finished, and we should exit.
         if (in_buffer_ID == -1) {
-            mark_producer_done(&out_buf, 0);
+            mark_producer_done(out_buf, 0);
             INFO("Closing gpu_post_process");
             int ret;
             pthread_exit((void *) &ret);
@@ -353,8 +354,8 @@ void gpuPostProcess::main_thread() {
                     }
                     INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
-                    wait_for_empty_buffer(&out_buf, out_buffer_ID);
-                    wait_for_empty_buffer(&gate_buf, out_buffer_ID);
+                    wait_for_empty_buffer(out_buf, out_buffer_ID);
+                    wait_for_empty_buffer(gate_buf, out_buffer_ID);
 
                     if (_enable_basic_gating) {
                         DEBUG("Copying gated data to the gate_buf!");
@@ -366,8 +367,8 @@ void gpuPostProcess::main_thread() {
                             visibilities[j].real = gated_vis[j].real + 2*visibilities[j].real;
                             visibilities[j].imag = gated_vis[j].imag + 2*visibilities[j].imag;
                         }
-                        memcpy(gate_buf.data[out_buffer_ID], gated_buf, gated_buf_size);
-                        mark_buffer_full(&gate_buf, out_buffer_ID);
+                        memcpy(gate_buf->data[out_buffer_ID], gated_buf, gated_buf_size);
+                        mark_buffer_full(gate_buf, out_buffer_ID);
                     }
 
                     // memcpy visibilities into REST buffer.
@@ -376,11 +377,11 @@ void gpuPostProcess::main_thread() {
                         memcpy(_rest_copy_vis, visibilities, num_values * sizeof(complex_int_t));
                     }
 
-                    memcpy(out_buf.data[out_buffer_ID], buf, buffer_size);
-                    mark_buffer_full(&out_buf, out_buffer_ID);
+                    memcpy(out_buf->data[out_buffer_ID], buf, buffer_size);
+                    mark_buffer_full(out_buf, out_buffer_ID);
                     INFO("gpu_post_process: marked output buffer full: %d", out_buffer_ID );
 
-                    out_buffer_ID = (out_buffer_ID + 1) % out_buf.num_buffers;
+                    out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_buffers;
                 }
             }
 

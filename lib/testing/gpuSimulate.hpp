@@ -6,16 +6,15 @@
 
 class gpuSimulate : public KotekanProcess {
 public:
-    gpuSimulate(Config &config,
+    gpuSimulate(Config& config,
                 const string& unique_name,
-                struct Buffer &input_buf,
-                struct Buffer &output_buf);
+                bufferContainer &buffer_container);
     ~gpuSimulate();
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();
 private:
-    struct Buffer &input_buf;
-    struct Buffer &output_buf;
+    struct Buffer *input_buf;
+    struct Buffer *output_buf;
 
     uint32_t * host_block_map;
 

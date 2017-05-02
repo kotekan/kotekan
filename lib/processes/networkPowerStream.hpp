@@ -29,7 +29,9 @@ struct  __attribute__((__packed__)) IntensityPacketHeader {
 
 class networkPowerStream : public KotekanProcess {
 public:
-    networkPowerStream(Config &config, const string& unique_name, struct Buffer &buf);
+    networkPowerStream(Config& config,
+                       const string& unique_name,
+                       bufferContainer& buffer_container);
     virtual ~networkPowerStream();
     void main_thread();
 
@@ -38,7 +40,7 @@ public:
 private:
 	void tcpConnect();
 
-    struct Buffer &buf;
+    struct Buffer *buf;
 
     uint32_t dest_port;
     string dest_server_ip;

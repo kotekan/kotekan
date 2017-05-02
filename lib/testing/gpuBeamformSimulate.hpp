@@ -6,16 +6,15 @@
 
 class gpuBeamformSimulate : public KotekanProcess {
 public:
-    gpuBeamformSimulate(Config &config,
-                const string& unique_name,
-                struct Buffer &input_buf,
-                struct Buffer &output_buf);
+    gpuBeamformSimulate(Config& config,
+        const string& unique_name,
+        bufferContainer &buffer_container);
     ~gpuBeamformSimulate();
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();
 private:
-    struct Buffer &input_buf;
-    struct Buffer &output_buf;
+    struct Buffer *input_buf;
+    struct Buffer *output_buf;
 
     // Config options
     int32_t _num_elements;

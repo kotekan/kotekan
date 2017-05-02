@@ -13,9 +13,12 @@
 #include "util.h"
 #include "errors.h"
 
-vdifStream::vdifStream(Config& config, const string& unique_name, struct Buffer &buf_) :
-    KotekanProcess(config, unique_name, std::bind(&vdifStream::main_thread, this)),
-    buf(buf_){
+vdifStream::vdifStream(Config& config, const string& unique_name,
+                       bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&vdifStream::main_thread, this)) {
+
+    buf = buffer_container.get_buffer("buf");
 }
 vdifStream::~vdifStream() {
 }
@@ -65,7 +68,7 @@ void vdifStream::main_thread() {
              _vdif_port);
 
         // Wait for a full buffer.
-        get_full_buffer_from_list(&buf, bufferID, 1);
+        get_full_buffer_from_list(buf, bufferID, 1);
 
         INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
@@ -75,7 +78,7 @@ void vdifStream::main_thread() {
         for (int i = 0; i < 16*625; ++i) {
 
             int bytes_sent = sendto(socket_fd,
-                             (void *)(buf.data[bufferID[0]][packet_size*i]),
+                             (void *)(buf->data[bufferID[0]][packet_size*i]),
                              packet_size, 0,
                              (struct sockaddr *) &saddr_remote, saddr_len);
 
@@ -106,7 +109,7 @@ void vdifStream::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_buffer_empty(&buf, bufferID[0]);
-        bufferID[0] = (bufferID[0] + 1) % buf.num_buffers;
+        mark_buffer_empty(buf, bufferID[0]);
+        bufferID[0] = (bufferID[0] + 1) % buf->num_buffers;
     }
 }

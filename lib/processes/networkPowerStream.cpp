@@ -13,9 +13,13 @@
 #include "util.h"
 #include "errors.h"
 
-networkPowerStream::networkPowerStream(Config& config, const string& unique_name, struct Buffer &buf_) :
-    KotekanProcess(config, unique_name, std::bind(&networkPowerStream::main_thread, this)),
-    buf(buf_){
+networkPowerStream::networkPowerStream(Config& config,
+                                       const string& unique_name,
+                                       bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&networkPowerStream::main_thread, this)){
+
+    buf = buffer_container.get_buffer("power_buf");
 
     //PER BUFFER
     times = config.get_int("/processing/samples_per_data_set") /
@@ -55,13 +59,13 @@ void networkPowerStream::main_thread() {
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     void *packet_buffer = malloc(packet_length);
         IntensityPacketHeader *packet_header = (IntensityPacketHeader *)packet_buffer;
-        float *local_data = (float*)(packet_buffer + sizeof(IntensityPacketHeader));
+        float *local_data = (float*)((char *)packet_buffer + sizeof(IntensityPacketHeader));
     struct timeval tv;
 
     if (dest_protocol == "UDP")
     {
         // UDP variables
-        struct sockaddr_in saddr_remote;  /* the libc network address data structure */   
+        struct sockaddr_in saddr_remote;  /* the libc network address data structure */
         socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (socket_fd == -1) {
             ERROR("Could not create UDP socket for output stream");
@@ -79,12 +83,12 @@ void networkPowerStream::main_thread() {
 
         for (;;) {
             // Wait for a full buffer.
-            buffer_id = get_full_buffer_from_list(&buf, &buffer_id, 1);
+            buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
 
             for (int t=0; t<times; t++){
                 for (int f=0; f<freqs; f++)
-                    local_data[f] = ((float*)buf.data[buffer_id])[f]*4 +
-                                        ((float*)buf.data[buffer_id])[f+freqs]*4;
+                    local_data[f] = ((float*)buf->data[buffer_id])[f]*4 +
+                                        ((float*)buf->data[buffer_id])[f+freqs]*4;
                 // Send data to remote server.
                 int bytes_sent = sendto(socket_fd,
                                  (void*)local_data,
@@ -95,8 +99,8 @@ void networkPowerStream::main_thread() {
             }
 
             // Mark buffer as empty.
-            mark_buffer_empty(&buf, buffer_id);
-            buffer_id = (buffer_id + 1) % buf.num_buffers;
+            mark_buffer_empty(buf, buffer_id);
+            buffer_id = (buffer_id + 1) % buf->num_buffers;
         }
     }
     else if (dest_protocol == "TCP")
@@ -104,7 +108,7 @@ void networkPowerStream::main_thread() {
         // TCP variables
         for (;;) {
             // Wait for a full buffer.
-            buffer_id = get_full_buffer_from_list(&buf, &buffer_id, 1);
+            buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
             while (atomic_flag_test_and_set(&socket_lock)) {}
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);
@@ -112,10 +116,10 @@ void networkPowerStream::main_thread() {
                     packet_header->frame_idx = frame_idx++;
                     for (int p=0; p<elems; p++){
                         packet_header->elem_idx = p;
-                        packet_header->samples_summed = ((uint*)buf.data[buffer_id])[
+                        packet_header->samples_summed = ((uint*)buf->data[buffer_id])[
                                                                 t*elems*(freqs+1) + p*(freqs+1) + freqs];
                         memcpy(local_data,
-                                buf.data[buffer_id]+t*elems*(freqs+1)*sizeof(uint)+
+                                buf->data[buffer_id]+t*elems*(freqs+1)*sizeof(uint)+
                                                           p*(freqs+1)*sizeof(uint),
                                 freqs*sizeof(uint));
                         int bytes_sent = send(socket_fd,
@@ -146,8 +150,8 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
             }
             // Mark buffer as empty.
-            mark_buffer_empty(&buf, buffer_id);
-            buffer_id = (buffer_id + 1) % buf.num_buffers;
+            mark_buffer_empty(buf, buffer_id);
+            buffer_id = (buffer_id + 1) % buf->num_buffers;
         }
 
     }
@@ -159,7 +163,7 @@ void networkPowerStream::main_thread() {
 void networkPowerStream::tcpConnect()
 {
 //    INFO("Connecting TCP Power Stream!");
-    struct sockaddr_in address; 
+    struct sockaddr_in address;
     address.sin_addr.s_addr = inet_addr(dest_server_ip.c_str());
     address.sin_port = htons(dest_port);
     address.sin_family = AF_INET;
@@ -171,7 +175,7 @@ void networkPowerStream::tcpConnect()
     }
 
     //TODO: handle errors, make dynamic
-    struct timeval timeout;      
+    struct timeval timeout;
     timeout.tv_sec = 0;
     timeout.tv_usec = 200000;
 
@@ -212,7 +216,7 @@ void networkPowerStream::tcpConnect()
         //  -8  -7  -6  -5  -4  -3  -2  -1  1   2   3   4
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
         for (int e=0; e<elems; e++)
-            ((char*)(info+info_size - elems*sizeof(char)))[e]=-5-e;
+            ((char*)((char*)info+info_size - elems*sizeof(char)))[e]=-5-e;
         bytes_sent = send(socket_fd,
                                 info,
                                 info_size,

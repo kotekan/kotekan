@@ -20,7 +20,7 @@ add_library ( kotekan_opencl
               preseed_kernel.cpp
               beamform_incoherent_kernel.cpp
               output_beamform_incoh_result.cpp
-              gpu_thread.cpp
+              clProcess.cpp
               gpu_command.cpp
               gpu_command_factory.cpp
               )
