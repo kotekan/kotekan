@@ -45,10 +45,10 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string
 void hsaCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
 
-    _num_elements = config.get_int("/processing/num_elements");
-    _num_local_freq = config.get_int("/processing/num_local_freq");
-    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
-    _num_blocks = config.get_int("/gpu/num_blocks");
+    _num_elements = config.get_int("/processing", "num_elements");
+    _num_local_freq = config.get_int("/processing", "num_local_freq");
+    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
+    _num_blocks = config.get_int("/gpu", "num_blocks");
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     // I don't really like this way of getting to correlator output size (AR)
@@ -95,7 +95,7 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
 
     hsa_kernel_dispatch_packet_t* dispatch_packet = (hsa_kernel_dispatch_packet_t*)device.get_queue()->base_address +
                                                             (index % device.get_queue()->size);
-    INFO("hsaCorrelatorKernel got write index: %" PRIu64 ", packet_address: %p, post_signal: %lu", index, dispatch_packet, signals[gpu_frame_id].handle);    
+    INFO("hsaCorrelatorKernel got write index: %" PRIu64 ", packet_address: %p, post_signal: %lu", index, dispatch_packet, signals[gpu_frame_id].handle);
 
     dispatch_packet->setup  |= 3 << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
     dispatch_packet->workgroup_size_x = (uint16_t)16;

@@ -12,9 +12,9 @@ hsaPreseedKernel::hsaPreseedKernel(const string& kernel_name, const string& kern
 
 void hsaPreseedKernel::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
-    _num_elements = config.get_int("/processing/num_elements");
-    _num_local_freq = config.get_int("/processing/num_local_freq");
-    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
+    _num_elements = config.get_int("/processing", "num_elements");
+    _num_local_freq = config.get_int("/processing", "num_local_freq");
+    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
 }

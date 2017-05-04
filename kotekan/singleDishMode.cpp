@@ -35,15 +35,18 @@ void singleDishMode::initalize_processes() {
     config.dump_config();
 //    config.find_parameter("dualpol_sumsq","integration_length");
 
-    // Config values:
-    int num_total_freq = config.get_int("/processing/num_total_freq");
-    int num_elements = config.get_int("/processing/num_elements");
-    int buffer_depth = config.get_int("/processing/buffer_depth");
-    int num_fpga_links = config.get_int("/dpdk/num_links");
-    int num_disks = config.get_int("/raw_capture/num_disks");
+    int test_value = config.get_int("/vdif_stream/", "num_disks");
+    INFO("TEST VALUE: %d", test_value);
 
-    int integration_length = config.get_int("/raw_capture/integration_length");
-    int timesteps_in = config.get_int("/processing/samples_per_data_set");
+    // Config values:
+    int num_total_freq = config.get_int("/processing", "num_total_freq");
+    int num_elements = config.get_int("/processing", "num_elements");
+    int buffer_depth = config.get_int("/processing", "buffer_depth");
+    int num_fpga_links = config.get_int("/dpdk", "num_links");
+    int num_disks = config.get_int("/raw_capture", "num_disks");
+
+    int integration_length = config.get_int("/raw_capture", "integration_length");
+    int timesteps_in = config.get_int("/processing", "samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
 
     // Create the shared pool of buffer info objects; used for recording information about a
@@ -78,7 +81,7 @@ void singleDishMode::initalize_processes() {
                   "output_power_buf");
     host_buffers.add_buffer("output_power_buf", output_buffer);
 
-    add_process((KotekanProcess *) new dpdkWrapper(config, "vdif_capture", &vdif_input_buffer, "vdif"));
+    /*add_process((KotekanProcess *) new dpdkWrapper(config, "vdif_capture", &vdif_input_buffer, "vdif"));
     //add_process((KotekanProcess*) new simVdifData(config, *vdif_input_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *vdif_input_buffer));
     for (int i = 0; i < num_disks; ++i) {
@@ -89,6 +92,6 @@ void singleDishMode::initalize_processes() {
     add_process((KotekanProcess*) new computeDualpolPower(config, "compute_power", *vdif_input_buffer, *output_buffer));
     //add_process((KotekanProcess*) new nullProcess(config, *output_buffer));
     add_process((KotekanProcess*) new networkPowerStream(config, "stream_power", *output_buffer));
-
+     */
 
 }

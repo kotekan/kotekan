@@ -25,6 +25,7 @@ protected:
     std::atomic_bool stop_thread;
     Config &config;
 
+    std::string unique_name;
     bufferContainer &buffer_container;
 
     // Set the cores the main thread is allowed to run on to the

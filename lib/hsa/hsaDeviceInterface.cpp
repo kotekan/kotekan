@@ -64,7 +64,7 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_) :
     hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_SINGLE, NULL, NULL, UINT32_MAX, UINT32_MAX, &queue);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    _gpu_buffer_depth = config.get_int("/gpu/buffer_depth");
+    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
 
 }
 

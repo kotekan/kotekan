@@ -100,7 +100,7 @@ void dpdk_setup() {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    int log_level = config.get_int("/system/log_level");
+    int log_level = config.get_int("/system/", "log_level");
 
     log_level_warn = 0;
     log_level_debug = 0;
@@ -123,10 +123,10 @@ int start_new_kotekan_mode(Config &config) {
     config.dump_config();
     update_log_levels(config);
 
-    string mode = config.get_string("/system/mode");
+    string mode = config.get_string("/system", "mode");
 
     if (mode == "packet_cap") {
-        kotekan_mode = (kotekanMode *) new packetCapMode(config);
+        //kotekan_mode = (kotekanMode *) new packetCapMode(config);
     } else if (mode == "chime_shuffle") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);

@@ -19,10 +19,10 @@ pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
 
 {
     buf = buffer_container.get_buffer("buf");
-    base_dir = config.get_string("base_dir");
-    file_name = config.get_string("file_name");
-    file_ext = config.get_string("file_ext");
-    gpu_id = config.get_int("gpu_id");
+    base_dir = config.get_string(unique_name, "base_dir");
+    file_name = config.get_string(unique_name, "file_name");
+    file_ext = config.get_string(unique_name, "file_ext");
+    gpu_id = config.get_int(unique_name, "gpu_id");
 }
 
 pyPlotResult::~pyPlotResult() {
@@ -72,7 +72,7 @@ void pyPlotResult::main_thread() {
             python_script = popen("python -u pyPlotResult.py","w");
 
             { // N^2
-                uint num_elements = config.get_int("/processing/num_elements");
+                uint num_elements = config.get_int("/processing", "num_elements");
                 uint block_dim = 32;
                 uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
                 uint block_size = block_dim*block_dim*2; //real, complex

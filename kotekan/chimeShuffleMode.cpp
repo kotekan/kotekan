@@ -26,19 +26,19 @@ chimeShuffleMode::~chimeShuffleMode() {
 void chimeShuffleMode::initalize_processes() {
 
     // Config values:
-    int32_t num_gpus = config.get_int("/gpu/num_gpus");
-    int32_t num_total_freq = config.get_int("/processing/num_total_freq");
-    int32_t num_elements = config.get_int("/processing/num_elements");
-    int32_t num_adjusted_local_freq = config.get_int("/processing/num_adjusted_local_freq");
-    int32_t num_adjusted_elements = config.get_int("/processing/num_adjusted_elements");
-    int32_t block_size = config.get_int("/gpu/block_size");
-    int32_t num_blocks = config.get_int("/gpu/num_blocks");
-    int32_t num_data_sets = config.get_int("/processing/num_data_sets");
-    int32_t samples_per_data_set = config.get_int("/processing/samples_per_data_set");
-    int32_t buffer_depth = config.get_int("/processing/buffer_depth");
-    int32_t network_buffer_depth = config.get_int("/ch_master_network/network_buffer_depth");
-    bool enable_upload = config.get_bool("/ch_master_network/enable_upload");
-    bool enable_gating = config.get_bool("/gating/enable_gating");
+    int32_t num_gpus = config.get_int("/gpu", "num_gpus");
+    int32_t num_total_freq = config.get_int("/processing", "num_total_freq");
+    int32_t num_elements = config.get_int("/processing", "num_elements");
+    int32_t num_adjusted_local_freq = config.get_int("/processing", "num_adjusted_local_freq");
+    int32_t num_adjusted_elements = config.get_int("/processing", "num_adjusted_elements");
+    int32_t block_size = config.get_int("/gpu", "block_size");
+    int32_t num_blocks = config.get_int("/gpu", "num_blocks");
+    int32_t num_data_sets = config.get_int("/processing", "num_data_sets");
+    int32_t samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
+    int32_t buffer_depth = config.get_int("/processing", "buffer_depth");
+    int32_t network_buffer_depth = config.get_int("/ch_master_network", "network_buffer_depth");
+    bool enable_upload = config.get_bool("/ch_master_network", "enable_upload");
+    bool enable_gating = config.get_bool("/gating", "enable_gating");
 
     // Start HSA
     kotekan_hsa_start();

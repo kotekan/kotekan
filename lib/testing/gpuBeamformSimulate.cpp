@@ -54,8 +54,8 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
 }
 
 void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get_int("/processing/num_elements");
-    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 
 }
 

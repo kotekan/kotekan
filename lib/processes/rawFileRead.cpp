@@ -13,11 +13,11 @@ rawFileRead::rawFileRead(Config& config, const string& unique_name,
                    std::bind(&rawFileRead::main_thread, this)) {
 
     buf = buffer_container.get_buffer("buf");
-    generate_info_object = config.get_bool("generate_info_object");
-    repeat_frame = config.get_bool("repeat_frame");
-    base_dir = config.get_string("base_dir");
-    file_name = config.get_string("file_name");
-    file_ext = config.get_string("file_ext");
+    generate_info_object = config.get_bool(unique_name, "generate_info_object");
+    repeat_frame = config.get_bool(unique_name, "repeat_frame");
+    base_dir = config.get_string(unique_name, "base_dir");
+    file_name = config.get_string(unique_name, "file_name");
+    file_ext = config.get_string(unique_name, "file_ext");
 
     tmp_buf = nullptr;
     if (repeat_frame) {

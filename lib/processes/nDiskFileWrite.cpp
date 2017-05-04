@@ -26,10 +26,10 @@ nDiskFileWrite::~nDiskFileWrite() {
 }
 
 void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
-    disk_base = config.get_string("/raw_capture/disk_base");
-    disk_set = config.get_string("/raw_capture/disk_set");
-    num_disks = config.get_int("/raw_capture/num_disks");
-    write_to_disk = config.get_bool("/raw_capture/write_to_disk");
+    disk_base = config.get_string(unique_name, "disk_base");
+    disk_set = config.get_string(unique_name, "disk_set");
+    num_disks = config.get_int(unique_name, "num_disks");
+    write_to_disk = config.get_bool(unique_name, "write_to_disk");
 }
 
 // TODO instead of there being N disks of this tread started, this thread should

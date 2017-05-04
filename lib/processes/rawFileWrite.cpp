@@ -17,9 +17,9 @@ rawFileWrite::rawFileWrite(Config& config,
                        std::bind(&rawFileWrite::main_thread, this)) {
 
     buf = buffer_container.get_buffer("buf");
-    base_dir = config.get_string("base_dir");
-    file_name = config.get_string("file_name");
-    file_ext = config.get_string("file_ext");
+    base_dir = config.get_string(unique_name, "base_dir");
+    file_name = config.get_string(unique_name, "file_name");
+    file_ext = config.get_string(unique_name, "file_ext");
 }
 
 rawFileWrite::~rawFileWrite() {

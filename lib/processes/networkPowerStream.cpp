@@ -22,14 +22,14 @@ networkPowerStream::networkPowerStream(Config& config,
     buf = buffer_container.get_buffer("power_buf");
 
     //PER BUFFER
-    times = config.get_int("/processing/samples_per_data_set") /
-            config.get_int("/raw_capture/integration_length");
-    freqs = config.get_int("/processing/num_local_freq");
-    elems = config.get_int("/processing/num_elements");
+    times = config.get_int(unique_name, "samples_per_data_set") /
+            config.get_int(unique_name, "integration_length");
+    freqs = config.get_int(unique_name, "num_local_freq");
+    elems = config.get_int(unique_name, "num_elements");
 
-    dest_port = config.get_int("/raw_capture/destination_port");
-    dest_server_ip = config.get_string("/raw_capture/destination_ip");
-    dest_protocol = config.get_string("/raw_capture/destination_protocol");
+    dest_port = config.get_int(unique_name, "destination_port");
+    dest_server_ip = config.get_string(unique_name, "destination_ip");
+    dest_protocol = config.get_string(unique_name, "destination_protocol");
 
     atomic_flag_clear(&socket_lock);
 
@@ -40,7 +40,7 @@ networkPowerStream::networkPowerStream(Config& config,
     header.raw_cadence = 2.56e-6;
     header.num_freqs = freqs;
     header.num_elems = elems;
-    header.samples_summed = config.get_int("/raw_capture/integration_length");
+    header.samples_summed = config.get_int(unique_name, "integration_length");
     header.handshake_idx = -1;
     header.handshake_utc = -1;
 

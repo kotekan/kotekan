@@ -22,13 +22,13 @@ beamform_phase_data::~beamform_phase_data()
 void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
 
-    beamforming_do_not_track = config.get_int("/beamforming/do_not_track");
-    inst_lat = config.get_double("/beamforming/instrument_lat");
-    inst_long = config.get_double("/beamforming/instrument_long");
-    fixed_time = config.get_int("/beamforming/fixed_time");
-    ra = config.get_double("/beamforming/ra");
-    dec = config.get_double("/beamforming/dec");
-    feed_positions = config.get_float_array("/beamforming/element_positions");
+    beamforming_do_not_track = config.get_int("/beamforming", "do_not_track");
+    inst_lat = config.get_double("/beamforming", "instrument_lat");
+    inst_long = config.get_double("/beamforming", "instrument_long");
+    fixed_time = config.get_int("/beamforming", "fixed_time");
+    ra = config.get_double("/beamforming", "ra");
+    dec = config.get_double("/beamforming", "dec");
+    feed_positions = config.get_float_array("/beamforming", "element_positions");
 }
 
 void beamform_phase_data::build(class device_interface &param_Device)

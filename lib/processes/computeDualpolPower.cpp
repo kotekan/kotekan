@@ -39,11 +39,11 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
     buf_in = buffer_container.get_buffer("vdif_buf");
     buf_out = buffer_container.get_buffer("power_buf");
 
-    timesteps_in = config.get_int("/processing/samples_per_data_set");
-    integration_length = config.get_int("/raw_capture/integration_length");
+    timesteps_in = config.get_int(unique_name, "samples_per_data_set");
+    integration_length = config.get_int(unique_name, "integration_length");
     timesteps_out = timesteps_in / integration_length;
-    num_freq = config.get_int("/processing/num_local_freq");
-    num_elem = config.get_int("/processing/num_elements");
+    num_freq = config.get_int(unique_name, "num_local_freq");
+    num_elem = config.get_int(unique_name, "num_elements");
 
     if (timesteps_in % timesteps_out)
     {

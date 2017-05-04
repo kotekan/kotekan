@@ -38,15 +38,15 @@ char* gpu_command::get_name()
 
 void gpu_command::apply_config(const uint64_t& fpga_seq) {
     (void)fpga_seq;
-    _num_adjusted_elements = config.get_int("/processing/num_adjusted_elements");
-    _num_elements = config.get_int("/processing/num_elements");
-    _num_local_freq = config.get_int("/processing/num_local_freq");
-    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
-    _num_data_sets = config.get_int("/processing/num_data_sets");
-    _num_adjusted_local_freq = config.get_int("/processing/num_adjusted_local_freq");
-    _block_size = config.get_int("/gpu/block_size");
-    _num_blocks = config.get_int("/gpu/num_blocks");
-    _buffer_depth = config.get_int("/processing/buffer_depth");
+    _num_adjusted_elements = config.get_int("/processing", "num_adjusted_elements");
+    _num_elements = config.get_int("/processing", "num_elements");
+    _num_local_freq = config.get_int("/processing", "num_local_freq");
+    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
+    _num_data_sets = config.get_int("/processing", "num_data_sets");
+    _num_adjusted_local_freq = config.get_int("/processing", "num_adjusted_local_freq");
+    _block_size = config.get_int("/gpu", "block_size");
+    _num_blocks = config.get_int("/gpu", "num_blocks");
+    _buffer_depth = config.get_int("/processing", "buffer_depth");
 }
 
 void gpu_command::build(class device_interface &param_Device)

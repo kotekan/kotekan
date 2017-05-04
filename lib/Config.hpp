@@ -21,16 +21,16 @@ public:
     // Get config value functions.
     // ----------------------------
 
-    int32_t get_int(const string &pointer);
-    float get_float(const string &pointer);
-    double get_double(const string &pointer);
-    string get_string(const string &pointer);
-    bool get_bool(const string &pointer);
-    vector<int32_t> get_int_array(const string &pointer);
-    vector<float> get_float_array(const string &pointer);
-    vector<double> get_double_array(const string &pointer);
-    vector<string> get_string_array(const string &pointer);
-    vector<json> get_json_array(const string &pointer);
+    int32_t get_int(const string& base_path, const string& name);
+    float get_float(const string& base_path, const string& name);
+    double get_double(const string& base_path, const string& name);
+    string get_string(const string& base_path, const string& name);
+    bool get_bool(const string& base_path, const string& name);
+    vector<int32_t> get_int_array(const string& base_path, const string& name);
+    vector<float> get_float_array(const string& base_path, const string& name);
+    vector<double> get_double_array(const string& base_path, const string& name);
+    vector<string> get_string_array(const string& base_path, const string& name);
+    vector<json> get_json_array(const string& base_path, const string& name);
 
     void parse_file(const string &file_name, uint64_t switch_fpga_seq);
 
@@ -52,7 +52,12 @@ public:
     // it should be moved out of this object at some point.
     void generate_extra_options();
 
-    string find_parameter(const string& process_name, const string& parameter);
+    // @breaf Finds the value with key "name" starts looking at the
+    // "base_pointer" location, and then works backwards up the config tree.
+    // @param base_pointer Contains a JSON pointer which points to the
+    // process's location in the config tree. i.e. /vdif_cap/disk_write
+    // @param name The name of the property i.e. num_frequencies
+    json get_value(const string &base_pointer, const string &name);
 
     // Debug
     void dump_config();

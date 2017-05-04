@@ -21,9 +21,9 @@ cl_uint gpu_command_factory::getNumCommands() const
 
 void gpu_command_factory::initializeCommands(class device_interface & param_Device, Config &config)
 {
-    vector<json> commands = config.get_json_array("/gpu/commands");
+    vector<json> commands = config.get_json_array("/gpu", "commands");
     num_commands = commands.size();
-    use_beamforming = config.get_bool("/gpu/enable_beamforming");
+    use_beamforming = config.get_bool("/gpu", "enable_beamforming");
 
     list_commands =  new gpu_command * [num_commands];
 

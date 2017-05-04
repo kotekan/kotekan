@@ -31,9 +31,9 @@ void chrxUplink::apply_config(uint64_t fpga_seq) {
     if (!config.update_needed(fpga_seq))
         return;
 
-    _collection_server_ip = config.get_string("/ch_master_network/collection_server_ip");
-    _collection_server_port = config.get_int("/ch_master_network/collection_server_port");
-    _enable_gating = config.get_bool("/gating/enable_gating");
+    _collection_server_ip = config.get_string(unique_name, "collection_server_ip");
+    _collection_server_port = config.get_int(unique_name, "collection_server_port");
+    _enable_gating = config.get_bool(unique_name, "enable_gating");
 }
 
 // TODO make this more robust to network errors.

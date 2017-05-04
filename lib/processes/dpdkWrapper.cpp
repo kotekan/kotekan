@@ -12,7 +12,7 @@ dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name,
 
     apply_config(0);
 
-    _mode = config.get_string("mode");
+    _mode = config.get_string(unique_name, "mode");
     network_input_buffer = (struct Buffer **)malloc(_num_fpga_links * sizeof (struct Buffer *));
     for (int i = 0; i < _num_fpga_links; ++i) {
         network_input_buffer[i] = buffer_container.get_buffer("network_buffer_" + std::to_string(i));
@@ -35,15 +35,15 @@ dpdkWrapper::~dpdkWrapper() {
 }
 
 void dpdkWrapper::apply_config(uint64_t fpga_seq) {
-    _udp_packet_size = config.get_int("/dpdk/udp_packet_size");
-    _num_data_sets = config.get_int("/processing/num_data_sets");
-    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
-    _buffer_depth = config.get_int("/processing/buffer_depth");
-    _num_fpga_links = config.get_int("/dpdk/num_links");
-    _timesamples_per_packet = config.get_int("/dpdk/timesamples_per_packet");
-    _num_gpu_frames = config.get_int("/processing/num_gpu_frames");
-    _num_lcores = config.get_int("/dpdk/num_lcores");
-    _link_map = config.get_int_array("/gpu/link_map");
+    _udp_packet_size = config.get_int(unique_name, "udp_packet_size");
+    _num_data_sets = config.get_int(unique_name, "num_data_sets");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _buffer_depth = config.get_int(unique_name, "buffer_depth");
+    _num_fpga_links = config.get_int(unique_name, "num_links");
+    _timesamples_per_packet = config.get_int(unique_name, "timesamples_per_packet");
+    _num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
+    _num_lcores = config.get_int(unique_name, "num_lcores");
+    _link_map = config.get_int_array(unique_name, "link_map");
 }
 
 void dpdkWrapper::main_thread() {

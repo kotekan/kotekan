@@ -54,7 +54,7 @@ string &hsaCommand::get_name() {
 }
 
 void hsaCommand::apply_config(const uint64_t& fpga_seq) {
-    _gpu_buffer_depth = config.get_int("/gpu/buffer_depth");
+    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
     //INFO("GPU Buffer depth: %d", _gpu_buffer_depth);
 }
 

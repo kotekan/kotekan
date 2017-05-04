@@ -21,7 +21,7 @@ hsaOutputDataZero::~hsaOutputDataZero() {
 
 void hsaOutputDataZero::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
-    _num_blocks = config.get_int("/gpu/num_blocks");
+    _num_blocks = config.get_int("/gpu", "num_blocks");
     output_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
 }
 

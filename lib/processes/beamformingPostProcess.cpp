@@ -23,8 +23,8 @@ beamformingPostProcess::beamformingPostProcess(Config& config,
         KotekanProcess(config, unique_name, buffer_container,
                        std::bind(&beamformingPostProcess::main_thread, this))
 {
-    _num_fpga_links = config.get_int("/dpdk/num_links");
-    _num_gpus = config.get_int("/gpu/num_gpus");
+    _num_fpga_links = config.get_int("/dpdk", "num_links");
+    _num_gpus = config.get_int("/gpu", "num_gpus");
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = buffer_container.get_buffer("beamforming_buf" + std::to_string(i));
@@ -67,10 +67,10 @@ void beamformingPostProcess::apply_config(uint64_t fpga_seq) {
     if (!config.update_needed(fpga_seq))
         return;
 
-    _samples_per_data_set = config.get_int("/processing/samples_per_data_set");
-    _num_data_sets = config.get_int("/processing/num_data_sets");
-    _link_map = config.get_int_array("/gpu/link_map");
-    _num_local_freq = config.get_int("/processing/num_local_freq");
+    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
+    _num_data_sets = config.get_int("/processing", "num_data_sets");
+    _link_map = config.get_int_array("/gpu", "link_map");
+    _num_local_freq = config.get_int("/processing", "num_local_freq");
 }
 
 void beamformingPostProcess::main_thread() {

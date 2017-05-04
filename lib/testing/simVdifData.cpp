@@ -28,9 +28,9 @@ double e_time(void)
 }
 
 void simVdifData::main_thread() {
-    int times = config.get_int("/processing/samples_per_data_set");
-    int elements = config.get_int("/processing/num_elements");
-    int freqs = config.get_int("/processing/num_local_freq");
+    int times = config.get_int(unique_name, "samples_per_data_set");
+    int elements = config.get_int(unique_name, "num_elements");
+    int freqs = config.get_int(unique_name, "num_local_freq");
 
     double time_available =  2.56e-6 * times; //microseconds
     int buf_id = 0;

@@ -5,16 +5,16 @@ PROJECT (kotekan)
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 #CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
+SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp)
 
 if (${USE_HCC})
-	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
+	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
 endif ()
 if (${USE_HSA})
-	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp chimeShuffleMode.cpp)
+	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp chimeShuffleMode.cpp)
 endif ()
 if (${USE_OPENCL})
-	SET(SOURCE_EXE ${SOURCE_EXE} )
+	#SET(SOURCE_EXE ${SOURCE_EXE} )
 endif ()
 
 
@@ -45,7 +45,7 @@ target_link_libraries( kotekan ${DPDK_LIB} m rt dl pthread )
 target_link_libraries( kotekan kotekan_libs )
 target_link_libraries( kotekan libinclude )
 
-add_dependencies( kotekan libkotekan_libs )
+add_dependencies( kotekan kotekan_libs )
 
 install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
 install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)

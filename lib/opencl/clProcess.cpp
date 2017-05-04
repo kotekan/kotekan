@@ -27,7 +27,7 @@ clProcess::clProcess(Config& config_,
     KotekanProcess(config_, unique_name, buffer_container, std::bind(&clProcess::main_thread, this))
 {
     // TODO Remove this and move it to the command objects (see hsaThread).
-    gpu_id = config.get_int("gpu_id");
+    gpu_id = config.get_int(unique_name, "gpu_id");
     in_buf = buffer_container.get_buffer("network_buf");
     out_buf = buffer_container.get_buffer("corr_buf");
     beamforming_out_buf = buffer_container.get_buffer("beamforming_out_buf");
@@ -35,7 +35,7 @@ clProcess::clProcess(Config& config_,
 }
 
 void clProcess::apply_config(uint64_t fpga_seq) {
-    _use_beamforming = config.get_bool("/gpu/enable_beamforming");
+    _use_beamforming = config.get_bool("/gpu", "enable_beamforming");
 }
 
 clProcess::~clProcess() {
