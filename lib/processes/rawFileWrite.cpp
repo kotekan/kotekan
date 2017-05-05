@@ -16,7 +16,7 @@ rawFileWrite::rawFileWrite(Config& config,
         KotekanProcess(config, unique_name, buffer_container,
                        std::bind(&rawFileWrite::main_thread, this)) {
 
-    buf = buffer_container.get_buffer("buf");
+    buf = get_buffer("in_buf");
     base_dir = config.get_string(unique_name, "base_dir");
     file_name = config.get_string(unique_name, "file_name");
     file_ext = config.get_string(unique_name, "file_ext");

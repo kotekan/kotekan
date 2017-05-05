@@ -19,7 +19,7 @@ networkPowerStream::networkPowerStream(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&networkPowerStream::main_thread, this)){
 
-    buf = buffer_container.get_buffer("power_buf");
+    buf = get_buffer("power_in_buf");
 
     //PER BUFFER
     times = config.get_int(unique_name, "samples_per_data_set") /

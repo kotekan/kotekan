@@ -7,7 +7,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name,
                    buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
-    buf = buffer_container.get_buffer("network_buf");
+    buf = get_buffer("network_out_buf");
 }
 
 testDataGen::~testDataGen() {

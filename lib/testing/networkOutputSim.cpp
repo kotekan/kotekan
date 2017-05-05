@@ -29,7 +29,7 @@ networkOutputSim::networkOutputSim(Config &config_,
                   KotekanProcess(config_, unique_name, buffer_container, std::bind(&networkOutputSim::main_thread, this))
 {
 
-    buf = buffer_container.get_buffer("network_buf");
+    buf = get_buffer("network_out_buf");
     num_links_in_group = config.get_int(unique_name, "num_links_in_group");
     link_id = config.get_int(unique_name,"link_id");
     pattern = config.get_int(unique_name,"pattern");

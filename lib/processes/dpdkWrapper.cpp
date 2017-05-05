@@ -15,7 +15,7 @@ dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name,
     _mode = config.get_string(unique_name, "mode");
     network_input_buffer = (struct Buffer **)malloc(_num_fpga_links * sizeof (struct Buffer *));
     for (int i = 0; i < _num_fpga_links; ++i) {
-        network_input_buffer[i] = buffer_container.get_buffer("network_buffer_" + std::to_string(i));
+        network_input_buffer[i] = get_buffer("network_out_buf_" + std::to_string(i));
     }
 }
 

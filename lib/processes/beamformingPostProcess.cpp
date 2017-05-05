@@ -27,9 +27,9 @@ beamformingPostProcess::beamformingPostProcess(Config& config,
     _num_gpus = config.get_int("/gpu", "num_gpus");
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = buffer_container.get_buffer("beamforming_buf" + std::to_string(i));
+        in_buf[i] = get_buffer("beam_in_buf_" + std::to_string(i));
     }
-    vdif_buf = buffer_container.get_buffer("beamform_vdif_buf");
+    vdif_buf = get_buffer("vdif_out_buf");
 
 }
 

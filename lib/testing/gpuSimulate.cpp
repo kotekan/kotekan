@@ -8,8 +8,8 @@ gpuSimulate::gpuSimulate(Config& config,
 
     apply_config(0);
 
-    input_buf = buffer_container.get_buffer("network_buf");
-    output_buf = buffer_container.get_buffer("corr_buf");
+    input_buf = get_buffer("network_in_buf");
+    output_buf = get_buffer("corr_out_buf");
 
     int block_map_len = _num_blocks * 2 * sizeof(uint32_t);
     host_block_map = (uint32_t *)malloc(block_map_len);

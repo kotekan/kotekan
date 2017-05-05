@@ -12,7 +12,7 @@ rawFileRead::rawFileRead(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&rawFileRead::main_thread, this)) {
 
-    buf = buffer_container.get_buffer("buf");
+    buf = get_buffer("out_buf");
     generate_info_object = config.get_bool(unique_name, "generate_info_object");
     repeat_frame = config.get_bool(unique_name, "repeat_frame");
     base_dir = config.get_string(unique_name, "base_dir");

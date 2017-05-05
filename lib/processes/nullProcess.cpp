@@ -13,7 +13,7 @@ nullProcess::nullProcess(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&nullProcess::main_thread, this)){
-    buf = buffer_container.get_buffer("buf");
+    buf = get_buffer("in_buf");
 }
 
 nullProcess::~nullProcess() {

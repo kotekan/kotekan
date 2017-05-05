@@ -8,7 +8,7 @@ simVdifData::simVdifData(Config& config, const string& unique_name,
                         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this))
     {
-    buf = buffer_container.get_buffer("network_buf");
+    buf = get_buffer("network_out_buf");
 }
 
 simVdifData::~simVdifData() {

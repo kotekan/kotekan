@@ -27,12 +27,12 @@ gpuPostProcess::gpuPostProcess(Config& config_,
                        std::bind(&gpuPostProcess::main_thread, this)) {
     apply_config(0);
 
-    out_buf = buffer_container.get_buffer("chrx_buf");
-    gate_buf = buffer_container.get_buffer("gate_buf");
+    out_buf = get_buffer("chrx_out_buf");
+    gate_buf = get_buffer("gate_out_buf");
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof(struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = buffer_container.get_buffer("corr_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer("corr_in_buf_" + std::to_string(i));
     }
 }
 

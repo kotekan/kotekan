@@ -18,7 +18,7 @@ vdifStream::vdifStream(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&vdifStream::main_thread, this)) {
 
-    buf = buffer_container.get_buffer("buf");
+    buf = get_buffer("vdif_in_buf");
 }
 vdifStream::~vdifStream() {
 }

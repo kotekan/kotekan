@@ -17,8 +17,8 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
 
     apply_config(0);
 
-    input_buf = buffer_container.get_buffer("network_input");
-    output_buf = buffer_container.get_buffer("beamform_output");
+    input_buf = get_buffer("network_in_buf");
+    output_buf = get_buffer("beam_out_buf");
 
     input_len = _samples_per_data_set * _num_elements * 2;
     // Padded and extracted

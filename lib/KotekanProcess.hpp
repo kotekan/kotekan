@@ -26,7 +26,6 @@ protected:
     Config &config;
 
     std::string unique_name;
-    bufferContainer &buffer_container;
 
     // Set the cores the main thread is allowed to run on to the
     // cores given in cpu_affinity_
@@ -35,6 +34,9 @@ protected:
 
     // Applies the cpu_list to the thread affinity of the main thread.
     void apply_cpu_affinity();
+
+    // Helper function
+    struct Buffer * get_buffer(const std::string &name);
 private:
     std::thread this_thread;
     std::function<void(const KotekanProcess&)> main_thread_fn;
@@ -45,6 +47,10 @@ private:
 
     // Lock for changing or using the cpu_affinity variable.
     std::mutex cpu_affinity_lock;
+
+    // Should we allow direct access?
+    // Currently we use the get_buffer helper function for getting a buffer.
+    bufferContainer &buffer_container;
 
 };
 

@@ -36,8 +36,8 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
                   KotekanProcess(config, unique_name, buffer_container,
                                  std::bind(&computeDualpolPower::main_thread, this))
 {
-    buf_in = buffer_container.get_buffer("vdif_buf");
-    buf_out = buffer_container.get_buffer("power_buf");
+    buf_in = get_buffer("vdif_in_buf");
+    buf_out = get_buffer("power_out_buf");
 
     timesteps_in = config.get_int(unique_name, "samples_per_data_set");
     integration_length = config.get_int(unique_name, "integration_length");

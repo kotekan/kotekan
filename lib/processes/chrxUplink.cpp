@@ -20,8 +20,8 @@ chrxUplink::chrxUplink(Config &config,
                   KotekanProcess(config, unique_name, buffer_container,
                                  std::bind(&chrxUplink::main_thread, this)) {
 
-    vis_buf = buffer_container.get_buffer("vis_buf");
-    gate_buf = buffer_container.get_buffer("gate_buf");
+    vis_buf = get_buffer("chrx_in_buf");
+    gate_buf = get_buffer("gate_in_buf");
 }
 
 chrxUplink::~chrxUplink() {

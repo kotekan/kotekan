@@ -19,7 +19,7 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
                     std::bind(&fullPacketDump::main_thread, this)) {
 
     link_id = config.get_int(unique_name, "link_id");
-    buf = buffer_container.get_buffer("network_buffer");
+    buf = get_buffer("network_in_buf");
 
     apply_config(0);
 

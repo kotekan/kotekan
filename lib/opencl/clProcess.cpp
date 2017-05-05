@@ -28,10 +28,10 @@ clProcess::clProcess(Config& config_,
 {
     // TODO Remove this and move it to the command objects (see hsaThread).
     gpu_id = config.get_int(unique_name, "gpu_id");
-    in_buf = buffer_container.get_buffer("network_buf");
-    out_buf = buffer_container.get_buffer("corr_buf");
-    beamforming_out_buf = buffer_container.get_buffer("beamforming_out_buf");
-    beamforming_out_incoh_buf = buffer_container.get_buffer("beamforming_out_buf");
+    in_buf = get_buffer("network_buf");
+    out_buf = get_buffer("corr_buf");
+    beamforming_out_buf = get_buffer("beam_out_buf");
+    beamforming_out_incoh_buf = get_buffer("beam_incoh_out_buf");
 }
 
 void clProcess::apply_config(uint64_t fpga_seq) {
