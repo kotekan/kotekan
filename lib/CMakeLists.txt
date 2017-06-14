@@ -4,6 +4,10 @@ project( kotekan_libs )
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
 add_library ( kotekan_libs
               KotekanProcess.cpp
@@ -21,6 +25,7 @@ add_library ( kotekan_libs
               fpga_header_functions.c
               network_dpdk.c
               bufferContainer.cpp
+              processFactory.cpp
               )
 
 #set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
@@ -28,6 +33,11 @@ add_library ( kotekan_libs
 target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( kotekan_libs m rt dl ${DPDK_LIBS} )
 target_link_libraries( kotekan_libs libinclude )
+
+#if (${USE_DPDK})
+    include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
+    link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
+#endif ()
 
 if (${USE_HCC})
        add_subdirectory(hcc)

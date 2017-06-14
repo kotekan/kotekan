@@ -61,7 +61,7 @@ void hsaInputData::finalize_frame(int frame_id)
     // info object first, this should be fixed at the buffer level somehow.
     //release_info_object(network_buf, network_buffer_id);
     //mark_buffer_empty(network_buf, network_buffer_finalize_id);
-    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_buffers;
+    //network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_buffers;
 }
 
 

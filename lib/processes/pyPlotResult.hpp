@@ -19,9 +19,6 @@ public:
     void request_plot_callback(connectionInstance& conn, json& json_request);
 private:
     struct Buffer *buf;
-    std::string base_dir;
-    std::string file_name;
-    std::string file_ext;
 
     int gpu_id=-1;
     bool dump_plot=false;

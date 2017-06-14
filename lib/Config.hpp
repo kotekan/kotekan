@@ -59,6 +59,9 @@ public:
     // @param name The name of the property i.e. num_frequencies
     json get_value(const string &base_pointer, const string &name);
 
+    // Returns the full json data structure (for internal framework use)
+    json &get_full_config_json();
+
     // Debug
     void dump_config();
 private:

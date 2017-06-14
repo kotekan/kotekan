@@ -6,7 +6,7 @@
 #include "fpga_header_functions.h"
 
 // TODO Make these dynamic.
-#define NUM_LINKS (8)
+#define NUM_LINKS (4)
 #define NUM_LCORES (4)
 // This shouldn't go above 4, since it's for the shuffle.
 // A better name might be SHUFFLE_SIZE?

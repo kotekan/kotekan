@@ -24,6 +24,9 @@
 #include <pthread.h>
 #include <sched.h>
 
+#include <pmmintrin.h>
+#include <immintrin.h>
+
 //#define PACKET_OFFSET 58
 //#define NUM_POL 2
 #define PACKET_LEN (num_freq+VDIF_HEADER_LEN)

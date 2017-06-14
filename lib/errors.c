@@ -5,6 +5,8 @@ int log_level_warn = 1;
 int log_level_debug = 1;
 int log_level_info = 1;
 
+#ifdef WITH_OPENCL
+
 //from amd firepro demo:
 char* oclGetOpenCLErrorCodeStr(cl_int input)
 {
@@ -136,3 +138,4 @@ char* oclGetOpenCLErrorCodeStr(cl_int input)
     return (char*) "unknown error code";
 }
 
+#endif

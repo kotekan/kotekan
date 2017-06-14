@@ -5,7 +5,7 @@ PROJECT (kotekan)
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 #CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp)
+SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp)
 
 if (${USE_HCC})
 	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
@@ -30,8 +30,8 @@ link_directories (${KOTEKAN_BINARY_DIR}/lib)
 
 
 if (${USE_DPDK})
-	include_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/include )
-	link_directories ( $ENV{RTE_SDK}/$ENV{RTE_TARGET}/lib )
+	include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
+    link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
 endif ()
 
 ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)

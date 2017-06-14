@@ -180,18 +180,20 @@ json Config::get_value(const string& base_path, const string& name) {
     throw std::runtime_error("The value " + name + " does not exist in the path to: " + base_path);
 }
 
+// This function is really a bad idea.  It will be removed and the items in here
+// moved out to the processing objects.
 void Config::generate_extra_options() {
 
     // Create the inverse remap
-    vector<int32_t> remap = get_int_array("/processing", "product_remap");
-    vector<int32_t> inverse_remap;
-    inverse_remap.resize(remap.size());
+    //vector<int32_t> remap = get_int_array("/processing", "product_remap");
+    //vector<int32_t> inverse_remap;
+    //inverse_remap.resize(remap.size());
 
     // Given a channel ID, where is it in FPGA order.
-    for(uint32_t i = 0; i < remap.size(); ++i) {
-        inverse_remap[remap[i]] = i;
-    }
-    _json[0]["processing"]["inverse_product_remap"] = inverse_remap;
+    //for(uint32_t i = 0; i < remap.size(); ++i) {
+    //    inverse_remap[remap[i]] = i;
+    //}
+    //_json[0]["processing"]["inverse_product_remap"] = inverse_remap;
 
     // Special case for 16-element version
 //    if (_json[0]["processing"]["num_elements"].get<int>() < 32) {
@@ -215,4 +217,8 @@ void Config::generate_extra_options() {
 
 void Config::dump_config() {
     INFO("Config: %s", _json[0].dump().c_str());
+}
+
+json &Config::get_full_config_json() {
+    return _json[0];
 }

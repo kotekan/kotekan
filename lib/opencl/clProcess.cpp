@@ -1,4 +1,4 @@
-#include "clProcess.h"
+#include "clProcess.hpp"
 #include "device_interface.h"
 #include "gpu_command.h"
 #include "gpu_command_factory.h"

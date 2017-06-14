@@ -30,7 +30,7 @@ hsaThread::hsaThread(Config& config, const string& unique_name,
 
 void hsaThread::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
+    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
 }
 
 hsaThread::~hsaThread() {

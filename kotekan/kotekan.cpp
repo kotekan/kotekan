@@ -62,7 +62,7 @@ extern "C" {
     #include "gpuTestMode.hpp"
 #endif
 #ifdef WITH_OPENCL
-    #include "clProcess.h"
+    #include "clProcess.hpp"
 #endif
 
 #include "packetCapMode.hpp"
@@ -126,7 +126,7 @@ int start_new_kotekan_mode(Config &config) {
     string mode = config.get_string("/system", "mode");
 
     if (mode == "packet_cap") {
-        //kotekan_mode = (kotekanMode *) new packetCapMode(config);
+        kotekan_mode = (kotekanMode *) new packetCapMode(config);
     } else if (mode == "chime_shuffle") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);

@@ -19,9 +19,6 @@ pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
 
 {
     buf = get_buffer("in_buf");
-    base_dir = config.get_string(unique_name, "base_dir");
-    file_name = config.get_string(unique_name, "file_name");
-    file_ext = config.get_string(unique_name, "file_ext");
     gpu_id = config.get_int(unique_name, "gpu_id");
 }
 

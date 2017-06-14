@@ -9,6 +9,7 @@
 #include "packetCapMode.hpp"
 #include "fullPacketDump.hpp"
 #include "dpdkWrapper.hpp"
+#include "processFactory.hpp"
 
 #include <vector>
 #include <string>
@@ -34,16 +35,14 @@ void packetCapMode::initalize_processes() {
     INFO("starting packet cap");
 
     // Config values:
-    int32_t fpga_packet_lenght = config.get_int("/dpdk", "udp_packet_size");
-    int32_t samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
-    int32_t buffer_depth = config.get_int("/processing", "buffer_depth");
-    int32_t num_fpga_links = config.get_int("/dpdk", "num_links");
-    bool dump_to_disk = config.get_bool("/packet_cap", "dump_to_disk");
-    string file_base = config.get_string("/packet_cap", "file_base");
-    string data_set = config.get_string("/packet_cap", "data_set");
+    int32_t fpga_packet_lenght = config.get_int("/", "udp_packet_size");
+    int32_t samples_per_data_set = config.get_int("/", "samples_per_data_set");
+    int32_t buffer_depth = config.get_int("/", "buffer_depth");
+    int32_t num_fpga_links = config.get_int("/", "num_links");
 
     // Create dump folder
-    if (dump_to_disk) {
+    // Needs to be moved to process
+    /*if (dump_to_disk) {
         char dir_name[100];
         snprintf(dir_name, 100, "%s/%s", file_base.c_str(), data_set.c_str());
 
@@ -58,13 +57,16 @@ void packetCapMode::initalize_processes() {
             INFO("Note: directory %s already exists", dir_name);
             // return;
         }
-    }
+    }*/
+
+    bufferContainer buffer_container;
 
     // Create buffers.
     struct Buffer * network_input_buffer[num_fpga_links];
     for (int i = 0; i < num_fpga_links; ++i) {
         network_input_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
         add_buffer(network_input_buffer[i]);
+
     }
 
     // Create the shared pool of buffer info objects; used for recording information about a
@@ -89,8 +91,17 @@ void packetCapMode::initalize_processes() {
                       1,
                       pool[i],
                       buffer_name);
+        buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
     }
 
+    processFactory process_factory(config, buffer_container);
+    vector<KotekanProcess *> processes = process_factory.build_processes();
+
+    for (auto process: processes) {
+        add_process(process);
+    }
+
+    /*
     add_process((KotekanProcess *) new dpdkWrapper(config, "packet_capture", network_input_buffer, "packet_cap"));
 
     // The thread which creates output frame.
@@ -99,5 +110,5 @@ void packetCapMode::initalize_processes() {
                                                             *network_input_buffer[i],
                                                             i);
         add_process((KotekanProcess*)full_packet_dump);
-    }
+    }*/
 }

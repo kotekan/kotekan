@@ -19,7 +19,7 @@ struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the process, not
     // just somewhere in the path to the process.
     string buf_name = config.get_string(unique_name, name);
-    buffer_container.get_buffer(buf_name);
+    return buffer_container.get_buffer(buf_name);
 }
 
 void KotekanProcess::apply_cpu_affinity() {

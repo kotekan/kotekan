@@ -70,4 +70,4 @@ private:
 
 restServer * get_rest_server();
 
-#endif /* CHIME_HPP */
+#endif /* REST_SERVER_HPP */
