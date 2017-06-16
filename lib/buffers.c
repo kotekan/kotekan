@@ -143,7 +143,7 @@ int create_buffer(struct Buffer* buf, int num_buf, int len, int num_producers,
         buf->data[i] = hsa_host_malloc(buf->aligned_buffer_size);
         INFO("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->data[i], buf->aligned_buffer_size);
 
-        memset(buf->data[i], 0, buf->aligned_buffer_size);
+        memset(buf->data[i], 0x88888888, buf->aligned_buffer_size);
 
         #else
         // Create a page alligned block of memory for the buffer

@@ -14,6 +14,7 @@
 #include "pyPlotResult.hpp"
 #include "gpuSimulate.hpp"
 #include "gpuBeamformSimulate.hpp"
+#include "processFactory.hpp"
 
 #ifdef WITH_HCC
   #include "hccGPUThread.hpp"
@@ -36,18 +37,23 @@ gpuTestMode::~gpuTestMode() {
 }
 
 void gpuTestMode::initalize_processes() {
+
     // Config values:
-    int32_t num_gpus = config.get_int("/gpu/", "num_gpus");
-    int32_t num_adjusted_local_freq = config.get_int("/processing/", "num_adjusted_local_freq");
-    int32_t num_adjusted_elements = config.get_int("/processing/", "num_adjusted_elements");
+    // This will be removed in later versions
+    int32_t num_gpus = config.get_int("/gpu", "num_gpus");
+    int32_t num_local_freq = config.get_int("/", "num_local_freq");
+    int32_t num_elements = config.get_int("/", "num_elements");
     int32_t block_size = config.get_int("/gpu", "block_size");
-    int32_t num_blocks = config.get_int("/gpu", "num_blocks");
-    int32_t num_data_sets = config.get_int("/processing", "num_data_sets");
-    int32_t samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
-    int32_t buffer_depth = config.get_int("/processing", "buffer_depth");
+    int32_t num_blocks = (int32_t)(num_elements / block_size) *
+                         (num_elements / block_size + 1) / 2.;
+    int32_t num_data_sets = config.get_int("/", "num_data_sets");
+    int32_t samples_per_data_set = config.get_int("/", "samples_per_data_set");
+    int32_t buffer_depth = config.get_int("/", "buffer_depth");
 
     // Start HSA
     kotekan_hsa_start();
+
+    bufferContainer buffer_container;
 
     // Create buffers.
     struct Buffer * network_input_buffer[num_gpus];
@@ -70,18 +76,6 @@ void gpuTestMode::initalize_processes() {
         add_buffer(simulate_output_buffer[i]);
     }
 
-    // Beamforming buffers
-    struct Buffer * beamform_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        beamform_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(beamform_output_buffer[i]);
-    }
-    struct Buffer * beamform_output_simulate_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        beamform_output_simulate_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(beamform_output_simulate_buffer[i]);
-    }
-
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
     struct InfoObjectPool * pool[1];
@@ -90,98 +84,54 @@ void gpuTestMode::initalize_processes() {
         add_info_object_pool(pool[i]);
     }
 
-    int32_t output_len = num_adjusted_local_freq * num_blocks * (block_size*block_size)*2.;
+    int32_t output_len = num_local_freq * num_blocks * (block_size*block_size)*2.;
 
     char buffer_name[100];
 
-    create_info_pool(pool[0], 5 * buffer_depth,
-                                    num_adjusted_local_freq,
-                                    num_adjusted_elements);
+    create_info_pool(pool[0], 10 * buffer_depth,
+                                    num_local_freq,
+                                    num_elements);
 
     for (int i = 0; i < num_gpus; ++i) {
 
         DEBUG("Creating buffers...");
 
-        int links_per_gpu = 1; // config.num_links_per_gpu(i);
-
-        INFO("Num links for gpu[%d] = %d", i, links_per_gpu);
-
         snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
         create_buffer(network_input_buffer[i],
-                      links_per_gpu * buffer_depth,
-                      samples_per_data_set * num_adjusted_elements *
-                      num_adjusted_local_freq * num_data_sets,
+                      buffer_depth,
+                      samples_per_data_set * num_elements *
+                      num_local_freq * num_data_sets,
                       1,
-                      2,
+                      1,
                       pool[0],
                       buffer_name);
-        host_buffers[i].add_buffer("network_buf", network_input_buffer[i]);
+        buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
 
         snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
         create_buffer(gpu_output_buffer[i],
-                      links_per_gpu * buffer_depth,
+                      buffer_depth,
                       output_len * num_data_sets * sizeof(int32_t),
                       1,
-                      2,
+                      1,
                       pool[0],
                       buffer_name);
-        host_buffers[i].add_buffer("output_buf", gpu_output_buffer[i]);
+        buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
 
         snprintf(buffer_name, 100, "simulate_output_buffer_%d", i);
         create_buffer(simulate_output_buffer[i],
-                      links_per_gpu * buffer_depth,
+                      buffer_depth,
                       output_len * num_data_sets * sizeof(int32_t),
                       1,
                       1,
                       pool[0],
                       buffer_name);
+        buffer_container.add_buffer(buffer_name, simulate_output_buffer[i]);
+    }
 
-        /*snprintf(buffer_name, 100, "beamform_output_buf_%d", i);
-        create_buffer(beamform_output_buffer[i],
-                      links_per_gpu * buffer_depth,
-                      2 * samples_per_data_set * num_adjusted_elements * sizeof(float),
-                      1,
-                      1,
-                      pool[0],
-                      buffer_name);
-        host_buffers[i].add_buffer("beamform_output_buf", beamform_output_buffer[i]);
+    processFactory process_factory(config, buffer_container);
+    vector<KotekanProcess *> processes = process_factory.build_processes();
 
-        snprintf(buffer_name, 100, "beamform_output_simulate_buf_%d", i);
-        create_buffer(beamform_output_simulate_buffer[i],
-                      links_per_gpu * buffer_depth,
-                      2 * samples_per_data_set * num_adjusted_elements * sizeof(float),
-                      1,
-                      1,
-                      pool[0],
-                      buffer_name); */
-
-        // TODO better management of the buffers so this list doesn't have to change size...
-
-        // Beamform test
-        //add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));
-        //add_process((KotekanProcess*) new hsaThread(config, host_buffers[i], i));
-        //add_process((KotekanProcess*) new rawFileRead(config, *beamform_output_simulate_buffer[i], false, true,
-        //                                                 "/data/test_data/", "beamform_gpu_output_99", "dat"));
-        ////add_process((KotekanProcess*) new gpuBeamformSimulate(config, *network_input_buffer[i], *beamform_output_simulate_buffer[i]));
-        //add_process((KotekanProcess*) new testDataCheck<float>(config, *beamform_output_buffer[i], *beamform_output_simulate_buffer[i]));
-        //add_process((KotekanProcess*) new rawFileWrite(config, *beamform_output_buffer[i], "/data/test_data/", "beamform_gpu_output_99", "dat"));
-
-        // GPU Test
-        //add_process((KotekanProcess*) new rawFileRead(config, *network_input_buffer[i], true, false,
-        //                                                "/data/test_data/", "gpu_input_frame_const", "dat"));
-        //add_process((KotekanProcess*) new testDataGen(config, "test_data", *network_input_buffer[i]));
-        //add_process((KotekanProcess*) new hsaThread(config, "hsa_gpu", host_buffers[i], i));
-       // add_process((KotekanProcess*) new rawFileRead(config, "rawfile", *simulate_output_buffer[i], false, false,
-        //                                                "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
-        //add_process((KotekanProcess*) new pyPlotResult(config, "plot_n2", *gpu_output_buffer[i], i, "/data/test_data/", "beamform_gpu_output_99", "dat") );
-//        add_process((KotekanProcess*) new pyPlotOutputError(config, *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
-        //add_process((KotekanProcess*) new testDataCheck<int>(config, "check_result", *gpu_output_buffer[i], *simulate_output_buffer[i] ) );
-
-        // Processes to generate test data
-        //add_process((KotekanProcess*) new testDataGen(config, *network_input_buffer[i]));
-        //add_process((KotekanProcess*) new gpuSimulate(config, *network_input_buffer[i], *simulate_output_buffer[i]));
-        //add_process((KotekanProcess*) new rawFileWrite(config, *network_input_buffer[i], "/data/test_data/", "gpu_input_frame_const", "dat"));
-        //add_process((KotekanProcess*) new rawFileWrite(config, *simulate_output_buffer[i], "/data/test_data/", "gpu_sim_output_frame_const", "dat"));
-
+    for (auto process: processes) {
+        add_process(process);
     }
 }

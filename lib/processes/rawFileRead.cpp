@@ -61,6 +61,7 @@ void rawFileRead::main_thread() {
 
         if (repeat_frame) {
             if (file_num == 0) {
+                INFO("Reading from file %s", full_path);
                 FILE * fp = fopen(full_path, "rb");
                 int bytes_read = fread(tmp_buf, sizeof (char), buf->buffer_size, fp);
 
