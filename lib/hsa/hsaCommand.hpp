@@ -32,7 +32,7 @@ public:
     // Kernel file name is optional.
     hsaCommand(const string &kernel_name, const string &kernel_file_name,
                 hsaDeviceInterface &device, Config &config,
-                bufferContainer &host_buffers);
+                bufferContainer &host_buffers, const string &unique_name);
     virtual ~hsaCommand();
     string &get_name();
 
@@ -64,6 +64,7 @@ protected:
     Config &config;
     hsaDeviceInterface &device;
     bufferContainer host_buffers;
+    string unique_name;
 
     // Final signals array
     // Note a value of zero for one of the signals means that

@@ -1,7 +1,12 @@
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+
+
 import matplotlib.pyplot as plt
 import sys, json
 import time
+
 
 header = json.loads(sys.stdin.readline())
 
@@ -52,7 +57,7 @@ if (data_type == "CORR_MATRIX"): #N^2
 	ax1.set_ylabel("Y Input")
 
 	vsize=ax1.get_position().size[1]  #fraction of figure occupied by axes
-	axesdpi= int(2048/(f.get_size_inches()[1]*ax1.get_position().size[1])) 
+	axesdpi= int(2048/(f.get_size_inches()[1]*ax1.get_position().size[1]))
 
 	plt.savefig("correlation_{}.pdf".format(time.time()), dpi=axesdpi,bbox_inches='tight')
 

@@ -56,7 +56,7 @@ void pyPlotResult::main_thread() {
             return;
         }
 
-
+        dump_plot = true;
         if (dump_plot)
         {
             dump_plot=false;
@@ -69,7 +69,7 @@ void pyPlotResult::main_thread() {
             python_script = popen("python -u pyPlotResult.py","w");
 
             { // N^2
-                uint num_elements = config.get_int("/processing", "num_elements");
+                uint num_elements = config.get_int(unique_name, "num_elements");
                 uint block_dim = 32;
                 uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
                 uint block_size = block_dim*block_dim*2; //real, complex

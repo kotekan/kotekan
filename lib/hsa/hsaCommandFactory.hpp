@@ -10,13 +10,14 @@ class hsaCommandFactory
 {
 public:
     hsaCommandFactory(Config &config, hsaDeviceInterface &device,
-                         bufferContainer &host_buffers);
+                         bufferContainer &host_buffers, const string &unique_name);
     virtual ~hsaCommandFactory();
 
     vector<hsaCommand *> &get_commands();
 protected:
     Config &config;
     hsaDeviceInterface &device;
+    string unique_name;
 
     bufferContainer &host_buffers;
 

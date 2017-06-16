@@ -197,7 +197,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
 
 
     //
-    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id &d; new_seq %d",
+    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
             port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
     mark_buffer_full(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id);
 

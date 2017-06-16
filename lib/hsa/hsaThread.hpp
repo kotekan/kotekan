@@ -12,6 +12,7 @@
 #include "hsaCommandFactory.hpp"
 #include "hsaCommand.hpp"
 #include "signalContainer.hpp"
+#include "bufferContainer.hpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_finalize.h"
@@ -41,6 +42,9 @@ private:
     uint32_t _gpu_buffer_depth;
 
     uint32_t gpu_id;
+
+    // TODO should this be removed?
+    bufferContainer local_buffer_container;
 };
 
 #endif

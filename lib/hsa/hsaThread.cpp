@@ -3,34 +3,34 @@
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
+#include "util.h"
 
 #include <iostream>
 #include <sys/time.h>
 
 using namespace std;
 
-double e_time(void){
-    static struct timeval now;
-    gettimeofday(&now, NULL);
-    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
-}
-
 hsaThread::hsaThread(Config& config, const string& unique_name,
                      bufferContainer &buffer_container):
-        KotekanProcess(config_, unique_name, buffer_container,
+        KotekanProcess(config, unique_name, buffer_container,
                      std::bind(&hsaThread::main_thread, this)) {
 
     apply_config(0);
 
     final_signals.resize(_gpu_buffer_depth);
 
+    // TODO move this into the config.
+    local_buffer_container.add_buffer("network_buf", get_buffer("network_buffer"));
+    local_buffer_container.add_buffer("output_buf", get_buffer("output_buffer"));
+
     device = new hsaDeviceInterface(config, gpu_id);
-    factory = new hsaCommandFactory(config, *device, buffer_container);
+    factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
 }
 
 void hsaThread::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
     _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
+    gpu_id = config.get_int(unique_name, "gpu_id");
 }
 
 hsaThread::~hsaThread() {
@@ -46,8 +46,6 @@ void hsaThread::main_thread()
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
     bool first_run = true;
-
-    sleep(5);
 
     for(;;) {
 

@@ -47,6 +47,7 @@ endif ()
 if (${USE_HSA})
        add_subdirectory(hsa)
        target_link_libraries( kotekan_libs kotekan_hsa )
+       target_link_libraries( kotekan_libs hsa-runtime64 )
 endif ()
 
 if (${USE_OPENCL})

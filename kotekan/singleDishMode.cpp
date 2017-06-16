@@ -17,7 +17,7 @@
 #include "networkPowerStream.hpp"
 #include "vdif_functions.h"
 #include "dpdkWrapper.hpp"
-#include "nDiskFileWrite.cpp"
+#include "processFactory.hpp"
 
 #include <vector>
 #include <string>

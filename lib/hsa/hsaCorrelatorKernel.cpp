@@ -10,8 +10,8 @@
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+                            bufferContainer& host_buffers, const string &unique_name) :
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
 
     apply_config(0);
 
@@ -45,10 +45,12 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string
 void hsaCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
 
-    _num_elements = config.get_int("/processing", "num_elements");
-    _num_local_freq = config.get_int("/processing", "num_local_freq");
-    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
-    _num_blocks = config.get_int("/gpu", "num_blocks");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    int block_size = config.get_int(unique_name, "block_size");
+    _num_blocks = (int32_t)(_num_elements / block_size) *
+                    (_num_elements / block_size + 1) / 2.;
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     // I don't really like this way of getting to correlator output size (AR)

@@ -10,6 +10,9 @@
 #include "fullPacketDump.hpp"
 #include "dpdkWrapper.hpp"
 #include "processFactory.hpp"
+#ifdef WITH_HSA
+#include "hsaBase.h"
+#endif
 
 #include <vector>
 #include <string>
@@ -33,6 +36,10 @@ packetCapMode::~packetCapMode() {
 void packetCapMode::initalize_processes() {
 
     INFO("starting packet cap");
+
+    #ifdef WITH_HSA
+        kotekan_hsa_start();
+    #endif
 
     // Config values:
     int32_t fpga_packet_lenght = config.get_int("/", "udp_packet_size");

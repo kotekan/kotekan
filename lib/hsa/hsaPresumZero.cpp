@@ -3,8 +3,8 @@
 
 hsaPresumZero::hsaPresumZero(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+                            bufferContainer& host_buffers, const string &unique_name) :
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
 
     apply_config(0);
     presum_zeros = hsa_host_malloc(presum_len);
@@ -17,8 +17,8 @@ hsaPresumZero::~hsaPresumZero() {
 
 void hsaPresumZero::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
-    _num_elements = config.get_int("/processing", "num_elements");
-    _num_local_freq = config.get_int("/processing", "num_local_freq");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
 }
 

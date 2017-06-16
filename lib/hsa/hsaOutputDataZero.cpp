@@ -3,8 +3,8 @@
 
 hsaOutputDataZero::hsaOutputDataZero(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+                            bufferContainer& host_buffers, const string &unique_name) :
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
 
     apply_config(0);
 
@@ -21,7 +21,10 @@ hsaOutputDataZero::~hsaOutputDataZero() {
 
 void hsaOutputDataZero::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
-    _num_blocks = config.get_int("/gpu", "num_blocks");
+    int block_size = config.get_int(unique_name, "block_size");
+    int num_elements = config.get_int(unique_name, "num_elements");
+    _num_blocks = (int32_t)(num_elements / block_size) *
+                    (num_elements / block_size + 1) / 2.;
     output_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
 }
 

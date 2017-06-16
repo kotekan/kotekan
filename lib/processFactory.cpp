@@ -25,8 +25,7 @@
 #include "testDataGen.hpp"
 
 #ifdef WITH_HSA
-    #include "chimeShuffleMode.hpp"
-    #include "gpuTestMode.hpp"
+    #include "hsaThread.hpp"
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
@@ -166,7 +165,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
 
     // HSA
-    if (name == "hsaThread") {
+    if (name == "hsaProcess") {
         #ifdef WITH_HSA
             return (KotekanProcess *) new hsaThread(config, location, buffer_container);
         #else

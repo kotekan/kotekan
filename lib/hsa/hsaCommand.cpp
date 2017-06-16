@@ -12,12 +12,13 @@ using std::string;
 
 hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_name_,
         hsaDeviceInterface& device_, Config& config_,
-        bufferContainer &host_buffers_) :
+        bufferContainer &host_buffers_, const string &unique_name_) :
         command_name(command_name_),
         kernel_file_name(kernel_file_name_),
         config(config_),
         device(device_),
-        host_buffers(host_buffers_)
+        host_buffers(host_buffers_),
+        unique_name(unique_name_)
 {
     apply_config(0);
     signals = (hsa_signal_t *)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t));

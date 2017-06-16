@@ -9,7 +9,8 @@ public:
 
     hsaBeamformOutputData(const string &kernel_name, const string &kernel_file_name,
                   hsaDeviceInterface &device, Config &config,
-                  bufferContainer &host_buffers);
+                  bufferContainer &host_buffers,
+                  const string &unique_name);
 
     virtual ~hsaBeamformOutputData();
 

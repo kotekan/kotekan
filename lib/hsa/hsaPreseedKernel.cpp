@@ -5,16 +5,16 @@
 
 hsaPreseedKernel::hsaPreseedKernel(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers){
+                            bufferContainer& host_buffers, const string &unique_name) :
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
     apply_config(0);
 }
 
 void hsaPreseedKernel::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
-    _num_elements = config.get_int("/processing", "num_elements");
-    _num_local_freq = config.get_int("/processing", "num_local_freq");
-    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
 }

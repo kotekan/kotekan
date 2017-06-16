@@ -2,8 +2,9 @@
 
 hsaBeamformOutputData::hsaBeamformOutputData(const string& kernel_name,
         const string& kernel_file_name, hsaDeviceInterface& device,
-        Config& config, bufferContainer& host_buffers) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers) {
+        Config& config, bufferContainer& host_buffers,
+        const string &unique_name) :
+    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
 
     apply_config(0);
 

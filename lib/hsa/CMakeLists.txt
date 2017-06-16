@@ -1,8 +1,6 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_hsa )
 
-include_directories( ${OPENCL_INCLUDE_DIRS} )
-
 include_directories (${CHIME_SOURCE_DIR}/include)
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
@@ -20,7 +18,7 @@ add_library ( kotekan_hsa
               hsaPresumZero.cpp
               hsaBeamformKernel.cpp
               hsaBeamformOutput.cpp
-              hasCommand.cpp
+              hsaCommand.cpp
               hsaCommandFactory.cpp
               hsaDeviceInterface.cpp
               hsaThread.cpp
