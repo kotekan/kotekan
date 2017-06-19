@@ -6,9 +6,6 @@
 #ifdef WITH_HSA
 #include "hsaBase.h"
 
-// Make this dynamic
-#define NUM_GPUS 4
-
 class gpuTestMode : public kotekanMode {
 
 public:
@@ -18,8 +15,6 @@ public:
     void initalize_processes();
 
 private:
-
-    bufferContainer host_buffers[NUM_GPUS];
 };
 
 #endif /* WITH_HSA */

@@ -69,13 +69,6 @@ void gpuTestMode::initalize_processes() {
         add_buffer(gpu_output_buffer[i]);
     }
 
-    // Create simulation output buffers.
-    struct Buffer * simulate_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        simulate_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(simulate_output_buffer[i]);
-    }
-
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
     struct InfoObjectPool * pool[1];
@@ -117,15 +110,6 @@ void gpuTestMode::initalize_processes() {
                       buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
 
-        snprintf(buffer_name, 100, "simulate_output_buffer_%d", i);
-        create_buffer(simulate_output_buffer[i],
-                      buffer_depth,
-                      output_len * num_data_sets * sizeof(int32_t),
-                      1,
-                      1,
-                      pool[0],
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, simulate_output_buffer[i]);
     }
 
     processFactory process_factory(config, buffer_container);

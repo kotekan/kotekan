@@ -72,7 +72,6 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
             } else {
                 second_value = 65536;//1605632.0;//9502720.0; //294912; //10256384; //163840;
             }
-            continue;
             if (first_value != second_value) {
                 if (num_errors++ < 10000)
                 ERROR("%s[%d][%d] != %s[%d][%d]; values: (%f, %f)",

@@ -8,6 +8,10 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
                    buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
+    type = config.get_string(unique_name, "type");
+    if (type == "const")
+        value = config.get_int(unique_name, "value");
+    assert(type == "const" || type == "random");
 }
 
 testDataGen::~testDataGen() {
@@ -37,11 +41,14 @@ void testDataGen::main_thread() {
         std::uniform_int_distribution<> dis(0, 255);
 
         for (int j = 0; j < buf->buffer_size; ++j) {
-//            buf.data[buf_id][j] = 0x99;
-            buf->data[buf_id][j] = (unsigned char)dis(gen);
+            if (type == "const") {
+                buf->data[buf_id][j] = value;
+            } else if (type == "random") {
+                buf->data[buf_id][j] = (unsigned char)dis(gen);
+            }
         }
 
-        INFO("Generated a test data set in %s[%d]", buf->buffer_name, buf_id);
+        INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, buf_id);
 
         mark_buffer_full(buf, buf_id);
 

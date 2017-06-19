@@ -23,6 +23,7 @@
 #include "simVdifData.hpp"
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
+#include "constDataCheck.hpp"
 
 #ifdef WITH_HSA
     #include "hsaThread.hpp"
@@ -149,6 +150,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "testDataCheck") {
         // TODO This is a template class, how to set template type?
         return (KotekanProcess *) new testDataCheck<int32_t>(config, location, buffer_container);
+    }
+
+    if (name == "constDataCheck") {
+        // TODO This is a template class, how to set template type?
+        return (KotekanProcess *) new constDataCheck(config, location, buffer_container);
     }
 
     if (name == "testDataGen") {

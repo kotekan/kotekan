@@ -4,6 +4,8 @@
 #include "buffers.h"
 #include "KotekanProcess.hpp"
 
+// Type: one of "random", "const"
+// Value: the value of the constant
 class testDataGen : public KotekanProcess {
 public:
     testDataGen(Config& config, const string& unique_name,
@@ -13,6 +15,8 @@ public:
     void main_thread();
 private:
     struct Buffer *buf;
+    std::string type;
+    int32_t value;
 };
 
 #endif
