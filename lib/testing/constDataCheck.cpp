@@ -30,14 +30,14 @@ void constDataCheck::main_thread() {
         bool error = false;
         num_errors = 0;
 
-        for (int i = 0; i < buf->buffer_size/sizeof(int32_t); i += 2) {
+        for (uint32_t i = 0; i < buf->buffer_size/sizeof(int32_t); i += 2) {
 
             int32_t imag = *((int32_t *)&(buf->data[buf_id][i*sizeof(int32_t)]));
             int32_t real = *((int32_t *)&(buf->data[buf_id][(i+1)*sizeof(int32_t)]));
 
             if (real != ref_real || imag != ref_imag) {
                 if (num_errors++ < 10000)
-                    ERROR("%s[%d][%d] != %d + %di; actual  value: %d + %di\n",
+                    ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di\n",
                         buf->buffer_name, buf_id, i/2,
                         ref_real, ref_imag, real, imag);
                 error = true;
