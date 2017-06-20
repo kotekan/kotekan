@@ -26,7 +26,7 @@
 #include "constDataCheck.hpp"
 
 #ifdef WITH_HSA
-    #include "hsaThread.hpp"
+    #include "hsaProcess.hpp"
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
@@ -166,16 +166,16 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         #ifdef WITH_OPENCL
             return (KotekanProcess *) new clProcess(config, location, buffer_container);
         #else
-            throw std::runtime_error("hsaThread is not supported on this system");
+            throw std::runtime_error("hsaProcess is not supported on this system");
         #endif
     }
 
     // HSA
     if (name == "hsaProcess") {
         #ifdef WITH_HSA
-            return (KotekanProcess *) new hsaThread(config, location, buffer_container);
+            return (KotekanProcess *) new hsaProcess(config, location, buffer_container);
         #else
-            throw std::runtime_error("hsaThread is not supported on this system");
+            throw std::runtime_error("hsaProcess is not supported on this system");
         #endif
     }
 

@@ -20,7 +20,7 @@
   #include "hccGPUThread.hpp"
 #endif
 #ifdef WITH_HSA
-  #include "hsaThread.hpp"
+  #include "hsaProcess.hpp"
 #endif
 
 

@@ -18,11 +18,11 @@
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
 
-class hsaThread : public KotekanProcess {
+class hsaProcess : public KotekanProcess {
 public:
-    hsaThread(Config& config, const string& unique_name,
+    hsaProcess(Config& config, const string& unique_name,
               bufferContainer &buffer_container);
-    virtual ~hsaThread();
+    virtual ~hsaProcess();
 
     void main_thread();
 

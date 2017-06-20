@@ -21,7 +21,7 @@ add_library ( kotekan_hsa
               hsaCommand.cpp
               hsaCommandFactory.cpp
               hsaDeviceInterface.cpp
-              hsaThread.cpp
+              hsaProcess.cpp
               )
 
 add_subdirectory(kernels)

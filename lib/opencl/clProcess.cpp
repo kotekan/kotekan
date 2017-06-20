@@ -26,7 +26,7 @@ clProcess::clProcess(Config& config_,
         bufferContainer &buffer_container):
     KotekanProcess(config_, unique_name, buffer_container, std::bind(&clProcess::main_thread, this))
 {
-    // TODO Remove this and move it to the command objects (see hsaThread).
+    // TODO Remove this and move it to the command objects (see hsaProcess).
     gpu_id = config.get_int(unique_name, "gpu_id");
     in_buf = get_buffer("network_buf");
     out_buf = get_buffer("corr_buf");

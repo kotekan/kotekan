@@ -72,10 +72,6 @@ void rawFileWrite::main_thread() {
 
         INFO("Data file write done for %s", full_path);
 
-        //for (int i = 0; i < 10; ++i) {
-        //    INFO("%s[%d][%d] = %d", buf.buffer_name, buffer_id, i, *((int *)&buf.data[buffer_id][i * sizeof(int)]));
-        //}
-
         if (close(fd) == -1) {
             ERROR("Cannot close file %s", full_path);
         }

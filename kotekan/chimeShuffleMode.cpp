@@ -1,7 +1,7 @@
 #include "chimeShuffleMode.hpp"
 
 #include "buffers.h"
-#include "hsaThread.hpp"
+#include "hsaProcess.hpp"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"

@@ -1,4 +1,4 @@
-#include "hsaThread.hpp"
+#include "hsaProcess.hpp"
 #include "unistd.h"
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
@@ -10,10 +10,10 @@
 
 using namespace std;
 
-hsaThread::hsaThread(Config& config, const string& unique_name,
+hsaProcess::hsaProcess(Config& config, const string& unique_name,
                      bufferContainer &buffer_container):
         KotekanProcess(config, unique_name, buffer_container,
-                     std::bind(&hsaThread::main_thread, this)) {
+                     std::bind(&hsaProcess::main_thread, this)) {
 
     apply_config(0);
 
@@ -27,18 +27,18 @@ hsaThread::hsaThread(Config& config, const string& unique_name,
     factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
 }
 
-void hsaThread::apply_config(uint64_t fpga_seq) {
+void hsaProcess::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
     _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
     gpu_id = config.get_int(unique_name, "gpu_id");
 }
 
-hsaThread::~hsaThread() {
+hsaProcess::~hsaProcess() {
     delete factory;
     delete device;
 }
 
-void hsaThread::main_thread()
+void hsaProcess::main_thread()
 {
 
     vector<hsaCommand *> &commands = factory->get_commands();
@@ -70,7 +70,7 @@ void hsaThread::main_thread()
         final_signals[gpu_frame_id].set_signal(signal);
 
         if (first_run) {
-            results_thread_handle = std::thread(&hsaThread::results_thread, std::ref(*this));
+            results_thread_handle = std::thread(&hsaProcess::results_thread, std::ref(*this));
 
             // Requires Linux, this could possibly be made more general someday.
             // TODO Move to config
@@ -89,7 +89,7 @@ void hsaThread::main_thread()
     results_thread_handle.join();
 }
 
-void hsaThread::results_thread() {
+void hsaProcess::results_thread() {
 
     vector<hsaCommand *> &commands = factory->get_commands();
 
