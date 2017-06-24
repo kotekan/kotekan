@@ -901,6 +901,7 @@ int lcore_recv_pkt(void *args)
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
+                        INFO("PACKET LOSS!!")
                         handle_lost_packets(dpdk_net, port);
                     }
 

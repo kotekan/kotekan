@@ -18,6 +18,11 @@
 #include <fstream>
 #include <atomic>
 #include <mutex>
+#include <cstdio>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <array>
 
 extern "C" {
 #include <pthread.h>
@@ -96,6 +101,22 @@ void dpdk_setup() {
     int ret2 = rte_eal_init(argc2, argv2);
     if (ret2 < 0)
         exit(EXIT_FAILURE);
+}
+
+std::string exec(const std::string &cmd) {
+    std::array<char, 256> buffer;
+    std::string result;
+    std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (!pipe) throw std::runtime_error("popen() for the command " + cmd + " failed!");
+    while (!feof(pipe.get())) {
+        if (fgets(buffer.data(), 256, pipe.get()) != NULL)
+            result += buffer.data();
+    }
+    return result;
+}
+
+json get_json_from_yaml_file(const std::string &yaml_file) {
+
 }
 
 void update_log_levels(Config &config) {
@@ -210,6 +231,9 @@ int main(int argc, char ** argv) {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         config.parse_file(config_file_name, 0);
+        //std::string json_string = exec("python yaml_to_json.py " + config_file_name);
+        //json config_json(json_string);
+        //config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
             ERROR("Mode not supported");
             return -1;

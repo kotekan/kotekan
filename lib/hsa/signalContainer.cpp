@@ -1,5 +1,8 @@
 #include "signalContainer.hpp"
 
+#include <unistd.h>
+
+
 signalContainer::signalContainer() {
     reset();
 }
@@ -35,10 +38,11 @@ void signalContainer::wait_for_signal() {
         cond_var.wait(lock);
     }
 
+    usleep(1000);
     // Then wait on the actual signal
-    while ( hsa_signal_wait_acquire(signal,
-                                    HSA_SIGNAL_CONDITION_LT, 1,
-                                    UINT64_MAX, HSA_WAIT_STATE_BLOCKED) > 0 );
+    while (hsa_signal_wait_scacquire(signal, HSA_SIGNAL_CONDITION_EQ, 0, 1000, HSA_WAIT_STATE_BLOCKED) != 0) {
+        usleep(50000);
+    }
 }
 
 void signalContainer::wait_for_free_slot() {

@@ -57,6 +57,13 @@ void chimeShuffleMode::initalize_processes() {
         add_buffer(gpu_output_buffer[i]);
     }
 
+    // Beamforming buffers
+    struct Buffer * beamform_output_buffer[num_gpus];
+    for (int i = 0; i < num_gpus; ++i) {
+        beamform_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
+        add_buffer(beamform_output_buffer[i]);
+    }
+
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
     struct InfoObjectPool * pool[1];

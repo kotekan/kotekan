@@ -7,6 +7,12 @@
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
 
+void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
+    const char* message;
+    hsa_status_string(status, &message);
+    INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);
+}
+
 hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_) :
     config(config_), gpu_id(gpu_id_){
 
@@ -61,7 +67,7 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_) :
     uint32_t queue_size = 0;
     hsa_status = hsa_agent_get_info(gpu_agent, HSA_AGENT_INFO_QUEUE_MAX_SIZE, &queue_size);
     assert(hsa_status == HSA_STATUS_SUCCESS);
-    hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_SINGLE, NULL, NULL, UINT32_MAX, UINT32_MAX, &queue);
+    hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_MULTI, error_callback, NULL, UINT32_MAX, UINT32_MAX, &queue);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
     _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
@@ -226,8 +232,17 @@ hsa_status_t hsaDeviceInterface::get_gpu_agent(hsa_agent_t agent, void* data) {
     if ((HSA_DEVICE_TYPE_GPU == device_type) &&
         (gpu_config->gpu_id == (num-1)))
     {
-        *gpu_config->agent = agent;
-        return HSA_STATUS_INFO_BREAK;
+        uint32_t features = 0;
+        hsa_agent_get_info(agent, HSA_AGENT_INFO_FEATURE, &features);
+        if (features & HSA_AGENT_FEATURE_KERNEL_DISPATCH) {
+            hsa_queue_type_t queue_type;
+            hsa_agent_get_info(agent, HSA_AGENT_INFO_QUEUE_TYPE, &queue_type);
+            if (queue_type == HSA_QUEUE_TYPE_MULTI) {
+                hsa_agent_t* ret = (hsa_agent_t*)data;
+                *gpu_config->agent = agent;
+                return HSA_STATUS_INFO_BREAK;
+            }
+        }
     }
     return HSA_STATUS_SUCCESS;
 }

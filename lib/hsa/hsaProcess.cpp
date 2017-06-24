@@ -22,6 +22,7 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     // TODO move this into the config.
     local_buffer_container.add_buffer("network_buf", get_buffer("network_buffer"));
     local_buffer_container.add_buffer("output_buf", get_buffer("output_buffer"));
+    //local_buffer_container.add_buffer("beamform_output_buf", get_buffer("beamform_buffer"));
 
     device = new hsaDeviceInterface(config, gpu_id);
     factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
@@ -52,10 +53,12 @@ void hsaProcess::main_thread()
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
+        INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (int i = 0; i < commands.size(); ++i) {
             commands[i]->wait_on_precondition(gpu_frame_id);
         }
 
+        INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id].wait_for_free_slot();
 
@@ -66,6 +69,7 @@ void hsaProcess::main_thread()
         for (int i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
             signal = commands[i]->execute(gpu_frame_id, 0, signal);
+            //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);
 

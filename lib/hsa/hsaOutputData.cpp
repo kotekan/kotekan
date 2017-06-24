@@ -46,7 +46,7 @@ void hsaOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     // Copy the information contained in the input buffer
-    //copy_buffer_info(network_buffer, network_buffer_id,
+    //move_buffer_info(network_buffer, network_buffer_id,
     //                 output_buffer, output_buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
