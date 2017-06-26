@@ -89,38 +89,21 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
     INFO("correlatorKernel: gpu[%d][%d], wgx %d, wgy %d, wgz %d, gsx %d, gsy %d, gsz %d",
             device.get_gpu_id(), gpu_frame_id, 16, 4, 1, 16, 4*_samples_per_data_set/N_INTG, _num_blocks);
 
-    hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    // Set kernel dims
+    kernelParams params;
+    params.workgroup_size_x = 16;
+    params.workgroup_size_y = 4;
+    params.workgroup_size_z = 1;
+    params.grid_size_x = 16;
+    params.grid_size_y = 4*_samples_per_data_set/N_INTG;
+    params.grid_size_z = _num_blocks;
+    params.num_dims = 3;
 
-    // Obtain the current queue write index.
-    uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());
+    // Should this be zero?
+    params.private_segment_size = 0;
+    params.group_segment_size = 3136;
 
-    hsa_kernel_dispatch_packet_t* dispatch_packet = (hsa_kernel_dispatch_packet_t*)device.get_queue()->base_address +
-                                                            (index % device.get_queue()->size);
-    INFO("hsaCorrelatorKernel got write index: %" PRIu64 ", packet_address: %p, post_signal: %lu", index, dispatch_packet, signals[gpu_frame_id].handle);
-
-    dispatch_packet->setup  |= 3 << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
-    dispatch_packet->workgroup_size_x = (uint16_t)16;
-    dispatch_packet->workgroup_size_y = (uint16_t)4;
-    dispatch_packet->workgroup_size_z = (uint16_t)1;
-    dispatch_packet->grid_size_x = (uint32_t)16;
-    dispatch_packet->grid_size_y = (uint32_t)4*_samples_per_data_set/N_INTG;
-    dispatch_packet->grid_size_z = (uint32_t)_num_blocks;
-    dispatch_packet->completion_signal = signals[gpu_frame_id];
-    dispatch_packet->kernel_object = kernel_object;
-    dispatch_packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
-    dispatch_packet->private_segment_size = 0;
-    dispatch_packet->group_segment_size = (uint32_t)3136;
-    dispatch_packet-> header =
-      (HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE) |
-      (1 << HSA_PACKET_HEADER_BARRIER) |
-      (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_ACQUIRE_FENCE_SCOPE) |
-      (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE);
-
-    hsa_queue_add_write_index_acquire(device.get_queue(), 1);
-    hsa_signal_store_relaxed(device.get_queue()->doorbell_signal, index);
-
-//    hsa_signal_value_t value = hsa_signal_wait_acquire(signals[gpu_frame_id], HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+    signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 
     return signals[gpu_frame_id];
 }

@@ -50,7 +50,7 @@ void testDataGen::main_thread() {
                 buf->data[buf_id][j] = (unsigned char)dis(gen);
             }
         }
-        usleep(40000);
+        usleep(83000);
 
         INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, buf_id);
 

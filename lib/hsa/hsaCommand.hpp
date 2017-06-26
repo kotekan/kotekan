@@ -16,6 +16,18 @@
 
 using std::string;
 
+struct kernelParams {
+    uint16_t workgroup_size_x;
+    uint16_t workgroup_size_y;
+    uint16_t workgroup_size_z;
+    uint32_t grid_size_x;
+    uint32_t grid_size_y;
+    uint32_t grid_size_z;
+    uint16_t num_dims;  // Could this be automatically generated from above?
+    uint16_t private_segment_size;
+    uint16_t group_segment_size;
+};
+
 // Note there are _gpu_buffer_depth frames, which can be thought of as distinct
 // blocks of input, output, and kernel arg memory for each chain in the
 // gpu pipeline which looks something like:
@@ -61,6 +73,16 @@ protected:
     // Creates the memory needed for the kernel args.
     void allocate_kernel_arg_memory(int max_size);
 
+    // Requires that kernel_args[frame_id] has been populated with the
+    // kernel arguments.
+    hsa_signal_t enqueue_kernel(const kernelParams &dims, const int gpu_frame_id);
+
+    // The command or kernel name
+    string command_name;
+
+    // The file which containts the kernel, if applicable.
+    string kernel_file_name;
+
     Config &config;
     hsaDeviceInterface &device;
     bufferContainer host_buffers;
@@ -80,14 +102,14 @@ protected:
     // Pointer to the kernel
     uint64_t kernel_object = 0;
 
-    // The command or kernel name
-    string command_name;
-
-    // The file which containts the kernel, if applicable.
-    string kernel_file_name;
-
     // Config variables
     int _gpu_buffer_depth;
+
+private:
+    // Helper functions from HSA docs for kernel packet queueing.
+    // Some (or all) of this could likely be moved into enqueue_kernel()
+    void packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest);
+    uint16_t header(hsa_packet_type_t type);
 };
 
 #endif // GPU_COMMAND_H

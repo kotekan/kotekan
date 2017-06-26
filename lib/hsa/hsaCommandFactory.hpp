@@ -17,9 +17,8 @@ public:
 protected:
     Config &config;
     hsaDeviceInterface &device;
-    string unique_name;
-
     bufferContainer &host_buffers;
+    string unique_name;
 
     vector<hsaCommand *> list_commands;
 };

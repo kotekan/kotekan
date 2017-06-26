@@ -38,10 +38,10 @@ void signalContainer::wait_for_signal() {
         cond_var.wait(lock);
     }
 
-    usleep(1000);
+    usleep(10000);
     // Then wait on the actual signal
-    while (hsa_signal_wait_scacquire(signal, HSA_SIGNAL_CONDITION_EQ, 0, 1000, HSA_WAIT_STATE_BLOCKED) != 0) {
-        usleep(50000);
+    while (hsa_signal_wait_scacquire(signal, HSA_SIGNAL_CONDITION_EQ, 0, 1000, HSA_WAIT_STATE_ACTIVE) != 0) {
+        usleep(10000);
     }
 }
 

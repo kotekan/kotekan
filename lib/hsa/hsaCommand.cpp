@@ -139,11 +139,73 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     uint32_t priv_segment_size;
     hsa_status = hsa_executable_symbol_get_info(kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE, &priv_segment_size);
 
-
-
-
     // Free raw code object memory.
     free((void*)raw_code_object);
 
     return codeHandle;
+}
+
+void hsaCommand::packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest) {
+    __atomic_store_n(packet, header | (rest << 16),   __ATOMIC_RELEASE);
+}
+
+uint16_t hsaCommand::header(hsa_packet_type_t type) {
+    uint16_t header = (type << HSA_PACKET_HEADER_TYPE) |
+                      (1 << HSA_PACKET_HEADER_BARRIER);
+    header |= HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE;
+    header |= HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE;
+    return header;
+}
+
+hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gpu_frame_id) {
+
+    // Get the queue index
+    uint64_t packet_id = hsa_queue_add_write_index_screlease(device.get_queue(), 1);
+
+    // Make sure the queue isn't full
+    // Should never hit this condition, but lets be safe.
+    // See the HSA docs for details.
+    while (packet_id - hsa_queue_load_read_index_scacquire(device.get_queue())
+            >= device.get_queue()->size);
+
+    // Get the packet address
+    hsa_kernel_dispatch_packet_t* packet =
+            (hsa_kernel_dispatch_packet_t*) device.get_queue()->base_address
+            + (packet_id % device.get_queue()->size);
+
+    // Zero the packet (see HSA docs)
+    memset(((uint8_t*) packet) + 4, 0, sizeof(hsa_kernel_dispatch_packet_t) - 4);
+
+    // Set kernel dims for packet
+    packet->workgroup_size_x = params.workgroup_size_x;
+    packet->workgroup_size_y = params.workgroup_size_y;
+    packet->workgroup_size_z = params.workgroup_size_z;
+    packet->grid_size_x = params.grid_size_x;
+    packet->grid_size_y = params.grid_size_y;
+    packet->grid_size_z = params.grid_size_z;
+
+    // Extra details
+    packet->private_segment_size = params.private_segment_size;
+    packet->group_segment_size = params.group_segment_size;
+
+    // Set the kernel object (loaded HSACO code)
+    packet->kernel_object = this->kernel_object;
+
+    // Add the kernel args
+    // Must have been copied before this function is called!
+    packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
+
+    // Create the completion signal for this kernel run.
+    hsa_signal_create(1, 0, NULL, &packet->completion_signal);
+
+    // Create the AQL packet header as an atomic operation,
+    // recommended by the HSA docs.
+    packet_store_release((uint32_t*) packet,
+            header(HSA_PACKET_TYPE_KERNEL_DISPATCH),
+            params.num_dims << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS);
+
+    // Notify the device there is a new packet in the queue
+    hsa_signal_store_screlease(device.get_queue()->doorbell_signal, packet_id);
+
+    return packet->completion_signal;
 }
