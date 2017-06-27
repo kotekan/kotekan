@@ -46,8 +46,9 @@ hsa_signal_t hsaInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     void * host_memory_frame = (void *)network_buf->data[network_buffer_id];
 
     // Do the input data copy.
-    signals[gpu_frame_id] = device.async_copy_host_to_gpu(gpu_memory_frame,
-                                        host_memory_frame, input_frame_len, precede_signal);
+    device.async_copy_host_to_gpu(gpu_memory_frame,
+                                        host_memory_frame, input_frame_len,
+                                        precede_signal, signals[gpu_frame_id]);
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_buffers;
 

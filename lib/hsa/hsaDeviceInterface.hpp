@@ -67,9 +67,11 @@ public:
     // the returned signal should be stored in signals[]
     // These functions are reentrant/thread-safe.
     hsa_signal_t async_copy_host_to_gpu(void *dst, void *src, int len,
-                                        hsa_signal_t precede_signal);
+                                        hsa_signal_t precede_signal,
+                                        hsa_signal_t copy_signal);
     hsa_signal_t async_copy_gpu_to_host(void *dst, void *src, int len,
-                                        hsa_signal_t precede_signal);
+                                        hsa_signal_t precede_signal,
+                                        hsa_signal_t copy_signal);
 
     // Not used for data copies, this should only be used for static tables, etc.
     // at start up.  Will block until all memory has been copied.

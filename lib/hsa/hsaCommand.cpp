@@ -25,6 +25,10 @@ hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_na
     assert(signals != nullptr);
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
+    for (int i = 0; i < _gpu_buffer_depth; ++i) {
+        hsa_signal_create(0, 0, NULL, &signals[i]);
+    }
+
     // Not everyone needs this, maybe move out of constructor
     kernel_args = (void **)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*));
     assert(kernel_args != nullptr);
@@ -42,6 +46,8 @@ hsaCommand::~hsaCommand() {
     hsa_status_t hsa_status;
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
         hsa_status = hsa_memory_free(kernel_args[i]);
+        assert(hsa_status == HSA_STATUS_SUCCESS);
+        hsa_status = hsa_signal_destroy(signals[i]);
         assert(hsa_status == HSA_STATUS_SUCCESS);
     }
     hsa_host_free(kernel_args);
@@ -70,11 +76,11 @@ void hsaCommand::allocate_kernel_arg_memory(int max_size) {
 }
 
 void hsaCommand::finalize_frame(int frame_id) {
-    if (signals[frame_id].handle != 0) {
-        hsa_status_t hsa_status;
-        hsa_status = hsa_signal_destroy(signals[frame_id]);
-        assert(hsa_status == HSA_STATUS_SUCCESS);
-    }
+    //if (signals[frame_id].handle != 0) {
+        //hsa_status_t hsa_status;
+        //hsa_status = hsa_signal_destroy(signals[frame_id]);
+        //assert(hsa_status == HSA_STATUS_SUCCESS);
+    //}
 }
 
 void hsaCommand::wait_on_precondition(int gpu_frame_id) {
@@ -196,7 +202,8 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
 
     // Create the completion signal for this kernel run.
-    hsa_signal_create(1, 0, NULL, &packet->completion_signal);
+    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
+    packet->completion_signal = signals[gpu_frame_id];
 
     // Create the AQL packet header as an atomic operation,
     // recommended by the HSA docs.

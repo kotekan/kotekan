@@ -32,8 +32,9 @@ hsa_signal_t hsaOutputDataZero::execute(int gpu_frame_id, const uint64_t& fpga_s
 
     void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_len);
 
-    signals[gpu_frame_id] = device.async_copy_host_to_gpu(gpu_output_ptr,
-                                    output_zeros, output_len, precede_signal);
+    device.async_copy_host_to_gpu(gpu_output_ptr,
+                                    output_zeros, output_len,
+                                    precede_signal, signals[gpu_frame_id]);
 
     return signals[gpu_frame_id];
 }

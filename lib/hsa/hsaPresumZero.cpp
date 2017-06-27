@@ -27,8 +27,9 @@ hsa_signal_t hsaPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     void * gpu_memory_frame = device.get_gpu_memory_array("presum",
                                                 gpu_frame_id, presum_len);
 
-    signals[gpu_frame_id] = device.async_copy_host_to_gpu(gpu_memory_frame,
-                                        presum_zeros, presum_len, precede_signal);
+    device.async_copy_host_to_gpu(gpu_memory_frame,
+                                    presum_zeros, presum_len,
+                                    precede_signal, signals[gpu_frame_id]);
 
     return signals[gpu_frame_id];
 }

@@ -79,17 +79,15 @@ hsaDeviceInterface::~hsaDeviceInterface() {
     assert(hsa_status == HSA_STATUS_SUCCESS);
 }
 
-hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, int len, hsa_signal_t precede_signal) {
-    hsa_signal_t post_sig;
+hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, int len,
+        hsa_signal_t precede_signal, hsa_signal_t copy_signal) {
     hsa_status_t hsa_status;
     int num_precede_signals = 0;
 
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
-    hsa_status = hsa_signal_create(1, 0, NULL, &post_sig);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
-
+    hsa_signal_store_relaxed(copy_signal, 1);
 
     hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, src);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -100,30 +98,30 @@ hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, in
         hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
                                                src, cpu_agent,
                                                len, num_precede_signals,
-                                               &precede_signal, post_sig);
+                                               &precede_signal, copy_signal);
     } else {
         hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
                                                src, cpu_agent,
                                                len, 0,
-                                               NULL, post_sig);
+                                               NULL, copy_signal);
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    INFO("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, post_sig.handle);
+    INFO("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
-    return post_sig;
+    return copy_signal;
 }
 
-hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, int len, hsa_signal_t precede_signal) {
-    hsa_signal_t post_sig;
+hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, int len,
+        hsa_signal_t precede_signal, hsa_signal_t copy_signal) {
+
     hsa_status_t hsa_status;
     int num_precede_signals = 0;
 
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
-    hsa_status = hsa_signal_create(1, 0, NULL, &post_sig);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    hsa_signal_store_relaxed(copy_signal, 1);
 
     //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
     //assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -134,18 +132,18 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
         hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,
                                                src, gpu_agent,
                                                len, num_precede_signals,
-                                               &precede_signal, post_sig);
+                                               &precede_signal, copy_signal);
     } else {
         hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,
                                                src, gpu_agent,
                                                len, 0,
-                                               NULL, post_sig);
+                                               NULL, copy_signal);
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    INFO("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, post_sig.handle);
+    INFO("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
-    return post_sig;
+    return copy_signal;
 }
 
 void hsaDeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int length) {
