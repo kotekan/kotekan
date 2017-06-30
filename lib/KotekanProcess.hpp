@@ -8,6 +8,10 @@
 #include <vector>
 #include "Config.hpp"
 #include "bufferContainer.hpp"
+#ifdef MAC_OSX
+    #include "osxBindCPU.hpp"
+    #include <immintrin.h>
+#endif
 
 class KotekanProcess {
 public:

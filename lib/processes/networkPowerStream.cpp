@@ -217,6 +217,7 @@ void networkPowerStream::tcpConnect()
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
         for (int e=0; e<elems; e++)
             ((char*)((char*)info+info_size - elems*sizeof(char)))[e]=-5-e;
+//            (((char*)info)+info_size - elems)[e]=-5-e;
         bytes_sent = send(socket_fd,
                                 info,
                                 info_size,

@@ -27,6 +27,11 @@ private:
     string disk_base;
     string disk_set;
     bool write_to_disk;
+    bool first_run;
+
+    void mk_dataset_dir();
+    void save_meta_data();
+    void copy_gains(const string &gain_file_dir, const string &gain_file_name);
 };
 
 #endif

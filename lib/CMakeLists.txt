@@ -9,7 +9,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
-add_library ( kotekan_libs
+set (KOTEKAN_LIB_SOURCES 
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp
@@ -23,16 +23,27 @@ add_library ( kotekan_libs
               output_formating.c
               time_tracking.c
               fpga_header_functions.c
-              network_dpdk.c
               bufferContainer.cpp
               processFactory.cpp
-              )
+       )
 
-#set (DPDK_LIBS "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_pmd_i40e -lrte_mempool -lrte_ring -lethdev -lrte_pmd_ixgbe -lrte_malloc -Wl,--no-whole-archive" )
+if (${USE_DPDK})
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} network_dpdk.c)
+endif ()
+
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} osxBindCPU.cpp)
+else ()
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} simple_udp_cap.c)
+endif ()
+
+add_library ( kotekan_libs
+              ${KOTEKAN_LIB_SOURCES})
 
 target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
-target_link_libraries( kotekan_libs m rt dl ${DPDK_LIBS} )
 target_link_libraries( kotekan_libs libinclude )
+target_link_libraries( kotekan_libs m )
 
 #if (${USE_DPDK})
     include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )

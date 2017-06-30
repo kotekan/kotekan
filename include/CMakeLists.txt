@@ -7,4 +7,4 @@ include_directories (${CHIME_SOURCE_DIR}/generated)
 add_library( libinclude
              mongoose.c )
 
-target_link_libraries( libinclude m rt )
+target_link_libraries( libinclude m )

@@ -3,11 +3,10 @@ project( kotekan_libs )
 
 include_directories (${CHIME_SOURCE_DIR}/lib)
 
-add_library ( kotekan_processes
+set (KOTEKAN_PROCESS_LIB_SOURCES
               beamformingPostProcess.cpp
               chrxUplink.cpp
               computeDualpolPower.cpp
-              dpdkWrapper.cpp
               fullPacketDump.cpp
               gpuPostProcess.cpp
               nDiskFileWrite.cpp
@@ -18,6 +17,12 @@ add_library ( kotekan_processes
               rawFileWrite.cpp
               vdifStream.cpp
               )
+
+if (${USE_DPDK})
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
+endif ()
+
+add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
 # This seems like a circular reference, seems like there should be a
 # way to avoid this.

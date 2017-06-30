@@ -5,7 +5,11 @@
 #include "Config.hpp"
 #include "util.h"
 #include "vdif_functions.h"
-
+#include "time_tracking.h"
+#ifdef MAC_OSX
+    #include "osxBindCPU.hpp"
+    #include <immintrin.h>
+#endif
 #include <dirent.h>
 #include <sys/socket.h>
 #include <stdio.h>
