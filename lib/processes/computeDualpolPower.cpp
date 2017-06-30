@@ -92,7 +92,7 @@ void computeDualpolPower::main_thread() {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (int j = 7; j < 8; j++)
+            for (int j = 8; j < 10; j++)
                 CPU_SET(j, &cpuset);
             pthread_setaffinity_np(this_thread[j].native_handle(), sizeof(cpu_set_t), &cpuset);
         }

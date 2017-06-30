@@ -56,6 +56,8 @@ private:
     int times;
     int elems;
 
+    int id;
+
     uint frame_idx=0;
 
     uint64_t handshake_idx=-1;

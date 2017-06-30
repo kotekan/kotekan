@@ -141,6 +141,14 @@ void nDiskFileWrite::main_thread() {
         save_meta_data();
     }
 
+    sleep(1);
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    INFO("Setting thread affinity");
+    for (int j = 10; j < 12; j++) CPU_SET(j, &cpuset);
+//    CPU_SET(11-(disk_id%2),&cpuset);
+    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+
     for (;;) {
 
         // This call is blocking.

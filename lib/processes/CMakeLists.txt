@@ -16,6 +16,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rawFileRead.cpp
               rawFileWrite.cpp
               vdifStream.cpp
+              streamSingleDishVDIF.cpp
               )
 
 if (${USE_DPDK})
