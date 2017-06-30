@@ -6,7 +6,7 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 #optional modules for GPUs and the like
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
-option(USE_OPENCL "Build OpenCL GPU Framework" ON)
+option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK ON)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))

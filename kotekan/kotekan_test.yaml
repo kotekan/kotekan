@@ -1,0 +1,84 @@
+---
+type: config
+system:
+  mode: gpu_test
+  log_level: 3
+num_elements: 2048
+num_local_freq: 1
+num_total_freq: 4
+samples_per_data_set: 32768
+num_data_sets: 1
+buffer_depth: 6
+num_gpu_frames: 1
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+gpu:
+  commands:
+  - name: hsa_input_data
+    kernel: ''
+  - name: hsa_presum_zero
+    kernel: ''
+  - name: hsa_output_data_zero
+    kernel: ''
+  - name: hsa_barrier
+    kernel: ''
+  - name: hsa_preseed_kernel
+    kernel: "../lib/hsa/kernels/presum.hsaco"
+  - name: hsa_correlator_kernel
+    kernel: "../lib/hsa/kernels//N2.hsaco"
+  - name: hsa_output_data
+    kernel: ''
+  link_map: [0,1,2,3]
+  num_gpus: 4
+  block_size: 32
+  buffer_depth: 4
+  gpu_0:
+    kotekan_process: hsaProcess
+    gpu_id: 0
+    network_buffer: gpu_input_buffer_0
+    output_buffer: gpu_output_buffer_0
+  gpu_1:
+    kotekan_process: hsaProcess
+    gpu_id: 1
+    network_buffer: gpu_input_buffer_1
+    output_buffer: gpu_output_buffer_1
+  gpu_2:
+    kotekan_process: hsaProcess
+    gpu_id: 2
+    network_buffer: gpu_input_buffer_2
+    output_buffer: gpu_output_buffer_2
+  gpu_3:
+    kotekan_process: hsaProcess
+    gpu_id: 3
+    network_buffer: gpu_input_buffer_3
+    output_buffer: gpu_output_buffer_3
+gen_data:
+  type: const
+  value: 153
+  test_data_gen_0:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_0
+  test_data_gen_1:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_1
+  test_data_gen_2:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_2
+  test_data_gen_3:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_3
+check_data:
+  real: 65536
+  imag: 0
+  const_data_check_0:
+    kotekan_process: constDataCheck
+    buf: gpu_output_buffer_0
+  const_data_check_1:
+    kotekan_process: constDataCheck
+    buf: gpu_output_buffer_1
+  const_data_check_2:
+    kotekan_process: constDataCheck
+    buf: gpu_output_buffer_2
+  const_data_check_3:
+    kotekan_process: constDataCheck
+    buf: gpu_output_buffer_3
+

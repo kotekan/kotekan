@@ -115,10 +115,6 @@ std::string exec(const std::string &cmd) {
     return result;
 }
 
-json get_json_from_yaml_file(const std::string &yaml_file) {
-
-}
-
 void update_log_levels(Config &config) {
     // Adjust the log level
     int log_level = config.get_int("/system/", "log_level");
@@ -230,10 +226,11 @@ int main(int argc, char ** argv) {
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
-        config.parse_file(config_file_name, 0);
-        //std::string json_string = exec("python yaml_to_json.py " + config_file_name);
-        //json config_json(json_string);
-        //config.update_config(config_json, 0);
+        //config.parse_file(config_file_name, 0);
+        std::string json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
+        json config_json;
+        config_json = json::parse(json_string.c_str());
+        config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
             ERROR("Mode not supported");
             return -1;
