@@ -48,10 +48,6 @@ public:
     // This function should be moved, it doesn't really belong here...
     int32_t num_links_per_gpu(const int32_t &gpu_id);
 
-    // This is an odd function that existed in the old config,
-    // it should be moved out of this object at some point.
-    void generate_extra_options();
-
     // @breaf Finds the value with key "name" starts looking at the
     // "base_pointer" location, and then works backwards up the config tree.
     // @param base_pointer Contains a JSON pointer which points to the

@@ -140,7 +140,6 @@ void update_log_levels(Config &config) {
 
 int start_new_kotekan_mode(Config &config) {
 
-    config.generate_extra_options();
     config.dump_config();
     update_log_levels(config);
 
