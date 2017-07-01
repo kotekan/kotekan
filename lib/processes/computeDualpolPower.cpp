@@ -49,7 +49,7 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
     timesteps_in = config.get_int(unique_name, "samples_per_data_set");
     integration_length = config.get_int(unique_name, "integration_length");
     timesteps_out = timesteps_in / integration_length;
-    num_freq = config.get_int(unique_name, "num_local_freq");
+    num_freq = config.get_int(unique_name, "num_freq");
     num_elem = config.get_int(unique_name, "num_elements");
 
     if (timesteps_in % timesteps_out)
@@ -92,8 +92,8 @@ void computeDualpolPower::main_thread() {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (int j = 8; j < 10; j++)
-                CPU_SET(j, &cpuset);
+            for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+                CPU_SET(i, &cpuset);
             pthread_setaffinity_np(this_thread[j].native_handle(), sizeof(cpu_set_t), &cpuset);
         }
         for (int j=0; j<nthreads; j++)

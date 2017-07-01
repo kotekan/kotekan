@@ -6,11 +6,19 @@
 #include "fpga_header_functions.h"
 
 // TODO Make these dynamic.
-#define NUM_LINKS (4)
-#define NUM_LCORES (4)
-// This shouldn't go above 4, since it's for the shuffle.
-// A better name might be SHUFFLE_SIZE?
-#define NUM_FREQ (4)
+#ifdef DPDK_VDIF_MODE
+    #define NUM_LINKS (8)
+    #define NUM_LCORES (8)
+    // This shouldn't go above 4, since it's for the shuffle.
+    // A better name might be SHUFFLE_SIZE?
+    #define NUM_FREQ (1)
+#else
+    #define NUM_LINKS (4)
+    #define NUM_LCORES (4)
+    // This shouldn't go above 4, since it's for the shuffle.
+    // A better name might be SHUFFLE_SIZE?
+    #define NUM_FREQ (4)
+#endif
 
 #ifdef __cplusplus
 extern "C" {

@@ -41,7 +41,7 @@ void make_dirs(char * disk_base, char * data_set, int num_disks) {
 }
 
 // TODO Merge this with the above function.
-void make_raw_dirs(char * disk_base, char * disk_set, char * data_set, int num_disks) {
+void make_raw_dirs(const char * disk_base, const char * disk_set, const char * data_set, int num_disks) {
 
     // Make the data location.
     int err = 0;

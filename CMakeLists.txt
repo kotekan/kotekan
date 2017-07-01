@@ -6,7 +6,8 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
-option(USE_DPDK OFF)
+option(USE_DPDK "Enable DPDK Framework" ON)
+option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -22,6 +23,10 @@ if (${USE_OPENCL})
   find_package( OpenCL )
   set(USE_OPENCL ${OPENCL_FOUND})
 endif ()
+
+if(${DPDK_VDIF})
+  add_definitions(-DDPDK_VDIF_MODE)
+endif()
 
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
