@@ -24,7 +24,7 @@ networkPowerStream::networkPowerStream(Config& config,
     //PER BUFFER
     times = config.get_int(unique_name, "samples_per_data_set") /
             config.get_int(unique_name, "integration_length");
-    freqs = config.get_int(unique_name, "num_local_freq");
+    freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name, "num_elements");
 
     dest_port = config.get_int(unique_name, "destination_port");

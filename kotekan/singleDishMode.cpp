@@ -32,22 +32,19 @@ singleDishMode::~singleDishMode() {
 }
 
 void singleDishMode::initalize_processes() {
-    config.dump_config();
-//    config.find_parameter("dualpol_sumsq","integration_length");
-
-    int test_value = config.get_int("/vdif_stream/", "num_disks");
-    INFO("TEST VALUE: %d", test_value);
 
     // Config values:
-    int num_total_freq = config.get_int("/processing", "num_total_freq");
-    int num_elements = config.get_int("/processing", "num_elements");
-    int buffer_depth = config.get_int("/processing", "buffer_depth");
-    int num_fpga_links = config.get_int("/dpdk", "num_links");
+    int num_total_freq = config.get_int("/", "num_freq");
+    int num_elements = config.get_int("/", "num_elements");
+    int buffer_depth = config.get_int("/", "buffer_depth");
+    int num_fpga_links = config.get_int("/", "num_links");
     int num_disks = config.get_int("/raw_capture", "num_disks");
 
-    int integration_length = config.get_int("/raw_capture", "integration_length");
-    int timesteps_in = config.get_int("/processing", "samples_per_data_set");
+    int integration_length = config.get_int("/", "integration_length");
+    int timesteps_in = config.get_int("/", "samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
+
+    bufferContainer buffer_container;
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -67,8 +64,8 @@ void singleDishMode::initalize_processes() {
                   num_fpga_links,
                   2,
                   pool,
-                  "vdif_buf");
-    host_buffers.add_buffer("vdif_buf", vdif_input_buffer);
+                  "vdif_input_buf");
+    buffer_container.add_buffer("vdif_input_buf", vdif_input_buffer);
 
     struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     add_buffer(output_buffer);
@@ -79,7 +76,14 @@ void singleDishMode::initalize_processes() {
                   1,
                   pool,
                   "output_power_buf");
-    host_buffers.add_buffer("output_power_buf", output_buffer);
+    buffer_container.add_buffer("output_power_buf", output_buffer);
+
+    processFactory process_factory(config, buffer_container);
+    vector<KotekanProcess *> processes = process_factory.build_processes();
+
+    for (auto process: processes) {
+        add_process(process);
+    }
 
     /*add_process((KotekanProcess *) new dpdkWrapper(config, "vdif_capture", &vdif_input_buffer, "vdif"));
     //add_process((KotekanProcess*) new simVdifData(config, *vdif_input_buffer));

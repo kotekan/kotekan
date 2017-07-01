@@ -105,8 +105,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
 
     if (name == "nDiskFileWrite") {
-        // TODO Fix nDiskFileWrite constructor
-        //return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
+        return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
     }
 
     if (name == "networkPowerStream") {

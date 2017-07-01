@@ -91,7 +91,11 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
+#ifdef DPDK_VDIF_MODE
+    char  arg4[] = "FF";
+#else
     char  arg4[] = "F";
+#endif
     char  arg5[] = "-m";
     char  arg6[] = "256";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };

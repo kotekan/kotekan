@@ -14,8 +14,12 @@ dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name,
 
     _mode = config.get_string(unique_name, "mode");
     network_input_buffer = (struct Buffer **)malloc(_num_fpga_links * sizeof (struct Buffer *));
-    for (int i = 0; i < _num_fpga_links; ++i) {
-        network_input_buffer[i] = get_buffer("network_out_buf_" + std::to_string(i));
+    if (_mode == "vdif") {
+        network_input_buffer[0] = get_buffer("vdif_buf");
+    } else {
+        for (int i = 0; i < _num_fpga_links; ++i) {
+            network_input_buffer[i] = get_buffer("network_out_buf_" + std::to_string(i));
+        }
     }
 }
 
@@ -43,7 +47,9 @@ void dpdkWrapper::apply_config(uint64_t fpga_seq) {
     _timesamples_per_packet = config.get_int(unique_name, "timesamples_per_packet");
     _num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
     _num_lcores = config.get_int(unique_name, "num_lcores");
-    _link_map = config.get_int_array(unique_name, "link_map");
+    if (_mode == "no_shuffle" ) {
+        _link_map = config.get_int_array(unique_name, "link_map");
+    }
 }
 
 void dpdkWrapper::main_thread() {

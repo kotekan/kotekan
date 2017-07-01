@@ -5,20 +5,19 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <functional>
+#include <thread>
 
 #include "nDiskFileWrite.hpp"
 #include "buffers.h"
 #include "errors.h"
+#include "util.h"
 
 nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
-                                bufferContainer &buffer_containter,
-                                int disk_id_, const string &dataset_name_) :
+                                bufferContainer &buffer_containter) :
         KotekanProcess(config, unique_name, buffer_containter,
-                       std::bind(&nDiskFileWrite::main_thread, this)),
-        disk_id(disk_id_),
-        dataset_name(dataset_name_)
+                       std::bind(&nDiskFileWrite::main_thread, this))
 {
-    buf = buffer_containter.get_buffer("network_buffer");
+    buf = get_buffer("in_buf");
     apply_config(0);
 }
 
@@ -27,14 +26,62 @@ nDiskFileWrite::~nDiskFileWrite() {
 
 void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
     disk_base = config.get_string(unique_name, "disk_base");
-    disk_set = config.get_string(unique_name, "disk_set");
     num_disks = config.get_int(unique_name, "num_disks");
     write_to_disk = config.get_bool(unique_name, "write_to_disk");
+    instrument_name = config.get_string(unique_name, "instrument_name");
 }
 
-// TODO instead of there being N disks of this tread started, this thread should
-// start N threads to write the data.
 void nDiskFileWrite::main_thread() {
+
+    // TODO This is a very C style, maybe make it more C++11 like?
+    char data_time[64];
+    char data_set_c[150];
+    time_t rawtime;
+    struct tm* timeinfo;
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+    strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
+    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_raw", data_time, instrument_name.c_str());
+    dataset_name = data_set_c;
+
+    if (write_to_disk) {
+        make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
+
+        // Copy gain files
+        std::vector<std::string> gain_files = config.get_string_array(unique_name, "gain_files");
+        for (uint32_t i = 0; i < num_disks; ++i) {
+            for (uint32_t j = 0; j < gain_files.size(); ++j) {
+                unsigned int last_slash_pos = gain_files[i].find_last_of("/\\");
+                std::string dest = disk_base + "/" + disk_set + std::to_string(i) + "/" +
+                        dataset_name + "/" +
+                        gain_files[i].substr(last_slash_pos+1);
+                // Copy the gain file
+                cp(dest.c_str(), gain_files[i].c_str());
+            }
+        }
+    }
+
+    // Create the threads
+    file_thread_handles.resize(num_disks);
+    for (uint32_t i = 0; i < num_disks; ++i) {
+        file_thread_handles[i] = std::thread(&nDiskFileWrite::file_write_thread, this, i);
+
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        INFO("Setting thread affinity");
+        for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            CPU_SET(i, &cpuset);
+
+        pthread_setaffinity_np(file_thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);
+    }
+
+    // Join the threads
+    for (uint32_t i = 0; i < num_disks; ++i) {
+        file_thread_handles[i].join();
+    }
+}
+
+void nDiskFileWrite::file_write_thread(int disk_id) {
 
     int fd;
     int file_num = disk_id;
