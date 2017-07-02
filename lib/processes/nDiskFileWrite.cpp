@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <functional>
 #include <thread>
-
+#include <sys/stat.h>
 #include "nDiskFileWrite.hpp"
 #include "buffers.h"
 #include "errors.h"
