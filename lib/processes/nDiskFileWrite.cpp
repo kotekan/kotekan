@@ -19,7 +19,6 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
 {
     buf = get_buffer("in_buf");
     apply_config(0);
-    first_run = true;
 }
 
 nDiskFileWrite::~nDiskFileWrite() {
@@ -28,6 +27,7 @@ nDiskFileWrite::~nDiskFileWrite() {
 void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
     disk_base = config.get_string(unique_name, "disk_base");
     num_disks = config.get_int(unique_name, "num_disks");
+    disk_set = config.get_string(unique_name, "disk_set");
     write_to_disk = config.get_bool(unique_name, "write_to_disk");
     instrument_name = config.get_string(unique_name, "instrument_name");
 }
@@ -75,45 +75,6 @@ void nDiskFileWrite::save_meta_data() {
     INFO("Created meta data file: %s\n", file_name);
 }
 
-// Only needs to be run once by the first thread.
-void nDiskFileWrite::mk_dataset_dir() {
-
-    int err = 0;
-    char dir_name[100];
-
-    snprintf(dir_name, 100, "%s/%s/%d/%s",
-            disk_base.c_str(), disk_set.c_str(), disk_id, dataset_name.c_str());
-    err = mkdir(dir_name, 0777);
-
-    if (err != -1) {
-        INFO("Created folder: %s", dir_name);
-        return;
-    }
-
-    if (errno == EEXIST) {
-        ERROR("The directory %s, already exists.", dir_name);
-    } else {
-        ERROR("Error creating directory: %s", dir_name);
-    }
-    exit(errno);
-}
-
-void nDiskFileWrite::copy_gains(const string &gain_file_dir, const string &gain_file_name) {
-    char dest[200]; // The dist for the gains file copy
-    char src[200];
-
-    // disk_base/disk_set/disk_id/dataset_name
-    snprintf(dest, 200, "%s/%s/%d/%s/%s", disk_base.c_str(), disk_set.c_str(), disk_id, dataset_name.c_str(), gain_file_name.c_str());
-    snprintf(src, 200, "%s/%s", gain_file_dir.c_str(), gain_file_name.c_str());
-
-    if (cp(dest, src) != 0) {
-        ERROR("Could not copy %s to %s\n", src, dest);
-        exit(-1);
-    } else {
-        INFO("Copied gains.pkl from %s to %s\n", src, dest);
-    }
-}
-
 // TODO instead of there being N disks of this tread started, this thread should
 // start N threads to write the data.
 void nDiskFileWrite::main_thread() {
@@ -131,19 +92,20 @@ void nDiskFileWrite::main_thread() {
 
     if (write_to_disk) {
         make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
-
         // Copy gain files
         std::vector<std::string> gain_files = config.get_string_array(unique_name, "gain_files");
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
-                unsigned int last_slash_pos = gain_files[i].find_last_of("/\\");
+                unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
                 std::string dest = disk_base + "/" + disk_set + std::to_string(i) + "/" +
                         dataset_name + "/" +
-                        gain_files[i].substr(last_slash_pos+1);
+                        gain_files[j].substr(last_slash_pos+1);
                 // Copy the gain file
-                cp(dest.c_str(), gain_files[i].c_str());
+                cp(dest.c_str(), gain_files[j].c_str());
+
             }
         }
+INFO("OK");
     }
 
     // Create the threads
@@ -173,17 +135,6 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int buffer_id = disk_id;
 
     string gain_file_dir = config.get_string(unique_name,"gain_file_dir");
-
-    if (first_run && write_to_disk) {
-        first_run = false;
-        // Make the directory
-        mk_dataset_dir();
-        // Copy the gain files
-        copy_gains(gain_file_dir, "gains_slotNone.pkl");
-        copy_gains(gain_file_dir, "gains_noisy_slotNone.pkl");
-        // Save meta data
-        save_meta_data();
-    }
 
     sleep(1);
     cpu_set_t cpuset;

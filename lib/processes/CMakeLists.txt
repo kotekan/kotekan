@@ -10,6 +10,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fullPacketDump.cpp
               gpuPostProcess.cpp
               nDiskFileWrite.cpp
+              nDiskFileRead.cpp
               networkPowerStream.cpp
               nullProcess.cpp
               pyPlotResult.cpp

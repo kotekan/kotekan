@@ -4,7 +4,9 @@
 #include "Config.hpp"
 #include "mongoose.h"
 #include "json.hpp"
-#include "osxBindCPU.hpp"
+#ifdef MAC_OSX
+	#include "osxBindCPU.hpp"
+#endif
 
 #include <thread>
 #include <functional>

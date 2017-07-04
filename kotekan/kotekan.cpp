@@ -55,7 +55,6 @@ extern "C" {
 #include <rte_ring.h>
 }
 #include "network_dpdk.h"
-#include "raw_cap.hpp"
 #include "packetCapMode.hpp"
 #include "singleDishMode.hpp"
 #endif

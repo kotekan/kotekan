@@ -34,8 +34,8 @@ endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} osxBindCPU.cpp)
-else ()
-       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} simple_udp_cap.c)
+#else ()
+#       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} simple_udp_cap.c)
 endif ()
 
 add_library ( kotekan_libs
@@ -45,10 +45,10 @@ target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( kotekan_libs libinclude )
 target_link_libraries( kotekan_libs m )
 
-#if (${USE_DPDK})
+if (${USE_DPDK})
     include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
     link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-#endif ()
+endif ()
 
 if (${USE_HCC})
        add_subdirectory(hcc)
@@ -62,8 +62,6 @@ if (${USE_HSA})
 endif ()
 
 if (${USE_OPENCL})
-#       add_subdirectory(opencl)
-#       target_link_libraries( kotekan_libs kotekan_opencl )
        add_subdirectory(opencl)
        target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
        target_link_libraries( kotekan_libs kotekan_opencl )

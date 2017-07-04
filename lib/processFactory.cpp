@@ -12,6 +12,7 @@
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
+#include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
 #include "nullProcess.hpp"
 #include "pyPlotResult.hpp"
@@ -108,6 +109,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
+    }
+
+    if (name == "nDiskFileRead") {
+        return (KotekanProcess *) new nDiskFileRead(config, location, buffer_container);
     }
 
     if (name == "networkPowerStream") {

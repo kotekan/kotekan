@@ -5,6 +5,8 @@ system:
   log_level: 3
 
 instrument_name: aro
+
+#shared by power & network_stream
 integration_length: 16384
 num_freq: 1024
 num_elements: 2
@@ -26,13 +28,14 @@ dpdk:
 
 raw_capture:
   kotekan_process: nDiskFileWrite
-  write_to_disk: false
+  write_to_disk: true
   gain_files:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
+  gain_file_dir: /tmp
   num_disks: 10
   disk_base: /drives/
-  disk_set: B
+  disk_set: testing
   in_buf: vdif_input_buf
 
 power:
