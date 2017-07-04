@@ -74,7 +74,7 @@ void singleDishMode::initalize_processes() {
     create_buffer(vdif_input_buffer,
                   buffer_depth * num_disks,
                   timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
-                  num_fpga_links,
+                  1,
                   3,
                   pool,
                   "vdif_input_buf");

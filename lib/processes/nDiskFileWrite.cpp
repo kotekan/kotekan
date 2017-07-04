@@ -105,7 +105,6 @@ void nDiskFileWrite::main_thread() {
 
             }
         }
-INFO("OK");
     }
 
     // Create the threads

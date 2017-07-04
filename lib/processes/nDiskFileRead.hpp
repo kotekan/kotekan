@@ -11,13 +11,17 @@ public:
                    const string& unique_name,
                    bufferContainer &buffer_containter);
     ~nDiskFileRead();
+	void file_read_thread(int disk_id);
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();
 private:
     struct Buffer *buf;
+    std::vector<std::thread> file_thread_handles;
 
+    int num_disks; 
+    string disk_set;
+    string capture;
     int disk_id;
-    int num_disks;
 };
 
 #endif
