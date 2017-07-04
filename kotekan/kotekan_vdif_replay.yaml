@@ -12,7 +12,7 @@ num_freq: 1024
 num_elements: 2
 samples_per_data_set: 65536
 #samples_per_data_set: 32768
-buffer_depth: 5
+buffer_depth: 1
 num_links: 8
 timesamples_per_packet: 2
 cpu_affinity: [8,9,10,11]

@@ -7,7 +7,6 @@
 #ifdef MAC_OSX
 	#include "osxBindCPU.hpp"
 #endif
-
 #include <thread>
 #include <functional>
 #include <map>

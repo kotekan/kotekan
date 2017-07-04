@@ -16,7 +16,6 @@ nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
     num_disks = config.get_int(unique_name,"num_disks"); 
     disk_set = config.get_string(unique_name,"disk_set");
     capture = config.get_string(unique_name,"capture");
-    disk_id = 0; //TODO: move to config.
 }
 
 nDiskFileRead::~nDiskFileRead() {
@@ -53,7 +52,6 @@ void nDiskFileRead::file_read_thread(int disk_id) {
     int buf_id = disk_id;
     unsigned int file_index = disk_id;
     for (;;) {
-
         wait_for_empty_buffer(buf, buf_id);
 
         unsigned char* buf_ptr = buf->data[buf_id];

@@ -21,7 +21,6 @@ private:
     int num_disks; 
     string disk_set;
     string capture;
-    int disk_id;
 };
 
 #endif
