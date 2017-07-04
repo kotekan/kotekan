@@ -7,7 +7,9 @@
 #include <mutex>
 #include <vector>
 #include "Config.hpp"
-#include "osxBindCPU.hpp"
+#ifdef MAC_OSX
+    #include "osxBindCPU.hpp"
+#endif
 
 class KotekanProcess {
 public:

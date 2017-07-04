@@ -1,5 +1,5 @@
-#ifndef NETWORK_POWER_STREAM_H
-#define NETWORK_POWER_STREAM_H
+#ifndef NETWORK_INPUT_POWER_STREAM_H
+#define NETWORK_INPUT_POWER_STREAM_H
 
 #include "powerStreamUtil.hpp"
 #include <sys/socket.h>
@@ -8,23 +8,23 @@
 #include "KotekanProcess.hpp"
 #include <atomic>
 
-
-class networkPowerStream : public KotekanProcess {
+class networkInputPowerStream : public KotekanProcess {
 public:
-    networkPowerStream(Config &config, struct Buffer &buf);
-    virtual ~networkPowerStream();
+    networkInputPowerStream(Config &config, struct Buffer &buf);
+    virtual ~networkInputPowerStream();
     void main_thread();
 
     virtual void apply_config(uint64_t fpga_seq);
+    void receive_packet(void *buffer, int length);
 
 private:
 	void tcpConnect();
 
     struct Buffer &buf;
 
-    uint32_t dest_port;
-    string dest_server_ip;
-    string dest_protocol;
+    uint32_t port;
+    string server_ip;
+    string protocol;
 
     int socket_fd;
     bool tcp_connected=false;
@@ -35,6 +35,8 @@ private:
     int freqs;
     int times;
     int elems;
+
+    int id;
 
     uint frame_idx=0;
 

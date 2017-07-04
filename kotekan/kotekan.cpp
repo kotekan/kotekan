@@ -181,6 +181,7 @@ int main(int argc, char ** argv) {
 #ifdef WITH_DPDK
     dpdk_setup();
 #endif
+
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
@@ -230,7 +231,6 @@ int main(int argc, char ** argv) {
 
     restServer *rest_server = get_rest_server();
     rest_server->start();
-
 
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.

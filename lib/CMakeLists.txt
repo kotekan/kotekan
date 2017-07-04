@@ -36,6 +36,7 @@ set (KOTEKAN_LIB_SOURCES
               testDataGen.cpp
               simVdifData.cpp
               networkPowerStream.cpp
+              networkInputPowerStream.cpp
               computeDualpolPower.cpp
               nDiskFileWrite.cpp
        )

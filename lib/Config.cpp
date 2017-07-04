@@ -166,7 +166,6 @@ void Config::generate_extra_options() {
         inverse_remap[remap[i]] = i;
     }
     _json[0]["processing"]["inverse_product_remap"] = inverse_remap;
-
     // Special case for 16-element version
     if (_json[0]["processing"]["num_elements"].get<int>() < 32) {
         _json[0]["processing"]["num_adjusted_elements"] = 32;

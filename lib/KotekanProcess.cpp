@@ -21,6 +21,7 @@ void KotekanProcess::apply_cpu_affinity() {
     if(!this_thread.joinable())
         return;
 
+#ifndef MAC_OSX
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     INFO("Setting thread affinity");
@@ -28,7 +29,8 @@ void KotekanProcess::apply_cpu_affinity() {
         CPU_SET(i, &cpuset);
 
     err = pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
-
+#endif
+    
     // Need to add thread name
     if (err)
         ERROR("Failed to set thread affinity for ..., error code %d", err);
