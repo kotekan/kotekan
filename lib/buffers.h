@@ -13,6 +13,11 @@ extern "C" {
 
 #define PAGESIZE_MEM 4096
 
+#define MAX_PROCESS_NAME_LEN 128
+// 10 Should be enough for most situations
+#define MAX_CONSUMERS 10
+#define MAX_PRODUCERS 10
+
 #include <pthread.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -48,6 +53,11 @@ struct InfoObjectPool {
     pthread_mutex_t in_use_lock;
 };
 
+struct ProcessInfo {
+    int in_use;
+    char name[MAX_PROCESS_NAME_LEN];
+};
+
 /** @brief Buffer object used to contain and manage the buffers shared by the network
  *  and consumer (OpenCL, file reading) threads.
  *
@@ -70,17 +80,18 @@ struct Buffer {
     // Each buffer is padded out to a page aligned size.
     int aligned_buffer_size;
 
-    // Number of producers
-    int num_producers;
+    /// Array of producers which are done (marked frame as full).
+    /// [ID][producer]
+    /// zero means not done, 1 means done (marked as full)
+    int ** producers_done;
 
-    // Number of consumers
-    int num_consumers;
+    /// Array of consumers which are done (marked frame as empty).
+    /// [ID][consumer]
+    /// zero means not done, 1 means done (marked as empty))
+    int ** consumers_done;
 
-    /// The number of producers
-    int * num_producers_done;
-
-    /// The number of consumers done.
-    int * num_consumers_done;
+    struct ProcessInfo consumers[MAX_CONSUMERS];
+    struct ProcessInfo producers[MAX_PRODUCERS];
 
     /// Should be buffer be zeroed at the end of its use.
     int * zero_buffer;
@@ -92,16 +103,8 @@ struct Buffer {
     /// A 0 at index I means the buffer at index I is not full, one means it is full.
     int * is_full;
 
-    /// The total number of free buffers, used by cond variable to check if there
-    /// is space to write to.
-    int num_free;
-
     /// Array of buffer info objects, for tracking information about each buffer.
     struct BufferInfo ** info;
-
-    /// An array of flags indicating if the producer is done.
-    /// 0 means the producer is not done, 1 means the producer is done.
-    int * producer_done;
 
     /// The pool of info objects
     struct InfoObjectPool * info_object_pool;
@@ -118,8 +121,8 @@ struct Buffer {
  *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
  *  @return 0 if successful, or a non-zero standard error value if not successful
  */
-int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
-                  int num_consumers, struct InfoObjectPool * pool, const char * buffer_name);
+int create_buffer(struct Buffer * buf, int num_buf, int len,
+                  struct InfoObjectPool * pool, const char * buffer_name);
 
 /** @brief Deletes a buffer object
  *  Not thread safe.
@@ -128,7 +131,39 @@ int create_buffer(struct Buffer * buf, int num_buf, int len, int num_producers,
  */
 void delete_buffer(struct Buffer * buf);
 
-void private_zero_buffer(struct Buffer * buf, const int ID);
+void register_consumer(struct Buffer * buf, const char *name);
+
+void register_producer(struct Buffer * buf, const char *name);
+
+// Returns -1 if there is no consumer with that name
+int  private_get_consumer_id(struct Buffer * buf, const char * name);
+
+// Returns -1 if there is no producer with that name
+int  private_get_producer_id(struct Buffer * buf, const char * name);
+
+// Marks the consumer named by `name` as done for the given ID
+void private_mark_consumer_done(struct Buffer * buf, const char * name, const int ID);
+
+// Marks the producer named by `name` as done for the given ID
+void private_mark_producer_done(struct Buffer * buf, const char * name, const int ID);
+
+// Returns 1 if all consumers are done for the given ID.
+int  private_consumers_done(struct Buffer * buf, const int ID);
+
+// Returns 1 if all producers are done for the given ID.
+int  private_producers_done(struct Buffer * buf, const int ID);
+
+// Resets the list of producers for the given ID
+void private_reset_producers(struct Buffer * buf, const int ID);
+
+// Resets the list of consumers for the given ID
+void private_reset_consumers(struct Buffer * buf, const int ID);
+
+struct zero_buffer_thread_args {
+    struct Buffer * buf;
+    int ID;
+};
+void *private_zero_buffer(void * args);
 
 void zero_buffer(struct Buffer * buf, const int ID);
 
@@ -142,16 +177,12 @@ int get_full_buffer_ID(struct Buffer * buf);
  *  This function is thread safe.
  *  @param ID The id of the buffer to mark as full.
  */
-void mark_buffer_full(struct Buffer * buf, const int ID);
+void mark_buffer_full(struct Buffer * buf, const char * producer_name, const int ID);
 
-/** @brief Waits for one of the buffers given to be full.
+/** @brief Waits for the buffer frame given by ID to be full.
  *  This function is thread safe.
- *  @param [in] buf The buffer object
- *  @param [in] buffer_IDs An array of buffer IDs to wait for.
- *  @param [in] len The lenght of the array of buffer IDs.
- *  @return The ID of the buffer that is full.  Or -1 if the producer is done filling buffers.
  */
-int get_full_buffer_from_list(struct Buffer * buf, const int * buffer_IDs, const int len);
+int wait_for_full_buffer(struct Buffer* buf, const char * consumer_name, const int ID);
 
 /** @brief Gets the data_ID of the buffer with the given ID.
  *  This function is thread safe.
@@ -193,14 +224,14 @@ void set_first_packet_recv_time(struct Buffer * buf, const int ID, const struct 
  *  @param [in] buf The buffer object
  *  @param [in] ID The id of the buffer to mark as empty.
  */
-void mark_buffer_empty(struct Buffer * buf, const int ID);
+void mark_buffer_empty(struct Buffer* buf, const char * consumer_name, const int ID);
 
 /** @brief Blocks until the buffer requested is empty.
  *  This function is thread safe.
  *  @param [in] buf The buffer
  *  @param [in] ID The id of the buffer wait for.
  */
-void wait_for_empty_buffer(struct Buffer * buf, const int ID);
+void wait_for_empty_buffer(struct Buffer* buf, const char * producer_name, const int ID);
 
 /** @brief Checks if the requested buffer is empty, returns 1
  *  if the buffer is empty, and 0 if the full.  Thread safe.

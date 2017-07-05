@@ -70,7 +70,8 @@ void streamSingleDishVDIF::main_thread() {
     for(;;) {
 
         // Wait for a full buffer.
-        bufferID = get_full_buffer_from_list(buf, &bufferID, 1);
+        wait_for_empty_buffer(buf, unique_name.c_str(), bufferID);
+        //bufferID = get_full_buffer_from_list(buf, &bufferID, 1);
         //INFO ("streamSingleDishVDIF: got buffer ID: %d", bufferID);
 
         // Check if the producer has finished, and we should exit.
@@ -98,7 +99,7 @@ void streamSingleDishVDIF::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_buffer_empty(buf, bufferID);
+        mark_buffer_empty(buf, unique_name.c_str(), bufferID);
         bufferID = ( bufferID + 1 ) % buf->num_buffers;
 //        INFO ("Finished sending block of VDIF data to %s:%d", _vdif_ip.c_str(), _vdif_port);
     }

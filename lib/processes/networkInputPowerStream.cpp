@@ -105,7 +105,7 @@ void networkInputPowerStream::main_thread() {
         uint *data = (uint*)(((char*)recv_buffer)+sizeof(IntensityPacketHeader));
 
         for (;;) {
-            wait_for_empty_buffer(buf, buf_id);
+            wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
             unsigned char* buf_ptr = buf->data[buf_id];
 
             receive_packet(recv_buffer, packet_length);
@@ -116,7 +116,7 @@ void networkInputPowerStream::main_thread() {
             }
 
 
-            mark_buffer_full(buf, buf_id);
+            mark_buffer_full(buf, unique_name.c_str(), buf_id);
             buf_id = (buf_id + 1) % buf->num_buffers;
         }
         free(recv_buffer);

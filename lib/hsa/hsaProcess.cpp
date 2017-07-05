@@ -21,7 +21,9 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
 
     // TODO move this into the config.
     local_buffer_container.add_buffer("network_buf", get_buffer("network_buffer"));
+    register_consumer(get_buffer("network_buffer"), unique_name.c_str());
     local_buffer_container.add_buffer("output_buf", get_buffer("output_buffer"));
+    register_producer(get_buffer("output_buffer"), unique_name.c_str());
 
     device = new hsaDeviceInterface(config, gpu_id);
     factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);

@@ -75,8 +75,6 @@ void intensityReceiverMode::initalize_processes() {
     create_buffer(input_buffer,
                   buffer_depth,
                   buffer_size,
-                  1,
-                  1,
                   pool,
                   "input_power_buf");
     host_buffers.add_buffer("input_power_buf", input_buffer);

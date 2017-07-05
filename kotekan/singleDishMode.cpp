@@ -74,8 +74,6 @@ void singleDishMode::initalize_processes() {
     create_buffer(vdif_input_buffer,
                   buffer_depth * num_disks,
                   timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
-                  1,
-                  2,
                   pool,
                   "vdif_input_buf");
     buffer_container.add_buffer("vdif_input_buf", vdif_input_buffer);
@@ -85,8 +83,6 @@ void singleDishMode::initalize_processes() {
     create_buffer(output_buffer,
                   buffer_depth,
                   timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
-                  1, //producers
-                  1, //consumers
                   pool,
                   "output_power_buf");
     buffer_container.add_buffer("output_power_buf", output_buffer);

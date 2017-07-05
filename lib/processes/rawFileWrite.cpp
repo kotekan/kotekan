@@ -17,6 +17,7 @@ rawFileWrite::rawFileWrite(Config& config,
                        std::bind(&rawFileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
+    register_consumer(buf, unique_name.c_str());
     base_dir = config.get_string(unique_name, "base_dir");
     file_name = config.get_string(unique_name, "file_name");
     file_ext = config.get_string(unique_name, "file_ext");
@@ -37,7 +38,7 @@ void rawFileWrite::main_thread() {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
+        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
 
         //INFO("Got buffer, id: %d", bufferID);
 
@@ -78,7 +79,7 @@ void rawFileWrite::main_thread() {
 
         // TODO make release_info_object work for nConsumers.
         //release_info_object(&buf, buffer_id);
-        mark_buffer_empty(buf, buffer_id);
+        mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
 
         buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
         file_num++;

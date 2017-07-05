@@ -94,8 +94,6 @@ void packetCapMode::initalize_processes() {
         create_buffer(network_input_buffer[i],
                       buffer_depth,
                       fpga_packet_lenght * samples_per_data_set,
-                      1,
-                      1,
                       pool[i],
                       buffer_name);
         buffer_container.add_buffer(buffer_name, network_input_buffer[i]);

@@ -13,6 +13,7 @@ rawFileRead::rawFileRead(Config& config, const string& unique_name,
                    std::bind(&rawFileRead::main_thread, this)) {
 
     buf = get_buffer("out_buf");
+    register_producer(buf, unique_name.c_str());
     generate_info_object = config.get_bool(unique_name, "generate_info_object");
     repeat_frame = config.get_bool(unique_name, "repeat_frame");
     base_dir = config.get_string(unique_name, "base_dir");
@@ -57,7 +58,7 @@ void rawFileRead::main_thread() {
         }
 
         // Get an empty buffer to write into
-        wait_for_empty_buffer(buf, buffer_id);
+        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
 
         if (repeat_frame) {
             if (file_num == 0) {
@@ -95,7 +96,7 @@ void rawFileRead::main_thread() {
         }
 
         INFO("rawFileRead: marking buffer %s[%d] as full", buf->buffer_name, buffer_id);
-        mark_buffer_full(buf, buffer_id);
+        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
 
         file_num++;
         buffer_id = (buffer_id + 1) % buf->num_buffers;

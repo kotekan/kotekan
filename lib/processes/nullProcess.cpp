@@ -14,6 +14,7 @@ nullProcess::nullProcess(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&nullProcess::main_thread, this)){
     buf = get_buffer("in_buf");
+    register_consumer(buf, unique_name.c_str());
 }
 
 nullProcess::~nullProcess() {
@@ -31,8 +32,7 @@ void nullProcess::main_thread() {
     while (!stop_thread) {
 
         INFO("null_process: waiting for buffer");
-        // This call is blocking!
-        buffer_ID = get_full_buffer_from_list(buf, &buffer_ID, 1);
+        buffer_ID = wait_for_full_buffer(buf, unique_name.c_str(), buffer_ID);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
             break;
@@ -44,7 +44,7 @@ void nullProcess::main_thread() {
         //INFO("null_process: Dropping frame %d, lost packets: %d", buffer_ID, error_matrix->bad_timesamples);
 
         //release_info_object(buf, buffer_ID);
-        mark_buffer_empty(buf, buffer_ID);
+        mark_buffer_empty(buf, unique_name.c_str(), buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % buf->num_buffers;
     }

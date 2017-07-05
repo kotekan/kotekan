@@ -83,7 +83,7 @@ void clProcess::main_thread()
 
     for(;;) {
         // Wait for data, this call will block.
-        bufferID = get_full_buffer_from_list(in_buf, buffer_list, 1);
+        //bufferID = get_full_buffer_from_list(in_buf, buffer_list, 1);
         double cur_time = e_time();
         INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
@@ -105,10 +105,10 @@ void clProcess::main_thread()
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        wait_for_empty_buffer(out_buf, bufferID);
+        //wait_for_empty_buffer(out_buf, bufferID);
 
         if (_use_beamforming) {
-            wait_for_empty_buffer(beamforming_out_buf, bufferID);
+            //wait_for_empty_buffer(beamforming_out_buf, bufferID);
         }
 
         // Todo get/set time information here as well.
@@ -189,7 +189,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
         copy_buffer_info(cb_data->in_buf, cb_data->buffer_id,
             cb_data->beamforming_out_buf, cb_data->buffer_id);
 
-        mark_buffer_full(cb_data->beamforming_out_buf, cb_data->buffer_id);
+        //mark_buffer_full(cb_data->beamforming_out_buf,  cb_data->buffer_id);
     }
 
     // Copy the information contained in the input buffer
@@ -197,10 +197,10 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
                      cb_data->out_buf, cb_data->buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
-    mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
+    //mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
-    mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
+    //mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
 
     for (int i = 0; i < cb_data->numCommands; i++){
         cb_data->listCommands[i]->cleanMe(cb_data->buffer_id);

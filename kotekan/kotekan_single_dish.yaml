@@ -28,7 +28,7 @@ dpdk:
 
 raw_capture:
   kotekan_process: nDiskFileWrite
-  write_to_disk: true
+  write_to_disk: false
   gain_files:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl

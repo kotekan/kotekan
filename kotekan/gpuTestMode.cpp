@@ -94,8 +94,6 @@ void gpuTestMode::initalize_processes() {
                       buffer_depth,
                       samples_per_data_set * num_elements *
                       num_local_freq * num_data_sets,
-                      1,
-                      1,
                       pool[0],
                       buffer_name);
         buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
@@ -104,8 +102,6 @@ void gpuTestMode::initalize_processes() {
         create_buffer(gpu_output_buffer[i],
                       buffer_depth,
                       output_len * num_data_sets * sizeof(int32_t),
-                      1,
-                      1,
                       pool[0],
                       buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);

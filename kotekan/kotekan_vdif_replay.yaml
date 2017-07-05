@@ -2,7 +2,7 @@
 type: config
 system:
   mode: single_dish
-  log_level: 3
+  log_level: 2
 
 instrument_name: aro
 

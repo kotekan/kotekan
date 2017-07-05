@@ -20,6 +20,7 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
 
     link_id = config.get_int(unique_name, "link_id");
     buf = get_buffer("network_in_buf");
+    register_consumer(buf, unique_name.c_str());
 
     apply_config(0);
 
@@ -82,7 +83,7 @@ void fullPacketDump::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = get_full_buffer_from_list(buf, &buffer_ID, 1);
+        buffer_ID = wait_for_full_buffer(buf, unique_name.c_str(), buffer_ID);
         //INFO("fullPacketDump: link %d got full full buffer ID %d", link_id, buffer_ID);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
@@ -136,7 +137,7 @@ void fullPacketDump::main_thread() {
         }
 
         release_info_object(buf, buffer_ID);
-        mark_buffer_empty(buf, buffer_ID);
+        mark_buffer_empty(buf, unique_name.c_str(), buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % buf->num_buffers;
     }
