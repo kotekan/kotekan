@@ -19,6 +19,7 @@ pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
 
 {
     buf = get_buffer("in_buf");
+    register_consumer(buf, unique_name.c_str());
     gpu_id = config.get_int(unique_name, "gpu_id");
 }
 
@@ -47,7 +48,7 @@ void pyPlotResult::main_thread() {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
+        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
 
         //INFO("Got buffer, id: %d", bufferID);
 
@@ -62,7 +63,7 @@ void pyPlotResult::main_thread() {
             dump_plot=false;
             //make a local copy so the rest of kotekan can carry along happily.
             memcpy(in_local,buf->data[buffer_id],buf->buffer_size);
-            mark_buffer_empty(buf, buffer_id);
+            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
 
             FILE *python_script;
@@ -91,7 +92,7 @@ void pyPlotResult::main_thread() {
             }
         }
         else{
-            mark_buffer_empty(buf, buffer_id);
+            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
         }
     }

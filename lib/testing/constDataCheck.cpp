@@ -7,6 +7,7 @@ constDataCheck::constDataCheck(Config& config,
                    std::bind(&constDataCheck::main_thread, this)) {
 
     buf = get_buffer("buf");
+    register_consumer(buf, unique_name.c_str());
     ref_real = config.get_int(unique_name, "real");
     ref_imag = config.get_int(unique_name, "imag");
 }
@@ -24,7 +25,7 @@ void constDataCheck::main_thread() {
 
     for (;;) {
 
-        get_full_buffer_from_list(buf, &buf_id, 1);
+        wait_for_full_buffer(buf, unique_name.c_str(), buf_id);
         INFO("constDataCheck: Got buffer %s[%d]", buf->buffer_name, buf_id);
 
         bool error = false;
@@ -49,7 +50,7 @@ void constDataCheck::main_thread() {
                     buf->buffer_name, buf_id,
                     ref_real, ref_imag);
 
-        mark_buffer_empty(buf, buf_id);
+        mark_buffer_empty(buf, unique_name.c_str(), buf_id);
         buf_id = (buf_id + 1) % buf->num_buffers;
     }
 }

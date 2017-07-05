@@ -9,6 +9,7 @@ simVdifData::simVdifData(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this))
     {
     buf = get_buffer("network_out_buf");
+    register_producer(buf, unique_name.c_str());
 }
 
 simVdifData::~simVdifData() {
@@ -64,7 +65,7 @@ void simVdifData::main_thread() {
     start_time = e_time();
 //    for (int ct=0; ct<100; ct++) {
     for (;;) {
-        wait_for_empty_buffer(buf, buf_id);
+        wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
         stop_time = e_time();
         double dt = stop_time-start_time;
         if (dt < time_available) {
@@ -84,7 +85,7 @@ void simVdifData::main_thread() {
         }
 //        INFO("Generated a test data set in %s[%d]", buf.buffer_name, buf_id);
 
-        mark_buffer_full(buf, buf_id);
+        mark_buffer_full(buf, unique_name.c_str(), buf_id);
         buf_id = (buf_id + 1) % buf->num_buffers;
         header.data_frame++;
 

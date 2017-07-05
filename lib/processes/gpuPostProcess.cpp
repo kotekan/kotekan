@@ -29,10 +29,13 @@ gpuPostProcess::gpuPostProcess(Config& config_,
 
     out_buf = get_buffer("chrx_out_buf");
     gate_buf = get_buffer("gate_out_buf");
+    register_producer(out_buf, unique_name.c_str());
+    register_producer(gate_buf, unique_name.c_str());
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof(struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("corr_in_buf_" + std::to_string(i));
+        register_consumer(in_buf[i], unique_name.c_str());
     }
 }
 
@@ -190,7 +193,7 @@ void gpuPostProcess::main_thread() {
         int gpu_id = _link_map[link_id];
 
         // This call is blocking!
-        in_buffer_ID = get_full_buffer_from_list(in_buf[gpu_id], useableBufferIDs[gpu_id], 1);
+        in_buffer_ID = wait_for_full_buffer(in_buf[gpu_id], unique_name.c_str(), useableBufferIDs[gpu_id][0]);
         INFO("GPU Post process got full buffer ID %d for GPU %d", useableBufferIDs[gpu_id][0], gpu_id);
 
         // Check if the producer has finished, and we should exit.
@@ -354,8 +357,8 @@ void gpuPostProcess::main_thread() {
                     }
                     INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
-                    wait_for_empty_buffer(out_buf, out_buffer_ID);
-                    wait_for_empty_buffer(gate_buf, out_buffer_ID);
+                    wait_for_empty_buffer(out_buf, unique_name.c_str(), out_buffer_ID);
+                    wait_for_empty_buffer(gate_buf, unique_name.c_str(), out_buffer_ID);
 
                     if (_enable_basic_gating) {
                         DEBUG("Copying gated data to the gate_buf!");
@@ -368,7 +371,7 @@ void gpuPostProcess::main_thread() {
                             visibilities[j].imag = gated_vis[j].imag + 2*visibilities[j].imag;
                         }
                         memcpy(gate_buf->data[out_buffer_ID], gated_buf, gated_buf_size);
-                        mark_buffer_full(gate_buf, out_buffer_ID);
+                        mark_buffer_full(gate_buf, unique_name.c_str(), out_buffer_ID);
                     }
 
                     // memcpy visibilities into REST buffer.
@@ -378,7 +381,7 @@ void gpuPostProcess::main_thread() {
                     }
 
                     memcpy(out_buf->data[out_buffer_ID], buf, buffer_size);
-                    mark_buffer_full(out_buf, out_buffer_ID);
+                    mark_buffer_full(out_buf, unique_name.c_str(), out_buffer_ID);
                     INFO("gpu_post_process: marked output buffer full: %d", out_buffer_ID );
 
                     out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_buffers;
@@ -389,7 +392,7 @@ void gpuPostProcess::main_thread() {
         }
 
         release_info_object(in_buf[gpu_id], in_buffer_ID);
-        mark_buffer_empty(in_buf[gpu_id], in_buffer_ID);
+        mark_buffer_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID);
         INFO("gpu_post_process: marked in buffer empty: gpu_id %d, buffer id %d", gpu_id, in_buffer_ID );
 
         useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % in_buf[gpu_id]->num_buffers;

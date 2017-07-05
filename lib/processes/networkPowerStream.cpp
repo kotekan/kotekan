@@ -20,6 +20,7 @@ networkPowerStream::networkPowerStream(Config& config,
                    std::bind(&networkPowerStream::main_thread, this)){
 
     buf = get_buffer("power_in_buf");
+    register_consumer(buf, unique_name.c_str());
 
     //PER BUFFER
     times = config.get_int(unique_name, "samples_per_data_set") /
@@ -83,7 +84,7 @@ void networkPowerStream::main_thread() {
 
         for (;;) {
             // Wait for a full buffer.
-            buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
+            buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
 
             for (int t=0; t<times; t++){
                 for (int f=0; f<freqs; f++)
@@ -99,7 +100,7 @@ void networkPowerStream::main_thread() {
             }
 
             // Mark buffer as empty.
-            mark_buffer_empty(buf, buffer_id);
+            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = (buffer_id + 1) % buf->num_buffers;
         }
     }
@@ -108,7 +109,7 @@ void networkPowerStream::main_thread() {
         // TCP variables
         for (;;) {
             // Wait for a full buffer.
-            buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
+            buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
             while (atomic_flag_test_and_set(&socket_lock)) {}
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);
@@ -150,7 +151,7 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
             }
             // Mark buffer as empty.
-            mark_buffer_empty(buf, buffer_id);
+            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = (buffer_id + 1) % buf->num_buffers;
         }
 

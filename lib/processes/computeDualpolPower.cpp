@@ -40,7 +40,9 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
                                  std::bind(&computeDualpolPower::main_thread, this))
 {
     buf_in = get_buffer("vdif_in_buf");
+    register_consumer(buf_in, unique_name.c_str());
     buf_out = get_buffer("power_out_buf");
+    register_producer(buf_out, unique_name.c_str());
 
     timesteps_in = config.get_int(unique_name, "samples_per_data_set");
     integration_length = config.get_int(unique_name, "integration_length");
@@ -77,8 +79,8 @@ void computeDualpolPower::main_thread() {
     std::thread this_thread[nthreads];
 
     for (EVER) {
-        buf_in_id = get_full_buffer_from_list(buf_in, &buf_in_id, 1);
-        wait_for_empty_buffer(buf_out, buf_out_id);
+        buf_in_id = wait_for_full_buffer(buf_in, unique_name.c_str(), buf_in_id);
+        wait_for_empty_buffer(buf_out, unique_name.c_str(), buf_out_id);
         in_local = buf_in->data[buf_in_id];
         out_local = buf_out->data[buf_out_id];
 
@@ -98,8 +100,8 @@ void computeDualpolPower::main_thread() {
     //double stop_time = e_time();
     //INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
-        mark_buffer_empty(buf_in, buf_in_id);
-        mark_buffer_full(buf_out, buf_out_id);
+        mark_buffer_empty(buf_in, unique_name.c_str(), buf_in_id);
+        mark_buffer_full(buf_out, unique_name.c_str(), buf_out_id);
         buf_in_id = ( buf_in_id + 1 ) % buf_in->num_buffers;
         buf_out_id = (buf_out_id + 1) % (buf_out->num_buffers);
 

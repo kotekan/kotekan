@@ -28,8 +28,10 @@ beamformingPostProcess::beamformingPostProcess(Config& config,
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("beam_in_buf_" + std::to_string(i));
+        register_consumer(in_buf[i], unique_name.c_str());
     }
     vdif_buf = get_buffer("vdif_out_buf");
+    register_producer(vdif_buf, unique_name.c_str());
 
 }
 
@@ -118,7 +120,7 @@ void beamformingPostProcess::main_thread() {
     uint32_t fpga_seq_num = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
-    wait_for_empty_buffer(vdif_buf, out_buffer_ID);
+    wait_for_empty_buffer(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
     for(EVER) {
 
@@ -130,7 +132,7 @@ void beamformingPostProcess::main_thread() {
             int gpu_id = _link_map[i];
 
             // This call is blocking!
-            in_buffer_ID[i] = get_full_buffer_from_list(in_buf[gpu_id], useableBufferIDs[gpu_id], 1);
+            in_buffer_ID[i] = wait_for_full_buffer(in_buf[gpu_id], unique_name.c_str(), useableBufferIDs[gpu_id][0]);
 
             // Check if the producer has finished, and we should exit.
             if (in_buffer_ID[i] == -1) {
@@ -194,11 +196,11 @@ void beamformingPostProcess::main_thread() {
                         frame = 0;
                         second++;
 
-                        mark_buffer_full(vdif_buf, out_buffer_ID);
+                        mark_buffer_full(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_buffers;
-                        wait_for_empty_buffer(vdif_buf, out_buffer_ID);
+                        wait_for_empty_buffer(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
                         // Fill the headers of the new buffer
                         fpga_seq_num += 625*625;
@@ -243,7 +245,7 @@ void beamformingPostProcess::main_thread() {
             int gpu_id = _link_map[i];
 
             release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
-            mark_buffer_empty(in_buf[gpu_id], in_buffer_ID[i]);
+            mark_buffer_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[i]);
         }
     }
 }

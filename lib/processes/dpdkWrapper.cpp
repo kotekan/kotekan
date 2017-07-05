@@ -71,9 +71,13 @@ void dpdkWrapper::main_thread() {
     if (_mode == "shuffle4") {
         INFO("DPDK mode: shuffle4");
         for (int i = 0; i < _num_fpga_links; ++i) {
+            strncpy(network_dpdk_args->producer_names[i],
+                    (unique_name + "_" + std::to_string(i)).c_str(), 128);
+
             for (int freq = 0; freq < NUM_FREQ; ++freq) {
                 tmp_buffer[i][freq] = network_input_buffer[freq];
                 INFO ("tmp_buffer[%d][%d] = %p", i, freq, tmp_buffer[i][freq]);
+                register_producer(tmp_buffer[i][freq], network_dpdk_args->producer_names[i]);
             }
             network_dpdk_args->num_links_in_group[i] = 1;
             network_dpdk_args->link_id[i] = 0;
@@ -85,16 +89,17 @@ void dpdkWrapper::main_thread() {
     } else if (_mode == "packet_cap") {
         INFO("DPDK mode: packet_cap");
         for (int i = 0; i < _num_fpga_links; ++i) {
-            for (int freq = 0; freq < NUM_FREQ; ++freq) {
-                tmp_buffer[i][freq] = network_input_buffer[i];
-                INFO ("tmp_buffer[%d][%d] = %p", i, freq, tmp_buffer[i][freq]);
-            }
+            tmp_buffer[i][0] = network_input_buffer[i];
+            INFO ("tmp_buffer[%d][%d] = %p", i, 0, tmp_buffer[i][0]);
+            strncpy(network_dpdk_args->producer_names[i],
+                    (unique_name + "_" + std::to_string(i)).c_str(), 128);
+            register_producer(tmp_buffer[i][0], network_dpdk_args->producer_names[i]);
+
             network_dpdk_args->num_links_in_group[i] = 1;
             network_dpdk_args->link_id[i] = 0;
         }
         network_dpdk_args->enable_shuffle = 1;
         network_dpdk_args->dump_full_packets = 1;
-
     } else if (_mode == "no_shuffle") {
         INFO("DPDK mode: no_shuffle");
         int current_gpu_id = 0;
@@ -113,6 +118,9 @@ void dpdkWrapper::main_thread() {
             tmp_buffer[i][0] = network_input_buffer[_link_map[i]];
             network_dpdk_args->num_links_in_group[i] = config.num_links_per_gpu(i);
             network_dpdk_args->link_id[i] = link_ids[i];
+            strncpy(network_dpdk_args->producer_names[i],
+                    (unique_name + "_" + std::to_string(i)).c_str(), 128);
+            register_producer(tmp_buffer[i][0], network_dpdk_args->producer_names[i]);
         }
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
@@ -121,6 +129,9 @@ void dpdkWrapper::main_thread() {
         for (int i = 0; i < _num_fpga_links; ++i) {
             network_dpdk_args->link_id[i] = i;
             network_dpdk_args->num_links_in_group[i] = _num_fpga_links;
+            strncpy(network_dpdk_args->producer_names[i],
+                    (unique_name + "_" + std::to_string(i)).c_str(), 128);
+            register_producer(network_input_buffer[0], network_dpdk_args->producer_names[i]);
         }
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;

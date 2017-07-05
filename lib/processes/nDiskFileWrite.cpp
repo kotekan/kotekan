@@ -18,6 +18,7 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                        std::bind(&nDiskFileWrite::main_thread, this))
 {
     buf = get_buffer("in_buf");
+    register_consumer(buf, unique_name.c_str());
     apply_config(0);
 }
 
@@ -90,7 +91,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = get_full_buffer_from_list(buf, &buffer_id, 1);
+        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
 
         //INFO("Got buffer id: %d, disk id %d", buffer_id, disk_id);
 
@@ -146,7 +147,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
         // TODO make release_info_object work for nConsumers.
         release_info_object(buf, buffer_id);
-        mark_buffer_empty(buf, buffer_id);
+        mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
 
         buffer_id = ( buffer_id + num_disks ) % buf->num_buffers;
         file_num += num_disks;

@@ -30,6 +30,7 @@ networkOutputSim::networkOutputSim(Config &config_,
 {
 
     buf = get_buffer("network_out_buf");
+    register_producer(buf, unique_name.c_str());
     num_links_in_group = config.get_int(unique_name, "num_links_in_group");
     link_id = config.get_int(unique_name,"link_id");
     pattern = config.get_int(unique_name,"pattern");
@@ -58,7 +59,7 @@ void networkOutputSim::main_thread() {
     int constant = 9;
 
     for (EVER) {
-        wait_for_empty_buffer(buf, buffer_id);
+        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
 
         if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
             constant = 10;
@@ -102,7 +103,7 @@ void networkOutputSim::main_thread() {
             exit(-1);
         }
 
-        mark_buffer_full(buf, buffer_id);
+        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
 
         buffer_id = (buffer_id + num_links_in_group) % (buf->num_buffers);
 

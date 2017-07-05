@@ -22,7 +22,8 @@ hsaOutputData::~hsaOutputData() {
 void hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id; // Not used for this;
     // We want to make sure we have some space to put our results.
-    wait_for_empty_buffer(output_buffer, output_buffer_precondition_id);
+    wait_for_empty_buffer(output_buffer,
+                          unique_name, output_buffer_precondition_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
                                     output_buffer->num_buffers;
 }
@@ -51,10 +52,10 @@ void hsaOutputData::finalize_frame(int frame_id) {
     //                 output_buffer, output_buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
-    mark_buffer_empty(network_buffer, network_buffer_id);
+    mark_buffer_empty(network_buffer, unique_name.c_str(), network_buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
-    mark_buffer_full(output_buffer, output_buffer_id);
+    mark_buffer_full(output_buffer, unique_name, output_buffer_id);
 
     // Note this will change once we do accumulation in the GPU
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_buffers;

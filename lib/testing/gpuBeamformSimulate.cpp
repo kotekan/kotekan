@@ -18,7 +18,9 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     apply_config(0);
 
     input_buf = get_buffer("network_in_buf");
+    register_consumer(input_buf, unique_name.c_str());
     output_buf = get_buffer("beam_out_buf");
+    register_producer(output_buf, unique_name.c_str());
 
     input_len = _samples_per_data_set * _num_elements * 2;
     // Padded and extracted
@@ -176,8 +178,8 @@ void gpuBeamformSimulate::main_thread() {
     float freq1 = 450;
 
     for (;;) {
-        get_full_buffer_from_list(input_buf, &input_buf_id, 1);
-        wait_for_empty_buffer(output_buf, output_buf_id);
+        wait_for_full_buffer(input_buf, unique_name.c_str(), input_buf_id);
+        wait_for_empty_buffer(output_buf, unique_name.c_str(), output_buf_id);
 
         unsigned char * input = (unsigned char *)input_buf->data[input_buf_id];
         float * output = (float *)output_buf->data[output_buf_id];
@@ -231,8 +233,8 @@ void gpuBeamformSimulate::main_thread() {
                 output_buf->buffer_name, output_buf_id);
 
         //move_buffer_info(&input_buf, input_buf_id, &output_buf, output_buf_id);
-        mark_buffer_empty(input_buf, input_buf_id);
-        mark_buffer_full(output_buf, output_buf_id);
+        mark_buffer_empty(input_buf, unique_name.c_str(), input_buf_id);
+        mark_buffer_full(output_buf, unique_name.c_str(), output_buf_id);
 
         input_buf_id = (input_buf_id + 1) % input_buf->num_buffers;
         output_buf_id = (output_buf_id + 1) % output_buf->num_buffers;

@@ -19,6 +19,7 @@ vdifStream::vdifStream(Config& config, const string& unique_name,
                    std::bind(&vdifStream::main_thread, this)) {
 
     buf = get_buffer("vdif_in_buf");
+    register_consumer(buf, unique_name.c_str());
 }
 vdifStream::~vdifStream() {
 }
@@ -68,7 +69,7 @@ void vdifStream::main_thread() {
              _vdif_port);
 
         // Wait for a full buffer.
-        get_full_buffer_from_list(buf, bufferID, 1);
+        wait_for_full_buffer(buf, unique_name.c_str(), bufferID[0]);
 
         INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
@@ -109,7 +110,7 @@ void vdifStream::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_buffer_empty(buf, bufferID[0]);
+        mark_buffer_empty(buf, unique_name.c_str(), bufferID[0]);
         bufferID[0] = (bufferID[0] + 1) % buf->num_buffers;
     }
 }

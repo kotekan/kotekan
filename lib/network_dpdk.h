@@ -59,6 +59,9 @@ struct networkDPDKArg {
 
     // Fake stream ids
     int fake_stream_ids;
+
+    // The producer names
+    char producer_names[NUM_LINKS][MAX_PROCESS_NAME_LEN];
 };
 
 struct LinkData {
