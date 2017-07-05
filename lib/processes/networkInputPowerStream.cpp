@@ -13,18 +13,23 @@
 #include "util.h"
 #include "errors.h"
 
-networkInputPowerStream::networkInputPowerStream(Config& config, struct Buffer &buf_) :
-    KotekanProcess(config, std::bind(&networkInputPowerStream::main_thread, this)),
-    buf(buf_){
+networkInputPowerStream::networkInputPowerStream(Config& config,
+                                       const string& unique_name,
+                                       bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&networkInputPowerStream::main_thread, this))
+    {
+
+    buf = get_buffer("power_in_buf");
 
     //PER BUFFER
-    string config_base = string("/raw_capture/stream_")+std::to_string(id);
-    freqs = config.get_int("/processing/num_frequencies");
-    elems = config.get_int("/processing/num_elements");
+    string config_base = unique_name+string("stream_")+std::to_string(id);
+    freqs = config.get_int(unique_name,"num_frequencies");
+    elems = config.get_int(unique_name,"num_elements");
 
-    port = config.get_int("/network_input/port");
-    server_ip = config.get_string("/network_input/ip");
-    protocol = config.get_string("/network_input/protocol");
+    port = config.get_int(unique_name,"port");
+    server_ip = config.get_string(unique_name,"ip");
+    protocol = config.get_string(unique_name,"protocol");
 
     atomic_flag_clear(&socket_lock);
 
@@ -100,8 +105,8 @@ void networkInputPowerStream::main_thread() {
         uint *data = (uint*)(((char*)recv_buffer)+sizeof(IntensityPacketHeader));
 
         for (;;) {
-            wait_for_empty_buffer(&buf, buf_id);
-            unsigned char* buf_ptr = buf.data[buf_id];
+            wait_for_empty_buffer(buf, buf_id);
+            unsigned char* buf_ptr = buf->data[buf_id];
 
             receive_packet(recv_buffer, packet_length);
             for (int t = 0; t < times; t++) {
@@ -111,8 +116,8 @@ void networkInputPowerStream::main_thread() {
             }
 
 
-            mark_buffer_full(&buf, buf_id);
-            buf_id = (buf_id + 1) % buf.num_buffers;
+            mark_buffer_full(buf, buf_id);
+            buf_id = (buf_id + 1) % buf->num_buffers;
         }
         free(recv_buffer);
         free(metadata);

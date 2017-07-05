@@ -10,7 +10,9 @@
 
 class networkInputPowerStream : public KotekanProcess {
 public:
-    networkInputPowerStream(Config &config, struct Buffer &buf);
+    networkInputPowerStream(Config& config,
+                           const string& unique_name,
+                           bufferContainer &buffer_container);
     virtual ~networkInputPowerStream();
     void main_thread();
 
@@ -20,7 +22,7 @@ public:
 private:
 	void tcpConnect();
 
-    struct Buffer &buf;
+    struct Buffer *buf;
 
     uint32_t port;
     string server_ip;

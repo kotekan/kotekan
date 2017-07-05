@@ -17,6 +17,7 @@
 #include "vdif_functions.h"
 #include "streamSingleDishVDIF.hpp"
 #include "networkInputPowerStream.hpp"
+#include "processFactory.hpp"
 
 #include <vector>
 #include <string>
@@ -33,15 +34,15 @@ intensityReceiverMode::~intensityReceiverMode() {
 void intensityReceiverMode::initalize_processes() {
 
     // Config values:
-    int num_total_freq = config.get_int("/processing","num_total_freq");
-    int num_elements = config.get_int("/processing","num_elements");
-    int buffer_depth = config.get_int("/processing","buffer_depth");
-    int num_disks = config.get_int("/raw_capture","num_disks");
+    int freqs = config.get_int("/","num_total_freq");
+    int elems = config.get_int("/","num_elements");
+    int buffer_depth = config.get_int("/","buffer_depth");
+    int num_disks = config.get_int("/","num_disks");
 
-    int integration_length = config.get_int("/raw_capture","integration_length");
-    int timesteps_in = config.get_int("/processing","samples_per_data_set");
+    int integration_length = config.get_int("/","integration_length");
+    int timesteps_in = config.get_int("/","samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
-    string instrument_name = config.get_string("/raw_capture","instrument_name");
+    string instrument_name = config.get_string("/","instrument_name");
 
     // TODO This needs to move outside of this function, but that
     // requires some more refactoring of the nDisk thread.
@@ -54,6 +55,8 @@ void intensityReceiverMode::initalize_processes() {
 
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
     snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, instrument_name.c_str());
+
+    bufferContainer buffer_container;
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -78,9 +81,15 @@ void intensityReceiverMode::initalize_processes() {
                   "input_power_buf");
     host_buffers.add_buffer("input_power_buf", input_buffer);
 
-    add_process((KotekanProcess*) new networkInputPowerStream(config, *input_buffer));
-    add_process((KotekanProcess*) new nullProcess(config, *input_buffer));
+    //add_process((KotekanProcess*) new networkInputPowerStream(config, *input_buffer));
+    //add_process((KotekanProcess*) new nullProcess(config, *input_buffer));
     //add_process((KotekanProcess*) new networkPowerStream(config, *output_buffer));
 
+    processFactory process_factory(config, buffer_container);
+    vector<KotekanProcess *> processes = process_factory.build_processes();
+
+    for (auto process: processes) {
+        add_process(process);
+    }
 
 }
