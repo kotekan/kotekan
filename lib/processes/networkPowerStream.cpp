@@ -63,13 +63,6 @@ void networkPowerStream::main_thread() {
         float *local_data = (float*)((char *)packet_buffer + sizeof(IntensityPacketHeader));
     struct timeval tv;
 
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    INFO("Setting thread affinity");
-    CPU_SET(8, &cpuset);
-    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
-
-
     if (dest_protocol == "UDP")
     {
         // UDP variables
