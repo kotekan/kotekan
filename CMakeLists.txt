@@ -7,7 +7,7 @@ option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" ON)
-option(DPDK_VDIF "Use DPDK VDIF settings" ON)
+option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
