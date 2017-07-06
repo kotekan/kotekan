@@ -105,7 +105,12 @@ void nDiskFileWrite::main_thread() {
                         dataset_name + "/" +
                         gain_files[j].substr(last_slash_pos+1);
                 // Copy the gain file
-                cp(dest.c_str(), gain_files[j].c_str());
+                if (cp(dest.c_str(), gain_files[j].c_str()) != 0) {
+                    ERROR("Could not copy %s to %s\n", gain_files[j].c_str(), dest.c_str());
+                    exit(-1);
+                } else {
+                    INFO("Copied gains from %s to %s\n", gain_files[j].c_str(), dest.c_str());
+                }
             }
         }
         //save settings
