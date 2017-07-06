@@ -64,7 +64,7 @@ void intensityReceiverMode::initalize_processes() {
                   buffer_size,
                   pool,
                   "input_power_buf");
-    host_buffers.add_buffer("input_power_buf", input_buffer);
+    buffer_container.add_buffer("input_power_buf", input_buffer);
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();
