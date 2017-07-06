@@ -98,19 +98,14 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-<<<<<<< HEAD
 #ifdef DPDK_VDIF_MODE
-    char  arg4[] = "FF";
+    char  arg4[] = "F";//"FF";
 #else
     char  arg4[] = "F";
 #endif
     char  arg5[] = "-m";
     char  arg6[] = "256";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };
-=======
-    char  arg4[] = "3";
-    char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], NULL };
->>>>>>> origin/aro_frb
     int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
     /* Initialize the Environment Abstraction Layer (EAL). */

@@ -7,7 +7,7 @@ system:
 instrument_name: aro
 
 #shared by power & network_stream
-integration_length: 16384
+integration_length: 4096
 num_freq: 1024
 num_elements: 2
 samples_per_data_set: 65536
