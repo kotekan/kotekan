@@ -28,7 +28,10 @@ extern "C" {
 #include <pthread.h>
 }
 
+#include "intensityReceiverMode.hpp"
+
 // DPDK!
+#ifdef WITH_DPDK
 extern "C" {
 #include <rte_config.h>
 #include <rte_common.h>
@@ -51,6 +54,10 @@ extern "C" {
 #include <rte_debug.h>
 #include <rte_ring.h>
 }
+#include "network_dpdk.h"
+#include "packetCapMode.hpp"
+#include "singleDishMode.hpp"
+#endif
 
 #include "errors.h"
 #include "buffers.h"
@@ -58,6 +65,7 @@ extern "C" {
 #include "Config.hpp"
 #include "util.h"
 #include "version.h"
+#include "networkOutputSim.hpp"
 #include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
@@ -70,8 +78,6 @@ extern "C" {
     #include "clProcess.hpp"
 #endif
 
-#include "packetCapMode.hpp"
-#include "singleDishMode.hpp"
 
 using json = nlohmann::json;
 
@@ -85,6 +91,7 @@ void print_help() {
     printf("    --config (-c) [file]            The local JSON config file to use\n\n");
 }
 
+#ifdef WITH_DPDK
 void dpdk_setup() {
 
     char  arg0[] = "./kotekan";
@@ -92,7 +99,7 @@ void dpdk_setup() {
     char  arg2[] = "4";
     char  arg3[] = "-c";
 #ifdef DPDK_VDIF_MODE
-    char  arg4[] = "FF";
+    char  arg4[] = "F";//"FF";
 #else
     char  arg4[] = "F";
 #endif
@@ -106,6 +113,7 @@ void dpdk_setup() {
     if (ret2 < 0)
         exit(EXIT_FAILURE);
 }
+#endif
 
 std::string exec(const std::string &cmd) {
     std::array<char, 256> buffer;
@@ -145,23 +153,32 @@ int start_new_kotekan_mode(Config &config) {
 
     string mode = config.get_string("/system", "mode");
 
-    if (mode == "packet_cap") {
+    if (mode == "intensity_receiver") {
+        kotekan_mode = (kotekanMode *) new intensityReceiverMode(config);
+    }
+#ifdef WITH_DPDK
+    else if (mode == "packet_cap") {
         kotekan_mode = (kotekanMode *) new packetCapMode(config);
-    } else if (mode == "chime_shuffle") {
+    }
+    else if (mode == "chime_shuffle") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
         #else
         return -1;
         #endif
-    } else if (mode == "gpu_test") {
+    }
+    else if (mode == "single_dish") {
+        kotekan_mode = (kotekanMode *) new singleDishMode(config);
+    }
+    else if (mode == "gpu_test") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new gpuTestMode(config);
         #else
         return -1;
         #endif
-    } else if (mode == "single_dish") {
-        kotekan_mode = (kotekanMode *) new singleDishMode(config);
-    } else {
+    }
+#endif
+    else {
         return -1;
     }
     kotekan_mode->initalize_processes();
@@ -172,8 +189,9 @@ int start_new_kotekan_mode(Config &config) {
 }
 
 int main(int argc, char ** argv) {
-
+#ifdef WITH_DPDK
     dpdk_setup();
+#endif
     json config_json;
 
     int opt_val = 0;
@@ -225,7 +243,6 @@ int main(int argc, char ** argv) {
 
     restServer *rest_server = get_rest_server();
     rest_server->start();
-
 
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.

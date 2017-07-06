@@ -6,10 +6,13 @@
 #include "beamformingPostProcess.hpp"
 #include "chrxUplink.hpp"
 #include "computeDualpolPower.hpp"
-#include "dpdkWrapper.hpp"
+#ifdef WITH_DPDK
+    #include "dpdkWrapper.hpp"
+#endif
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
+#include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
 #include "nullProcess.hpp"
 #include "pyPlotResult.hpp"
@@ -91,11 +94,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "computeDualpolPower") {
         return (KotekanProcess *) new computeDualpolPower(config, location, buffer_container);
     }
-
+#ifdef WITH_DPDK
     if (name == "dpdkWrapper") {
         return (KotekanProcess *) new dpdkWrapper(config, location, buffer_container);
     }
-
+#endif
     if (name == "fullPacketDump") {
         return (KotekanProcess *) new fullPacketDump(config, location, buffer_container);
     }
@@ -106,6 +109,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
+    }
+
+    if (name == "nDiskFileRead") {
+        return (KotekanProcess *) new nDiskFileRead(config, location, buffer_container);
     }
 
     if (name == "networkPowerStream") {

@@ -40,7 +40,6 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
                 __FILE__, __LINE__, oclGetOpenCLErrorCodeStr(err)); \
         exit( err );                                                \
     }
-
 //WITH_OPENCL
 #endif
 

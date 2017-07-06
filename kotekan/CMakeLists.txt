@@ -5,8 +5,11 @@ PROJECT (kotekan)
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 #CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp)
+SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp intensityReceiverMode.cpp)
 
+if (${USE_DPDK})
+	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
+endif ()
 if (${USE_HCC})
 	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
 endif ()
@@ -28,22 +31,22 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 link_directories (${KOTEKAN_BINARY_DIR}/lib)
 
-
-if (${USE_DPDK})
-	include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
-    link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-endif ()
-
 ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
-SET( DPDK_LIB  "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_mempool -lrte_pmd_i40e -lrte_ring -lethdev -lrte_pmd_ixgbe -Wl,--no-whole-archive" )
 
 file(GLOB open_cl_kernels "${KOTEKAN_SOURCE_DIR}/kernels/*.cl")
 
 add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
 
-target_link_libraries( kotekan ${DPDK_LIB} m rt dl pthread )
+target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
 target_link_libraries( kotekan libinclude )
+
+if (${USE_DPDK})
+	include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
+    link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
+    SET( DPDK_LIBS  "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_mempool -lrte_pmd_i40e -lrte_ring -lethdev -lrte_pmd_ixgbe -Wl,--no-whole-archive" )
+    target_link_libraries ( kotekan ${DPDK_LIBS} )
+endif ()
 
 add_dependencies( kotekan kotekan_libs )
 

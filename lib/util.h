@@ -3,10 +3,12 @@
 
 #define EVER ;;
 
+#ifndef MAC_OSX
 #define MIN(a,b) \
     ({ __typeof__ (a) _a = (a); \
     __typeof__ (b) _b = (b); \
     _a < _b ? _a : _b; })
+#endif
 
 #ifdef __cplusplus
 extern "C" {

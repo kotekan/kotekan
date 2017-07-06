@@ -8,6 +8,10 @@
 #include <vector>
 #include "Config.hpp"
 #include "bufferContainer.hpp"
+#ifdef MAC_OSX
+    #include "osxBindCPU.hpp"
+    #include <immintrin.h>
+#endif
 
 class KotekanProcess {
 public:
@@ -22,6 +26,7 @@ public:
     void join();
     void stop();
 protected:
+    std::thread this_thread;
     std::atomic_bool stop_thread;
     Config &config;
 
@@ -38,7 +43,6 @@ protected:
     // Helper function
     struct Buffer * get_buffer(const std::string &name);
 private:
-    std::thread this_thread;
     std::function<void(const KotekanProcess&)> main_thread_fn;
 
     // List of CPU cores that the main thread is allowed to run on.

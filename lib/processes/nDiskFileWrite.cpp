@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <functional>
 #include <thread>
-
+#include <sys/stat.h>
 #include "nDiskFileWrite.hpp"
 #include "buffers.h"
 #include "errors.h"
@@ -28,10 +28,59 @@ nDiskFileWrite::~nDiskFileWrite() {
 void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
     disk_base = config.get_string(unique_name, "disk_base");
     num_disks = config.get_int(unique_name, "num_disks");
+    disk_set = config.get_string(unique_name, "disk_set");
     write_to_disk = config.get_bool(unique_name, "write_to_disk");
     instrument_name = config.get_string(unique_name, "instrument_name");
 }
 
+void nDiskFileWrite::save_meta_data(char *timestr) {
+
+    for (uint32_t i = 0; i < num_disks; ++i) {
+
+        char file_name[200];
+        snprintf(file_name, sizeof(file_name), "%s/%s/%d/%s/settings.txt",
+                        disk_base.c_str(), disk_set.c_str(), i, dataset_name.c_str());
+
+        FILE * info_file = fopen(file_name, "w");
+
+        if(!info_file) {
+            ERROR("Error creating info file: %s\n", file_name);
+            exit(-1);
+        }
+
+        const int data_format_version = 3;
+        int num_freq = config.get_int(unique_name,"num_freq");
+        int num_elements = config.get_int(unique_name,"num_elements");
+        int samples_per_file = config.get_int(unique_name,"samples_per_data_set");
+        const int vdif_header_len = 32;
+        const int bit_depth = 4;
+        string note = config.get_string(unique_name,"note");
+
+        fprintf(info_file, "format_version_number=%02d\n", data_format_version);
+        fprintf(info_file, "num_freq=%d\n", num_freq);
+        fprintf(info_file, "num_inputs=%d\n", num_elements);
+        fprintf(info_file, "num_frames=%d\n", 1); // Always one for this VDIF
+        fprintf(info_file, "num_timesamples=%d\n", samples_per_file);
+        fprintf(info_file, "header_len=%d\n", vdif_header_len); // VDIF
+        fprintf(info_file, "packet_len=%d\n", vdif_header_len + num_freq); // 1056 for VDIF with 1024 freq
+        fprintf(info_file, "offset=%d\n", 0);
+        fprintf(info_file, "data_bits=%d\n", bit_depth);
+        fprintf(info_file, "stride=%d\n", 1);
+        fprintf(info_file, "stream_id=n/a\n");
+        fprintf(info_file, "note=\"%s\"\n", note.c_str());
+        fprintf(info_file, "start_time=%s\n", timestr);//dataset_name.c_str());
+        fprintf(info_file, "num_disks=%d\n", num_disks);
+        fprintf(info_file, "disk_set=%s\n", disk_set.c_str());
+        fprintf(info_file, "# Warning: The start time is when the program starts it, the time recorded in the packets is more accurate\n");
+
+        fclose(info_file);
+
+        INFO("Created meta data file: %s\n", file_name);
+    }
+}
+
+// TODO instead of there being N disks of this tread started, this thread should
+// start N threads to write the data.
 void nDiskFileWrite::main_thread() {
 
     // TODO This is a very C style, maybe make it more C++11 like?
@@ -42,24 +91,30 @@ void nDiskFileWrite::main_thread() {
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_raw", data_time, instrument_name.c_str());
+    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_vdif", data_time, instrument_name.c_str());
     dataset_name = data_set_c;
 
     if (write_to_disk) {
         make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
-
         // Copy gain files
         std::vector<std::string> gain_files = config.get_string_array(unique_name, "gain_files");
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
-                unsigned int last_slash_pos = gain_files[i].find_last_of("/\\");
-                std::string dest = disk_base + "/" + disk_set + std::to_string(i) + "/" +
+                unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
+                std::string dest = disk_base + "/" + disk_set + "/" + std::to_string(i) + "/" +
                         dataset_name + "/" +
-                        gain_files[i].substr(last_slash_pos+1);
+                        gain_files[j].substr(last_slash_pos+1);
                 // Copy the gain file
-                cp(dest.c_str(), gain_files[i].c_str());
+                if (cp(dest.c_str(), gain_files[j].c_str()) != 0) {
+                    ERROR("Could not copy %s to %s\n", gain_files[j].c_str(), dest.c_str());
+                    exit(-1);
+                } else {
+                    INFO("Copied gains from %s to %s\n", gain_files[j].c_str(), dest.c_str());
+                }
             }
         }
+        //save settings
+        save_meta_data(data_time);
     }
 
     // Create the threads
@@ -87,6 +142,14 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int fd;
     int file_num = disk_id;
     int buffer_id = disk_id;
+
+    sleep(1);
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    INFO("Setting thread affinity");
+    for (int j = 10; j < 12; j++) CPU_SET(j, &cpuset);
+//    CPU_SET(11-(disk_id%2),&cpuset);
+    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
     for (;;) {
 
@@ -129,7 +192,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
-                 //fprintf(stderr, "Data writen to file!");
+                 //INFO("Data writen to file!");
             }
 
             if (close(fd) == -1) {
