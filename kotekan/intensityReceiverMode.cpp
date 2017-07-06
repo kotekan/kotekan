@@ -42,19 +42,6 @@ void intensityReceiverMode::initalize_processes() {
     int integration_length = config.get_int("/","integration_length");
     int timesteps_in = config.get_int("/","samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
-    string instrument_name = config.get_string("/","instrument_name");
-
-    // TODO This needs to move outside of this function, but that
-    // requires some more refactoring of the nDisk thread.
-    char data_time[64];
-    char data_set[150];
-    time_t rawtime;
-    struct tm* timeinfo;
-    time(&rawtime);
-    timeinfo = gmtime(&rawtime);
-
-    strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-    snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, instrument_name.c_str());
 
     bufferContainer buffer_container;
 
@@ -78,10 +65,6 @@ void intensityReceiverMode::initalize_processes() {
                   pool,
                   "input_power_buf");
     host_buffers.add_buffer("input_power_buf", input_buffer);
-
-    //add_process((KotekanProcess*) new networkInputPowerStream(config, *input_buffer));
-    //add_process((KotekanProcess*) new nullProcess(config, *input_buffer));
-    //add_process((KotekanProcess*) new networkPowerStream(config, *output_buffer));
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();
