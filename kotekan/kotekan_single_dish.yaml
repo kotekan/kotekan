@@ -27,12 +27,12 @@ dpdk:
   num_gpu_frames: 1
 
 raw_capture:
+  note: Testing all the things!
   kotekan_process: nDiskFileWrite
   write_to_disk: true
   gain_files:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
-  gain_file_dir: /tmp
   num_disks: 10
   disk_base: /drives/
   disk_set: testing
