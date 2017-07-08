@@ -1,7 +1,7 @@
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 
 class gpuBeamformSimulate : public KotekanProcess {

@@ -1,5 +1,5 @@
 #include "gpuTestMode.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"

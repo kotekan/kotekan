@@ -92,7 +92,7 @@ void networkInputPowerStream::main_thread() {
         char *local_buf = (char*)calloc(packet_length,sizeof(char));
 
         for (;;) {
-            wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+            wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++){
@@ -110,7 +110,7 @@ void networkInputPowerStream::main_thread() {
                 }
             }
 
-            mark_buffer_full(buf, unique_name.c_str(), buf_id);
+            mark_frame_full(buf, unique_name.c_str(), buf_id);
             buf_id = (buf_id + 1) % buf->num_buffers;
         }
 
@@ -148,7 +148,7 @@ void networkInputPowerStream::main_thread() {
         uint *data = (uint*)(((char*)recv_buffer)+sizeof(IntensityPacketHeader));
 
         for (;;) {
-            wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+            wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
             unsigned char* buf_ptr = buf->data[buf_id];
 
             for (int t = 0; t < times; t++) {
@@ -160,7 +160,7 @@ void networkInputPowerStream::main_thread() {
                     buf_ptr+=(freqs+1)*sizeof(int);
                 }
             }
-            mark_buffer_full(buf, unique_name.c_str(), buf_id);
+            mark_frame_full(buf, unique_name.c_str(), buf_id);
             buf_id = (buf_id + 1) % buf->num_buffers;
         }
         free(recv_buffer);

@@ -1,7 +1,7 @@
 #ifndef SIM_VDIF_DATA_H
 #define SIM_VDIF_DATA_H
 
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 #include "vdif_functions.h"
 

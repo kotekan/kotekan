@@ -51,7 +51,7 @@ void integratePowerStream::main_thread() {
 
     IntensityPacketHeader *header_in;
     for (;;) {
-        buf_in_id = wait_for_full_buffer(buf_in, unique_name.c_str(), buf_in_id);
+        buf_in_id = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
 
         for (int i = 0; i < packets_per_buffer; i++){
             memcpy(packet_in,
@@ -68,16 +68,16 @@ void integratePowerStream::main_thread() {
             if (integrated_samples[e] >= integration_length) {
 //                INFO("Integrated sample! %i", integrated_samples[e]);
                 integrated_samples[e]=0;
-                wait_for_empty_buffer(buf_out, unique_name.c_str(), buf_out_id);
+                wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
 
                 memcpy(buf_out->data[buf_out_id],(char*)accum_buffer+e*packet_length,packet_length);
 
-                mark_buffer_full(buf_out, unique_name.c_str(), buf_out_id);
+                mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
                 buf_out_id = (buf_out_id + 1) % buf_out->num_buffers;
                 memset((char*)accum_buffer+e*packet_length,0,packet_length);
             }
         }
-        mark_buffer_empty(buf_in, unique_name.c_str(), buf_in_id);
+        mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         buf_in_id = (buf_in_id + 1) % buf_in->num_buffers;
     }
 }

@@ -4,7 +4,7 @@
 #include "powerStreamUtil.hpp"
 #include <sys/socket.h>
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 #include <atomic>
 

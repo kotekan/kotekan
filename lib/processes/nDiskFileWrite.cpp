@@ -8,7 +8,7 @@
 #include <thread>
 #include <sys/stat.h>
 #include "nDiskFileWrite.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 #include "util.h"
 
@@ -154,7 +154,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+        buffer_id = wait_for_full_frame(buf, unique_name.c_str(), buffer_id);
 
         //INFO("Got buffer id: %d, disk id %d", buffer_id, disk_id);
 
@@ -210,7 +210,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
         // TODO make release_info_object work for nConsumers.
         release_info_object(buf, buffer_id);
-        mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+        mark_frame_empty(buf, unique_name.c_str(), buffer_id);
 
         buffer_id = ( buffer_id + num_disks ) % buf->num_buffers;
         file_num += num_disks;

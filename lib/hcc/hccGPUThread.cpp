@@ -288,7 +288,7 @@ void hccGPUThread::main_thread() {
         // ----------------- End Kernels ----------------
 
         INFO("hccGPUTHread: gpu %d; Wait for empty output buffer id %d", gpu_id ,out_buffer_id);
-        wait_for_empty_buffer(&out_buf, unique_name, out_buffer_id);
+        wait_for_empty_frame(&out_buf, unique_name, out_buffer_id);
 
         // copy the data on the GPU back to the host
         int * out = (int*)out_buf.data[out_buffer_id];
@@ -306,10 +306,10 @@ void hccGPUThread::main_thread() {
                          &out_buf, out_buffer_id);
 
         // Mark the input buffer as "empty" so that it can be reused.
-        mark_buffer_empty(&in_buf, unique_name.c_str(), in_buffer_id);
+        mark_frame_empty(&in_buf, unique_name.c_str(), in_buffer_id);
 
         // Mark the output buffer as full, so it can be processed.
-        mark_buffer_full(&out_buf, unique_name.c_str(), out_buffer_id);
+        mark_frame_full(&out_buf, unique_name.c_str(), out_buffer_id);
 
         in_buffer_id = (in_buffer_id + 1) % in_buf.num_buffers;
         out_buffer_id = (out_buffer_id + 1) % out_buf.num_buffers;

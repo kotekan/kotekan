@@ -1,6 +1,6 @@
 #include "singleDishModeGpu.hpp"
 
-#include "buffers.h"
+#include "buffer.c"
 #include "hsaProcess.hpp"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"

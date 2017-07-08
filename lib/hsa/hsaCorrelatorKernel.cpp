@@ -99,7 +99,6 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
     params.grid_size_z = _num_blocks;
     params.num_dims = 3;
 
-    // Should this be zero?
     params.private_segment_size = 0;
     params.group_segment_size = 3136;
 

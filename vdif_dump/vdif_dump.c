@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <pthread.h>
 
-#include "buffers.h"
+#include "buffer.c"
 #include "file_write.h"
 #include "simple_udp_cap.h"
 #include "errors.h"

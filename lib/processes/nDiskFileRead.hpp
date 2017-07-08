@@ -1,7 +1,7 @@
 #ifndef N_DISK_FILE_READ_H
 #define N_DISK_FILE_READ_H
 
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 #include "vdif_functions.h"
 

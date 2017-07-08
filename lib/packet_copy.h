@@ -115,7 +115,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
 
     int local_offset = *offset;
     // Output must be 256-bit aligned
-    assert(((uintptr_t)dest & 0x1F) == 0);
+    //assert(((uintptr_t)dest & 0x1F) == 0);
 
     //fprintf(stderr, "Copy function\n");
 
@@ -128,7 +128,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
             n = len;
         }
         len -= n; // We will copy at least n;
-        assert(len >= 0);
+        //assert(len >= 0);
         //INFO("copy_block pointer %p", *pkt);
         src = rte_pktmbuf_mtod_offset(*pkt, uint8_t *, local_offset);
 
@@ -250,7 +250,7 @@ static inline void copy_block(struct rte_mbuf ** pkt, uint8_t * dest, int len, i
         }
     }
     *offset = local_offset;
-    assert(len == 0);
+    //assert(len == 0);
 }
 
 #ifdef __cplusplus

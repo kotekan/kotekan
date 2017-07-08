@@ -3,7 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include "errors.h"
-#include "buffers.h"
+#include "buffer.c"
 
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi

@@ -69,7 +69,7 @@ void vdifStream::main_thread() {
              _vdif_port);
 
         // Wait for a full buffer.
-        wait_for_full_buffer(buf, unique_name.c_str(), bufferID[0]);
+        wait_for_full_frame(buf, unique_name.c_str(), bufferID[0]);
 
         INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
@@ -110,7 +110,7 @@ void vdifStream::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_buffer_empty(buf, unique_name.c_str(), bufferID[0]);
+        mark_frame_empty(buf, unique_name.c_str(), bufferID[0]);
         bufferID[0] = (bufferID[0] + 1) % buf->num_buffers;
     }
 }

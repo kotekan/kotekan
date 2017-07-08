@@ -11,7 +11,7 @@
 #include "hsa/hsa_ext_amd.h"
 
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.c"
 
 using std::vector;
 using std::string;

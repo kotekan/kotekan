@@ -1,7 +1,7 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 #include "KotekanProcess.hpp"
 

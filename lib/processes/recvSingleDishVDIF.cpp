@@ -40,7 +40,7 @@ void recvSingleDishVDIF::main_thread() {
 
     while(!stop_thread) {
         // Get an empty buffer to write into
-        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
+        wait_for_empty_frame(buf, unique_name.c_str(), buffer_id);
 
         if (buffer_id == -1) {
             break;
@@ -67,7 +67,7 @@ void recvSingleDishVDIF::main_thread() {
         }
 
         INFO("recvSingleDishVDIF: marking buffer %s[%d] as full", buf->buffer_name, buffer_id);
-        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
+        mark_frame_full(buf, unique_name.c_str(), buffer_id);
 
         file_num++;
         buffer_id = (buffer_id + 1) % buf->num_buffers;

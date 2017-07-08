@@ -7,7 +7,7 @@
 #include <functional>
 
 #include "rawFileWrite.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 
 rawFileWrite::rawFileWrite(Config& config,
@@ -40,7 +40,7 @@ void rawFileWrite::main_thread() {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+        buffer_id = wait_for_full_frame(buf, unique_name.c_str(), buffer_id);
 
         //INFO("Got buffer, id: %d", bufferID);
 
@@ -82,7 +82,7 @@ void rawFileWrite::main_thread() {
 
         // TODO make release_info_object work for nConsumers.
         //release_info_object(&buf, buffer_id);
-        mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+        mark_frame_empty(buf, unique_name.c_str(), buffer_id);
 
         buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
         file_num++;

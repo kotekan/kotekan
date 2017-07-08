@@ -1,7 +1,7 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"

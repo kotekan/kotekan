@@ -3,7 +3,7 @@
 
 #include "KotekanProcess.hpp"
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include <vector>
 
 using std::vector;

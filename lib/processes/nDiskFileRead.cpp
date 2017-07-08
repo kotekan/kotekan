@@ -94,7 +94,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
     for (;;) { //Endless loop
 
-        wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+        wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
 
         unsigned char* buf_ptr = buf->data[buf_id];
         char file_name[100]; //Find current file
@@ -247,7 +247,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         fclose(in_file);
 
         set_data_ID(buf, buf_id, file_index);
-        mark_buffer_full(buf, unique_name.c_str(), buf_id);
+        mark_frame_full(buf, unique_name.c_str(), buf_id);
         buf_id = (buf_id + num_disks) % buf->num_buffers;
 
         INFO("nDiskFileRead: read %s\n", file_name);

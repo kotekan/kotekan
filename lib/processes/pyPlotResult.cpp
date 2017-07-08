@@ -7,7 +7,7 @@
 #include <functional>
 
 #include "pyPlotResult.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 #include "accumulate.hpp"
 #include "fpga_header_functions.h"
@@ -50,7 +50,7 @@ void pyPlotResult::main_thread() {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+        buffer_id = wait_for_full_frame(buf, unique_name.c_str(), buffer_id);
 
         //INFO("Got buffer, id: %d", bufferID);
 
@@ -65,7 +65,7 @@ void pyPlotResult::main_thread() {
             dump_plot=false;
             //make a local copy so the rest of kotekan can carry along happily.
             memcpy(in_local,buf->data[buffer_id],buf->buffer_size);
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+            mark_frame_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
 
             FILE *python_script;
@@ -98,7 +98,7 @@ void pyPlotResult::main_thread() {
             }
         }
         else{
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+            mark_frame_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
         }
     }

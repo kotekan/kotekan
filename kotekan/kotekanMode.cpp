@@ -1,5 +1,5 @@
 #include "kotekanMode.hpp"
-#include "buffers.h"
+#include "buffer.c"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
 

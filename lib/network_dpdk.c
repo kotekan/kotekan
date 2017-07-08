@@ -199,7 +199,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
     //
     //INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
     //        port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
-    mark_buffer_full(dpdk_net->args->buf[port][freq],
+    mark_frame_full(dpdk_net->args->buf[port][freq],
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][freq].buffer_id);
 
@@ -211,7 +211,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
     gettimeofday(&now, NULL);
 
     // TODO it is really bad to have a blocking call here(!)
-    wait_for_empty_buffer(dpdk_net->args->buf[port][freq],
+    wait_for_empty_frame(dpdk_net->args->buf[port][freq],
                           dpdk_net->args->producer_names[port],
                           dpdk_net->link_data[port][freq].buffer_id);
     set_data_ID(dpdk_net->args->buf[port][freq],
@@ -239,7 +239,7 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
 
     // TODO it is really bad to have a blocking call here(!)
     //DEBUG("Port %d, marking buffer %d as full\n", port, dpdk_net->link_data[port][0].vdif_buffer_id);
-    mark_buffer_full(dpdk_net->args->vdif_buf,
+    mark_frame_full(dpdk_net->args->vdif_buf,
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][0].vdif_buffer_id);
 
@@ -250,7 +250,7 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
     static struct timeval now;
     gettimeofday(&now, NULL);
 
-    wait_for_empty_buffer(dpdk_net->args->vdif_buf,
+    wait_for_empty_frame(dpdk_net->args->vdif_buf,
                           dpdk_net->args->producer_names[port],
                           dpdk_net->link_data[port][0].vdif_buffer_id);
     set_data_ID(dpdk_net->args->vdif_buf,
@@ -505,14 +505,14 @@ static void setup_for_first_packet(struct NetworkDPDK * dpdk_net, int port) {
     // Since this is first packet we can expect this to be an instant call
     if (dpdk_net->args->buf != NULL) {
         for (int freq = 0; freq < NUM_FREQ; ++freq) {
-            wait_for_empty_buffer(dpdk_net->args->buf[port][freq],
+            wait_for_empty_frame(dpdk_net->args->buf[port][freq],
                                   dpdk_net->args->producer_names[port],
                                   dpdk_net->link_data[port][freq].buffer_id);
             set_data_ID(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][0].buffer_id, dpdk_net->link_data[port][freq].data_id++);
         }
     }
     if (dpdk_net->args->vdif_buf != NULL) {
-        wait_for_empty_buffer(dpdk_net->args->vdif_buf,
+        wait_for_empty_frame(dpdk_net->args->vdif_buf,
                               dpdk_net->args->producer_names[port], 0);
         set_data_ID(dpdk_net->args->vdif_buf, dpdk_net->link_data[port][0].vdif_buffer_id, dpdk_net->link_data[port][0].data_id++);
     }
@@ -812,7 +812,7 @@ int lcore_recv_pkt_dump(void *args) {
                 if (dpdk_net->link_data[port][0].dump_location ==
                         dpdk_net->args->buf[port][0]->buffer_size) {
 
-                    mark_buffer_full(dpdk_net->args->buf[port][0],
+                    mark_frame_full(dpdk_net->args->buf[port][0],
                                      dpdk_net->args->producer_names[port],
                                      buffer_id);
 
@@ -822,12 +822,11 @@ int lcore_recv_pkt_dump(void *args) {
 
                     if (is_buffer_empty(dpdk_net->args->buf[port][0], buffer_id) == 0) {
                         INFO("dpdk: finishing capture on port %d", port);
-                        mark_producer_done(dpdk_net->args->buf[port][0], 0);
                         dpdk_net->link_data[port][0].finished_buffer = 1;
                         goto release_frame;
                     }
 
-                    wait_for_empty_buffer(dpdk_net->args->buf[port][0],
+                    wait_for_empty_frame(dpdk_net->args->buf[port][0],
                                           dpdk_net->args->producer_names[port],
                                           buffer_id);
                     dpdk_net->link_data[port][0].dump_location = 0;
@@ -844,7 +843,6 @@ int lcore_recv_pkt_dump(void *args) {
     for (port = port_offset;
              port < dpdk_net->args->num_links_per_lcore + port_offset;
              ++port) {
-        mark_producer_done(dpdk_net->args->buf[port][0], 0);
     }
     return 0;
 }
@@ -962,12 +960,6 @@ int lcore_recv_pkt(void *args)
     } // Main DPDK lcore loop
     exit_dpdk_lcore_loop:
     INFO("Existing DPDK on lcore: %d", lcore);
-    for (port = port_offset;
-             port < dpdk_net->args->num_links_per_lcore + port_offset;
-             ++port) {
-        for (int freq = 0; freq < NUM_FREQ; ++freq)
-            mark_producer_done(dpdk_net->args->buf[port][freq], freq);
-    }
     return 0;
 }
 

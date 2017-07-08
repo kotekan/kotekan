@@ -25,7 +25,7 @@ void constDataCheck::main_thread() {
 
     for (;;) {
 
-        wait_for_full_buffer(buf, unique_name.c_str(), buf_id);
+        wait_for_full_frame(buf, unique_name.c_str(), buf_id);
         INFO("constDataCheck: Got buffer %s[%d]", buf->buffer_name, buf_id);
 
         bool error = false;
@@ -50,7 +50,7 @@ void constDataCheck::main_thread() {
                     buf->buffer_name, buf_id,
                     ref_real, ref_imag);
 
-        mark_buffer_empty(buf, unique_name.c_str(), buf_id);
+        mark_frame_empty(buf, unique_name.c_str(), buf_id);
         buf_id = (buf_id + 1) % buf->num_buffers;
     }
 }

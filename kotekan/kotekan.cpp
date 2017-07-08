@@ -60,7 +60,7 @@ extern "C" {
 #endif
 
 #include "errors.h"
-#include "buffers.h"
+#include "buffer.c"
 
 #include "Config.hpp"
 #include "util.h"

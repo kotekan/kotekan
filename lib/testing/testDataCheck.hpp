@@ -1,7 +1,7 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
@@ -50,9 +50,9 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
     for (;;) {
 
         // Get both full frames
-        wait_for_full_buffer(first_buf, unique_name.c_str(), first_buf_id);
+        wait_for_full_frame(first_buf, unique_name.c_str(), first_buf_id);
         INFO("testDataCheck: Got the first buffer %s[%d]", first_buf->buffer_name, first_buf_id);
-        wait_for_full_buffer(second_buf, unique_name.c_str(), second_buf_id);
+        wait_for_full_frame(second_buf, unique_name.c_str(), second_buf_id);
         INFO("testDataCheck: Got the second buffer %s[%d]", second_buf->buffer_name, second_buf_id);
         bool error = false;
         num_errors = 0;
@@ -81,8 +81,8 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
                     first_buf->buffer_name, first_buf_id,
                     second_buf->buffer_name, second_buf_id);
 
-        mark_buffer_empty(first_buf, unique_name.c_str(), first_buf_id);
-        mark_buffer_empty(second_buf, unique_name.c_str(), second_buf_id);
+        mark_frame_empty(first_buf, unique_name.c_str(), first_buf_id);
+        mark_frame_empty(second_buf, unique_name.c_str(), second_buf_id);
 
         first_buf_id = (first_buf_id + 1) % first_buf->num_buffers;
         second_buf_id = (second_buf_id +1) % second_buf->num_buffers;

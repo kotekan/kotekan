@@ -1,5 +1,5 @@
 #include "networkOutputSim.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 #include "test_data_generation.h"
 #include "error_correction.h"
@@ -59,7 +59,7 @@ void networkOutputSim::main_thread() {
     int constant = 9;
 
     for (EVER) {
-        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
+        wait_for_empty_frame(buf, unique_name.c_str(), buffer_id);
 
         if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
             constant = 10;
@@ -103,7 +103,7 @@ void networkOutputSim::main_thread() {
             exit(-1);
         }
 
-        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
+        mark_frame_full(buf, unique_name.c_str(), buffer_id);
 
         buffer_id = (buffer_id + num_links_in_group) % (buf->num_buffers);
 
@@ -111,7 +111,6 @@ void networkOutputSim::main_thread() {
 
     }
 
-    mark_producer_done(buf, link_id);
     int ret = 0;
     pthread_exit((void *) &ret);
 

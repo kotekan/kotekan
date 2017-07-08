@@ -12,7 +12,7 @@
 #include <sys/time.h>
 
 #include "streamSingleDishVDIF.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 
 streamSingleDishVDIF::streamSingleDishVDIF(Config& config,
@@ -72,7 +72,7 @@ void streamSingleDishVDIF::main_thread() {
     for(;;) {
 
         // Wait for a full buffer.
-        wait_for_full_buffer(buf, unique_name.c_str(), bufferID);
+        wait_for_full_frame(buf, unique_name.c_str(), bufferID);
         //bufferID = get_full_buffer_from_list(buf, &bufferID, 1);
         //INFO ("streamSingleDishVDIF: got buffer ID: %d", bufferID);
 
@@ -103,7 +103,7 @@ void streamSingleDishVDIF::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_buffer_empty(buf, unique_name.c_str(), bufferID);
+        mark_frame_empty(buf, unique_name.c_str(), bufferID);
         bufferID = ( bufferID + 1 ) % buf->num_buffers;
     }
 }

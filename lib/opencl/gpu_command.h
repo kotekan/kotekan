@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include "device_interface.h"
 #include "assert.h"
-#include "buffers.h"
+#include "buffer.c"
 #include <string>
 
 class gpu_command

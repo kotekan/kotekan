@@ -34,13 +34,13 @@ void accumulate::main_thread() {
     uint64_t seq_num;
 
     for (;;) {
-        wait_for_full_buffer(in_buf, unique_name.c_str(), in_buf_id);
+        wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
         input = (int32_t *)in_buf->data[in_buf_id];
 
         seq_num = get_fpga_seq_num(in_buf, in_buf_id);
 
         if (frame_id % _num_gpu_frames == 0) {
-            wait_for_empty_buffer(out_buf, unique_name.c_str(), out_buf_id);
+            wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
             header = (struct rawGPUFrameHeader *)out_buf->data[out_buf_id];
             output = (int32_t *)(&out_buf->data[out_buf_id][sizeof(struct rawGPUFrameHeader)]);
 
@@ -71,12 +71,12 @@ void accumulate::main_thread() {
         }
 
         release_info_object(in_buf, in_buf_id);
-        mark_buffer_empty(in_buf, unique_name.c_str(), in_buf_id);
+        mark_frame_empty(in_buf, unique_name.c_str(), in_buf_id);
         in_buf_id = (in_buf_id + 1) % in_buf->num_buffers;
         frame_id++;
 
         if (frame_id % _num_gpu_frames == 0) {
-            mark_buffer_full(out_buf, unique_name.c_str(), out_buf_id);
+            mark_frame_full(out_buf, unique_name.c_str(), out_buf_id);
             out_buf_id = (out_buf_id + 1) % out_buf->num_buffers;
         }
     }

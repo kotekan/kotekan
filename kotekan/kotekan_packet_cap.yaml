@@ -32,7 +32,7 @@ dpdk:
 
 packet_dump:
   dump_to_disk: false
-  file_base: "/data/"
+  file_base: /data/
   data_set: full_chime_dump
   packet_dump_0:
     kotekan_process: fullPacketDump

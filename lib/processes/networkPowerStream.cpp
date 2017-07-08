@@ -83,7 +83,7 @@ void networkPowerStream::main_thread() {
 
         for (;;) {
             // Wait for a full buffer.
-            buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+            buffer_id = wait_for_full_frame(buf, unique_name.c_str(), buffer_id);
 
             for (int t=0; t<times; t++){
                 packet_header->frame_idx = frame_idx++;
@@ -105,7 +105,7 @@ void networkPowerStream::main_thread() {
             }
 
             // Mark buffer as empty.
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+            mark_frame_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = (buffer_id + 1) % buf->num_buffers;
         }
     }
@@ -114,7 +114,7 @@ void networkPowerStream::main_thread() {
         // TCP variables
         for (;;) {
             // Wait for a full buffer.
-            buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+            buffer_id = wait_for_full_frame(buf, unique_name.c_str(), buffer_id);
             while (atomic_flag_test_and_set(&socket_lock)) {}
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);
@@ -156,7 +156,7 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
             }
             // Mark buffer as empty.
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+            mark_frame_empty(buf, unique_name.c_str(), buffer_id);
             buffer_id = (buffer_id + 1) % buf->num_buffers;
         }
 

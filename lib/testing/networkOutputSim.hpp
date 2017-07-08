@@ -5,7 +5,7 @@
 #define SIM_FULL_RANGE 1
 #define SIM_SINE        2
 
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 #include "KotekanProcess.hpp"
 

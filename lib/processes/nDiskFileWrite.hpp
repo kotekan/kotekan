@@ -1,7 +1,7 @@
 #ifndef N_DISK_FILE_WRITE_H
 #define N_DISK_FILE_WRITE_H
 
-#include "buffers.h"
+#include "buffer.c"
 #include "KotekanProcess.hpp"
 #include <string>
 #include <vector>

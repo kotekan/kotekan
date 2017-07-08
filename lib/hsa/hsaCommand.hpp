@@ -4,7 +4,7 @@
 #include "Config.hpp"
 #include "errors.h"
 #include "assert.h"
-#include "buffers.h"
+#include "buffer.c"
 #include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
 

@@ -29,7 +29,7 @@
 
 #include "fpga_header_functions.h"
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.c"
 
 struct StreamINFO {
     stream_id_t stream_id;

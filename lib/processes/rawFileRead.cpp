@@ -58,7 +58,7 @@ void rawFileRead::main_thread() {
         }
 
         // Get an empty buffer to write into
-        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
+        wait_for_empty_frame(buf, unique_name.c_str(), buffer_id);
 
         if (repeat_frame) {
             if (file_num == 0) {
@@ -96,12 +96,10 @@ void rawFileRead::main_thread() {
         }
 
         INFO("rawFileRead: marking buffer %s[%d] as full", buf->buffer_name, buffer_id);
-        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
+        mark_frame_full(buf, unique_name.c_str(), buffer_id);
 
         file_num++;
         buffer_id = (buffer_id + 1) % buf->num_buffers;
     }
 
-    // Comment while support for finishing is not yet working.
-    //mark_producer_done(&buf, 0);
 }

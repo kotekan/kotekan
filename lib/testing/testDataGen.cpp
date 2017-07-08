@@ -34,7 +34,7 @@ void testDataGen::main_thread() {
     static struct timeval now;
 
     for (;;) {
-        wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+        wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
 
         set_data_ID(buf, buf_id, data_id);
         set_fpga_seq_num(buf, buf_id, seq_num);
@@ -61,14 +61,12 @@ void testDataGen::main_thread() {
 
         INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, buf_id);
 
-        mark_buffer_full(buf, unique_name.c_str(), buf_id);
+        mark_frame_full(buf, unique_name.c_str(), buf_id);
 
         buf_id = (buf_id + 1) % buf->num_buffers;
         data_id++;
         seq_num += 32768;
         if (buf_id == 0) finished_seeding_consant = true;
     }
-    mark_producer_done(buf, 0);
-
 }
 

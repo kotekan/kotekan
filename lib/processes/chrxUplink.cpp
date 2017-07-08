@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 
 #include "chrxUplink.hpp"
-#include "buffers.h"
+#include "buffer.c"
 #include "errors.h"
 #include "output_formating.h"
 
@@ -69,7 +69,7 @@ void chrxUplink::main_thread() {
     while(!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = wait_for_full_buffer(vis_buf, unique_name.c_str(), buffer_ID);
+        buffer_ID = wait_for_full_frame(vis_buf, unique_name.c_str(), buffer_ID);
 
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
@@ -93,7 +93,7 @@ void chrxUplink::main_thread() {
 
         if (_enable_gating) {
             DEBUG("Getting gated buffer");
-            wait_for_full_buffer(gate_buf, unique_name.c_str(), buffer_ID);
+            wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
 
             DEBUG("Sending gated buffer");
             bytes_sent = send(tcp_fd, gate_buf->data[buffer_ID], gate_buf->buffer_size, 0);
@@ -107,10 +107,10 @@ void chrxUplink::main_thread() {
                 break;
             }
             INFO("Finished sending gated data frame to chrx");
-            mark_buffer_empty(gate_buf, unique_name.c_str(), buffer_ID);
+            mark_frame_empty(gate_buf, unique_name.c_str(), buffer_ID);
         }
 
-        mark_buffer_empty(vis_buf, unique_name.c_str(), buffer_ID);
+        mark_frame_empty(vis_buf, unique_name.c_str(), buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % vis_buf->num_buffers;
     }
