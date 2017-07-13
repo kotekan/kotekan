@@ -86,33 +86,19 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
-    hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    kernelParams params;
+    params.workgroup_size_x = 256;
+    params.workgroup_size_y = 1;
+    params.workgroup_size_z = 1;
+    params.grid_size_x = 256;
+    params.grid_size_y = 2;
+    params.grid_size_z = _samples_per_data_set;
+    params.num_dims = 3;
 
-    // Obtain the current queue write index.
-    uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());
-    hsa_kernel_dispatch_packet_t* dispatch_packet = (hsa_kernel_dispatch_packet_t*)device.get_queue()->base_address +
-                                                            (index % device.get_queue()->size);
-    dispatch_packet->setup  |= 3 << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
-    dispatch_packet->workgroup_size_x = (uint32_t)256;
-    dispatch_packet->workgroup_size_y = (uint16_t)1;
-    dispatch_packet->workgroup_size_z = (uint16_t)1;
-    dispatch_packet->grid_size_x = (uint32_t)256;
-    dispatch_packet->grid_size_y = (uint16_t)2;
-    dispatch_packet->grid_size_z = (uint32_t)_samples_per_data_set;
-    dispatch_packet->completion_signal = signals[gpu_frame_id];
-    dispatch_packet->kernel_object = kernel_object;
-    dispatch_packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
-    dispatch_packet->private_segment_size = 0;
-    dispatch_packet->group_segment_size = (uint32_t)16384; //Not sure if I need that
-    dispatch_packet-> header =
-      (HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE) |
-      (1 << HSA_PACKET_HEADER_BARRIER) |
-      (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_ACQUIRE_FENCE_SCOPE) |
-      (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE);
+    params.private_segment_size = 0;
+    params.group_segment_size = 16384;
 
-    hsa_queue_add_write_index_acquire(device.get_queue(), 1);
-    hsa_signal_store_relaxed(device.get_queue()->doorbell_signal, index);
+    signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 
     return signals[gpu_frame_id];
 }
