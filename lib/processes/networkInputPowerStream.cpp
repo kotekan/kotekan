@@ -24,7 +24,7 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
 
     //PER BUFFER
     string config_base = unique_name+string("stream_")+std::to_string(id);
-    freqs = config.get_int(unique_name,"num_frequencies");
+    freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name,"num_elements");
 
     port = config.get_int(unique_name,"port");
@@ -33,16 +33,8 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
 
     atomic_flag_clear(&socket_lock);
 
-    header.packet_length = freqs * sizeof(float);
-    header.header_length = sizeof(IntensityPacketHeader);
-    header.samples_per_packet = freqs;
-    header.sample_type = 4;//uint32
-    header.raw_cadence = 2.56e-6;
-    header.num_freqs = freqs;
-    header.num_elems = elems;
-    header.samples_summed = 1;
-    header.handshake_idx = -1;
-    header.handshake_utc = -1;
+    times = config.get_int(unique_name, "samples_per_data_set") /
+            config.get_int(unique_name, "integration_length");
 
     frame_idx=0;
 
@@ -77,6 +69,42 @@ void networkInputPowerStream::main_thread() {
 
     if (protocol == "UDP")
     {
+        uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
+
+        struct sockaddr_in address; 
+        memset(&address,0,sizeof(address));
+        address.sin_addr.s_addr = htonl(INADDR_ANY);//inet_addr(server_ip.c_str());
+        address.sin_port = htons(port);
+        address.sin_family = AF_INET;
+
+        if ((socket_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+            ERROR("socket() failed");
+        if (bind(socket_fd, (struct sockaddr *) &address, sizeof(address)) < 0)
+            ERROR("bind() failed");
+        if (listen(socket_fd, 1) < 0)
+            ERROR("listen() failed");
+
+        for (;;) {
+            wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+            unsigned char* buf_ptr = buf->data[buf_id];
+
+            struct sockaddr_storage sender;
+            socklen_t sendsize = sizeof(sender);
+            bzero(&sender, sizeof(sender));
+
+            for (int t = 0; t < times; t++) {
+                for (int e = 0; e < elems; e++){
+
+//                    recvfrom(socket_fd, message, sizeof(message), 0, (struct sockaddr*)&sender, &sendsize);
+
+//                    memcpy(buf_ptr,(void*)recv_buffer,packet_length);
+                }
+            }
+
+            mark_buffer_full(buf, unique_name.c_str(), buf_id);
+            buf_id = (buf_id + 1) % buf->num_buffers;
+        }
+
     }
     else if (protocol == "TCP")
     {

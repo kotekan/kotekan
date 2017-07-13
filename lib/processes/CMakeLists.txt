@@ -18,6 +18,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rawFileRead.cpp
               rawFileWrite.cpp
               vdifStream.cpp
+              recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
               )
 
