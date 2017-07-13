@@ -92,7 +92,7 @@ void networkPowerStream::main_thread() {
                     packet_header->samples_summed = ((uint*)buf->data[buffer_id])[
                                                             t*elems*(freqs+1) + p*(freqs+1) + freqs];
                     memcpy(local_data,
-                                buf->data[buffer_id]+(t*elems+p)*(freqs+1)*sizeof(uint),
+                            buf->data[buffer_id]+(t*elems+p)*(freqs+1)*sizeof(uint),
                             freqs*sizeof(uint));
                     // Send data to remote server.
                     int bytes_sent = sendto(socket_fd,

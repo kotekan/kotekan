@@ -297,7 +297,7 @@ void mark_buffer_empty(struct Buffer* buf, const char * consumer_name, const int
 
                 CHECK_ERROR( pthread_create(&zero_t, NULL, &private_zero_buffer, (void *)zero_args) );
                 CHECK_ERROR( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
-                CHECK_ERROR( pthread_detach(&zero_t) );
+                CHECK_ERROR( pthread_detach(zero_t) );
             } else {
                 buf->is_full[ID] = 0;
                 private_reset_consumers(buf, ID);
