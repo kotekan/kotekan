@@ -34,10 +34,9 @@ intensityReceiverMode::~intensityReceiverMode() {
 void intensityReceiverMode::initalize_processes() {
 
     // Config values:
-    int freqs = config.get_int("/","num_total_freq");
+    int freqs = config.get_int("/","num_freq");
     int elems = config.get_int("/","num_elements");
-    int buffer_depth = config.get_int("/","buffer_depth");
-    int num_disks = config.get_int("/","num_disks");
+    int buffer_depth = config.get_int("/","buffer_depth" );
 
     int integration_length = config.get_int("/","integration_length");
     int timesteps_in = config.get_int("/","samples_per_data_set");
@@ -55,16 +54,24 @@ void intensityReceiverMode::initalize_processes() {
     DEBUG("Creating buffers...");
     // Create buffers.
 
-    int buffer_size = sizeof(IntensityPacketHeader) + sizeof(uint)*freqs*elems;
-
     struct Buffer *input_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     add_buffer(input_buffer);
     create_buffer(input_buffer,
                   buffer_depth,
-                  buffer_size,
+                  timesteps_out * (freqs + 1) * elems * sizeof(float),
                   pool,
                   "input_power_buf");
     buffer_container.add_buffer("input_power_buf", input_buffer);
+/*
+    struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    add_buffer(output_buffer);
+    create_buffer(output_buffer,
+                  buffer_depth,
+                  timesteps_out * (freqs + 1) * elems * sizeof(float) / config.get_int("/integrator","integration"),
+                  pool,
+                  "output_power_buf");
+    buffer_container.add_buffer("output_power_buf", output_buffer);
+*/
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();
