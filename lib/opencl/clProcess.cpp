@@ -29,17 +29,31 @@ clProcess::clProcess(Config& config_,
     // TODO Remove this and move it to the command objects (see hsaProcess).
     gpu_id = config.get_int(unique_name, "gpu_id");
     in_buf = get_buffer("network_buf");
+    register_consumer(get_buffer("network_buffer"), unique_name.c_str());
     out_buf = get_buffer("corr_buf");
-    beamforming_out_buf = get_buffer("beam_out_buf");
-    beamforming_out_incoh_buf = get_buffer("beam_incoh_out_buf");
+    register_producer(get_buffer("corr_buf"), unique_name.c_str());
+    beamforming_out_buf = NULL; //get_buffer("beam_out_buf");
+    beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
+    
+    //device_interface device(in_buf, out_buf, config, gpu_id,
+    //                        beamforming_out_buf, beamforming_out_incoh_buf);
+    
+    //device = new device_interface(config, gpu_id);
+    device = new device_interface(in_buf, out_buf, config, gpu_id,
+                            beamforming_out_buf, beamforming_out_incoh_buf);
+    factory = new gpu_command_factory(device, config, unique_name);
+
+    //factory.initializeCommands(device, config);
+
 }
 
 void clProcess::apply_config(uint64_t fpga_seq) {
-    _use_beamforming = config.get_bool("/gpu", "enable_beamforming");
+    _use_beamforming = config.get_bool(unique_name, "enable_beamforming");
 }
 
 clProcess::~clProcess() {
-
+    delete factory;
+    delete device;
 }
 
 void clProcess::main_thread()
@@ -50,13 +64,6 @@ void clProcess::main_thread()
     cl_event sequenceEvent;
 
     loopCounter * loopCnt = new loopCounter;
-
-    device_interface device(in_buf, out_buf, config, gpu_id,
-                            beamforming_out_buf, beamforming_out_incoh_buf);
-
-    gpu_command_factory factory;
-
-    factory.initializeCommands(device, config);
 
     device.prepareCommandQueue();
 
@@ -76,14 +83,14 @@ void clProcess::main_thread()
     }
 
     // Just wait on one buffer.
-    int buffer_list[1] = {0};
+//    int buffer_list[1] = {0};
     int bufferID = 0;
 
     double last_time = e_time();
 
     for(;;) {
         // Wait for data, this call will block.
-        //bufferID = get_full_buffer_from_list(in_buf, buffer_list, 1);
+        bufferID = wait_for_full_buffer(in_buf, unique_name.c_str(), bufferID);
         double cur_time = e_time();
         INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
@@ -105,10 +112,10 @@ void clProcess::main_thread()
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        //wait_for_empty_buffer(out_buf, bufferID);
+        wait_for_empty_buffer(out_buf, bufferID);
 
         if (_use_beamforming) {
-            //wait_for_empty_buffer(beamforming_out_buf, bufferID);
+            wait_for_empty_buffer(beamforming_out_buf, bufferID);
         }
 
         // Todo get/set time information here as well.
@@ -147,7 +154,8 @@ void clProcess::main_thread()
                                             &read_complete,
                                             cb_data[bufferID]) );
 
-        buffer_list[0] = (buffer_list[0] + 1) % in_buf->num_buffers;
+        //buffer_list[0] = (buffer_list[0] + 1) 
+        bufferID = (++bufferID) % in_buf->num_buffers;
 
     }
 
@@ -189,7 +197,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
         copy_buffer_info(cb_data->in_buf, cb_data->buffer_id,
             cb_data->beamforming_out_buf, cb_data->buffer_id);
 
-        //mark_buffer_full(cb_data->beamforming_out_buf,  cb_data->buffer_id);
+        mark_buffer_full(cb_data->beamforming_out_buf,  cb_data->buffer_id);
     }
 
     // Copy the information contained in the input buffer
@@ -197,10 +205,10 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
                      cb_data->out_buf, cb_data->buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
-    //mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
+    mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
-    //mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
+    mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
 
     for (int i = 0; i < cb_data->numCommands; i++){
         cb_data->listCommands[i]->cleanMe(cb_data->buffer_id);

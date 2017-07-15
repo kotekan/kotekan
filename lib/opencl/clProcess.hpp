@@ -23,24 +23,27 @@
 #include "KotekanProcess.hpp"
 
 class clProcess : public KotekanProcess {
-public:
-    clProcess(Config& config,
-        const string& unique_name,
-        bufferContainer &buffer_container);
-    virtual ~clProcess();
-    void main_thread();
-    virtual void apply_config(uint64_t fpga_seq);
+    public:
+        clProcess(Config& config,
+            const string& unique_name,
+            bufferContainer &buffer_container);
+        virtual ~clProcess();
+        void main_thread();
+        virtual void apply_config(uint64_t fpga_seq);
+    
+    protected:
+        struct Buffer *in_buf;
+        struct Buffer *out_buf;
+        struct Buffer *beamforming_out_buf;
+        struct Buffer *beamforming_out_incoh_buf;
 
-private:
-    struct Buffer *in_buf;
-    struct Buffer *out_buf;
-    struct Buffer *beamforming_out_buf;
-    struct Buffer *beamforming_out_incoh_buf;
+        uint32_t gpu_id;
 
-    uint32_t gpu_id;
+        // Config variables
+        bool _use_beamforming;
 
-    // Config variables
-    bool _use_beamforming;
+        gpu_command_factory * factory;
+        device_interface * device;
 
 };
 

@@ -26,18 +26,25 @@
 class gpu_command_factory
 {
 public:
-    gpu_command_factory();
-    void initializeCommands(class device_interface & param_Device, Config& param_Config);
-    gpu_command* getNextCommand(device_interface& param_Device, int param_BufferID);
+    gpu_command_factory(class device_interface & param_Device, Config& param_Config, const string& unique_name);
+    //void initializeCommands(class device_interface & param_Device, Config& param_Config);
+    gpu_command* getNextCommand(int bufferID);//device_interface& param_Device, int param_BufferID);
     cl_uint getNumCommands() const;
     void deallocateResources();
 
 protected:
-    gpu_command ** list_commands;
+    //gpu_command ** list_commands;
     cl_uint num_commands;
     cl_uint current_command_cnt;
 
     int use_beamforming;
+    int use_incoh_beamforming;
+
+    Config &config;
+    hsaDeviceInterface &device;
+    string unique_name;
+
+    vector<gpu_command *> list_commands;
 };
 
 #endif // GPU_COMMAND_FACTORY_H
