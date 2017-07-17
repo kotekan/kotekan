@@ -43,6 +43,7 @@ public:
     int numCommands;
     int use_beamforming;
     double start_time;
+    string unique_name;
 
     gpu_command ** listCommands;
 

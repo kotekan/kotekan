@@ -6,15 +6,15 @@
 using std::string;
 using std::to_string;
 
-gpu_command::gpu_command(const char* param_name, Config &param_config) :
-    config(param_config), gpuCommandState(0) , gpuKernel(NULL)
+gpu_command::gpu_command(const char* param_name, Config &param_config, const string &unique_name_) :
+    config(param_config), gpuCommandState(0) , gpuKernel(NULL), unique_name(unique_name_)
 {
     name = strdup(param_name);
     INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config) :
-    config(param_config), gpuCommandState(0), gpuKernel(NULL)
+gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name_) :
+    config(param_config), gpuCommandState(0), gpuKernel(NULL), unique_name(unique_name_)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
     strcpy(gpuKernel, param_gpuKernel);
@@ -38,15 +38,15 @@ char* gpu_command::get_name()
 
 void gpu_command::apply_config(const uint64_t& fpga_seq) {
     (void)fpga_seq;
-    _num_adjusted_elements = config.get_int("/processing", "num_adjusted_elements");
-    _num_elements = config.get_int("/processing", "num_elements");
-    _num_local_freq = config.get_int("/processing", "num_local_freq");
-    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
-    _num_data_sets = config.get_int("/processing", "num_data_sets");
-    _num_adjusted_local_freq = config.get_int("/processing", "num_adjusted_local_freq");
-    _block_size = config.get_int("/gpu", "block_size");
-    _num_blocks = config.get_int("/gpu", "num_blocks");
-    _buffer_depth = config.get_int("/processing", "buffer_depth");
+    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_data_sets = config.get_int(unique_name, "num_data_sets");
+    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
+    _block_size = config.get_int(unique_name, "block_size");
+    _num_blocks = config.get_int(unique_name, "num_blocks");
+    _buffer_depth = config.get_int(unique_name, "buffer_depth");
 }
 
 void gpu_command::build(class device_interface &param_Device)

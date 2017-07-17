@@ -9,7 +9,7 @@
 class beamform_phase_data: public gpu_command
 {
 public:
-    beamform_phase_data(const char* param_name, Config &config);
+    beamform_phase_data(const char* param_name, Config &config, const string &unique_name);
     ~beamform_phase_data();
     virtual void build(class device_interface &param_Device) override;
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent) override;

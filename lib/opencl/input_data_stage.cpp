@@ -1,7 +1,7 @@
 #include "input_data_stage.h"
 
-input_data_stage::input_data_stage(const char* param_name, Config &param_config):
-    gpu_command(param_name, param_config)
+input_data_stage::input_data_stage(const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_name, param_config, unique_name)
 {
 
 }

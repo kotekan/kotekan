@@ -5,7 +5,7 @@
 #include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config & param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf) :
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf, const string &unique_name) :
 config(param_Config)
 {
     cl_int err;
@@ -17,14 +17,14 @@ config(param_Config)
     beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
 
     // Config variables
-    enable_beamforming = config.get_bool("/gpu", "enable_beamforming");
-    num_adjusted_elements = config.get_int("/processing", "num_adjusted_elements");
-    num_adjusted_local_freq = config.get_int("/processing", "num_adjusted_local_freq");
-    num_local_freq = config.get_int("/processing", "num_local_freq");
-    block_size = config.get_int("/gpu", "block_size");
-    num_data_sets = config.get_int("/processing", "num_data_sets");
-    num_elements = config.get_int("/processing", "num_elements");
-    num_blocks = config.get_int("/gpu", "num_blocks");
+    enable_beamforming = config.get_bool(unique_name, "enable_beamforming");
+    num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
+    num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
+    num_local_freq = config.get_int(unique_name, "num_local_freq");
+    block_size = config.get_int(unique_name, "block_size");
+    num_data_sets = config.get_int(unique_name, "num_data_sets");
+    num_elements = config.get_int(unique_name, "num_elements");
+    num_blocks = config.get_int(unique_name, "num_blocks");
 
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);

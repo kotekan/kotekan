@@ -1,7 +1,7 @@
 #include "preseed_kernel.h"
 
-preseed_kernel::preseed_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config):
-    gpu_command(param_gpuKernel, param_name, param_config)
+preseed_kernel::preseed_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
 {
 
 }

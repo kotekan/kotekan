@@ -1,7 +1,5 @@
 #include "clProcess.hpp"
-#include "device_interface.h"
 #include "gpu_command.h"
-#include "gpu_command_factory.h"
 #include "callbackdata.h"
 #include "unistd.h"
 #include "vdif_functions.h"
@@ -14,7 +12,7 @@
 
 using namespace std;
 
-double e_time(void){
+double e_time_1(void){
     static struct timeval now;
     gettimeofday(&now, NULL);
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
@@ -40,8 +38,8 @@ clProcess::clProcess(Config& config_,
     
     //device = new device_interface(config, gpu_id);
     device = new device_interface(in_buf, out_buf, config, gpu_id,
-                            beamforming_out_buf, beamforming_out_incoh_buf);
-    factory = new gpu_command_factory(device, config, unique_name);
+                            beamforming_out_buf, beamforming_out_incoh_buf, unique_name);
+    factory = new gpu_command_factory(*device, config, unique_name);
 
     //factory.initializeCommands(device, config);
 
@@ -65,20 +63,20 @@ void clProcess::main_thread()
 
     loopCounter * loopCnt = new loopCounter;
 
-    device.prepareCommandQueue();
+    device->prepareCommandQueue();
 
-    device.allocateMemory();
+    device->allocateMemory();
     DEBUG("Device Initialized\n");
 
-    callBackData ** cb_data = new callBackData * [device.getInBuf()->num_buffers];
+    callBackData ** cb_data = new callBackData * [device->getInBuf()->num_buffers];
     CHECK_MEM(cb_data);
 
-    buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device.getInBuf()->num_buffers];
+    buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device->getInBuf()->num_buffers];
     CHECK_MEM(buff_id_lock_list);
 
-    for (int j=0;j<device.getInBuf()->num_buffers;j++)
+    for (int j=0;j<device->getInBuf()->num_buffers;j++)
     {
-        cb_data[j] = new callBackData(factory.getNumCommands());
+        cb_data[j] = new callBackData(factory->getNumCommands());
         buff_id_lock_list[j] = new buffer_id_lock;
     }
 
@@ -86,12 +84,12 @@ void clProcess::main_thread()
 //    int buffer_list[1] = {0};
     int bufferID = 0;
 
-    double last_time = e_time();
+    double last_time = e_time_1();
 
     for(;;) {
         // Wait for data, this call will block.
-        bufferID = wait_for_full_buffer(in_buf, unique_name.c_str(), bufferID);
-        double cur_time = e_time();
+        bufferID = wait_for_full_buffer(device->getInBuf(), unique_name.c_str(), bufferID);
+        double cur_time = e_time_1();
         INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
 
@@ -112,10 +110,10 @@ void clProcess::main_thread()
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        wait_for_empty_buffer(out_buf, bufferID);
+        wait_for_empty_buffer(device->getOutBuf(), unique_name.c_str(), bufferID);
 
         if (_use_beamforming) {
-            wait_for_empty_buffer(beamforming_out_buf, bufferID);
+            wait_for_empty_buffer(beamforming_out_buf, unique_name.c_str(), bufferID);
         }
 
         // Todo get/set time information here as well.
@@ -126,24 +124,25 @@ void clProcess::main_thread()
 
         // Set call back data
         cb_data[bufferID]->buffer_id = bufferID;
-        cb_data[bufferID]->in_buf = device.getInBuf();
-        cb_data[bufferID]->out_buf = device.getOutBuf();
-        cb_data[bufferID]->numCommands = factory.getNumCommands();
+        cb_data[bufferID]->in_buf = device->getInBuf();
+        cb_data[bufferID]->out_buf = device->getOutBuf();
+        cb_data[bufferID]->numCommands = factory->getNumCommands();
         cb_data[bufferID]->cnt = loopCnt;
         cb_data[bufferID]->buff_id_lock = buff_id_lock_list[bufferID];
         cb_data[bufferID]->use_beamforming = _use_beamforming;
-        cb_data[bufferID]->start_time = e_time();
+        cb_data[bufferID]->start_time = e_time_1();
+        cb_data[bufferID]->unique_name = unique_name;
         if (_use_beamforming == 1)
         {
-            cb_data[bufferID]->beamforming_out_buf = device.get_beamforming_out_buf();
+            cb_data[bufferID]->beamforming_out_buf = device->get_beamforming_out_buf();
         }
 
         sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
 
         //DEBUG("cb_data initialized\n");
-        for (int i = 0; i < factory.getNumCommands(); i++){
-            currentCommand = factory.getNextCommand(device, bufferID);
-            sequenceEvent = currentCommand->execute(bufferID, 0, device, sequenceEvent);
+        for (int i = 0; i < factory->getNumCommands(); i++){
+            currentCommand = factory->getNextCommand();
+            sequenceEvent = currentCommand->execute(bufferID, 0, *device, sequenceEvent);
             cb_data[bufferID]->listCommands[i] = currentCommand;
         }
 
@@ -155,7 +154,7 @@ void clProcess::main_thread()
                                             cb_data[bufferID]) );
 
         //buffer_list[0] = (buffer_list[0] + 1) 
-        bufferID = (++bufferID) % in_buf->num_buffers;
+        bufferID = (++bufferID) % device->getInBuf()->num_buffers;
 
     }
 
@@ -170,12 +169,12 @@ void clProcess::main_thread()
 
 
     DEBUG("LockConditionReleased\n");
-    factory.deallocateResources();
+    factory->deallocateResources();
     DEBUG("FactoryDone\n");
-    device.deallocateResources();
+    device->deallocateResources();
     DEBUG("DeviceDone\n");
 
-    mark_producer_done(out_buf, 0);
+    mark_producer_done(device->getOutBuf(), 0);
 
     delete loopCnt;
     delete[] cb_data;
@@ -188,7 +187,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
 {
     callBackData * cb_data = (callBackData *) data;
 
-    double end_time_1 = e_time();
+    double end_time_1 = e_time_1();
 
     INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
     // Copy the information contained in the input buffer
@@ -197,7 +196,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
         copy_buffer_info(cb_data->in_buf, cb_data->buffer_id,
             cb_data->beamforming_out_buf, cb_data->buffer_id);
 
-        mark_buffer_full(cb_data->beamforming_out_buf,  cb_data->buffer_id);
+        mark_buffer_full(cb_data->beamforming_out_buf, cb_data->unique_name.c_str(), cb_data->buffer_id);
     }
 
     // Copy the information contained in the input buffer
@@ -205,10 +204,10 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
                      cb_data->out_buf, cb_data->buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
-    mark_buffer_empty(cb_data->in_buf, cb_data->buffer_id);
+    mark_buffer_empty(cb_data->in_buf, cb_data->unique_name.c_str(), cb_data->buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
-    mark_buffer_full(cb_data->out_buf, cb_data->buffer_id);
+    mark_buffer_full(cb_data->out_buf, cb_data->unique_name.c_str(), cb_data->buffer_id);
 
     for (int i = 0; i < cb_data->numCommands; i++){
         cb_data->listCommands[i]->cleanMe(cb_data->buffer_id);
@@ -226,7 +225,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
 
     CHECK_ERROR( pthread_cond_broadcast(&cb_data->buff_id_lock->cond) );
 
-    double end_time_2 = e_time();
+    double end_time_2 = e_time_1();
     INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data->start_time, end_time_2 - cb_data->start_time, end_time_2 - end_time_1);
 }
 

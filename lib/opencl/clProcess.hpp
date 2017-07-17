@@ -20,6 +20,8 @@
 
 #include "pthread.h"
 #include "fpga_header_functions.h"
+#include "device_interface.h"
+#include "gpu_command_factory.h"
 #include "KotekanProcess.hpp"
 
 class clProcess : public KotekanProcess {

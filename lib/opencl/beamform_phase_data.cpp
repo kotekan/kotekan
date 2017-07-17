@@ -8,8 +8,8 @@
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi
 
-beamform_phase_data::beamform_phase_data(const char* param_name, Config &param_config):
-    gpu_command(param_name, param_config)
+beamform_phase_data::beamform_phase_data(const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_name, param_config, unique_name)
 {
 }
 

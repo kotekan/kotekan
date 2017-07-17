@@ -19,8 +19,8 @@
 class gpu_command
 {
 public:
-    gpu_command(const char* param_name, Config &param_config);
-    gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config);//, cl_device_id *param_DeviceID, cl_context param_Context);
+    gpu_command(const char* param_name, Config &param_config, const string &unique_name_);
+    gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name);//, cl_device_id *param_DeviceID, cl_context param_Context);
     virtual ~gpu_command();
     cl_event getPreceedEvent();
     cl_event getPostEvent();
@@ -64,6 +64,8 @@ protected:
     int32_t _num_blocks;
     int32_t _block_size;
     int32_t _buffer_depth;
+    
+    string unique_name;
 };
 
 #endif // GPU_COMMAND_H
