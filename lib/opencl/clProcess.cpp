@@ -62,21 +62,23 @@ void clProcess::main_thread()
     cl_event sequenceEvent;
 
     loopCounter * loopCnt = new loopCounter;
+    bool first_run = true;
 
     device->prepareCommandQueue();
 
     device->allocateMemory();
     DEBUG("Device Initialized\n");
 
-    callBackData ** cb_data = new callBackData * [device->getInBuf()->num_buffers];
-    CHECK_MEM(cb_data);
+    //callBackData ** cb_data = new callBackData * [device->getInBuf()->num_buffers];
+    //CHECK_MEM(cb_data);
 
     buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device->getInBuf()->num_buffers];
     CHECK_MEM(buff_id_lock_list);
 
     for (int j=0;j<device->getInBuf()->num_buffers;j++)
     {
-        cb_data[j] = new callBackData(factory->getNumCommands());
+        //cb_data[j] = new callBackData(factory->getNumCommands());
+        cb_data.push_back(new callBackData(factory->getNumCommands()));
         buff_id_lock_list[j] = new buffer_id_lock;
     }
 
@@ -100,13 +102,14 @@ void clProcess::main_thread()
         }
 
         CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[bufferID]->lock) );
-        while (buff_id_lock_list[bufferID]->in_process == 1) {
-            DEBUG("gpu_thread%d: waiting for in flight queue to finish(!)", gpu_id);
-            pthread_cond_wait(&buff_id_lock_list[bufferID]->cond, &buff_id_lock_list[bufferID]->lock);
+        while (buff_id_lock_list[bufferID]->mem_in_use == 1) {
+            pthread_cond_wait(&buff_id_lock_list[bufferID]->mem_cond, &buff_id_lock_list[bufferID]->lock);
         }
         CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[bufferID]->lock) );
 
-        buff_id_lock_list[bufferID]->in_process = 1;
+        CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[bufferID]->lock));
+            buff_id_lock_list[bufferID]->mem_in_use = 1;
+        CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[bufferID]->lock));
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
@@ -145,7 +148,12 @@ void clProcess::main_thread()
             sequenceEvent = currentCommand->execute(bufferID, 0, *device, sequenceEvent);
             cb_data[bufferID]->listCommands[i] = currentCommand;
         }
-
+        
+        if (first_run)
+        {
+            mem_reconcil_thread_handle = std::thread(&clProcess::mem_reconcil_thread, std::ref(*this));
+            first_run = false;
+        }
         //DEBUG("Commands Queued\n");
         // Setup call back.
         CHECK_CL_ERROR( clSetEventCallback(sequenceEvent,
@@ -159,6 +167,9 @@ void clProcess::main_thread()
     }
 
     DEBUG("Closing\n");
+    
+    // TODO Make the exiting process actually work here.
+    mem_reconcil_thread_handle.join();
 
     CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock) );
     DEBUG("LockCnt\n");
@@ -177,55 +188,123 @@ void clProcess::main_thread()
     mark_producer_done(device->getOutBuf(), 0);
 
     delete loopCnt;
-    delete[] cb_data;
-
+    //delete[] cb_data;
+    for (auto command : cb_data) {
+        delete command;
+    }
     int ret;
     pthread_exit((void *) &ret);
 }
 
-void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
+void clProcess::mem_reconcil_thread()
 {
-    callBackData * cb_data = (callBackData *) data;
-
+    //Based on assumption that buffer_ids are processed in order, so start with [0].]
+    int buff_id_limit = cb_data[0]->in_buf->num_buffers;
+    std::clock_t    start;
+    
     double end_time_1 = e_time_1();
+    
+    for(;;) {
+        for (int j=0;j<buff_id_limit;j++)
+        {
+            start = std::clock();
+ 
+            CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
+            
+            while (cb_data[j]->buff_id_lock->clean == 0) {
+                pthread_cond_wait(&cb_data[j]->buff_id_lock->clean_cond, &cb_data[j]->buff_id_lock->lock);
+                INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data[j]->buffer_id);
+            }
 
-    INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
-    // Copy the information contained in the input buffer
-    if (cb_data->use_beamforming == 1)
-    {
-        copy_buffer_info(cb_data->in_buf, cb_data->buffer_id,
-            cb_data->beamforming_out_buf, cb_data->buffer_id);
+            CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
+            // your test
+            std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " Mem_recon_thread:BufferID_" << j << "_" << cb_data[j]->buff_id_lock->clean << " iteration:" << cb_data[j]->cnt->iteration << std::endl;
+            
+            //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
+            // Copy the information contained in the input buffer
+            if (cb_data[j]->use_beamforming == 1)
+            {
+                std::cout << "BufferID_" << j << "beamforming" << std::endl;
+                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
-        mark_buffer_full(cb_data->beamforming_out_buf, cb_data->unique_name.c_str(), cb_data->buffer_id);
+                mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            }
+            /*
+            if (cb_data[j]->use_incoh_beamforming == 1)
+            {
+                std::cout << "BufferID_" << j << "incoh_beamforming" << std::endl;
+                
+                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                    cb_data[j]->beamforming_out_incoh_buf, cb_data[j]->buffer_id);
+
+                mark_buffer_full(cb_data[j]->beamforming_out_incoh_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            }
+*/
+            std::cout << "BufferID_" << j << "move_info" << std::endl;
+                
+            // Copy the information contained in the input buffer
+            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
+
+            std::cout << "BufferID_" << j << "mark_empty" << std::endl;
+                
+            // Mark the input buffer as "empty" so that it can be reused.
+            mark_buffer_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+
+            std::cout << "BufferID_" << j << "mark_full" << std::endl;
+                
+            // Mark the output buffer as full, so it can be processed.
+            mark_buffer_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+
+            std::cout << "BufferID_" << j << "cleanMe" << std::endl;
+                
+            for (int i = 0; i < cb_data[j]->numCommands; i++){
+                cb_data[j]->listCommands[i]->cleanMe(cb_data[j]->buffer_id);
+            }
+
+            //CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->cnt->lock));
+            //cb_data[j]->cnt->iteration--;
+            //CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->cnt->lock));
+
+            //CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->cnt->cond) );
+
+            std::cout << "BufferID_" << j << "locks (mem, clean)" << std::endl;
+                
+            CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
+            cb_data[j]->buff_id_lock->mem_in_use = 0;
+            cb_data[j]->buff_id_lock->clean = 0;
+            CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
+
+            CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->buff_id_lock->mem_cond) );
+            double end_time_2 = e_time_1();
+            INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
+        }
     }
-
-    // Copy the information contained in the input buffer
-    move_buffer_info(cb_data->in_buf, cb_data->buffer_id,
-                     cb_data->out_buf, cb_data->buffer_id);
-
-    // Mark the input buffer as "empty" so that it can be reused.
-    mark_buffer_empty(cb_data->in_buf, cb_data->unique_name.c_str(), cb_data->buffer_id);
-
-    // Mark the output buffer as full, so it can be processed.
-    mark_buffer_full(cb_data->out_buf, cb_data->unique_name.c_str(), cb_data->buffer_id);
-
-    for (int i = 0; i < cb_data->numCommands; i++){
-        cb_data->listCommands[i]->cleanMe(cb_data->buffer_id);
-    }
-
-    CHECK_ERROR( pthread_mutex_lock(&cb_data->cnt->lock));
-    cb_data->cnt->iteration--;
-    CHECK_ERROR( pthread_mutex_unlock(&cb_data->cnt->lock));
-
-    CHECK_ERROR( pthread_cond_broadcast(&cb_data->cnt->cond) );
-
-    CHECK_ERROR( pthread_mutex_lock(&cb_data->buff_id_lock->lock));
-    cb_data->buff_id_lock->in_process = 0;
-    CHECK_ERROR( pthread_mutex_unlock(&cb_data->buff_id_lock->lock));
-
-    CHECK_ERROR( pthread_cond_broadcast(&cb_data->buff_id_lock->cond) );
-
-    double end_time_2 = e_time_1();
-    INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data->start_time, end_time_2 - cb_data->start_time, end_time_2 - end_time_1);
 }
 
+void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
+{
+    struct callBackData * cur_cb_data = (struct callBackData *) data;
+    std::clock_t    start;
+    
+    CHECK_ERROR( pthread_mutex_lock(&cur_cb_data->cnt->lock));
+    cur_cb_data->cnt->iteration--;
+    CHECK_ERROR( pthread_mutex_unlock(&cur_cb_data->cnt->lock));
+
+    //CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->cnt->cond) );
+
+    start = std::clock();
+    
+    CHECK_ERROR( pthread_mutex_lock(&cur_cb_data->buff_id_lock->lock));
+    cur_cb_data->buff_id_lock->clean = 1;
+    // your test
+    std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " read_complete:BufferID_" << cur_cb_data->buffer_id << " iteration:" << cur_cb_data->cnt->iteration << std::endl;
+
+    //std::cout << "Time: " << (std::clock()) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " read_complete:BufferID_" << cur_cb_data->buffer_id << std::endl;
+    
+    CHECK_ERROR( pthread_mutex_unlock(&cur_cb_data->buff_id_lock->lock));
+
+    CHECK_ERROR( pthread_cond_broadcast(&cur_cb_data->buff_id_lock->clean_cond) );
+    
+}

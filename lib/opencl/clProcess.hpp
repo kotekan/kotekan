@@ -32,12 +32,16 @@ class clProcess : public KotekanProcess {
         virtual ~clProcess();
         void main_thread();
         virtual void apply_config(uint64_t fpga_seq);
+        void mem_reconcil_thread();
     
     protected:
         struct Buffer *in_buf;
         struct Buffer *out_buf;
         struct Buffer *beamforming_out_buf;
         struct Buffer *beamforming_out_incoh_buf;
+        
+        vector<callBackData *> cb_data;
+        std::thread mem_reconcil_thread_handle;
 
         uint32_t gpu_id;
 
