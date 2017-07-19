@@ -34,3 +34,5 @@ add_custom_target(kernel_copy
         "${CHIME_SOURCE_DIR}/kernels"
         "kernels")
 add_dependencies( kotekan_opencl kernel_copy )
+
+target_link_libraries( kotekan_opencl kotekan_libs )
