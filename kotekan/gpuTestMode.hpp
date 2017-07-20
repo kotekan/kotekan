@@ -4,7 +4,9 @@
 #include "kotekanMode.hpp"
 #include "bufferContainer.hpp"
 #ifdef WITH_HSA
-#include "hsaBase.h"
+    #include "hsaBase.h"
+#endif /* WITH_HSA */
+
 
 class gpuTestMode : public kotekanMode {
 
@@ -16,7 +18,5 @@ public:
 
 private:
 };
-
-#endif /* WITH_HSA */
 
 #endif /* GPU_TEST_MODE_HPP */

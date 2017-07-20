@@ -17,7 +17,7 @@ if (${USE_HSA})
 	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp chimeShuffleMode.cpp)
 endif ()
 if (${USE_OPENCL})
-	#SET(SOURCE_EXE ${SOURCE_EXE} )
+	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
 endif ()
 
 

@@ -27,7 +27,7 @@ clProcess::clProcess(Config& config_,
     // TODO Remove this and move it to the command objects (see hsaProcess).
     gpu_id = config.get_int(unique_name, "gpu_id");
     in_buf = get_buffer("network_buf");
-    register_consumer(get_buffer("network_buffer"), unique_name.c_str());
+    register_consumer(get_buffer("network_buf"), unique_name.c_str());
     out_buf = get_buffer("corr_buf");
     register_producer(get_buffer("corr_buf"), unique_name.c_str());
     beamforming_out_buf = NULL; //get_buffer("beam_out_buf");

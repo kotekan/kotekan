@@ -3,9 +3,15 @@ type: config
 system:
   mode: gpu_test
   log_level: 3
+#Have to duplicate num_elements and num_local_freq for now. Makes testing easier.
+#Eventually, remove all references to "adjusted" in code.
 num_elements: 256
+num_adjusted_elements: 256
 num_local_freq: 8
+num_adjusted_local_freq: 8
 num_total_freq: 64
+#num_adjusted_elements/block_size * (num_adjusted_elements/(block_size + 1))/2; block_size = 32.
+num_blocks: 31
 samples_per_data_set: 32768
 num_data_sets: 1
 buffer_depth: 4
@@ -34,7 +40,7 @@ gpu:
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  use_beamforming: 0
+  enable_beamforming: false
   use_incoh_beamforming: 0
   gpu_0:
     kotekan_process: clProcess

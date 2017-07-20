@@ -22,6 +22,9 @@
 #ifdef WITH_HSA
   #include "hsaProcess.hpp"
 #endif
+#ifdef WITH_OPENCL
+    #include "clProcess.hpp"
+#endif
 
 
 #include <vector>
@@ -50,8 +53,10 @@ void gpuTestMode::initalize_processes() {
     int32_t samples_per_data_set = config.get_int("/", "samples_per_data_set");
     int32_t buffer_depth = config.get_int("/", "buffer_depth");
 
-    // Start HSA
-    kotekan_hsa_start();
+    #ifdef WITH_HSA
+        // Start HSA
+        kotekan_hsa_start();
+    #endif
 
     bufferContainer buffer_container;
 
