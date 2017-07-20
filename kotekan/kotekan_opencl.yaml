@@ -27,10 +27,6 @@ gpu:
     kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
   - name: pairwise_correlator
     kernel: "../lib/opencl/kernels/pairwise_correlator.cl"    
-  - name: beamform_kernel
-    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"    
-  - name: beamform_incoherent_kernel
-    kernel: "../lib/opencl/kernels/beamform_incoherent.cl"    
   - name: output_data_result
     kernel: ''
   link_map: [0,1,2,3]
