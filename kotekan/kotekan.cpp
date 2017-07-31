@@ -73,6 +73,7 @@ extern "C" {
 #ifdef WITH_HSA
     #include "chimeShuffleMode.hpp"
     #include "gpuTestMode.hpp"
+    #include "singleDishModeGpu.hpp"
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
@@ -98,11 +99,7 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-#ifdef DPDK_VDIF_MODE
-    char  arg4[] = "F";//"FF";
-#else
     char  arg4[] = "F";
-#endif
     char  arg5[] = "-m";
     char  arg6[] = "256";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };
@@ -173,6 +170,13 @@ int start_new_kotekan_mode(Config &config) {
     else if (mode == "gpu_test") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new gpuTestMode(config);
+        #else
+        return -1;
+        #endif
+    }
+    else if (mode == "single_dish_gpu") {
+        #ifdef WITH_HSA
+            kotekan_mode = (kotekanMode *) new singleDishModeGpu(config);
         #else
         return -1;
         #endif

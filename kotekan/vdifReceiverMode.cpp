@@ -31,17 +31,28 @@ vdifReceiverMode::~vdifReceiverMode() {
 
 void vdifReceiverMode::initalize_processes() {
     // Config values:
-    int num_total_freq = config.get_int("/", "num_freq");
-    int num_elements = config.get_int("/", "num_elements");
-    int buffer_depth = config.get_int("/", "buffer_depth");
-    int num_fpga_links = config.get_int("/", "num_links");
-    int num_disks = config.get_int("/raw_capture", "num_disks");
+    int num_total_freq = config.get_int("/processing/num_total_freq");
+    int num_elements = config.get_int("/processing/num_elements");
+    int buffer_depth = config.get_int("/processing/buffer_depth");
+    int num_fpga_links = config.get_int("/dpdk/num_links");
+    int num_disks = config.get_int("/raw_capture/num_disks");
 
-    int integration_length = config.get_int("/", "integration_length");
-    int timesteps_in = config.get_int("/", "samples_per_data_set");
+    int integration_length = config.get_int("/raw_capture/integration_length");
+    int timesteps_in = config.get_int("/processing/samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
+    string instrument_name = config.get_string("/raw_capture/instrument_name");
 
-    bufferContainer buffer_container;
+    // TODO This needs to move outside of this function, but that
+    // requires some more refactoring of the nDisk thread.
+    char data_time[64];
+    char data_set[150];
+    time_t rawtime;
+    struct tm* timeinfo;
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+
+    strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
+    snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, instrument_name.c_str());
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -58,14 +69,15 @@ void vdifReceiverMode::initalize_processes() {
     create_buffer(output_buffer,
                   buffer_depth,
                   timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
+                  1,
+                  1,
                   pool,
                   "output_power_buf");
-    buffer_container.add_buffer("vdif_input_buf", vdif_input_buffer);
+    host_buffers.add_buffer("output_power_buf", output_buffer);
 
-    processFactory process_factory(config, buffer_container);
-    vector<KotekanProcess *> processes = process_factory.build_processes();
+//    add_process((KotekanProcess *) new intensityReciever(config, &output_buffer, "vdif"));
+    add_process((KotekanProcess*) new nullProcess(config, *output_buffer));
+    //add_process((KotekanProcess*) new networkPowerStream(config, *output_buffer));
 
-    for (auto process: processes) {
-        add_process(process);
-    }
+
 }

@@ -32,7 +32,7 @@ private:
     bool write_to_disk;
 
     void mk_dataset_dir();
-    void save_meta_data(char* timestr);
+    void save_meta_data();
     void copy_gains(const string &gain_file_dir, const string &gain_file_name);
     string instrument_name;
 };

@@ -1,5 +1,7 @@
-#include "singleDishMode.hpp"
+#include "singleDishModeGpu.hpp"
+
 #include "buffers.h"
+#include "hsaProcess.hpp"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
@@ -7,6 +9,10 @@
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
 #include "util.h"
+#include "dpdkWrapper.hpp"
+#include "processFactory.hpp"
+#include "bufferContainer.hpp"
+
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
 #include "rawFileRead.hpp"
@@ -17,7 +23,6 @@
 #include "networkPowerStream.hpp"
 #include "vdif_functions.h"
 #include "dpdkWrapper.hpp"
-#include "processFactory.hpp"
 
 #include <vector>
 #include <string>
@@ -25,15 +30,16 @@
 using std::string;
 using std::vector;
 
-singleDishMode::singleDishMode(Config& config) : kotekanMode(config) {
+singleDishModeGpu::singleDishModeGpu(Config& config) : kotekanMode(config) {
 }
 
-singleDishMode::~singleDishMode() {
+singleDishModeGpu::~singleDishModeGpu() {
 }
 
-void singleDishMode::initalize_processes() {
+void singleDishModeGpu::initalize_processes() {
 
     // Config values:
+    int num_gpus = config.get_int("/gpu", "num_gpus");
     int num_total_freq = config.get_int("/", "num_freq");
     int num_elements = config.get_int("/", "num_elements");
     int buffer_depth = config.get_int("/", "buffer_depth");
@@ -45,19 +51,24 @@ void singleDishMode::initalize_processes() {
     int timesteps_out = timesteps_in / integration_length;
     string instrument_name = config.get_string("/raw_capture","instrument_name");
 
-    // TODO This needs to move outside of this function, but that
-    // requires some more refactoring of the nDisk thread.
-    char data_time[64];
-    char data_set[150];
-    time_t rawtime;
-    struct tm* timeinfo;
-    time(&rawtime);
-    timeinfo = gmtime(&rawtime);
-
-    strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-    snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, instrument_name.c_str());
+    // Start HSA
+    kotekan_hsa_start();
 
     bufferContainer buffer_container;
+
+    // Create buffers.
+    struct Buffer * network_input_buffer[num_gpus];
+    for (int i = 0; i < num_gpus; ++i) {
+        network_input_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
+        add_buffer(network_input_buffer[i]);
+    }
+
+    // Create gpu output buffers.
+    struct Buffer * gpu_output_buffer[num_gpus];
+    for (int i = 0; i < num_gpus; ++i) {
+        gpu_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
+        add_buffer(gpu_output_buffer[i]);
+    }
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -66,17 +77,28 @@ void singleDishMode::initalize_processes() {
     add_info_object_pool(pool);
     create_info_pool(pool, 5 * num_disks * buffer_depth, num_total_freq, num_elements);
 
-    DEBUG("Creating buffers...");
-    // Create buffers.
+    char buffer_name[100];
 
-    struct Buffer *vdif_input_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
-    add_buffer(vdif_input_buffer);
-    create_buffer(vdif_input_buffer,
-                  buffer_depth * num_disks,
-                  timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
-                  pool,
-                  "vdif_input_buf");
-    buffer_container.add_buffer("vdif_input_buf", vdif_input_buffer);
+    for (int i = 0; i < num_gpus; ++i) {
+
+       	    DEBUG("Creating buffers...");
+
+	    snprintf(buffer_name, 100, "vdif_input_buf_%d", i);
+	    create_buffer(network_input_buffer[i],
+		              buffer_depth * num_disks,
+		              timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
+		              pool,
+		              buffer_name);
+	    buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
+
+	    snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
+	    create_buffer(gpu_output_buffer[i],
+		              buffer_depth * num_disks,
+		              timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
+		              pool,
+		              buffer_name);
+	    buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
+    }
 
     struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     add_buffer(output_buffer);
@@ -93,4 +115,5 @@ void singleDishMode::initalize_processes() {
     for (auto process: processes) {
         add_process(process);
     }
+
 }

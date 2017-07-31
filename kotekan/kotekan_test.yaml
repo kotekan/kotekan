@@ -11,6 +11,10 @@ num_data_sets: 1
 buffer_depth: 6
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+rfi_zero: False
+sk_step: 256
+rfi_sensitivity: 10
+
 gpu:
   commands:
   - name: hsa_input_data
@@ -21,14 +25,16 @@ gpu:
     kernel: ''
   - name: hsa_barrier
     kernel: ''
+  - name: hsa_rfi
+    kernel: "../lib/hsa/kernels/rfi_chime.hsaco"
   - name: hsa_preseed_kernel
     kernel: "../lib/hsa/kernels/presum.hsaco"
   - name: hsa_correlator_kernel
-    kernel: "../lib/hsa/kernels//N2.hsaco"
+    kernel: "../lib/hsa/kernels/N2.hsaco"
   - name: hsa_output_data
     kernel: ''
   link_map: [0,1,2,3]
-  num_gpus: 4
+  num_gpus: 3
   block_size: 32
   buffer_depth: 4
   gpu_0:
@@ -46,11 +52,6 @@ gpu:
     gpu_id: 2
     network_buffer: gpu_input_buffer_2
     output_buffer: gpu_output_buffer_2
-  gpu_3:
-    kotekan_process: hsaProcess
-    gpu_id: 3
-    network_buffer: gpu_input_buffer_3
-    output_buffer: gpu_output_buffer_3
 gen_data:
   type: const
   value: 153
@@ -63,9 +64,6 @@ gen_data:
   test_data_gen_2:
     kotekan_process: testDataGen
     network_out_buf: gpu_input_buffer_2
-  test_data_gen_3:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_3
 check_data:
   real: 65536
   imag: 0
@@ -78,7 +76,4 @@ check_data:
   const_data_check_2:
     kotekan_process: constDataCheck
     buf: gpu_output_buffer_2
-  const_data_check_3:
-    kotekan_process: constDataCheck
-    buf: gpu_output_buffer_3
 

@@ -2,7 +2,7 @@
 type: config
 system:
   mode: single_dish
-  log_level: 2
+  log_level: 3
 
 instrument_name: aro
 
@@ -20,19 +20,19 @@ dpdk:
   kotekan_process: dpdkWrapper
   udp_packet_size: 4680
   mode: vdif
-  num_lcores: 4
+  num_lcores: 8
   vdif_buf: vdif_input_buf
   # These values shouldn't be needed!
   num_data_sets: 1
   num_gpu_frames: 1
 
 raw_capture:
-  note: Testing all the things!
   kotekan_process: nDiskFileWrite
-  write_to_disk: true
+  write_to_disk: false
   gain_files:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
+  gain_file_dir: /tmp
   num_disks: 10
   disk_base: /drives/
   disk_set: testing
