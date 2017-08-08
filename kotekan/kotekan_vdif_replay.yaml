@@ -30,12 +30,12 @@ cpu_affinity: [8,9,10,11]
 replay:
   kotekan_process: nDiskFileRead
   num_disks: 10
-  disk_base: /drives/
+  disk_base: /mnt/
   disk_set: A
-  out_buf: vdif_input_buf
-  capture: 20170426T080126Z_ARO_raw
-  sk_step: 8192
-  rfi: True
+  out_buf: vdif_input_buf_0
+  capture: 20170426T110023Z_ARO_raw
+  sk_step: 16384
+  rfi: False
   rfi_sensitivity: 3
   normalize: True
 
@@ -65,3 +65,5 @@ network_stream:
   destination_port: 2051
   destination_ip: 127.0.0.1
   destination_protocol: TCP
+
+
