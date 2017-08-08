@@ -24,7 +24,7 @@ void hsaInputData::apply_config(const uint64_t& fpga_seq) {
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
+    input_frame_len =  (_num_elements * _num_local_freq + 64) * _samples_per_data_set;
 }
 
 void hsaInputData::wait_on_precondition(int gpu_frame_id)

@@ -22,9 +22,9 @@ public:
 private:
     int32_t input_frame_len;
     int32_t output_len;
-    int32_t median_len;
+    int32_t mean_len;
   
-    float * Median_Array;
+    float * Mean_Array;
 
     int32_t _num_elements;
     int32_t _num_local_freq;

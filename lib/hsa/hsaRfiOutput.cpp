@@ -1,3 +1,16 @@
+/*********************************************************************************
+
+Kotekan RFI Documentation Block:
+By: Jacob Taylor 
+Date: August 2017
+File Purpose: A Copy of the hsaOutput GPU process wil rfi buffer preset
+Details: 
+	see hsaOutput documentation
+Notes:
+	Not an extremely useful file
+
+**********************************************************************************/
+
 #include "hsaRfiOutput.hpp"
 #include <unistd.h>
 
@@ -30,6 +43,7 @@ void hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
+    //Only Changed this line
     void * gpu_output_ptr = device.get_gpu_memory_array("rfi_output", gpu_frame_id, output_buffer->buffer_size);
 
     void * host_output_ptr = (void *)output_buffer->data[output_buffer_excute_id];

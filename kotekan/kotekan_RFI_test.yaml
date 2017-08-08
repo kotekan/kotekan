@@ -23,7 +23,7 @@ replay:
   disk_base: /mnt/
   disk_set: A
   out_buf: vdif_input_buf_0
-  capture: 20170426T080126Z_ARO_raw
+  capture: 20170426T110023Z_ARO_raw
   sk_step: 16384
   rfi: False
   rfi_sensitivity: 3
@@ -57,6 +57,7 @@ gpu:
   buffer_depth: 4
   sk_step: 8192
   rfi_sensitivity: 5
+  rfi_zero: False
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
