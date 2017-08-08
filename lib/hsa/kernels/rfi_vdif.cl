@@ -85,7 +85,7 @@ rfi_vdif(
 	for(int j = 0; j < SK_STEP; j++){ //Zero flagged values
 		unsigned int data_location = header_len*(gy + 1) + gx + gy*gx_size + SK_STEP*gz*(gy_size*(gx_size+header_len)) + j*(gy_size*(gx_size+header_len));
 		if(gx < header_len) masked_data[data_location-header_len] = (char)input[data_location-header_len]; //Copy Header
-		if(Zero_Flag) masked_data[data_location] = input[data_location];//0x88; //Zero
+		if(Zero_Flag) masked_data[data_location] = 0x88; //Zero
 		else masked_data[data_location] = input[data_location]; //Copy value
 	}
 }

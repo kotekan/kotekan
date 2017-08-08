@@ -57,7 +57,6 @@ gpu:
   buffer_depth: 4
   sk_step: 8192
   rfi_sensitivity: 5
-  rfi_zero: False
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
