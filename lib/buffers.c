@@ -291,9 +291,8 @@ void mark_buffer_empty(struct Buffer* buf, const char * consumer_name, const int
 
                 cpu_set_t cpuset;
                 CPU_ZERO(&cpuset);
-                CPU_SET(5, &cpuset); //ARO SUPER-BS!
-//                for (int j = 8; j < 12; j++)
-//                    CPU_SET(j, &cpuset);
+                // TODO: Move this to the config file (when buffers.c updated to C++11)
+                CPU_SET(5, &cpuset);
 
                 CHECK_ERROR( pthread_create(&zero_t, NULL, &private_zero_buffer, (void *)zero_args) );
                 CHECK_ERROR( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
