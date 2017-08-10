@@ -9,6 +9,9 @@ SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp intensityRecei
 
 if (${USE_DPDK})
 	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
+    if (${USE_OPENCL})
+	SET(SOURCE_EXE ${SOURCE_EXE} pathFinderMode.cpp)
+    endif ()
 endif ()
 if (${USE_HCC})
 	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)

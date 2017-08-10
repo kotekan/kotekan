@@ -77,6 +77,7 @@ extern "C" {
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
     #include "gpuTestMode.hpp"
+    #include "pathFinderMode.hpp"
 #endif
 
 using json = nlohmann::json;
@@ -169,6 +170,13 @@ int start_new_kotekan_mode(Config &config) {
     }
     else if (mode == "single_dish") {
         kotekan_mode = (kotekanMode *) new singleDishMode(config);
+    }
+    else if(mode == "pathfinder") {
+        #ifdef WITH_OPENCL
+            kotekan_mode = (kotekanMode *) new pathFinderMode(config);
+        #else
+            return -1;
+        #endif
     }
 #endif
     else if (mode == "gpu_test") {

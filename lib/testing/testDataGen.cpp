@@ -34,10 +34,10 @@ void testDataGen::main_thread() {
     for (;;) {
         wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
 
-        //set_data_ID(buf, buf_id, data_id);
-        //set_fpga_seq_num(buf, buf_id, seq_num);
+        set_data_ID(buf, buf_id, data_id);
+        set_fpga_seq_num(buf, buf_id, seq_num);
         // TODO This should be dynamic/config controlled.
-        //set_stream_ID(buf, buf_id, 0);
+        set_stream_ID(buf, buf_id, 0);
 
         std::random_device rd;
         std::mt19937 gen(rd());

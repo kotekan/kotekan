@@ -26,10 +26,10 @@ clProcess::clProcess(Config& config_,
 {
     // TODO Remove this and move it to the command objects (see hsaProcess).
     gpu_id = config.get_int(unique_name, "gpu_id");
-    in_buf = get_buffer("network_buf");
-    register_consumer(get_buffer("network_buf"), unique_name.c_str());
-    out_buf = get_buffer("corr_buf");
-    register_producer(get_buffer("corr_buf"), unique_name.c_str());
+    in_buf = get_buffer("network_buffer");
+    register_consumer(get_buffer("network_buffer"), unique_name.c_str());
+    out_buf = get_buffer("output_buffer");
+    register_producer(get_buffer("output_buffer"), unique_name.c_str());
     beamforming_out_buf = NULL; //get_buffer("beam_out_buf");
     beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
     
@@ -80,6 +80,7 @@ void clProcess::main_thread()
         //cb_data[j] = new callBackData(factory->getNumCommands());
         cb_data.push_back(new callBackData(factory->getNumCommands()));
         buff_id_lock_list[j] = new buffer_id_lock;
+        cb_data[j]->buff_id_lock = buff_id_lock_list[j];
     }
 
     // Just wait on one buffer.
@@ -131,7 +132,6 @@ void clProcess::main_thread()
         cb_data[bufferID]->out_buf = device->getOutBuf();
         cb_data[bufferID]->numCommands = factory->getNumCommands();
         cb_data[bufferID]->cnt = loopCnt;
-        cb_data[bufferID]->buff_id_lock = buff_id_lock_list[bufferID];
         cb_data[bufferID]->use_beamforming = _use_beamforming;
         cb_data[bufferID]->start_time = e_time_1();
         cb_data[bufferID]->unique_name = unique_name;
@@ -225,8 +225,9 @@ void clProcess::mem_reconcil_thread()
             if (cb_data[j]->use_beamforming == 1)
             {
                 std::cout << "BufferID_" << j << "beamforming" << std::endl;
-                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
+                //WILL BE NEEDED ON PF.
+            //    copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+            //        cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
                 mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
@@ -244,8 +245,9 @@ void clProcess::mem_reconcil_thread()
             std::cout << "BufferID_" << j << "move_info" << std::endl;
                 
             // Copy the information contained in the input buffer
-            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
+            //WILL BE NEEDED ON PF.
+            //move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+            //                 cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
             std::cout << "BufferID_" << j << "mark_empty" << std::endl;
                 
