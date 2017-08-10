@@ -214,8 +214,8 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
 
 }
 #else
-inline void computeDualpolPower::fastSqSumVdif(int integration_time,
-        unsigned char * data, int * temp_buf, int * xx, int * yy)
+inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, 
+                                                uint * temp_buf, uint *out)
 {
     ERROR("This system does not support AVX2, fast square-and-sum will not work");
 }

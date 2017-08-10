@@ -141,11 +141,11 @@ void pathFinderMode::initalize_processes() {
         buffer_container.add_buffer(buffer_name, gpu_beamform_output_buffer[i]);
     }
     
-    struct Buffer network_output_buffer;
-    struct Buffer gated_output_buffer;
+    struct Buffer * network_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    struct Buffer * gated_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     
-    add_buffer(&network_output_buffer);
-    add_buffer(&gated_output_buffer);
+    add_buffer(network_output_buffer);
+    add_buffer(gated_output_buffer);
     
     int num_values = ((num_elements *
         (num_elements + 1)) / 2 ) *
@@ -160,19 +160,19 @@ void pathFinderMode::initalize_processes() {
     const int gate_buffer_size = sizeof(struct gate_frame_header)
                             + num_values * sizeof(complex_int_t);
 
-    create_buffer(&network_output_buffer,
+    create_buffer(network_output_buffer,
             buffer_depth,
             tcp_buffer_size,
             pool[0], 
             "network_output_buffer");
-    buffer_container.add_buffer("network_output_buffer", &network_output_buffer);
+    buffer_container.add_buffer("network_output_buffer", network_output_buffer);
 
-    create_buffer(&gated_output_buffer,
+    create_buffer(gated_output_buffer,
             buffer_depth,
             gate_buffer_size,
             pool[0],
             "gated_output_buffer");
-    buffer_container.add_buffer("gated_output_buffer", &gated_output_buffer);
+    buffer_container.add_buffer("gated_output_buffer", gated_output_buffer);
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();

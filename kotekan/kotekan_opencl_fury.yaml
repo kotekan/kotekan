@@ -24,20 +24,20 @@ num_gpus: 1
 cpu_affinity: [4,5,6,7]
 enable_gating: 0
 
-#dpdk:
-#  kotekan_process: dpdkWrapper
-#  mode: no_shuffle
-#  num_lcores: 4
-#  udp_packet_size: 4680
-#  timesamples_per_packet: 2
-#  network_out_buf_0: gpu_input_buffer_0
+dpdk:
+  kotekan_process: dpdkWrapper
+  mode: no_shuffle
+  num_lcores: 4
+  udp_packet_size: 4800
+  timesamples_per_packet: 2
+  network_out_buf_0: gpu_input_buffer_0
   
-gen_data:
-  type: const
-  value: 153
-  test_data_gen_0:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_0
+#gen_data:
+#  type: const
+#  value: 153
+#  test_data_gen_0:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_0
 
 gpu:
   commands:
@@ -64,12 +64,12 @@ gpu:
     output_buffer: gpu_output_buffer_0
 
 # Remove from production
-check_data:
-  real: 0
-  imag: 65536
-  const_data_check_0:
-    kotekan_process: constDataCheck
-    buf: gpu_output_buffer_0
+#check_data:
+#  real: 0
+#  imag: 65536
+#  const_data_check_0:
+#    kotekan_process: constDataCheck
+#    buf: gpu_output_buffer_0
 
 gpu_post_process:
     gate_cadence: 1
