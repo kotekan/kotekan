@@ -46,7 +46,6 @@ networkPowerStream::networkPowerStream(Config& config,
     header.handshake_utc = -1;
 
     frame_idx=0;
-
 }
 
 networkPowerStream::~networkPowerStream() {
@@ -87,16 +86,22 @@ void networkPowerStream::main_thread() {
             buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
 
             for (int t=0; t<times; t++){
-                for (int f=0; f<freqs; f++)
-                    local_data[f] = ((float*)buf->data[buffer_id])[f]*4 +
-                                        ((float*)buf->data[buffer_id])[f+freqs]*4;
-                // Send data to remote server.
-                int bytes_sent = sendto(socket_fd,
-                                 (void*)local_data,
-                                 freqs*sizeof(char), 0,
-                                 (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
-                if (bytes_sent != freqs*sizeof(char))
-                    ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
+                packet_header->frame_idx = frame_idx++;
+                for (int p=0; p<elems; p++){
+                    packet_header->elem_idx = p;
+                    packet_header->samples_summed = ((uint*)buf->data[buffer_id])[
+                                                            t*elems*(freqs+1) + p*(freqs+1) + freqs];
+                    memcpy(local_data,
+                            buf->data[buffer_id]+(t*elems+p)*(freqs+1)*sizeof(uint),
+                            freqs*sizeof(uint));
+                    // Send data to remote server.
+                    int bytes_sent = sendto(socket_fd,
+                                                packet_buffer,
+                                                packet_length, 0,
+                                     (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
+                    if (bytes_sent != packet_length)
+                        ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
+                }
             }
 
             // Mark buffer as empty.
@@ -120,13 +125,13 @@ void networkPowerStream::main_thread() {
                         packet_header->samples_summed = ((uint*)buf->data[buffer_id])[
                                                                 t*elems*(freqs+1) + p*(freqs+1) + freqs];
                         memcpy(local_data,
-                                buf->data[buffer_id]+t*elems*(freqs+1)*sizeof(uint)+
-                                                          p*(freqs+1)*sizeof(uint),
+                                buf->data[buffer_id]+(t*elems+p)*(freqs+1)*sizeof(uint),
                                 freqs*sizeof(uint));
                         int bytes_sent = send(socket_fd,
                                                 packet_buffer,
                                                 packet_length,
                                                 0);
+
                         if (bytes_sent != packet_length) {
                             while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
