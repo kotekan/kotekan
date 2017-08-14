@@ -37,6 +37,7 @@ raw_capture:
   gain_files:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
+  gain_file_dir: /tmp
   num_disks: 10
   disk_base: /drives/
   disk_set: D

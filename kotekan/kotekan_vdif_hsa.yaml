@@ -1,14 +1,14 @@
 ---
 type: config
 system:
-  mode: single_dish
-  log_level: 2
+  mode: single_dish_gpu
+  log_level: 3
 
 instrument_name: aro
 
-#shared by power & network_stream
-integration_length: 4096
+integration_length: 16384
 num_freq: 1024
+num_local_freq: 1024
 num_elements: 2
 samples_per_data_set: 65536
 #samples_per_data_set: 32768
@@ -17,20 +17,10 @@ num_links: 8
 timesamples_per_packet: 2
 cpu_affinity: [8,9,10,11]
 
-#dpdk:
-#  kotekan_process: dpdkWrapper
-#  udp_packet_size: 4680
-#  mode: vdif
-#  num_lcores: 8
-#  vdif_buf: vdif_input_buf
-#  # These values shouldn't be needed!
-#  num_data_sets: 1
-#  num_gpu_frames: 1
-
 replay:
   kotekan_process: nDiskFileRead
   num_disks: 10
-  disk_base: /drives/
+  disk_base: /mnt/
   disk_set: A
   out_buf: vdif_input_buf_0
   capture: 20170426T110023Z_ARO_raw
@@ -49,21 +39,41 @@ raw_capture:
   num_disks: 10
   disk_base: /drives/
   disk_set: testing
-  in_buf: vdif_input_buf
+  in_buf: vdif_input_buf_0
+
+gpu:
+  commands:
+  - name: hsa_input_data
+    kernel: ''
+  - name: hsa_barrier
+    kernel: ''
+  - name: hsa_rfi_vdif
+    kernel: "../lib/hsa/kernels/rfi_vdif.hsaco"
+  - name: hsa_rfi_output
+    kernel: ''
+  link_map: [0,1,2,3]
+  num_gpus: 1
+  block_size: 32
+  buffer_depth: 4
+  sk_step: 8192
+  rfi_sensitivity: 5
+  gpu_0:
+    kotekan_process: hsaProcess
+    gpu_id: 0
+    network_buffer: vdif_input_buf_0
+    output_buffer: gpu_output_buffer_0
 
 power:
   kotekan_process: computeDualpolPower
   rfi_removal: False
   rfi_sensitivity: 3
   rfi_backfill: False
-  vdif_in_buf: vdif_input_buf
+  vdif_in_buf: gpu_output_buffer_0
   power_out_buf: output_power_buf
 
 network_stream:
   kotekan_process: networkPowerStream
   power_in_buf: output_power_buf
-  destination_port: 2054
+  destination_port: 2051
   destination_ip: 127.0.0.1
   destination_protocol: TCP
-
-

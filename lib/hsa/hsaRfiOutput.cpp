@@ -1,7 +1,20 @@
-#include "hsaOutputData.hpp"
+/*********************************************************************************
+
+Kotekan RFI Documentation Block:
+By: Jacob Taylor 
+Date: August 2017
+File Purpose: A Copy of the hsaOutput GPU process wil rfi buffer preset
+Details: 
+	see hsaOutput documentation
+Notes:
+	Not an extremely useful file
+
+**********************************************************************************/
+
+#include "hsaRfiOutput.hpp"
 #include <unistd.h>
 
-hsaOutputData::hsaOutputData(const string& kernel_name, const string& kernel_file_name,
+hsaRfiOutput::hsaRfiOutput(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
@@ -16,10 +29,10 @@ hsaOutputData::hsaOutputData(const string& kernel_name, const string& kernel_fil
     output_buffer_excute_id = 0;
 }
 
-hsaOutputData::~hsaOutputData() {
+hsaRfiOutput::~hsaRfiOutput() {
 }
 
-void hsaOutputData::wait_on_precondition(int gpu_frame_id) {
+void hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id; // Not used for this;
     // We want to make sure we have some space to put our results.
     wait_for_empty_buffer(output_buffer,
@@ -28,9 +41,10 @@ void hsaOutputData::wait_on_precondition(int gpu_frame_id) {
                                     output_buffer->num_buffers;
 }
 
-hsa_signal_t hsaOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_buffer->buffer_size);
+    //Only Changed this line
+    void * gpu_output_ptr = device.get_gpu_memory_array("rfi_output", gpu_frame_id, output_buffer->buffer_size);
 
     void * host_output_ptr = (void *)output_buffer->data[output_buffer_excute_id];
 
@@ -44,7 +58,7 @@ hsa_signal_t hsaOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
 }
 
 
-void hsaOutputData::finalize_frame(int frame_id) {
+void hsaRfiOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     // Copy the information contained in the input buffer
