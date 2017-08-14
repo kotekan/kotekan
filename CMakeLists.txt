@@ -68,7 +68,7 @@ if (${USE_DPDK})
           rte_power    rte_timer        rte_ring    rte_sched     rte_table
           rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000
           rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
-          rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port	
+          rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
   )
   set (DPDK_LIBS
         -Wl,--start-group ${DPDK_LIST} -Wl,--end-group -ldl )
