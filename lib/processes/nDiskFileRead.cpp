@@ -80,7 +80,7 @@ void nDiskFileRead::main_thread() {
 
 void nDiskFileRead::file_read_thread(int disk_id) {
 
-    int buf_id = disk_id; 
+    int buf_id = disk_id;
     unsigned int file_index = disk_id; //Starting File index
 
     unsigned int VDIF_BLOCK_SIZE = num_frequencies + sizeof(VDIFHeader); //Set the VDIF block size
