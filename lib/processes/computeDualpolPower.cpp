@@ -89,7 +89,6 @@ int r = rand();
     std::thread this_thread[nthreads];
 
     for (EVER) {
-	printf("Header Size: %lu\n",VDIF_HEADER_LEN);
         buf_in_id = wait_for_full_buffer(buf_in, unique_name.c_str(), buf_in_id);
         wait_for_empty_buffer(buf_out, unique_name.c_str(), buf_out_id);
         in_local = buf_in->data[buf_in_id];

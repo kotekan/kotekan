@@ -99,7 +99,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         unsigned char* buf_ptr = buf->data[buf_id];
         char file_name[100]; //Find current file
         snprintf(file_name, sizeof(file_name), "%s%s/%d/%s/%07d.vdif",disk_base.c_str(),disk_set.c_str(), disk_id,capture.c_str(),file_index);
-	printf("Entering File: %s\n",file_name);
+	INFO("Entering File: %s\n",file_name);
         FILE * in_file = fopen(file_name, "r"); //Open current file for reading
         fseek(in_file, 0L, SEEK_END); //Get length of current file
         long sz = ftell(in_file);

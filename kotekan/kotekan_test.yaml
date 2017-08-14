@@ -34,7 +34,7 @@ gpu:
   - name: hsa_output_data
     kernel: ''
   link_map: [0,1,2,3]
-  num_gpus: 3
+  num_gpus: 4
   block_size: 32
   buffer_depth: 4
   gpu_0:
@@ -52,6 +52,11 @@ gpu:
     gpu_id: 2
     network_buffer: gpu_input_buffer_2
     output_buffer: gpu_output_buffer_2
+  gpu_3:
+    kotekan_process: hsaProcess
+    gpu_id: 3
+    network_buffer: gpu_input_buffer_3
+    output_buffer: gpu_output_buffer_3
 gen_data:
   type: const
   value: 153
@@ -64,6 +69,9 @@ gen_data:
   test_data_gen_2:
     kotekan_process: testDataGen
     network_out_buf: gpu_input_buffer_2
+  test_data_gen_3:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_3
 check_data:
   real: 65536
   imag: 0
@@ -76,4 +84,7 @@ check_data:
   const_data_check_2:
     kotekan_process: constDataCheck
     buf: gpu_output_buffer_2
+  const_data_check_3:
+    kotekan_process: constDataCheck
+    buf: gpu_output_buffer_3
 

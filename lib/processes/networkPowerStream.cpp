@@ -62,14 +62,6 @@ void networkPowerStream::main_thread() {
         float *local_data = (float*)((char *)packet_buffer + sizeof(IntensityPacketHeader));
     struct timeval tv;
 
-    sleep(1);
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    INFO("Setting thread affinity");
-    CPU_SET(8, &cpuset);
-    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
-
-
     if (dest_protocol == "UDP")
     {
         // UDP variables
@@ -231,7 +223,6 @@ void networkPowerStream::tcpConnect()
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
         for (int e=0; e<elems; e++)
             ((char*)((char*)info+info_size - elems*sizeof(char)))[e]=-5-e;
-//            (((char*)info)+info_size - elems)[e]=-5-e;
         bytes_sent = send(socket_fd,
                                 info,
                                 info_size,
@@ -252,6 +243,5 @@ void networkPowerStream::tcpConnect()
     atomic_flag_clear(&socket_lock);
 
 }
-
 
 
