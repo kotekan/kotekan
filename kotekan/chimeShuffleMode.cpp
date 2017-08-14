@@ -69,7 +69,7 @@ void chimeShuffleMode::initalize_processes() {
 
     char buffer_name[100];
 
-    create_info_pool(pool[0], 10 * buffer_depth,
+    create_info_pool(pool[0], 5 * buffer_depth,
                                     num_local_freq,
                                     num_elements);
 
