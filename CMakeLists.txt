@@ -71,8 +71,7 @@ if (${USE_DPDK})
           rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
   )
   set (DPDK_LIBS
-        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group )
-
+        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group -ldl )
   add_definitions(-DWITH_DPDK)
   MESSAGE("DPDK Enabled")
 else ()
@@ -114,19 +113,43 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # Required for some SSE/AVX intrinsics
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
+
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note C++11
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
+
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
+
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
+
 SET(CMAKE_INSTALL_PREFIX "/")
+
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+# Required for some SSE/AVX intrinsics
+#add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
+
+
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
+#set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+
+# Note C++11
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
+#set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
+#SET(CMAKE_INSTALL_PREFIX "/")
+#install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
+#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)

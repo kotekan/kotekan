@@ -298,7 +298,6 @@ void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const int ind
             gpu_memory[name].gpu_pointers.push_back(ptr);
         }
     }
-
     // The size must match what has already been allocated.
     assert(len == gpu_memory[name].len);
     // Make sure we aren't asking for an index past the end of the array.
@@ -319,7 +318,6 @@ void* hsaDeviceInterface::get_gpu_memory(const string& name, const int len) {
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);
     }
-
     // The size must match what has already been allocated.
     assert(len == gpu_memory[name].len);
     assert(gpu_memory[name].gpu_pointers.size() == 1);

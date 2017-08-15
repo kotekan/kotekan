@@ -19,8 +19,15 @@ private:
     std::vector<std::thread> file_thread_handles;
 
     int num_disks; 
+    int num_elements;
+    int num_frequencies;
+    string disk_base;
     string disk_set;
     string capture;
+    int SK_STEP;
+    bool WITH_RFI;
+    bool Normalize;
+    int THRESHOLD_SENSITIVITY;
 };
 
 #endif
