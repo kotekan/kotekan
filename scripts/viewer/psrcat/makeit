@@ -1,0 +1,22 @@
+#!/usr/bin/tcsh
+#
+echo "Clean-up"
+
+\rm *.o
+\rm libpsrcat.a
+
+echo "Compiling ..."
+
+gcc -c defineParams.c evalkern.c externalCall.c galcoord_equatorial.c plotParams.c readCatalogue.c displayOutput.c evalwrap.c galcoord_ecliptic.c parseParameters.c wc_strncmp.c
+
+ar crv libpsrcat.a defineParams.o evalkern.o externalCall.o galcoord_equatorial.o plotParams.o readCatalogue.o displayOutput.o evalwrap.o galcoord_ecliptic.o parseParameters.o wc_strncmp.o
+
+ranlib libpsrcat.a
+
+gcc -o psrcat psrcat.c -L./ -lpsrcat -lm
+
+echo "Complete"
+#set dir = `pwd`
+#setenv PSRCAT_FILE $dir/psrcat.db
+#echo "You must now create an environment variable PSRCAT_FILE that points to where you ar#e going to store the psrcat.db file"
+#echo "It is currently set to $PSRCAT_FILE"
