@@ -370,6 +370,8 @@ void register_consumer(struct Buffer * buf, const char *name) {
 void register_producer(struct Buffer * buf, const char *name) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
+    DEBUG("Registering producer %s for buffer %s", name, buf->buffer_name);
+
     if (private_get_producer_id(buf, name) != -1) {
         ERROR("You cannot register two consumers with the same name!");
         assert(0); // Optional
