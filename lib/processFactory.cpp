@@ -19,6 +19,10 @@
 #include "rawFileRead.hpp"
 #include "rawFileWrite.hpp"
 #include "vdifStream.hpp"
+#include "recvSingleDishVDIF.hpp"
+#include "streamSingleDishVDIF.hpp"
+#include "networkInputPowerStream.hpp"
+#include "integratePowerStream.hpp"
 
 #include "gpuBeamformSimulate.hpp"
 #include "gpuSimulate.hpp"
@@ -129,6 +133,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new networkPowerStream(config, location, buffer_container);
     }
 
+    if (name == "integratePowerStream") {
+        return (KotekanProcess *) new integratePowerStream(config, location, buffer_container);
+    }
+
+    if (name == "networkInputPowerStream") {
+        return (KotekanProcess *) new networkInputPowerStream(config, location, buffer_container);
+    }
+
     // Remove this when buffer consumer/producers are dynamic.
     if (name == "nullProcess") {
         return (KotekanProcess *) new nullProcess(config, location, buffer_container);
@@ -148,6 +160,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
+    }
+
+    if (name == "streamSingleDishVDIF") {
+        return (KotekanProcess *) new streamSingleDishVDIF(config, location, buffer_container);
+    }
+
+    if (name == "recvSingleDishVDIF") {
+        return (KotekanProcess *) new recvSingleDishVDIF(config, location, buffer_container);
     }
 
     // ****** testing directory ******

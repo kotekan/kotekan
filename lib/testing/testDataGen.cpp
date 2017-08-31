@@ -53,6 +53,7 @@ void testDataGen::main_thread() {
                 if (finished_seeding_consant) break;
                 buf->data[buf_id][j] = value;
             } else if (type == "random") {
+
                 buf->data[buf_id][j] = (unsigned char)dis(gen);
             }
         }

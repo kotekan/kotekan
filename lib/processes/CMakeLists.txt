@@ -12,12 +12,14 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
+              integratePowerStream.cpp
               networkInputPowerStream.cpp
               nullProcess.cpp
               pyPlotResult.cpp
               rawFileRead.cpp
               rawFileWrite.cpp
               vdifStream.cpp
+              recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
               accumulate.cpp
               )

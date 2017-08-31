@@ -32,8 +32,12 @@ replay:
   num_disks: 10
   disk_base: /drives/
   disk_set: A
-  out_buf: vdif_input_buf
-  capture: 20170426T080126Z_ARO_raw
+  out_buf: vdif_input_buf_0
+  capture: 20170426T110023Z_ARO_raw
+  sk_step: 16384
+  rfi: False
+  rfi_sensitivity: 3
+  normalize: True
 
 raw_capture:
   kotekan_process: nDiskFileWrite
@@ -49,6 +53,9 @@ raw_capture:
 
 power:
   kotekan_process: computeDualpolPower
+  rfi_removal: False
+  rfi_sensitivity: 3
+  rfi_backfill: False
   vdif_in_buf: vdif_input_buf
   power_out_buf: output_power_buf
 
@@ -58,3 +65,5 @@ network_stream:
   destination_port: 2054
   destination_ip: 127.0.0.1
   destination_protocol: TCP
+
+

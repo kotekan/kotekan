@@ -61,6 +61,10 @@ gpu:
     kernel: "../lib/hsa/kernels/presum.hsaco"
   - name: hsa_correlator_kernel
     kernel: "../lib/hsa/kernels/N2.hsaco"
+  - name: hsa_rfi_efp_sum
+    kernel: "../lib/hsa/kernels/rfi_efp_sum.hsaco"
+  - name: hsa_rfi_element_sum
+    kernel: "../lib/hsa/kernels/rfi_element_sum.hsaco"
   - name: hsa_output_data
     kernel: ''
   link_map: [0,1,2,3]

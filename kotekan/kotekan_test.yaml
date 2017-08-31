@@ -12,6 +12,9 @@ buffer_depth: 6
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 
+rfi_zero: False
+sk_step: 256
+rfi_sensitivity: 10
 
 gen_data:
   type: const
@@ -39,10 +42,12 @@ gpu:
     kernel: ''
   - name: hsa_barrier
     kernel: ''
+  - name: hsa_rfi
+    kernel: "../lib/hsa/kernels/rfi_chime.hsaco"
   - name: hsa_preseed_kernel
     kernel: "../lib/hsa/kernels/presum.hsaco"
   - name: hsa_correlator_kernel
-    kernel: "../lib/hsa/kernels//N2.hsaco"
+    kernel: "../lib/hsa/kernels/N2.hsaco"
   - name: hsa_output_data
     kernel: ''
   link_map: [0,1,2,3]

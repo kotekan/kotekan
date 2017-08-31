@@ -23,8 +23,7 @@ void hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id; // Not used for this;
     // We want to make sure we have some space to put our results.
     wait_for_empty_buffer(output_buffer,
-                          unique_name.c_str(),
-                          output_buffer_precondition_id);
+                          unique_name.c_str(), output_buffer_precondition_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
                                     output_buffer->num_buffers;
 }
