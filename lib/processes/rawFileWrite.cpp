@@ -34,6 +34,8 @@ void rawFileWrite::main_thread() {
     int fd;
     int file_num = 0;
     int buffer_id = 0;
+    char hostname[64];
+    gethostname(hostname, 64);
 
     for (;;) {
 
@@ -50,8 +52,9 @@ void rawFileWrite::main_thread() {
         const int full_path_len = 200;
         char full_path[full_path_len];
 
-        snprintf(full_path, full_path_len, "%s/%s_%07d.%s",
+        snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s",
                 base_dir.c_str(),
+                hostname,
                 file_name.c_str(),
                 file_num,
                 file_ext.c_str());

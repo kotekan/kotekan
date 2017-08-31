@@ -12,6 +12,7 @@
 #include "dpdkWrapper.hpp"
 #include "processFactory.hpp"
 #include "bufferContainer.hpp"
+#include "accumulate.hpp"
 
 #include <vector>
 #include <string>
@@ -57,6 +58,13 @@ void chimeShuffleMode::initalize_processes() {
         add_buffer(gpu_output_buffer[i]);
     }
 
+    // Create file output buffers.
+    struct Buffer * file_output_buffer[num_gpus];
+    for (int i = 0; i < num_gpus; ++i) {
+        file_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
+        add_buffer(file_output_buffer[i]);
+    }
+
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
     struct InfoObjectPool * pool[1];
@@ -93,6 +101,15 @@ void chimeShuffleMode::initalize_processes() {
                       pool[0],
                       buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
+
+        snprintf(buffer_name, 100, "file_output_buffer_%d", i);
+        create_buffer(file_output_buffer[i],
+                      buffer_depth,
+                      output_len * num_data_sets * sizeof(int32_t) +
+                      sizeof(struct rawGPUFrameHeader),
+                      pool[0],
+                      buffer_name);
+        buffer_container.add_buffer(buffer_name, file_output_buffer[i]);
 
     }
 

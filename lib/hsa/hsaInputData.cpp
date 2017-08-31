@@ -32,8 +32,8 @@ void hsaInputData::wait_on_precondition(int gpu_frame_id)
     // Wait for there to be data in the input (network) buffer.
 
     wait_for_full_buffer(network_buf, unique_name.c_str(), network_buffer_precondition_id);
-    INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,
-            device.get_gpu_id(), gpu_frame_id);
+    //INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,
+    //        device.get_gpu_id(), gpu_frame_id);
     network_buffer_precondition_id = (network_buffer_precondition_id + 1) % network_buf->num_buffers;
 }
 

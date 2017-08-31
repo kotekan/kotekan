@@ -82,13 +82,13 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
-    INFO("correlatorKernel: gpu[%d][%d], input_buffer: %p, presum_buffer: %p, corr_buffer: %p, blk_map: %p, config: %p, sizeof(args) = %d, kernels_args[%d] = %p",
+    /*INFO("correlatorKernel: gpu[%d][%d], input_buffer: %p, presum_buffer: %p, corr_buffer: %p, blk_map: %p, config: %p, sizeof(args) = %d, kernels_args[%d] = %p",
             device.get_gpu_id(), gpu_frame_id, args.input_buffer, args.presum_buffer, args.corr_buffer, args.blk_map, args.config,
             (int)sizeof(args), gpu_frame_id, kernel_args[gpu_frame_id]);
 
     INFO("correlatorKernel: gpu[%d][%d], wgx %d, wgy %d, wgz %d, gsx %d, gsy %d, gsz %d",
             device.get_gpu_id(), gpu_frame_id, 16, 4, 1, 16, 4*_samples_per_data_set/N_INTG, _num_blocks);
-
+     */
     // Set kernel dims
     kernelParams params;
     params.workgroup_size_x = 16;

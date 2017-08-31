@@ -11,6 +11,24 @@ num_data_sets: 1
 buffer_depth: 6
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+
+
+gen_data:
+  type: const
+  value: 153
+  test_data_gen_0:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_0
+  test_data_gen_1:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_1
+  test_data_gen_2:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_2
+  test_data_gen_3:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_3
+
 gpu:
   commands:
   - name: hsa_input_data
@@ -51,21 +69,7 @@ gpu:
     gpu_id: 3
     network_buffer: gpu_input_buffer_3
     output_buffer: gpu_output_buffer_3
-gen_data:
-  type: const
-  value: 153
-  test_data_gen_0:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_0
-  test_data_gen_1:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_1
-  test_data_gen_2:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_2
-  test_data_gen_3:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_3
+
 check_data:
   real: 65536
   imag: 0

@@ -6,6 +6,8 @@ include_directories (${CHIME_SOURCE_DIR}/include)
 include_directories (${CHIME_SOURCE_DIR}/lib)
 include_directories (${CHIME_SOURCE_DIR}/lib/hsa)
 
+include_directories ( /opt/rocm/hsa/include/ )
+
 add_library ( kotekan_hsa
               signalContainer.cpp
               hsaBase.c

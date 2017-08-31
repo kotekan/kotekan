@@ -5,6 +5,7 @@ add_library ( kotekan_testing
               constDataCheck.cpp
               gpuBeamformSimulate.cpp
               gpuSimulate.cpp
+              hexDump.cpp
               networkOutputSim.cpp
               simVdifData.cpp
               testDataCheck.cpp

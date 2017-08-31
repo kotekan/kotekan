@@ -17,7 +17,7 @@ hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
     hsa_barrier_and_packet_t* barrier_and_packet =
             (hsa_barrier_and_packet_t*)device.get_queue()->base_address +
                                             (index % device.get_queue()->size);
-    INFO("hsaBarrier got write index: %" PRIu64 ", packet_address: %p, precede_signal: %lu", index, barrier_and_packet, precede_signal.handle);
+    //INFO("hsaBarrier got write index: %" PRIu64 ", packet_address: %p, precede_signal: %lu", index, barrier_and_packet, precede_signal.handle);
 
     // Set the packet details, including the preceded signal to wait on.
     memset(((uint8_t*) barrier_and_packet) + 4, 0, sizeof(*barrier_and_packet) - 4);

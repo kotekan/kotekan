@@ -18,6 +18,7 @@ endif ()
 if (${USE_HSA})
   find_package( HSA )
   set(USE_HSA ${HSA_FOUND})
+  find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
 if (${USE_OPENCL})
   find_package( OpenCL )
@@ -45,6 +46,7 @@ if (${USE_HCC})
 endif ()
 if (${USE_HSA})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
+  link_directories ( /opt/rocm/hsa/lib/ )
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lhsa-runtime64 ")
   add_definitions(-DWITH_HSA)
   set(MODULES ${MODULES} "HSA ")
@@ -62,7 +64,7 @@ if (${USE_DPDK})
   # DPDK Includes
   include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
   link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-  
+
   set (DPDK_LIST
           ethdev       rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
           rte_power    rte_timer        rte_ring    rte_sched     rte_table
@@ -115,17 +117,17 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native  -I/opt/rocm/include")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note C++11
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native  -I/opt/rocm/include")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 SET(CMAKE_INSTALL_PREFIX "/")
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}  -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 add_subdirectory(lib)

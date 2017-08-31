@@ -197,8 +197,8 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
 
 
     //
-    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
-            port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
+    //INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
+    //        port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
     mark_buffer_full(dpdk_net->args->buf[port][freq],
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][freq].buffer_id);
@@ -293,6 +293,7 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
                                 get_fpga_seq_num(dpdk_net->args->buf[port][freq],
                                                    dpdk_net->link_data[port][freq].buffer_id);
 
+        //assert(frame_location[freq] * frame_size <= dpdk_net->args->buf[port][freq]->buffer_size);
         if (unlikely(frame_location[freq] * frame_size == dpdk_net->args->buf[port][freq]->buffer_size)) {
             advance_frame(dpdk_net, port, freq, dpdk_net->link_data[port][freq].seq);
             frame_location[freq] = 0;
@@ -300,18 +301,26 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
         }
     }
 
+    // We might want to do something more interesting here.
+    int freq_pos = dpdk_net->link_data[port][0].s_stream_ID.crate_id / 2;
+
     // Copy the packet in packet memory order.
     for (int frame = 0;
              frame < dpdk_net->args->timesamples_per_packet;
              ++frame) {
 
         for (int freq = 0; freq < NUM_FREQ; ++freq) {
-            uint64_t copy_location = frame_location[freq] * frame_size + frame * frame_size + freq * sub_frame_size;
-            //DEBUG("Port %d; frame %d, freq %d; cur_mbuf %p; offset %d, copy location: %d", port, frame, freq, cur_mbuf, pkt_offset, copy_location);
+            uint64_t copy_location = frame_location[freq] * frame_size + frame * frame_size + freq_pos * sub_frame_size;
+
+            if (port == 1)
+                DEBUG("Port %d; frame %d, freq %d; cur_mbuf %p; offset %d, copy location: %d; buffer[%d][%d] = %p, ", port, frame, freq, cur_mbuf, pkt_offset, copy_location, port, freq, dpdk_net->args->buf[port][freq]);
             copy_block(&cur_mbuf,
                        (uint8_t *) &dpdk_net->args->buf[port][freq]->data[buffer_id[freq]][copy_location],
                        sub_frame_size,
                        &pkt_offset);
+            if (port == 1) {
+                hex_dump(16, &dpdk_net->args->buf[port][freq]->data[buffer_id[freq]][copy_location], 512);
+            }
         }
     }
 }
@@ -538,6 +547,9 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 INFO("dpdk: Faked StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
                         s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
             }
+
+            // Store the frequency (position in the frame that this stream is using)
+            s_stream_id.unused = freq;
             stream_id = encode_stream_id(s_stream_id);
 
             dpdk_net->link_data[port][freq].stream_ID = stream_id;
@@ -756,8 +768,14 @@ int lcore_recv_pkt_dump(void *args) {
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
                     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
                         dpdk_net->link_data[port][0].first_packet = 0;
-                        INFO("Got first packet on port %d, with seq%" PRIu64 " ", port, seq);
+                        INFO("Got first packet on port %d, with seq %" PRIu64 " ", port, seq);
                         dpdk_net->link_data[port][0].last_seq = seq - dpdk_net->args->timesamples_per_packet;
+
+                        // It's useful to display the stream information
+                        uint16_t stream_id = get_mbuf_stream_id(mbufs[i]);
+                        stream_id_t s_stream_id = extract_stream_id(stream_id);
+                        INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+                                port, s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
                     } else {
                         goto release_frame;
                     }
@@ -916,7 +934,7 @@ int lcore_recv_pkt(void *args)
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-                        INFO("PACKET LOSS!!")
+                        INFO("PACKET LOSS, port: %d, diff: %d", port, diff);
                         handle_lost_packets(dpdk_net, port);
                     }
 

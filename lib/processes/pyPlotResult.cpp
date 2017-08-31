@@ -9,6 +9,8 @@
 #include "pyPlotResult.hpp"
 #include "buffers.h"
 #include "errors.h"
+#include "accumulate.hpp"
+#include "fpga_header_functions.h"
 
 using json = nlohmann::json;
 
@@ -77,16 +79,20 @@ void pyPlotResult::main_thread() {
 
                 usleep(10000);
 
+                int32_t stream_id_int = get_streamID(buf, buffer_id);
+                stream_id_t stream_id = extract_stream_id(stream_id_int);
+
                 json header = {
                     {"data_length",num_blocks*block_size},
                     {"type","CORR_MATRIX"},
                     {"num_elements",num_elements},
-                    {"block_dim",{block_dim,block_dim,2}}
+                    {"block_dim",{block_dim,block_dim,2}},
+                    {"stream_id", {stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused}}
                 };
                 std::string s = header.dump()+"\n";
                 fwrite(s.c_str(),1,s.length(),python_script);
                 for (int i=0; i<num_blocks; i++) {
-                    fwrite(in_local+i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
+                    fwrite(in_local+ sizeof(rawGPUFrameHeader) +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
                     fflush(python_script);
                 }
             }

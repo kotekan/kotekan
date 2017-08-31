@@ -9,7 +9,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
-set (KOTEKAN_LIB_SOURCES 
+set (KOTEKAN_LIB_SOURCES
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp
@@ -57,8 +57,10 @@ endif ()
 
 if (${USE_HSA})
        add_subdirectory(hsa)
+       link_directories ( /opt/rocm/hsa/lib/ )
        target_link_libraries( kotekan_libs kotekan_hsa )
        target_link_libraries( kotekan_libs hsa-runtime64 )
+       include_directories ( /opt/rocm/hsa/include/ )
 endif ()
 
 if (${USE_OPENCL})

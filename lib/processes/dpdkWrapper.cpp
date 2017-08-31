@@ -77,14 +77,15 @@ void dpdkWrapper::main_thread() {
             for (int freq = 0; freq < NUM_FREQ; ++freq) {
                 tmp_buffer[i][freq] = network_input_buffer[freq];
                 INFO ("tmp_buffer[%d][%d] = %p", i, freq, tmp_buffer[i][freq]);
-                register_producer(tmp_buffer[i][freq], network_dpdk_args->producer_names[i]);
+                if (i == 2 || i == 1)
+                    register_producer(tmp_buffer[i][freq], network_dpdk_args->producer_names[i]);
             }
             network_dpdk_args->num_links_in_group[i] = 1;
             network_dpdk_args->link_id[i] = 0;
         }
         network_dpdk_args->enable_shuffle = 1;
         network_dpdk_args->dump_full_packets = 0;
-        network_dpdk_args->fake_stream_ids = 1;
+        network_dpdk_args->fake_stream_ids = 0;
 
     } else if (_mode == "packet_cap") {
         INFO("DPDK mode: packet_cap");

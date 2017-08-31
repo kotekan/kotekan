@@ -45,6 +45,7 @@ void restServer::register_json_callback(string endpoint, std::function<void(conn
     if (json_callbacks.count(endpoint)) {
         WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
     }
+    INFO("Adding REST endpoint: %s", endpoint.c_str());
     json_callbacks[endpoint] = callback;
 }
 
