@@ -7,11 +7,11 @@ system:
 instrument_name: aro
 
 #shared by power & network_stream
-integration_length: 4096
+integration_length: 8192
 num_freq: 1024
 num_elements: 2
-samples_per_data_set: 65536
-#samples_per_data_set: 32768
+#samples_per_data_set: 65536
+samples_per_data_set: 32768
 buffer_depth: 1
 num_links: 8
 timesamples_per_packet: 2
@@ -31,9 +31,9 @@ replay:
   kotekan_process: nDiskFileRead
   num_disks: 10
   disk_base: /drives/
-  disk_set: A
-  out_buf: vdif_input_buf_0
-  capture: 20170426T110023Z_ARO_raw
+  disk_set: D
+  out_buf: vdif_input_buf
+  capture: 20170804T192150Z_aro_vdif
   sk_step: 16384
   rfi: False
   rfi_sensitivity: 3
@@ -62,8 +62,10 @@ power:
 network_stream:
   kotekan_process: networkPowerStream
   power_in_buf: output_power_buf
-  destination_port: 2054
+  destination_port: 2051
   destination_ip: 127.0.0.1
   destination_protocol: TCP
 
-
+buffer_status:
+  kotekan_process: bufferStatus
+  time_delay: 1000000 #microseconds

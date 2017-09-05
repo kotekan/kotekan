@@ -24,3 +24,7 @@ Buffer* bufferContainer::get_buffer(const string& name) {
     return buffers[name];
 }
 
+map<string, Buffer*> & bufferContainer::get_buffer_map() {
+    return buffers;
+}
+

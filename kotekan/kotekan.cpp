@@ -56,9 +56,8 @@ extern "C" {
 }
 #include "network_dpdk.h"
 #include "packetCapMode.hpp"
-#include "singleDishMode.hpp"
 #endif
-
+#include "singleDishMode.hpp"
 #include "errors.h"
 #include "buffers.h"
 
@@ -99,11 +98,7 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-#ifdef DPDK_VDIF_MODE
-    char  arg4[] = "F";//"FF";
-#else
     char  arg4[] = "F";
-#endif
     char  arg5[] = "-m";
     char  arg6[] = "256";
     char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };
@@ -168,9 +163,6 @@ int start_new_kotekan_mode(Config &config) {
         return -1;
         #endif
     }
-    else if (mode == "single_dish") {
-        kotekan_mode = (kotekanMode *) new singleDishMode(config);
-    }
     else if (mode == "gpu_test") {
         #ifdef WITH_HSA
             kotekan_mode = (kotekanMode *) new gpuTestMode(config);
@@ -186,6 +178,9 @@ int start_new_kotekan_mode(Config &config) {
         #endif
     }
 #endif
+    else if (mode == "single_dish") {
+        kotekan_mode = (kotekanMode *) new singleDishMode(config);
+    }
     else {
         return -1;
     }
