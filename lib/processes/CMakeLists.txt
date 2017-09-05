@@ -21,6 +21,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               vdifStream.cpp
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
+              accumulate.cpp
               bufferStatus.cpp
               )
 

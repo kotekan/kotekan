@@ -31,7 +31,8 @@
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
 #include "constDataCheck.hpp"
-
+#include "accumulate.hpp"
+#include "hexDump.hpp"
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -87,6 +88,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     INFO("Creating process type: %s, at config tree path: %s", name.c_str(), location.c_str());
 
     // ****** processes directory ******
+    if (name == "accumulate") {
+        return (KotekanProcess *) new accumulate(config, location, buffer_container);
+    }
+
     if (name == "beamformingPostProcess") {
         return (KotekanProcess *) new beamformingPostProcess(config, location, buffer_container);
     }
@@ -108,6 +113,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 #endif
     if (name == "fullPacketDump") {
         return (KotekanProcess *) new fullPacketDump(config, location, buffer_container);
+    }
+
+    if (name == "hexDump") {
+        return (KotekanProcess *) new hexDump(config, location, buffer_container);
     }
 
     if (name == "gpuPostProcess") {
@@ -145,6 +154,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "rawFileRead") {
         return (KotekanProcess *) new rawFileRead(config, location, buffer_container);
+    }
+
+    if (name == "rawFileWrite") {
+        return (KotekanProcess *) new rawFileWrite(config, location, buffer_container);
     }
 
     if (name == "vdifStream") {
