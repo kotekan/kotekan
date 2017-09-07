@@ -66,6 +66,7 @@ void pathFinderMode::initalize_processes() {
     int32_t samples_per_data_set = config.get_int("/", "samples_per_data_set");
     int32_t buffer_depth = config.get_int("/", "buffer_depth");
     int32_t num_total_freq = config.get_int("/", "num_total_freq");
+    int32_t num_links = config.get_int("/", "num_links");
 
     #ifdef WITH_HSA
         // Start HSA
@@ -107,7 +108,7 @@ void pathFinderMode::initalize_processes() {
 
     char buffer_name[100];
 
-    create_info_pool(pool[0], 10 * buffer_depth,
+    create_info_pool(pool[0], 10 * buffer_depth * num_links,
                                     num_local_freq,
                                     num_elements);
 
@@ -115,9 +116,14 @@ void pathFinderMode::initalize_processes() {
 
         DEBUG("Creating buffers...");
 
+        int num_links_per_gpu = config.num_links_per_gpu(i);
+        // Old Pathfinder branch issue, TODO does it still exist, and resolve.
+        if (num_gpus > 1)
+            num_links_per_gpu = 4;
+
         snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
         create_buffer(network_input_buffer[i],
-                      buffer_depth,
+                      buffer_depth * num_links_per_gpu,
                       samples_per_data_set * num_elements *
                       num_local_freq * num_data_sets,
                       pool[0],
@@ -126,7 +132,7 @@ void pathFinderMode::initalize_processes() {
 
         snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
         create_buffer(gpu_output_buffer[i],
-                      buffer_depth,
+                      buffer_depth * num_links_per_gpu,
                       output_len * num_data_sets  * sizeof(cl_int),
                       pool[0],
                       buffer_name);
@@ -134,7 +140,7 @@ void pathFinderMode::initalize_processes() {
               
         snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
         create_buffer(gpu_beamform_output_buffer[i],
-                  buffer_depth,
+                  buffer_depth * num_links_per_gpu,
                   samples_per_data_set * num_data_sets * num_local_freq * 2,
                   pool[i],
                   buffer_name);
