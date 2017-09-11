@@ -23,6 +23,7 @@ add_library ( kotekan_opencl
               clProcess.cpp
               gpu_command.cpp
               gpu_command_factory.cpp
+	      rfi_kernel.cpp
               )
 
 #file(GLOB opencl_kernels "${CHIME_SOURCE_DIR}/opencl/kernels/*.cl")

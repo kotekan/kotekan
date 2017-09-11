@@ -34,6 +34,8 @@ config(param_Config)
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
 
+    INFO("LOOKING FOR DEVICE");
+
     // Find a GPU device..
     CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
 
@@ -152,6 +154,14 @@ void device_interface::allocateMemory()
         CHECK_CL_ERROR(err);
     }
 
+    // Setup RFI buffers
+    device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
+    CHECK_MEM(device_rfi_count_buffer);
+    for (int i = 0; i < in_buf->num_buffers; ++i) {
+        device_rfi_count_buffer[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*sizeof(unsigned int), NULL, &err);
+        CHECK_CL_ERROR(err);
+    }
+
     // Setup beamforming output buffers.
     if (enable_beamforming) {
         device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_buffers * sizeof(cl_mem));
@@ -192,7 +202,10 @@ cl_mem device_interface::getOutputBuffer(int param_BufferID)
 {
     return device_output_buffer[param_BufferID];
 }
-
+cl_mem device_interface::getRfiCountBuffer(int param_BufferID)
+{
+    return device_rfi_count_buffer[param_BufferID];
+}
 cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 {
   return device_accumulate_buffer[param_BufferID];
@@ -257,6 +270,12 @@ void device_interface::deallocateResources()
         CHECK_CL_ERROR( clReleaseMemObject(device_output_buffer[i]) );
     }
     free(device_output_buffer);
+
+    for (int i = 0; i < out_buf->num_buffers; ++i) {
+        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
+    }
+    free(device_rfi_count_buffer);
+
 
     if (enable_beamforming) {
 

@@ -52,6 +52,7 @@ public:
     cl_mem getInputBuffer(int param_BufferID);
     cl_mem getOutputBuffer(int param_BufferID);
     cl_mem getAccumulateBuffer(int param_BufferID);
+    cl_mem getRfiCountBuffer(int param_BufferID);
     cl_mem get_device_beamform_output_buffer(int param_BufferID);
     cl_mem get_device_beamform_output_incoh_buffer(int param_BufferID);
     cl_mem get_device_phases(int param_bankID);
@@ -92,6 +93,8 @@ public:
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
     cl_mem * device_beamform_output_incoh_buffer;
+    cl_mem * device_rfi_mean_buffer;
+    cl_mem * device_rfi_count_buffer;
     // <streamID, freq_map>
     std::map<int32_t, cl_mem> device_freq_map;
     cl_mem * device_phases;
