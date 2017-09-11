@@ -19,6 +19,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rawFileWrite.cpp
               vdifStream.cpp
               streamSingleDishVDIF.cpp
+              bufferStatus.cpp
               )
 
 if (${USE_DPDK})

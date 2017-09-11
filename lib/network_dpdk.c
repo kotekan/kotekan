@@ -197,8 +197,10 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
 
 
     //
-    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
-            port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
+    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64 "; num_links_in_group: %d",
+            port, freq, dpdk_net->args->buf[port][freq], 
+            dpdk_net->link_data[port][freq].buffer_id, new_seq,
+            dpdk_net->args->num_links_in_group[port]);
     mark_buffer_full(dpdk_net->args->buf[port][freq],
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][freq].buffer_id);
@@ -916,7 +918,7 @@ int lcore_recv_pkt(void *args)
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-                        INFO("PACKET LOSS!!")
+                        //INFO("PACKET LOSS!!")
                         handle_lost_packets(dpdk_net, port);
                     }
 

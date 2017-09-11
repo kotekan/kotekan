@@ -202,12 +202,13 @@ void clProcess::mem_reconcil_thread()
     int buff_id_limit = cb_data[0]->in_buf->num_buffers;
     std::clock_t    start;
     
-    double end_time_1 = e_time_1();
+    
     
     for(;;) {
         for (int j=0;j<buff_id_limit;j++)
         {
             start = std::clock();
+            double end_time_1 = e_time_1();
  
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
             
