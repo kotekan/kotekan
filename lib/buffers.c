@@ -335,8 +335,8 @@ void wait_for_empty_buffer(struct Buffer* buf, const char * producer_name, const
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
-    if (print_stat == 1)
-        print_buffer_status(buf);
+    //if (print_stat == 1)
+        //print_buffer_status(buf);
 
 }
 

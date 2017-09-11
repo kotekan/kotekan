@@ -16,6 +16,7 @@ public:
     ~bufferContainer();
     void add_buffer(const string &name, Buffer * buf);
     Buffer * get_buffer(const string &name);
+    map<string, Buffer*> & get_buffer_map();
 
 protected:
     map<string, Buffer*> buffers;

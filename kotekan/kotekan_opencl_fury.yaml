@@ -25,7 +25,7 @@ cpu_affinity: [4,5,6,7]
 enable_gating: false
 sk_step: 256
 rfi_sensitivity: 3
-rfi_zero: true
+rfi_zero: false
 
 #dpdk:
 #  kotekan_process: dpdkWrapper

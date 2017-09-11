@@ -201,7 +201,6 @@ void clProcess::mem_reconcil_thread()
     //Based on assumption that buffer_ids are processed in order, so start with [0].]
     int buff_id_limit = cb_data[0]->in_buf->num_buffers;
     std::clock_t    start;
-
     for(;;) {
         for (int j=0;j<buff_id_limit;j++)
         {

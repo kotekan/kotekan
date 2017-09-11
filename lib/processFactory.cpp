@@ -20,6 +20,7 @@
 #include "rawFileWrite.hpp"
 #include "vdifStream.hpp"
 
+#include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
@@ -93,6 +94,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "computeDualpolPower") {
         return (KotekanProcess *) new computeDualpolPower(config, location, buffer_container);
+    }
+    if (name == "bufferStatus") {
+        return (KotekanProcess *) new bufferStatus(config, location, buffer_container);
     }
 #ifdef WITH_DPDK
     if (name == "dpdkWrapper") {
