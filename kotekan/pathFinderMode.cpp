@@ -147,6 +147,10 @@ void pathFinderMode::initalize_processes() {
         buffer_container.add_buffer(buffer_name, gpu_beamform_output_buffer[i]);
     }
     
+//Malloc is used here to create the memory to ensure it is created on the heap. Without mallac, the memory would be on the stack.
+//This process runs and passes its pointers to another process before it terminates. We want the memory to persist beyond
+//the life of this object, which is why memory must go on the heap. Stack memory is only available during the instance lifetime
+//of the object, which is short if the pointers created here are being passed elsewhere.
     struct Buffer * network_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     struct Buffer * gated_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     
