@@ -45,7 +45,13 @@ gen_data:
 gpu:
   commands:
   - name: input_data_stage
-    kernel: '' 
+    kernel: ''
+  - name: offset_accumulator
+    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+  - name: preseed_multifreq
+    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+  - name: pairwise_correlator
+    kernel: "../lib/opencl/kernels/pairwise_correlator.cl" 
   - name: rfi_kernel
     kernel: "../lib/opencl/kernels/rfi_chime.cl"  
   - name: output_data_result
