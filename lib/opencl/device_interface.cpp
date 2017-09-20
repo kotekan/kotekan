@@ -272,7 +272,7 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-    for (int i = 0; i < out_buf->num_buffers; ++i) {
+    for (int i = 0; i < out_buf->num_buffers*num_links_per_gpu; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
     }
     free(device_rfi_count_buffer);
