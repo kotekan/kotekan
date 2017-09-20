@@ -40,7 +40,7 @@ null_0:
 null_1:
   kotekan_process: nullProcess
   in_buf: gpu_input_buffer_1
-null_1:
+null_2:
   kotekan_process: nullProcess
   in_buf: gpu_input_buffer_2
 
@@ -144,4 +144,4 @@ null_1:
 
 buffer_status:
   kotekan_process: bufferStatus
-  time_delay: 1000 #microseconds
+  time_delay: 5000 #microseconds
