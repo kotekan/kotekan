@@ -20,6 +20,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               vdifStream.cpp
               streamSingleDishVDIF.cpp
               bufferStatus.cpp
+	      clProcess.cpp
               )
 
 if (${USE_DPDK})

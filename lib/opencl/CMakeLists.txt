@@ -18,7 +18,6 @@ add_library ( kotekan_opencl
               output_beamform_result.cpp
               output_data_result.cpp
               preseed_kernel.cpp
-              clProcess.cpp
               gpu_command.cpp
               gpu_command_factory.cpp
               )
