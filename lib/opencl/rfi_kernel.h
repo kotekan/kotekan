@@ -21,9 +21,12 @@ private:
     int _rfi_sensitivity;
     bool _rfi_zero;
     int zero;
+    int link_id;
+    int num_links_per_gpu;
     float sqrtM;
     float * Mean_Array;
-    cl_mem mem_Mean_Array;
+    cl_mem * mem_Mean_Array;
+    Config config_local;
 };
 
 #endif // RFI_KERNEL_H

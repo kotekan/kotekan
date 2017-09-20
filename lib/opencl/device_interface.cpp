@@ -15,6 +15,7 @@ config(param_Config)
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
     beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
+    num_links_per_gpu = param_Config.num_links_per_gpu(gpu_id);
 
     // Config variables
     enable_beamforming = config.get_bool(unique_name, "enable_beamforming");
@@ -25,7 +26,7 @@ config(param_Config)
     num_data_sets = config.get_int(unique_name, "num_data_sets");
     num_elements = config.get_int(unique_name, "num_elements");
     num_blocks = config.get_int(unique_name, "num_blocks");
-
+    
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));
@@ -155,11 +156,13 @@ void device_interface::allocateMemory()
     }
 
     // Setup RFI buffers
-    device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
+    device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
     CHECK_MEM(device_rfi_count_buffer);
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
-        device_rfi_count_buffer[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*sizeof(unsigned int), NULL, &err);
-        CHECK_CL_ERROR(err);
+    for (int j = 0; j < num_links_per_gpu; j++){
+	for (int i = 0; i < in_buf->num_buffers; ++i) {
+	    device_rfi_count_buffer[i+j] = clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*sizeof(unsigned int), NULL, &err);
+	    CHECK_CL_ERROR(err);
+	}
     }
 
     // Setup beamforming output buffers.
@@ -202,13 +205,13 @@ cl_mem device_interface::getOutputBuffer(int param_BufferID)
 {
     return device_output_buffer[param_BufferID];
 }
-cl_mem device_interface::getRfiCountBuffer(int param_BufferID)
+cl_mem device_interface::getRfiCountBuffer(int param_BufferID, int link_id)
 {
-    return device_rfi_count_buffer[param_BufferID];
+    return device_rfi_count_buffer[param_BufferID + num_links_per_gpu*link_id];
 }
 cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 {
-  return device_accumulate_buffer[param_BufferID];
+    return device_accumulate_buffer[param_BufferID];
 }
 
 cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)

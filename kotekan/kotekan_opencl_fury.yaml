@@ -93,6 +93,6 @@ null_1:
   kotekan_process: nullProcess
   in_buf: gated_output_buffer
 
-buffer_status:
-  kotekan_process: bufferStatus
-  time_delay: 1000 #microseconds
+#buffer_status:
+#  kotekan_process: bufferStatus
+#  time_delay: 1000 #microseconds

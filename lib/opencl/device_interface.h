@@ -52,7 +52,7 @@ public:
     cl_mem getInputBuffer(int param_BufferID);
     cl_mem getOutputBuffer(int param_BufferID);
     cl_mem getAccumulateBuffer(int param_BufferID);
-    cl_mem getRfiCountBuffer(int param_BufferID);
+    cl_mem getRfiCountBuffer(int param_BufferID, int link_id);
     cl_mem get_device_beamform_output_buffer(int param_BufferID);
     cl_mem get_device_beamform_output_incoh_buffer(int param_BufferID);
     cl_mem get_device_phases(int param_bankID);
@@ -111,6 +111,7 @@ public:
     int32_t num_elements;
     int32_t block_size;
     int32_t num_data_sets;
+    int32_t num_links_per_gpu;
 
 };
 
