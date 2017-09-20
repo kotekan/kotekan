@@ -38,7 +38,7 @@ protected:
     cl_uint current_command_cnt;
 
     int use_beamforming;
-    int use_incoh_beamforming;
+    //int use_incoh_beamforming;
 
     Config &config;
     device_interface &device;

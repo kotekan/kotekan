@@ -30,15 +30,17 @@ clProcess::clProcess(Config& config_,
     register_consumer(get_buffer("network_buffer"), unique_name.c_str());
     out_buf = get_buffer("output_buffer");
     register_producer(get_buffer("output_buffer"), unique_name.c_str());
-    beamforming_out_buf = NULL; //get_buffer("beam_out_buf");
-    beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
+    beamforming_out_buf = get_buffer("beam_out_buf");
+    register_producer(get_buffer("beam_out_buf"), unique_name.c_str());
+    //beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
     
     //device_interface device(in_buf, out_buf, config, gpu_id,
     //                        beamforming_out_buf, beamforming_out_incoh_buf);
     
     //device = new device_interface(config, gpu_id);
-    device = new device_interface(in_buf, out_buf, config, gpu_id,
-                            beamforming_out_buf, beamforming_out_incoh_buf, unique_name);
+    device = new device_interface(in_buf, out_buf, config, gpu_id, beamforming_out_buf, unique_name);
+                             
+                            
     factory = new gpu_command_factory(*device, config, unique_name);
 
     //factory.initializeCommands(device, config);
@@ -117,7 +119,7 @@ void clProcess::main_thread()
         wait_for_empty_buffer(device->getOutBuf(), unique_name.c_str(), bufferID);
 
         if (_use_beamforming) {
-            wait_for_empty_buffer(beamforming_out_buf, unique_name.c_str(), bufferID);
+            wait_for_empty_buffer(device->get_beamforming_out_buf(), unique_name.c_str(), bufferID);
         }
 
         // Todo get/set time information here as well.
@@ -186,6 +188,10 @@ void clProcess::main_thread()
     DEBUG("DeviceDone\n");
 
     mark_producer_done(device->getOutBuf(), 0);
+    if (_use_beamforming == 1)
+    {
+        mark_producer_done(device->get_beamforming_out_buf(), 0);
+    }
 
     delete loopCnt;
     //delete[] cb_data;
