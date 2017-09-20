@@ -5,7 +5,7 @@
 #include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config & param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf, const string &unique_name) :
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, const string &unique_name) :
 config(param_Config)
 {
     cl_int err;
@@ -67,10 +67,10 @@ Buffer* device_interface::get_beamforming_out_buf()
     return beamforming_out_buf;
 }
 
-Buffer* device_interface::get_beamforming_out_incoh_buf()
-{
-    return beamforming_out_incoh_buf;
-}
+//Buffer* device_interface::get_beamforming_out_incoh_buf()
+//{
+//    return beamforming_out_incoh_buf;
+//}
 
 cl_context device_interface::getContext()
 {
@@ -217,10 +217,10 @@ cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
     return device_beamform_output_buffer[param_BufferID];
 }
 
-cl_mem device_interface::get_device_beamform_output_incoh_buffer(int param_BufferID)
-{
-    return device_beamform_output_incoh_buffer[param_BufferID];
-}
+//cl_mem device_interface::get_device_beamform_output_incoh_buffer(int param_BufferID)
+//{
+//    return device_beamform_output_incoh_buffer[param_BufferID];
+//}
 
 cl_mem device_interface::get_device_phases(int param_bankID)
 {
@@ -289,10 +289,10 @@ void device_interface::deallocateResources()
         }
         free(device_beamform_output_buffer);
 
-        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
-            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
-        }
-        free(device_beamform_output_incoh_buffer);
+//        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
+//            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
+//        }
+//        free(device_beamform_output_incoh_buffer);
 
         for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
             CHECK_CL_ERROR( clReleaseMemObject(it->second) );

@@ -17,18 +17,19 @@ beamform_phase_data::~beamform_phase_data()
 {
     free(phases[0]);
     free(phases[1]);
+    free(phases);
 }
 
 void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
 
-    beamforming_do_not_track = config.get_int("/beamforming", "do_not_track");
-    inst_lat = config.get_double("/beamforming", "instrument_lat");
-    inst_long = config.get_double("/beamforming", "instrument_long");
-    fixed_time = config.get_int("/beamforming", "fixed_time");
-    ra = config.get_double("/beamforming", "ra");
-    dec = config.get_double("/beamforming", "dec");
-    feed_positions = config.get_float_array("/beamforming", "element_positions");
+    beamforming_do_not_track = config.get_int(unique_name, "do_not_track");
+    inst_lat = config.get_double(unique_name, "instrument_lat");
+    inst_long = config.get_double(unique_name, "instrument_long");
+    fixed_time = config.get_int(unique_name, "fixed_time");
+    ra = config.get_double(unique_name, "ra");
+    dec = config.get_double(unique_name, "dec");
+    feed_positions = config.get_float_array(unique_name, "element_positions");
 }
 
 void beamform_phase_data::build(class device_interface &param_Device)

@@ -38,7 +38,7 @@ class clProcess : public KotekanProcess {
         struct Buffer *in_buf;
         struct Buffer *out_buf;
         struct Buffer *beamforming_out_buf;
-        struct Buffer *beamforming_out_incoh_buf;
+        //struct Buffer *beamforming_out_incoh_buf;
         
         vector<callBackData *> cb_data;
         std::thread mem_reconcil_thread_handle;

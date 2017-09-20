@@ -29,10 +29,9 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
     for (uint32_t i = 0; i < num_commands; i++){
 
         if (commands[i]["name"] == "beamform_phase_data" && use_beamforming == 1) {
-            //list_commands[i] = new beamform_phase_data("beamform_phase_data", config, unique_name);
             list_commands.push_back(new beamform_phase_data("beamform_phase_data", config, unique_name));
-        } else if (commands[i]["name"] == "beamform_incoherent_kernel" && use_incoh_beamforming == 1) {
-            list_commands.push_back(new beamform_incoherent_kernel(commands[i]["kernel"].get<string>().c_str(), "beamform_incoherent_kernel", config, unique_name));
+        //} else if (commands[i]["name"] == "beamform_incoherent_kernel" && use_incoh_beamforming == 1) {
+            //list_commands.push_back(new beamform_incoherent_kernel(commands[i]["kernel"].get<string>().c_str(), "beamform_incoherent_kernel", config, unique_name));
         } else if (commands[i]["name"] == "beamform_kernel" && use_beamforming == 1) {
             list_commands.push_back(new beamform_kernel(commands[i]["kernel"].get<string>().c_str(), "beamform_kernel", config, unique_name));
         } else if (commands[i]["name"] == "offset_accumulator") {
@@ -43,8 +42,8 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
             list_commands.push_back(new correlator_kernel(commands[i]["kernel"].get<string>().c_str(), "pairwise_correlator", config, unique_name));
         } else if (commands[i]["name"] == "input_data_stage") {
             list_commands.push_back(new input_data_stage("input_data_stage", config, unique_name));
-        } else if (commands[i]["name"] == "output_beamform_incoh_result" && use_incoh_beamforming == 1) {
-            list_commands.push_back(new output_beamform_incoh_result("output_beamform_incoh_result", config, unique_name));
+        //} else if (commands[i]["name"] == "output_beamform_incoh_result" && use_incoh_beamforming == 1) {
+            //list_commands.push_back(new output_beamform_incoh_result("output_beamform_incoh_result", config, unique_name));
         } else if (commands[i]["name"] == "output_beamform_result" && use_beamforming == 1) {
             list_commands.push_back(new output_beamform_result("output_beamform_result", config, unique_name));
         } else if (commands[i]["name"] == "output_data_result") {

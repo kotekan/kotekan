@@ -28,6 +28,7 @@
 #include "gpuSimulate.hpp"
 #include "gpuBeamformSimulate.hpp"
 #include "processFactory.hpp"
+#include "beamformingPostProcess.hpp"
 
 #ifdef WITH_HCC
   #include "hccGPUThread.hpp"
@@ -56,10 +57,12 @@ void pathFinderMode::initalize_processes() {
 
     // Config values:
     // This will be removed in later versions
-    int32_t num_gpus = config.get_int("/gpu", "num_gpus");
+    int32_t num_gpus = config.get_int("/", "num_gpus");
+    //int32_t num_gpus = config.get_int("/gpu", "num_gpus");
     int32_t num_local_freq = config.get_int("/", "num_local_freq");
     int32_t num_elements = config.get_int("/", "num_elements");
-    int32_t block_size = config.get_int("/gpu", "block_size");
+    int32_t block_size = config.get_int("/", "block_size");
+    //int32_t block_size = config.get_int("/gpu", "block_size");
     int32_t num_blocks = (int32_t)(num_elements / block_size) *
                          (num_elements / block_size + 1) / 2.;
     int32_t num_data_sets = config.get_int("/", "num_data_sets");
@@ -138,13 +141,14 @@ void pathFinderMode::initalize_processes() {
                       buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
               
-        snprintf(buffer_name, 100, "gpu_beamform_output_buffer_%d", i);
+        snprintf(buffer_name, 100, "beam_output_buffer_%d", i);
         create_buffer(gpu_beamform_output_buffer[i],
                   buffer_depth * num_links_per_gpu,
                   samples_per_data_set * num_data_sets * num_local_freq * 2,
-                  pool[i],
+                  pool[0],
                   buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_beamform_output_buffer[i]);
+ 
     }
     
 //Malloc is used here to create the memory to ensure it is created on the heap. Without mallac, the memory would be on the stack.
@@ -154,8 +158,12 @@ void pathFinderMode::initalize_processes() {
     struct Buffer * network_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     struct Buffer * gated_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     
+    // Create vdif beamform output buffers.
+    struct Buffer * vdif_output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    
     add_buffer(network_output_buffer);
     add_buffer(gated_output_buffer);
+    add_buffer(vdif_output_buffer);
     
     int num_values = ((num_elements *
         (num_elements + 1)) / 2 ) *
@@ -183,6 +191,13 @@ void pathFinderMode::initalize_processes() {
             pool[0],
             "gated_output_buffer");
     buffer_container.add_buffer("gated_output_buffer", gated_output_buffer);
+    
+    create_buffer(vdif_output_buffer,
+            buffer_depth,
+            625*16*5032,
+            pool[0],
+            "vdif_beam_out");
+    buffer_container.add_buffer("vdif_beam_out", vdif_output_buffer);
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();
