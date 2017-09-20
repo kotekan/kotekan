@@ -14,7 +14,7 @@ config(param_Config)
     out_buf = param_Out_Buf;
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
-    beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
+    //beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
     num_links_per_gpu = param_Config.num_links_per_gpu(gpu_id);
 
     // Config variables

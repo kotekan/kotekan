@@ -92,7 +92,7 @@ public:
     cl_mem * device_accumulate_buffer;
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
-    cl_mem * device_beamform_output_incoh_buffer;
+    //cl_mem * device_beamform_output_incoh_buffer;
     cl_mem * device_rfi_mean_buffer;
     cl_mem * device_rfi_count_buffer;
     // <streamID, freq_map>
