@@ -195,12 +195,10 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                           const int freq,
                           uint64_t new_seq) {
 
-
-    //
-    INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64 "; num_links_in_group: %d",
-            port, freq, dpdk_net->args->buf[port][freq],
-            dpdk_net->link_data[port][freq].buffer_id, new_seq,
-            dpdk_net->args->num_links_in_group[port]);
+    //INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64 "; num_links_in_group: %d",
+    //        port, freq, dpdk_net->args->buf[port][freq],
+    //        dpdk_net->link_data[port][freq].buffer_id, new_seq,
+    //        dpdk_net->args->num_links_in_group[port]);
     mark_buffer_full(dpdk_net->args->buf[port][freq],
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][freq].buffer_id);

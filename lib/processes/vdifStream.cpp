@@ -25,8 +25,8 @@ vdifStream::~vdifStream() {
 }
 
 void vdifStream::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
+    //if (!config.update_needed(fpga_seq))
+    //    return;
 
     _vdif_port = config.get_int(unique_name, "vdif_port");
     _vdif_server_ip = config.get_string(unique_name, "vdif_server_ip");
@@ -79,7 +79,7 @@ void vdifStream::main_thread() {
         for (int i = 0; i < 16*625; ++i) {
 
             int bytes_sent = sendto(socket_fd,
-                             (void *)(buf->data[bufferID[0]][packet_size*i]),
+                             (void *)&(buf->data[bufferID[0]][packet_size*i]),
                              packet_size, 0,
                              (struct sockaddr *) &saddr_remote, saddr_len);
 
@@ -88,7 +88,7 @@ void vdifStream::main_thread() {
             }
 
             if (bytes_sent == -1) {
-                ERROR("Cannot send VDIF packet");
+                ERROR("Cannot send VDIF packet, error: %s", strerror(errno));
                 return;
             }
 

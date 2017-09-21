@@ -95,7 +95,7 @@ void clProcess::main_thread()
         // Wait for data, this call will block.
         bufferID = wait_for_full_buffer(device->getInBuf(), unique_name.c_str(), bufferID);
         double cur_time = e_time_1();
-        INFO("Got full buffer after time: %f", cur_time - last_time );
+        //INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
 
         //INFO("GPU_THREAD: got full buffer ID %d", bufferID);
@@ -217,18 +217,18 @@ void clProcess::mem_reconcil_thread()
             
             while (cb_data[j]->buff_id_lock->clean == 0) {
                 pthread_cond_wait(&cb_data[j]->buff_id_lock->clean_cond, &cb_data[j]->buff_id_lock->lock);
-                INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data[j]->buffer_id);
+                //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data[j]->buffer_id);
             }
 
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
             // your test
-            std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " Mem_recon_thread:BufferID_" << j << "_" << cb_data[j]->buff_id_lock->clean << " iteration:" << cb_data[j]->cnt->iteration << std::endl;
+            //std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " Mem_recon_thread:BufferID_" << j << "_" << cb_data[j]->buff_id_lock->clean << " iteration:" << cb_data[j]->cnt->iteration << std::endl;
             
             //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
             // Copy the information contained in the input buffer
             if (cb_data[j]->use_beamforming == 1)
             {
-                std::cout << "BufferID_" << j << "beamforming" << std::endl;
+                //std::cout << "BufferID_" << j << "beamforming" << std::endl;
                 //WILL BE NEEDED ON PF.
                 copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                     cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
@@ -246,24 +246,24 @@ void clProcess::mem_reconcil_thread()
                 mark_buffer_full(cb_data[j]->beamforming_out_incoh_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
 */
-            std::cout << "BufferID_" << j << "move_info" << std::endl;
+            //std::cout << "BufferID_" << j << "move_info" << std::endl;
                 
             // Copy the information contained in the input buffer
             //WILL BE NEEDED ON PF.
             move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
-            std::cout << "BufferID_" << j << "mark_empty" << std::endl;
+            //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
                 
             // Mark the input buffer as "empty" so that it can be reused.
             mark_buffer_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
-            std::cout << "BufferID_" << j << "mark_full" << std::endl;
+            //std::cout << "BufferID_" << j << "mark_full" << std::endl;
                 
             // Mark the output buffer as full, so it can be processed.
             mark_buffer_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
-            std::cout << "BufferID_" << j << "cleanMe" << std::endl;
+            //std::cout << "BufferID_" << j << "cleanMe" << std::endl;
                 
             for (int i = 0; i < cb_data[j]->numCommands; i++){
                 cb_data[j]->listCommands[i]->cleanMe(cb_data[j]->buffer_id);
@@ -275,7 +275,7 @@ void clProcess::mem_reconcil_thread()
 
             //CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->cnt->cond) );
 
-            std::cout << "BufferID_" << j << "locks (mem, clean)" << std::endl;
+            //std::cout << "BufferID_" << j << "locks (mem, clean)" << std::endl;
                 
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
             cb_data[j]->buff_id_lock->mem_in_use = 0;
@@ -284,7 +284,7 @@ void clProcess::mem_reconcil_thread()
 
             CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->buff_id_lock->mem_cond) );
             double end_time_2 = e_time_1();
-            INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
+            //INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
         }
     }
 }
@@ -305,7 +305,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
     CHECK_ERROR( pthread_mutex_lock(&cur_cb_data->buff_id_lock->lock));
     cur_cb_data->buff_id_lock->clean = 1;
     // your test
-    std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " read_complete:BufferID_" << cur_cb_data->buffer_id << " iteration:" << cur_cb_data->cnt->iteration << std::endl;
+    //std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " read_complete:BufferID_" << cur_cb_data->buffer_id << " iteration:" << cur_cb_data->cnt->iteration << std::endl;
 
     //std::cout << "Time: " << (std::clock()) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " read_complete:BufferID_" << cur_cb_data->buffer_id << std::endl;
     

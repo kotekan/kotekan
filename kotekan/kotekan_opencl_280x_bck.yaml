@@ -124,4 +124,4 @@ null_1:
 
 buffer_status:
   kotekan_process: bufferStatus
-  time_delay: 1000 #microseconds
+  time_delay: 30000 #microseconds
