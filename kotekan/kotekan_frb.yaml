@@ -3,9 +3,9 @@ type: config
 system:
   mode: frb
   log_level: 3
-udp_packet_size: 4544
+udp_packet_size: 8224
 num_links: 4
-timesamples_per_packet: 2
+timesamples_per_packet: 16
 num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
