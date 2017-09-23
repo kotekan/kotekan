@@ -23,11 +23,16 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
     num_commands = commands.size();
     use_beamforming = config.get_bool(unique_name, "enable_beamforming");
     //use_incoh_beamforming = false; //config.get_bool(unique_name, "use_incoh_beamforming");
+    
+    timer perform_time;
 
     //list_commands =  new gpu_command * [num_commands];
 
     for (uint32_t i = 0; i < num_commands; i++){
 
+        int ll = perform_time.start(commands[i]["name"]);
+        int jj = perform_time.start("enqueue");
+        
         if (commands[i]["name"] == "beamform_phase_data" && use_beamforming == 1) {
             list_commands.push_back(new beamform_phase_data("beamform_phase_data", config, unique_name));
         //} else if (commands[i]["name"] == "beamform_incoherent_kernel" && use_incoh_beamforming == 1) {
@@ -52,7 +57,16 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
 
         // TODO This should just be part of the constructor.
         list_commands[i]->build(device);
+        
+        perform_time.stop(ll);
+        perform_time.stop(jj);
     }
+    
+    for (int k=0; k<perform_time.get_num_interval(); k++){
+        perform_time.broadcast(k);
+    }
+    
+    perform_time.broadcast("enqueue");
 
     current_command_cnt = 0;
 }
@@ -112,7 +126,7 @@ gpu_command* gpu_command_factory::getNextCommand()//class device_interface & par
       if (current_command_cnt >= num_commands)
 	current_command_cnt = 0;
 
-  return current_command;
+    return current_command;
 
 }
 void gpu_command_factory::deallocateResources()

@@ -1,9 +1,10 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_opencl )
 
-include_directories( ${OPENCL_INCLUDE_DIRS} )
+include_directories(${OPENCL_INCLUDE_DIRS})
 
 include_directories (${CHIME_SOURCE_DIR}/include)
+
 include_directories (${CHIME_SOURCE_DIR}/lib)
 include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
 
@@ -28,7 +29,7 @@ add_library ( kotekan_opencl
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CHIME_SOURCE_DIR}/opencl/kernels"
+        "${CHIME_SOURCE_DIR}/lib/opencl/kernels"
         "kernels")
 add_dependencies( kotekan_opencl kernel_copy )
 
