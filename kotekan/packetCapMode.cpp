@@ -1,4 +1,4 @@
-#include "buffer.c"
+#include "buffer.h"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
@@ -10,6 +10,7 @@
 #include "fullPacketDump.hpp"
 #include "dpdkWrapper.hpp"
 #include "processFactory.hpp"
+#include "chimeMetadata.h"
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
@@ -60,18 +61,16 @@ void packetCapMode::initalize_processes() {
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
-    struct InfoObjectPool * pool[num_fpga_links];
+    struct metadataPool * pool[num_fpga_links];
     for (int i = 0; i < num_fpga_links; ++i) {
-        pool[i] = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
-        add_info_object_pool(pool[i]);
+        pool[i] = create_metadata_pool(2 * buffer_depth, sizeof(struct chimeMetadata));
+        add_metadata_pool(pool[i]);
     }
 
     INFO("Creating input buffers...");
     char buffer_name[100];
 
     for (int i = 0; i < num_fpga_links; ++i) {
-        create_info_pool(pool[i], 2 * buffer_depth, 0, 0);
-
         snprintf(buffer_name, 100, "network_input_buffer_%d", i);
         create_buffer(network_input_buffer[i],
                       buffer_depth,

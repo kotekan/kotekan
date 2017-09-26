@@ -1,7 +1,7 @@
 #ifndef BUFFER_CONTAINER_H
 #define BUFFER_CONTAINER_H
 
-#include "buffer.c"
+#include "buffer.h"
 
 #include <string>
 #include <map>

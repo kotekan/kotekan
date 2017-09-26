@@ -79,13 +79,13 @@ void beamformingPostProcess::main_thread() {
 
     apply_config(0);
 
-    int in_buffer_ID[_num_fpga_links];
+    int in_buffer_ID[_num_gpus];
+    uint8_t * in_frame[_num_fpga_links];
     int out_buffer_ID = 0;
     int startup = 1;
 
-    int useableBufferIDs[_num_gpus][1];
     for (int i = 0; i < _num_gpus; ++i) {
-        useableBufferIDs[i][0] = 0;
+        in_buffer_ID[i] = 0;
     }
 
     const uint32_t num_samples = _samples_per_data_set * _num_data_sets;
@@ -120,7 +120,7 @@ void beamformingPostProcess::main_thread() {
     uint32_t fpga_seq_num = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
-    wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t * vdif_frame = wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
     for(EVER) {
 
@@ -132,16 +132,9 @@ void beamformingPostProcess::main_thread() {
             int gpu_id = _link_map[i];
 
             // This call is blocking!
-            in_buffer_ID[i] = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), useableBufferIDs[gpu_id][0]);
+            in_frame[i] = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[gpu_id]);
 
-            // Check if the producer has finished, and we should exit.
-            if (in_buffer_ID[i] == -1) {
-                INFO("Closing beamforming_post_process");
-                int ret;
-                pthread_exit((void *) &ret);
-            }
-
-            useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % in_buf[gpu_id]->num_buffers;
+            in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
 
         //INFO("beamforming_post_process; got full set of GPU output buffers");
@@ -155,7 +148,7 @@ void beamformingPostProcess::main_thread() {
             assert(first_seq_number ==
                     (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[i]));
 
-            int stream_id = get_streamID(in_buf[gpu_id], in_buffer_ID[i]);
+            int stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[i]);
             int link_id = stream_id & 0x000F;
             int slot_id = (stream_id & 0x00F0) >> 4;
             thread_ids[i] = link_id + (slot_id << 4);
@@ -171,7 +164,7 @@ void beamformingPostProcess::main_thread() {
             second = (int)(round((double)time.tv_sec / 20.0) * 20.0) - 946728000;
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
-            fill_headers(vdif_buf->data[out_buffer_ID],
+            fill_headers((unsigned char*)vdif_frame,
                          &vdif_header,
                          second,
                          first_seq_number,
@@ -198,12 +191,12 @@ void beamformingPostProcess::main_thread() {
                         mark_frame_full(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
                         // Get a new output buffer
-                        out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_buffers;
-                        wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
+                        out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_frames;
+                        vdif_frame = wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
                         // Fill the headers of the new buffer
                         fpga_seq_num += 625*625;
-                        fill_headers(vdif_buf->data[out_buffer_ID],
+                        fill_headers((unsigned char*)vdif_frame,
                                      &vdif_header,
                                      second,
                                      fpga_seq_num,
@@ -213,7 +206,7 @@ void beamformingPostProcess::main_thread() {
                 }
 
                 for (int thread_id = 0; thread_id < _num_fpga_links; ++thread_id) {
-                    unsigned char * out_buf = vdif_buf->data[out_buffer_ID];
+                    unsigned char * out_buf = (unsigned char*)vdif_frame;
                     uint32_t station_0_index = frame * frame_size * _num_fpga_links * 2
                                                 + thread_id * frame_size * 2
                                                 + in_frame_location * 8 + header_size;
@@ -225,8 +218,7 @@ void beamformingPostProcess::main_thread() {
                     //DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
 
                     for (int freq = 0; freq < _num_local_freq; ++freq) {
-                        int gpu_id = _link_map[thread_id];
-                        unsigned char * in_buf_data = in_buf[gpu_id]->data[in_buffer_ID[thread_id]];
+                        unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
                         // The two polarizations.
                         // Each sample is 4-bit real, 4-bit complex, so byte operations work just fine here.
                         out_buf[station_0_index + freq] = in_buf_data[i*16 + freq*2];
@@ -242,8 +234,6 @@ void beamformingPostProcess::main_thread() {
         // Release the input buffers
         for (int i = 0; i < _num_fpga_links; ++i) {
             int gpu_id = _link_map[i];
-
-            release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
             mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[i]);
         }
     }

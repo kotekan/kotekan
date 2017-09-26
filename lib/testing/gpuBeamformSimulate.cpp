@@ -178,11 +178,8 @@ void gpuBeamformSimulate::main_thread() {
     float freq1 = 450;
 
     for (;;) {
-        wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
-        wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
-
-        unsigned char * input = (unsigned char *)input_buf->data[input_buf_id];
-        float * output = (float *)output_buf->data[output_buf_id];
+        unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
+        float * output = (float *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
@@ -192,7 +189,7 @@ void gpuBeamformSimulate::main_thread() {
 
         // Unpack and pad the input data
         int dest_idx = 0;
-        for (int i = 0; i < input_buf->buffer_size; ++i) {
+        for (int i = 0; i < input_buf->frame_size; ++i) {
             input_unpacked[dest_idx++] = HI_NIBBLE(input[i])-8;
             input_unpacked[dest_idx++] = LO_NIBBLE(input[i])-8;
         }
@@ -224,8 +221,8 @@ void gpuBeamformSimulate::main_thread() {
 
         cpu_beamform_ew(clamping_output, final_output, coff, nbeamsNS, nbeamsEW, npol, _samples_per_data_set);
 
-        for (int i = 0; i < output_buf->buffer_size; i += sizeof(float)) {
-            *((float *)(&output_buf->data[output_buf_id][i])) = (float)final_output[i/sizeof(float)];
+        for (int i = 0; i < output_buf->frame_size; i += sizeof(float)) {
+            *((float *)(&output[i])) = (float)final_output[i/sizeof(float)];
         }
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
@@ -236,8 +233,8 @@ void gpuBeamformSimulate::main_thread() {
         mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);
         mark_frame_full(output_buf, unique_name.c_str(), output_buf_id);
 
-        input_buf_id = (input_buf_id + 1) % input_buf->num_buffers;
-        output_buf_id = (output_buf_id + 1) % output_buf->num_buffers;
+        input_buf_id = (input_buf_id + 1) % input_buf->num_frames;
+        output_buf_id = (output_buf_id + 1) % output_buf->num_frames;
     }
 }
 

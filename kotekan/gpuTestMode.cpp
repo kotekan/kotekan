@@ -1,5 +1,5 @@
 #include "gpuTestMode.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
@@ -71,19 +71,12 @@ void gpuTestMode::initalize_processes() {
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
-    struct InfoObjectPool * pool[1];
-    for (int i = 0; i < 1; ++i) {
-        pool[i] = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
-        add_info_object_pool(pool[i]);
-    }
+    struct metadataPool *pool = create_metadata_pool(10 * buffer_depth, sizeof(struct chimeMetadata));
+    add_metadata_pool(pool);
 
     int32_t output_len = num_local_freq * num_blocks * (block_size*block_size)*2.;
 
     char buffer_name[100];
-
-    create_info_pool(pool[0], 10 * buffer_depth,
-                                    num_local_freq,
-                                    num_elements);
 
     for (int i = 0; i < num_gpus; ++i) {
 
@@ -94,7 +87,7 @@ void gpuTestMode::initalize_processes() {
                       buffer_depth,
                       samples_per_data_set * num_elements *
                       num_local_freq * num_data_sets,
-                      pool[0],
+                      pool,
                       buffer_name);
         buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
 
@@ -102,7 +95,7 @@ void gpuTestMode::initalize_processes() {
         create_buffer(gpu_output_buffer[i],
                       buffer_depth,
                       output_len * num_data_sets * sizeof(int32_t),
-                      pool[0],
+                      pool,
                       buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
 

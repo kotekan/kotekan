@@ -63,13 +63,13 @@ void clProcess::main_thread()
     device.allocateMemory();
     DEBUG("Device Initialized\n");
 
-    callBackData ** cb_data = new callBackData * [device.getInBuf()->num_buffers];
+    callBackData ** cb_data = new callBackData * [device.getInBuf()->num_frames];
     CHECK_MEM(cb_data);
 
-    buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device.getInBuf()->num_buffers];
+    buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device.getInBuf()->num_frames];
     CHECK_MEM(buff_id_lock_list);
 
-    for (int j=0;j<device.getInBuf()->num_buffers;j++)
+    for (int j=0;j<device.getInBuf()->num_frames;j++)
     {
         cb_data[j] = new callBackData(factory.getNumCommands());
         buff_id_lock_list[j] = new buffer_id_lock;
@@ -147,7 +147,7 @@ void clProcess::main_thread()
                                             &read_complete,
                                             cb_data[bufferID]) );
 
-        buffer_list[0] = (buffer_list[0] + 1) % in_buf->num_buffers;
+        buffer_list[0] = (buffer_list[0] + 1) % in_buf->num_frames;
 
     }
 

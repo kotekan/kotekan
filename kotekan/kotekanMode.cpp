@@ -1,5 +1,5 @@
 #include "kotekanMode.hpp"
-#include "buffer.c"
+#include "buffer.h"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
@@ -18,10 +18,10 @@ kotekanMode::~kotekanMode() {
         }
     }
 
-    for (struct InfoObjectPool * info_object : info_pools) {
-        if (info_object != nullptr) {
-            delete_info_object_pool(info_object);
-            free(info_object);
+    for (struct metadataPool * metadata_pool : metadata_pools) {
+        if (metadata_pool != nullptr) {
+            delete_metadata_pool(metadata_pool);
+            free(metadata_pool);
         }
     }
 }
@@ -36,9 +36,9 @@ void kotekanMode::add_process(KotekanProcess* process) {
     processes.push_back(process);
 }
 
-void kotekanMode::add_info_object_pool(InfoObjectPool* info_pool) {
-    assert(info_pool != nullptr);
-    info_pools.push_back(info_pool);
+void kotekanMode::add_metadata_pool(struct metadataPool* metadata_pool) {
+    assert(metadata_pool != nullptr);
+    metadata_pools.push_back(metadata_pool);
 }
 
 void kotekanMode::initalize_processes() {

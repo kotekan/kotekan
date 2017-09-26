@@ -3,6 +3,7 @@
 
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "metadata.h"
 
 #include <vector>
 
@@ -30,12 +31,12 @@ protected:
 
     void add_process(KotekanProcess * process);
     void add_buffer(struct Buffer * buffer);
-    void add_info_object_pool(struct InfoObjectPool * info_pool);
+    void add_metadata_pool(struct metadataPool * metadata_pool);
 
 private:
     vector<KotekanProcess *> processes;
     vector<struct Buffer *> buffers;
-    vector<struct InfoObjectPool *> info_pools;
+    vector<struct metadataPool *> metadata_pools;
 };
 
 

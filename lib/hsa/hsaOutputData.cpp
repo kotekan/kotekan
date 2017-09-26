@@ -25,20 +25,20 @@ void hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
-                                    output_buffer->num_buffers;
+                                    output_buffer->num_frames;
 }
 
 hsa_signal_t hsaOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_buffer->buffer_size);
+    void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_buffer->frame_size);
 
-    void * host_output_ptr = (void *)output_buffer->data[output_buffer_excute_id];
+    void * host_output_ptr = (void *)output_buffer->frames[output_buffer_excute_id];
 
     device.async_copy_gpu_to_host(host_output_ptr,
-            gpu_output_ptr, output_buffer->buffer_size,
+            gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
 
-    output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_buffers;
+    output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];
 }
@@ -48,8 +48,8 @@ void hsaOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     // Copy the information contained in the input buffer
-    move_buffer_info(network_buffer, network_buffer_id,
-                     output_buffer, output_buffer_id);
+    pass_metadata(network_buffer, network_buffer_id,
+                  output_buffer, output_buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
     mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
@@ -58,6 +58,6 @@ void hsaOutputData::finalize_frame(int frame_id) {
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
 
     // Note this will change once we do accumulation in the GPU
-    network_buffer_id = (network_buffer_id + 1) % network_buffer->num_buffers;
-    output_buffer_id = (output_buffer_id + 1) % output_buffer->num_buffers;
+    network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
+    output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
 }

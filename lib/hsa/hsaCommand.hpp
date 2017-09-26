@@ -4,7 +4,8 @@
 #include "Config.hpp"
 #include "errors.h"
 #include "assert.h"
-#include "buffer.c"
+#include "buffer.h"
+#include "chimeMetadata.h"
 #include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
 

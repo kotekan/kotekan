@@ -1,5 +1,5 @@
 #include "vdifReceiverMode.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
@@ -16,6 +16,7 @@
 #include "networkPowerStream.hpp"
 #include "vdif_functions.h"
 #include "streamSingleDishVDIF.hpp"
+#include "chimeMetadata.h"
 
 #include <vector>
 #include <string>
@@ -45,10 +46,8 @@ void vdifReceiverMode::initalize_processes() {
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
-    struct InfoObjectPool *pool;
-    pool = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
-    add_info_object_pool(pool);
-    create_info_pool(pool, 5 * num_disks * buffer_depth, num_total_freq, num_elements);
+    struct metadataPool *pool = create_metadata_pool(5 * num_disks * buffer_depth, sizeof(chimeMetadata));
+    add_metadata_pool(pool);
 
     DEBUG("Creating buffers...");
     // Create buffers.

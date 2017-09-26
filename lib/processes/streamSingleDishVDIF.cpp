@@ -12,7 +12,7 @@
 #include <sys/time.h>
 
 #include "streamSingleDishVDIF.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "errors.h"
 
 streamSingleDishVDIF::streamSingleDishVDIF(Config& config,
@@ -39,7 +39,8 @@ void streamSingleDishVDIF::apply_config(uint64_t fpga_seq) {
 
 void streamSingleDishVDIF::main_thread() {
 
-    int bufferID = 0;
+    int frame_id = 0;
+    uint8_t * frame = NULL;
 
     // Send files over the loop back address;
     // UDP variables
@@ -72,21 +73,19 @@ void streamSingleDishVDIF::main_thread() {
     for(;;) {
 
         // Wait for a full buffer.
-        wait_for_full_frame(buf, unique_name.c_str(), bufferID);
-        //bufferID = get_full_buffer_from_list(buf, &bufferID, 1);
-        //INFO ("streamSingleDishVDIF: got buffer ID: %d", bufferID);
+        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
 
         // Check if the producer has finished, and we should exit.
-        if (bufferID == -1) {
+        if (frame_id == -1) {
             break;
         }
 
         // Send data to remote server.
         // TODO rate limit this output
-        for (int i = 0; i < buf->buffer_size / packet_size; ++i) {
+        for (int i = 0; i < buf->frame_size / packet_size; ++i) {
 
             int bytes_sent = sendto(socket_fd,
-                             (void *)&buf->data[bufferID][packet_size*i],
+                             (void *)&frame[packet_size*i],
                              packet_size, 0,
                              (struct sockaddr *)&saddr_remote, saddr_len);
 
@@ -103,7 +102,7 @@ void streamSingleDishVDIF::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_frame_empty(buf, unique_name.c_str(), bufferID);
-        bufferID = ( bufferID + 1 ) % buf->num_buffers;
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        frame_id = ( frame_id + 1 ) % buf->num_frames;
     }
 }

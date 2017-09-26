@@ -1,7 +1,7 @@
 #ifndef ACCUMULATE_HPP
 #define ACCUMULATE_HPP
 
-#include "buffer.c"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 
 struct rawGPUFrameHeader {

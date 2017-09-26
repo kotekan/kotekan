@@ -2,7 +2,7 @@
 #define VDIF_STREAM
 
 #include "Config.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 
 class vdifStream : public KotekanProcess {

@@ -1,7 +1,7 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "buffer.c"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"

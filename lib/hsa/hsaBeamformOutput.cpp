@@ -25,20 +25,20 @@ void hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
     INFO("Got empty buffer for output %s[%d], for GPU[%d][%d]", output_buffer->buffer_name,
             output_buffer_precondition_id, device.get_gpu_id(), gpu_frame_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
-                                    output_buffer->num_buffers;
+                                    output_buffer->num_frames;
 }
 
 hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    void * gpu_output_ptr = device.get_gpu_memory_array("beamform_output", gpu_frame_id, output_buffer->buffer_size);
+    void * gpu_output_ptr = device.get_gpu_memory_array("beamform_output", gpu_frame_id, output_buffer->frame_size);
 
-    void * host_output_ptr = (void *)output_buffer->data[output_buffer_excute_id];
+    void * host_output_ptr = (void *)output_buffer->frames[output_buffer_excute_id];
 
     device.async_copy_gpu_to_host(host_output_ptr,
-            gpu_output_ptr, output_buffer->buffer_size,
+            gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
 
-    output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_buffers;
+    output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];
 }
@@ -47,5 +47,5 @@ void hsaBeamformOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
-    output_buffer_id = (output_buffer_id + 1) % output_buffer->num_buffers;
+    output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
 }

@@ -1,5 +1,5 @@
 #include "computeDualpolPower.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "errors.h"
 #include "nt_memcpy.h"
 #include "Config.hpp"
@@ -77,8 +77,8 @@ computeDualpolPower::~computeDualpolPower() {
 }
 
 void computeDualpolPower::main_thread() {
-//    in_local = (unsigned char*)malloc(buf_in.buffer_size);
-  //  out_local = (unsigned char*)malloc(buf_out.buffer_size);
+//    in_local = (unsigned char*)malloc(buf_in.frame_size);
+  //  out_local = (unsigned char*)malloc(buf_out.frame_size);
     srand(time(NULL));
 int r = rand();
     int buf_in_id=0;
@@ -89,10 +89,8 @@ int r = rand();
     std::thread this_thread[nthreads];
 
     for (EVER) {
-        buf_in_id = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
-        wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
-        in_local = buf_in->data[buf_in_id];
-        out_local = buf_out->data[buf_out_id];
+        in_local = (unsigned char *) wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        out_local = (unsigned char *) wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
 
     //double start_time = e_time();
 
@@ -112,8 +110,8 @@ int r = rand();
 
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
-        buf_in_id = ( buf_in_id + 1 ) % buf_in->num_buffers;
-        buf_out_id = (buf_out_id + 1) % (buf_out->num_buffers);
+        buf_in_id = ( buf_in_id + 1 ) % buf_in->num_frames;
+        buf_out_id = (buf_out_id + 1) % (buf_out->num_frames);
 
    }
 
@@ -185,11 +183,11 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
                 ymm2 = _mm256_unpacklo_epi16(ymm6, ymm7);
                 ymm3 = _mm256_unpackhi_epi16(ymm6, ymm7);
 
-		int out_index = pol * num_freq + freq * 32;                
+		int out_index = pol * num_freq + freq * 32;
 
                 if (packet != 0) {
-                    
-		    //If RFI is to be removed 
+
+		    //If RFI is to be removed
 		    if(Kurtosis){
 			    //Load integrated power**2
 			    ymm4 = _mm256_loadu_si256((__m256i const *)&sq_temp_buf[out_index + 0*8]);
@@ -215,7 +213,7 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
                     ymm2 = _mm256_add_epi32(ymm2, ymm6);
                     ymm3 = _mm256_add_epi32(ymm3, ymm7);
 
-   
+
                 }
 		else if (Kurtosis){
 		    //Compute power squared if it's the first packet
@@ -240,8 +238,8 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
             }
         }
     }
-    
-  
+
+
 //    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1]);
     if(Kurtosis){
 	for (int i = 0; i < num_freq; ++i) {

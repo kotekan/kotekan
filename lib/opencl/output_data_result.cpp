@@ -24,8 +24,8 @@ cl_event output_data_result::execute(int param_bufferID, const uint64_t& fpga_se
                                             param_Device.getOutputBuffer(param_bufferID),
                                             CL_FALSE,
                                             0,
-                                            param_Device.getOutBuf()->aligned_buffer_size,
-                                            param_Device.getOutBuf()->data[param_bufferID],
+                                            param_Device.getOutBuf()->aligned_frame_size,
+                                            param_Device.getOutBuf()->frames[param_bufferID],
                                             1,
                                             &param_PrecedeEvent,
 					    &postEvent[param_bufferID]) );

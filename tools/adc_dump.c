@@ -13,7 +13,7 @@
 #include <math.h>
 #include <pthread.h>
 
-#include "buffer.c"
+#include "buffer.h"
 #include "file_write.h"
 #include "simple_dna_cap.h"
 #include "errors.h"

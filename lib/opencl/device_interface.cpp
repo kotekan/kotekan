@@ -113,10 +113,10 @@ void device_interface::allocateMemory()
     // TODO create a struct to contain all of these (including events) to make this memory allocation cleaner.
 
     // Setup device input buffers
-    device_input_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
+    device_input_buffer = (cl_mem *) malloc(in_buf->num_frames * sizeof(cl_mem));
     CHECK_MEM(device_input_buffer);
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
-        device_input_buffer[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, in_buf->aligned_buffer_size, NULL, &err);
+    for (int i = 0; i < in_buf->num_frames; ++i) {
+        device_input_buffer[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, in_buf->aligned_frame_size, NULL, &err);
         CHECK_CL_ERROR(err);
     }
 
@@ -137,37 +137,37 @@ void device_interface::allocateMemory()
     memset(accumulate_zeros, 0, aligned_accumulate_len );
 
     // Setup device accumulate buffers.
-    device_accumulate_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem));
+    device_accumulate_buffer = (cl_mem *) malloc(in_buf->num_frames * sizeof(cl_mem));
     CHECK_MEM(device_accumulate_buffer);
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
+    for (int i = 0; i < in_buf->num_frames; ++i) {
         device_accumulate_buffer[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, aligned_accumulate_len, NULL, &err);
         CHECK_CL_ERROR(err);
     }
 
     // Setup device output buffers.
-    device_output_buffer = (cl_mem *) malloc(out_buf->num_buffers * sizeof(cl_mem));
+    device_output_buffer = (cl_mem *) malloc(out_buf->num_frames * sizeof(cl_mem));
     CHECK_MEM(device_output_buffer);
-    for (int i = 0; i < out_buf->num_buffers; ++i) {
-        device_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, out_buf->aligned_buffer_size, NULL, &err);
+    for (int i = 0; i < out_buf->num_frames; ++i) {
+        device_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, out_buf->aligned_frame_size, NULL, &err);
         CHECK_CL_ERROR(err);
     }
 
     // Setup beamforming output buffers.
     if (enable_beamforming) {
-        device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_buffers * sizeof(cl_mem));
+        device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_frames * sizeof(cl_mem));
         CHECK_MEM(device_beamform_output_buffer);
-        for (int i = 0; i < beamforming_out_buf->num_buffers; ++i) {
+        for (int i = 0; i < beamforming_out_buf->num_frames; ++i) {
             device_beamform_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
-                    , beamforming_out_buf->aligned_buffer_size, NULL, &err);
+                    , beamforming_out_buf->aligned_frame_size, NULL, &err);
             CHECK_CL_ERROR(err);
         }
 
         /*
-        device_beamform_output_incoh_buffer = (cl_mem *) malloc(beamforming_out_incoh_buf->num_buffers * sizeof(cl_mem));
+        device_beamform_output_incoh_buffer = (cl_mem *) malloc(beamforming_out_incoh_buf->num_frames * sizeof(cl_mem));
         CHECK_MEM(device_beamform_output_incoh_buffer);
-        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
+        for (int i = 0; i < beamforming_out_incoh_buf->num_frames; ++i) {
             device_beamform_output_incoh_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
-                    , beamforming_out_incoh_buf->aligned_buffer_size, NULL, &err);
+                    , beamforming_out_incoh_buf->aligned_frame_size, NULL, &err);
             CHECK_CL_ERROR(err);
         }*/
 
@@ -243,17 +243,17 @@ void device_interface::deallocateResources()
         CHECK_CL_ERROR( clReleaseCommandQueue(queue[i]) );
     }
 
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
+    for (int i = 0; i < in_buf->num_frames; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(device_input_buffer[i]) );
     }
     free(device_input_buffer);
 
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
+    for (int i = 0; i < in_buf->num_frames; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(device_accumulate_buffer[i]) );
     }
     free(device_accumulate_buffer);
 
-    for (int i = 0; i < out_buf->num_buffers; ++i) {
+    for (int i = 0; i < out_buf->num_frames; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(device_output_buffer[i]) );
     }
     free(device_output_buffer);
@@ -264,12 +264,12 @@ void device_interface::deallocateResources()
             CHECK_CL_ERROR( clReleaseMemObject(device_phases[i]) );
         }
 
-        for (int i = 0; i < beamforming_out_buf->num_buffers; ++i) {
+        for (int i = 0; i < beamforming_out_buf->num_frames; ++i) {
             CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_buffer[i]) );
         }
         free(device_beamform_output_buffer);
 
-        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
+        for (int i = 0; i < beamforming_out_incoh_buf->num_frames; ++i) {
             CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
         }
         free(device_beamform_output_incoh_buffer);

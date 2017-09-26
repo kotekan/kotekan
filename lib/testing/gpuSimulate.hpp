@@ -1,7 +1,7 @@
 #ifndef GPU_SIMULATE_HPP
 #define GPU_SIMULATE_HPP
 
-#include "buffer.c"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 
 class gpuSimulate : public KotekanProcess {

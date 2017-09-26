@@ -1,7 +1,6 @@
 #include "metadata.h"
 #include "buffer.h"
 #include "errors.h"
-#include "error_correction.h"
 
 #include <assert.h>
 
@@ -15,12 +14,12 @@ struct metadataContainer * create_metadata(size_t object_size, struct metadataPo
 
     metadata_container->metadata = malloc(object_size);
     CHECK_MEM(metadata_container->metadata);
-    metadata_container->metadata = object_size;
+    metadata_container->metadata_size = object_size;
 
     metadata_container->ref_count = 0;
     metadata_container->parent_pool = parent_pool;
 
-    CHECK_ERROR( pthread_mutex_init(&metadata_container->metadata_lock) );
+    CHECK_ERROR( pthread_mutex_init(&metadata_container->metadata_lock, NULL) );
 
     return metadata_container;
 }
@@ -28,7 +27,7 @@ struct metadataContainer * create_metadata(size_t object_size, struct metadataPo
 void delete_metadata(struct metadataContainer * container) {
     assert(container->ref_count == 0);
     free(container->metadata);
-    CHECK_ERROR( pthread_mutex_destroy(&metadata_container->metadata_lock) );
+    CHECK_ERROR( pthread_mutex_destroy(&container->metadata_lock) );
 }
 
 void reset_metadata_object(struct metadataContainer * container) {
@@ -56,24 +55,15 @@ void decrement_metadata_ref_count(struct metadataContainer * container) {
     }
 }
 
-inline void lock_metadata(struct metadataContainer * container) {
-    CHECK_ERROR( pthread_mutex_lock(&container->metadata_lock) );
-}
-
-inline void unlock_metadata(struct metadataContainer * container) {
-    CHECK_ERROR( pthread_mutex_unlock(&container->metadata_lock) );
-}
-
-
 // *** Metadata pool section ***
 
-struct metadataPool * create_metadata_pool(struct metadataPool * pool, int num_metadata_objects, size_t object_size) {
+struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t object_size) {
     struct metadataPool * pool;
     pool = malloc(sizeof(struct metadataPool));
     CHECK_MEM(pool);
 
     pool->pool_size = num_metadata_objects;
-    CHECK_ERROR( pthread_mutex_init(&pool->pool_lock) );
+    CHECK_ERROR( pthread_mutex_init(&pool->pool_lock, NULL) );
 
     pool->in_use = malloc(pool->pool_size * sizeof(int));
     CHECK_MEM(pool->in_use);
@@ -105,11 +95,13 @@ struct metadataContainer * request_metadata_object(struct metadataPool * pool) {
 
     // TODO there are better data structures for this.
     for (int i = 0; i < pool->pool_size; ++i) {
-        if (pool->in_use == 0) {
+        if (pool->in_use[i] == 0) {
+            INFO("pool->metadata_objects[i] == %p", pool->metadata_objects[i]);
             container = pool->metadata_objects[i];
             assert(container->ref_count == 0); // Shouldn't give an inuse object (!)
             container->ref_count = 1;
-            pool->in_use = 1;
+            pool->in_use[i] = 1;
+            break;
         }
     }
     CHECK_ERROR( pthread_mutex_unlock(&pool->pool_lock) );

@@ -39,21 +39,18 @@ void gpuSimulate::apply_config(uint64_t fpga_seq) {
 
 void gpuSimulate::main_thread() {
 
-    int input_buf_id = 0;
-    int output_buf_id = 0;
+    int input_frame_id = 0;
+    int output_frame_id = 0;
 
     for (;;) {
-        wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
-        wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
-
-        int * input = (int *)input_buf->data[input_buf_id];
-        int * output = (int *)output_buf->data[output_buf_id];
+        int * input = (int *)wait_for_full_frame(input_buf, unique_name.c_str(), input_frame_id);
+        int * output = (int *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU processing for %s[%d] putting result in %s[%d]",
-                input_buf->buffer_name, input_buf_id,
-                output_buf->buffer_name, output_buf_id);
+                input_buf->buffer_name, input_frame_id,
+                output_buf->buffer_name, output_frame_id);
         for (int b = 0; b < _num_blocks; ++b){
             for (int y = 0; y < 32; ++y){
                 for (int x = 0; x < 32; ++x){
@@ -76,14 +73,14 @@ void gpuSimulate::main_thread() {
         }
 
         INFO("Simulating GPU processing done for %s[%d] result is in %s[%d]",
-                input_buf->buffer_name, input_buf_id,
-                output_buf->buffer_name, output_buf_id);
+                input_buf->buffer_name, input_frame_id,
+                output_buf->buffer_name, output_frame_id);
 
-        move_buffer_info(input_buf, input_buf_id, output_buf, output_buf_id);
-        mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);
-        mark_frame_full(output_buf, unique_name.c_str(), output_buf_id);
+        pass_metadata(input_buf, input_frame_id, output_buf, output_frame_id);
+        mark_frame_empty(input_buf, unique_name.c_str(), input_frame_id);
+        mark_frame_full(output_buf, unique_name.c_str(), output_frame_id);
 
-        input_buf_id = (input_buf_id + 1) % input_buf->num_buffers;
-        output_buf_id = (output_buf_id + 1) % output_buf->num_buffers;
+        input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
+        output_frame_id = (output_frame_id + 1) % output_buf->num_frames;
     }
 }

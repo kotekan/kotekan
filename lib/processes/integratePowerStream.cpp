@@ -36,9 +36,11 @@ void integratePowerStream::apply_config(uint64_t fpga_seq) {
 
 void integratePowerStream::main_thread() {
     int buf_in_id = 0;
+    uint8_t * in_frame = NULL;
     int buf_out_id = 0;
+    uint8_t * out_frame = NULL;
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
-    uint packets_per_buffer = buf_in->buffer_size / packet_length;
+    uint packets_per_buffer = buf_in->frame_size / packet_length;
 
     void *packet_in = malloc(packet_length);
         IntensityPacketHeader *packet_header = (IntensityPacketHeader *)packet_in;
@@ -51,11 +53,11 @@ void integratePowerStream::main_thread() {
 
     IntensityPacketHeader *header_in;
     for (;;) {
-        buf_in_id = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
 
         for (int i = 0; i < packets_per_buffer; i++){
             memcpy(packet_in,
-                    buf_in->data[buf_in_id]+packet_length*i,
+                    in_frame+packet_length*i,
                     packet_length);
             int e = packet_header->elem_idx;
 
@@ -68,16 +70,16 @@ void integratePowerStream::main_thread() {
             if (integrated_samples[e] >= integration_length) {
 //                INFO("Integrated sample! %i", integrated_samples[e]);
                 integrated_samples[e]=0;
-                wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
+                out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
 
-                memcpy(buf_out->data[buf_out_id],(char*)accum_buffer+e*packet_length,packet_length);
+                memcpy(out_frame,(char*)accum_buffer+e*packet_length,packet_length);
 
                 mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
-                buf_out_id = (buf_out_id + 1) % buf_out->num_buffers;
+                buf_out_id = (buf_out_id + 1) % buf_out->num_frames;
                 memset((char*)accum_buffer+e*packet_length,0,packet_length);
             }
         }
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
-        buf_in_id = (buf_in_id + 1) % buf_in->num_buffers;
+        buf_in_id = (buf_in_id + 1) % buf_in->num_frames;
     }
 }

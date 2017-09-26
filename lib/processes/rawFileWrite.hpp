@@ -1,7 +1,7 @@
 #ifndef RAW_FILE_WRITE_H
 #define RAW_FILE_WRITE_H
 
-#include "buffer.c"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
 

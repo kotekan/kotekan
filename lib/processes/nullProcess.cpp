@@ -5,7 +5,7 @@
 #include <functional>
 
 #include "nullProcess.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
 
@@ -26,27 +26,19 @@ void nullProcess::apply_config(uint64_t fpga_seq) {
 
 void nullProcess::main_thread() {
     apply_config(0);
-    int buffer_ID = 0;
+    int frame_id = 0;
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
         INFO("null_process: waiting for buffer");
-        buffer_ID = wait_for_full_frame(buf, unique_name.c_str(), buffer_ID);
-        // Check if the producer has finished, and we should exit.
-        if (buffer_ID == -1) {
-            break;
-        }
+        wait_for_full_frame(buf, unique_name.c_str(), frame_id);
 
-        INFO("null_process: Dropping frame %d", buffer_ID);
+        INFO("null_process: Dropping frame %s[%d]", buf->buffer_name, frame_id);
 
-        //struct ErrorMatrix * error_matrix = get_error_matrix(buf, buffer_ID);
-        //INFO("null_process: Dropping frame %d, lost packets: %d", buffer_ID, error_matrix->bad_timesamples);
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
-        release_info_object(buf, buffer_ID);
-        mark_frame_empty(buf, unique_name.c_str(), buffer_ID);
-
-        buffer_ID = (buffer_ID + 1) % buf->num_buffers;
+        frame_id = (frame_id + 1) % buf->num_frames;
     }
     INFO("Closing null thread");
 }

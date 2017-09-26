@@ -1,7 +1,6 @@
 #include "buffer.h"
 #include "metadata.h"
 #include "errors.h"
-#include "error_correction.h"
 #include "nt_memset.h"
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -17,12 +16,12 @@
 #include <math.h>
 
 
-struct zero_buffer_thread_args {
+struct zero_frames_thread_args {
     struct Buffer * buf;
     int ID;
 };
 
-void *private_zero_buffer(void * args);
+void *private_zero_frames(void * args);
 
 // Returns -1 if there is no consumer with that name
 int  private_get_consumer_id(struct Buffer * buf, const char * name);
@@ -53,11 +52,10 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name)
 {
 
-    assert(num_buf > 0);
+    assert(num_frames > 0);
     assert(pool != NULL);
 
     CHECK_ERROR( pthread_mutex_init(&buf->lock, NULL) );
-    CHECK_ERROR( pthread_mutex_init(&buf->lock_info, NULL) );
 
     CHECK_ERROR( pthread_cond_init(&buf->full_cond, NULL) );
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
@@ -71,18 +69,18 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
 
     // We align the buffer length to a multiple of the system page size.
     // This may result in the memory allocated being larger than the size of the
-    // memory requested.  So buffer_size is the size requested/used, and aligned_buffer_size
+    // memory requested.  So frame_size is the size requested/used, and aligned_frame_size
     // is the actual size of the memory space.
     // To make CPU-GPU transfers more efficient, it is recommended to use the aligned value
     // so that no partial pages are send in the DMA copy.
     // NOTE (17/02/02) This may not be needed any more, changed to make aligned
     // len == requested len.  This should be checked in more detail.
     buf->aligned_frame_size = len;
-    //buf->aligned_buffer_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
+    //buf->aligned_frame_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
 
     // Make sure we don't have a math error,
     // which would make the buffer smaller than it should be.
-    assert(buf->aligned_buffer_size >= buf->buffer_size);
+    assert(buf->aligned_frame_size >= buf->frame_size);
 
     // Create the is_free array
     buf->is_full = malloc(num_frames * sizeof(int));
@@ -96,11 +94,11 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
 
     // Create the array of buffer pointers.
     buf->frames = malloc(num_frames * sizeof(void *));
-    CHECK_MEM(buf->data);
+    CHECK_MEM(buf->frames);
 
     // Create the info array
     buf->metadata = malloc(num_frames*sizeof(void *));
-    CHECK_MEM(buf->info);
+    CHECK_MEM(buf->metadata);
 
     for(int i = 0; i < num_frames; ++i) {
         buf->metadata[i] = NULL;
@@ -131,9 +129,7 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
     }
 
     // By default don't zero buffers at the end of their use.
-    buf->zero_buffer = 0;
-
-    int err = 0;
+    buf->zero_frames = 0;
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
@@ -141,16 +137,16 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
         #ifdef WITH_HSA
 
         // Is this memory aligned?
-
         buf->frames[i] = hsa_host_malloc(buf->aligned_frame_size);
         INFO("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->frames[i], buf->aligned_frame_size);
 
-        memset(buf->data[i], 0x88888888, buf->aligned_frame_size);
+        memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
 
         #else
         // Create a page alligned block of memory for the buffer
+        int err = 0;
         err = posix_memalign((void **) &(buf->frames[i]), PAGESIZE_MEM, buf->aligned_frame_size);
-        CHECK_MEM(buf->data[i]);
+        CHECK_MEM(buf->frames[i]);
         if ( err != 0 ) {
             ERROR("Error creating alligned memory");
             return err;
@@ -178,16 +174,12 @@ void delete_buffer(struct Buffer* buf)
     }
 
     free(buf->frames);
-
     free(buf->is_full);
-
-    free(buf->info);
-
+    free(buf->metadata);
     free(buf->producers_done);
     free(buf->consumers_done);
 
     // Free locks and cond vars
-    CHECK_ERROR( pthread_mutex_destroy(&buf->lock_info) );
     CHECK_ERROR( pthread_mutex_destroy(&buf->lock) );
     CHECK_ERROR( pthread_cond_destroy(&buf->full_cond) );
     CHECK_ERROR( pthread_cond_destroy(&buf->empty_cond) );
@@ -225,18 +217,18 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     }
 }
 
-void *private_zero_buffer(void * args) {
+void *private_zero_frames(void * args) {
 
-    int ID = ((struct zero_buffer_thread_args *)(args))->ID;
-    struct Buffer * buf = ((struct zero_buffer_thread_args *)(args))->buf;
+    int ID = ((struct zero_frames_thread_args *)(args))->ID;
+    struct Buffer * buf = ((struct zero_frames_thread_args *)(args))->buf;
 
     assert (ID >= 0);
     assert (ID <= buf->num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
-    //int div_256 = 256*(buf->buffer_size / 256);
-    //nt_memset((void *)buf->data[ID], 0x00, div_256);
-    //memset((void *)&buf->data[ID][div_256], 0x00, buf->buffer_size - div_256);
+    //int div_256 = 256*(buf->frame_size / 256);
+    //nt_memset((void *)buf->frames[ID], 0x00, div_256);
+    //memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
 
     // HACK: Just zero the first two words of the VDIF header
     for (int i = 0; i < buf->frame_size/1056; ++i) {
@@ -258,9 +250,9 @@ void *private_zero_buffer(void * args) {
     pthread_exit(&ret);
 }
 
-void zero_buffers(struct Buffer * buf) {
+void zero_frames(struct Buffer * buf) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
-    buf->zero_buffer = 1;
+    buf->zero_frames = 1;
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 }
 
@@ -278,9 +270,9 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
         private_mark_consumer_done(buf, consumer_name, ID);
         if (private_consumers_done(buf, ID) == 1) {
 
-            if (buf->zero_buffer == 1) {
+            if (buf->zero_frames == 1) {
                 pthread_t zero_t;
-                struct zero_buffer_thread_args * zero_args = malloc(sizeof(struct zero_buffer_thread_args));
+                struct zero_frames_thread_args * zero_args = malloc(sizeof(struct zero_frames_thread_args));
                 zero_args->ID = ID;
                 zero_args->buf = buf;
 
@@ -289,7 +281,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
                 // TODO: Move this to the config file (when buffers.c updated to C++11)
                 CPU_SET(5, &cpuset);
 
-                CHECK_ERROR( pthread_create(&zero_t, NULL, &private_zero_buffer, (void *)zero_args) );
+                CHECK_ERROR( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
                 CHECK_ERROR( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
                 CHECK_ERROR( pthread_detach(zero_t) );
             } else {
@@ -298,7 +290,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
                 broadcast = 1;
             }
             decrement_metadata_ref_count(buf->metadata[ID]);
-            buf->metadata[ID] == NULL;
+            buf->metadata[ID] = NULL;
         }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
@@ -309,7 +301,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
     }
 }
 
-void wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int ID)
+uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int ID)
 {
     assert (ID >= 0);
     assert (ID < buf->num_frames);
@@ -335,6 +327,7 @@ void wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const 
     if (print_stat == 1)
         print_buffer_status(buf);
 
+    return buf->frames[ID];
 }
 
 void register_consumer(struct Buffer * buf, const char *name) {
@@ -358,7 +351,7 @@ void register_consumer(struct Buffer * buf, const char *name) {
         }
     }
 
-    ERROR("No free slot for consumer, please change buffer.c MAX_CONSUMERS");
+    ERROR("No free slot for consumer, please change buffer.h MAX_CONSUMERS");
     assert(0); // Optional
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
@@ -383,7 +376,7 @@ void register_producer(struct Buffer * buf, const char *name) {
         }
     }
 
-    ERROR("No free slot for producer, please change buffer.c MAX_PRODUCERS");
+    ERROR("No free slot for producer, please change buffer.h MAX_PRODUCERS");
     assert(0); // Optional
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
@@ -486,7 +479,7 @@ int is_frame_empty(struct Buffer* buf, const int ID)
     return empty;
 }
 
-int wait_for_full_frame(struct Buffer* buf, const char * name, const int ID)
+uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int ID)
 {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
@@ -502,7 +495,7 @@ int wait_for_full_frame(struct Buffer* buf, const char * name, const int ID)
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     // TODO Enable -1 return when no producers exist.
-    return ID;
+    return buf->frames[ID];
 }
 
 int get_num_full_frames(struct Buffer* buf)
@@ -571,6 +564,8 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
+    INFO("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+
     if (buf->metadata[ID] == NULL) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);
     }
@@ -584,8 +579,15 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
 void * get_metadata(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
-
     assert(buf->metadata[ID] != NULL);
 
     return buf->metadata[ID]->metadata;
+}
+
+struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID) {
+    assert(ID >= 0);
+    assert(ID < buf->num_frames);
+    assert(buf->metadata[ID] != NULL);
+
+    return buf->metadata[ID];
 }

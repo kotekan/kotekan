@@ -1,5 +1,11 @@
-#ifndef BUFFER_INFO
-#define BUFFER_INFO
+#ifndef METADATA_H
+#define METADATA_H
+
+#include "errors.h"
+#include <errno.h>
+#include <string.h>
+#include <stdio.h>
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,8 +41,13 @@ void increment_metadata_ref_count(struct metadataContainer * container);
 void decrement_metadata_ref_count(struct metadataContainer * container);
 
 // Needed for meta data that can be changed by more than one process.
-inline void lock_metadata(struct metadataContainer * container);
-inline void unlock_metadata(struct metadataContainer * container);
+inline void lock_metadata(struct metadataContainer * container) {
+    CHECK_ERROR( pthread_mutex_lock(&container->metadata_lock) );
+}
+
+inline void unlock_metadata(struct metadataContainer * container) {
+    CHECK_ERROR( pthread_mutex_unlock(&container->metadata_lock) );
+}
 
 // *** Metadata pool section ***
 
@@ -50,7 +61,7 @@ struct metadataPool {
     pthread_mutex_t pool_lock;
 };
 
-struct metadataPool * create_metadata_pool(struct metadataPool * pool, int num_metadata_objects, size_t object_size);
+struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t object_size);
 
 void delete_metadata_pool(struct metadataPool * pool);
 

@@ -1,7 +1,7 @@
 #ifndef PY_PLOT_RESULT_H
 #define PY_PLOT_RESULT_H
 
-#include "buffer.c"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "restServer.hpp"
 #include <string>

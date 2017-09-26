@@ -3,7 +3,7 @@
 
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
-#include "buffer.c"
+#include "buffer.h"
 
 class hccGPUThread : public KotekanProcess {
 public:

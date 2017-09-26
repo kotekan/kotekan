@@ -1,7 +1,7 @@
 #ifndef NETWORK_DPDK
 #define NETWORK_DPDK
 
-#include "buffer.c"
+#include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
 

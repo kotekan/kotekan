@@ -1,5 +1,5 @@
 #include "intensityReceiverMode.hpp"
-#include "buffer.c"
+#include "buffer.h"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
@@ -18,6 +18,7 @@
 #include "streamSingleDishVDIF.hpp"
 #include "networkInputPowerStream.hpp"
 #include "processFactory.hpp"
+#include "chimeMetadata.h"
 
 #include <vector>
 #include <string>
@@ -46,10 +47,8 @@ void intensityReceiverMode::initalize_processes() {
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
-    struct InfoObjectPool *pool;
-    pool = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
-    add_info_object_pool(pool);
-    create_info_pool(pool, 5*buffer_depth, freqs, elems);
+    struct metadataPool *pool = create_metadata_pool(5*buffer_depth, sizeof(struct chimeMetadata));
+    add_metadata_pool(pool);
 
     DEBUG("Creating buffers...");
     // Create buffers.
@@ -72,7 +71,7 @@ void intensityReceiverMode::initalize_processes() {
                   "output_power_buf");
     buffer_container.add_buffer("output_power_buf", output_buffer);
 */
-
+    int buffer_size = sizeof(IntensityPacketHeader) + sizeof(uint)*freqs*elems;
     struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
     add_buffer(output_buffer);
     create_buffer(output_buffer,

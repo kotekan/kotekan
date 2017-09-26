@@ -23,7 +23,6 @@ extern "C" {
 #include <stdlib.h>
 #include <stdint.h>
 
-#include "error_correction.h"
 #include "metadata.h"
 
 struct ProcessInfo {
@@ -43,13 +42,13 @@ struct Buffer {
     pthread_cond_t full_cond;
     pthread_cond_t empty_cond;
 
-    /// The number of buffers kept by this object
+    /// The number of frames kept by this object
     int num_frames;
 
-    /// The size of each buffer.
+    /// The size of each frame.
     int frame_size;
 
-    // Each buffer is padded out to a page aligned size.
+    // Each frame is padded out to a page aligned size.
     int aligned_frame_size;
 
     /// Array of producers which are done (marked frame as full).
@@ -69,7 +68,7 @@ struct Buffer {
     int zero_frames;
 
     /// The array of buffers
-    unsigned char ** frames;
+    uint8_t ** frames;
 
     /// Flag vars to say which frames are full
     /// A 0 at index I means the frame at index I is not full, one means it is full.
@@ -90,10 +89,11 @@ struct Buffer {
  *  @param [out] buf A pointer to a buffer object to be initialized.
  *  @param [in] num_buf The number of buffers to create in the buffer object.
  *  @param [in] len The lenght of each buffer to be created in bytes.
- *  @param [in] pool The BufferInfo object pool, which may be shared between more than one buffer.
+ *  @param [in] pool The metadataPool, which may be shared between more than one buffer.
+ *  @param [in] buffer_name The name of this buffer.
  *  @return 0 if successful, or a non-zero standard error value if not successful
  */
-int create_buffer(struct Buffer * buf, int nun_frames, int len,
+int create_buffer(struct Buffer * buf, int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name);
 
 // Calling this function makes the buffer zero frames after each use.
@@ -123,17 +123,17 @@ void mark_frame_full(struct Buffer * buf, const char * producer_name, const int 
  */
 void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int ID);
 
-/** @brief Blocks until the buffer requested is empty.
+/** @brief Blocks until the frame requested is empty.
  *  This function is thread safe.
  *  @param [in] buf The buffer
  *  @param [in] ID The id of the frame wait for.
  */
-void wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int ID);
+uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int ID);
 
 /** @brief Waits for the buffer frame given by ID to be full.
  *  This function is thread safe.
  */
-int wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int ID);
+uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int ID);
 
 /** @brief Checks if the requested buffer is empty, returns 1
  *  if the buffer is empty, and 0 if the full.  Thread safe.
@@ -159,6 +159,8 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID);
 // Just gets the raw metadata block, which can be cast as needed into
 // the required metadata type.
 void * get_metadata(struct Buffer * buf, int ID);
+
+struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID);
 
 // Must be called before marking the from buffer as empty.
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID);
