@@ -24,7 +24,7 @@ lib/testing/gpuBeamformSimulate.cpp
 lib/testing/gpuBeamformSimulate.hpp
 lib/testing/testDataGen.cpp
 lib/processFactory.cpp
-lib/CMakeLists.txt
+CMakeLists.txt
 kotekan/CMakeLists.txt
 kotekan/kotekan.cpp
 lib/testing/testDataCheck.hpp
@@ -34,5 +34,5 @@ lib/hsa/kernels/Upchannelize.cl
 
 **Notes on potential conflict:
 - Changed testDataCheck from int32 to float in lib/processFactory.cpp
-- Needed to add rocm path in lib/CMakeLists.txt
+- Needed to add rocm path in CMakeLists.txt
 - Needed to add -ldl for DPDK_LIBS in kotekan/CMakeLists.txt
