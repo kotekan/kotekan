@@ -130,13 +130,9 @@ set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 SET(CMAKE_INSTALL_PREFIX "/")
 
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
-<<<<<<< HEAD
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 
-=======
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}  -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
->>>>>>> FRB merge (Third time lucky)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 # Required for some SSE/AVX intrinsics
