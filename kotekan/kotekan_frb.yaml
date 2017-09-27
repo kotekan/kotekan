@@ -82,19 +82,20 @@ gen_data:
   test_data_gen_3:
     kotekan_process: testDataGen
     network_out_buf: gpu_input_buffer_3
-check_data:
-  real: 65536
-  imag: 0
-  const_data_check_0:
-    kotekan_process: constDataCheck
-    buf: beamform_output_buffer_0
-  const_data_check_1:
-    kotekan_process: constDataCheck
-    buf: beamform_output_buffer_1
-  const_data_check_2:
-    kotekan_process: constDataCheck
-    buf: beamform_output_buffer_2
-  const_data_check_3:
-    kotekan_process: constDataCheck
-    buf: beamform_output_buffer_3
 
+null_0:
+  kotekan_process: nullProcess
+  in_buf: beamform_output_buffer_0
+  gpu_id: 0
+null_1:
+  kotekan_process: nullProcess
+  in_buf: beamform_output_buffer_1
+  gpu_id: 1
+null_2:
+  kotekan_process: nullProcess
+  in_buf: beamform_output_buffer_2
+  gpu_id: 2
+null_3:
+  kotekan_process: nullProcess
+  in_buf: beamform_output_buffer_3
+  gpu_id: 3

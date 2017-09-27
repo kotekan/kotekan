@@ -13,6 +13,7 @@
 #include "processFactory.hpp"
 #include "bufferContainer.hpp"
 #include "gpuSimulate.hpp"
+#include "gpuBeamformSimulate.hpp"
 
 #include <vector>
 #include <string>
@@ -57,8 +58,14 @@ void frbMode::initalize_processes() {
         add_buffer(beamform_output_buffer[i]);
     }
 
-    // Create the shared pool of buffer info objects; used for recording information about a
-    // given frame and past between buffers as needed.
+    //CPU simulate output:
+    struct Buffer * cpu_output_buffer[num_gpus];
+    for (int i = 0; i < num_gpus; ++i) {
+      cpu_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
+      add_buffer(cpu_output_buffer[i]);
+    }
+    
+    // Create the shared pool of buffer info objects;
     struct InfoObjectPool * pool[1];
     for (int i = 0; i < 1; ++i) {
         pool[i] = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
@@ -93,7 +100,14 @@ void frbMode::initalize_processes() {
                       pool[0],
                       buffer_name);
         buffer_container.add_buffer(buffer_name, beamform_output_buffer[i]);
-
+	
+	snprintf(buffer_name, 100, "cpu_output_buffer_%d", i);
+	create_buffer(cpu_output_buffer[i],
+		      buffer_depth,
+		      output_len * num_data_sets * sizeof(float),
+		      pool[0],
+		      buffer_name);
+	buffer_container.add_buffer(buffer_name, cpu_output_buffer[i]);
     }
 
     processFactory process_factory(config, buffer_container);

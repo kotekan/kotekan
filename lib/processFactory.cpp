@@ -191,7 +191,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "testDataCheck") {
         // TODO This is a template class, how to set template type?
-        return (KotekanProcess *) new testDataCheck<int32_t>(config, location, buffer_container);
+        return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
     }
 
     if (name == "constDataCheck") {

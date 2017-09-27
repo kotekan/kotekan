@@ -42,7 +42,7 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
     host_coeff = (float *)hsa_host_malloc(coeff_len);
 
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
-        float anglefrac = sin(0.4*angle_iter*PI/180.);   //say 0, 0.4, 0.8 and 1.2 for now.
+        float anglefrac = sin(0.1*angle_iter*PI/180.);   //say 0, 0.1, 0.2, 0.3
         for (int cylinder=0; cylinder < 4; cylinder++) {
             host_coeff[angle_iter*4*2 + cylinder*2] = cos(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
             host_coeff[angle_iter*4*2 + cylinder*2 + 1] = sin(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
@@ -85,6 +85,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     args.output_buffer = device.get_gpu_memory_array("beamform_output", gpu_frame_id, output_frame_len);
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
+
 
     kernelParams params;
     params.workgroup_size_x = 256;
