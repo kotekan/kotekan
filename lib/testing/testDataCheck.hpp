@@ -26,7 +26,6 @@ template <typename A_Type> testDataCheck<A_Type>::testDataCheck(Config& config,
                         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&testDataCheck::main_thread, this)) {
-
     first_buf = get_buffer("first_buf");
     register_consumer(first_buf, unique_name.c_str());
     second_buf = get_buffer("second_buf");
@@ -56,7 +55,7 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
         INFO("testDataCheck: Got the second buffer %s[%d]", second_buf->buffer_name, second_buf_id);
         bool error = false;
         num_errors = 0;
-
+	
         INFO("Checking that the buffers %s[%d] and %s[%d] match, this could take a while...",
                 first_buf->buffer_name, first_buf_id,
                 second_buf->buffer_name, second_buf_id);
@@ -66,20 +65,33 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
 
             A_Type first_value = *((A_Type *)&(first_buf->data[first_buf_id][i*sizeof(A_Type)]));
             A_Type second_value = *((A_Type *)&(second_buf->data[second_buf_id][i*sizeof(A_Type)]));
-            if (first_value != second_value) {
-                if (num_errors++ < 10000)
-                ERROR("%s[%d][%d] != %s[%d][%d]; values: (%f, %f)",
+            //if (first_value != second_value) {
+	    //  if (num_errors++ < 10)
+	    float diff = ((double)first_value - (double)second_value)/(double)first_value*100;
+	    float diff2 = (double)first_value - (double)second_value;
+	    float diff3 = ((double)first_value - (double)second_value)/(double)second_value*100;
+	    if  (((abs(diff) > 0.001) and (abs(diff2) != 0.0)) or (abs(diff3) > 0.001)) {
+	      error = true;
+	      num_errors += 1;
+	    if (num_errors <20 ){
+                INFO("%s[%d][%d] != %s[%d][%d]; values: (%f, %f) diffs (%.1f %.1f %.1f)",
                     first_buf->buffer_name, first_buf_id, i,
                     second_buf->buffer_name, second_buf_id, i,
-                    (double)first_value, (double)second_value);
-                error = true;
-            }
-        }
-
-        if (!error)
+		     (double)first_value, (double)second_value, diff, diff2, diff3);}
+	    }
+	    /*if ((i <20 ) or (i>1638380) or ( (i>409600) and (i<409618) )){
+	      INFO("%s[%d][%d]  %s[%d][%d]; values: (%f, %f) ",
+		   first_buf->buffer_name, first_buf_id, i,
+		   second_buf->buffer_name, second_buf_id, i,
+		   (double)first_value, (double)second_value);}*/
+	}
+	INFO("Number of errors: %d -------------- \n", num_errors);
+        if (!error){
             INFO("The buffers %s[%d] and %s[%d] are equal",
                     first_buf->buffer_name, first_buf_id,
-                    second_buf->buffer_name, second_buf_id);
+		 second_buf->buffer_name, second_buf_id);}
+	else {
+	  INFO("Something is wrong-------------------------");}
 
         mark_buffer_empty(first_buf, unique_name.c_str(), first_buf_id);
         mark_buffer_empty(second_buf, unique_name.c_str(), second_buf_id);

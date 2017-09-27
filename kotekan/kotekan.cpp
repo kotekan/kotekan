@@ -73,6 +73,7 @@ extern "C" {
     #include "chimeShuffleMode.hpp"
     #include "gpuTestMode.hpp"
     #include "singleDishModeGpu.hpp"
+    #include "frbMode.hpp"
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
@@ -166,6 +167,12 @@ int start_new_kotekan_mode(Config &config) {
         #else
         return -1;
         #endif
+    }
+    else if (mode == "single_dish") {
+        kotekan_mode = (kotekanMode *) new singleDishMode(config);
+    }
+    else if (mode == "frb") {
+        kotekan_mode = (kotekanMode *) new frbMode(config);
     }
     else if (mode == "gpu_test") {
         #ifdef WITH_HSA
