@@ -168,9 +168,6 @@ int start_new_kotekan_mode(Config &config) {
         return -1;
         #endif
     }
-    else if (mode == "single_dish") {
-        kotekan_mode = (kotekanMode *) new singleDishMode(config);
-    }
     else if (mode == "frb") {
         kotekan_mode = (kotekanMode *) new frbMode(config);
     }
