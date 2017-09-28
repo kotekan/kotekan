@@ -3,7 +3,7 @@ type: config
 system:
   mode: frb
   log_level: 3
-udp_packet_size: 8224
+udp_packet_size: 4392
 num_links: 4
 timesamples_per_packet: 16
 num_elements: 2048
@@ -15,18 +15,9 @@ downsample_freq: 8
 factor_upchan: 128
 num_data_sets: 1
 buffer_depth: 3
-num_gpu_frames: 1
+num_gpu_frames: 4
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 
-dpdk:
-  kotekan_process: dpdkWrapper
-  mode: shuffle4
-  num_lcores: 4
-  link_map: [0,1,2,3]
-  network_out_buf_0: network_input_buffer_0
-  network_out_buf_1: network_input_buffer_1
-  network_out_buf_2: network_input_buffer_2
-  network_out_buf_3: network_input_buffer_3
 
 gpu:
   commands:
