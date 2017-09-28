@@ -23,9 +23,8 @@
 using std::string;
 using std::vector;
 
+#pragma(1)
 struct time_interval {
-    time_interval();
-    ~time_interval();
     string name;
     clock_t start_time;
     clock_t stop_time;
@@ -35,7 +34,7 @@ class timer {
 public:
     timer();
     //timer(const timer& orig);
-    virtual ~timer();
+    ~timer();
     int start(string interval_name);
     void stop(int interval_id);
     void broadcast(int interval_id);

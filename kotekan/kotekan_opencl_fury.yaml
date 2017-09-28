@@ -17,7 +17,7 @@ block_size: 32
 samples_per_data_set: 32768
 num_data_sets: 1
 buffer_depth: 6
-num_gpu_frames: 64
+num_gpu_frames: 256
 num_links: 8
 link_map: [0,0,0,0,0,0,0,0]
 num_gpus: 1
@@ -96,19 +96,20 @@ gpu_post_process:
     gate_out_buf: gated_output_buffer
     corr_in_buf_0: gpu_output_buffer_0
 
-#chrxUplink:
-#    collection_server_ip: "127.0.0.1"
-#    collection_server_port: 41001
-#    chrx_in_buf: network_output_buffer
-#    gate_in_buf: gated_output_buffer
+chrxUplink:
+    collection_server_ip: "10.10.10.2"
+    collection_server_port: 41016
+    chrx_in_buf: network_output_buffer
+    gate_in_buf: gated_output_buffer
+
 #nullProcess used when disable upload is true and chrxUplink should not be active.
 
-null_0:
-  kotekan_process: nullProcess
-  in_buf: network_output_buffer
-null_1:
-  kotekan_process: nullProcess
-  in_buf: gated_output_buffer
+#null_0:
+#  kotekan_process: nullProcess
+#  in_buf: network_output_buffer
+#null_1:
+#  kotekan_process: nullProcess
+#  in_buf: gated_output_buffer
 
 beamform_post_process:
   kotekan_process: beamformingPostProcess    
@@ -121,6 +122,6 @@ beamform_vdif:
   vdif_port: 10251
   vdif_in_buf: vdif_beam_out  
 
-buffer_status:
-  kotekan_process: bufferStatus
-  time_delay: 1000 #microseconds
+#buffer_status:
+#  kotekan_process: bufferStatus
+#  time_delay: 1000 #microseconds

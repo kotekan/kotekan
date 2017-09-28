@@ -69,6 +69,7 @@ extern "C" {
 #include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
+#include "timer.hpp"
 
 #ifdef WITH_HSA
     #include "chimeShuffleMode.hpp"
@@ -149,6 +150,8 @@ void update_log_levels(Config &config) {
 
 int start_new_kotekan_mode(Config &config) {
 
+    timer dummytimer; //Strange linker error; required to build
+    time_interval dummyinterval; //Strange linker error; required to build
     config.dump_config();
     update_log_levels(config);
 
