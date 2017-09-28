@@ -5,10 +5,10 @@ PROJECT (kotekan)
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 #CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp intensityReceiverMode.cpp)
+SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp intensityReceiverMode.cpp)
 
 if (${USE_DPDK})
-	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
+	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp)
 endif ()
 if (${USE_HCC})
 	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
