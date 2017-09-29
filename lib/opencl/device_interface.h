@@ -93,7 +93,7 @@ public:
     cl_mem * device_output_buffer;
     cl_mem * device_beamform_output_buffer;
     //cl_mem * device_beamform_output_incoh_buffer;
-    cl_mem * device_rfi_count_buffer;
+    vector<cl_mem> device_rfi_count_buffer;
 
     // <streamID, freq_map>
     std::map<int32_t, cl_mem> device_freq_map;
@@ -112,7 +112,8 @@ public:
     int32_t block_size;
     int32_t num_data_sets;
     int32_t num_links_per_gpu;
-
+    int sk_step;
+    int samples_per_data_set;
 };
 
 #endif // DEVICE_INTERFACE_H

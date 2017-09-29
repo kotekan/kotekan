@@ -25,7 +25,8 @@ private:
     int num_links_per_gpu;
     float sqrtM;
     float * Mean_Array;
-    cl_mem * mem_Mean_Array;
+    vector<cl_mem> mem_Mean_Array;
+//    cl_mem mem_Mean_Array;
     Config config_local;
 };
 
