@@ -70,7 +70,7 @@ void rfi_kernel::build(device_interface &param_Device)
 
     for(int i = 0; i < num_links_per_gpu; i++){
         mem_Mean_Array[i] = clCreateBuffer(param_Device.getContext(),
-                                            CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                            CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
                                             _num_elements * _num_local_freq * sizeof(float),
                                             Mean_Array,
                                             &err);

@@ -27,37 +27,39 @@ sk_step: 256
 rfi_sensitivity: 3
 rfi_zero: false
 
-dpdk:
-  kotekan_process: dpdkWrapper
-  mode: no_shuffle
-  num_lcores: 4
-  udp_packet_size: 4800
-  timesamples_per_packet: 2
-  network_out_buf_0: gpu_input_buffer_0
+#dpdk:
+#  kotekan_process: dpdkWrapper
+#  mode: no_shuffle
+#  num_lcores: 4
+#  udp_packet_size: 4800
+#  timesamples_per_packet: 2
+#  network_out_buf_0: gpu_input_buffer_0
   
-#gen_data:
-#  type: const
-#  value: 153
-#  test_data_gen_0:
-#    kotekan_process: testDataGen
-#    network_out_buf: gpu_input_buffer_0
+gen_data:
+  type: const
+  value: 153
+  test_data_gen_0:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_0
 
 gpu:
   commands:
   - name: input_data_stage
     kernel: ''
-  - name: beamform_phase_data
-    kernel: ''
-  - name: offset_accumulator
-    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
-  - name: preseed_multifreq
-    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
-  - name: pairwise_correlator
-    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
-  - name: beamform_kernel
-    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
-  - name: output_beamform_result
-    kernel: ''
+  - name: rfi_kernel
+    kernel: "../lib/opencl/kernels/rfi_chime.cl"
+#  - name: beamform_phase_data
+#    kernel: ''
+#  - name: offset_accumulator
+#    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+#  - name: preseed_multifreq
+#    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+#  - name: pairwise_correlator
+#    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+#  - name: beamform_kernel
+#    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+#  - name: output_beamform_result
+#    kernel: ''
   - name: output_data_result
     kernel: ''
   ts_element_offset: 0
@@ -124,6 +126,6 @@ beamform_vdif:
   vdif_port: 10251
   vdif_in_buf: vdif_beam_out  
 
-buffer_status:
-  kotekan_process: bufferStatus
-  time_delay: 1000 #microseconds
+#buffer_status:
+#  kotekan_process: bufferStatus
+#  time_delay: 1000 #microseconds
