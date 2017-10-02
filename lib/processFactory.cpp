@@ -14,7 +14,6 @@
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
-#include "nullProcess.hpp"
 #include "pyPlotResult.hpp"
 #include "rawFileRead.hpp"
 #include "rawFileWrite.hpp"
@@ -139,11 +138,6 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "networkInputPowerStream") {
         return (KotekanProcess *) new networkInputPowerStream(config, location, buffer_container);
-    }
-
-    // Remove this when buffer consumer/producers are dynamic.
-    if (name == "nullProcess") {
-        return (KotekanProcess *) new nullProcess(config, location, buffer_container);
     }
 
     if (name == "pyPlotResult") {
