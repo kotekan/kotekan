@@ -21,8 +21,10 @@ public:
     void finalize_frame(int frame_id) override;
 
 private:
+    Buffer * network_buffer;
     Buffer * output_buffer;
 
+    int32_t network_buffer_id;
     int32_t output_buffer_id;
 
     int32_t output_buffer_precondition_id;

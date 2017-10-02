@@ -22,7 +22,7 @@
 #include "streamSingleDishVDIF.hpp"
 #include "networkInputPowerStream.hpp"
 #include "integratePowerStream.hpp"
-
+#include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
@@ -32,7 +32,6 @@
 #include "constDataCheck.hpp"
 #include "accumulate.hpp"
 #include "hexDump.hpp"
-
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -102,6 +101,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "computeDualpolPower") {
         return (KotekanProcess *) new computeDualpolPower(config, location, buffer_container);
+    }
+    if (name == "bufferStatus") {
+        return (KotekanProcess *) new bufferStatus(config, location, buffer_container);
     }
 #ifdef WITH_DPDK
     if (name == "dpdkWrapper") {
@@ -183,7 +185,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "testDataCheck") {
         // TODO This is a template class, how to set template type?
-        return (KotekanProcess *) new testDataCheck<int32_t>(config, location, buffer_container);
+        return (KotekanProcess *) new testDataCheck<int>(config, location, buffer_container);
+    }
+    if (name == "testDataCheckFloat") {
+        return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
     }
 
     if (name == "constDataCheck") {

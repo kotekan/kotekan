@@ -45,22 +45,26 @@ void testDataGen::main_thread() {
         gettimeofday(&now, NULL);
         set_first_packet_recv_time(buf, frame_id, now);
 
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(0, 255);
-
-        for (int j = 0; j < buf->frame_size; ++j) {
+        //std::random_device rd;
+        //std::mt19937 gen(rd());
+        //std::uniform_int_distribution<> dis(0, 255);
+        srand(42);
+        unsigned char temp_output;
+        for (int j = 0; j < buf->buffer_size; ++j) {
             if (type == "const") {
                 if (finished_seeding_consant) break;
                 frame[j] = value;
             } else if (type == "random") {
-
-                frame[j] = (unsigned char)dis(gen);
+                unsigned char new_real;
+                unsigned char new_imaginary;
+                new_real = rand()%16;
+                new_imaginary = rand()%16;
+                temp_output = ((new_real<<4) & 0xF0) + (new_imaginary & 0x0F);
+                frame[j] = temp_output;
             }
         }
         usleep(83000);
-
-        INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
+        INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, buf_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
