@@ -8,8 +8,10 @@ hsaBeamformOutputData::hsaBeamformOutputData(const string& kernel_name,
 
     apply_config(0);
 
-    output_buffer = host_buffers.get_buffer("beamform_output_buf");
+    network_buffer = host_buffers.get_buffer("network_buf");
+    output_buffer = host_buffers.get_buffer("output_buf");
 
+    network_buffer_id = 0;
     output_buffer_id = 0;
     output_buffer_excute_id = 0;
     output_buffer_precondition_id = 0;
@@ -30,7 +32,7 @@ void hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    void * gpu_output_ptr = device.get_gpu_memory_array("beamform_output", gpu_frame_id, output_buffer->buffer_size);
+    void * gpu_output_ptr = device.get_gpu_memory_array("frb_output", gpu_frame_id, output_buffer->buffer_size);
 
     void * host_output_ptr = (void *)output_buffer->data[output_buffer_excute_id];
 
@@ -46,6 +48,8 @@ hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fp
 void hsaBeamformOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
+    mark_buffer_empty(network_buffer, unique_name.c_str(), network_buffer_id);
     mark_buffer_full(output_buffer, unique_name.c_str(), output_buffer_id);
+    network_buffer_id = (network_buffer_id + 1) % network_buffer->num_buffers;
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_buffers;
 }
