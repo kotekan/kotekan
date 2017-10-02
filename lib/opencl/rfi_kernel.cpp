@@ -31,7 +31,7 @@ void rfi_kernel::apply_config(const uint64_t& fpga_seq) {
 void rfi_kernel::build(device_interface &param_Device)
 {
     apply_config(0);
-    //INFO("Starting RFI kernel build");
+    INFO("Starting RFI kernel build");
     gpu_command::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
@@ -42,7 +42,7 @@ void rfi_kernel::build(device_interface &param_Device)
     CHECK_CL_ERROR ( clBuildProgram( program, 1, &valDeviceID, cl_options.c_str(), NULL, NULL ) );
     kernel = clCreateKernel( program, "rfi_chime", &err );
     CHECK_CL_ERROR(err);
-    //INFO("RFI Kernel Created")
+    INFO("RFI Kernel Created")
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                    (cl_uint)3,
                                    sizeof(float),
@@ -64,7 +64,7 @@ void rfi_kernel::build(device_interface &param_Device)
                                    &zero) );
     Mean_Array = (float *)malloc(_num_elements*_num_local_freq*sizeof(float)); //Allocate memory
     for (int b = 0; b < (_num_elements*_num_local_freq); b++){
-        Mean_Array[b] = 0; //Initialize with 0's
+        Mean_Array[b] = 2.5; //Initialize with 0's
     }
     for(int i = 0; i < num_links_per_gpu; i++){
         mem_Mean_Array.push_back(clCreateBuffer(param_Device.getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, _num_elements * _num_local_freq * sizeof(float), Mean_Array, &err));
@@ -79,13 +79,14 @@ void rfi_kernel::build(device_interface &param_Device)
     lws[0] = 256;
     lws[1] = 1;
     lws[2] = 1;
+    INFO("ENDING BUILD\n");
 }
 
 cl_event rfi_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
     gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
-    setKernelArg(1, param_Device.getRfiCountBuffer(param_bufferID,link_id));
+    setKernelArg(1, param_Device.getRfiCountBuffer(param_bufferID));
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                     2,
                                     sizeof(cl_mem),

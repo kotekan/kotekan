@@ -70,7 +70,7 @@ void pathFinderMode::initalize_processes() {
     int32_t buffer_depth = config.get_int("/", "buffer_depth");
     int32_t num_total_freq = config.get_int("/", "num_total_freq");
     int32_t num_links = config.get_int("/", "num_links");
-
+    int32_t sk_step = config.get_int("/", "sk_step");
     #ifdef WITH_HSA
         // Start HSA
         kotekan_hsa_start();
@@ -97,6 +97,12 @@ void pathFinderMode::initalize_processes() {
     for (int i = 0; i < num_gpus; ++i) {
         gpu_beamform_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
         add_buffer(gpu_beamform_output_buffer[i]);
+    }
+
+    struct Buffer * gpu_rfi_output_buffer[num_gpus];
+    for (int i = 0; i < num_gpus; ++i) {
+        gpu_rfi_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
+        add_buffer(gpu_rfi_output_buffer[i]);
     }
 
     // Create the shared pool of buffer info objects; used for recording information about a
@@ -148,6 +154,14 @@ void pathFinderMode::initalize_processes() {
                   pool[0],
                   buffer_name);
         buffer_container.add_buffer(buffer_name, gpu_beamform_output_buffer[i]);
+
+	snprintf(buffer_name, 100, "rfi_output_buffer_%d", i);
+        create_buffer(gpu_rfi_output_buffer[i],
+                  buffer_depth * num_links_per_gpu,
+                  num_local_freq*(samples_per_data_set/sk_step)*sizeof(cl_uint),
+                  pool[0],
+                  buffer_name);
+        buffer_container.add_buffer(buffer_name, gpu_rfi_output_buffer[i]);
  
     }
     

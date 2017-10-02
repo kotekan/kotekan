@@ -37,6 +37,7 @@ class clProcess : public KotekanProcess {
     protected:
         struct Buffer *in_buf;
         struct Buffer *out_buf;
+	struct Buffer *rfi_out_buf;
         struct Buffer *beamforming_out_buf;
         //struct Buffer *beamforming_out_incoh_buf;
         

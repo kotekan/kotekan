@@ -21,6 +21,7 @@ add_library ( kotekan_opencl
               gpu_command.cpp
               gpu_command_factory.cpp
               rfi_kernel.cpp
+	      output_rfi.cpp
               )
 
 #file(GLOB opencl_kernels "${CHIME_SOURCE_DIR}/opencl/kernels/*.cl")

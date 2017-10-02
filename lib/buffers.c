@@ -721,7 +721,7 @@ void copy_buffer_info(struct Buffer * from, int from_id, struct Buffer * to, int
 {
     assert(from != NULL);
     assert(to != NULL);
-
+    INFO("BUFFERS: from ID %d to ID %d\n",from_id,to_id);
     CHECK_ERROR( pthread_mutex_lock(&from->lock_info) );
     CHECK_ERROR( pthread_mutex_lock(&to->lock_info) );
 

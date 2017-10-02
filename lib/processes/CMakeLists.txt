@@ -21,6 +21,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               streamSingleDishVDIF.cpp
               bufferStatus.cpp
 	      clProcess.cpp
+	      rfiRecorder.cpp
               )
 
 if (${USE_DPDK})

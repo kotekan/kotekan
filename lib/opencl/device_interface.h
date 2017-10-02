@@ -41,9 +41,10 @@ public:
     device_interface();
     device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf
             , Config& param_Config, int param_GPU_ID
-            , struct Buffer * param_beamforming_out_buf, const string &unique_name);
+            , struct Buffer * param_beamforming_out_buf, struct Buffer * param_Rfi_buf, const string &unique_name);
     Buffer* getInBuf();
     Buffer* getOutBuf();
+    Buffer* getRfiBuf();
     Buffer* get_beamforming_out_buf();
     //Buffer* get_beamforming_out_incoh_buf();
     cl_context getContext();
@@ -52,7 +53,7 @@ public:
     cl_mem getInputBuffer(int param_BufferID);
     cl_mem getOutputBuffer(int param_BufferID);
     cl_mem getAccumulateBuffer(int param_BufferID);
-    cl_mem getRfiCountBuffer(int param_BufferID, int link_id);
+    cl_mem getRfiCountBuffer(int param_BufferID);
     cl_mem get_device_beamform_output_buffer(int param_BufferID);
     //cl_mem get_device_beamform_output_incoh_buffer(int param_BufferID);
     cl_mem get_device_phases(int param_bankID);
@@ -71,6 +72,7 @@ public:
     // Buffer objects
     struct Buffer * in_buf;
     struct Buffer * out_buf;
+    struct Buffer * rfi_buf;
     struct Buffer * beamforming_out_buf;
     //struct Buffer * beamforming_out_incoh_buf;
     // Extra data

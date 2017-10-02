@@ -5,13 +5,14 @@
 #include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config & param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, const string &unique_name) :
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_Rfi_Buf, const string &unique_name) :
 config(param_Config)
 {
     cl_int err;
 
     in_buf = param_In_Buf;
     out_buf = param_Out_Buf;
+    rfi_buf = param_Rfi_Buf;
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
     //beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
@@ -35,7 +36,7 @@ config(param_Config)
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-
+    INFO("MAX_GPUS %d\n",MAX_GPUS);
     // Find a GPU device..
     CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
 
@@ -61,6 +62,11 @@ Buffer* device_interface::getInBuf()
 Buffer* device_interface::getOutBuf()
 {
     return out_buf;
+}
+
+Buffer* device_interface::getRfiBuf()
+{
+    return rfi_buf;
 }
 
 Buffer* device_interface::get_beamforming_out_buf()
@@ -157,11 +163,9 @@ void device_interface::allocateMemory()
     // Setup RFI buffers
     //device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
     //CHECK_MEM(device_rfi_count_buffer);
-    for (int j = 0; j < num_links_per_gpu; j++){
-	for (int i = 0; i < in_buf->num_buffers; ++i) {
-	    device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*samples_per_data_set/sk_step*sizeof(unsigned int), NULL, &err));
-	    CHECK_CL_ERROR(err);
-	}
+    for (int i = 0; i < in_buf->num_buffers; ++i) {
+	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
+	CHECK_CL_ERROR(err);
     }
 
     // Setup beamforming output buffers.
@@ -204,9 +208,9 @@ cl_mem device_interface::getOutputBuffer(int param_BufferID)
 {
     return device_output_buffer[param_BufferID];
 }
-cl_mem device_interface::getRfiCountBuffer(int param_BufferID, int link_id)
+cl_mem device_interface::getRfiCountBuffer(int param_BufferID)
 {
-    return device_rfi_count_buffer[param_BufferID + out_buf->num_buffers*link_id];
+    return device_rfi_count_buffer[param_BufferID];
 }
 cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 {
@@ -273,7 +277,7 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-    for (int i = 0; i < out_buf->num_buffers*num_links_per_gpu; ++i) {
+    for (int i = 0; i < out_buf->num_buffers; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
     }
     //free(device_rfi_count_buffer);

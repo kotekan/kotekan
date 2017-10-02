@@ -28,7 +28,7 @@
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
 #include "constDataCheck.hpp"
-
+#include "rfiRecorder.hpp"
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -171,6 +171,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new testDataGen(config, location, buffer_container);
     }
 
+    if (name == "rfiRecorder") {
+        return (KotekanProcess *) new rfiRecorder(config, location, buffer_container);
+    }
     // OpenCL
     if (name == "clProcess") {
         #ifdef WITH_OPENCL

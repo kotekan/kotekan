@@ -33,14 +33,14 @@ rfi_chime(
 	short gz_size = get_global_size(2); //#Time Sample/SK_STEP
 	short lx_size = get_local_size(0);
 	uint SK_STEP = time_samples/gz_size;
-	//ushort deadChannels[29] = {7,24,29,35,44,51,57,65,67,82,83,93,131,136,146,163,164,188,228,229,230,231,234,240,244,245,246,247,252};
-	//bool deadChannels_flag[256];
-	//for(short l = 0; l < 256; l++){
-	//	deadChannels_flag[l] = 0;	
-	//}
-	//for(short k = 0; k < 29; k++){
-	//	deadChannels_flag[deadChannels[k]] = 1;
-	//}
+	ushort deadChannels[29] = {7,24,29,35,44,51,57,65,67,82,83,93,131,136,146,163,164,188,228,229,230,231,234,240,244,245,246,247,252};
+	bool deadChannels_flag[256];
+	for(short l = 0; l < 256; l++){
+		deadChannels_flag[l] = 0;	
+	}
+	for(short k = 0; k < 29; k++){
+		deadChannels_flag[deadChannels[k]] = 1;
+	}
 
 	__local uint power_across_input[256]; //Local Memory
 	__local uint sq_power_across_input[256];

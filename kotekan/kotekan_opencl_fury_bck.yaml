@@ -23,6 +23,9 @@ link_map: [0,0,0,0,0,0,0,0]
 num_gpus: 1
 cpu_affinity: [4,5,6,7]
 enable_gating: false
+sk_step: 256
+rfi_sensitivity: 3
+rfi_zero: false
 
 dpdk:
   kotekan_process: dpdkWrapper
@@ -62,6 +65,7 @@ gpu:
     gpu_id: 0
     network_buffer: gpu_input_buffer_0
     output_buffer: gpu_output_buffer_0
+    beam_out_buf: beam_output_buffer_0
 
 # Remove from production
 #check_data:
