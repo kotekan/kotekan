@@ -6,7 +6,7 @@
 #include <time.h>
 #include <thread>
 #include "bufferStatus.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
 

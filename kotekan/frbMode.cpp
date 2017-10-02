@@ -1,6 +1,6 @@
 #include "frbMode.hpp"
 
-#include "buffers.h"
+#include "buffer.h"
 #include "hsaProcess.hpp"
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
@@ -64,21 +64,14 @@ void frbMode::initalize_processes() {
       cpu_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
       add_buffer(cpu_output_buffer[i]);
     }
-    
-    // Create the shared pool of buffer info objects;
-    struct InfoObjectPool * pool[1];
-    for (int i = 0; i < 1; ++i) {
-        pool[i] = (struct InfoObjectPool *)malloc(sizeof(struct InfoObjectPool));
-        add_info_object_pool(pool[i]);
-    }
 
     int output_len = (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements;
 
     char buffer_name[100];
 
-    create_info_pool(pool[0], 5 * buffer_depth,
-                                    num_local_freq,
-                                    num_elements);
+    struct metadataPool *pool = create_metadata_pool(5 * buffer_depth,
+                                                     sizeof(struct chimeMetadata));
+    add_metadata_pool(pool);
 
     for (int i = 0; i < num_gpus; ++i) {
 
@@ -89,7 +82,7 @@ void frbMode::initalize_processes() {
                       buffer_depth,
                       samples_per_data_set * num_elements *
                       num_local_freq * num_data_sets,
-                      pool[0],
+                      pool,
                       buffer_name);
         buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
 
@@ -97,15 +90,15 @@ void frbMode::initalize_processes() {
         create_buffer(beamform_output_buffer[i],
                       buffer_depth,
                       output_len * num_data_sets * sizeof(float),
-                      pool[0],
+                      pool,
                       buffer_name);
         buffer_container.add_buffer(buffer_name, beamform_output_buffer[i]);
-	
+
 	snprintf(buffer_name, 100, "cpu_output_buffer_%d", i);
 	create_buffer(cpu_output_buffer[i],
 		      buffer_depth,
 		      output_len * num_data_sets * sizeof(float),
-		      pool[0],
+		      pool,
 		      buffer_name);
 	buffer_container.add_buffer(buffer_name, cpu_output_buffer[i]);
     }

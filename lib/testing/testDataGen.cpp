@@ -50,7 +50,7 @@ void testDataGen::main_thread() {
         //std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
-        for (int j = 0; j < buf->buffer_size; ++j) {
+        for (int j = 0; j < buf->frame_size; ++j) {
             if (type == "const") {
                 if (finished_seeding_consant) break;
                 frame[j] = value;
@@ -64,7 +64,7 @@ void testDataGen::main_thread() {
             }
         }
         usleep(83000);
-        INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, buf_id);
+        INFO("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
