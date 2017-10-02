@@ -69,7 +69,9 @@ void accumulate::main_thread() {
             }
         }
 
-        pass_metadata(in_buf, in_buf_id, out_buf, out_buf_id);
+        // TODO This requires a new meta data object with the summed properties of
+        // all the objects that went into it.
+        //pass_metadata(in_buf, in_buf_id, out_buf, out_buf_id);
 
         mark_frame_empty(in_buf, unique_name.c_str(), in_buf_id);
         in_buf_id = (in_buf_id + 1) % in_buf->num_frames;

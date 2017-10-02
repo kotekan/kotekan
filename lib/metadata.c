@@ -96,7 +96,7 @@ struct metadataContainer * request_metadata_object(struct metadataPool * pool) {
     // TODO there are better data structures for this.
     for (int i = 0; i < pool->pool_size; ++i) {
         if (pool->in_use[i] == 0) {
-            INFO("pool->metadata_objects[i] == %p", pool->metadata_objects[i]);
+            //DEBUG("pool->metadata_objects[%d] == %p", i, pool->metadata_objects[i]);
             container = pool->metadata_objects[i];
             assert(container->ref_count == 0); // Shouldn't give an inuse object (!)
             container->ref_count = 1;
@@ -117,6 +117,7 @@ void return_metadata_to_pool(struct metadataPool * pool, struct metadataContaine
 
     CHECK_ERROR( pthread_mutex_lock(&pool->pool_lock) );
 
+    //DEBUG("Called return_metadata_to_pool");
     for (int i = 0; i < pool->pool_size; ++i) {
         // Pointer check
         if (pool->metadata_objects[i] == info) {
@@ -124,7 +125,7 @@ void return_metadata_to_pool(struct metadataPool * pool, struct metadataContaine
 
             reset_metadata_object(pool->metadata_objects[i]);
             pool->in_use[i] = 0;
-            CHECK_ERROR( pthread_mutex_lock(&pool->pool_lock) );
+            CHECK_ERROR( pthread_mutex_unlock(&pool->pool_lock) );
             return;
         }
     }

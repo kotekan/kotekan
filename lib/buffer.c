@@ -194,6 +194,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     int set_full = 0;
+    int set_empty = 0;
 
     private_mark_producer_done(buf, name, ID);
     if (private_producers_done(buf, ID) == 1) {
@@ -206,6 +207,11 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     if (private_consumers_done(buf, ID) == 1) {
         INFO("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
         buf->is_full[ID] = 0;
+        if (buf->metadata[ID] != NULL) {
+            decrement_metadata_ref_count(buf->metadata[ID]);
+            buf->metadata[ID] = NULL;
+        }
+        set_empty = 1;
         private_reset_consumers(buf, ID);
     }
 
@@ -214,6 +220,11 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     // Signal consumer
     if (set_full == 1) {
         CHECK_ERROR( pthread_cond_broadcast(&buf->full_cond) );
+    }
+
+    // Signal producer
+    if (set_empty == 1) {
+        //CHECK_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
     }
 }
 
@@ -289,8 +300,10 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
                 private_reset_consumers(buf, ID);
                 broadcast = 1;
             }
-            decrement_metadata_ref_count(buf->metadata[ID]);
-            buf->metadata[ID] = NULL;
+            if (buf->metadata[ID] != NULL) {
+                decrement_metadata_ref_count(buf->metadata[ID]);
+                buf->metadata[ID] = NULL;
+            }
         }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
@@ -564,7 +577,7 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
-    INFO("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+    //DEBUG("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
 
     if (buf->metadata[ID] == NULL) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);

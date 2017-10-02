@@ -766,6 +766,7 @@ int lcore_recv_pkt_dump(void *args) {
 
                 //INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
                 uint64_t seq = get_mbuf_seq_num(mbufs[i]);
+                int buffer_id = dpdk_net->link_data[port][0].buffer_id;
 
                 // Align first frame
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
@@ -779,6 +780,7 @@ int lcore_recv_pkt_dump(void *args) {
                         stream_id_t s_stream_id = extract_stream_id(stream_id);
                         INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
                                 port, s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
+                        allocate_new_metadata_object(dpdk_net->args->buf[port][0], buffer_id);
                     } else {
                         goto release_frame;
                     }
@@ -795,7 +797,6 @@ int lcore_recv_pkt_dump(void *args) {
                     lost_frames[port] = 0;
                 }
 
-                int buffer_id = dpdk_net->link_data[port][0].buffer_id;
                 int dump_location = dpdk_net->link_data[port][0].dump_location;
                 int offset = 0;
 
@@ -832,6 +833,7 @@ int lcore_recv_pkt_dump(void *args) {
                     wait_for_empty_frame(dpdk_net->args->buf[port][0],
                                           dpdk_net->args->producer_names[port],
                                           buffer_id);
+                    allocate_new_metadata_object(dpdk_net->args->buf[port][0], buffer_id);
                     dpdk_net->link_data[port][0].dump_location = 0;
                 }
 
