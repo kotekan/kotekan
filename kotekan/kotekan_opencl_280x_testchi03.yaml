@@ -139,7 +139,7 @@ gpu_post_process:
 chrxUplink:
     kotekan_process: chrxUplink
     collection_server_ip: "10.10.10.2"
-    collection_server_port: 41002
+    collection_server_port: 41003
     chrx_in_buf: network_output_buffer
     gate_in_buf: gated_output_buffer
 #nullProcess used when disable upload is true and chrxUplink should not be active.
@@ -175,6 +175,6 @@ beamform_vdif:
   vdif_port: 10251
   vdif_in_buf: vdif_beam_out  
 
-#buffer_status:
-#  kotekan_process: bufferStatus
-#  time_delay: 5000 #microseconds
+buffer_status:
+  kotekan_process: bufferStatus
+  time_delay: 5000 #microseconds

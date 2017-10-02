@@ -97,6 +97,7 @@ gpu_post_process:
     corr_in_buf_0: gpu_output_buffer_0
 
 chrxUplink:
+    kotekan_process: chrxUplink
     collection_server_ip: "10.10.10.2"
     collection_server_port: 41016
     chrx_in_buf: network_output_buffer
@@ -118,7 +119,7 @@ beamform_post_process:
 
 beamform_vdif:
   kotekan_process: vdifStream
-  vdif_server_ip: "10.1.1.18"
+  vdif_server_ip: 10.11.1.200
   vdif_port: 10251
   vdif_in_buf: vdif_beam_out  
 
