@@ -28,6 +28,7 @@ public:
 
 protected:
     Config &config;
+    bufferContainer buffer_container;
 
     void add_process(KotekanProcess * process);
     void add_buffer(struct Buffer * buffer);
@@ -35,7 +36,6 @@ protected:
 
 private:
     vector<KotekanProcess *> processes;
-    vector<struct Buffer *> buffers;
     vector<struct metadataPool *> metadata_pools;
 };
 

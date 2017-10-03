@@ -86,14 +86,13 @@ struct Buffer {
 
 /** @brief Creates a buffer object.
  *  Not thread safe.
- *  @param [out] buf A pointer to a buffer object to be initialized.
  *  @param [in] num_buf The number of buffers to create in the buffer object.
  *  @param [in] len The lenght of each buffer to be created in bytes.
  *  @param [in] pool The metadataPool, which may be shared between more than one buffer.
  *  @param [in] buffer_name The name of this buffer.
- *  @return 0 if successful, or a non-zero standard error value if not successful
+ *  @return A buffer object.
  */
-int create_buffer(struct Buffer * buf, int num_frames, int len,
+struct Buffer * create_buffer(int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name);
 
 // Calling this function makes the buffer zero frames after each use.

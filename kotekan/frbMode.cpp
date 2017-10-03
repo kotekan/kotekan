@@ -42,28 +42,14 @@ void frbMode::initalize_processes() {
     // Start HSA
     kotekan_hsa_start();
 
-    bufferContainer buffer_container;
-
     // Create buffers.
     struct Buffer * network_input_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        network_input_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(network_input_buffer[i]);
-    }
 
     // Create gpu output buffers.
     struct Buffer * beamform_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        beamform_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(beamform_output_buffer[i]);
-    }
 
-    //CPU simulate output:
+    // CPU simulate output:
     struct Buffer * cpu_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-      cpu_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-      add_buffer(cpu_output_buffer[i]);
-    }
 
     int output_len = (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements;
 
@@ -78,29 +64,29 @@ void frbMode::initalize_processes() {
         DEBUG("Creating buffers...");
 
         snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
-        create_buffer(network_input_buffer[i],
-                      buffer_depth,
-                      samples_per_data_set * num_elements *
-                      num_local_freq * num_data_sets,
-                      pool,
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
+        network_input_buffer[i] = create_buffer(
+                                        buffer_depth,
+                                        samples_per_data_set * num_elements *
+                                        num_local_freq * num_data_sets,
+                                        pool,
+                                        buffer_name);
+        add_buffer(network_input_buffer[i]);
 
         snprintf(buffer_name, 100, "beamform_output_buffer_%d", i);
-        create_buffer(beamform_output_buffer[i],
-                      buffer_depth,
-                      output_len * num_data_sets * sizeof(float),
-                      pool,
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, beamform_output_buffer[i]);
+        beamform_output_buffer[i] = create_buffer(
+                                        buffer_depth,
+                                        output_len * num_data_sets * sizeof(float),
+                                        pool,
+                                        buffer_name);
+        add_buffer(beamform_output_buffer[i]);
 
-	snprintf(buffer_name, 100, "cpu_output_buffer_%d", i);
-	create_buffer(cpu_output_buffer[i],
-		      buffer_depth,
-		      output_len * num_data_sets * sizeof(float),
-		      pool,
-		      buffer_name);
-	buffer_container.add_buffer(buffer_name, cpu_output_buffer[i]);
+        snprintf(buffer_name, 100, "cpu_output_buffer_%d", i);
+        cpu_output_buffer[i] = create_buffer(
+                                        buffer_depth,
+                                        output_len * num_data_sets * sizeof(float),
+                                        pool,
+                                        buffer_name);
+        add_buffer(cpu_output_buffer[i]);
     }
 
     processFactory process_factory(config, buffer_container);

@@ -5,7 +5,6 @@
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
-#include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
 #include "util.h"
@@ -44,26 +43,14 @@ void chimeShuffleMode::initalize_processes() {
 
     bufferContainer buffer_container;
 
-    // Create buffers.
+    // Input (packet) buffers.
     struct Buffer * network_input_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        network_input_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(network_input_buffer[i]);
-    }
 
-    // Create gpu output buffers.
+    // GPU output buffers.
     struct Buffer * gpu_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        gpu_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(gpu_output_buffer[i]);
-    }
 
-    // Create file output buffers.
+    // File output buffers.
     struct Buffer * file_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        file_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(file_output_buffer[i]);
-    }
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -79,30 +66,30 @@ void chimeShuffleMode::initalize_processes() {
         DEBUG("Creating buffers...");
 
         snprintf(buffer_name, 100, "gpu_input_buffer_%d", i);
-        create_buffer(network_input_buffer[i],
-                      buffer_depth,
-                      samples_per_data_set * num_elements *
-                      num_local_freq * num_data_sets,
-                      pool,
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
+        network_input_buffer[i] = create_buffer(
+                                    buffer_depth,
+                                    samples_per_data_set * num_elements *
+                                    num_local_freq * num_data_sets,
+                                    pool,
+                                    buffer_name);
+        add_buffer(network_input_buffer[i]);
 
         snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
-        create_buffer(gpu_output_buffer[i],
-                      buffer_depth,
-                      output_len * num_data_sets * sizeof(int32_t),
-                      pool,
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
+        gpu_output_buffer[i] = create_buffer(
+                                    buffer_depth,
+                                    output_len * num_data_sets * sizeof(int32_t),
+                                    pool,
+                                    buffer_name);
+        add_buffer(gpu_output_buffer[i]);
 
         snprintf(buffer_name, 100, "file_output_buffer_%d", i);
-        create_buffer(file_output_buffer[i],
-                      buffer_depth,
-                      output_len * num_data_sets * sizeof(int32_t) +
-                      sizeof(struct rawGPUFrameHeader),
-                      pool,
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, file_output_buffer[i]);
+        file_output_buffer[i] = create_buffer(
+                                    buffer_depth,
+                                    output_len * num_data_sets * sizeof(int32_t) +
+                                    sizeof(struct rawGPUFrameHeader),
+                                    pool,
+                                    buffer_name);
+        add_buffer(file_output_buffer[i]);
 
     }
 

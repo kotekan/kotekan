@@ -5,7 +5,6 @@
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
-#include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
 #include "util.h"
@@ -57,17 +56,9 @@ void singleDishModeGpu::initalize_processes() {
 
     // Create buffers.
     struct Buffer * network_input_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        network_input_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(network_input_buffer[i]);
-    }
 
     // Create gpu output buffers.
     struct Buffer * gpu_output_buffer[num_gpus];
-    for (int i = 0; i < num_gpus; ++i) {
-        gpu_output_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(gpu_output_buffer[i]);
-    }
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -81,30 +72,28 @@ void singleDishModeGpu::initalize_processes() {
        	    DEBUG("Creating buffers...");
 
 	    snprintf(buffer_name, 100, "vdif_input_buf_%d", i);
-	    create_buffer(network_input_buffer[i],
-		              buffer_depth * num_disks,
-		              timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
-		              pool,
-		              buffer_name);
-	    buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
+	    network_input_buffer[i] = create_buffer(
+                                    buffer_depth * num_disks,
+                                    timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
+                                    pool,
+                                    buffer_name);
+	    add_buffer(network_input_buffer[i]);
 
 	    snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
-	    create_buffer(gpu_output_buffer[i],
-		              buffer_depth * num_disks,
-		              timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
-		              pool,
-		              buffer_name);
-	    buffer_container.add_buffer(buffer_name, gpu_output_buffer[i]);
+	    gpu_output_buffer[i] = create_buffer(
+                                    buffer_depth * num_disks,
+                                    timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
+                                    pool,
+                                    buffer_name);
+	    add_buffer(gpu_output_buffer[i]);
     }
 
-    struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    struct Buffer *output_buffer = create_buffer(
+                                        buffer_depth,
+                                        timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
+                                        pool,
+                                        "output_power_buf");
     add_buffer(output_buffer);
-    create_buffer(output_buffer,
-                  buffer_depth,
-                  timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
-                  pool,
-                  "output_power_buf");
-    buffer_container.add_buffer("output_power_buf", output_buffer);
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();

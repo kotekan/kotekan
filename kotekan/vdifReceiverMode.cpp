@@ -3,7 +3,6 @@
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
-#include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "util.h"
 #include "testDataCheck.hpp"
@@ -52,14 +51,12 @@ void vdifReceiverMode::initalize_processes() {
     DEBUG("Creating buffers...");
     // Create buffers.
 
-    struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    struct Buffer *output_buffer = create_buffer(output_buffer,
+                                        buffer_depth,
+                                        timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
+                                        pool,
+                                        "output_power_buf");
     add_buffer(output_buffer);
-    create_buffer(output_buffer,
-                  buffer_depth,
-                  timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
-                  pool,
-                  "output_power_buf");
-    buffer_container.add_buffer("vdif_input_buf", vdif_input_buffer);
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();

@@ -48,12 +48,15 @@ void private_reset_producers(struct Buffer * buf, const int ID);
 void private_reset_consumers(struct Buffer * buf, const int ID);
 
 
-int create_buffer(struct Buffer* buf, int num_frames, int len,
+struct Buffer* create_buffer(int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name)
 {
 
     assert(num_frames > 0);
     assert(pool != NULL);
+
+    struct Buffer * buf = malloc(sizeof(struct Buffer));
+    CHECK_MEM(buf);
 
     CHECK_ERROR( pthread_mutex_init(&buf->lock, NULL) );
 
@@ -87,7 +90,7 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
 
     if ( buf->is_full == NULL ) {
         ERROR("Error creating is_full array");
-        return errno;
+        return NULL;
     }
 
     memset(buf->is_full, 0, num_frames*sizeof(int));
@@ -162,7 +165,7 @@ int create_buffer(struct Buffer* buf, int num_frames, int len,
         #endif
     }
 
-    return 0;
+    return buf;
 }
 
 void delete_buffer(struct Buffer* buf)
@@ -553,9 +556,13 @@ void print_buffer_status(struct Buffer* buf)
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
 
+    if (from_buf->metadata[from_ID] == NULL) {
+        WARN("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name, ID);
+        return;
+    }
+
     struct metadataContainer * metadata_container = NULL;
 
-    assert(from_buf->metadata[from_ID] != NULL);
     metadata_container = from_buf->metadata[from_ID];
 
     CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );

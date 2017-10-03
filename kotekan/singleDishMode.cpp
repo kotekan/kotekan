@@ -3,7 +3,6 @@
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
-#include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
 #include "util.h"
@@ -68,23 +67,19 @@ void singleDishMode::initalize_processes() {
     DEBUG("Creating buffers...");
     // Create buffers.
 
-    struct Buffer *vdif_input_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    struct Buffer *vdif_input_buffer = create_buffer(
+                                            buffer_depth * num_disks,
+                                            timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
+                                            pool,
+                                            "vdif_input_buf");
     add_buffer(vdif_input_buffer);
-    create_buffer(vdif_input_buffer,
-                  buffer_depth * num_disks,
-                  timesteps_in * num_elements * (num_total_freq + sizeof(VDIFHeader)),
-                  pool,
-                  "vdif_input_buf");
-    buffer_container.add_buffer("vdif_input_buf", vdif_input_buffer);
 
-    struct Buffer *output_buffer = (struct Buffer *)malloc(sizeof(struct Buffer));
+    struct Buffer *output_buffer = create_buffer(
+                                        buffer_depth,
+                                        timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
+                                        pool,
+                                        "output_power_buf");
     add_buffer(output_buffer);
-    create_buffer(output_buffer,
-                  buffer_depth,
-                  timesteps_out * (num_total_freq + 1) * num_elements * sizeof(float),
-                  pool,
-                  "output_power_buf");
-    buffer_container.add_buffer("output_power_buf", output_buffer);
 
     processFactory process_factory(config, buffer_container);
     vector<KotekanProcess *> processes = process_factory.build_processes();

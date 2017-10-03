@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <functional>
 
-#include "nullProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"

@@ -2,7 +2,6 @@
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
-#include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
 #include "util.h"
@@ -27,11 +26,9 @@ using std::string;
 using std::vector;
 
 packetCapMode::packetCapMode(Config& config) : kotekanMode(config) {
-
 }
 
 packetCapMode::~packetCapMode() {
-
 }
 
 void packetCapMode::initalize_processes() {
@@ -48,16 +45,10 @@ void packetCapMode::initalize_processes() {
     int32_t buffer_depth = config.get_int("/", "buffer_depth");
     int32_t num_fpga_links = config.get_int("/", "num_links");
 
-
     bufferContainer buffer_container;
 
     // Create buffers.
     struct Buffer * network_input_buffer[num_fpga_links];
-    for (int i = 0; i < num_fpga_links; ++i) {
-        network_input_buffer[i] = (struct Buffer *)malloc(sizeof(struct Buffer));
-        add_buffer(network_input_buffer[i]);
-
-    }
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
@@ -72,12 +63,11 @@ void packetCapMode::initalize_processes() {
 
     for (int i = 0; i < num_fpga_links; ++i) {
         snprintf(buffer_name, 100, "network_input_buffer_%d", i);
-        create_buffer(network_input_buffer[i],
-                      buffer_depth,
-                      fpga_packet_lenght * samples_per_data_set,
-                      pool[i],
-                      buffer_name);
-        buffer_container.add_buffer(buffer_name, network_input_buffer[i]);
+        network_input_buffer[i] = create_buffer(buffer_depth,
+                                                fpga_packet_lenght * samples_per_data_set,
+                                                pool[i],
+                                                buffer_name);
+        add_buffer(network_input_buffer[i]);
     }
 
     processFactory process_factory(config, buffer_container);

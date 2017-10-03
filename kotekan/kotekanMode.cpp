@@ -11,7 +11,7 @@ kotekanMode::~kotekanMode() {
         if (process != nullptr)
             delete process;
 
-    for (struct Buffer * buf : buffers) {
+    for (struct Buffer * buf : buffer_container.get_buffer_map()) {
         if (buf != nullptr) {
             delete_buffer(buf);
             free(buf);
@@ -28,7 +28,7 @@ kotekanMode::~kotekanMode() {
 
 void kotekanMode::add_buffer(Buffer* buffer) {
     assert(buffer != nullptr);
-    buffers.push_back(buffer);
+    buffer_container.add_buffer(buffer->buffer_name, buffer);
 }
 
 void kotekanMode::add_process(KotekanProcess* process) {
