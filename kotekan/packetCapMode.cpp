@@ -45,8 +45,6 @@ void packetCapMode::initalize_processes() {
     int32_t buffer_depth = config.get_int("/", "buffer_depth");
     int32_t num_fpga_links = config.get_int("/", "num_links");
 
-    bufferContainer buffer_container;
-
     // Create buffers.
     struct Buffer * network_input_buffer[num_fpga_links];
 

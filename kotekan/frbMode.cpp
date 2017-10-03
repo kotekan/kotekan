@@ -5,7 +5,6 @@
 #include "chrxUplink.hpp"
 #include "gpuPostProcess.hpp"
 #include "networkOutputSim.hpp"
-#include "nullProcess.hpp"
 #include "vdifStream.hpp"
 #include "network_dpdk.h"
 #include "util.h"

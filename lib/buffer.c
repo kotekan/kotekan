@@ -557,7 +557,7 @@ void print_buffer_status(struct Buffer* buf)
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
 
     if (from_buf->metadata[from_ID] == NULL) {
-        WARN("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name, ID);
+        WARN("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
         return;
     }
 

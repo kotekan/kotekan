@@ -41,8 +41,6 @@ void vdifReceiverMode::initalize_processes() {
     int timesteps_in = config.get_int("/", "samples_per_data_set");
     int timesteps_out = timesteps_in / integration_length;
 
-    bufferContainer buffer_container;
-
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.
     struct metadataPool *pool = create_metadata_pool(5 * num_disks * buffer_depth, sizeof(chimeMetadata));

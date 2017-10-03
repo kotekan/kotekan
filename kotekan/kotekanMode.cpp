@@ -11,10 +11,10 @@ kotekanMode::~kotekanMode() {
         if (process != nullptr)
             delete process;
 
-    for (struct Buffer * buf : buffer_container.get_buffer_map()) {
-        if (buf != nullptr) {
-            delete_buffer(buf);
-            free(buf);
+    for (auto const &buf: buffer_container.get_buffer_map()) {
+        if (buf.second != nullptr) {
+            delete_buffer(buf.second);
+            free(buf.second);
         }
     }
 

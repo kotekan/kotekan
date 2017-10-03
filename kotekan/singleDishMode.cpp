@@ -37,7 +37,6 @@ void singleDishMode::initalize_processes() {
     int num_total_freq = config.get_int("/", "num_freq");
     int num_elements = config.get_int("/", "num_elements");
     int buffer_depth = config.get_int("/", "buffer_depth");
-    int num_fpga_links = config.get_int("/", "num_links");
     int num_disks = config.get_int("/raw_capture", "num_disks");
 
     int integration_length = config.get_int("/", "integration_length");
@@ -56,8 +55,6 @@ void singleDishMode::initalize_processes() {
 
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
     snprintf(data_set, sizeof(data_set), "%s_%s_raw", data_time, instrument_name.c_str());
-
-    bufferContainer buffer_container;
 
     // Create the shared pool of buffer info objects; used for recording information about a
     // given frame and past between buffers as needed.

@@ -41,8 +41,6 @@ void chimeShuffleMode::initalize_processes() {
     // Start HSA
     kotekan_hsa_start();
 
-    bufferContainer buffer_container;
-
     // Input (packet) buffers.
     struct Buffer * network_input_buffer[num_gpus];
 
