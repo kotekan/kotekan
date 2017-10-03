@@ -3,7 +3,8 @@
 
 #include "KotekanProcess.hpp"
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.h"
+#include "chimeMetadata.h"
 #include <vector>
 
 using std::vector;

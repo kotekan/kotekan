@@ -1,7 +1,7 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 
 // Type: one of "random", "const"

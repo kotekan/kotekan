@@ -7,7 +7,7 @@
 #include <functional>
 
 #include "rawFileWrite.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 
 rawFileWrite::rawFileWrite(Config& config,
@@ -33,21 +33,15 @@ void rawFileWrite::main_thread() {
 
     int fd;
     int file_num = 0;
-    int buffer_id = 0;
+    int frame_id = 0;
+    uint8_t * frame = NULL;
     char hostname[64];
     gethostname(hostname, 64);
 
     for (;;) {
 
         // This call is blocking.
-        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
-
-        //INFO("Got buffer, id: %d", bufferID);
-
-        // Check if the producer has finished, and we should exit.
-        if (buffer_id == -1) {
-            return;
-        }
+        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
 
         const int full_path_len = 200;
         char full_path[full_path_len];
@@ -67,9 +61,9 @@ void rawFileWrite::main_thread() {
             exit(errno);
         }
 
-        ssize_t bytes_writen = write(fd, buf->data[buffer_id], buf->buffer_size);
+        ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-        if (bytes_writen != buf->buffer_size) {
+        if (bytes_writen != buf->frame_size) {
             ERROR("Failed to write buffer to disk for file %s", full_path);
             exit(-1);
         }
@@ -80,11 +74,9 @@ void rawFileWrite::main_thread() {
             ERROR("Cannot close file %s", full_path);
         }
 
-        // TODO make release_info_object work for nConsumers.
-        //release_info_object(&buf, buffer_id);
-        mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
-        buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
+        frame_id = ( frame_id + 1 ) % buf->num_frames;
         file_num++;
     }
 }

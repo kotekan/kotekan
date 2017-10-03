@@ -36,7 +36,8 @@ void vdifStream::main_thread() {
 
     apply_config(0);
 
-    int bufferID[1] = {0};
+    int frame_id = {0};
+    uint8_t * frame = NULL;
 
     double start_t, diff_t;
     int sleep_period = 3000;
@@ -69,7 +70,7 @@ void vdifStream::main_thread() {
              _vdif_port);
 
         // Wait for a full buffer.
-        wait_for_full_buffer(buf, unique_name.c_str(), bufferID[0]);
+        wait_for_full_frame(buf, unique_name.c_str(), frame_id);
 
         INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
@@ -79,7 +80,7 @@ void vdifStream::main_thread() {
         for (int i = 0; i < 16*625; ++i) {
 
             int bytes_sent = sendto(socket_fd,
-                             (void *)(buf->data[bufferID[0]][packet_size*i]),
+                             (void *)(frame[packet_size*i]),
                              packet_size, 0,
                              (struct sockaddr *) &saddr_remote, saddr_len);
 
@@ -110,7 +111,7 @@ void vdifStream::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_buffer_empty(buf, unique_name.c_str(), bufferID[0]);
-        bufferID[0] = (bufferID[0] + 1) % buf->num_buffers;
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        frame_id = (frame_id + 1) % buf->num_frames;
     }
 }

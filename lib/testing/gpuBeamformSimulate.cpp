@@ -3,13 +3,13 @@
 #include <math.h>
 
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
-#define HI_NIBBLE(b)                    (((b) >> 4) & 0x0F)  
-#define LO_NIBBLE(b)                    ((b) & 0x0F) 
+#define HI_NIBBLE(b)                    (((b) >> 4) & 0x0F)
+#define LO_NIBBLE(b)                    ((b) & 0x0F)
 
 #define PI 3.14159265
 #define feed_sep 0.3048
 #define light 3.e8
-#define Freq_ref 492.125984252 
+#define Freq_ref 492.125984252
 #define freq1 450.
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
@@ -98,8 +98,8 @@ void gpuBeamformSimulate::cpu_beamform_ns(double *data, unsigned long transform_
 
     for (long int step_size = 1; step_size <= step_stop ; step_size +=step_size) {
         theta = -3.141592654/(step_size);
-        for (int index = 0; index < transform_length; index += step_size*2){ 
-            for (int minor_index = 0; minor_index < step_size; minor_index++){ 
+        for (int index = 0; index < transform_length; index += step_size*2){
+            for (int minor_index = 0; minor_index < step_size; minor_index++){
                 wr = cos(minor_index*theta);
                 wi = sin(minor_index*theta);
                 int first_index = (index+minor_index)*2;
@@ -239,7 +239,6 @@ void gpuBeamformSimulate::upchannelize(double *data, int nn){
 
 }
 
-
 void gpuBeamformSimulate::main_thread() {
     int input_buf_id = 0;
     int output_buf_id = 0;
@@ -250,11 +249,9 @@ void gpuBeamformSimulate::main_thread() {
     int nbeams = nbeamsEW*nbeamsNS;
 
     for (;;) {
-        wait_for_full_buffer(input_buf, unique_name.c_str(), input_buf_id);
-        wait_for_empty_buffer(output_buf, unique_name.c_str(), output_buf_id);
 
-        unsigned char * input = (unsigned char *)input_buf->data[input_buf_id];
-        //double * output = (double *)output_buf->data[output_buf_id];
+        unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
+        float * output = (float *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
 
         for (int i=0;i<input_len;i++){
           cpu_beamform_output[i] = 0.0; //Need this
@@ -267,7 +264,6 @@ void gpuBeamformSimulate::main_thread() {
           cpu_final_output[i] = 0.0;
         }
 
-	
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU beamform processing for %s[%d] putting result in %s[%d]",
@@ -276,7 +272,7 @@ void gpuBeamformSimulate::main_thread() {
 
         // Unpack and pad the input data
         int dest_idx = 0;
-        for (int i = 0; i < input_buf->buffer_size; ++i) {
+        for (int i = 0; i < input_buf->frame_size; ++i) {
             input_unpacked[dest_idx++] = HI_NIBBLE(input[i])-8;
             input_unpacked[dest_idx++] = LO_NIBBLE(input[i])-8;
         }
@@ -306,12 +302,11 @@ void gpuBeamformSimulate::main_thread() {
         // Clamp the data
         clamping(input_unpacked_padded, clamping_output, freq1, nbeamsNS, nbeamsEW, _samples_per_data_set, npol);
 
-	//EW brute force beamform
+        //EW brute force beamform
         cpu_beamform_ew(clamping_output, cpu_beamform_output, coff, nbeamsNS, nbeamsEW, npol, _samples_per_data_set);
 
-	//transpose
-	transpose(cpu_beamform_output, transposed_output, _num_elements, _samples_per_data_set);
-
+        //transpose
+        transpose(cpu_beamform_output, transposed_output, _num_elements, _samples_per_data_set);
 
         //Upchannelize; re-use cpu_beamform_output
         for (int b=0; b< _num_elements; b++){
@@ -347,25 +342,25 @@ void gpuBeamformSimulate::main_thread() {
                 }
               }
               cpu_final_output[out_id] = (out_real*out_real+out_imag*out_imag)/48.;
-	      //output  = sqrt(out_real*out_real+out_imag*out_imag)/48.;
+	          //output  = sqrt(out_real*out_real+out_imag*out_imag)/48.;
             }
           }
         }
-	
-        for (int i = 0; i < output_buf->buffer_size; i += sizeof(float)) {
-            *((float *)(&output_buf->data[output_buf_id][i])) = (float)cpu_final_output[i/sizeof(float)];
+
+        for (int i = 0; i < output_buf->frame_size/sizeof(float); i++) {
+            output[i] = (float)cpu_final_output[i];
 	    }
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
                 input_buf->buffer_name, input_buf_id,
                 output_buf->buffer_name, output_buf_id);
 
-        //move_buffer_info(&input_buf, input_buf_id, &output_buf, output_buf_id);
-        mark_buffer_empty(input_buf, unique_name.c_str(), input_buf_id);
-        mark_buffer_full(output_buf, unique_name.c_str(), output_buf_id);
+        //pass_metadata(&input_buf, input_buf_id, &output_buf, output_buf_id);
+        mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);
+        mark_frame_full(output_buf, unique_name.c_str(), output_buf_id);
 
-        input_buf_id = (input_buf_id + 1) % input_buf->num_buffers;
-        output_buf_id = (output_buf_id + 1) % output_buf->num_buffers;
+        input_buf_id = (input_buf_id + 1) % input_buf->num_frames;
+        output_buf_id = (output_buf_id + 1) % output_buf->num_frames;
     }
 }
 

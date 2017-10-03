@@ -56,9 +56,9 @@ void gpu_command::build(class device_interface &param_Device)
     char *program_buffer;
     cl_int err;
 
-    postEvent = (cl_event*)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
+    postEvent = (cl_event*)malloc(param_Device.getInBuf()->num_frames * sizeof(cl_event));
     CHECK_MEM(postEvent);
-    for (int j=0;j<param_Device.getInBuf()->num_buffers;++j){
+    for (int j=0;j<param_Device.getInBuf()->num_frames;++j){
         postEvent[j] = NULL;
     }
 
@@ -91,7 +91,7 @@ void gpu_command::build(class device_interface &param_Device)
 
 cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
-    assert(param_bufferID<param_Device.getInBuf()->num_buffers);
+    assert(param_bufferID<param_Device.getInBuf()->num_frames);
     assert(param_bufferID>=0);
 
     return NULL;

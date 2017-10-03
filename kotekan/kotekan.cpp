@@ -59,7 +59,7 @@ extern "C" {
 #endif
 #include "singleDishMode.hpp"
 #include "errors.h"
-#include "buffers.h"
+#include "buffer.h"
 
 #include "Config.hpp"
 #include "util.h"

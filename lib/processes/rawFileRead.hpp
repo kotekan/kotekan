@@ -1,7 +1,7 @@
 #ifndef RAW_FILE_READ_H
 #define RAW_FILE_READ_H
 
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
 #include <sys/stat.h>
