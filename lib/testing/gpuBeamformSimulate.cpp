@@ -347,8 +347,8 @@ void gpuBeamformSimulate::main_thread() {
           }
         }
 
-        for (int i = 0; i < output_buf->frame_size; i += sizeof(float)) {
-            *((float *)(&output[i])) = (float)cpu_final_output[i/sizeof(float)];
+        for (int i = 0; i < output_buf->frame_size/sizeof(float); i++) {
+            output[i] = (float)cpu_final_output[i];
 	    }
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
