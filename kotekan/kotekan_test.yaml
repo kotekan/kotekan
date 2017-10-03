@@ -16,20 +16,6 @@ rfi_zero: False
 sk_step: 256
 rfi_sensitivity: 10
 
-
-myprocess_1:
-  kotekan_process: hexDump
-  in_buf: gpu_input_buffer_0
-  len_of_dump: 2000
-
-dump_0:
-    porekan_process: hexDump
-    buf: gpu_output_buffer_2
-dump_1:
-    porekan_process: hexDump
-    buf: gpu_output_buffer_3
-
-
 gen_data:
   type: const
   value: 153
