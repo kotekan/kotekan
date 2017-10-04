@@ -29,6 +29,7 @@ extern "C" {
 }
 
 #include "intensityReceiverMode.hpp"
+#include "gpuReplayMode.hpp"
 
 // DPDK!
 #ifdef WITH_DPDK
@@ -156,6 +157,9 @@ int start_new_kotekan_mode(Config &config) {
 
     if (mode == "intensity_receiver") {
         kotekan_mode = (kotekanMode *) new intensityReceiverMode(config);
+    }
+    else if (mode == "gpu_replay") {
+        kotekan_mode = (kotekanMode *) new gpuReplayMode(config);
     }
 #ifdef WITH_DPDK
     else if (mode == "packet_cap") {

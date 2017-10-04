@@ -26,60 +26,59 @@ void accumulate::apply_config(uint64_t fpga_seq) {
 
 void accumulate::main_thread() {
 
-    int in_buf_id = 0;
-    int out_buf_id = 0;
+    int in_frame_id = 0;
+    int out_frame_id = 0;
     int64_t frame_id = 0;
     int32_t * input;
     int32_t * output;
-    struct rawGPUFrameHeader * header;
     uint64_t seq_num;
 
     for (;;) {
-        uint8_t * in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
+        uint8_t * in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
         input = (int32_t *)in_frame;
 
-        seq_num = get_fpga_seq_num(in_buf, in_buf_id);
+        seq_num = get_fpga_seq_num(in_buf, in_frame_id);
 
         if (frame_id % _num_gpu_frames == 0) {
-            uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
-            header = (struct rawGPUFrameHeader *)out_frame;
-            output = (int32_t *)(&out_frame[sizeof(struct rawGPUFrameHeader)]);
+            uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+            output = (int32_t *)out_frame;
 
-            header->fpga_seq_num = get_fpga_seq_num(in_buf, in_buf_id);
-            uint16_t stream_id = get_stream_id(in_buf, in_buf_id);
-            stream_id_t s_stream_id = extract_stream_id(stream_id);
-            s_stream_id.crate_id = 2; // TODO set this to match the number of crate-pairs active.
-            header->stream_id = encode_stream_id(s_stream_id);
-            timeval time_v = get_first_packet_recv_time(in_buf, in_buf_id);
-            header->epoch_time_sec = (uint32_t)time_v.tv_sec;
-            header->epoch_time_usec = (uint32_t)time_v.tv_usec;
-            header->unused = 2048;
+            allocate_new_metadata_object(out_buf, out_frame_id);
 
-            header->lost_frames = get_lost_timesamples(in_buf, in_buf_id);
+            // Copy values for the metadata into the new metadata object.
+            uint64_t fpga_seq = get_fpga_seq_num(in_buf, in_frame_id);
+            set_fpga_seq_num(out_buf, out_frame_id, fpga_seq);
+
+            uint16_t stream_id = get_stream_id(in_buf, in_frame_id);
+            set_stream_id(out_buf, out_frame_id, stream_id);
+
+            timeval time_v = get_first_packet_recv_time(in_buf, in_frame_id);
+            set_first_packet_recv_time(out_buf, out_frame_id, time_v);
+
+            uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
+            atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 
             for (int i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
                 output[i] = input[i];
             }
 
         } else {
-            header->lost_frames += get_lost_timesamples(in_buf, in_buf_id);
+            // Add up the number of lost samples from each input frame.
+            uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
+            atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 
             for (int i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
                 output[i] += input[i];
             }
         }
 
-        // TODO This requires a new meta data object with the summed properties of
-        // all the objects that went into it.
-        //pass_metadata(in_buf, in_buf_id, out_buf, out_buf_id);
-
-        mark_frame_empty(in_buf, unique_name.c_str(), in_buf_id);
-        in_buf_id = (in_buf_id + 1) % in_buf->num_frames;
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
+        in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
         frame_id++;
 
         if (frame_id % _num_gpu_frames == 0) {
-            mark_frame_full(out_buf, unique_name.c_str(), out_buf_id);
-            out_buf_id = (out_buf_id + 1) % out_buf->num_frames;
+            mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+            out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
         }
     }
 }

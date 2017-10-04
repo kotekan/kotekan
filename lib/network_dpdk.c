@@ -549,6 +549,9 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
             // Store the frequency (position in the frame that this stream is using)
             s_stream_id.unused = freq;
+            // The crate ID will be between 0-7, but since they all have the same
+            // mapping, we only care if it's 0 or 1, so we take the crate number % 2.
+            s_stream_id.crate_id = s_stream_id.crate_id % 2;
             stream_id = encode_stream_id(s_stream_id);
 
             dpdk_net->link_data[port][freq].stream_ID = stream_id;

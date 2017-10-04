@@ -38,7 +38,7 @@ void rawFileWrite::main_thread() {
     char hostname[64];
     gethostname(hostname, 64);
 
-    for (;;) {
+    while (!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
@@ -61,6 +61,26 @@ void rawFileWrite::main_thread() {
             exit(errno);
         }
 
+        // Write the meta data to disk
+        uint32_t metadata_size = 0;
+        struct metadataContainer * mc = get_metadata_container(buf, frame_id);
+        if (mc != NULL) {
+            metadata_size = mc->metadata_size;
+        }
+        // Write metadata size to disk, if there is no metadata in the frame, then
+        // just save 0 to the first word.
+        if (write(fd, (void *)&metadata_size, sizeof(metadata_size)) != sizeof(metadata_size)) {
+            ERROR("Failed to write metadata_size to disk for file %s", full_path);
+            exit(-1);
+        }
+        if (mc !=NULL) {
+            if (write(fd, mc->metadata, mc->metadata_size) != mc->metadata_size) {
+                ERROR("Failed to write metadata_size to disk for file %s", full_path);
+                exit(-1);
+            }
+        }
+
+        // Write the contents of the buffer frame to disk.
         ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
         if (bytes_writen != buf->frame_size) {

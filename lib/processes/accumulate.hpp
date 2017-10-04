@@ -4,15 +4,6 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 
-struct rawGPUFrameHeader {
-    uint64_t fpga_seq_num;
-    uint32_t epoch_time_sec;
-    uint32_t epoch_time_usec;
-    uint32_t stream_id;
-    uint32_t lost_frames;
-    uint64_t unused;
-};
-
 class accumulate : public KotekanProcess {
 public:
     accumulate(Config& config,

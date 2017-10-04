@@ -596,6 +596,7 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 }
 
+// Do not call if there is no metadata
 void * get_metadata(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
@@ -604,10 +605,10 @@ void * get_metadata(struct Buffer * buf, int ID) {
     return buf->metadata[ID]->metadata;
 }
 
+// Might return NULLL
 struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
-    assert(buf->metadata[ID] != NULL);
 
     return buf->metadata[ID];
 }

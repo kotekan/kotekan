@@ -1,0 +1,22 @@
+---
+type: config
+system:
+  mode: gpu_replay
+  log_level: 3
+num_elements: 2048
+num_local_freq: 1
+udp_packet_size: 4928
+num_data_sets: 1
+samples_per_data_set: 32768
+buffer_depth: 8
+num_gpu_frames: 128
+block_size: 32
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+
+file_read:
+  kotekan_process: rawFileRead
+  buf: gpu_data_buffer
+  base_dir: /data/metadata_test/
+  file_ext: dump
+  file_name: cnDg5_corr_gpu0
+

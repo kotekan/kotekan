@@ -83,8 +83,7 @@ void chimeShuffleMode::initalize_processes() {
         snprintf(buffer_name, 100, "file_output_buffer_%d", i);
         file_output_buffer[i] = create_buffer(
                                     buffer_depth,
-                                    output_len * num_data_sets * sizeof(int32_t) +
-                                    sizeof(struct rawGPUFrameHeader),
+                                    output_len * num_data_sets * sizeof(int32_t),
                                     pool,
                                     buffer_name);
         add_buffer(file_output_buffer[i]);
