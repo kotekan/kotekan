@@ -23,16 +23,11 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
     num_commands = commands.size();
     use_beamforming = config.get_bool(unique_name, "enable_beamforming");
     //use_incoh_beamforming = false; //config.get_bool(unique_name, "use_incoh_beamforming");
-    
-//    timer perform_time;
 
     //list_commands =  new gpu_command * [num_commands];
 
     for (uint32_t i = 0; i < num_commands; i++){
 
-//        int ll = perform_time.start(commands[i]["name"]);
-//        int jj = perform_time.start("enqueue");
-        
         if (commands[i]["name"] == "beamform_phase_data" && use_beamforming == 1) {
             list_commands.push_back(new beamform_phase_data("beamform_phase_data", config, unique_name));
         //} else if (commands[i]["name"] == "beamform_incoherent_kernel" && use_incoh_beamforming == 1) {
@@ -42,7 +37,7 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
         } else if (commands[i]["name"] == "offset_accumulator") {
             list_commands.push_back(new offset_kernel(commands[i]["kernel"].get<string>().c_str(), "offset_accumulator", config, unique_name));
         } else if (commands[i]["name"] == "preseed_multifreq") {
-            list_commands.push_back(new preseed_kernel(commands[i]["kernel"].get<string>().c_str(), "preseed_multifreq", config, unique_name));    
+            list_commands.push_back(new preseed_kernel(commands[i]["kernel"].get<string>().c_str(), "preseed_multifreq", config, unique_name));
         } else if (commands[i]["name"] == "pairwise_correlator") {
             list_commands.push_back(new correlator_kernel(commands[i]["kernel"].get<string>().c_str(), "pairwise_correlator", config, unique_name));
         } else if (commands[i]["name"] == "input_data_stage") {
@@ -57,16 +52,12 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
 
         // TODO This should just be part of the constructor.
         list_commands[i]->build(device);
-        
-//        perform_time.stop(ll);
-//        perform_time.stop(jj);
+
     }
-    
+
 //    for (int k=0; k<perform_time.get_num_interval(); k++){
 //        perform_time.broadcast(k);
 //    }
-//    
-//    perform_time.broadcast("enqueue");
 
     current_command_cnt = 0;
 }

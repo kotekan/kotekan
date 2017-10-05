@@ -230,8 +230,8 @@ void clProcess::mem_reconcil_thread()
             {
                 //std::cout << "BufferID_" << j << "beamforming" << std::endl;
                 //WILL BE NEEDED ON PF.
-                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
+//                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+//                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
                 mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
@@ -250,8 +250,8 @@ void clProcess::mem_reconcil_thread()
                 
             // Copy the information contained in the input buffer
             //WILL BE NEEDED ON PF.
-            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
+//            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+//                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
                 
