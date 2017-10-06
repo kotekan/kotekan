@@ -64,7 +64,7 @@ void integratePowerStream::main_thread() {
             integrated_samples[e]++;
             data_out = (float*)((char *)accum_buffer + e*packet_length + sizeof(IntensityPacketHeader));
             for (int f=0; f<freqs; f++) data_out[f] += data_in[f];
-            accum_header = (IntensityPacketHeader *)(accum_buffer+e*packet_length);
+            accum_header = (IntensityPacketHeader *)((char*)accum_buffer+e*packet_length);
             accum_header->samples_summed += packet_header->samples_summed;
 
             if (integrated_samples[e] >= integration_length) {

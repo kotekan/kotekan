@@ -66,7 +66,7 @@ if (${USE_DPDK})
   link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
 
   set (DPDK_LIST
-          ethdev       rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
+          rte_ethdev   rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
           rte_power    rte_timer        rte_ring    rte_sched     rte_table
           rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000
           rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
@@ -131,7 +131,11 @@ SET(CMAKE_INSTALL_PREFIX "/")
 
 install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+else()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 

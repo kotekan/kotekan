@@ -23,6 +23,11 @@ extern "C" {
 #include <stdlib.h>
 #include <stdint.h>
 
+#ifdef MAC_OSX
+#include "osxBindCPU.hpp"
+#include <immintrin.h>
+#endif
+
 #include "metadata.h"
 
 struct ProcessInfo {
