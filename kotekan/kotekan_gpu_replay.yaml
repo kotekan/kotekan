@@ -20,3 +20,6 @@ file_read:
   file_ext: dump
   file_name: cnDg5_corr_gpu0
 
+metadata_dump:
+  kotekan_process: chimeMetadataDump
+  buf: gpu_data_buffer

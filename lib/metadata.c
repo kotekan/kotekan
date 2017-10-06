@@ -19,6 +19,8 @@ struct metadataContainer * create_metadata(size_t object_size, struct metadataPo
     metadata_container->ref_count = 0;
     metadata_container->parent_pool = parent_pool;
 
+    reset_metadata_object(metadata_container);
+
     CHECK_ERROR( pthread_mutex_init(&metadata_container->metadata_lock, NULL) );
 
     return metadata_container;

@@ -126,7 +126,7 @@ accumulate:
 
 
 file_out:
-  base_dir: /data/metadata_test/
+  base_dir: /data/metadata_test2/
   file_ext: dump
   file_0:
     kotekan_process: rawFileWrite

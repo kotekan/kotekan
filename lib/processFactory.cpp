@@ -32,6 +32,7 @@
 #include "constDataCheck.hpp"
 #include "accumulate.hpp"
 #include "hexDump.hpp"
+#include "chimeMetadataDump.hpp"
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -198,6 +199,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "testDataGen") {
         return (KotekanProcess *) new testDataGen(config, location, buffer_container);
+    }
+
+    if (name == "chimeMetadataDump") {
+        return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
     }
 
     // OpenCL
