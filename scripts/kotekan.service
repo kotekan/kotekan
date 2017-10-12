@@ -6,7 +6,7 @@ After=syslog.target network.target
 Type=simple
 Environment="DISPLAY=:0"
 WorkingDirectory=/var/lib/kotekan
-ExecStart=/usr/sbin/kotekan
+ExecStart=/usr/sbin/kotekan -c /etc/kotekan/kotekan_opencl_(?(%H==0[1-9]|10)280x|fury).yaml
 PIDFile=/var/run/kotekan.pid
 
 [Install]

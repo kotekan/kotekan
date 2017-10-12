@@ -263,7 +263,15 @@ int main(int argc, char ** argv) {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         //config.parse_file(config_file_name, 0);
-        std::string json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
+        std::string json_string;
+        switch (opt_val) {
+            case 'c':
+                json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
+                break;
+            case 'd':
+                json_string = exec("python /usr/sbin/scripts/yaml_to_json.py " + std::string(config_file_name));
+                break;
+        }
         config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
