@@ -42,7 +42,7 @@ int32_t Config::get_int(const string& base_path, const string& name) {
 double Config::get_double(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 
-    if (!value.is_number_float()) {
+    if (!value.is_number()) {
         throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a double or doesn't exist");
     }
     return value.get<double>();
