@@ -29,9 +29,6 @@ extern "C" {
 #include <pthread.h>
 }
 
-#include "intensityReceiverMode.hpp"
-#include "gpuReplayMode.hpp"
-
 // DPDK!
 #ifdef WITH_DPDK
 extern "C" {
@@ -57,9 +54,7 @@ extern "C" {
 #include <rte_ring.h>
 }
 #include "network_dpdk.h"
-#include "packetCapMode.hpp"
 #endif
-#include "singleDishMode.hpp"
 #include "errors.h"
 #include "buffer.h"
 
@@ -70,17 +65,11 @@ extern "C" {
 #include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
+#include "kotekanMode.hpp"
 
 #ifdef WITH_HSA
-    #include "chimeShuffleMode.hpp"
-    #include "gpuTestMode.hpp"
-    #include "singleDishModeGpu.hpp"
-    #include "frbMode.hpp"
+#include "hsaBase.h"
 #endif
-#ifdef WITH_OPENCL
-    #include "clProcess.hpp"
-#endif
-
 
 using json = nlohmann::json;
 
