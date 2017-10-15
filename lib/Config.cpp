@@ -1,5 +1,6 @@
 #include "Config.hpp"
 #include "errors.h"
+#include "configEval.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -39,6 +40,15 @@ int32_t Config::get_int(const string& base_path, const string& name) {
     return value.get<int32_t>();
 }
 
+int32_t Config::get_int_eval(const string& base_path, const string& name) {
+    json value = get_value(base_path, name);
+
+    if (!(value.is_string() || value.is_number())) {
+        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a number or string to eval or doesn't exist");
+    }
+    return eval_compute_int64(*this, base_path, value.get<string>());
+}
+
 double Config::get_double(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 
@@ -46,6 +56,15 @@ double Config::get_double(const string& base_path, const string& name) {
         throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a double or doesn't exist");
     }
     return value.get<double>();
+}
+
+double Config::get_double_eval(const string& base_path, const string& name) {
+    json value = get_value(base_path, name);
+
+    if (!(value.is_string() || value.is_number())) {
+        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a number or string to eval or doesn't exist");
+    }
+    return eval_compute_double(*this, base_path, value.get<string>());
 }
 
 float Config::get_float(const string& base_path, const string& name) {

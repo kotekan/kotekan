@@ -26,6 +26,9 @@ set (KOTEKAN_LIB_SOURCES
               fpga_header_functions.c
               bufferContainer.cpp
               processFactory.cpp
+              metadataFactory.cpp
+              bufferFactory.cpp
+              configEval.cpp
        )
 
 if (${USE_DPDK})

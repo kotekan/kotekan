@@ -23,6 +23,7 @@
 #include <stdexcept>
 #include <string>
 #include <array>
+#include "configEval.hpp"
 
 extern "C" {
 #include <pthread.h>
@@ -131,7 +132,7 @@ std::string exec(const std::string &cmd) {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    int log_level = config.get_int("/system/", "log_level");
+    int log_level = config.get_int("/", "log_level");
 
     log_level_warn = 0;
     log_level_debug = 0;
@@ -153,49 +154,8 @@ int start_new_kotekan_mode(Config &config) {
     config.dump_config();
     update_log_levels(config);
 
-    string mode = config.get_string("/system", "mode");
+    kotekan_mode = new kotekanMode(config);
 
-    if (mode == "intensity_receiver") {
-        kotekan_mode = (kotekanMode *) new intensityReceiverMode(config);
-    }
-    else if (mode == "gpu_replay") {
-        kotekan_mode = (kotekanMode *) new gpuReplayMode(config);
-    }
-#ifdef WITH_DPDK
-    else if (mode == "packet_cap") {
-        kotekan_mode = (kotekanMode *) new packetCapMode(config);
-    }
-    else if (mode == "chime_shuffle") {
-        #ifdef WITH_HSA
-            kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
-        #else
-        return -1;
-        #endif
-    }
-    else if (mode == "frb") {
-        kotekan_mode = (kotekanMode *) new frbMode(config);
-    }
-    else if (mode == "gpu_test") {
-        #ifdef WITH_HSA
-            kotekan_mode = (kotekanMode *) new gpuTestMode(config);
-        #else
-        return -1;
-        #endif
-    }
-    else if (mode == "single_dish_gpu") {
-        #ifdef WITH_HSA
-            kotekan_mode = (kotekanMode *) new singleDishModeGpu(config);
-        #else
-        return -1;
-        #endif
-    }
-#endif
-    else if (mode == "single_dish") {
-        kotekan_mode = (kotekanMode *) new singleDishMode(config);
-    }
-    else {
-        return -1;
-    }
     kotekan_mode->initalize_processes();
     kotekan_mode->start_processes();
     running = true;
@@ -206,6 +166,10 @@ int start_new_kotekan_mode(Config &config) {
 int main(int argc, char ** argv) {
 #ifdef WITH_DPDK
     dpdk_setup();
+#endif
+
+#ifdef WITH_HSA
+    kotekan_hsa_start();
 #endif
     json config_json;
 
