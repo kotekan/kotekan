@@ -1,7 +1,7 @@
 ---
 type: config
 log_level: 3
-udp_packet_size: 4392
+udp_packet_size: 4928
 num_links: 4
 timesamples_per_packet: 16
 num_elements: 2048
@@ -15,6 +15,7 @@ num_data_sets: 1
 buffer_depth: 3
 num_gpu_frames: 4
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+sizeof_float: 4
 
 # Pool
 main_pool:

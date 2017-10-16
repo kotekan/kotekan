@@ -1,7 +1,7 @@
 ---
 type: config
 log_level: 3
-udp_packet_size: 8224
+udp_packet_size: 4928
 num_links: 4
 timesamples_per_packet: 16
 num_elements: 2048
