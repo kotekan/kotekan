@@ -3,9 +3,9 @@ project( libkotekan_opencl )
 
 include_directories( ${OPENCL_INCLUDE_DIRS} )
 
-include_directories (${CHIME_SOURCE_DIR}/include)
-include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
 add_library ( kotekan_opencl
               device_interface.cpp
@@ -25,12 +25,12 @@ add_library ( kotekan_opencl
               gpu_command_factory.cpp
               )
 
-file(GLOB opencl_kernels "${CHIME_SOURCE_DIR}/kernels/*.cl")
+file(GLOB opencl_kernels "${KOTEKAN_SOURCE_DIR}/kernels/*.cl")
 
 #add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CHIME_SOURCE_DIR}/kernels"
+        "${KOTEKAN_SOURCE_DIR}/kernels"
         "kernels")
 add_dependencies( kotekan_opencl kernel_copy )
