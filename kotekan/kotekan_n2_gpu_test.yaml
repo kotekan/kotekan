@@ -9,6 +9,7 @@ num_data_sets: 1
 buffer_depth: 6
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+block_size: 32
 
 rfi_zero: False
 sk_step: 256
@@ -83,7 +84,6 @@ gpu:
     kernel: ''
   link_map: [0,1,2,3]
   num_gpus: 4
-  block_size: 32
   buffer_depth: 4
   gpu_0:
     kotekan_process: hsaProcess
@@ -121,4 +121,3 @@ check_data:
   const_data_check_3:
     kotekan_process: constDataCheck
     buf: gpu_output_buffer_3
-

@@ -15,6 +15,7 @@ num_links: 8
 timesamples_per_packet: 2
 cpu_affinity: [8,9,10,11]
 vdif_header_size: 64
+num_disks: 10
 
 meta_pool:
   kotekan_metadata_pool: chimeMetadata
@@ -41,7 +42,6 @@ output_power_buf:
 
 replay:
   kotekan_process: nDiskFileRead
-  num_disks: 10
   disk_base: /mnt/
   disk_set: A
   out_buf: vdif_input_buf_0
@@ -58,7 +58,6 @@ raw_capture:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
   gain_file_dir: /tmp
-  num_disks: 10
   disk_base: /drives/
   disk_set: testing
   in_buf: vdif_input_buf_0
