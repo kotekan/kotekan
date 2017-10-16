@@ -19,15 +19,15 @@ add_library ( kotekan_hsa
               hsaPresumZero.cpp
               hsaBeamformKernel.cpp
               hsaBeamformTranspose.cpp
-	          hsaBeamformUpchan.cpp
+              hsaBeamformUpchan.cpp
               hsaBeamformOutput.cpp
               hsaCommand.cpp
               hsaCommandFactory.cpp
               hsaDeviceInterface.cpp
               hsaProcess.cpp
-	          hsaRfiVdif.cpp
-	          hsaRfi.cpp
-	          hsaRfiOutput.cpp
+              hsaRfiVdif.cpp
+              hsaRfi.cpp
+              hsaRfiOutput.cpp
               )
 
 add_subdirectory(kernels)
