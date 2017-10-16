@@ -4,22 +4,6 @@ PROJECT (kotekan)
 
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
-#CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp intensityReceiverMode.cpp gpuReplayMode.cpp)
-
-if (${USE_DPDK})
-	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp)
-endif ()
-if (${USE_HCC})
-	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
-endif ()
-if (${USE_HSA})
-	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp chimeShuffleMode.cpp singleDishModeGpu.cpp frbMode.cpp)
-endif ()
-if (${USE_OPENCL})
-	#SET(SOURCE_EXE ${SOURCE_EXE} )
-endif ()
-
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)

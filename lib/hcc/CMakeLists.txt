@@ -1,10 +1,10 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_hcc )
 
-include_directories (${CHIME_SOURCE_DIR}/include)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/hcc)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
 
 #/// AMD hcc options
 #need to add -DCMAKE_CXX_COMPILER=/opt/rocm/bin/hcc to cmake command line

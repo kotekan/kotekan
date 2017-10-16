@@ -50,8 +50,8 @@ processFactory::processFactory(Config& config,
 processFactory::~processFactory() {
 }
 
-vector<KotekanProcess*> processFactory::build_processes() {
-    vector<KotekanProcess*> processes;
+map<string, KotekanProcess *> processFactory::build_processes() {
+    map<string, KotekanProcess *> processes;
 
     // Start parsing tree, put the processes in the "processes" vector
     build_from_tree(processes, config.get_full_config_json(), "");
@@ -59,7 +59,7 @@ vector<KotekanProcess*> processFactory::build_processes() {
     return processes;
 }
 
-void processFactory::build_from_tree(vector<KotekanProcess*>& processes, json& config_tree, const string& path) {
+void processFactory::build_from_tree(map<string, KotekanProcess *>& processes, json& config_tree, const string& path) {
 
     for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
@@ -70,7 +70,11 @@ void processFactory::build_from_tree(vector<KotekanProcess*>& processes, json& c
         // Check if this is a kotekan_process block, and if so create the process.
         string process_name = it.value().value("kotekan_process", "none");
         if (process_name != "none") {
-            processes.push_back(new_process(process_name, path + "/" + it.key()));
+            string unique_name = path + "/" + it.key();
+            if (processes.count(unique_name) != 0) {
+                throw std::runtime_error("A process with the path " + unique_name + " has been defined more than once!");
+            }
+            processes[unique_name] = new_process(process_name, path + "/" + it.key());
             continue;
         }
 

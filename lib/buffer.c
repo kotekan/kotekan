@@ -141,7 +141,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 
         // Is this memory aligned?
         buf->frames[i] = hsa_host_malloc(buf->aligned_frame_size);
-        INFO("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->frames[i], buf->aligned_frame_size);
+        //DEBUG("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->frames[i], buf->aligned_frame_size);
 
         memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
 

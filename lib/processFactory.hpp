@@ -2,7 +2,7 @@
 #define PROCESS_FACTORY_HPP
 
 #include <string>
-#include <vector>
+#include <map>
 
 #include "json.hpp"
 #include "KotekanProcess.hpp"
@@ -10,7 +10,7 @@
 // Name space includes.
 using json = nlohmann::json;
 using std::string;
-using std::vector;
+using std::map;
 
 
 class processFactory {
@@ -24,11 +24,11 @@ public:
     // Creates all the processes listed in the config file, and returns them
     // as a vector of KotekanProcess pointers.
     // This should only be called once.
-    vector<KotekanProcess *> build_processes();
+    map<string, KotekanProcess *> build_processes();
 
 private:
 
-    void build_from_tree(vector<KotekanProcess *> &processes, json &config_tree, const string &path);
+    void build_from_tree(map<string, KotekanProcess *> &processes, json &config_tree, const string &path);
     KotekanProcess * new_process(const string &name, const string &location);
 
     Config &config;

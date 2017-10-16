@@ -22,8 +22,14 @@ public:
     // ----------------------------
 
     int32_t get_int(const string& base_path, const string& name);
+    // Treats the value as an arithmetic expression with other variables,
+    // and return the result of evaluating it.
+    int32_t get_int_eval(const string& base_path, const string& name);
     float get_float(const string& base_path, const string& name);
     double get_double(const string& base_path, const string& name);
+    // Treats the value as an arithmetic expression with other variables,
+    // and return the result of evaluating it.
+    double get_double_eval(const string& base_path, const string& name);
     string get_string(const string& base_path, const string& name);
     bool get_bool(const string& base_path, const string& name);
     vector<int32_t> get_int_array(const string& base_path, const string& name);
