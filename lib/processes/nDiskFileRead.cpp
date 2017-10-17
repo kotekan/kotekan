@@ -1,10 +1,10 @@
 /*********************************************************************************
 
 Kotekan RFI Documentation Block:
-By: Jacob Taylor 
+By: Jacob Taylor
 Date: August 2017
 File Purpose: Read VDIF data from N disks. Has the option to remove RFI as it reads
-Details: 
+Details:
 	-Constructor: Sets up config parameters as local variables. Registers process as producer.
 	-main_thread: Creates and Handles N file reading threads
 	-file_read_thread: Reads VDIF data from disk with the option of RFI removal
@@ -28,7 +28,7 @@ nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
                                 bufferContainer &buffer_containter) :
     KotekanProcess(config, unique_name, buffer_containter,
                      std::bind(&nDiskFileRead::main_thread, this))
-{   
+{
     buf = get_buffer("out_buf"); //Buffer
 
     num_disks = config.get_int(unique_name,"num_disks"); //Data paramters
@@ -75,7 +75,6 @@ void nDiskFileRead::main_thread() {
     for (uint32_t i = 0; i < num_disks; ++i) {
         file_thread_handles[i].join();
     }
-    mark_producer_done(buf, 0);
 }
 
 void nDiskFileRead::file_read_thread(int disk_id) {
@@ -94,9 +93,8 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
     for (;;) { //Endless loop
 
-        wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+        unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
 
-        unsigned char* buf_ptr = buf->data[buf_id];
         char file_name[100]; //Find current file
         snprintf(file_name, sizeof(file_name), "%s%s/%d/%s/%07d.vdif",disk_base.c_str(),disk_set.c_str(), disk_id,capture.c_str(),file_index);
 	INFO("Entering File: %s\n",file_name);
@@ -104,14 +102,14 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         fseek(in_file, 0L, SEEK_END); //Get length of current file
         long sz = ftell(in_file);
         rewind(in_file);
-        assert(sz == buf->buffer_size); 
-        
+        assert(sz == buf->frame_size);
+
 	if(!WITH_RFI){ //Without RFI removal, read whole file into buffer
-		fread(buf_ptr,buf->buffer_size,1,in_file);
+		fread(buf_ptr,buf->frame_size,1,in_file);
 	}
         else{ //With RFI removal
-		//NOTE: Here thread refers to independant elements 
-		unsigned int thread_counter = 0; 
+		//NOTE: Here thread refers to independant elements
+		unsigned int thread_counter = 0;
 		float thread_1_power[num_frequencies]; //Declare power arrays
 		float thread_2_power[num_frequencies];
 		float thread_1_power_sq[num_frequencies];
@@ -142,9 +140,9 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 			fread(&buffer, sizeof(char), VDIF_BLOCK_SIZE, in_file);//Read in first block
 			memcpy(total_buffer_ptr, (void*)&buffer, sizeof(buffer));
 			total_buffer_ptr += sizeof(buffer);
-		
+
 			if((buffer[3] & 0x1) == 0x1){//Is it valid
-				invalid_data_counter++; 
+				invalid_data_counter++;
 				continue;
 			}
 			//Sum Across Time
@@ -182,7 +180,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 				}
 			}
 			//After a certain amount of time
-			if(thread_counter == num_elements*SK_STEP){ 
+			if(thread_counter == num_elements*SK_STEP){
 				unsigned int M = (num_elements)*(SK_STEP) - invalid_data_counter;
 			    	float LOWER_BOUND =  1 - THRESHOLD_SENSITIVITY*2/sqrt((float)M);
 				float UPPER_BOUND = 1 + THRESHOLD_SENSITIVITY*2/sqrt((float)M);
@@ -197,11 +195,11 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 						thread_1_power_sq[i] /= (Mean[i]*adjust)*(Mean[i]*adjust);
 						thread_2_power_sq[i] /= (Mean[i+num_frequencies]*adjust)*(Mean[i+num_frequencies]*adjust);
 					}
-					
+
 					//Sum across inputs
 					thread_1_power[i] += thread_2_power[i];
 				   	thread_1_power_sq[i] += thread_2_power_sq[i];
-				
+
 					//Compute Kurtosis
 					float SK = (float)((((float)M+1)/(M-1))*(M*(thread_1_power_sq[i])/(thread_1_power[i]*thread_1_power[i])-1));
 					//Apply Threshold
@@ -211,7 +209,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 					else{
 						mask[i] = 1;
 					}
-				
+
 					thread_1_power[i] = 0;
 		   			thread_1_power_sq[i] = 0;
 					thread_2_power[i] = 0;
@@ -246,9 +244,8 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
         fclose(in_file);
 
-        set_data_ID(buf, buf_id, file_index);
-        mark_buffer_full(buf, unique_name.c_str(), buf_id);
-        buf_id = (buf_id + num_disks) % buf->num_buffers;
+        mark_frame_full(buf, unique_name.c_str(), buf_id);
+        buf_id = (buf_id + num_disks) % buf->num_frames;
 
         INFO("nDiskFileRead: read %s\n", file_name);
     }

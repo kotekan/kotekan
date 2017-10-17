@@ -1,5 +1,8 @@
 #include "kotekanMode.hpp"
-#include "buffers.h"
+#include "buffer.h"
+#include "processFactory.hpp"
+#include "metadataFactory.hpp"
+#include "bufferFactory.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
@@ -7,55 +10,55 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
 kotekanMode::~kotekanMode() {
 
-    for (KotekanProcess* process : processes)
-        if (process != nullptr)
-            delete process;
-
-    for (struct Buffer * buf : buffers) {
-        if (buf != nullptr) {
-            delete_buffer(buf);
-            free(buf);
+    for (auto const &process : processes) {
+        if (process.second != nullptr) {
+            delete process.second;
         }
     }
 
-    for (struct InfoObjectPool * info_object : info_pools) {
-        if (info_object != nullptr) {
-            delete_info_object_pool(info_object);
-            free(info_object);
+    for (auto const &buf: buffers) {
+        if (buf.second != nullptr) {
+            delete_buffer(buf.second);
+            free(buf.second);
         }
     }
-}
 
-void kotekanMode::add_buffer(Buffer* buffer) {
-    assert(buffer != nullptr);
-    buffers.push_back(buffer);
-}
-
-void kotekanMode::add_process(KotekanProcess* process) {
-    assert(process != nullptr);
-    processes.push_back(process);
-}
-
-void kotekanMode::add_info_object_pool(InfoObjectPool* info_pool) {
-    assert(info_pool != nullptr);
-    info_pools.push_back(info_pool);
+    for (auto const &metadata_pool : metadata_pools) {
+        if (metadata_pool.second != nullptr) {
+            delete_metadata_pool(metadata_pool.second);
+            free(metadata_pool.second);
+        }
+    }
 }
 
 void kotekanMode::initalize_processes() {
 
+    // Create Metadata Pool
+    metadataFactory metadata_factory(config);
+    metadata_pools = metadata_factory.build_pools();
+
+    // Create Buffers
+    bufferFactory buffer_factory(config, metadata_pools);
+    buffers = buffer_factory.build_buffers();
+    buffer_container.set_buffer_map(buffers);
+
+    // Create Processes
+    processFactory process_factory(config, buffer_container);
+    processes = process_factory.build_processes();
+
 }
 
 void kotekanMode::join() {
-    for (KotekanProcess* process : processes)
-        process->join();
+    for (auto const &process : processes)
+        process.second->join();
 }
 
 void kotekanMode::start_processes() {
-    for (KotekanProcess* process : processes)
-        process->start();
+    for (auto const &process : processes)
+        process.second->start();
 }
 
 void kotekanMode::stop_processes() {
-    for (KotekanProcess* process : processes)
-        process->stop();
+    for (auto const &process : processes)
+        process.second->stop();
 }

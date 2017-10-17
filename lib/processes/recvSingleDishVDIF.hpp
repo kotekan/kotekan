@@ -1,7 +1,7 @@
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
 #include <sys/stat.h>

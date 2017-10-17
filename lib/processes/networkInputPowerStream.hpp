@@ -4,7 +4,7 @@
 #include "powerStreamUtil.hpp"
 #include <sys/socket.h>
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <atomic>
 
@@ -38,8 +38,6 @@ private:
     int elems;
 
     int id;
-
-    uint frame_idx=0;
 
     uint64_t handshake_idx=-1;
     double   handshake_utc=-1;

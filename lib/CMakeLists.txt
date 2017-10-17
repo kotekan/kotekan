@@ -13,19 +13,23 @@ set (KOTEKAN_LIB_SOURCES
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp
-              buffers.c
+              buffer.c
+              chimeMetadata.c
+              metadata.c
               errors.c
               nt_memcpy.c
               nt_memset.c
               restServer.cpp
               util.c
-              error_correction.c
               output_formating.c
               time_tracking.c
               fpga_header_functions.c
               bufferContainer.cpp
               processFactory.cpp
               airspy_control.c
+              metadataFactory.cpp
+              bufferFactory.cpp
+              configEval.cpp
        )
 
 if (${USE_DPDK})

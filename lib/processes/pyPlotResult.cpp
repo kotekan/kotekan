@@ -7,8 +7,9 @@
 #include <functional>
 
 #include "pyPlotResult.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
+#include "chimeMetadata.h"
 #include "accumulate.hpp"
 #include "fpga_header_functions.h"
 
@@ -44,29 +45,29 @@ void pyPlotResult::main_thread() {
     rest_server->register_json_callback(endpoint,
             std::bind(&pyPlotResult::request_plot_callback, this, _1, _2));
 
-    int buffer_id = 0;
-    unsigned char *in_local = (unsigned char*)malloc(buf->buffer_size);
+    int frame_id = 0;
+    uint8_t * frame = NULL;
+    unsigned char *in_local = (unsigned char*)malloc(buf->frame_size);
 
     for (;;) {
 
         // This call is blocking.
-        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
 
         //INFO("Got buffer, id: %d", bufferID);
 
         // Check if the producer has finished, and we should exit.
-        if (buffer_id == -1) {
+        if (frame_id == -1) {
             return;
         }
 
-        dump_plot = true;
         if (dump_plot)
         {
             dump_plot=false;
             //make a local copy so the rest of kotekan can carry along happily.
-            memcpy(in_local,buf->data[buffer_id],buf->buffer_size);
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
-            buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
+            memcpy(in_local, frame, buf->frame_size);
+            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            frame_id = ( frame_id + 1 ) % buf->num_frames;
 
             FILE *python_script;
             python_script = popen("python -u pyPlotResult.py","w");
@@ -79,8 +80,7 @@ void pyPlotResult::main_thread() {
 
                 usleep(10000);
 
-                int32_t stream_id_int = get_streamID(buf, buffer_id);
-                stream_id_t stream_id = extract_stream_id(stream_id_int);
+                stream_id_t stream_id = get_stream_id_t(buf, frame_id);
 
                 json header = {
                     {"data_length",num_blocks*block_size},
@@ -92,14 +92,14 @@ void pyPlotResult::main_thread() {
                 std::string s = header.dump()+"\n";
                 fwrite(s.c_str(),1,s.length(),python_script);
                 for (int i=0; i<num_blocks; i++) {
-                    fwrite(in_local+ sizeof(rawGPUFrameHeader) +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
+                    fwrite(in_local +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
                     fflush(python_script);
                 }
             }
         }
         else{
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
-            buffer_id = ( buffer_id + 1 ) % buf->num_buffers;
+            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            frame_id = ( frame_id + 1 ) % buf->num_frames;
         }
     }
     free(in_local);

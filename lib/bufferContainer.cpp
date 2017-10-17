@@ -28,3 +28,8 @@ map<string, Buffer*> & bufferContainer::get_buffer_map() {
     return buffers;
 }
 
+void bufferContainer::set_buffer_map(map<string, Buffer*> &buffer_map) {
+    buffers = buffer_map;
+}
+
+

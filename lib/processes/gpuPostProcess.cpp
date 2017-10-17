@@ -12,13 +12,14 @@
 #include <inttypes.h>
 #include <functional>
 
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
 #include "Config.hpp"
 #include "gpuPostProcess.hpp"
 #include "util.h"
 #include "version.h"
+#include "chimeMetadata.h"
 
 gpuPostProcess::gpuPostProcess(Config& config_,
         const string& unique_name,
@@ -99,30 +100,29 @@ void gpuPostProcess::main_thread() {
 
     apply_config(0);
 
-    int in_buffer_ID = -1;
     int out_buffer_ID = 0;
     int frame_number = 0;
 
-    int useableBufferIDs[_num_gpus][1];
+    int in_frame_ids[_num_gpus];
     for (int i = 0; i < _num_gpus; ++i) {
-        useableBufferIDs[i][0] = 0;
+        in_frame_ids[i] = 0;
     }
     int link_id = 0;
 
     // Create tcp send buffer
     const int num_values = ((_num_elem * (_num_elem + 1)) / 2 ) * _num_total_freq;
-    const int buffer_size = sizeof(struct tcp_frame_header) +
+    const int frame_size = sizeof(struct tcp_frame_header) +
         num_values * sizeof(complex_int_t) +
         _num_total_freq * sizeof(struct per_frequency_data) +
         _num_total_freq * _num_elem * sizeof(struct per_element_data) +
         num_values * sizeof(uint8_t);
 
-    assert(buffer_size == out_buf->buffer_size);
+    assert(frame_size == out_buf->frame_size);
 
     const int num_vis = ((_num_elem * (_num_elem + 1)) / 2 );
     const int num_values_per_link = num_vis * _num_local_freq;
 
-    unsigned char * buf = (unsigned char *)malloc(buffer_size);
+    unsigned char * buf = (unsigned char *)malloc(frame_size);
     CHECK_MEM(buf);
 
     unsigned char * data_sets_buf =
@@ -142,7 +142,7 @@ void gpuPostProcess::main_thread() {
         CHECK_MEM(local_element_data[i]);
     }
 
-    // Create convenient pointers into the buffer (yay pointer math).
+    // Create convenient pointers into the buffer (pointer math).
     struct tcp_frame_header * header = (struct tcp_frame_header *)buf;
 
     int offset = sizeof(struct tcp_frame_header);
@@ -160,7 +160,7 @@ void gpuPostProcess::main_thread() {
 
     // Safety check for pointer math.
     offset += num_values * sizeof(uint8_t);
-    assert(offset == buffer_size);
+    assert(offset == frame_size);
 
     // Add version information to the header.
     strcpy(header->kotekan_git_hash, GIT_COMMIT_HASH);
@@ -193,20 +193,12 @@ void gpuPostProcess::main_thread() {
         int gpu_id = _link_map[link_id];
 
         // This call is blocking!
-        in_buffer_ID = wait_for_full_buffer(in_buf[gpu_id], unique_name.c_str(), useableBufferIDs[gpu_id][0]);
-        INFO("GPU Post process got full buffer ID %d for GPU %d", useableBufferIDs[gpu_id][0], gpu_id);
-
-        // Check if the producer has finished, and we should exit.
-        if (in_buffer_ID == -1) {
-            mark_producer_done(out_buf, 0);
-            INFO("Closing gpu_post_process");
-            int ret;
-            pthread_exit((void *) &ret);
-        }
+        uint8_t * in_frame = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
+        INFO("GPU Post process got full buffer ID %d for GPU %d", in_frame_ids[gpu_id], gpu_id);
 
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
-        uint64_t fpga_seq_number = get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID);
-        struct timeval frame_start_time = get_first_packet_recv_time(in_buf[gpu_id], in_buffer_ID);
+        uint64_t fpga_seq_number = get_fpga_seq_num(in_buf[gpu_id], in_frame_ids[gpu_id]);
+        struct timeval frame_start_time = get_first_packet_recv_time(in_buf[gpu_id], in_frame_ids[gpu_id]);
 
         for (int i = 0; i < _num_data_sets; ++i) {
 
@@ -216,13 +208,13 @@ void gpuPostProcess::main_thread() {
                     _num_local_freq,
                     _num_elem,
                     1,
-                    (int *)&in_buf[gpu_id]->data[in_buffer_ID][i * (in_buf[gpu_id]->buffer_size / _num_data_sets)],
+                    (int *)&in_frame[i * (in_buf[gpu_id]->frame_size / _num_data_sets)],
                     _product_remap_c);
 
 
                 full_16_element_matrix_to_upper_triangle(
                     _num_local_freq,
-                    (int *)&in_buf[gpu_id]->data[in_buffer_ID][i * (in_buf[gpu_id]->buffer_size / _num_data_sets)],
+                    (int *)&in_frame[i * (in_buf[gpu_id]->frame_size / _num_data_sets)],
                     (complex_int_t *)&data_sets_buf[(i * num_values + link_id * num_values_per_link) * sizeof(complex_int_t)]);
             } else {
                 reorganize_GPU_to_upper_triangle_remap(_block_size,
@@ -230,14 +222,13 @@ void gpuPostProcess::main_thread() {
                     _num_local_freq,
                     _num_elem,
                     1,
-                    (int *)&in_buf[gpu_id]->data[in_buffer_ID][i * (in_buf[gpu_id]->buffer_size / _num_data_sets)],
+                    (int *)&in_frame[i * (in_buf[gpu_id]->frame_size / _num_data_sets)],
                     (complex_int_t *)&data_sets_buf[(i * num_values + link_id * num_values_per_link) * sizeof(complex_int_t)],
                     _product_remap_c);
             }
 
             // Frequency varying data.
-            uint32_t packed_stream_ID = get_streamID(in_buf[gpu_id], in_buffer_ID);
-            struct ErrorMatrix * error_matrix = get_error_matrix(in_buf[gpu_id], in_buffer_ID);
+            uint32_t packed_stream_ID = get_stream_id(in_buf[gpu_id], in_frame_ids[gpu_id]);
             for (int j = 0; j < _num_local_freq; ++j) {
                 int pos = link_id*_num_local_freq + j;
                 local_freq_data[i][pos].stream_id.link_id = packed_stream_ID & 0x000F;
@@ -246,10 +237,10 @@ void gpuPostProcess::main_thread() {
                 local_freq_data[i][pos].stream_id.reserved = (packed_stream_ID & 0xF000) >> 12;
                 local_freq_data[i][pos].index = j;
                 // TODO this needs to be data set aware.  adjust the error matrix code for this.
-                local_freq_data[i][pos].lost_packet_count = error_matrix->bad_timesamples;
+                local_freq_data[i][pos].lost_packet_count = get_lost_timesamples(in_buf[gpu_id], in_frame_ids[gpu_id]);
                 local_freq_data[i][pos].rfi_count = 0;  // TODO add RFI counts here.
 
-                // Frequency and element varing data.
+                // Frequency and element varying data.
                 for (int e = 0; e < _num_elem; ++e) {
                     pos = link_id * _num_elem * _num_local_freq +
                         j * _num_elem + _product_remap[e];
@@ -342,9 +333,9 @@ void gpuPostProcess::main_thread() {
 
                 // If we are on the last frame in the set, push the buffer to the network thread.
                 if (frame_number + 1 >= _num_gpu_frames) {
-                    //INFO("Sending frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; BUFFER_SIZE = %d",
+                    //INFO("Sending frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ; NUM_VIS = %d ; frame_size = %d",
                     //     header->fpga_seq_number,
-                    //     buffer_size);
+                    //     frame_size);
 
                     char frame_loss_str[20 * _num_total_freq / _num_local_freq];
                     char tmp_str[20];
@@ -357,8 +348,8 @@ void gpuPostProcess::main_thread() {
                     }
                     INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
-                    wait_for_empty_buffer(out_buf, unique_name.c_str(), out_buffer_ID);
-                    wait_for_empty_buffer(gate_buf, unique_name.c_str(), out_buffer_ID);
+                    uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+                    uint8_t * gate_frame = wait_for_empty_frame(gate_buf, unique_name.c_str(), out_buffer_ID);
 
                     if (_enable_basic_gating) {
                         DEBUG("Copying gated data to the gate_buf!");
@@ -370,8 +361,8 @@ void gpuPostProcess::main_thread() {
                             visibilities[j].real = gated_vis[j].real + 2*visibilities[j].real;
                             visibilities[j].imag = gated_vis[j].imag + 2*visibilities[j].imag;
                         }
-                        memcpy(gate_buf->data[out_buffer_ID], gated_buf, gated_buf_size);
-                        mark_buffer_full(gate_buf, unique_name.c_str(), out_buffer_ID);
+                        memcpy(gate_frame, gated_buf, gated_buf_size);
+                        mark_frame_full(gate_buf, unique_name.c_str(), out_buffer_ID);
                     }
 
                     // memcpy visibilities into REST buffer.
@@ -380,23 +371,21 @@ void gpuPostProcess::main_thread() {
                         memcpy(_rest_copy_vis, visibilities, num_values * sizeof(complex_int_t));
                     }
 
-                    memcpy(out_buf->data[out_buffer_ID], buf, buffer_size);
-                    mark_buffer_full(out_buf, unique_name.c_str(), out_buffer_ID);
+                    memcpy(out_frame, buf, frame_size);
+                    mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
                     INFO("gpu_post_process: marked output buffer full: %d", out_buffer_ID );
 
-                    out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_buffers;
+                    out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
                 }
             }
 
             frame_number = (frame_number + 1) % _num_gpu_frames;
         }
 
-        release_info_object(in_buf[gpu_id], in_buffer_ID);
-        mark_buffer_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID);
-        INFO("gpu_post_process: marked in buffer empty: gpu_id %d, buffer id %d", gpu_id, in_buffer_ID );
+        mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
+        INFO("gpu_post_process: marked in buffer empty: gpu_id %d, buffer id %d", gpu_id, in_frame_ids[gpu_id] );
 
-        useableBufferIDs[gpu_id][0] = (useableBufferIDs[gpu_id][0] + 1) % in_buf[gpu_id]->num_buffers;
-
+        in_frame_ids[gpu_id] = (in_frame_ids[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         link_id = (link_id + 1) % _num_fpga_links;
     }
 

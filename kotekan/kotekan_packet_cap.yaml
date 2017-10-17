@@ -1,10 +1,7 @@
 ---
 type: config
-system:
-  mode: packet_cap
-  log_level: 3
-
-udp_packet_size: 4544
+log_level: 3
+udp_packet_size: 4928
 num_data_sets: 1
 samples_per_data_set: 32768
 buffer_depth: 5
@@ -13,40 +10,75 @@ timesamples_per_packet: 2
 num_gpu_frames: 1
 cpu_affinity: [4,5,6,7,8,9,10,11]
 
+# Metadata pools
+
+# Note we don't really need 4 pools here, this is more
+# of a test case here to make sure this works.
+pools:
+    num_metadata_objects: 2 * buffer_depth
+    pool_0:
+        kotekan_metadata_pool: chimeMetadata
+    pool_1:
+        kotekan_metadata_pool: chimeMetadata
+    pool_2:
+        kotekan_metadata_pool: chimeMetadata
+    pool_3:
+        kotekan_metadata_pool: chimeMetadata
+
+# Buffers
+
+network_buffers:
+    num_frames: buffer_depth
+    frame_size: udp_packet_size * samples_per_data_set
+    network_input_buffer_0:
+        kotekan_buffer: standard
+        metadata_pool: pool_0
+    network_input_buffer_1:
+        kotekan_buffer: standard
+        metadata_pool: pool_1
+    network_input_buffer_2:
+        kotekan_buffer: standard
+        metadata_pool: pool_2
+    network_input_buffer_3:
+        kotekan_buffer: standard
+        metadata_pool: pool_2
+
+# Processes
+
 dpdk:
-  kotekan_process: dpdkWrapper
-  mode: packet_cap
-  num_lcores: 4
-  link_map: [0,1,2,3]
-  network_out_buf_0: network_input_buffer_0
-  network_out_buf_1: network_input_buffer_1
-  network_out_buf_2: network_input_buffer_2
-  network_out_buf_3: network_input_buffer_3
+    kotekan_process: dpdkWrapper
+    mode: packet_cap
+    num_lcores: 4
+    link_map: [0,1,2,3]
+    network_out_buf_0: network_input_buffer_0
+    network_out_buf_1: network_input_buffer_1
+    network_out_buf_2: network_input_buffer_2
+    network_out_buf_3: network_input_buffer_3
 
 #hex_dump:
-#  len: 8000
-#  offset: 0
-#  hex_0:
-#    kotekan_process: hexDump
-#    buf: network_input_buffer_2
+#    len: 8000
+#    offset: 0
+#    hex_0:
+#      kotekan_process: hexDump
+#      buf: network_input_buffer_2
 
 packet_dump:
-  dump_to_disk: false
-  file_base: "/data/"
-  data_set: full_chime_dump
-  packet_dump_0:
-    kotekan_process: fullPacketDump
-    link_id: 0
-    network_in_buf: network_input_buffer_0
-  packet_dump_1:
-    kotekan_process: fullPacketDump
-    link_id: 1
-    network_in_buf: network_input_buffer_1
-  packet_dump_2:
-    kotekan_process: fullPacketDump
-    link_id: 2
-    network_in_buf: network_input_buffer_2
-  packet_dump_3:
-    kotekan_process: fullPacketDump
-    link_id: 3
-    network_in_buf: network_input_buffer_3
+    dump_to_disk: false
+    file_base: /data/
+    data_set: full_chime_dump
+    packet_dump_0:
+        kotekan_process: fullPacketDump
+        link_id: 0
+        network_in_buf: network_input_buffer_0
+    packet_dump_1:
+        kotekan_process: fullPacketDump
+        link_id: 1
+        network_in_buf: network_input_buffer_1
+    packet_dump_2:
+        kotekan_process: fullPacketDump
+        link_id: 2
+        network_in_buf: network_input_buffer_2
+    packet_dump_3:
+        kotekan_process: fullPacketDump
+        link_id: 3
+        network_in_buf: network_input_buffer_3

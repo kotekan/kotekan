@@ -1,7 +1,7 @@
 #ifndef RAW_FILE_READ_H
 #define RAW_FILE_READ_H
 
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
 #include <sys/stat.h>
@@ -17,9 +17,6 @@ public:
     void main_thread();
 private:
     struct Buffer *buf;
-    void * tmp_buf;
-    bool generate_info_object;
-    bool repeat_frame;
     std::string base_dir;
     std::string file_name;
     std::string file_ext;

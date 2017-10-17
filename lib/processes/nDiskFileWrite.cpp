@@ -8,9 +8,10 @@
 #include <thread>
 #include <sys/stat.h>
 #include "nDiskFileWrite.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "util.h"
+#include "chimeMetadata.h"
 
 nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                                 bufferContainer &buffer_containter) :
@@ -141,7 +142,8 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
     int fd;
     int file_num = disk_id;
-    int buffer_id = disk_id;
+    int frame_id = disk_id;
+    uint8_t * frame = NULL;
 
     sleep(1);
     cpu_set_t cpuset;
@@ -154,12 +156,12 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     for (;;) {
 
         // This call is blocking.
-        buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
 
-        //INFO("Got buffer id: %d, disk id %d", buffer_id, disk_id);
+        //INFO("Got buffer id: %d, disk id %d", frame_id, disk_id);
 
         // Check if the producer has finished, and we should exit.
-        if (buffer_id == -1) {
+        if (frame_id == -1) {
             break;
         }
 
@@ -173,8 +175,6 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 dataset_name.c_str(),
                 file_num);
 
-        struct ErrorMatrix * error_matrix = get_error_matrix(buf, buffer_id);
-
         // Open the file to write
         if (write_to_disk) {
 
@@ -186,9 +186,9 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 exit(errno);
             }
 
-            ssize_t bytes_writen = write(fd, buf->data[buffer_id], buf->buffer_size);
+            ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->buffer_size) {
+            if (bytes_writen != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
@@ -199,20 +199,16 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 ERROR("Cannot close file %s", file_name);
             }
 
-            INFO("Data file write done for %s, lost_packets %d", file_name, error_matrix->bad_timesamples);
+            INFO("Data file write done for %s, lost_packets %d", file_name, get_lost_timesamples(buf, frame_id));
         } else {
             //usleep(0.070 * 1e6);
-            INFO("Disk id %d, Lost Packets %d, buffer id %d", disk_id, error_matrix->bad_timesamples, buffer_id );
+            INFO("Disk id %d, Lost Packets %d, buffer id %d", disk_id, get_lost_timesamples(buf, frame_id), frame_id);
         }
 
-        // Zero the buffer (needed for VDIF packet processing)
-        zero_buffer(buf, buffer_id);
-
         // TODO make release_info_object work for nConsumers.
-        release_info_object(buf, buffer_id);
-        mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
-        buffer_id = ( buffer_id + num_disks ) % buf->num_buffers;
+        frame_id = ( frame_id + num_disks ) % buf->num_frames;
         file_num += num_disks;
     }
 }

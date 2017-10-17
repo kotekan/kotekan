@@ -34,7 +34,7 @@ void simVdifData::main_thread() {
     int freqs = config.get_int(unique_name, "num_local_freq");
 
     double time_available =  2.56e-6 * times; //microseconds
-    int buf_id = 0;
+    int frame_id = 0;
 
     struct VDIFHeader header = {
             0,      //uint32_t seconds : 30;
@@ -65,14 +65,14 @@ void simVdifData::main_thread() {
     start_time = e_time();
 //    for (int ct=0; ct<100; ct++) {
     for (;;) {
-        wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+        unsigned char* buf_ptr = (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         stop_time = e_time();
         double dt = stop_time-start_time;
         if (dt < time_available) {
             usleep((time_available-dt) * 1e6);
             stop_time = e_time();
         }
-        unsigned char* buf_ptr = buf->data[buf_id];
+
         for (int t = 0; t < times; t++) {
             for (int e = 0; e < elements; e++){
                 memcpy(buf_ptr,(void*)&header,sizeof(header));
@@ -83,15 +83,14 @@ void simVdifData::main_thread() {
                 buf_ptr+=freqs;
             }
         }
-//        INFO("Generated a test data set in %s[%d]", buf.buffer_name, buf_id);
+//        INFO("Generated a test data set in %s[%d]", buf.buffer_name, frame_id);
 
-        mark_buffer_full(buf, unique_name.c_str(), buf_id);
-        buf_id = (buf_id + 1) % buf->num_buffers;
+        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        frame_id = (frame_id + 1) % buf->num_frames;
         header.data_frame++;
 
         INFO("%4.1f%% of %6.4fs available.\n",dt/time_available*100,time_available);
         start_time=stop_time;
     }
-    mark_producer_done(buf, 0);
 }
 

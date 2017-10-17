@@ -2,7 +2,7 @@
 #define CALLBACKDATA_H
 
 #include "gpu_command.h"
-#include "buffers.h"
+#include "buffer.h"
 #include "pthread.h"
 
 struct loopCounter {

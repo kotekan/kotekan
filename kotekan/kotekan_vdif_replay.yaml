@@ -1,8 +1,6 @@
 ---
 type: config
-system:
-  mode: single_dish
-  log_level: 2
+log_level: 2
 
 instrument_name: aro
 
@@ -16,6 +14,25 @@ buffer_depth: 1
 num_links: 8
 timesamples_per_packet: 2
 cpu_affinity: [8,9,10,11]
+num_disks: 10
+
+meta_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 5 * num_disks * buffer_depth
+
+vdif_input_buf:
+  kotekan_buffer: standard
+  metadata_pool: meta_pool
+  num_frames: buffer_depth * num_disks
+  vdif_header_size: 64
+  frame_size: samples_per_data_set * num_elements * (num_freq + vdif_header_size)
+
+output_power_buf:
+  kotekan_buffer: standard
+  metadata_pool: meta_pool
+  num_frames: buffer_depth
+  sizeof_float: 4
+  frame_size: (samples_per_data_set/integration_length) * (num_freq + 1) * num_elements * sizeof_float
 
 #dpdk:
 #  kotekan_process: dpdkWrapper
@@ -29,7 +46,6 @@ cpu_affinity: [8,9,10,11]
 
 replay:
   kotekan_process: nDiskFileRead
-  num_disks: 10
   disk_base: /drives/
   disk_set: D
   out_buf: vdif_input_buf
@@ -46,7 +62,6 @@ raw_capture:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
   gain_file_dir: /tmp
-  num_disks: 10
   disk_base: /drives/
   disk_set: testing
   in_buf: vdif_input_buf

@@ -93,7 +93,7 @@ void hccGPUThread::main_thread() {
         INFO("hccGPUThread: gpu %d; got full buffer ID %d", gpu_id, in_buffer_id);
         double start_time = e_time();
 
-        int * in = (int *)in_buf.data[in_buffer_id];
+        int * in = (int *)in_buf.frames[in_buffer_id];
 
         // transfer things in
         hc::completion_future copy_input = hc::copy_async((int*)in, (int*)in+n_elem*n_timesteps/4, a_input);
@@ -288,10 +288,10 @@ void hccGPUThread::main_thread() {
         // ----------------- End Kernels ----------------
 
         INFO("hccGPUTHread: gpu %d; Wait for empty output buffer id %d", gpu_id ,out_buffer_id);
-        wait_for_empty_buffer(&out_buf, unique_name, out_buffer_id);
+        wait_for_empty_frame(&out_buf, unique_name, out_buffer_id);
 
         // copy the data on the GPU back to the host
-        int * out = (int*)out_buf.data[out_buffer_id];
+        int * out = (int*)out_buf.frames[out_buffer_id];
         hc::completion_future corr_f = hc::copy_async(a_corr, out);
         corr_f.wait();
 
@@ -306,13 +306,13 @@ void hccGPUThread::main_thread() {
                          &out_buf, out_buffer_id);
 
         // Mark the input buffer as "empty" so that it can be reused.
-        mark_buffer_empty(&in_buf, unique_name.c_str(), in_buffer_id);
+        mark_frame_empty(&in_buf, unique_name.c_str(), in_buffer_id);
 
         // Mark the output buffer as full, so it can be processed.
-        mark_buffer_full(&out_buf, unique_name.c_str(), out_buffer_id);
+        mark_frame_full(&out_buf, unique_name.c_str(), out_buffer_id);
 
-        in_buffer_id = (in_buffer_id + 1) % in_buf.num_buffers;
-        out_buffer_id = (out_buffer_id + 1) % out_buf.num_buffers;
+        in_buffer_id = (in_buffer_id + 1) % in_buf.num_frames;
+        out_buffer_id = (out_buffer_id + 1) % out_buf.num_frames;
     }
 
     INFO("hccGPUThread: exited main thread");

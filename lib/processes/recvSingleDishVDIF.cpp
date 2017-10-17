@@ -30,7 +30,8 @@ void recvSingleDishVDIF::apply_config(uint64_t fpga_seq) {
 void recvSingleDishVDIF::main_thread() {
 
     int file_num = 0;
-    int buffer_id = 0;
+    int frame_id = 0;
+    uint8_t * frame = NULL;
 
     const int vdif_header_len = 32;
 
@@ -40,18 +41,14 @@ void recvSingleDishVDIF::main_thread() {
 
     while(!stop_thread) {
         // Get an empty buffer to write into
-        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
-
-        if (buffer_id == -1) {
-            break;
-        }
+        frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
 
         // Send data to remote server.
         // TODO rate limit this output
-        for (int i = 0; i < buf->buffer_size / packet_size; ++i) {
+        for (int i = 0; i < buf->frame_size / packet_size; ++i) {
 /*
             int bytes_recvd = sendto(socket_fd,
-                             (void *)&buf->data[buffer_id][packet_size*i],
+                             (void *)&frame[packet_size*i],
                              packet_size, 0,
                              (struct sockaddr *)&saddr_remote, saddr_len);
 
@@ -66,11 +63,11 @@ void recvSingleDishVDIF::main_thread() {
 */
         }
 
-        INFO("recvSingleDishVDIF: marking buffer %s[%d] as full", buf->buffer_name, buffer_id);
-        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
+        INFO("recvSingleDishVDIF: marking buffer %s[%d] as full", buf->buffer_name, frame_id);
+        mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         file_num++;
-        buffer_id = (buffer_id + 1) % buf->num_buffers;
+        frame_id = (frame_id + 1) % buf->num_frames;
     }
 
     // Comment while support for finishing is not yet working.

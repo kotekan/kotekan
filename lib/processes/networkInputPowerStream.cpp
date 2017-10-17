@@ -37,8 +37,6 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
     times = config.get_int(unique_name, "samples_per_data_set") /
             config.get_int(unique_name, "integration_length");
 
-    frame_idx=0;
-
 }
 
 networkInputPowerStream::~networkInputPowerStream() {
@@ -68,14 +66,15 @@ void networkInputPowerStream::receive_packet(void *buffer, int length, int socke
 }
 
 void networkInputPowerStream::main_thread() {
-    int buf_id = 0;
+    int frame_id = 0;
+    uint8_t * frame = NULL;
 
     if (protocol == "UDP")
     {
         int socket_fd;
         uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
 
-        struct sockaddr_in address; 
+        struct sockaddr_in address;
         memset(&address,0,sizeof(address));
         address.sin_addr.s_addr = htonl(INADDR_ANY);//inet_addr(server_ip.c_str());
         address.sin_port = htons(port);
@@ -92,7 +91,7 @@ void networkInputPowerStream::main_thread() {
         char *local_buf = (char*)calloc(packet_length,sizeof(char));
 
         for (;;) {
-            wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
+            frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++){
@@ -103,15 +102,15 @@ void networkInputPowerStream::main_thread() {
                         ERROR("BAD UDP PACKET! %i %i", len,errno)
                     else
                     {
-                        memcpy(buf->data[buf_id]+t*elems*(freqs+1)*sizeof(uint)+
+                        memcpy(frame+t*elems*(freqs+1)*sizeof(uint)+
                                                       e*(freqs+1)*sizeof(uint),
                             local_buf,packet_length);
                     }
                 }
             }
 
-            mark_buffer_full(buf, unique_name.c_str(), buf_id);
-            buf_id = (buf_id + 1) % buf->num_buffers;
+            mark_frame_full(buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % buf->num_frames;
         }
 
     }
@@ -122,7 +121,7 @@ void networkInputPowerStream::main_thread() {
         int socket_in;
         int socket_fd;
         int c;
-        struct sockaddr_in address, client; 
+        struct sockaddr_in address, client;
         memset(&address,0,sizeof(address));
         address.sin_addr.s_addr = htonl(INADDR_ANY);//inet_addr(server_ip.c_str());
         address.sin_port = htons(port);
@@ -148,8 +147,7 @@ void networkInputPowerStream::main_thread() {
         uint *data = (uint*)(((char*)recv_buffer)+sizeof(IntensityPacketHeader));
 
         for (;;) {
-            wait_for_empty_buffer(buf, unique_name.c_str(), buf_id);
-            unsigned char* buf_ptr = buf->data[buf_id];
+            unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++){
@@ -160,8 +158,8 @@ void networkInputPowerStream::main_thread() {
                     buf_ptr+=(freqs+1)*sizeof(int);
                 }
             }
-            mark_buffer_full(buf, unique_name.c_str(), buf_id);
-            buf_id = (buf_id + 1) % buf->num_buffers;
+            mark_frame_full(buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % buf->num_frames;
         }
         free(recv_buffer);
         free(metadata);
