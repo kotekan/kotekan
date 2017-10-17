@@ -8,6 +8,7 @@ option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
+option(USE_AIRSPY "Use AIRSPY settings" ON)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -28,7 +29,6 @@ endif ()
 if(${DPDK_VDIF})
   add_definitions(-DDPDK_VDIF_MODE)
 endif()
-
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
@@ -80,6 +80,9 @@ else ()
   MESSAGE("DPDK Disabled")
 endif ()
 
+if (${USE_AIRSPY})
+  MESSAGE("AIRSPY Enabled")
+endif ()
 
 # Get the current working branch
 execute_process(

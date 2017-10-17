@@ -25,6 +25,7 @@ set (KOTEKAN_LIB_SOURCES
               fpga_header_functions.c
               bufferContainer.cpp
               processFactory.cpp
+              airspy_control.c
        )
 
 if (${USE_DPDK})
@@ -43,8 +44,10 @@ add_library ( kotekan_libs
 
 target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( kotekan_libs libinclude )
-target_link_libraries( kotekan_libs m )
-
+target_link_libraries( kotekan_libs m)
+if (${USE_AIRSPY})
+    target_link_libraries( kotekan_libs airspy)
+endif ()
 if (${USE_DPDK})
     include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
     link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )

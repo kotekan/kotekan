@@ -23,6 +23,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               streamSingleDishVDIF.cpp
               accumulate.cpp
               bufferStatus.cpp
+              airspyInput.cpp
               )
 
 if (${USE_DPDK})

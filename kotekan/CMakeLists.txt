@@ -5,7 +5,7 @@ PROJECT (kotekan)
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 #CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp intensityReceiverMode.cpp)
+SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp intensityReceiverMode.cpp airspyMode.cpp)
 
 if (${USE_DPDK})
 	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
@@ -37,7 +37,7 @@ file(GLOB open_cl_kernels "${KOTEKAN_SOURCE_DIR}/kernels/*.cl")
 
 add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
 
-target_link_libraries( kotekan m dl pthread )
+target_link_libraries( kotekan m dl pthread libairspy.a)
 target_link_libraries( kotekan kotekan_libs )
 target_link_libraries( kotekan libinclude )
 

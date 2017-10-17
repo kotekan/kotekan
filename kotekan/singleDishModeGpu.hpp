@@ -19,4 +19,4 @@ private:
     bufferContainer host_buffers;
 };
 
-#endif /* RFI_MODE_HPP */
+#endif

@@ -9,6 +9,7 @@
 #ifdef WITH_DPDK
     #include "dpdkWrapper.hpp"
 #endif
+#include "airspyInput.hpp"
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
@@ -111,6 +112,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new dpdkWrapper(config, location, buffer_container);
     }
 #endif
+    if (name == "airspyInput") {
+        return (KotekanProcess *) new airspyInput(config, location, buffer_container);
+    }
+
     if (name == "fullPacketDump") {
         return (KotekanProcess *) new fullPacketDump(config, location, buffer_container);
     }

@@ -31,7 +31,6 @@ void nullProcess::main_thread() {
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
-        INFO("null_process: waiting for buffer");
         buffer_ID = wait_for_full_buffer(buf, unique_name.c_str(), buffer_ID);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
@@ -45,7 +44,6 @@ void nullProcess::main_thread() {
 
         release_info_object(buf, buffer_ID);
         mark_buffer_empty(buf, unique_name.c_str(), buffer_ID);
-
         buffer_ID = (buffer_ID + 1) % buf->num_buffers;
     }
     INFO("Closing null thread");

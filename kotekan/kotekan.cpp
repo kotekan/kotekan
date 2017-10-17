@@ -58,6 +58,7 @@ extern "C" {
 #include "packetCapMode.hpp"
 #endif
 #include "singleDishMode.hpp"
+#include "airspyMode.hpp"
 #include "errors.h"
 #include "buffers.h"
 
@@ -184,6 +185,9 @@ int start_new_kotekan_mode(Config &config) {
 #endif
     else if (mode == "single_dish") {
         kotekan_mode = (kotekanMode *) new singleDishMode(config);
+    }
+    else if (mode == "airspy") {
+        kotekan_mode = (kotekanMode *) new airspyMode(config);
     }
     else {
         return -1;
