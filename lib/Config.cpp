@@ -40,6 +40,15 @@ int32_t Config::get_int(const string& base_path, const string& name) {
     return value.get<int32_t>();
 }
 
+int32_t Config::get_int_default(const string& base_path, const string& name, int32_t default_value) {
+    try {
+        int32_t value = get_int(base_path, name);
+        return value;
+    } catch (std::exception const & ex) {
+        return default_value;
+    }
+}
+
 int32_t Config::get_int_eval(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 
@@ -56,6 +65,15 @@ double Config::get_double(const string& base_path, const string& name) {
         throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a double or doesn't exist");
     }
     return value.get<double>();
+}
+
+double Config::get_double_default(const string& base_path, const string& name, double default_value) {
+    try {
+        double value = get_double(base_path, name);
+        return value;
+    }  catch (std::exception const & ex) {
+        return default_value;
+    }
 }
 
 double Config::get_double_eval(const string& base_path, const string& name) {
@@ -76,6 +94,15 @@ float Config::get_float(const string& base_path, const string& name) {
     return value.get<float>();
 }
 
+float Config::get_float_default(const string& base_path, const string& name, float default_value) {
+    try {
+        float value = get_float(base_path, name);
+        return value;
+    }  catch (std::exception const & ex) {
+        return default_value;
+    }
+}
+
 string Config::get_string(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 
@@ -85,6 +112,15 @@ string Config::get_string(const string& base_path, const string& name) {
     return value.get<string>();
 }
 
+string Config::get_string_default(const string& base_path, const string& name, const string& default_value) {
+    try {
+        string value = get_string(base_path, name);
+        return value;
+    }  catch (std::exception const & ex) {
+        return default_value;
+    }
+}
+
 bool Config::get_bool(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 
@@ -92,6 +128,15 @@ bool Config::get_bool(const string& base_path, const string& name) {
         throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a boolean or doesn't exist");
     }
     return value.get<bool>();
+}
+
+bool Config::get_bool_default(const string& base_path, const string& name, bool default_value) {
+    try {
+        bool value = get_bool(base_path, name);
+        return value;
+    }  catch (std::exception const & ex) {
+        return default_value;
+    }
 }
 
 vector<int32_t> Config::get_int_array(const string& base_path, const string& name) {

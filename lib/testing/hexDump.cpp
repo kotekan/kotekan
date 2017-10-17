@@ -9,8 +9,8 @@ hexDump::hexDump(Config& config,
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());
-    len = config.get_int(unique_name, "len");
-    offset = config.get_int(unique_name, "offset");
+    len = config.get_int_default(unique_name, "len", 128);
+    offset = config.get_int_default(unique_name, "offset", 0);
 }
 
 hexDump::~hexDump() {

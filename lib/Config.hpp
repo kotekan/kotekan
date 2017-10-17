@@ -22,16 +22,31 @@ public:
     // ----------------------------
 
     int32_t get_int(const string& base_path, const string& name);
+    // Same as get_int, but if it cannot find the value, it returns `default_value`
+    int32_t get_int_default(const string& base_path, const string& name, int32_t default_value);
     // Treats the value as an arithmetic expression with other variables,
     // and return the result of evaluating it.
     int32_t get_int_eval(const string& base_path, const string& name);
+
     float get_float(const string& base_path, const string& name);
+    // Same as get_float, but if it cannot find the value, it returns `default_value`
+    float get_float_default(const string& base_path, const string& name, float default_value);
+
     double get_double(const string& base_path, const string& name);
+    // Same as get_double, but if it cannot find the value, it returns `default_value`
+    double get_double_default(const string& base_path, const string& name, double default_value);
     // Treats the value as an arithmetic expression with other variables,
     // and return the result of evaluating it.
     double get_double_eval(const string& base_path, const string& name);
+
     string get_string(const string& base_path, const string& name);
+    // Same as get_string, but if it cannot find the value, it returns `default_value`
+    string get_string_default(const string& base_path, const string& name, const string& default_value);
+
     bool get_bool(const string& base_path, const string& name);
+    // Same as get_bool, but if it cannot find the value, it returns `default_value`
+    bool get_bool_default(const string& base_path, const string& name, bool default_value);
+
     vector<int32_t> get_int_array(const string& base_path, const string& name);
     vector<float> get_float_array(const string& base_path, const string& name);
     vector<double> get_double_array(const string& base_path, const string& name);
