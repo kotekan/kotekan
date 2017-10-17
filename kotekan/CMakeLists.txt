@@ -27,6 +27,7 @@ endif ()
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
+include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
@@ -36,9 +37,7 @@ link_directories (${KOTEKAN_BINARY_DIR}/lib)
 
 ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
 
-file(GLOB open_cl_kernels "${KOTEKAN_SOURCE_DIR}/kernels/*.cl")
-
-add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
+add_executable(kotekan ${SOURCE_EXE})
 
 target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
@@ -51,8 +50,19 @@ if (${USE_DPDK})
     target_link_libraries ( kotekan ${DPDK_LIBS} )
 endif ()
 
+if (${USE_OPENCL})
+    add_custom_target(kernel_opencl_copy
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
+        "opencl/kernels/")
+    add_dependencies( kotekan kernel_opencl_copy )
+endif ()
+
 add_dependencies( kotekan kotekan_libs )
 
 install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
-install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
+install(FILES kotekan_opencl_280x.yaml DESTINATION /etc/kotekan/ COMPONENT config)
+install(FILES kotekan_opencl_fury.yaml DESTINATION /etc/kotekan/ COMPONENT config)
+install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
+#install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
 install(PROGRAMS ../scripts/yaml_to_json.py DESTINATION /usr/sbin COMPONENT scripts)

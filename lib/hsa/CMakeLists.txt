@@ -1,10 +1,10 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_hsa )
 
-include_directories (${CHIME_SOURCE_DIR}/include)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/hsa)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 
 add_library ( kotekan_hsa
               signalContainer.cpp

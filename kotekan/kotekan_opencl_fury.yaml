@@ -46,13 +46,13 @@ gpu:
   - name: beamform_phase_data
     kernel: ''
   - name: offset_accumulator
-    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+    kernel: "./opencl/kernels/offset_accumulator.cl"
   - name: preseed_multifreq
-    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+    kernel: "./opencl/kernels/preseed_multifreq.cl"
   - name: pairwise_correlator
-    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+    kernel: "./opencl/kernels/pairwise_correlator.cl"
   - name: beamform_kernel
-    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+    kernel: "./opencl/kernels/beamform_tree_scale.cl"
   - name: output_beamform_result
     kernel: ''
   - name: output_data_result

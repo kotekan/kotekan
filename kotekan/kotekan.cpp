@@ -212,17 +212,19 @@ int main(int argc, char ** argv) {
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
+    bool opt_d_set = false;
 
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
+            {"config-deamon", required_argument, 0, 'd'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "hc:",
+        opt_val = getopt_long (argc, argv, "hc:d:",
                                long_options, &option_index);
 
         // End of args
@@ -237,6 +239,10 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
+                break;
+            case 'd':
+                config_file_name = strdup(optarg);
+                opt_d_set = true;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -264,12 +270,12 @@ int main(int argc, char ** argv) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         //config.parse_file(config_file_name, 0);
         std::string json_string;
-        switch (opt_val) {
-            case 'c':
+        switch (opt_d_set) {
+            case false:
                 json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
                 break;
-            case 'd':
-                json_string = exec("python /usr/sbin/scripts/yaml_to_json.py " + std::string(config_file_name));
+            default:
+                json_string = exec("python /usr/sbin/yaml_to_json.py " + std::string(config_file_name));
                 break;
         }
         config_json = json::parse(json_string.c_str());

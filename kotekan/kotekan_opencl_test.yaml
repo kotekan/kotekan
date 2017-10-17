@@ -29,11 +29,11 @@ gpu:
   - name: input_data_stage
     kernel: ''
   - name: offset_accumulator
-    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+    kernel: "./opencl/kernels/offset_accumulator.cl"
   - name: preseed_multifreq
-    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+    kernel: "./opencl/kernels/preseed_multifreq.cl"
   - name: pairwise_correlator
-    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+    kernel: "./opencl/kernels/pairwise_correlator.cl"
   - name: output_data_result
     kernel: ''
   ts_element_offset: 0
