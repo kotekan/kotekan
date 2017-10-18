@@ -33,6 +33,8 @@
 #include "accumulate.hpp"
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
+#include "hdf5Writer.hpp"
+
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -207,6 +209,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "chimeMetadataDump") {
         return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
+    }
+
+    if (name == "hdf5Writer") {
+        return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
     }
 
     // OpenCL
