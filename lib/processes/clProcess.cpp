@@ -154,6 +154,14 @@ void clProcess::main_thread()
         if (first_run)
         {
             mem_reconcil_thread_handle = std::thread(&clProcess::mem_reconcil_thread, std::ref(*this));
+
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            for (int j = 4; j < 12; j++)
+                CPU_SET(j, &cpuset);
+            pthread_setaffinity_np(mem_reconcil_thread_handle.native_handle(),
+                                    sizeof(cpu_set_t), &cpuset);
+
             first_run = false;
         }
         //DEBUG("Commands Queued\n");
@@ -230,8 +238,8 @@ void clProcess::mem_reconcil_thread()
             {
                 //std::cout << "BufferID_" << j << "beamforming" << std::endl;
                 //WILL BE NEEDED ON PF.
-                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
+//                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+//                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
                 mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
@@ -250,8 +258,8 @@ void clProcess::mem_reconcil_thread()
 
             // Copy the information contained in the input buffer
             //WILL BE NEEDED ON PF.
-            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
+//            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+//                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
 

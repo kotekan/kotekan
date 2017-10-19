@@ -161,4 +161,82 @@ float timer::calculate_std(string interval_name){
 
     return stdev;
 }
+/*
+The profiling times are given in billionths of a second, called nanoseconds or ns. But
+not every device can resolve time down to individual nanoseconds. To determine the resolution of a device, call clGetDeviceInfo with CL_DEVICE_PROFILING_TIMER_ RESOLUTION set as the second argument. This is shown in the following code:
+size_t time_res;
+clGetDeviceInfo(device, CL_DEVICE_PROFILING_TIMER_RESOLUTION, sizeof(time_res), &time_res, NULL);
 
+void time_opencl_kernel(){
+    CL_QUEUE_PROFILING_ENABLE
+
+            commands = clCreateCommandQueue(context, device_id, CL_QUEUE_PROFILING_ENABLE, &err);
+cl_event
+    // Sample Code that can be used for timing kernel execution duration
+    // Using different parameters for cl_profiling_info allows us to
+    // measure the wait time
+    cl_event timing_event;
+    cl_int err_code;
+    //! We are timing the clEnqueueNDRangeKernel call and timing //information will be stored in timing_event
+err_code = clEnqueueNDRangeKernel ( command_queue, kernel, work_dim,
+        global_work_offset, global_work_size, local_work_size, 0,
+NULL,
+&timing_event);
+clFinish(command_queue);
+cl_ulong starttime;
+cl_ulong endtime;
+
+err_code = clGetEventProfilingInfo( timing_event, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &starttime, NULL);
+
+kerneltimer = clGetEventProfilingInfo( timing_event,
+CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endtime, NULL);
+
+unsigned long elapsed = (unsigned long)(endtime - starttime);
+
+printf("Kernel Execution\t%ld ns\n",elapsed);
+}
+
+// set up platform, context, and devices (not shown) // Create a command-queue with profiling enabled cl_command_queue commands = clCreateCommandQueue(context, device_id, CL_QUEUE_PROFILING_ENABLE, &err);
+// set up program, kernel, memory objects (not shown) cl_event prof_event;
+err = clEnqueueNDRangeKernel(commands, kernel, nd, NULL, global, NULL, 0, NULL, prof_event);
+clFinish(commands);
+err = clWaitForEvents(1, &prof_event );
+cl_ulong ev_start_time=(cl_ulong)0;
+cl_ulong ev_end_time=(cl_ulong)0;
+size_t return_bytes;
+err = clGetEventProfilingInfo(prof_event, CL_PROFILING_COMMAND_QUEUED,sizeof(cl_ulong), &ev_start_time, &return_bytes);
+err = clGetEventProfilingInfo(prof_event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ev_end_time, &return_bytes);
+run_time =(double)(ev_end_time - ev_start_time);
+printf("\n profile data %f secs\n",run_time*1.0e-9);
+
+
+
+
+
+
+        #include "mult.h"
+#include "kernels.h"
+void CL_CALLBACK eventCallback(cl_event ev, cl_int event_status, void * user_data)
+{
+int err, evID = (int)user_data;
+cl_ulong ev_start_time=(cl_ulong)0;
+cl_ulong ev_end_time=(cl_ulong)0;
+size_t return_bytes;
+double run_time;
+printf(" Event callback %d %d ",(int)event_status, evID);
+err = clGetEventProfilingInfo( ev, CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &ev_start_time, &return_bytes);
+err = clGetEventProfilingInfo( ev, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ev_end_time, &return_bytes);
+run_time = (double)(ev_end_time - ev_start_time);
+printf("\n kernel runtime %f secs\n",run_time*1.0e-9);
+}
+//------------------------------------------------------------------ int main(int argc, char **argv) {
+// Declarations and platform definitions that are not shown.
+commands = clCreateCommandQueue(context, device_id, CL_QUEUE_PROFILING_ENABLE, &err);
+cl_event prof_event; //event to trigger the DAG
+cl_event uevent = clCreateUserEvent(context, &err); // Set up the DAG of commands and profiling callbacks
+err = clEnqueueNDRangeKernel(commands, kernel, nd, NULL, global, NULL, 1, &uevent, &prof_event);
+int ID=0;
+err = clSetEventCallback (prof_event, CL_COMPLETE, &eventCallback,(void *)ID);
+// Once the DAG of commands is set up (we showed only one) // trigger the DAG using prof_event to profile execution // of the DAG
+err = clSetUserEventStatus(uevent, CL_SUCCESS);
+ */
