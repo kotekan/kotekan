@@ -42,6 +42,7 @@ void recvSingleDishVDIF::main_thread() {
     while(!stop_thread) {
         // Get an empty buffer to write into
         frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         // Send data to remote server.
         // TODO rate limit this output

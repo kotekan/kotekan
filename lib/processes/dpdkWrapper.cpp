@@ -171,7 +171,7 @@ void dpdkWrapper::main_thread() {
     CHECK_ERROR( pthread_setaffinity_np(network_dpdk_t, sizeof(cpu_set_t), &cpuset) );
 
     while(!stop_thread) {
-        sleep(10);
+        sleep(1);
     }
 
     // Start exit

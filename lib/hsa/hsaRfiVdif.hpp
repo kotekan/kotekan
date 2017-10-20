@@ -23,7 +23,7 @@ private:
     int32_t input_frame_len;
     int32_t output_len;
     int32_t mean_len;
-  
+
     float * Mean_Array;
 
     int32_t _num_elements;

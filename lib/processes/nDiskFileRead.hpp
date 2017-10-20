@@ -18,9 +18,9 @@ private:
     struct Buffer *buf;
     std::vector<std::thread> file_thread_handles;
 
-    int num_disks;
-    int num_elements;
-    int num_frequencies;
+    uint32_t num_disks;
+    uint32_t num_elements;
+    uint32_t num_frequencies;
     string disk_base;
     string disk_set;
     string capture;

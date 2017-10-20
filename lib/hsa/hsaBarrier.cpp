@@ -5,11 +5,6 @@ hsaBarrier::~hsaBarrier() {
 
 }
 
-// Not needed.
-void hsaBarrier::wait_on_precondition(int gpu_frame_id) {
-    (void)gpu_frame_id;
-}
-
 hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
     // Get the current write index.

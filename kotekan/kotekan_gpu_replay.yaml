@@ -21,7 +21,8 @@ gpu_data_buffer:
   kotekan_buffer: standard
   metadata_pool: main_pool
   num_frames: buffer_depth
-  frame_size: 4 * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
+  sizeof_int: 4
+  frame_size: sizeof_int * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
 
 # Kotekan processes
 file_read:

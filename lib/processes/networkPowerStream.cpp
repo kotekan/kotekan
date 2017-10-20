@@ -82,9 +82,10 @@ void networkPowerStream::main_thread() {
         }
         INFO("%i %s",dest_port, dest_server_ip.c_str());
 
-        for (;;) {
+        while(!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            if (frame == NULL) break;
 
             for (int t=0; t<times; t++){
                 packet_header->frame_idx = frame_idx++;
@@ -113,9 +114,11 @@ void networkPowerStream::main_thread() {
     else if (dest_protocol == "TCP")
     {
         // TCP variables
-        for (;;) {
+        while (!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            if (frame == NULL) break;
+
             while (atomic_flag_test_and_set(&socket_lock)) {}
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);

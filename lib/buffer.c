@@ -63,6 +63,8 @@ struct Buffer* create_buffer(int num_frames, int len,
     CHECK_ERROR( pthread_cond_init(&buf->full_cond, NULL) );
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
 
+    buf->shutdown_signal = 0;
+
     // Copy the buffer buffer name.
     buf->buffer_name = strdup(buffer_name);
 
@@ -171,7 +173,11 @@ struct Buffer* create_buffer(int num_frames, int len,
 void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_frames; ++i) {
+        #ifdef WITH_HSA
+        hsa_host_free(buf->frames[i]);
+        #else
         free(buf->frames[i]);
+        #endif
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -331,7 +337,9 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
-    while (buf->is_full[ID] == 1 || buf->producers_done[ID][producer_id] == 1) {
+    while ((buf->is_full[ID] == 1 ||
+            buf->producers_done[ID][producer_id] == 1)
+            && buf->shutdown_signal == 0) {
         DEBUG("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
               producer_name, ID, buf->buffer_name);
         print_stat = 1;
@@ -342,6 +350,9 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
 
     if (print_stat == 1)
         print_buffer_status(buf);
+
+    if (buf->shutdown_signal == 1)
+        return NULL;
 
     return buf->frames[ID];
 }
@@ -503,14 +514,16 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int I
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    while ( buf->is_full[ID] == 0 ||
-            buf->consumers_done[ID][consumer_id] == 1 ) {
+    while ( (buf->is_full[ID] == 0 ||
+            buf->consumers_done[ID][consumer_id] == 1) && buf->shutdown_signal == 0 ) {
         pthread_cond_wait(&buf->full_cond, &buf->lock);
     }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
-    // TODO Enable -1 return when no producers exist.
+    if (buf->shutdown_signal == 1)
+        return NULL;
+
     return buf->frames[ID];
 }
 
@@ -611,4 +624,13 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID) {
     assert(ID < buf->num_frames);
 
     return buf->metadata[ID];
+}
+
+void send_shutdown_signal(struct Buffer* buf) {
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    buf->shutdown_signal = 1;
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    CHECK_ERROR( pthread_cond_broadcast(&buf->empty_cond) );
+    CHECK_ERROR( pthread_cond_broadcast(&buf->full_cond) );
 }

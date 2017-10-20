@@ -72,6 +72,7 @@ void chrxUplink::main_thread() {
 
         // This call is blocking!
         vis_frame = wait_for_full_frame(vis_buf, unique_name.c_str(), buffer_ID);
+        if (vis_frame == NULL) break;
 
         // INFO("Sending TCP frame to ch_master. frame size: %d", vis_buf->frame_size);
 
@@ -90,6 +91,7 @@ void chrxUplink::main_thread() {
         if (_enable_gating) {
             DEBUG("Getting gated buffer");
             gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
+            if (gate_frame == NULL) break;
 
             DEBUG("Sending gated buffer");
             bytes_sent = send(tcp_fd, gate_frame, gate_buf->frame_size, 0);

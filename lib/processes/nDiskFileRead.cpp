@@ -91,9 +91,10 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 	Mean[i] = 0; //Intialize Mean array
     }
 
-    for (;;) { //Endless loop
+    while (!stop_thread) { //Endless loop
 
         unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
+        if (buf_ptr == NULL) break;
 
         char file_name[100]; //Find current file
         snprintf(file_name, sizeof(file_name), "%s%s/%d/%s/%07d.vdif",disk_base.c_str(),disk_set.c_str(), disk_id,capture.c_str(),file_index);

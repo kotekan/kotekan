@@ -153,10 +153,11 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 //    CPU_SET(11-(disk_id%2),&cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
-    for (;;) {
+    while(!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         //INFO("Got buffer id: %d, disk id %d", frame_id, disk_id);
 

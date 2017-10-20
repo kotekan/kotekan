@@ -24,9 +24,11 @@ void constDataCheck::main_thread() {
     uint8_t * frame = NULL;
     int num_errors = 0;
 
-    for (;;) {
+    while (!stop_thread) {
 
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
+
         INFO("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
 
         bool error = false;

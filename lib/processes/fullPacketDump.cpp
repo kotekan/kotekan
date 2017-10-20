@@ -84,11 +84,7 @@ void fullPacketDump::main_thread() {
 
         // This call is blocking!
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        //INFO("fullPacketDump: link %d got full full buffer ID %d", link_id, frame_id);
-        // Check if the producer has finished, and we should exit.
-        if (frame_id == -1) {
-            break;
-        }
+        if (frame == NULL) break;
 
         if (!_dump_to_disk) {
             std::lock_guard<std::mutex> lock(_packet_frame_lock);

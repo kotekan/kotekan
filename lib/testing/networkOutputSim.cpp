@@ -58,8 +58,9 @@ void networkOutputSim::main_thread() {
     uint64_t fpga_seq_num = 0;
     int constant = 9;
 
-    for (EVER) {
+    while(!stop_thread) {
         frame = (unsigned char *)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
             constant = 10;

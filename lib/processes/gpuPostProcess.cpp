@@ -194,6 +194,7 @@ void gpuPostProcess::main_thread() {
 
         // This call is blocking!
         uint8_t * in_frame = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
+        if (in_frame == NULL) break;
         INFO("GPU Post process got full buffer ID %d for GPU %d", in_frame_ids[gpu_id], gpu_id);
 
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
@@ -349,7 +350,9 @@ void gpuPostProcess::main_thread() {
                     INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number, frame_loss_str);
 
                     uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+                    if (out_frame == NULL) goto end_loop;
                     uint8_t * gate_frame = wait_for_empty_frame(gate_buf, unique_name.c_str(), out_buffer_ID);
+                    if (gate_frame == NULL) goto end_loop;
 
                     if (_enable_basic_gating) {
                         DEBUG("Copying gated data to the gate_buf!");
@@ -388,5 +391,5 @@ void gpuPostProcess::main_thread() {
         in_frame_ids[gpu_id] = (in_frame_ids[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         link_id = (link_id + 1) % _num_fpga_links;
     }
-
+    end_loop:;
 }

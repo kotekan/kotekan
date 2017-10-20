@@ -49,14 +49,15 @@ void hsaProcess::main_thread()
     int gpu_frame_id = 0;
     bool first_run = true;
 
-    for(;;) {
+    while (!stop_thread) {
 
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (uint32_t i = 0; i < commands.size(); ++i) {
-            commands[i]->wait_on_precondition(gpu_frame_id);
+            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0)
+                break;
         }
 
         //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
@@ -101,7 +102,7 @@ void hsaProcess::results_thread() {
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
-    for(;;) {
+    while (!stop_thread) {
         // Wait for a signal to be completed
         //INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
         final_signals[gpu_frame_id].wait_for_signal();

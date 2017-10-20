@@ -32,13 +32,15 @@ hsaRfiOutput::hsaRfiOutput(const string& kernel_name, const string& kernel_file_
 hsaRfiOutput::~hsaRfiOutput() {
 }
 
-void hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
+int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id; // Not used for this;
     // We want to make sure we have some space to put our results.
-    wait_for_empty_frame(output_buffer,
+    uint8_t * frame = wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
+    if (frame == NULL) return -1;
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
                                     output_buffer->num_frames;
+    return 0;
 }
 
 hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

@@ -42,9 +42,11 @@ void gpuSimulate::main_thread() {
     int input_frame_id = 0;
     int output_frame_id = 0;
 
-    for (;;) {
+    while(!stop_thread) {
         int * input = (int *)wait_for_full_frame(input_buf, unique_name.c_str(), input_frame_id);
+        if (input == NULL) break;
         int * output = (int *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
+        if (output == NULL) break;
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define

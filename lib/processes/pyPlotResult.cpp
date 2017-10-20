@@ -49,17 +49,13 @@ void pyPlotResult::main_thread() {
     uint8_t * frame = NULL;
     unsigned char *in_local = (unsigned char*)malloc(buf->frame_size);
 
-    for (;;) {
+    while (!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         //INFO("Got buffer, id: %d", bufferID);
-
-        // Check if the producer has finished, and we should exit.
-        if (frame_id == -1) {
-            return;
-        }
 
         if (dump_plot)
         {

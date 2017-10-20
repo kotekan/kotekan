@@ -42,15 +42,21 @@ hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_na
 }
 
 hsaCommand::~hsaCommand() {
-    hsa_host_free(signals);
+
     hsa_status_t hsa_status;
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
+        //DEBUG("Free kernel arg");
         hsa_status = hsa_memory_free(kernel_args[i]);
         assert(hsa_status == HSA_STATUS_SUCCESS);
+        //DEBUG("Free signal");
         hsa_status = hsa_signal_destroy(signals[i]);
         assert(hsa_status == HSA_STATUS_SUCCESS);
     }
+
+    //DEBUG("Free kernel args");
     hsa_host_free(kernel_args);
+    //DEBUG("Free signals");
+    hsa_host_free(signals);
 
     // TODO free kernel!!!
 
@@ -83,8 +89,9 @@ void hsaCommand::finalize_frame(int frame_id) {
     //}
 }
 
-void hsaCommand::wait_on_precondition(int gpu_frame_id) {
+int hsaCommand::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
+    return 0;
 }
 
 uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {

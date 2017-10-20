@@ -47,6 +47,10 @@ struct Buffer {
     pthread_cond_t full_cond;
     pthread_cond_t empty_cond;
 
+    /// Shutdown variable set to 1 when the system should stop returning
+    /// new frames for producers and consumers
+    int shutdown_signal;
+
     /// The number of frames kept by this object
     int num_frames;
 
@@ -168,6 +172,9 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID);
 
 // Must be called before marking the from buffer as empty.
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID);
+
+// Causes all "wait" commands to wakeup and return NULL
+void send_shutdown_signal(struct Buffer * buf);
 
 #ifdef __cplusplus
 }

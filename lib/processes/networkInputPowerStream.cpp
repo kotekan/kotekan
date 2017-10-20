@@ -90,8 +90,9 @@ void networkInputPowerStream::main_thread() {
 
         char *local_buf = (char*)calloc(packet_length,sizeof(char));
 
-        for (;;) {
+        while (!stop_thread) {
             frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            if (frame == NULL) break;
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++){
@@ -146,8 +147,9 @@ void networkInputPowerStream::main_thread() {
         IntensityPacketHeader *pkt_header = (IntensityPacketHeader*)recv_buffer;
         uint *data = (uint*)(((char*)recv_buffer)+sizeof(IntensityPacketHeader));
 
-        for (;;) {
+        while (!stop_thread) {
             unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            if (buf_ptr == NULL) break;
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++){

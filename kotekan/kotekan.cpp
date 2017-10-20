@@ -23,6 +23,7 @@
 #include <stdexcept>
 #include <string>
 #include <array>
+#include <csignal>
 #include "configEval.hpp"
 
 extern "C" {
@@ -76,6 +77,12 @@ using json = nlohmann::json;
 kotekanMode * kotekan_mode = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
+volatile std::sig_atomic_t sig_value = 0;
+
+void signal_handler(int signal)
+{
+    sig_value = signal;
+}
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
@@ -161,6 +168,8 @@ int main(int argc, char ** argv) {
     kotekan_hsa_start();
 #endif
     json config_json;
+
+    std::signal(SIGINT, signal_handler);
 
     int opt_val = 0;
     char * config_file_name = (char *)"none";
@@ -269,7 +278,7 @@ int main(int argc, char ** argv) {
         }
         assert(kotekan_mode != nullptr);
         kotekan_mode->stop_processes();
-        // TODO should we have three states (running, shutting down, and stoped)?
+        // TODO should we have three states (running, shutting down, and stopped)?
         // This would prevent this function from blocking on join.
         kotekan_mode->join();
         delete kotekan_mode;
@@ -285,10 +294,18 @@ int main(int argc, char ** argv) {
     });
 
     for(EVER){
-        // Note you cannot actaully kill kotekan from the REST interface, it's always running.
-        // Maybe we should transfer control to the reserver loop here, but this isn't expensive,
-        // and might be a useful loop for other things.
-        sleep(1000);
+        sleep(1);
+        if (sig_value == SIGINT) {
+            INFO("Got SIGINT, shutting down kotekan...");
+            std::lock_guard<std::mutex> lock(kotekan_state_lock);
+            if (kotekan_mode != nullptr) {
+                INFO("Attempting to stop and join kotekan_processes...");
+                kotekan_mode->stop_processes();
+                kotekan_mode->join();
+                delete kotekan_mode;
+            }
+            break;
+        }
     }
 
     INFO("kotekan shutdown successfully.");

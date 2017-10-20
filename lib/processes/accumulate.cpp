@@ -33,14 +33,16 @@ void accumulate::main_thread() {
     int32_t * output;
     uint64_t seq_num;
 
-    for (;;) {
+    while (!stop_thread) {
         uint8_t * in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        if (in_frame == NULL) break;
         input = (int32_t *)in_frame;
 
         seq_num = get_fpga_seq_num(in_buf, in_frame_id);
 
         if (frame_id % _num_gpu_frames == 0) {
             uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+            if (out_frame == NULL) break;
             output = (int32_t *)out_frame;
 
             allocate_new_metadata_object(out_buf, out_frame_id);
