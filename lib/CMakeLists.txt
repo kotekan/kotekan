@@ -8,8 +8,10 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
+include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
-set (KOTEKAN_LIB_SOURCES 
+set (KOTEKAN_LIB_SOURCES
+              timer.cpp
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp

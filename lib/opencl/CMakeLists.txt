@@ -1,11 +1,14 @@
 cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_opencl )
 
-include_directories( ${OPENCL_INCLUDE_DIRS} )
+include_directories(${OPENCL_INCLUDE_DIRS})
 
-include_directories (${CHIME_SOURCE_DIR}/include)
-include_directories (${CHIME_SOURCE_DIR}/lib)
-include_directories (${CHIME_SOURCE_DIR}/lib/opencl)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
+
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
+include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
 add_library ( kotekan_opencl
               device_interface.cpp
@@ -22,14 +25,10 @@ add_library ( kotekan_opencl
               gpu_command_factory.cpp
               )
 
-#file(GLOB opencl_kernels "${CHIME_SOURCE_DIR}/opencl/kernels/*.cl")
-
-#add_executable(libkotekan_opencl ${SOURCE_EXE} ${open_cl_kernels})
-
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CHIME_SOURCE_DIR}/opencl/kernels"
-        "kernels")
+        "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
+        "kernels/")
 add_dependencies( kotekan_opencl kernel_copy )
 
 target_link_libraries( kotekan_opencl kotekan_libs )

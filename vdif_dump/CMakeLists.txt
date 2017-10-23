@@ -1,4 +1,4 @@
-include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
 link_directories (${CHIME_BINARY_DIR}/lib)
 
