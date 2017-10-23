@@ -37,7 +37,7 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
         } else if (commands[i]["name"] == "offset_accumulator") {
             list_commands.push_back(new offset_kernel(commands[i]["kernel"].get<string>().c_str(), "offset_accumulator", config, unique_name));
         } else if (commands[i]["name"] == "preseed_multifreq") {
-            list_commands.push_back(new preseed_kernel(commands[i]["kernel"].get<string>().c_str(), "preseed_multifreq", config, unique_name));    
+            list_commands.push_back(new preseed_kernel(commands[i]["kernel"].get<string>().c_str(), "preseed_multifreq", config, unique_name));
         } else if (commands[i]["name"] == "pairwise_correlator") {
             list_commands.push_back(new correlator_kernel(commands[i]["kernel"].get<string>().c_str(), "pairwise_correlator", config, unique_name));
         } else if (commands[i]["name"] == "input_data_stage") {
@@ -56,7 +56,12 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
 
         // TODO This should just be part of the constructor.
         list_commands[i]->build(device);
+
     }
+
+//    for (int k=0; k<perform_time.get_num_interval(); k++){
+//        perform_time.broadcast(k);
+//    }
 
     current_command_cnt = 0;
 }
@@ -116,7 +121,7 @@ gpu_command* gpu_command_factory::getNextCommand()//class device_interface & par
       if (current_command_cnt >= num_commands)
 	current_command_cnt = 0;
 
-  return current_command;
+    return current_command;
 
 }
 void gpu_command_factory::deallocateResources()
