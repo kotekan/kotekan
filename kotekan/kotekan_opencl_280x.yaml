@@ -23,6 +23,9 @@ link_map: [0,0,1,1,1,2,2,2]
 num_gpus: 3
 cpu_affinity: [4,5,6,7]
 enable_gating: false
+sk_step: 256
+rfi_zero: false
+rfi_sensitivity: 3
 
 dpdk:
   kotekan_process: dpdkWrapper
@@ -62,25 +65,27 @@ gpu:
   commands:
   - name: input_data_stage
     kernel: ''
-  - name: beamform_phase_data
-    kernel: ''
-  - name: offset_accumulator
-    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
-  - name: preseed_multifreq
-    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
-  - name: pairwise_correlator
-    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
-  - name: beamform_kernel
-    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
-  - name: output_beamform_result
-    kernel: ''
+#  - name: beamform_phase_data
+#    kernel: ''
+#  - name: offset_accumulator
+#    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+#  - name: preseed_multifreq
+#    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+#  - name: pairwise_correlator
+#    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+#  - name: beamform_kernel
+#    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+#  - name: output_beamform_result
+#    kernel: ''
+  - name: rfi_kernel
+    kernel: "../lib/opencl/kernels/rfi_chime.cl"
   - name: output_data_result
     kernel: ''
   ts_element_offset: 0
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  enable_beamforming: true
+  enable_beamforming: false
   instrument_lat: 49.3203
   instrument_long: -119.6175
   ra: 53.5
@@ -174,6 +179,6 @@ beamform_vdif:
   vdif_port: 10251
   vdif_in_buf: vdif_beam_out  
 
-buffer_status:
-  kotekan_process: bufferStatus
-  time_delay: 5000 #microseconds
+#buffer_status:
+#  kotekan_process: bufferStatus
+#  time_delay: 5000 #microseconds
