@@ -104,11 +104,13 @@ gpu_post_process:
     gate_out_buf: gated_output_buffer
     corr_in_buf_0: gpu_output_buffer_0
 
-#chrxUplink:
-#    collection_server_ip: "127.0.0.1"
-#    collection_server_port: 41001
-#    chrx_in_buf: network_output_buffer
-#    gate_in_buf: gated_output_buffer
+chrxUplink:
+    kotekan_process: chrxUplink
+    collection_server_ip: "10.10.10.2"
+    collection_server_port: 41016
+    chrx_in_buf: network_output_buffer
+    gate_in_buf: gated_output_buffer
+
 #nullProcess used when disable upload is true and chrxUplink should not be active.
 
 null_0:
