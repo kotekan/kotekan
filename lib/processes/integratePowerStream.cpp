@@ -51,11 +51,12 @@ void integratePowerStream::main_thread() {
         IntensityPacketHeader *accum_header;
         float *data_out;
 
-    IntensityPacketHeader *header_in;
-    for (;;) {
+    //IntensityPacketHeader *header_in;
+    while(!stop_thread) {
         in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        if (in_frame == NULL) break;
 
-        for (int i = 0; i < packets_per_buffer; i++){
+        for (uint i = 0; i < packets_per_buffer; i++){
             memcpy(packet_in,
                     in_frame+packet_length*i,
                     packet_length);
@@ -71,6 +72,7 @@ void integratePowerStream::main_thread() {
 //                INFO("Integrated sample! %i", integrated_samples[e]);
                 integrated_samples[e]=0;
                 out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
+                if (out_frame == NULL) goto end_loop;
 
                 memcpy(out_frame,(char*)accum_buffer+e*packet_length,packet_length);
 
@@ -82,4 +84,5 @@ void integratePowerStream::main_thread() {
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         buf_in_id = (buf_in_id + 1) % buf_in->num_frames;
     }
+    end_loop:;
 }

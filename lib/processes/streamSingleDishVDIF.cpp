@@ -70,15 +70,11 @@ void streamSingleDishVDIF::main_thread() {
 
     INFO ("Starting VDIF data stream thread to %s:%d", vdif_dest_ip.c_str(), vdif_dest_port);
 
-    for(;;) {
+    while (!stop_thread) {
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-
-        // Check if the producer has finished, and we should exit.
-        if (frame_id == -1) {
-            break;
-        }
+        if (frame == NULL) break;
 
         // Send data to remote server.
         // TODO rate limit this output

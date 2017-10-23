@@ -47,13 +47,15 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
 
     assert(first_buf->frame_size == second_buf->frame_size);
 
-    for (;;) {
+    while(!stop_thread) {
 
         // Get both full frames
         uint8_t * first_frame = wait_for_full_frame(first_buf, unique_name.c_str(), first_buf_id);
-        INFO("testDataCheck: Got the first buffer %s[%d]", first_buf->buffer_name, first_buf_id);
+        if (first_frame == NULL) break;
+        DEBUG("testDataCheck: Got the first buffer %s[%d]", first_buf->buffer_name, first_buf_id);
         uint8_t * second_frame = wait_for_full_frame(second_buf, unique_name.c_str(), second_buf_id);
-        INFO("testDataCheck: Got the second buffer %s[%d]", second_buf->buffer_name, second_buf_id);
+        if (second_frame == NULL) break;
+        DEBUG("testDataCheck: Got the second buffer %s[%d]", second_buf->buffer_name, second_buf_id);
         bool error = false;
         num_errors = 0;
 

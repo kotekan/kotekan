@@ -31,14 +31,16 @@ void hsaInputData::apply_config(const uint64_t& fpga_seq) {
     input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;
 }
 
-void hsaInputData::wait_on_precondition(int gpu_frame_id)
+int hsaInputData::wait_on_precondition(int gpu_frame_id)
 {
     // Wait for there to be data in the input (network) buffer.
 
-    wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
+    uint8_t * frame = wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
+    if (frame == NULL) return -1;
     //INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,
     //        device.get_gpu_id(), gpu_frame_id);
     network_buffer_precondition_id = (network_buffer_precondition_id + 1) % network_buf->num_frames;
+    return 0;
 }
 
 hsa_signal_t hsaInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq,

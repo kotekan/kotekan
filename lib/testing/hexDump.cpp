@@ -23,10 +23,12 @@ void hexDump::main_thread() {
 
     int frame_id = 0;
 
-    for (;;) {
+    while (!stop_thread) {
 
         uint8_t * frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        INFO("hexDump: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        if (frame == NULL) break;
+
+        DEBUG("hexDump: Got buffer %s[%d]", buf->buffer_name, frame_id);
 
         hex_dump(16, (void*)&frame[offset], len );
 

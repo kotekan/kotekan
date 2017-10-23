@@ -21,13 +21,15 @@ hsaBeamformOutputData::~hsaBeamformOutputData() {
 
 }
 
-void hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
-    wait_for_empty_frame(output_buffer,
+int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
+    uint8_t * frame = wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
+    if (frame == NULL) return -1;
     INFO("Got empty buffer for output %s[%d], for GPU[%d][%d]", output_buffer->buffer_name,
             output_buffer_precondition_id, device.get_gpu_id(), gpu_frame_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
                                     output_buffer->num_frames;
+    return 0;
 }
 
 hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

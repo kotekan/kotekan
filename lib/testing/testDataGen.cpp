@@ -34,8 +34,9 @@ void testDataGen::main_thread() {
     bool finished_seeding_consant = false;
     static struct timeval now;
 
-    for (;;) {
+    while (!stop_thread) {
         frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);

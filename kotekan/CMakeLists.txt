@@ -4,6 +4,7 @@ PROJECT (kotekan)
 
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
+
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
@@ -20,7 +21,7 @@ file(GLOB open_cl_kernels "${KOTEKAN_SOURCE_DIR}/kernels/*.cl")
 
 add_executable(kotekan ${SOURCE_EXE} ${open_cl_kernels})
 
-target_link_libraries( kotekan m dl pthread libairspy.a)
+target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
 target_link_libraries( kotekan libinclude )
 

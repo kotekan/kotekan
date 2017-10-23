@@ -70,7 +70,8 @@ void vdifStream::main_thread() {
              _vdif_port);
 
         // Wait for a full buffer.
-        wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
@@ -80,7 +81,7 @@ void vdifStream::main_thread() {
         for (int i = 0; i < 16*625; ++i) {
 
             int bytes_sent = sendto(socket_fd,
-                             (void *)(frame[packet_size*i]),
+                             (void *)(&frame[packet_size*i]),
                              packet_size, 0,
                              (struct sockaddr *) &saddr_remote, saddr_len);
 

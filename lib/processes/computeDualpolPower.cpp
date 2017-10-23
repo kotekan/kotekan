@@ -88,9 +88,11 @@ int r = rand();
     int nloop = timesteps_out/nthreads;
     std::thread this_thread[nthreads];
 
-    for (EVER) {
+    while(!stop_thread) {
         in_local = (unsigned char *) wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        if(in_local == NULL) break;
         out_local = (unsigned char *) wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
+        if(out_local == NULL) break;
 
     //double start_time = e_time();
 

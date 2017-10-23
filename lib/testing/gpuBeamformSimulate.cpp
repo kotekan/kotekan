@@ -248,10 +248,12 @@ void gpuBeamformSimulate::main_thread() {
     int nbeamsNS = 256;
     int nbeams = nbeamsEW*nbeamsNS;
 
-    for (;;) {
+    while(!stop_thread) {
 
         unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
+        if (input == NULL) break;
         float * output = (float *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+        if (output == NULL) break;
 
         for (int i=0;i<input_len;i++){
           cpu_beamform_output[i] = 0.0; //Need this

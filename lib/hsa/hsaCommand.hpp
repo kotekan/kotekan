@@ -53,7 +53,7 @@ public:
     // for example if this command requires a full buffer frame to copy
     // then it should block on that.  It should also block on having any
     // free output buffers that might be referenced by this command.
-    virtual void wait_on_precondition(int gpu_frame_id);
+    virtual int wait_on_precondition(int gpu_frame_id);
 
     // Adds either a copy or kernel to one of the hardware queues.
     virtual hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,

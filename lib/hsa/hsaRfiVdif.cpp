@@ -1,15 +1,15 @@
 /*********************************************************************************
 
 Kotekan RFI Documentation Block:
-By: Jacob Taylor 
+By: Jacob Taylor
 Date: August 2017
 File Purpose: Handles the kotekan GPU process for RFI removal in VDIF data.
-Details: 
+Details:
 	-Constructor: Applies config and sets up the Mean array
 	-apply_config: Gets values from config file and calculates buffer sizes
 	-execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
 Notes:
-	This process was designed to run on VDIF data.  
+	This process was designed to run on VDIF data.
 
 **********************************************************************************/
 
@@ -28,7 +28,7 @@ hsaRfiVdif::hsaRfiVdif(const string& kernel_name, const string& kernel_file_name
 
     Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocates memory for Mean Array
 
-    for (int b = 0; b < mean_len/sizeof(float); b++){
+    for (uint32_t b = 0; b < mean_len/sizeof(float); b++){
         Mean_Array[b] = 0; ///Initialize
     }
 
@@ -44,11 +44,11 @@ hsaRfiVdif::~hsaRfiVdif() {
 void hsaRfiVdif::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
 
-    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters 
+    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 
-    _sk_step = config.get_int(unique_name, "sk_step"); //RFI parameters 
+    _sk_step = config.get_int(unique_name, "sk_step"); //RFI parameters
     rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
 
     input_frame_len = (_num_elements*_num_local_freq  + 64) * _samples_per_data_set; //Buffer sizes
@@ -72,7 +72,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len); //Grab GPU memory
     args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, input_frame_len);
     args.in_means = device.get_gpu_memory("in_means", mean_len);
-    args.sqrtM = sqrt(_num_elements*_sk_step); 
+    args.sqrtM = sqrt(_num_elements*_sk_step);
     args.sensitivity = rfi_sensitivity;
     args.time_samples = _samples_per_data_set;
     args.header_len = sizeof(VDIFHeader);
@@ -81,7 +81,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
 
     hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
     assert(hsa_status == HSA_STATUS_SUCCESS);
-   
+
     // Obtain the current queue write index.
     uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());
     hsa_kernel_dispatch_packet_t* dispatch_packet = (hsa_kernel_dispatch_packet_t*)device.get_queue()->base_address +

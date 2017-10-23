@@ -13,7 +13,7 @@ public:
 
     virtual ~hsaRfiOutput();
 
-    void wait_on_precondition(int gpu_frame_id) override;
+    int wait_on_precondition(int gpu_frame_id) override;
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) override;
 

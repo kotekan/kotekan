@@ -27,7 +27,10 @@ struct metadataContainer * create_metadata(size_t object_size, struct metadataPo
 }
 
 void delete_metadata(struct metadataContainer * container) {
-    assert(container->ref_count == 0);
+    // We might shutdown the system without actually flushing all the buffer
+    // chains, so we don't need to assert that the ref_count be 0,
+    // at least for now...
+    //assert(container->ref_count == 0);
     free(container->metadata);
     CHECK_ERROR( pthread_mutex_destroy(&container->metadata_lock) );
 }

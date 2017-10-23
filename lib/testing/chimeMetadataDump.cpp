@@ -29,6 +29,7 @@ void chimeMetadataDump::main_thread() {
     while (!stop_thread) {
 
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         uint64_t fpga_seq = get_fpga_seq_num(buf, frame_id);
         stream_id_t stream_id = get_stream_id_t(buf, frame_id);

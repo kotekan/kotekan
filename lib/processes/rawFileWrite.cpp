@@ -42,6 +42,7 @@ void rawFileWrite::main_thread() {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         const int full_path_len = 200;
         char full_path[full_path_len];
