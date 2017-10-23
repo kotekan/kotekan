@@ -17,7 +17,7 @@ block_size: 32
 samples_per_data_set: 32768
 num_data_sets: 1
 buffer_depth: 6
-num_gpu_frames: 64
+num_gpu_frames: 256
 num_links: 8
 link_map: [0,0,1,1,1,2,2,2]
 num_gpus: 3
@@ -79,7 +79,7 @@ gpu:
 #    kernel: ''
   - name: rfi_kernel
     kernel: "../lib/opencl/kernels/rfi_chime.cl"
-  - name: output_data_result
+  - name: output_rfi
     kernel: ''
   ts_element_offset: 0
   ts_num_elem_to_shift: 0
@@ -141,11 +141,12 @@ gpu_post_process:
     chrx_out_buf: network_output_buffer
     gate_out_buf: gated_output_buffer
 
-#chrxUplink:
-#    collection_server_ip: "127.0.0.1"
-#    collection_server_port: 41001
-#    chrx_in_buf: network_output_buffer
-#    gate_in_buf: gated_output_buffer
+chrxUplink:
+    kotekan_process: chrxUplink
+    collection_server_ip: "10.10.10.2"
+    collection_server_port: 41002
+    chrx_in_buf: network_output_buffer
+    gate_in_buf: gated_output_buffer
 #nullProcess used when disable upload is true and chrxUplink should not be active.
 
 #null_0:
@@ -158,12 +159,12 @@ gpu_post_process:
 #  kotekan_process: nullProcess
 #  in_buf: gpu_output_buffer_2
 
-null_0:
-  kotekan_process: nullProcess
-  in_buf: network_output_buffer
-null_1:
-  kotekan_process: nullProcess
-  in_buf: gated_output_buffer
+#null_0:
+#  kotekan_process: nullProcess
+#  in_buf: network_output_buffer
+#null_1:
+#  kotekan_process: nullProcess
+#  in_buf: gated_output_buffer
 
 
 beamform_post_process:
