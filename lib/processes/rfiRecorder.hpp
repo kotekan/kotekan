@@ -17,6 +17,9 @@ private:
     int _samples_per_data_set;
     int _sk_step;
     int _buf_depth;
+    int slot_id;
+    int link_id;
+    FILE *f;
 };
 
 #endif
