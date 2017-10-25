@@ -41,6 +41,16 @@ config(param_Config)
     CHECK_CL_ERROR(err);
 }
 
+size_t device_interface::get_opencl_resolution()
+{
+    //one tick per nanosecond of timing
+    size_t time_res;
+
+    CHECK_CL_ERROR(clGetDeviceInfo(device_id[gpu_id], CL_DEVICE_PROFILING_TIMER_RESOLUTION, sizeof(time_res), &time_res, NULL));
+
+    return time_res;
+}
+
 int device_interface::getNumBlocks()
 {
     return num_blocks;
@@ -91,14 +101,20 @@ int device_interface::getAlignedAccumulateLen() const
     return aligned_accumulate_len;
 }
 
-void device_interface::prepareCommandQueue()
+void device_interface::prepareCommandQueue(bool enable_profiling)
 {
     cl_int err;
 
     // Create command queues
     for (int i = 0; i < NUM_QUEUES; ++i) {
-        queue[i] = clCreateCommandQueue( context, device_id[gpu_id], 0, &err );
-        CHECK_CL_ERROR(err);
+        if (enable_profiling == true){
+            queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_PROFILING_ENABLE, &err );
+            CHECK_CL_ERROR(err);
+        } else{
+            queue[i] = clCreateCommandQueue( context, device_id[gpu_id], 0, &err );
+            CHECK_CL_ERROR(err);
+        }
+
     }
 }
 
