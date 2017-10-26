@@ -70,6 +70,7 @@ extern "C" {
 #include "json.hpp"
 #include "restServer.hpp"
 #include "timer.hpp"
+#include "fpga_header_functions.h"
 
 #ifdef WITH_HSA
     #include "chimeShuffleMode.hpp"
@@ -152,6 +153,9 @@ int start_new_kotekan_mode(Config &config) {
 
     timer dummytimer; //Strange linker error; required to build
     time_interval dummyinterval; //Strange linker error; required to build
+    stream_id_t dummy_stream_id; //More weird Linker stuff
+    uint32_t dummy_bin = bin_number(&dummy_stream_id, 1);
+
     config.dump_config();
     update_log_levels(config);
 

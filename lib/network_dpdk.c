@@ -155,7 +155,7 @@ static void check_port_socket_assignment() {
 
 static inline void print_eth_stats(const uint32_t port) {
 
-    static struct rte_eth_stats rx_stats[4];
+   /* static struct rte_eth_stats rx_stats[4];
 
     rte_eth_stats_get(port, &rx_stats[port]);
     INFO("rx_stats[%d].ibadcrc = %" PRIu64 "; imissed = %" PRIu64"; ibadlen = %" PRIu64"; ierrors = %" PRIu64"; rx_nombuf = %" PRIu64"; q_errors = %" PRIu64"; ipackets = %" PRIu64 "",
@@ -168,7 +168,7 @@ static inline void print_eth_stats(const uint32_t port) {
          rx_stats[port].q_errors[0],
          rx_stats[port].ipackets );
     // Reset the counter.
-    rte_eth_stats_reset(port);
+    rte_eth_stats_reset(port);*/
 }
 
 static void init_network_object(struct NetworkDPDK * net_dpdk) {
