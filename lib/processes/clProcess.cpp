@@ -67,7 +67,8 @@ void clProcess::main_thread()
     loopCounter * loopCnt = new loopCounter;
     bool first_run = true;
 
-    device->prepareCommandQueue();
+    device->prepareCommandQueue(false);
+    //    device->prepareCommandQueue(true);
 
     device->allocateMemory();
     DEBUG("Device Initialized\n");
@@ -94,6 +95,7 @@ void clProcess::main_thread()
 
     for(;;) {
         // Wait for data, this call will block.
+        //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
         bufferID = wait_for_full_buffer(device->getInBuf(), unique_name.c_str(), bufferID);
         double cur_time = e_time_1();
         //INFO("Got full buffer after time: %f", cur_time - last_time );
@@ -175,7 +177,6 @@ void clProcess::main_thread()
 
         //buffer_list[0] = (buffer_list[0] + 1)
         bufferID = (++bufferID) % device->getInBuf()->num_buffers;
-
     }
 
     DEBUG("Closing\n");
@@ -241,8 +242,9 @@ void clProcess::mem_reconcil_thread()
             {
                 //std::cout << "BufferID_" << j << "beamforming" << std::endl;
                 //WILL BE NEEDED ON PF.
-//                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-//                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
+                //pass with metadata object!!!.
+                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                    cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
                 mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
@@ -263,8 +265,9 @@ void clProcess::mem_reconcil_thread()
 
             // Copy the information contained in the input buffer
             //WILL BE NEEDED ON PF.
-//            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-//                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
+            //pass with metadata object!!!.
+            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
 

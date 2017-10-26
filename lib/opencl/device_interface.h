@@ -63,11 +63,12 @@ public:
     cl_int* getAccumulateZeros();
     int getNumBlocks();
     int getAlignedAccumulateLen() const;
-    void prepareCommandQueue();
+    void prepareCommandQueue(bool enable_profiling);
     void allocateMemory();
 
     void release_events_for_buffer(int param_BufferID);
     void deallocateResources();
+    size_t get_opencl_resolution();
  protected:
     // Buffer objects
     struct Buffer * in_buf;
