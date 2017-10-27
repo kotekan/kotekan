@@ -96,7 +96,7 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _factor_upchan = config.get_int(unique_name, "factor_upchan");
     _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
     _nbeams = config.get_int(unique_name, "num_beams");
-    _timesamples_per_packet = config.get_int(unique_name, "timesamples_per_packet");
+    _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_header_size");
     _freq_array = config.get_int_array(unique_name, "freq_array");
@@ -128,7 +128,7 @@ void frbPostProcess::main_thread() {
     frb_header.nbeams = _nbeams;  //4
     frb_header.nfreq_coarse = _nfreq_coarse; //4
     frb_header.nupfreq = _factor_upchan_out;
-    frb_header.ntsamp = _timesamples_per_packet;
+    frb_header.ntsamp = _timesamples_per_frb_packet;
 
     for (int ii=0;ii<_nbeams;++ii){
       frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
@@ -160,8 +160,7 @@ void frbPostProcess::main_thread() {
 
         //INFO("frb_post_process; got full set of GPU output buffers");
 
-        uint64_t first_seq_number =
-	  (uint64_t) 67; //get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+        uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], 0);
 	INFO("[frbPostProcess] first_seq_number=%lu --------\n",first_seq_number);
 
         /*for (uint16_t i = 0; i < _num_gpus; ++i) {

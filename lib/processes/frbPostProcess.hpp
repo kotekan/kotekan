@@ -44,7 +44,7 @@ private:
     int32_t _factor_upchan;
     int32_t _factor_upchan_out;
     int32_t _nbeams;
-    int32_t _timesamples_per_packet;
+    int32_t _timesamples_per_frb_packet;
     int32_t _udp_packet_size;
     int32_t _udp_header_size;
     int16_t _fpga_counts_per_sample;

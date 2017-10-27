@@ -39,3 +39,10 @@ uint32_t bin_number_16_elem(const stream_id_t * stream_id, const int index)
 {
     return stream_id->link_id + index * 8;
 }
+
+// This should use a table, but for now it seems to work in the base CHIME setup.
+// TODO replace with a table when the full table mapping data is in kotekan
+uint32_t bin_number_chime(const stream_id_t * stream_id)
+{
+    return stream_id->crate_id * 16 + stream_id->slot_id + stream_id->link_id * 32 + stream_id->unused * 256;
+}

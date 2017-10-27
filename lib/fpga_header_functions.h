@@ -16,6 +16,7 @@ typedef struct {
 
 uint32_t bin_number(const stream_id_t* stream_id, const int index);
 uint32_t bin_number_16_elem(const stream_id_t * stream_id, const int index);
+uint32_t bin_number_chime(const stream_id_t * stream_id);
 
 float freq_from_bin(const int bin);
 
