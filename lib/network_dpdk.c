@@ -197,7 +197,6 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                           const int freq,
                           uint64_t new_seq) {
 
-
     //
     //INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
     //        port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
@@ -224,9 +223,13 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                                dpdk_net->link_data[port][freq].buffer_id,
                                now);
 
-    set_stream_id(dpdk_net->args->buf[port][freq],
-                  dpdk_net->link_data[port][freq].buffer_id,
-                  dpdk_net->link_data[port][freq].stream_ID);
+    // We take the stream ID only from the first pair of crates,
+    // to avoid overwriting it on different ports.
+    // This makes the stream ID unique for down stream processes.
+    if (dpdk_net->link_data[port][freq].s_stream_ID.crate_id / 2 == 0)
+        set_stream_id(dpdk_net->args->buf[port][freq],
+                      dpdk_net->link_data[port][freq].buffer_id,
+                      dpdk_net->link_data[port][freq].stream_ID);
 
     set_fpga_seq_num(dpdk_net->args->buf[port][freq],
                      dpdk_net->link_data[port][freq].buffer_id,
@@ -545,9 +548,6 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
             // Store the frequency (position in the frame that this stream is using)
             s_stream_id.unused = freq;
-            // The crate ID will be between 0-7, but since they all have the same
-            // mapping, we only care if it's 0 or 1, so we take the crate number % 2.
-            s_stream_id.crate_id = s_stream_id.crate_id % 2;
             stream_id = encode_stream_id(s_stream_id);
 
             dpdk_net->link_data[port][freq].stream_ID = stream_id;
@@ -555,7 +555,6 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
             dpdk_net->link_data[port][freq].last_seq = seq - seq % integration_period;
             dpdk_net->link_data[port][freq].seq = seq;
-
 
             if (dpdk_net->args->buf != NULL) {
                 allocate_new_metadata_object(dpdk_net->args->buf[port][freq],
@@ -567,9 +566,13 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 set_first_packet_recv_time(dpdk_net->args->buf[port][freq],
                                         dpdk_net->link_data[port][freq].buffer_id,
                                         now);
-                set_stream_id(dpdk_net->args->buf[port][freq],
-                              dpdk_net->link_data[port][freq].buffer_id,
-                              stream_id);
+                // We take the stream ID only from the first pair of crates,
+                // to avoid overwriting it on different ports.
+                // This makes the stream ID unique for down stream processes.
+                if (dpdk_net->link_data[port][freq].s_stream_ID.crate_id / 2 == 0)
+                    set_stream_id(dpdk_net->args->buf[port][freq],
+                                  dpdk_net->link_data[port][freq].buffer_id,
+                                  stream_id);
             }
         }
 
