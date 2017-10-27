@@ -152,6 +152,8 @@ int start_new_kotekan_mode(Config &config) {
 
     timer dummytimer; //Strange linker error; required to build
     time_interval dummyinterval; //Strange linker error; required to build
+    stream_id_t dummy_stream_id;
+    uint32_t dummy_bin = bin_number(&dummy_stream_id, 1);
     config.dump_config();
     update_log_levels(config);
 
