@@ -43,10 +43,11 @@ void chimeMetadataDump::main_thread() {
 
         INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
                 ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64
-                 ", time stamp: %ld.%06ld (%s.%06ld)",
+                 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld)\n",
                 buf->buffer_name, frame_id, fpga_seq,
                 stream_id.crate_id, stream_id.slot_id,
                 stream_id.link_id, stream_id.unused, lost_samples,
+                bin_number_chime(&stream_id), freq_from_bin(bin_number_chime(&stream_id)),
                 time_v.tv_sec, time_v.tv_usec, time_buf, time_v.tv_usec);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
