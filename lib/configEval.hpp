@@ -38,6 +38,7 @@ private:
     Type exp();
 
     std::list<std::string> tokens;
+    std::string current_token = "";
 };
 
 template <class Type>
@@ -54,6 +55,9 @@ configEval<Type>::configEval(Config &_config,
         std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
         std::sregex_token_iterator()
     };
+
+    if (!tokens.empty())
+        current_token = tokens.front();
 }
 
 template <class Type>
@@ -68,6 +72,11 @@ Type configEval<Type>::compute_restult() {
 template <class Type>
 void configEval<Type>::next() {
     tokens.pop_front();
+    if (!tokens.empty()) {
+        current_token = tokens.front();
+    } else {
+        current_token = "";
+    }
 }
 
 template <class Type>
@@ -86,7 +95,7 @@ bool configEval<Type>::isVar() {
 
 template <class Type>
 void configEval<Type>::expect(const std::string& symbol) {
-    if (tokens.front() == symbol) {
+    if (current_token == symbol) {
         next();
     } else {
         ERROR("Expected symbol %s, got %s",
@@ -98,8 +107,8 @@ void configEval<Type>::expect(const std::string& symbol) {
 template <class Type>
 Type configEval<Type>::exp() {
     Type ret = 0;
-    if (tokens.front() == "+" || tokens.front() == "-") {
-        if (tokens.front() == "-") {
+    if (current_token == "+" || current_token == "-") {
+        if (current_token == "-") {
             next();
             ret = -term();
         } else {
@@ -109,8 +118,8 @@ Type configEval<Type>::exp() {
     } else {
         ret = term();
     }
-    while (tokens.front() == "+" || tokens.front() == "-") {
-        if (tokens.front() == "+") {
+    while (current_token == "+" || current_token == "-") {
+        if (current_token == "+") {
             next();
             ret += term();
         } else {
@@ -124,12 +133,12 @@ Type configEval<Type>::exp() {
 template <class Type>
 Type configEval<Type>::term() {
     Type ret = factor();
-    while (tokens.front() == "*" || tokens.front() == "/") {
-        if (tokens.front() == "*") {
+    while (current_token == "*" || current_token == "/") {
+        if (current_token == "*") {
             next();
             ret *= factor();
         }
-        if (tokens.front() == "/") {
+        if (current_token == "/") {
             // TODO Check for divide by zero.
             next();
             ret /= factor();
@@ -143,17 +152,17 @@ Type configEval<Type>::factor() {
     Type ret;
 
     if (isVar()) {
-        ret = (Type)config.get_double(unique_name, tokens.front());
+        ret = (Type)config.get_double(unique_name, current_token);
         next();
     } else if (isNumber()) {
-        ret = (Type)stod(tokens.front());
+        ret = (Type)stod(current_token);
         next();
-    } else if (tokens.front() == "(") {
+    } else if (current_token == "(") {
         next();
         ret = exp();
         expect(")");
     } else {
-        ERROR("Unexpected symbol %s", tokens.front().c_str());
+        ERROR("Unexpected symbol %s", current_token.c_str());
         throw std::runtime_error("Unexpected symbol");
     }
     return ret;
