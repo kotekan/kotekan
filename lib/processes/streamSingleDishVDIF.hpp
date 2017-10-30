@@ -2,7 +2,7 @@
 #define STREAM_SINGLE_DISH_VDIF_H
 
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 
 class streamSingleDishVDIF : public KotekanProcess {
@@ -18,9 +18,9 @@ public:
 private:
     struct Buffer *buf;
 
-    uint32_t _vdif_port;
-    string _vdif_ip;
-    int _num_freq;
+    uint32_t vdif_dest_port;
+    string vdif_dest_ip;
+    int num_freq;
 
 };
 

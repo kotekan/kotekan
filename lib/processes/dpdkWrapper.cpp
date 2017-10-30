@@ -89,7 +89,7 @@ void dpdkWrapper::main_thread() {
         }
         network_dpdk_args->enable_shuffle = 1;
         network_dpdk_args->dump_full_packets = 0;
-        network_dpdk_args->fake_stream_ids = 1;
+        network_dpdk_args->fake_stream_ids = 0;
 
     } else if (_mode == "packet_cap") {
         INFO("DPDK mode: packet_cap");
@@ -184,7 +184,7 @@ void dpdkWrapper::main_thread() {
     CHECK_ERROR( pthread_setaffinity_np(network_dpdk_t, sizeof(cpu_set_t), &cpuset) );
 
     while(!stop_thread) {
-        sleep(10);
+        sleep(1);
     }
 
     // Start exit

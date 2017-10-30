@@ -3,10 +3,12 @@
 
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "metadata.h"
 
-#include <vector>
+#include <map>
 
-using std::vector;
+using std::map;
+using std::string;
 
 class kotekanMode {
 public:
@@ -27,15 +29,12 @@ public:
 
 protected:
     Config &config;
-
-    void add_process(KotekanProcess * process);
-    void add_buffer(struct Buffer * buffer);
-    void add_info_object_pool(struct InfoObjectPool * info_pool);
+    bufferContainer buffer_container;
 
 private:
-    vector<KotekanProcess *> processes;
-    vector<struct Buffer *> buffers;
-    vector<struct InfoObjectPool *> info_pools;
+    map<string, KotekanProcess *> processes;
+    map<string, struct metadataPool *> metadata_pools;
+    map<string, struct Buffer *> buffers;
 };
 
 

@@ -19,7 +19,7 @@ void input_data_stage::build(device_interface &param_Device)
 {
     apply_config(0);
     gpu_command::build(param_Device);
-    data_staged_event = (cl_event *)malloc(param_Device.getInBuf()->num_buffers * sizeof(cl_event));
+    data_staged_event = (cl_event *)malloc(param_Device.getInBuf()->num_frames * sizeof(cl_event));
     CHECK_MEM(data_staged_event);
 }
 
@@ -32,8 +32,8 @@ cl_event input_data_stage::execute(int param_bufferID, const uint64_t& fpga_seq,
                                             param_Device.getInputBuffer(param_bufferID),
                                             CL_FALSE,
                                             0, //offset
-                                            param_Device.getInBuf()->aligned_buffer_size,
-                                            param_Device.getInBuf()->data[param_bufferID],
+                                            param_Device.getInBuf()->aligned_frame_size,
+                                            param_Device.getInBuf()->frames[param_bufferID],
                                             0,
                                             NULL,
                                             &data_staged_event[param_bufferID]) );

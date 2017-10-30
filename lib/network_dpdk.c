@@ -40,6 +40,7 @@
 #include "nt_memset.h"
 #include "fpga_header_functions.h"
 #include "vdif_functions.h"
+#include "chimeMetadata.h"
 
 // 256
 #define RX_RING_SIZE 512
@@ -155,9 +156,10 @@ static void check_port_socket_assignment() {
 
 static inline void print_eth_stats(const uint32_t port) {
 
-    static struct rte_eth_stats rx_stats[4];
+    //static struct rte_eth_stats rx_stats[4];
 
-    rte_eth_stats_get(port, &rx_stats[port]);
+    INFO("print_eth_stats needed to be updated");
+    /*rte_eth_stats_get(port, &rx_stats[port]);
     INFO("rx_stats[%d].ibadcrc = %" PRIu64 "; imissed = %" PRIu64"; ibadlen = %" PRIu64"; ierrors = %" PRIu64"; rx_nombuf = %" PRIu64"; q_errors = %" PRIu64"; ipackets = %" PRIu64 "",
          port,
          rx_stats[port].ibadcrc,
@@ -168,7 +170,7 @@ static inline void print_eth_stats(const uint32_t port) {
          rx_stats[port].q_errors[0],
          rx_stats[port].ipackets );
     // Reset the counter.
-    rte_eth_stats_reset(port);
+    rte_eth_stats_reset(port);*/
 }
 
 static void init_network_object(struct NetworkDPDK * net_dpdk) {
@@ -195,36 +197,39 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
                           const int freq,
                           uint64_t new_seq) {
 
-    //INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64 "; num_links_in_group: %d",
-    //        port, freq, dpdk_net->args->buf[port][freq],
-    //        dpdk_net->link_data[port][freq].buffer_id, new_seq,
-    //        dpdk_net->args->num_links_in_group[port]);
-    mark_buffer_full(dpdk_net->args->buf[port][freq],
+    //
+    //INFO ("DPDK: advance_frame: port %d; freq %d; buffer %p; buffer_id %d; new_seq %" PRIu64,
+    //        port, freq, dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][freq].buffer_id, new_seq);
+    mark_frame_full(dpdk_net->args->buf[port][freq],
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][freq].buffer_id);
 
     dpdk_net->link_data[port][freq].buffer_id =
-        (dpdk_net->link_data[port][freq].buffer_id + dpdk_net->args->num_links_in_group[port]) % dpdk_net->args->buf[port][freq]->num_buffers;
+        (dpdk_net->link_data[port][freq].buffer_id + dpdk_net->args->num_links_in_group[port]) % dpdk_net->args->buf[port][freq]->num_frames;
 
     // TODO this should be based on packet arrival time - or the seq->time mapping.
     static struct timeval now;
     gettimeofday(&now, NULL);
 
     // TODO it is really bad to have a blocking call here(!)
-    wait_for_empty_buffer(dpdk_net->args->buf[port][freq],
+    wait_for_empty_frame(dpdk_net->args->buf[port][freq],
                           dpdk_net->args->producer_names[port],
                           dpdk_net->link_data[port][freq].buffer_id);
-    set_data_ID(dpdk_net->args->buf[port][freq],
-                dpdk_net->link_data[port][freq].buffer_id,
-                dpdk_net->link_data[port][freq].data_id++);
+
+    allocate_new_metadata_object(dpdk_net->args->buf[port][freq],
+                                 dpdk_net->link_data[port][freq].buffer_id);
 
     set_first_packet_recv_time(dpdk_net->args->buf[port][freq],
                                dpdk_net->link_data[port][freq].buffer_id,
                                now);
 
-    set_stream_ID(dpdk_net->args->buf[port][freq],
-                  dpdk_net->link_data[port][freq].buffer_id,
-                  dpdk_net->link_data[port][freq].stream_ID);
+    // We take the stream ID only from the first pair of crates,
+    // to avoid overwriting it on different ports.
+    // This makes the stream ID unique for down stream processes.
+    if (dpdk_net->link_data[port][freq].s_stream_ID.crate_id / 2 == 0)
+        set_stream_id(dpdk_net->args->buf[port][freq],
+                      dpdk_net->link_data[port][freq].buffer_id,
+                      dpdk_net->link_data[port][freq].stream_ID);
 
     set_fpga_seq_num(dpdk_net->args->buf[port][freq],
                      dpdk_net->link_data[port][freq].buffer_id,
@@ -239,29 +244,29 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
 
     // TODO it is really bad to have a blocking call here(!)
     //DEBUG("Port %d, marking buffer %d as full\n", port, dpdk_net->link_data[port][0].vdif_buffer_id);
-    mark_buffer_full(dpdk_net->args->vdif_buf,
+    mark_frame_full(dpdk_net->args->vdif_buf,
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][0].vdif_buffer_id);
 
     dpdk_net->link_data[port][0].vdif_buffer_id =
-        (dpdk_net->link_data[port][0].vdif_buffer_id + 1) % dpdk_net->args->vdif_buf->num_buffers;
+        (dpdk_net->link_data[port][0].vdif_buffer_id + 1) % dpdk_net->args->vdif_buf->num_frames;
 
     // TODO this should be based on packet arrival time - or the seq->time mapping.
-    static struct timeval now;
+    struct timeval now;
     gettimeofday(&now, NULL);
 
-    wait_for_empty_buffer(dpdk_net->args->vdif_buf,
+    wait_for_empty_frame(dpdk_net->args->vdif_buf,
                           dpdk_net->args->producer_names[port],
                           dpdk_net->link_data[port][0].vdif_buffer_id);
-    set_data_ID(dpdk_net->args->vdif_buf,
-                dpdk_net->link_data[port][0].vdif_buffer_id,
-                dpdk_net->link_data[port][0].data_id++);
+
+    allocate_new_metadata_object(dpdk_net->args->vdif_buf,
+                               dpdk_net->link_data[port][0].vdif_buffer_id);
 
     set_first_packet_recv_time(dpdk_net->args->vdif_buf,
                                dpdk_net->link_data[port][0].vdif_buffer_id,
                                now);
 
-    set_stream_ID(dpdk_net->args->vdif_buf,
+    set_stream_id(dpdk_net->args->vdif_buf,
                   dpdk_net->link_data[port][0].vdif_buffer_id,
                   dpdk_net->link_data[port][0].stream_ID);
 
@@ -293,12 +298,16 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
                                 get_fpga_seq_num(dpdk_net->args->buf[port][freq],
                                                    dpdk_net->link_data[port][freq].buffer_id);
 
-        if (unlikely(frame_location[freq] * frame_size == dpdk_net->args->buf[port][freq]->buffer_size)) {
+        //assert(frame_location[freq] * frame_size <= dpdk_net->args->buf[port][freq]->frame_size);
+        if (unlikely(frame_location[freq] * frame_size == dpdk_net->args->buf[port][freq]->frame_size)) {
             advance_frame(dpdk_net, port, freq, dpdk_net->link_data[port][freq].seq);
             frame_location[freq] = 0;
             buffer_id[freq] = dpdk_net->link_data[port][freq].buffer_id;
         }
     }
+
+    // We might want to do something more interesting here.
+    int freq_pos = dpdk_net->link_data[port][0].s_stream_ID.crate_id / 2;
 
     // Copy the packet in packet memory order.
     for (int frame = 0;
@@ -306,10 +315,10 @@ static inline void copy_data_with_shuffle(struct NetworkDPDK * dpdk_net,
              ++frame) {
 
         for (int freq = 0; freq < NUM_FREQ; ++freq) {
-            uint64_t copy_location = frame_location[freq] * frame_size + frame * frame_size + freq * sub_frame_size;
-            //DEBUG("Port %d; frame %d, freq %d; cur_mbuf %p; offset %d, copy location: %d", port, frame, freq, cur_mbuf, pkt_offset, copy_location);
+            uint64_t copy_location = frame_location[freq] * frame_size + frame * frame_size + freq_pos * sub_frame_size;
+
             copy_block(&cur_mbuf,
-                       (uint8_t *) &dpdk_net->args->buf[port][freq]->data[buffer_id[freq]][copy_location],
+                       (uint8_t *) &dpdk_net->args->buf[port][freq]->frames[buffer_id[freq]][copy_location],
                        sub_frame_size,
                        &pkt_offset);
         }
@@ -340,10 +349,10 @@ static inline void set_vdif_header_options(struct NetworkDPDK * dpdk_net,
                 vdif_packet_len * num_elements * time_step +
                 vdif_packet_len * elem;
 
-            assert(header_idx < dpdk_net->args->vdif_buf->buffer_size);
+            assert(header_idx < dpdk_net->args->vdif_buf->frame_size);
 
             struct VDIFHeader * vdif_header =
-                (struct VDIFHeader *)&dpdk_net->args->vdif_buf->data[buffer_id][header_idx];
+                (struct VDIFHeader *)&dpdk_net->args->vdif_buf->frames[buffer_id][header_idx];
 
             vdif_header->legacy = 0;
             vdif_header->vdif_version = 1;
@@ -398,7 +407,7 @@ static inline void copy_data_to_vdif(struct NetworkDPDK * dpdk_net,
                                   get_fpga_seq_num(dpdk_net->args->vdif_buf,
                                                    dpdk_net->link_data[port][0].vdif_buffer_id);
 
-    if (unlikely(vdif_frame_location * frame_size == dpdk_net->args->vdif_buf->buffer_size)) {
+    if (unlikely(vdif_frame_location * frame_size == dpdk_net->args->vdif_buf->frame_size)) {
         advance_vdif_frame(dpdk_net, port, dpdk_net->link_data[port][0].seq);
         vdif_frame_location = 0;
         buffer_id = dpdk_net->link_data[port][0].vdif_buffer_id;
@@ -407,9 +416,9 @@ static inline void copy_data_to_vdif(struct NetworkDPDK * dpdk_net,
     stream_id_t stream_id = dpdk_net->link_data[port][0].s_stream_ID;
 
     //if (port == 0) DEBUG("vdif_frame_location * frame_size = %lld; buffer size = %lld; frame_size = %lld; seq = %lld ",
-    //        vdif_frame_location * frame_size, dpdk_net->args->vdif_buf->buffer_size,
+    //        vdif_frame_location * frame_size, dpdk_net->args->vdif_buf->frame_size,
     //        frame_size, dpdk_net->link_data[port][0].seq);
-    assert(((vdif_frame_location + dpdk_net->args->timesamples_per_packet)* frame_size) <= dpdk_net->args->vdif_buf->buffer_size);
+    assert(((vdif_frame_location + dpdk_net->args->timesamples_per_packet)* frame_size) <= dpdk_net->args->vdif_buf->frame_size);
 
     // Setup the VDIF headers
     if (port == 0) {
@@ -443,7 +452,7 @@ static inline void copy_data_to_vdif(struct NetworkDPDK * dpdk_net,
                     // TODO on the last point, make sure that works with VDIF endianness.
 
                 // After all that indexing copy one byte :)
-                dpdk_net->args->vdif_buf->data[buffer_id][output_idx] =
+                dpdk_net->args->vdif_buf->frames[buffer_id][output_idx] =
                         *(rte_pktmbuf_mtod(cur_mbuf, char *) + from_idx);
 
                 from_idx += 1;
@@ -469,14 +478,14 @@ static inline void copy_data_no_shuffle(struct NetworkDPDK * dpdk_net,
                             get_fpga_seq_num(dpdk_net->args->buf[port][0],
                                                dpdk_net->link_data[port][0].buffer_id);
 
-    if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port][0]->buffer_size)) {
+    if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port][0]->frame_size)) {
         advance_frame(dpdk_net, port, 0, dpdk_net->link_data[port][0].seq);
         frame_location = 0;
         buffer_id = dpdk_net->link_data[port][0].buffer_id;
     }
 
     copy_block(&cur_mbuf,
-               (uint8_t*)&dpdk_net->args->buf[port][0]->data[buffer_id][frame_location * frame_size],
+               (uint8_t*)&dpdk_net->args->buf[port][0]->frames[buffer_id][frame_location * frame_size],
                packet_data_size,
                &offset);
 }
@@ -496,16 +505,14 @@ static void setup_for_first_packet(struct NetworkDPDK * dpdk_net, int port) {
     // Since this is first packet we can expect this to be an instant call
     if (dpdk_net->args->buf != NULL) {
         for (int freq = 0; freq < NUM_FREQ; ++freq) {
-            wait_for_empty_buffer(dpdk_net->args->buf[port][freq],
+            wait_for_empty_frame(dpdk_net->args->buf[port][freq],
                                   dpdk_net->args->producer_names[port],
                                   dpdk_net->link_data[port][freq].buffer_id);
-            set_data_ID(dpdk_net->args->buf[port][freq], dpdk_net->link_data[port][0].buffer_id, dpdk_net->link_data[port][freq].data_id++);
         }
     }
     if (dpdk_net->args->vdif_buf != NULL) {
-        wait_for_empty_buffer(dpdk_net->args->vdif_buf,
+        wait_for_empty_frame(dpdk_net->args->vdif_buf,
                               dpdk_net->args->producer_names[port], 0);
-        set_data_ID(dpdk_net->args->vdif_buf, dpdk_net->link_data[port][0].vdif_buffer_id, dpdk_net->link_data[port][0].data_id++);
     }
 
 }
@@ -521,7 +528,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
 
-        static struct timeval now;
+        struct timeval now;
         gettimeofday(&now, NULL);
 
         stream_id_t s_stream_id;
@@ -538,6 +545,9 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 INFO("dpdk: Faked StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
                         s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
             }
+
+            // Store the frequency (position in the frame that this stream is using)
+            s_stream_id.unused = freq;
             stream_id = encode_stream_id(s_stream_id);
 
             dpdk_net->link_data[port][freq].stream_ID = stream_id;
@@ -546,28 +556,37 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
             dpdk_net->link_data[port][freq].last_seq = seq - seq % integration_period;
             dpdk_net->link_data[port][freq].seq = seq;
 
-
             if (dpdk_net->args->buf != NULL) {
+                allocate_new_metadata_object(dpdk_net->args->buf[port][freq],
+                                    dpdk_net->link_data[port][freq].buffer_id);
+
                 set_fpga_seq_num(dpdk_net->args->buf[port][freq],
                                  dpdk_net->link_data[port][freq].buffer_id,
                                  seq - seq % integration_period);
                 set_first_packet_recv_time(dpdk_net->args->buf[port][freq],
                                         dpdk_net->link_data[port][freq].buffer_id,
                                         now);
-                set_stream_ID(dpdk_net->args->buf[port][freq],
-                              dpdk_net->link_data[port][freq].buffer_id,
-                              stream_id);
+                // We take the stream ID only from the first pair of crates,
+                // to avoid overwriting it on different ports.
+                // This makes the stream ID unique for down stream processes.
+                if (dpdk_net->link_data[port][freq].s_stream_ID.crate_id / 2 == 0)
+                    set_stream_id(dpdk_net->args->buf[port][freq],
+                                  dpdk_net->link_data[port][freq].buffer_id,
+                                  stream_id);
             }
         }
 
         if (dpdk_net->args->vdif_buf != NULL) {
+            allocate_new_metadata_object(dpdk_net->args->vdif_buf,
+                             dpdk_net->link_data[port][0].vdif_buffer_id);
+
             set_fpga_seq_num(dpdk_net->args->vdif_buf,
                              dpdk_net->link_data[port][0].vdif_buffer_id,
                              seq - seq % integration_period);
             set_first_packet_recv_time(dpdk_net->args->vdif_buf,
                                     dpdk_net->link_data[port][0].vdif_buffer_id,
                                     now);
-            set_stream_ID(dpdk_net->args->vdif_buf,
+            set_stream_id(dpdk_net->args->vdif_buf,
                           dpdk_net->link_data[port][0].vdif_buffer_id,
                           stream_id);
 
@@ -588,7 +607,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 dpdk_net->vdif_time_set = 1;
 
                 // Debug test to make sure this works.
-                DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %" PRIu64 ", data frame %d, vdif_time: %f",
+                DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %" PRIu64 ", data frame %" PRIu64 ", vdif_time: %f",
                         (double)now.tv_sec+(double)now.tv_usec/1000000.0,
                         dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
                         (seq - dpdk_net->vdif_offset) % 390625,
@@ -622,17 +641,16 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net, int port) {
 
         int buffer_id = dpdk_net->link_data[port][freq].buffer_id;
 
-        struct ErrorMatrix * error_matrix = get_error_matrix(dpdk_net->args->buf[port][freq], buffer_id);
-        add_bad_timesamples(error_matrix, lost_frames);
+        atomic_add_lost_timesamples(dpdk_net->args->buf[port][freq], buffer_id, lost_frames);
 
         //fprintf(stderr, "Number of lost frames: %d\n", lost_frames);
         while (lost_frames > 0) {
-            if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port][freq]->buffer_size)) {
+            if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port][freq]->frame_size)) {
                 advance_frame(dpdk_net, port, freq, cur_seq_num);
                 frame_location = 0;
             }
             for (int i = 0; i < timesamples_per_packet; ++ i) {
-                nt_memset((void *)&dpdk_net->args->buf[port][freq]->data[buffer_id][frame_location * frame_size + i*frame_size + freq*sub_frame_size],
+                nt_memset((void *)&dpdk_net->args->buf[port][freq]->frames[buffer_id][frame_location * frame_size + i*frame_size + freq*sub_frame_size],
                       0x88,
                       sub_frame_size);
             }
@@ -661,12 +679,11 @@ static void handle_lost_raw_packets(struct NetworkDPDK * dpdk_net, int port) {
 
     int buffer_id = dpdk_net->link_data[port][0].vdif_buffer_id;
 
-    struct ErrorMatrix * error_matrix = get_error_matrix(dpdk_net->args->vdif_buf, buffer_id);
-    add_bad_timesamples(error_matrix, lost_frames);
+    atomic_add_lost_timesamples(dpdk_net->args->vdif_buf, buffer_id, lost_frames);
 
     //fprintf(stderr, "Number of lost frames: %d\n", lost_frames);
     while (lost_frames > 0) {
-        if (unlikely(frame_location * frame_size == dpdk_net->args->vdif_buf->buffer_size)) {
+        if (unlikely(frame_location * frame_size == dpdk_net->args->vdif_buf->frame_size)) {
             advance_vdif_frame(dpdk_net, port, cur_seq_num);
             frame_location = 0;
         }
@@ -751,13 +768,21 @@ int lcore_recv_pkt_dump(void *args) {
 
                 //INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
                 uint64_t seq = get_mbuf_seq_num(mbufs[i]);
+                int buffer_id = dpdk_net->link_data[port][0].buffer_id;
 
                 // Align first frame
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
                     if ( ((seq % integration_period) <= 100) && ((seq % integration_period) >= 0 )) {
                         dpdk_net->link_data[port][0].first_packet = 0;
-                        INFO("Got first packet on port %d, with seq%" PRIu64 " ", port, seq);
+                        INFO("Got first packet on port %d, with seq %" PRIu64 " ", port, seq);
                         dpdk_net->link_data[port][0].last_seq = seq - dpdk_net->args->timesamples_per_packet;
+
+                        // It's useful to display the stream information
+                        uint16_t stream_id = get_mbuf_stream_id(mbufs[i]);
+                        stream_id_t s_stream_id = extract_stream_id(stream_id);
+                        INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+                                port, s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
+                        allocate_new_metadata_object(dpdk_net->args->buf[port][0], buffer_id);
                     } else {
                         goto release_frame;
                     }
@@ -774,46 +799,44 @@ int lcore_recv_pkt_dump(void *args) {
                     lost_frames[port] = 0;
                 }
 
-                int buffer_id = dpdk_net->link_data[port][0].buffer_id;
                 int dump_location = dpdk_net->link_data[port][0].dump_location;
                 int offset = 0;
 
                 //assert((dump_location + dpdk_net->args->udp_packet_size)
-                //        <= dpdk_net->args->buf[port][0]->buffer_size);
+                //        <= dpdk_net->args->buf[port][0]->frame_size);
 
                 struct rte_mbuf * pkt = mbufs[i];
                 copy_block(&pkt,
-                           (uint8_t *)&dpdk_net->args->buf[port][0]->data[buffer_id][dump_location],
+                           (uint8_t *)&dpdk_net->args->buf[port][0]->frames[buffer_id][dump_location],
                            dpdk_net->args->udp_packet_size,
                            (int *)&offset);
 
                 dpdk_net->link_data[port][0].dump_location += dpdk_net->args->udp_packet_size;
 
-                //INFO("Port %d dump location %d, buffer size %d", port, dpdk_net->link_data[port][0].dump_location, dpdk_net->args->buf[port][0]->buffer_size);
+                //INFO("Port %d dump location %d, buffer size %d", port, dpdk_net->link_data[port][0].dump_location, dpdk_net->args->buf[port][0]->frame_size);
 
                 if (dpdk_net->link_data[port][0].dump_location ==
-                        dpdk_net->args->buf[port][0]->buffer_size) {
+                        dpdk_net->args->buf[port][0]->frame_size) {
 
-                    mark_buffer_full(dpdk_net->args->buf[port][0],
+                    mark_frame_full(dpdk_net->args->buf[port][0],
                                      dpdk_net->args->producer_names[port],
                                      buffer_id);
 
                     buffer_id = dpdk_net->link_data[port][0].buffer_id =
                             (dpdk_net->link_data[port][0].buffer_id + 1) %
-                            dpdk_net->args->buf[port][0]->num_buffers;
+                            dpdk_net->args->buf[port][0]->num_frames;
 
-                    if (is_buffer_empty(dpdk_net->args->buf[port][0], buffer_id) == 0) {
+                    if (is_frame_empty(dpdk_net->args->buf[port][0], buffer_id) == 0) {
                         INFO("dpdk: finishing capture on port %d", port);
-                        mark_producer_done(dpdk_net->args->buf[port][0], 0);
                         dpdk_net->link_data[port][0].finished_buffer = 1;
                         goto release_frame;
                     }
 
-                    wait_for_empty_buffer(dpdk_net->args->buf[port][0],
+                    wait_for_empty_frame(dpdk_net->args->buf[port][0],
                                           dpdk_net->args->producer_names[port],
                                           buffer_id);
+                    allocate_new_metadata_object(dpdk_net->args->buf[port][0], buffer_id);
                     dpdk_net->link_data[port][0].dump_location = 0;
-                    set_data_ID(dpdk_net->args->buf[port][0], buffer_id, dpdk_net->data_id++);
                 }
 
                 release_frame:
@@ -826,7 +849,6 @@ int lcore_recv_pkt_dump(void *args) {
     for (port = port_offset;
              port < dpdk_net->args->num_links_per_lcore + port_offset;
              ++port) {
-        mark_producer_done(dpdk_net->args->buf[port][0], 0);
     }
     return 0;
 }
@@ -916,7 +938,7 @@ int lcore_recv_pkt(void *args)
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-                        //INFO("PACKET LOSS!!")
+                        INFO("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
                         handle_lost_packets(dpdk_net, port);
                     }
 
@@ -944,12 +966,6 @@ int lcore_recv_pkt(void *args)
     } // Main DPDK lcore loop
     exit_dpdk_lcore_loop:
     INFO("Existing DPDK on lcore: %d", lcore);
-    for (port = port_offset;
-             port < dpdk_net->args->num_links_per_lcore + port_offset;
-             ++port) {
-        for (int freq = 0; freq < NUM_FREQ; ++freq)
-            mark_producer_done(dpdk_net->args->buf[port][freq], freq);
-    }
     return 0;
 }
 

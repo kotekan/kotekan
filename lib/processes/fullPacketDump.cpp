@@ -4,8 +4,7 @@
 #include <unistd.h>
 #include <functional>
 
-#include "nullProcess.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
 #include "fullPacketDump.hpp"
@@ -64,7 +63,7 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
 }
 
 void fullPacketDump::main_thread() {
-    int buffer_ID = 0;
+    int frame_id = 0;
 
     using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
@@ -78,21 +77,18 @@ void fullPacketDump::main_thread() {
 
 
     int first_time = 1;
+    uint8_t * frame = NULL;
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = wait_for_full_buffer(buf, unique_name.c_str(), buffer_ID);
-        //INFO("fullPacketDump: link %d got full full buffer ID %d", link_id, buffer_ID);
-        // Check if the producer has finished, and we should exit.
-        if (buffer_ID == -1) {
-            break;
-        }
+        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         if (!_dump_to_disk) {
             std::lock_guard<std::mutex> lock(_packet_frame_lock);
-            memcpy(_packet_frame, buf->data[buffer_ID], _packet_size * MAX_NUM_PACKETS);
+            memcpy(_packet_frame, frame, _packet_size * MAX_NUM_PACKETS);
             if (!got_packets) got_packets = true;
         }
 
@@ -121,9 +117,9 @@ void fullPacketDump::main_thread() {
                 exit(errno);
             }
 
-            ssize_t bytes_writen = write(fd, buf->data[buffer_ID], buf->buffer_size);
+            ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->buffer_size) {
+            if (bytes_writen != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             }
@@ -136,10 +132,9 @@ void fullPacketDump::main_thread() {
             file_num++;
         }
 
-        release_info_object(buf, buffer_ID);
-        mark_buffer_empty(buf, unique_name.c_str(), buffer_ID);
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
-        buffer_ID = (buffer_ID + 1) % buf->num_buffers;
+        frame_id = (frame_id + 1) % buf->num_frames;
     }
     INFO("Closing full packet dump thread...");
 }

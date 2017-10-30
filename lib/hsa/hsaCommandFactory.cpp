@@ -15,8 +15,12 @@
 #include "hsaOutputDataZero.hpp"
 #include "hsaBarrier.hpp"
 #include "hsaBeamformKernel.hpp"
+#include "hsaBeamformTranspose.hpp"
+#include "hsaBeamformUpchan.hpp"
 #include "hsaBeamformOutput.hpp"
-
+#include "hsaRfiVdif.hpp"
+#include "hsaRfi.hpp"
+#include "hsaRfiOutput.hpp"
 using namespace std;
 
 hsaCommandFactory::hsaCommandFactory(Config& config_,
@@ -64,8 +68,28 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
             list_commands.push_back(new hsaBeamformKernel("zero_padded_FFT512",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamfrom_output") {
-            list_commands.push_back(new hsaBeamformOutputData("hsa_beamfrom_output",
+        } else if (commands[i]["name"] == "hsa_beamform_transpose") {
+            list_commands.push_back(new hsaBeamformTranspose("transpose",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_beamform_upchan") {
+            list_commands.push_back(new hsaBeamformUpchan("upchannelize",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_beamform_output") {
+            list_commands.push_back(new hsaBeamformOutputData("hsa_beamform_output",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_rfi_vdif") {
+            list_commands.push_back(new hsaRfiVdif("rfi_vdif",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+	} else if (commands[i]["name"] == "hsa_rfi") {
+            list_commands.push_back(new hsaRfi("rfi_chime",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+ 	} else if (commands[i]["name"] == "hsa_rfi_output") {
+            list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else {

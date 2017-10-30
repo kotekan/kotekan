@@ -53,7 +53,7 @@ typedef struct {
 int main(int argc, char ** argv) {
     unsigned char *tcp_buf;
     uint8_t *curr_flag; //, *err_flag;
-    int tcp_listen_fd, tcp_fd, bytes_recv, buffer_size;
+    int tcp_listen_fd, tcp_fd, bytes_recv, frame_size;
     int n_val;
     socklen_t tcp_addr_len;
     struct sockaddr_in acq_addr, gpu_addr;
@@ -64,15 +64,15 @@ int main(int argc, char ** argv) {
     // header.
     // TODO This should be expanded to handle the flags as well.
     n_val = N_PROD * N_FREQ;
-    buffer_size = sizeof(struct tcp_frame_header) +
+    frame_size = sizeof(struct tcp_frame_header) +
         n_val * (sizeof(complex_int_t) + sizeof(uint8_t));
 
-    tcp_buf = malloc(buffer_size);
+    tcp_buf = malloc(frame_size);
     if (tcp_buf == NULL) {
         fprintf(stderr, "Error creating tcp buffer.");
         return -1;
     }
-    fprintf(stderr, "buffer size = %d", buffer_size);
+    fprintf(stderr, "buffer size = %d", frame_size);
 
     curr_flag = (uint8_t *)malloc(n_val * sizeof(uint8_t));
     if (curr_flag == NULL) {
@@ -121,7 +121,7 @@ int main(int argc, char ** argv) {
         }
 
         for (;;) {
-            bytes_recv = recv(tcp_fd, (void *)tcp_buf, buffer_size, MSG_WAITALL);
+            bytes_recv = recv(tcp_fd, (void *)tcp_buf, frame_size, MSG_WAITALL);
 
             if (bytes_recv == 0) {
                 fprintf(stderr, "The GPU correlator closed its connection.\n");
@@ -135,9 +135,9 @@ int main(int argc, char ** argv) {
                 break;
             }
 
-            if (bytes_recv != buffer_size) {
+            if (bytes_recv != frame_size) {
                 fprintf(stderr, "Did not get full buffer: expected %d, got %d.",
-                        buffer_size, bytes_recv);
+                        frame_size, bytes_recv);
                 break;
             }
 

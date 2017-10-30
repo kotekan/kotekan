@@ -49,23 +49,24 @@ void hsaProcess::main_thread()
     int gpu_frame_id = 0;
     bool first_run = true;
 
-    for(;;) {
+    while (!stop_thread) {
 
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
-        INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (uint32_t i = 0; i < commands.size(); ++i) {
-            commands[i]->wait_on_precondition(gpu_frame_id);
+            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0)
+                break;
         }
 
-        INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id].wait_for_free_slot();
 
         hsa_signal_t signal;
         signal.handle = 0;
-        INFO("Adding commands to GPU[%d][%d] queues", gpu_id, gpu_frame_id);
+        //INFO("Adding commands to GPU[%d][%d] queues", gpu_id, gpu_frame_id);
 
         for (uint32_t i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
@@ -101,16 +102,16 @@ void hsaProcess::results_thread() {
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
-    for(;;) {
+    while (!stop_thread) {
         // Wait for a signal to be completed
-        INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        //INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
         final_signals[gpu_frame_id].wait_for_signal();
-        INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        //INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (uint32_t i = 0; i < commands.size(); ++i) {
             commands[i]->finalize_frame(gpu_frame_id);
         }
-        INFO("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+        //INFO("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
 
         final_signals[gpu_frame_id].reset();
 

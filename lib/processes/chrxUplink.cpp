@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 
 #include "chrxUplink.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
 #include <unistd.h>
@@ -53,6 +53,8 @@ void chrxUplink::main_thread() {
     apply_config(0);
 
     int buffer_ID = 0;
+    uint8_t * vis_frame = NULL;
+    uint8_t * gate_frame = NULL;
 
     // Connect to server.
     struct sockaddr_in ch_acq_addr;
@@ -79,49 +81,45 @@ void chrxUplink::main_thread() {
     while(!stop_thread) {
 
         // This call is blocking!
-        buffer_ID = wait_for_full_buffer(vis_buf, unique_name.c_str(), buffer_ID);
+        vis_frame = wait_for_full_frame(vis_buf, unique_name.c_str(), buffer_ID);
+        if (vis_frame == NULL) break;
 
-        // Check if the producer has finished, and we should exit.
-        if (buffer_ID == -1) {
-            INFO("Closing chrx_uplink");
-            break;
-        }
+        // INFO("Sending TCP frame to ch_master. frame size: %d", vis_buf->frame_size);
 
-        // INFO("Sending TCP frame to ch_master. frame size: %d", vis_buf->buffer_size);
-
-        ssize_t bytes_sent = send(tcp_fd,vis_buf->data[buffer_ID], vis_buf->buffer_size, 0);
+        ssize_t bytes_sent = send(tcp_fd, vis_frame, vis_buf->frame_size, 0);
         if (bytes_sent <= 0) {
             ERROR("Could not send frame to chrx, error: %d", errno);
             break;
         }
-        if (bytes_sent != vis_buf->buffer_size) {
-            ERROR("Could not send all bytes: bytes sent = %d; buffer_size = %d",
-                    (int)bytes_sent, vis_buf->buffer_size);
+        if (bytes_sent != vis_buf->frame_size) {
+            ERROR("Could not send all bytes: bytes sent = %d; frame_size = %d",
+                    (int)bytes_sent, vis_buf->frame_size);
             break;
         }
         INFO("Finished sending frame to chrx");
 
         if (_enable_gating) {
             DEBUG("Getting gated buffer");
-            wait_for_full_buffer(gate_buf, unique_name.c_str(), buffer_ID);
+            gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
+            if (gate_frame == NULL) break;
 
             DEBUG("Sending gated buffer");
-            bytes_sent = send(tcp_fd, gate_buf->data[buffer_ID], gate_buf->buffer_size, 0);
+            bytes_sent = send(tcp_fd, gate_frame, gate_buf->frame_size, 0);
             if (bytes_sent <= 0) {
                 ERROR("Could not send gated date frame to ch_acq, error: %d", errno);
                 break;
             }
-            if (bytes_sent != gate_buf->buffer_size) {
-                ERROR("Could not send all bytes in gated data frame: bytes sent = %d; buffer_size = %d",
-                        (int)bytes_sent, gate_buf->buffer_size);
+            if (bytes_sent != gate_buf->frame_size) {
+                ERROR("Could not send all bytes in gated data frame: bytes sent = %d; frame_size = %d",
+                        (int)bytes_sent, gate_buf->frame_size);
                 break;
             }
             INFO("Finished sending gated data frame to chrx");
-            mark_buffer_empty(gate_buf, unique_name.c_str(), buffer_ID);
+            mark_frame_empty(gate_buf, unique_name.c_str(), buffer_ID);
         }
 
-        mark_buffer_empty(vis_buf, unique_name.c_str(), buffer_ID);
+        mark_frame_empty(vis_buf, unique_name.c_str(), buffer_ID);
 
-        buffer_ID = (buffer_ID + 1) % vis_buf->num_buffers;
+        buffer_ID = (buffer_ID + 1) % vis_buf->num_frames;
     }
 }

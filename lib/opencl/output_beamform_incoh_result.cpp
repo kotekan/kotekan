@@ -29,8 +29,8 @@ cl_event output_beamform_incoh_result::execute(int param_bufferID, const uint64_
                                         param_Device.get_device_beamform_output_incoh_buffer(param_bufferID),
                                         CL_FALSE,
                                         0,
-                                        param_Device.get_beamforming_out_incoh_buf()->aligned_buffer_size,
-                                        param_Device.get_beamforming_out_incoh_buf()->data[param_bufferID],
+                                        param_Device.get_beamforming_out_incoh_buf()->aligned_frame_size,
+                                        param_Device.get_beamforming_out_incoh_buf()->frames[param_bufferID],
                                         1,
                                         &param_PrecedeEvent,
                                         &postEvent[param_bufferID]) );

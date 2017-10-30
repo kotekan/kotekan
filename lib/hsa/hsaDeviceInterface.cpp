@@ -107,7 +107,7 @@ hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, in
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    INFO("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    //DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
@@ -141,7 +141,7 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    INFO("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    //DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
@@ -150,7 +150,7 @@ void hsaDeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int length)
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
-    INFO("Sync host->gpu[%d] copy %p -> %p, len: %d", gpu_id, src, dst, length);
+    //DEBUG("Sync host->gpu[%d] copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -175,7 +175,7 @@ void hsaDeviceInterface::sync_copy_gpu_to_host(void *dst, void *src, int length)
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
-    INFO("Sync gpu[%d]->host copy %p -> %p, len: %d", gpu_id, src, dst, length);
+    //DEBUG("Sync gpu[%d]->host copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -298,7 +298,6 @@ void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const int ind
             gpu_memory[name].gpu_pointers.push_back(ptr);
         }
     }
-
     // The size must match what has already been allocated.
     assert(len == gpu_memory[name].len);
     // Make sure we aren't asking for an index past the end of the array.
@@ -319,7 +318,6 @@ void* hsaDeviceInterface::get_gpu_memory(const string& name, const int len) {
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);
     }
-
     // The size must match what has already been allocated.
     assert(len == gpu_memory[name].len);
     assert(gpu_memory[name].gpu_pointers.size() == 1);
