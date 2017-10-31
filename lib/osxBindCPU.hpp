@@ -24,6 +24,10 @@ static inline int
 CPU_ISSET(int num, cpu_set_t *cs) { return (cs->count & (1 << num)); }
 
 int sched_getaffinity(pid_t pid, size_t cpu_size, cpu_set_t *cpu_set);
+
+#ifdef __cplusplus
+extern "C"
+#endif
 int pthread_setaffinity_np(pthread_t thread, size_t cpu_size, cpu_set_t *cpu_set);
 
 #endif
