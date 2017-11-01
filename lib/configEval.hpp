@@ -48,7 +48,7 @@ configEval<Type>::configEval(Config &_config,
     config(_config), unique_name(_unique_name) {
 
     static const std::regex re(
-        "([0-9]*\\.?[0-9]+|\\+|\\*|\\-|\\/|\\)|\\(|[a-zA-Z][a-zA-Z0-9\\_]+)",
+        R"(([0-9]*.?[0-9]+|\+|\*|\-|/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
         std::regex::ECMAScript);
 
     tokens = {
@@ -81,14 +81,14 @@ void configEval<Type>::next() {
 
 template <class Type>
 bool configEval<Type>::isNumber() {
-    std::regex re("[0-9]*\\.?[0-9]+");
+    std::regex re( R"([0-9]*\.?[0-9]+)", std::regex::ECMAScript);
     std::cmatch m;
     return std::regex_match (tokens.front().c_str(), m, re);
 }
 
 template <class Type>
 bool configEval<Type>::isVar() {
-    std::regex re("[a-zA-Z][a-zA-Z0-9\\_]+");
+    std::regex re(R"([a-zA-Z][a-zA-Z0-9\\_]+)", std::regex::ECMAScript);
     std::cmatch m;
     return std::regex_match (tokens.front().c_str(), m, re);
 }
@@ -177,3 +177,4 @@ double eval_compute_double(Config &config,
                            const std::string &expression);
 
 #endif /* CONFIG_EVAL_HPP */
+
