@@ -18,6 +18,7 @@ using std::string;
 #include "errors.h"
 #include "frb_functions.h" 
 #include "chimeMetadata.h"
+#include "fpga_header_functions.h"
 
 frbPostProcess::frbPostProcess(Config& config_,
         const string& unique_name,
@@ -96,7 +97,7 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _factor_upchan = config.get_int(unique_name, "factor_upchan");
     _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
     _nbeams = config.get_int(unique_name, "num_beams");
-    _timesamples_per_packet = config.get_int(unique_name, "timesamples_per_packet");
+    _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_header_size");
     _freq_array = config.get_int_array(unique_name, "freq_array");
@@ -107,7 +108,7 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
 
 void frbPostProcess::main_thread() {
 
-    int in_buffer_ID[_num_gpus] ;   //4 of these 
+    uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
     uint8_t * in_frame[_num_gpus];
     int out_buffer_ID = 0;  
     int startup = 1; //related to the likely & unlikely
@@ -115,7 +116,6 @@ void frbPostProcess::main_thread() {
     for (int i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
-
     const uint32_t num_samples = _samples_per_data_set / _downsample_time / _factor_upchan ; //It is 100 for now, but should be 128.
     uint32_t current_input_location = 0; //goes from 0 to num_samples
     //uint16_t thread_ids[_num_gpus]; //the 4 frequencies
@@ -128,13 +128,13 @@ void frbPostProcess::main_thread() {
     frb_header.nbeams = _nbeams;  //4
     frb_header.nfreq_coarse = _nfreq_coarse; //4
     frb_header.nupfreq = _factor_upchan_out;
-    frb_header.ntsamp = _timesamples_per_packet;
+    frb_header.ntsamp = _timesamples_per_frb_packet;
 
     for (int ii=0;ii<_nbeams;++ii){
       frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
     }
     for (int ii=0;ii<_nfreq_coarse;++ii){
-      frb_header_coarse_freq_ids[ii] = _freq_array[ii] ; //QUESTION: Can I just read from config file?
+      frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
     }
     for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
       frb_header_scale[ii] = 1.; 
@@ -155,25 +155,22 @@ void frbPostProcess::main_thread() {
         for (int i = 0; i < _num_gpus; ++i) {
 	    in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
 	    if (in_frame[i] == NULL) goto end_loop;
-	    in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
+	    //INFO("GPU Post process got full buffer ID %d for GPU %d", in_buffer_ID[i],i);
 	}
-
         //INFO("frb_post_process; got full set of GPU output buffers");
 
-        uint64_t first_seq_number =
-	  (uint64_t) 67; //get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-	INFO("[frbPostProcess] first_seq_number=%lu --------\n",first_seq_number);
+        uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
-        /*for (uint16_t i = 0; i < _num_gpus; ++i) {
-	  //assert(first_seq_number ==
-	  //        (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
-	  //int32_t encoded_stream_id;
-	  //stream_id_t stream_id = extract_stream_id(encoded_stream_id); //This is the fpga streams
+        for (int i = 0; i < _num_gpus; ++i) {
+	  assert(first_seq_number ==
+		 (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
 
-	    uint32_t stream_id = get_streamID(in_buf[i], in_buffer_ID[i]);
-	    INFO("stream_id is=%d-------------------\n",stream_id);
-	    thread_ids[i] = 0;//bin_number(stream_id, i); NOT SURE HOW TO DO THIS YET.
-	    }*/
+	  stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
+	  frb_header_coarse_freq_ids[i] = get_stream_id(in_buf[i], in_buffer_ID[i]);
+
+	  //This get the freq in MHz but we don't seem to need it
+	  //float freq_now = freq_from_bin(bin_number_chime(&stream_id));
+	}
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
@@ -202,7 +199,6 @@ void frbPostProcess::main_thread() {
                     frame++;
                     if (frame == 8) { //last frame
                         frame = 0;
-			INFO("[frbPostProcess] Going to mark frb_buf as full\n");
 			mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;
@@ -243,6 +239,8 @@ void frbPostProcess::main_thread() {
 	for (int i = 0; i < _num_gpus; ++i) {
 	  //release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
             mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+	    in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
+
         }
     } //end stop thread
     end_loop:;

@@ -5,7 +5,8 @@ udp_packet_size: 4264
 udp_header_size: 168 
 num_links: 4
 freq_array: [4,7,10,16]
-timesamples_per_packet: 16
+timesamples_per_packet: 2
+timesamples_per_frb_packet: 16
 num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
@@ -149,11 +150,11 @@ postprocess:
   network_input_buffer_3: beamform_output_buffer_3
   frb_out_buf: frb_output_buffer
 
-#hex_dump:
-#  kotekan_process: hexDump
-#  buf: frb_output_buffer
-#  len: 128
-#  offset: 0
+hex_dump:
+  kotekan_process: hexDump
+  buf: frb_output_buffer
+  len: 128
+  offset: 0
 
 #file_out:
 #  base_dir: /data/frb/
