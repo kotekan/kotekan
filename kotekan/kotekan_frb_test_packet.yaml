@@ -63,13 +63,13 @@ beamform_output_buffesrs:
 
 frb_output_buffer:
     num_frames: buffer_depth
-    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_packet_size*8*256
+    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_header_size*8*256
     metadata_pool: main_pool
     kotekan_buffer: standard 
 
 file_output_buffer:
     num_frames: buffer_depth
-    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_packet_size*8*256
+    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_header_size*8*256
     metadata_pool: main_pool
     file_output_buffer_0:
         kotekan_buffer: standard 
