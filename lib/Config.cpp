@@ -241,7 +241,7 @@ json Config::get_value(const string& base_path, const string& name) {
         std::size_t last_slash = search_path.find_last_of("/");
         search_path = search_path.substr(0, last_slash);
     }
-    throw std::runtime_error("The value " + name + " does not exist in the path to: " + base_path);
+    throw std::runtime_error("The config option: " + name + " is required, but was not found in the path: " + base_path);
 }
 
 void Config::dump_config() {
