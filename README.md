@@ -74,12 +74,12 @@ To build just the base framework:
     
 Cmake build options:
 
-* `-DCMAKE_BUILD_TYPE=Debug` Builds the project with debug symbols.
-* `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` Includes DPDK support.
-* `-DUSE_HSA=ON` Build with HSA support.
-* `-DUSE_OPENCL=ON` Build with OpenCL support.
-* `-DUSE_HCC=ON` Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
-* `-DDPDK_VDIF=ON` Adjusts DPDK defines to optimize for single dish VDIF capture mode. 
+* `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
+* `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` - Includes DPDK support.
+* `-DUSE_HSA=ON` - Build with HSA support.
+* `-DUSE_OPENCL=ON` - Build with OpenCL support.
+* `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
+* `-DDPDK_VDIF=ON` - Adjusts DPDK defines to optimize for single dish VDIF capture mode. 
 
 **Examples:**
 
