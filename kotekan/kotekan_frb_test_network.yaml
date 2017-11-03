@@ -1,0 +1,57 @@
+---
+type: config
+log_level: 3
+udp_packet_size: 4264
+udp_header_size: 168 
+num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
+timesamples_per_frb_packet: 16
+num_elements: 2048
+num_local_freq: 1
+num_total_freq: 4
+samples_per_data_set: 38400
+downsample_time: 3
+downsample_freq: 8
+factor_upchan: 128
+factor_upchan_out: 16
+num_data_sets: 1
+buffer_depth: 3
+num_gpu_frames: 1
+num_gpus: 4
+num_beams: 4
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+sizeof_float: 4
+
+#network variables
+
+udp_port_number: 1313
+file_name: /home/arun/L1_IPs/l1config.txt
+my_ip_address: 22.22.0.2
+number_of_nodes: 256
+packets_per_stream: 8
+my_node_id: 245  
+
+
+
+#Pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 10 * buffer_depth
+
+frb_output_buffer:
+  num_frames: buffer_depth
+  frame_size:  udp_packet_size*8*256
+  metadata_pool: main_pool
+  kotekan_buffer: standard 
+
+# Kotekan processes
+buffer_read:
+  kotekan_process: frbNetworkProcess
+  frb_out_buf: frb_output_buffer
+
+# Kotekan processes    
+buffer_write:
+  kotekan_process: frbBufferWrite
+  frb_out_buf: frb_output_buffer
+   
