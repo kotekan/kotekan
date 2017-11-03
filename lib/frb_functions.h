@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+#pragma pack(push, 1)
 struct FRBHeader {
     uint32_t protocol_version ;
     int16_t data_nbytes ;
@@ -25,7 +26,7 @@ struct FRBHeader {
   // float *scale ; //size of [nbeams * nfreq_coarse];
   // float *offset ; //size of [nbeams * nfreq_coarse] ;
 };
-
+#pragma pack(pop)
 
 
 #ifdef __cplusplus
