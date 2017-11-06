@@ -25,13 +25,12 @@ sizeof_float: 4
 
 #network variables
 
-udp_port_number: 1313
+ud_port_number: 1313
 file_name: /home/arun/L1_IPs/l1config.txt
 my_ip_address: 22.22.0.2
 number_of_nodes: 256
 packets_per_stream: 8
 my_node_id: 245  
-
 
 
 #Pool

@@ -22,6 +22,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               streamSingleDishVDIF.cpp
               accumulate.cpp
               bufferStatus.cpp
+              frbNetworkProcess.cpp
+              frbBufferWrite.cpp
               )
 
 if (${USE_DPDK})

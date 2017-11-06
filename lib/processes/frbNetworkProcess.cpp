@@ -39,7 +39,7 @@ std::bind(&frbNetworkProcess::main_thread, this))
 
 frbNetworkProcess::~frbNetworkProcess()
 {
-  free(frb_buf);
+  
 }
 
 
