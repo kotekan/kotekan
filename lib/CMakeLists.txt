@@ -73,8 +73,13 @@ if (${USE_OPENCL})
        target_link_libraries( kotekan_libs kotekan_opencl )
 endif ()
 
+
+# HDF5 stuff
+set(HDF5_USE_STATIC_LIBRARIES ON)
+find_package(HDF5 REQUIRED)
+include_directories (${HDF5_INCLUDE_DIRS})
+
 add_subdirectory(testing)
 target_link_libraries( kotekan_libs kotekan_testing )
 add_subdirectory(processes)
 target_link_libraries( kotekan_libs kotekan_processes )
-

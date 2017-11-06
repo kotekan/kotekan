@@ -1,8 +1,6 @@
 ---
 type: config
-system:
-  mode: gpu_replay
-  log_level: 3
+log_level: 3
 num_elements: 2048
 num_local_freq: 1
 udp_packet_size: 4928
@@ -13,6 +11,20 @@ num_gpu_frames: 128
 block_size: 32
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 
+# Metadata pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 5 * buffer_depth
+
+# Buffers
+gpu_data_buffer:
+  kotekan_buffer: standard
+  metadata_pool: main_pool
+  num_frames: buffer_depth
+  sizeof_int: 4
+  frame_size: sizeof_int * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
+
+# Kotekan processes
 file_read:
   kotekan_process: rawFileRead
   buf: gpu_data_buffer
@@ -20,6 +32,7 @@ file_read:
   file_ext: dump
   file_name: cnDg5_corr_gpu0
 
-metadata_dump:
+hdf5_write:
   kotekan_process: hdf5Writer
   buf: gpu_data_buffer
+  nfreq: 1
