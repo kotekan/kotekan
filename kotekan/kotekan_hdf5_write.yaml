@@ -32,7 +32,7 @@ file_read:
   file_ext: dump
   file_name: cnDg5_corr_gpu0
 
-hdf5_write:
+hdf5_writer:
   kotekan_process: hdf5Writer
   buf: gpu_data_buffer
-  nfreq: 1
+  num_freq: 1
