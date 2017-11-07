@@ -16,72 +16,151 @@ using std::string;
 #include "Config.hpp"
 #include "util.h"
 #include "errors.h"
+#include "frb_functions.h" 
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
-frbBufferWrite::frbBufferWrite(Config& config_, 
-const string& unique_name, bufferContainer &buffer_container) :
-KotekanProcess(config_, unique_name, buffer_container,
-std::bind(&frbBufferWrite::main_thread, this))
-{
-  
-  frb_buf = get_buffer("frb_out_buf");
-  register_producer(frb_buf, unique_name.c_str());
-  
+frbBufferWrite::frbBufferWrite(Config& config_,
+        const string& unique_name,
+        bufferContainer &buffer_container) :
+        KotekanProcess(config_, unique_name, buffer_container,
+                       std::bind(&frbBufferWrite::main_thread, this)){
+
+    apply_config(0);
+
+    frb_buf = get_buffer("frb_out_buf");
+    register_producer(frb_buf, unique_name.c_str());
+
+    //Dynamic header
+    frb_header_beam_ids = new uint16_t[_nbeams];
+    frb_header_coarse_freq_ids = new uint16_t[_nfreq_coarse];
+    frb_header_scale = new float[_nbeams * _nfreq_coarse];
+    frb_header_offset = new float[_nbeams * _nfreq_coarse];
+
 }
 
-frbBufferWrite::~frbBufferWrite()
-{
-  free(frb_buf);
+frbBufferWrite::~frbBufferWrite() {
+    free(in_buf);
+
+    free(frb_header_beam_ids);
+    free(frb_header_coarse_freq_ids);
+    free(frb_header_scale);
+    free(frb_header_offset);
+
 }
 
-
-void frbBufferWrite::apply_config(uint64_t fpga_seq) 
-{
-  /*
-  _num_gpus = config.get_int(unique_name, "num_gpus");
-  _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-  _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
-  _downsample_time = config.get_int(unique_name, "downsample_time");
-  _factor_upchan = config.get_int(unique_name, "factor_upchan");
-  _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out");
-  _nbeams = config.get_int(unique_name, "num_beams");
-  _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
-  _udp_packet_size = config.get_int(unique_name, "udp_packet_size");
-  _udp_header_size = config.get_int(unique_name, "udp_header_size");
-  _freq_array = config.get_int_array(unique_name, "freq_array");
-
-  _fpga_counts_per_sample = _downsample_time * _factor_upchan;
-  */
-}
-
-
-void frbBufferWrite::main_thread() 
-{
-  int frame_id = 0;
-  uint8_t * frame = NULL;
-  int frame_size = 0;
-  int udp_packet_size = 4264/2;
-  int staic_header = 28;
-
-  uint16_t *buffer = (uint16_t*) malloc(frb_buf->frame_size);
+void frbBufferWrite::fill_headers(unsigned char * out_buf,
+                  struct FRBHeader * frb_header,
+                  const uint64_t fpga_seq_num,
+		  const uint16_t num_L1_streams, //256
+		  uint16_t * frb_header_coarse_freq_ids,
+		  float * frb_header_scale,
+		  float * frb_header_offset){  
+    // Populate the headers
+    //assert(sizeof(struct FRBHeader) == _udp_header_size);
+    
+    for (int j=0;j<num_L1_streams; ++j) { //256 streams
+      for (int k=0;k<_nbeams;++k) { //the 4 beams are supposed to be consecutive
+	frb_header_beam_ids[k] = j*_nbeams+k;
+      }
+      for (int i = 0; i < 8; ++i) {  //8 frames in a stream
+	frb_header->fpga_count = fpga_seq_num + 16*_fpga_counts_per_sample * i;
+	memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size], frb_header, sizeof(struct FRBHeader));
   
-  for(uint16_t i=0; i<256*8; i++)
-  {
-    buffer[i*udp_packet_size+14] = i*4;
-  }
+	int static_header_size = 24;
+	//copy in the dynamic header
+	
+  memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size], 
+	       frb_header_beam_ids, sizeof(uint16_t)*_nbeams);
+	
+  memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams], 
+	       frb_header_coarse_freq_ids, sizeof(uint16_t)*_nfreq_coarse);
+	
+  memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse], 
+	       frb_header_scale, sizeof(float)*_nbeams*_nfreq_coarse);
+	
+  memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse + 4*_nbeams*_nfreq_coarse], 
+	       frb_header_offset, sizeof(float)*_nbeams*_nfreq_coarse);
+
   
-  while(!stop_thread)
-  {
-    frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), frame_id);
-    if(frame==NULL)
-      break;
-    memcpy(frame,buffer,frb_buf->frame_size);
-    mark_frame_full(frb_buf, unique_name.c_str(), frame_id);
-    frame_id = ( frame_id + 1 ) % frb_buf->num_frames;
-    INFO("Written %d frame_size %d",frame_id,frb_buf->frame_size);
-  }
-  return;
+      }
+    }
 }
 
+void frbBufferWrite::apply_config(uint64_t fpga_seq) {
+    if (!config.update_needed(fpga_seq))
+        return;
 
+    _num_gpus = config.get_int(unique_name, "num_gpus");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
+    _downsample_time = config.get_int(unique_name, "downsample_time");
+    _factor_upchan = config.get_int(unique_name, "factor_upchan");
+    _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
+    _nbeams = config.get_int(unique_name, "num_beams");
+    _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
+    _udp_packet_size = config.get_int(unique_name, "udp_packet_size");
+    _udp_header_size = config.get_int(unique_name, "udp_header_size");
+    _freq_array = config.get_int_array(unique_name, "freq_array");
+
+    _fpga_counts_per_sample = _downsample_time * _factor_upchan;
+      
+}
+
+void frbBufferWrite::main_thread() {
+
+    struct FRBHeader frb_header;
+    frb_header.protocol_version = 1;     
+    frb_header.data_nbytes =  _udp_packet_size - _udp_header_size;
+    frb_header.fpga_counts_per_sample =  _fpga_counts_per_sample;
+    frb_header.fpga_count = 0 ;  //to be updated in fill_header
+    frb_header.nbeams = _nbeams;  //4
+    frb_header.nfreq_coarse = _nfreq_coarse; //4
+    frb_header.nupfreq = _factor_upchan_out;
+    frb_header.ntsamp = _timesamples_per_frb_packet;
+
+    for (int ii=0;ii<_nbeams;++ii){
+      frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
+    }
+    for (int ii=0;ii<_nfreq_coarse;++ii){
+      frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
+    }
+    for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
+      frb_header_scale[ii] = 1.; 
+      frb_header_offset[ii] = 0;
+    }
+
+    int frame = 0;
+    int in_frame_location = 0; //goes from 0 to 16
+    uint64_t fpga_seq_num = 0;
+
+    int num_L1_streams = 1024/_nbeams;
+    uint64_t count = 0;
+    
+    int frame_id = 0;
+    unsigned char* out_frame;
+
+    while(!stop_thread) {
+         // Fill the first output buffer headers
+	      fpga_seq_num = count*16*_fpga_counts_per_sample * 8;;
+	      
+        out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), frame_id);  
+        //INFO("Frame Size %d ",frb_buf->frame_size);    
+        
+        
+        fill_headers((unsigned char*)out_frame,
+			   &frb_header,
+			   fpga_seq_num,
+			   num_L1_streams,
+			   (uint16_t*)frb_header_coarse_freq_ids,
+			   (float*)frb_header_scale,
+			   (float*)frb_header_offset);
+        
+        mark_frame_full(frb_buf, unique_name.c_str(), frame_id);
+        frame_id = ( frame_id + 1 ) % frb_buf->num_frames;
+        
+                        // Get a new output buffer
+        
+
+        }
+}

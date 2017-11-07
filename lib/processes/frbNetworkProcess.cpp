@@ -47,12 +47,11 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
 {
   udp_packet_size = config.get_int(unique_name, "udp_packet_size");
   udp_port_number = config.get_int(unique_name, "udp_port_number");
-  file_name = config.get_string(unique_name, "file_name");
   my_ip_address = config.get_string(unique_name, "my_ip_address");
   number_of_nodes = config.get_int(unique_name, "number_of_nodes");
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
   my_node_id = config.get_int(unique_name, "my_node_id");
-
+  
 }
 
 
@@ -62,15 +61,13 @@ void frbNetworkProcess::main_thread()
   int frame_id = 0;
   uint8_t * packet_buffer = NULL;
   
-  string link_ip[number_of_nodes];
-  std::ifstream fp(file_name.c_str());
-  if(!fp.is_open()) exit(0);  
+  std::vector<std::string> link_ip = config.get_string_array(unique_name, "L1_node_ips");
+  int number_of_l1_links = link_ip.size();
+  INFO("number_of_l1_links: %d",number_of_l1_links);  
+    
 
-  for(int i=0;i<number_of_nodes;i++)
-  {  
-    std::getline(fp,link_ip[i]);
-  }
   
+
   int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
  
   if (sock_fd < 0)
@@ -80,7 +77,7 @@ void frbNetworkProcess::main_thread()
     exit(0);
   }
   
-  struct sockaddr_in server_address[number_of_nodes], myaddr;
+  struct sockaddr_in server_address[number_of_l1_links], myaddr;
 
   
   std::memset((char *)&myaddr, 0, sizeof(myaddr));
@@ -98,10 +95,7 @@ void frbNetworkProcess::main_thread()
   
   
   
-  
-  
-  
-  for(int i=0;i<number_of_nodes;i++)
+  for(int i=0;i<number_of_l1_links;i++)
   {
     memset(&server_address[i], 0, sizeof(server_address[i]));
     server_address[i].sin_family = AF_INET;
@@ -116,7 +110,7 @@ void frbNetworkProcess::main_thread()
     exit(0);
   }
   
-  struct timespec t0,t1;
+  struct timespec t0,t1,temp;
   t0.tv_sec = 0;
   t0.tv_nsec = 0; /*  nanoseconds */
   
@@ -124,6 +118,7 @@ void frbNetworkProcess::main_thread()
 
    
   long count=0;
+
   while(!stop_thread)
   {
     
@@ -132,10 +127,8 @@ void frbNetworkProcess::main_thread()
 
     unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
     unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_node_id*240; // analytically it must be 240.3173828125
+    unsigned long wait_ns = time_interval-reminder + my_node_id*240*(256/number_of_l1_links); // analytically it must be 240.3173828125
  
- 
-    //INFO("sec: %ld nsec: %ld",t0.tv_sec,t0.tv_nsec);
  
     t0.tv_nsec += wait_ns;
     if(t0.tv_nsec>=1000000000)
@@ -143,33 +136,50 @@ void frbNetworkProcess::main_thread()
       t0.tv_sec += 1;
       t0.tv_nsec -= 1000000000;
     }
- 
-    t1.tv_sec = t0.tv_sec;
-    t1.tv_nsec = t0.tv_nsec;
     
-     
-    
-    /*
-    t0.tv_nsec += time_interval;
-    if(t0.tv_nsec>=1000000000)
+    // Checking with the NTP server    
+    if(count==0)
     {
-      t0.tv_sec += 1;
-      t0.tv_nsec -= 1000000000;
+      temp.tv_sec = t0.tv_sec;
+      temp.tv_nsec = t0.tv_nsec;
     }
-   
+    else
+    {
+      temp.tv_nsec += 125995520;
+      if(temp.tv_nsec>=1000000000)
+      {
+        temp.tv_sec += 1;
+        temp.tv_nsec -= 1000000000;
+      }
+      
+      long sec = (long)temp.tv_sec - (long)t0.tv_sec;
+      long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
+      nsec = sec*1e9+nsec;
+
+      if(abs(nsec)<50000000) temp = t0; 
+      else INFO("Not locked with NTP \n");
+
+    }
+    
+    //INFO("sec: %ld nsec: %ld",t0.tv_sec,t0.tv_nsec);
+
+
     t1.tv_sec = t0.tv_sec;
     t1.tv_nsec = t0.tv_nsec;
-    */
+   
+
+     
+
 
     packet_buffer = wait_for_full_frame(frb_buf, unique_name.c_str(), frame_id);
     if(packet_buffer==NULL)
       break;
     
-    
+       
 
     for(int frame=0; frame<packets_per_stream; frame++)
     {
-      for(int stream=0; stream<number_of_nodes; stream++)
+      for(int stream=0; stream<number_of_l1_links; stream++)
       {
         int e_stream = my_node_id + stream;
         if(e_stream>number_of_nodes-1) e_stream -= number_of_nodes;
@@ -182,26 +192,28 @@ void frbNetworkProcess::main_thread()
                    udp_packet_size , 0 , (struct sockaddr *) &server_address[stream] , sizeof(server_address[stream])); 
          
          
-         long wait_per_packet = (long)(61440*(frame*number_of_nodes+stream)); 
+         long wait_per_packet = (long)(61440*(256/number_of_l1_links)); 
          
          //61521.25 is the theoritical seperation of packets in ns 
          // I have used 61440 for convinence and also hope this will take care for
          // any clock glitches.
 
-         t1.tv_nsec += t0.tv_nsec+wait_per_packet;
+         t1.tv_nsec = t1.tv_nsec+wait_per_packet;
          if(t1.tv_nsec>=1000000000)
          {
-           t1.tv_sec = t0.tv_sec + 1;
-           t1.tv_nsec = t0.tv_nsec -1000000000;
+           t1.tv_sec = t1.tv_sec + 1;
+           t1.tv_nsec = t1.tv_nsec -1000000000;
          }
          
-
+         
       }
     }
-
+    
+    
     mark_frame_empty(frb_buf, unique_name.c_str(), frame_id);
     frame_id = ( frame_id + 1 ) % frb_buf->num_frames;
     count++;
+    
   }
   return;
 }

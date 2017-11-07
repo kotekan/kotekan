@@ -22,15 +22,8 @@ num_gpus: 4
 num_beams: 4
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 sizeof_float: 4
-
-#network variables
-
-ud_port_number: 1313
-file_name: /home/arun/L1_IPs/l1config.txt
-my_ip_address: 22.22.0.2
-number_of_nodes: 256
-packets_per_stream: 8
-my_node_id: 245  
+f_size: 8740864
+  
 
 
 #Pool
@@ -40,7 +33,7 @@ main_pool:
 
 frb_output_buffer:
   num_frames: buffer_depth
-  frame_size:  udp_packet_size*8*256
+  frame_size: f_size
   metadata_pool: main_pool
   kotekan_buffer: standard 
 
@@ -48,6 +41,48 @@ frb_output_buffer:
 buffer_read:
   kotekan_process: frbNetworkProcess
   frb_out_buf: frb_output_buffer
+  #udp_port_number: 1313
+  udp_port_number: 1313
+  my_ip_address: 22.22.0.2
+  number_of_nodes: 256
+  packets_per_stream: 8
+  my_node_id: 245  
+  L1_node_ips:
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1
+    - 22.22.0.1  
+  
+
+
 
 # Kotekan processes    
 buffer_write:
