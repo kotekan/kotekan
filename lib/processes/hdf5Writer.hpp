@@ -115,6 +115,7 @@ private:
     // Parameters saved from the config files
     size_t num_freq;
     size_t num_elements;
+    bool reorder_freq;
 
     int32_t len;
     int32_t offset;
@@ -122,6 +123,7 @@ private:
     // The current file of visibilities that we are writing
     std::unique_ptr<visFile> current_file;
 
+    // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<struct Buffer*, unsigned int>> buffers;
 
     // The list of frequencies and inputs that gets written into the index maps

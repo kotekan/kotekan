@@ -70,6 +70,8 @@ hdf5Writer::hdf5Writer(Config& config,
     // Fetch any required configuration
     num_elements = config.get_int("/", "num_elements");
     num_freq = config.get_int(unique_name, "num_freq");
+    reorder_freq = config.get_bool_default(unique_name, "reorder_frequencies",
+                                           true);
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> buffer_names =
@@ -175,8 +177,8 @@ void hdf5Writer::main_thread() {
             double dtime = (double)time_v.tv_sec + 1e-6 * time_v.tv_usec;
             time_ctype t = {fpga_seq, dtime};
 
-            //uint32_t freq_ind = freq_stream_map[stream_id];
-            uint32_t freq_ind = buf_ind;
+            // Lookup the frequency index if reordering, otherwise write out in buffer order
+            uint32_t freq_ind = reorder_freq ? freq_stream_map[stream_id] : buf_ind;
 
             // Copy the visibility data into a proper triangle and write into
             // the file
@@ -231,9 +233,14 @@ void hdf5Writer::infer_freq(const std::vector<stream_id_t>& stream_ids) {
 
     // Sort the streams into bin order, this will give the order in which they
     // are written out
-    std::sort(stream_bin_ids.begin(), stream_bin_ids.end(),
-              [&] (std::pair<stream_id_t, uint32_t> l, std::pair<stream_id_t, uint32_t> r) { return l.second < r.second;});
-
+    if(reorder_freq) {
+        std::sort(stream_bin_ids.begin(), stream_bin_ids.end(),
+                  [&] (std::pair<stream_id_t, uint32_t> l,
+                       std::pair<stream_id_t, uint32_t> r) {
+                      return   l.second < r.second;
+                  }
+        );
+    }
     // Fill out the frequency vector for the index map and construct the
     // std::map from stream_ids to local frequency index
     uint32_t axis_ind = 0;
