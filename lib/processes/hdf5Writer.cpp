@@ -71,10 +71,15 @@ hdf5Writer::hdf5Writer(Config& config,
     num_elements = config.get_int("/", "num_elements");
     num_freq = config.get_int(unique_name, "num_freq");
 
-    // Setup the vector of buffers that we will read data from
-    buffers.push_back(get_buffer("buf"));
-    for(auto buf : buffers) {
+    // Get the list of buffers that this process shoud connect to
+    std::vector<std::string> buffer_names =
+        config.get_string_array(unique_name, "buffers");
+
+    // Fetch the bufferss, register on them, and store them in our buffer vector
+    for(auto name : buffer_names) {
+        auto buf = buffer_container.get_buffer(name);
         register_consumer(buf, unique_name.c_str());
+        buffers.push_back({buf, 0});
     }
 
     // Initialise the reordering mapping (to be no reordering)
@@ -100,8 +105,9 @@ void hdf5Writer::apply_config(uint64_t fpga_seq) {
 
 void hdf5Writer::main_thread() {
 
-    int frame_id = 0;
     uint8_t * frame = nullptr;
+    struct Buffer* buf;
+    unsigned int frame_id;
 
     bool infer_freq_done = false;
 
@@ -116,9 +122,10 @@ void hdf5Writer::main_thread() {
 
             std::vector<stream_id_t> stream_ids;
 
-            for(auto& buf : buffers) {
-                frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            for(auto& buffer_pair : buffers) {
+                std::tie(buf, frame_id) = buffer_pair;
 
+                frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
                 stream_ids.push_back(get_stream_id_t(buf, frame_id));
             }
 
@@ -136,7 +143,11 @@ void hdf5Writer::main_thread() {
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and then attempt to write
         // the data into a file
-        for(auto& buf : buffers) {
+        unsigned int buf_ind = 0;
+        for(auto& buffer_pair : buffers) {
+            std::tie(buf, frame_id) = buffer_pair;
+
+            INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
 
             // Wait for the buffer to be filled with data
             frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
@@ -164,7 +175,8 @@ void hdf5Writer::main_thread() {
             double dtime = (double)time_v.tv_sec + 1e-6 * time_v.tv_usec;
             time_ctype t = {fpga_seq, dtime};
 
-            uint32_t freq_ind = freq_stream_map[stream_id];
+            //uint32_t freq_ind = freq_stream_map[stream_id];
+            uint32_t freq_ind = buf_ind;
 
             // Copy the visibility data into a proper triangle and write into
             // the file
@@ -172,16 +184,22 @@ void hdf5Writer::main_thread() {
                 (complex_int *)frame, input_remap, BLOCK_SIZE, num_elements
             );
 
+            // Create fake entries to fill out the gain and weight datasets with
+            // because these don't correctly make it through kotekan yet
             std::vector<uint8_t> vis_weight(vis.size(), 255);
             std::vector<complex_int> gain_coeff(input_remap.size(), {1, 0});
             std::vector<int32_t> gain_exp(input_remap.size(), 0);
 
+            // Add all the new information to the file.
             current_file->addSample(t, freq_ind, vis, vis_weight, gain_coeff, gain_exp);
 
             // Mark the buffer as empty and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % buf->num_frames;
 
+            // Update the saved frame_id for this buffer
+            std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
+
+            buf_ind++;
         }
 
     }
@@ -250,7 +268,7 @@ visFile::visFile(const std::string& name,
     // === Set the required attributes for a valid file ===
     std::string version = "NT_2.4.0";
     file->createAttribute<std::string>(
-        "version", DataSpace::From(version)).write(version);
+        "archive_version", DataSpace::From(version)).write(version);
     file->createAttribute<std::string>(
         "acquisition_name", DataSpace::From(acq_name)).write(acq_name);
     file->createAttribute<std::string>(
@@ -334,26 +352,30 @@ void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
     DataSet vis = file->createDataSet(
         "vis", vis_space, create_datatype<complex_int>(), vis_dims
     );
-    vis.createAttribute<std::string>("axis", DataSpace::From(vis_axes)).write(vis_axes);
+    vis.createAttribute<std::string>(
+        "axis", DataSpace::From(vis_axes)).write(vis_axes);
 
 
     Group flags = file->createGroup("flags");
     DataSet vis_weight = flags.createDataSet(
         "vis_weight", vis_space, create_datatype<unsigned char>(), vis_dims
     );
-    vis_weight.createAttribute<std::string>("axis", DataSpace::From(vis_axes)).write(vis_axes);
+    vis_weight.createAttribute<std::string>(
+        "axis", DataSpace::From(vis_axes)).write(vis_axes);
 
 
     DataSet gain_coeff = file->createDataSet(
         "gain_coeff", gain_space, create_datatype<complex_int>(), gain_dims
     );
-    gain_coeff.createAttribute<std::string>("axis", DataSpace::From(gain_axes)).write(gain_axes);
+    gain_coeff.createAttribute<std::string>(
+        "axis", DataSpace::From(gain_axes)).write(gain_axes);
 
 
     DataSet gain_exp = file->createDataSet(
         "gain_exp", exp_space, create_datatype<int>(), exp_dims
     );
-    gain_exp.createAttribute<std::string>("axis", DataSpace::From(exp_axes)).write(exp_axes);
+    gain_exp.createAttribute<std::string>(
+        "axis", DataSpace::From(exp_axes)).write(exp_axes);
 
 
     file->flush();

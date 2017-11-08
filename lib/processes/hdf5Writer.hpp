@@ -122,7 +122,7 @@ private:
     // The current file of visibilities that we are writing
     std::unique_ptr<visFile> current_file;
 
-    std::vector<struct Buffer*> buffers;
+    std::vector<std::pair<struct Buffer*, unsigned int>> buffers;
 
     // The list of frequencies and inputs that gets written into the index maps
     // of the HDF5 files

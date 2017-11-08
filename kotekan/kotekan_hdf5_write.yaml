@@ -34,5 +34,6 @@ file_read:
 
 hdf5_writer:
   kotekan_process: hdf5Writer
-  buf: gpu_data_buffer
+  buffers:
+      - gpu_data_buffer
   num_freq: 1
