@@ -54,16 +54,26 @@ public:
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     visFile(const std::string& name,
+            const std::string& acq_name,
+            const std::string& inst_name,
+            const std::string& notes,
             const std::vector<freq_ctype>& freqs,
             const std::vector<input_ctype>& inputs);
     ~visFile();
 
 
     /// Write a new time sample into this file
-    /// \param time Time of sample
+    /// \param new_time Time of sample
     /// \param freq_ind Index of the frequency we are writing
-    /// \param vis Visibility data for this frequency
-    void addSample(time_ctype time, uint32_t freq_ind, std::vector<complex_int> vis);
+    /// \param new_vis Visibility data for this frequency
+    /// \param new_weight Visibility weights for this frequency
+    /// \param new_gcoeff Gain coefficient data
+    /// \param new_gexp Gain exponent data
+    void addSample(time_ctype new_time, uint32_t freq_ind,
+                   std::vector<complex_int> new_vis,
+                   std::vector<uint8_t> new_weight,
+                   std::vector<complex_int> new_gcoeff,
+                   std::vector<int32_t> new_gexp);
 
 private:
 
@@ -78,9 +88,9 @@ private:
 
     // Pointers to the underlying HighFive file and the time varying datasets
     std::unique_ptr<HighFive::File> file;
-    std::unique_ptr<HighFive::DataSet> vis;
-    std::unique_ptr<HighFive::DataSet> time_imap;
-    std::unique_ptr<HighFive::CompoundType> time_h5type;
+    // std::unique_ptr<HighFive::DataSet> vis;
+    // std::unique_ptr<HighFive::DataSet> time_imap;
+    // std::unique_ptr<HighFive::CompoundType> time_h5type;
 };
 
 

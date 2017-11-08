@@ -5,6 +5,7 @@
 #include "gpuPostProcess.hpp"
 #include "errors.h"
 #include <time.h>
+#include <unistd.h>
 #include <iomanip>
 #include <algorithm>
 #include <stdexcept>
@@ -93,7 +94,7 @@ hdf5Writer::hdf5Writer(Config& config,
 }
 
 void hdf5Writer::apply_config(uint64_t fpga_seq) {
-    
+
 }
 
 
@@ -128,7 +129,7 @@ void hdf5Writer::main_thread() {
         // Create a new file if we need to
         if (current_file == nullptr) {
             current_file = std::unique_ptr<visFile>(
-                new visFile(FILE_NAME, freqs, inputs)
+                new visFile(FILE_NAME, "meh1", "chime", "Crappy acq", freqs, inputs)
             );
         }
 
@@ -170,7 +171,12 @@ void hdf5Writer::main_thread() {
             const std::vector<complex_int> vis = copy_vis_triangle(
                 (complex_int *)frame, input_remap, BLOCK_SIZE, num_elements
             );
-            current_file->addSample(t, freq_ind, vis);
+
+            std::vector<uint8_t> vis_weight(vis.size(), 255);
+            std::vector<complex_int> gain_coeff(input_remap.size(), {1, 0});
+            std::vector<int32_t> gain_exp(input_remap.size(), 0);
+
+            current_file->addSample(t, freq_ind, vis, vis_weight, gain_coeff, gain_exp);
 
             // Mark the buffer as empty and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -188,33 +194,35 @@ void hdf5Writer::infer_freq(const std::vector<stream_id_t>& stream_ids) {
     stream_id_t stream;
     uint32_t bin;
 
-    // Construct the set of bin ids
+    // Construct the set of stream and bin ids, this pair vector is used for the
+    // sort into bin order that we perform
     std::vector<std::pair<stream_id_t, uint32_t>> stream_bin_ids;
 
     for(auto id : stream_ids) {
         stream_bin_ids.push_back({id, bin_number_chime(&id)});
     }
 
-
-    std::cout << "Frequency bins found: ";
+    // Output all the frequencies that we have found
+    std::ostringstream s;
     for(auto id : stream_bin_ids) {
         std::tie(stream, bin) = id;
-        std::cout << bin << " [" <<
+        s << bin << " [" << std::fixed <<
         std::setprecision(2) << freq_from_bin(bin) << " MHz], ";
     }
-    std::cout << std::endl;
+    INFO("Frequency bins found: %s", s.str().c_str());
 
     // Sort the streams into bin order, this will give the order in which they
     // are written out
     std::sort(stream_bin_ids.begin(), stream_bin_ids.end(),
               [&] (std::pair<stream_id_t, uint32_t> l, std::pair<stream_id_t, uint32_t> r) { return l.second < r.second;});
 
-    // Temporarily fill out the freq vectors
+    // Fill out the frequency vector for the index map and construct the
+    // std::map from stream_ids to local frequency index
     uint32_t axis_ind = 0;
     for(const auto & id : stream_bin_ids) {
         std::tie(stream, bin) = id;
         freq_stream_map[stream] = axis_ind;
-        freqs.push_back({800.0 - bin * (400.0 / 1024), (400.0 / 1024)});
+        freqs.push_back({freq_from_bin(bin), (400.0 / 1024)});
         axis_ind++;
     }
 
@@ -222,6 +230,9 @@ void hdf5Writer::infer_freq(const std::vector<stream_id_t>& stream_ids) {
 
 
 visFile::visFile(const std::string& name,
+                 const std::string& acq_name,
+                 const std::string& inst_name,
+                 const std::string& notes,
                  const std::vector<freq_ctype>& freqs,
                  const std::vector<input_ctype>& inputs) {
 
@@ -235,6 +246,33 @@ visFile::visFile(const std::string& name,
 
     createIndex(freqs, inputs);
     createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2);
+
+    // === Set the required attributes for a valid file ===
+    std::string version = "NT_2.4.0";
+    file->createAttribute<std::string>(
+        "version", DataSpace::From(version)).write(version);
+    file->createAttribute<std::string>(
+        "acquisition_name", DataSpace::From(acq_name)).write(acq_name);
+    file->createAttribute<std::string>(
+        "instrument_name", DataSpace::From(inst_name)).write(inst_name);
+
+    // TODO: get git version tag somehow
+    std::string git_version = "not set";
+    file->createAttribute<std::string>(
+        "git_version_tag", DataSpace::From(git_version)).write(git_version);
+
+    file->createAttribute<std::string>(
+        "notes", DataSpace::From(notes)).write(notes);
+
+    char temp[256];
+    std::string username = (getlogin_r(temp, 256) == 0) ? temp : "unknown";
+    file->createAttribute<std::string>(
+        "system_user", DataSpace::From(username)).write(username);
+
+    gethostname(temp, 256);
+    std::string hostname = temp;
+    file->createAttribute<std::string>(
+        "collection_server", DataSpace::From(hostname)).write(hostname);
 }
 
 visFile::~visFile() {
@@ -246,11 +284,10 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
 
     Group indexmap = file->createGroup("index_map");
 
-    auto td = indexmap.createDataSet(
+    DataSet time_imap = indexmap.createDataSet(
       "time", DataSpace({0}, {DataSpace::UNLIMITED}),
       create_datatype<time_ctype>(), std::vector<size_t>({1})
     );
-    time_imap = std::unique_ptr<DataSet>(new DataSet(td));
 
     // Create and fill frequency dataset
     DataSet freq_imap = indexmap.createDataSet<freq_ctype>("freq", DataSpace(freqs.size()));
@@ -277,47 +314,105 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
 
 void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
 
-    // Create the visibility dataset
+    // Create extensible spaces for the different types of spaces we have
     DataSpace vis_space = DataSpace({0, nfreq, nprod},
                                     {DataSpace::UNLIMITED, nfreq, nprod});
+    DataSpace gain_space = DataSpace({0, nfreq, ninput},
+                                    {DataSpace::UNLIMITED, nfreq, ninput});
+    DataSpace exp_space = DataSpace({0, ninput},
+                                    {DataSpace::UNLIMITED, ninput});
+
+    std::vector<std::string> vis_axes = {"time", "freq", "prod"};
+    std::vector<std::string> gain_axes = {"time", "freq", "input"};
+    std::vector<std::string> exp_axes = {"time", "input"};
+
+    std::vector<size_t> vis_dims = {1, 1, nprod};
+    std::vector<size_t> gain_dims = {1, 1, ninput};
+    std::vector<size_t> exp_dims = {1, ninput};
 
 
-    std::vector<size_t> chunk_dims = {1, 1, nprod};
+    DataSet vis = file->createDataSet(
+        "vis", vis_space, create_datatype<complex_int>(), vis_dims
+    );
+    vis.createAttribute<std::string>("axis", DataSpace::From(vis_axes)).write(vis_axes);
 
-    DataSet tvis = file->createDataSet("vis", vis_space, create_datatype<complex_int>(), chunk_dims);
-    vis = std::unique_ptr<DataSet>(new DataSet(tvis));
+
+    Group flags = file->createGroup("flags");
+    DataSet vis_weight = flags.createDataSet(
+        "vis_weight", vis_space, create_datatype<unsigned char>(), vis_dims
+    );
+    vis_weight.createAttribute<std::string>("axis", DataSpace::From(vis_axes)).write(vis_axes);
+
+
+    DataSet gain_coeff = file->createDataSet(
+        "gain_coeff", gain_space, create_datatype<complex_int>(), gain_dims
+    );
+    gain_coeff.createAttribute<std::string>("axis", DataSpace::From(gain_axes)).write(gain_axes);
+
+
+    DataSet gain_exp = file->createDataSet(
+        "gain_exp", exp_space, create_datatype<int>(), exp_dims
+    );
+    gain_exp.createAttribute<std::string>("axis", DataSpace::From(exp_axes)).write(exp_axes);
+
 
     file->flush();
 
 }
 
 
-void visFile::addSample(time_ctype new_time, uint32_t freq_ind, std::vector<complex_int> new_vis) {
+void visFile::addSample(
+    time_ctype new_time, uint32_t freq_ind, std::vector<complex_int> new_vis,
+    std::vector<uint8_t> new_weight, std::vector<complex_int> new_gcoeff,
+    std::vector<int32_t> new_gexp
+) {
 
-    // Get the total number of time samples in the file
-    std::vector<size_t> dims = vis->getSpace().getDimensions();
+    // TODO: extend this routine such that it can insert frequencies into
+    // previous time samples
+
+    DataSet time_imap = file->getDataSet("index_map/time");
+    DataSet vis = file->getDataSet("vis");
+    DataSet vis_weight = file->getDataSet("flags/vis_weight");
+    DataSet gain_coeff = file->getDataSet("gain_coeff");
+    DataSet gain_exp = file->getDataSet("gain_exp");
+
+    // Get size of dimensions
+    std::vector<size_t> dims = vis.getSpace().getDimensions();
     size_t ntime = dims[0], nfreq = dims[1], nprod = dims[2];
+    dims = gain_coeff.getSpace().getDimensions();
+    size_t ninput = dims[2];
+
     uint32_t time_ind = ntime - 1;
 
     // Get the latest time in the file
     time_ctype last_time;
 
     if(ntime > 0) {
-        time_imap->select({time_ind}, {1}).read(&last_time);
+        time_imap.select({time_ind}, {1}).read(&last_time);
     }
 
     // If we haven't seen the new time add it to the time axis and extend the time
     // dependent datasets
     if(ntime == 0 || new_time.fpga_count > last_time.fpga_count) {
-        std::cout << "Current size: " << ntime << "; new size: " << ntime + 1 << std::endl;
-        ntime++; time_ind++;
-        time_imap->resize({ntime});
-        time_imap->select({time_ind}, {1}).write(&new_time);
+        INFO("Current size: %zd; new size: %zd", ntime, ntime + 1);
 
-        vis->resize({ntime, nfreq, nprod});
+        // Add a new entry to the time axis
+        ntime++; time_ind++;
+        time_imap.resize({ntime});
+        time_imap.select({time_ind}, {1}).write(&new_time);
+
+        // Extend all other datasets
+        vis.resize({ntime, nfreq, nprod});
+        vis_weight.resize({ntime, nfreq, nprod});
+        gain_coeff.resize({ntime, nfreq, ninput});
+        gain_exp.resize({ntime, ninput});
+
     }
 
-    vis->select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
+    vis.select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
+    vis_weight.select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_weight);
+    gain_coeff.select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(new_gcoeff);
+    gain_exp.select({time_ind, 0}, {1, ninput}).write(new_gexp);
 
     file->flush();
 
@@ -372,7 +467,7 @@ template <> inline DataType HighFive::create_datatype<complex_int>() {
     return c;
 }
 
-
+// Implemenation of ordering operator for stream id (used for map)
 bool compareStream::operator()(const stream_id_t& lhs, const stream_id_t& rhs) const {
    return encode_stream_id(lhs) < encode_stream_id(rhs);
 }
