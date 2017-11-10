@@ -69,7 +69,8 @@ public:
     /// \param new_weight Visibility weights for this frequency
     /// \param new_gcoeff Gain coefficient data
     /// \param new_gexp Gain exponent data
-    void addSample(time_ctype new_time, uint32_t freq_ind,
+    /// \return The number of entries in the time axis
+    size_t addSample(time_ctype new_time, uint32_t freq_ind,
                    std::vector<complex_int> new_vis,
                    std::vector<uint8_t> new_weight,
                    std::vector<complex_int> new_gcoeff,
@@ -86,11 +87,11 @@ private:
     void createDatasets(size_t nfreq, size_t ninput, size_t nprod);
 
 
-    // Pointers to the underlying HighFive file and the time varying datasets
+    // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;
-    // std::unique_ptr<HighFive::DataSet> vis;
-    // std::unique_ptr<HighFive::DataSet> time_imap;
-    // std::unique_ptr<HighFive::CompoundType> time_h5type;
+
+    std::string lock_filename;
+
 };
 
 
@@ -108,17 +109,28 @@ public:
 
 private:
 
-    /// Give a list of stream_ids infer the frequencies in the file, and create
+    /// Setup the acquisition
+    void init_acq();
+
+    /// Given a list of stream_ids infer the frequencies in the file, and create
     /// a mapping from id to frequency index
-    void infer_freq(const std::vector<stream_id_t>& stream_ids);
+    void setup_freq(const std::vector<stream_id_t>& stream_ids);
+
+    /// Figure out the acqusition start
+    void setup_acq_start(const std::vector<timeval>& start_times);
+
+    /// Get the earliest time in any of the current buffers
+    timeval earliest_time();
 
     // Parameters saved from the config files
     size_t num_freq;
     size_t num_elements;
     bool reorder_freq;
+    std::string root_path;
 
-    int32_t len;
-    int32_t offset;
+    std::string instrument_name;
+    std::string acq_name;
+    double acq_start_time;
 
     // The current file of visibilities that we are writing
     std::unique_ptr<visFile> current_file;
@@ -136,6 +148,9 @@ private:
 
     // The mapping from stream_id to local frequency index
     std::map<stream_id_t, uint32_t, compareStream> freq_stream_map;
+
+    // A unique ID for the chunk (i.e. frequency set)
+    uint32_t chunk_id;
 
 };
 
