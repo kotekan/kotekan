@@ -263,6 +263,8 @@ void hdf5Writer::init_acq() {
     stream_id_t ts = stream_ids[0];
     ts.unused = 0;
     chunk_id = bin_number_chime(&ts);
+
+    INFO("Running on node_id=%d", chunk_id);
 }
 
 
