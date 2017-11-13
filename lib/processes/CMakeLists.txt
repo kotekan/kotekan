@@ -33,7 +33,6 @@ add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
 
 # HDF5 stuff
-set(HDF5_USE_STATIC_LIBRARIES ON)
 find_package(HDF5 REQUIRED)
 include_directories (${HDF5_INCLUDE_DIRS})
 include_directories (/kotekan/HighFive/include/)
