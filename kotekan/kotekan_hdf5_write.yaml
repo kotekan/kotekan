@@ -28,7 +28,7 @@ gpu_data_buffer:
 file_read:
   kotekan_process: rawFileRead
   buf: gpu_data_buffer
-  base_dir: /data/
+  base_dir: ../../../data/
   file_ext: dump
   file_name: cnDg5_corr_gpu0
 
@@ -37,3 +37,4 @@ hdf5_writer:
   buffers:
       - gpu_data_buffer
   num_freq: 1
+  enabled_chunks: [238, 250, 278]

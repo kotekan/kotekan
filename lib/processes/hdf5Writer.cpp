@@ -18,7 +18,7 @@
 
 
 const size_t BLOCK_SIZE = 32;
-const size_t MAX_NTIME = 1024;
+const size_t MAX_NTIME = 2;
 
 
 using namespace HighFive;
@@ -72,12 +72,17 @@ hdf5Writer::hdf5Writer(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&hdf5Writer::main_thread, this)) {
 
-    // Fetch any required configuration
+    // Fetch any simple configuration
     num_elements = config.get_int("/", "num_elements");
     num_freq = config.get_int(unique_name, "num_freq");
     reorder_freq = config.get_bool_default(unique_name, "reorder_frequencies",
                                            true);
     root_path = config.get_string_default(unique_name, "root_path", ".");
+
+    // Set the list of enabled chunks (sort such that we can use
+    // std::binary_search later on)
+    enabled_chunks = config.get_int_array(unique_name, "enabled_chunks");
+    std::sort(enabled_chunks.begin(), enabled_chunks.end());
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> buffer_names =
@@ -131,7 +136,9 @@ void hdf5Writer::main_thread() {
         }
 
         // Create a new file if we need to
-        if (current_file == nullptr) {
+        if (current_file == nullptr &&
+            std::binary_search(enabled_chunks.begin(),
+                               enabled_chunks.end(), chunk_id)) {
 
             // Get the timestamp of the first buffer to label the new file
             // TODO: this won't work if we have buffers potentially out of sync
@@ -200,7 +207,9 @@ void hdf5Writer::main_thread() {
             std::vector<int32_t> gain_exp(input_remap.size(), 0);
 
             // Add all the new information to the file.
-            ntime = current_file->addSample(t, freq_ind, vis, vis_weight, gain_coeff, gain_exp);
+            if(current_file != nullptr) {
+                ntime = current_file->addSample(t, freq_ind, vis, vis_weight, gain_coeff, gain_exp);
+            }
 
             // Mark the buffer as empty and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);

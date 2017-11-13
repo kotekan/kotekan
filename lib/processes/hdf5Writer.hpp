@@ -119,14 +119,12 @@ private:
     /// Figure out the acqusition start
     void setup_acq_start(const std::vector<timeval>& start_times);
 
-    /// Get the earliest time in any of the current buffers
-    timeval earliest_time();
-
     // Parameters saved from the config files
     size_t num_freq;
     size_t num_elements;
     bool reorder_freq;
     std::string root_path;
+    std::vector<int32_t> enabled_chunks;
 
     std::string instrument_name;
     std::string acq_name;
