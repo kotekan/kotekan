@@ -12,6 +12,7 @@ public:
   bufferContainer &buffer_container);
   virtual ~frbNetworkProcess();
   void apply_config(uint64_t fpga_seq) override;
+  void parse_host_name();
   void main_thread();
 private:
   struct Buffer *frb_buf;
@@ -22,6 +23,7 @@ private:
   int number_of_nodes;
   int packets_per_stream;
   int my_node_id;
+  char *my_host_name;
 };
  
 #endif

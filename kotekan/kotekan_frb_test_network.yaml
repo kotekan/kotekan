@@ -41,12 +41,9 @@ frb_output_buffer:
 buffer_read:
   kotekan_process: frbNetworkProcess
   frb_out_buf: frb_output_buffer
-  #udp_port_number: 1313
   udp_port_number: 1313
-  my_ip_address: 22.22.0.2
   number_of_nodes: 256
   packets_per_stream: 8
-  my_node_id: 245  
   L1_node_ips:
     - 22.22.0.1
     - 22.22.0.1

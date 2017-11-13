@@ -34,12 +34,13 @@ std::bind(&frbNetworkProcess::main_thread, this))
   
   frb_buf = get_buffer("frb_out_buf");
   register_consumer(frb_buf, unique_name.c_str());
-  apply_config(0); 
+  apply_config(0);
+  my_host_name = (char*) malloc(sizeof(char)*100); 
 }
 
 frbNetworkProcess::~frbNetworkProcess()
 {
-  
+  free(my_host_name);
 }
 
 
@@ -47,17 +48,88 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
 {
   udp_packet_size = config.get_int(unique_name, "udp_packet_size");
   udp_port_number = config.get_int(unique_name, "udp_port_number");
-  my_ip_address = config.get_string(unique_name, "my_ip_address");
   number_of_nodes = config.get_int(unique_name, "number_of_nodes");
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
-  my_node_id = config.get_int(unique_name, "my_node_id");
-  
 }
 
+void frbNetworkProcess::parse_host_name()
+{
+  int rack=0,node=0,nos=0;
+  std::stringstream temp_ip;
+
+  gethostname(my_host_name, sizeof(my_host_name));
+
+  if(my_host_name[0] != 'c' && my_host_name[3] != 'g')
+  {
+    INFO("Not a valid name \n");
+    exit(0);
+  } 
+    
+    
+  if(my_host_name[1] == 'n') 
+  {
+    nos =0;
+    my_node_id = 0;
+  }
+  else if(my_host_name[1] == 's') 
+  {
+    nos =100;
+    my_node_id  = 128;
+  }
+  else 
+  {
+    INFO("Not a valid name \n");
+    exit(0);
+  }
+          
+  switch(my_host_name[2])
+  {
+    case '0': rack=0; break;
+    case '1': rack=1; break;
+    case '2': rack=2; break;
+    case '3': rack=3; break;
+    case '4': rack=4; break;
+    case '5': rack=5; break;
+    case '6': rack=6; break;
+    case '7': rack=7; break;
+    case '8': rack=8; break;
+    case '9': rack=9; break;
+    case 'a': rack=10; break;
+    case 'b': rack=11; break;
+    case 'c': rack=12; break;
+    case 'd': rack=13; break;
+    case 'e': rack=14; break;
+    default: INFO("Not a valid name \n"); exit(0);
+  }
+  
+  switch(my_host_name[4])
+  {
+    case '0': node=0; break;
+    case '1': node=1; break;
+    case '2': node=2; break;
+    case '3': node=3; break;
+    case '4': node=4; break;
+    case '5': node=5; break;
+    case '6': node=6; break;
+    case '7': node=7; break;
+    case '8': node=8; break;
+    case '9': node=9; break;
+    default: INFO("Not a valid name \n"); exit(0);
+
+  }
+
+  temp_ip<<"10.1."<<rack<<"."<<node;
+  my_ip_address = temp_ip.str();
+  my_node_id += rack*10+node;
+}
 
 
 void frbNetworkProcess::main_thread() 
 {
+  //parsing the host name
+  parse_host_name(); 
+  
+  
   int frame_id = 0;
   uint8_t * packet_buffer = NULL;
   
@@ -84,6 +156,9 @@ void frbNetworkProcess::main_thread()
 
   myaddr.sin_family = AF_INET;
   inet_pton(AF_INET, my_ip_address.c_str(), &myaddr.sin_addr);
+  
+  // Comment the above line and uncomment the line below to run it on McGill nodes
+  //inet_pton(AF_INET, "22.22.0.2", &myaddr.sin_addr);
 
   myaddr.sin_port = htons(udp_port_number);
 
@@ -156,12 +231,13 @@ void frbNetworkProcess::main_thread()
       long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
       nsec = sec*1e9+nsec;
 
-      if(abs(nsec)<50000000) temp = t0; 
+      //if(abs(nsec)<50000000) temp = t0; 
+      if(abs(nsec)==0) temp = t0;
       else INFO("Not locked with NTP \n");
 
     }
     
-    //INFO("sec: %ld nsec: %ld",t0.tv_sec,t0.tv_nsec);
+    INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
 
 
     t1.tv_sec = t0.tv_sec;
