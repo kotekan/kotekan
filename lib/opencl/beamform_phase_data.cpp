@@ -4,6 +4,7 @@
 #include <time.h>
 #include "errors.h"
 #include "buffer.h"
+#include "chimeMetadata.h"
 
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi

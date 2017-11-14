@@ -66,6 +66,7 @@ extern "C" {
 #include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
+#include "kotekanMode.hpp"
 #include "timer.hpp"
 
 #ifdef WITH_HSA
@@ -73,8 +74,6 @@ extern "C" {
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
-    #include "gpuTestMode.hpp"
-    #include "pathFinderMode.hpp"
 #endif
 
 using json = nlohmann::json;

@@ -41,9 +41,7 @@ void chimeMetadataDump::main_thread() {
         struct tm* l_time = localtime(&temp_time);
         strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", l_time);
 
-        INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
-                ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64
-                 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld)\n",
+        INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64 ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld)\n",
                 buf->buffer_name, frame_id, fpga_seq,
                 stream_id.crate_id, stream_id.slot_id,
                 stream_id.link_id, stream_id.unused, lost_samples,

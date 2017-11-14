@@ -47,3 +47,5 @@ install(FILES kotekan_opencl_fury.yaml DESTINATION /etc/kotekan/ COMPONENT confi
 install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
 #install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
 install(PROGRAMS ../scripts/yaml_to_json.py DESTINATION /usr/sbin COMPONENT scripts)
+
+add_definitions(/D__STDC_FORMAT_MACROS)

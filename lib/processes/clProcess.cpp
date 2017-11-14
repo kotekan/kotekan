@@ -75,10 +75,10 @@ void clProcess::main_thread()
     //callBackData ** cb_data = new callBackData * [device->getInBuf()->num_buffers];
     //CHECK_MEM(cb_data);
 
-    buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device->getInBuf()->num_buffers];
+    buffer_id_lock ** buff_id_lock_list = new buffer_id_lock * [device->getInBuf()->num_frames];
     CHECK_MEM(buff_id_lock_list);
 
-    for (int j=0;j<device->getInBuf()->num_buffers;j++)
+    for (int j=0;j<device->getInBuf()->num_frames;j++)
     {
         //cb_data[j] = new callBackData(factory->getNumCommands());
         cb_data.push_back(new callBackData(factory->getNumCommands()));
@@ -88,40 +88,41 @@ void clProcess::main_thread()
 
     // Just wait on one buffer.
 //    int buffer_list[1] = {0};
-    int bufferID = 0;
+    int frame_id = 0;
+    uint8_t * frame = NULL;
 
     double last_time = e_time_1();
 
     for(;;) {
         // Wait for data, this call will block.
         //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
-        bufferID = wait_for_full_buffer(device->getInBuf(), unique_name.c_str(), bufferID);
+        frame = wait_for_full_frame(device->getInBuf(), unique_name.c_str(), frame_id);
         double cur_time = e_time_1();
         //INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
 
         //INFO("GPU_THREAD: got full buffer ID %d", bufferID);
         // If buffer id is -1, then all the producers are done.
-        if (bufferID == -1) {
+        if (frame == NULL) {
             break;
         }
 
-        CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[bufferID]->lock) );
-        while (buff_id_lock_list[bufferID]->mem_in_use == 1) {
-            pthread_cond_wait(&buff_id_lock_list[bufferID]->mem_cond, &buff_id_lock_list[bufferID]->lock);
+        CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[frame_id]->lock) );
+        while (buff_id_lock_list[frame_id]->mem_in_use == 1) {
+            pthread_cond_wait(&buff_id_lock_list[frame_id]->mem_cond, &buff_id_lock_list[frame_id]->lock);
         }
-        CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[bufferID]->lock) );
+        CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[frame_id]->lock) );
 
-        CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[bufferID]->lock));
-            buff_id_lock_list[bufferID]->mem_in_use = 1;
-        CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[bufferID]->lock));
+        CHECK_ERROR( pthread_mutex_lock(&buff_id_lock_list[frame_id]->lock));
+            buff_id_lock_list[frame_id]->mem_in_use = 1;
+        CHECK_ERROR( pthread_mutex_unlock(&buff_id_lock_list[frame_id]->lock));
 
         // Wait for the output buffer to be empty as well.
         // This should almost never block, since the output buffer should clear quickly.
-        wait_for_empty_buffer(device->getOutBuf(), unique_name.c_str(), bufferID);
+        wait_for_empty_frame(device->getOutBuf(), unique_name.c_str(), frame_id);
 
         if (_use_beamforming) {
-            wait_for_empty_buffer(device->get_beamforming_out_buf(), unique_name.c_str(), bufferID);
+            wait_for_empty_frame(device->get_beamforming_out_buf(), unique_name.c_str(), frame_id);
         }
 
         // Todo get/set time information here as well.
@@ -131,17 +132,17 @@ void clProcess::main_thread()
         CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock));
 
         // Set call back data
-        cb_data[bufferID]->buffer_id = bufferID;
-        cb_data[bufferID]->in_buf = device->getInBuf();
-        cb_data[bufferID]->out_buf = device->getOutBuf();
-        cb_data[bufferID]->numCommands = factory->getNumCommands();
-        cb_data[bufferID]->cnt = loopCnt;
-        cb_data[bufferID]->use_beamforming = _use_beamforming;
-        cb_data[bufferID]->start_time = e_time_1();
-        cb_data[bufferID]->unique_name = unique_name;
+        cb_data[frame_id]->buffer_id = frame_id;
+        cb_data[frame_id]->in_buf = device->getInBuf();
+        cb_data[frame_id]->out_buf = device->getOutBuf();
+        cb_data[frame_id]->numCommands = factory->getNumCommands();
+        cb_data[frame_id]->cnt = loopCnt;
+        cb_data[frame_id]->use_beamforming = _use_beamforming;
+        cb_data[frame_id]->start_time = e_time_1();
+        cb_data[frame_id]->unique_name = unique_name;
         if (_use_beamforming == 1)
         {
-            cb_data[bufferID]->beamforming_out_buf = device->get_beamforming_out_buf();
+            cb_data[frame_id]->beamforming_out_buf = device->get_beamforming_out_buf();
         }
 
         sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
@@ -149,8 +150,8 @@ void clProcess::main_thread()
         //DEBUG("cb_data initialized\n");
         for (int i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
-            sequenceEvent = currentCommand->execute(bufferID, 0, *device, sequenceEvent);
-            cb_data[bufferID]->listCommands[i] = currentCommand;
+            sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
+            cb_data[frame_id]->listCommands[i] = currentCommand;
         }
 
         if (first_run)
@@ -171,10 +172,10 @@ void clProcess::main_thread()
         CHECK_CL_ERROR( clSetEventCallback(sequenceEvent,
                                             CL_COMPLETE,
                                             &read_complete,
-                                            cb_data[bufferID]) );
+                                            cb_data[frame_id]) );
 
         //buffer_list[0] = (buffer_list[0] + 1)
-        bufferID = (++bufferID) % device->getInBuf()->num_buffers;
+        frame_id = (++frame_id) % device->getInBuf()->num_frames;
     }
 
     DEBUG("Closing\n");
@@ -196,11 +197,11 @@ void clProcess::main_thread()
     device->deallocateResources();
     DEBUG("DeviceDone\n");
 
-    mark_producer_done(device->getOutBuf(), 0);
-    if (_use_beamforming == 1)
-    {
-        mark_producer_done(device->get_beamforming_out_buf(), 0);
-    }
+//    mark_producer_done(device->getOutBuf(), 0);
+//    if (_use_beamforming == 1)
+//    {
+//        mark_producer_done(device->get_beamforming_out_buf(), 0);
+//    }
 
     delete loopCnt;
     //delete[] cb_data;
@@ -214,10 +215,10 @@ void clProcess::main_thread()
 void clProcess::mem_reconcil_thread()
 {
     //Based on assumption that buffer_ids are processed in order, so start with [0].]
-    int buff_id_limit = cb_data[0]->in_buf->num_buffers;
+    int frame_id_limit = cb_data[0]->in_buf->num_frames;
     std::clock_t    start;
     for(;;) {
-        for (int j=0;j<buff_id_limit;j++)
+        for (int j=0;j<frame_id_limit;j++)
         {
             start = std::clock();
             double end_time_1 = e_time_1();
@@ -239,11 +240,10 @@ void clProcess::mem_reconcil_thread()
             {
                 //std::cout << "BufferID_" << j << "beamforming" << std::endl;
                 //WILL BE NEEDED ON PF.
-                //pass with metadata object!!!.
-                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                     cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
-                mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+                mark_frame_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
             /*
             if (cb_data[j]->use_incoh_beamforming == 1)
@@ -260,19 +260,18 @@ void clProcess::mem_reconcil_thread()
 
             // Copy the information contained in the input buffer
             //WILL BE NEEDED ON PF.
-            //pass with metadata object!!!.
-            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
 
             // Mark the input buffer as "empty" so that it can be reused.
-            mark_buffer_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            mark_frame_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "mark_full" << std::endl;
 
             // Mark the output buffer as full, so it can be processed.
-            mark_buffer_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            mark_frame_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "cleanMe" << std::endl;
 
