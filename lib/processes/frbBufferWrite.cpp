@@ -4,7 +4,7 @@
 #include <math.h>
 #include <functional>
 #include <string>
-
+#include <unistd.h>
 using std::string;
 
 // TODO Where do these live?
@@ -36,7 +36,7 @@ frbBufferWrite::frbBufferWrite(Config& config_,
     frb_header_coarse_freq_ids = new uint16_t[_nfreq_coarse];
     frb_header_scale = new float[_nbeams * _nfreq_coarse];
     frb_header_offset = new float[_nbeams * _nfreq_coarse];
-
+    my_host_name = (char*) malloc(sizeof(char)*100);
 }
 
 frbBufferWrite::~frbBufferWrite() {
@@ -107,8 +107,82 @@ void frbBufferWrite::apply_config(uint64_t fpga_seq) {
       
 }
 
+
+void frbBufferWrite::parse_host_name()
+{
+  int rack=0,node=0,nos=0;
+  std::stringstream temp_ip;
+
+  gethostname(my_host_name, sizeof(my_host_name));
+
+  if(my_host_name[0] != 'c' && my_host_name[3] != 'g')
+  {
+    INFO("Not a valid name \n");
+    exit(0);
+  } 
+    
+    
+  if(my_host_name[1] == 'n') 
+  {
+    nos =0;
+    my_node_id = 0;
+  }
+  else if(my_host_name[1] == 's') 
+  {
+    nos =100;
+    my_node_id  = 128;
+  }
+  else 
+  {
+    INFO("Not a valid name \n");
+    exit(0);
+  }
+          
+  switch(my_host_name[2])
+  {
+    case '0': rack=0; break;
+    case '1': rack=1; break;
+    case '2': rack=2; break;
+    case '3': rack=3; break;
+    case '4': rack=4; break;
+    case '5': rack=5; break;
+    case '6': rack=6; break;
+    case '7': rack=7; break;
+    case '8': rack=8; break;
+    case '9': rack=9; break;
+    case 'a': rack=10; break;
+    case 'b': rack=11; break;
+    case 'c': rack=12; break;
+    case 'd': rack=13; break;
+    default: INFO("Not a valid name \n"); exit(0);
+  }
+  
+  switch(my_host_name[4])
+  {
+    case '0': node=0; break;
+    case '1': node=1; break;
+    case '2': node=2; break;
+    case '3': node=3; break;
+    case '4': node=4; break;
+    case '5': node=5; break;
+    case '6': node=6; break;
+    case '7': node=7; break;
+    case '8': node=8; break;
+    case '9': node=9; break;
+    default: INFO("Not a valid name \n"); exit(0);
+
+  }
+
+  temp_ip<<"10.1."<<nos+rack<<"."<<node;
+  my_ip_address = temp_ip.str();
+  my_node_id += rack*10+node;
+  
+}
+
 void frbBufferWrite::main_thread() {
 
+    parse_host_name();
+  
     struct FRBHeader frb_header;
     frb_header.protocol_version = 1;     
     frb_header.data_nbytes =  _udp_packet_size - _udp_header_size;
@@ -123,7 +197,7 @@ void frbBufferWrite::main_thread() {
       frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
     }
     for (int ii=0;ii<_nfreq_coarse;++ii){
-      frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
+      frb_header_coarse_freq_ids[ii] = (uint16_t) (4*my_node_id+ii);//_freq_array[ii] 
     }
     for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
       frb_header_scale[ii] = 1.; 

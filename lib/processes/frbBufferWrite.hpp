@@ -17,7 +17,7 @@ public:
     virtual ~frbBufferWrite();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
-
+    void parse_host_name();
 private:
     void fill_headers(unsigned char * out_buf,
                   struct FRBHeader * frb_header,
@@ -49,7 +49,9 @@ private:
     int32_t _udp_header_size;
     int16_t _fpga_counts_per_sample;
     vector<int32_t> _freq_array;
-
+    int my_node_id;
+    std::string my_ip_address;
+    char *my_host_name;
   //uint16_t encode_stream_id(const stream_id_t s_stream_id);
   // stream_id_t extract_stream_id(const uint16_t encoded_stream_id);
 

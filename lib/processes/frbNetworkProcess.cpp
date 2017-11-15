@@ -98,7 +98,6 @@ void frbNetworkProcess::parse_host_name()
     case 'b': rack=11; break;
     case 'c': rack=12; break;
     case 'd': rack=13; break;
-    case 'e': rack=14; break;
     default: INFO("Not a valid name \n"); exit(0);
   }
   
@@ -118,7 +117,7 @@ void frbNetworkProcess::parse_host_name()
 
   }
 
-  temp_ip<<"10.1."<<rack<<"."<<node;
+  temp_ip<<"10.1."<<nos+rack<<"."<<node;
   my_ip_address = temp_ip.str();
   my_node_id += rack*10+node;
 }
@@ -155,10 +154,10 @@ void frbNetworkProcess::main_thread()
   std::memset((char *)&myaddr, 0, sizeof(myaddr));
 
   myaddr.sin_family = AF_INET;
-  inet_pton(AF_INET, my_ip_address.c_str(), &myaddr.sin_addr);
+  //inet_pton(AF_INET, my_ip_address.c_str(), &myaddr.sin_addr);
   
   // Comment the above line and uncomment the line below to run it on McGill nodes
-  //inet_pton(AF_INET, "22.22.0.2", &myaddr.sin_addr);
+  inet_pton(AF_INET, "22.22.0.2", &myaddr.sin_addr);
 
   myaddr.sin_port = htons(udp_port_number);
 
@@ -231,27 +230,23 @@ void frbNetworkProcess::main_thread()
       long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
       nsec = sec*1e9+nsec;
 
-      //if(abs(nsec)<50000000) temp = t0; 
-      if(abs(nsec)==0) temp = t0;
+      if(abs(nsec)<50000000) temp = t0; 
       else INFO("Not locked with NTP \n");
 
     }
     
-    INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
+    //INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
 
 
     t1.tv_sec = t0.tv_sec;
     t1.tv_nsec = t0.tv_nsec;
    
-
-     
-
-
     packet_buffer = wait_for_full_frame(frb_buf, unique_name.c_str(), frame_id);
     if(packet_buffer==NULL)
       break;
     
-       
+    INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
+    
 
     for(int frame=0; frame<packets_per_stream; frame++)
     {
