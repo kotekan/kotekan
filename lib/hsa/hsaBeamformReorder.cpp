@@ -19,7 +19,7 @@ hsaBeamformReorder::hsaBeamformReorder(const string& kernel_name, const string& 
 }
 
 hsaBeamformReorder::~hsaBeamformReorder() {
-  hsa_host_free(_reorder_map_c);
+    hsa_host_free(_reorder_map_c);
 }
 
 void hsaBeamformReorder::apply_config(const uint64_t& fpga_seq) {
