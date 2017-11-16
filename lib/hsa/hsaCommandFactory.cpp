@@ -15,6 +15,7 @@
 #include "hsaOutputDataZero.hpp"
 #include "hsaBarrier.hpp"
 #include "hsaBeamformKernel.hpp"
+#include "hsaBeamformReorder.hpp"
 #include "hsaBeamformTranspose.hpp"
 #include "hsaBeamformUpchan.hpp"
 #include "hsaBeamformOutput.hpp"
@@ -62,6 +63,10 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_output_data_zero") {
             list_commands.push_back(new hsaOutputDataZero("hsa_output_data_zero",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_beamform_reorder") {
+            list_commands.push_back(new hsaBeamformReorder("reorder",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_beamform_kernel") {
