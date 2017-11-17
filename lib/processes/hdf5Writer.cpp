@@ -18,7 +18,7 @@
 
 
 const size_t BLOCK_SIZE = 32;
-const size_t MAX_NTIME = 2;
+const size_t MAX_NTIME = 1024;
 
 
 using namespace HighFive;
@@ -151,7 +151,7 @@ void hdf5Writer::main_thread() {
                 (unsigned int)(filestart - acq_start_time), chunk_id
             );
             std::string file_name = temp;
-            file_name = acq_name + "/" + file_name;
+            file_name = root_path + "/" + acq_name + "/" + file_name;
             current_file = std::unique_ptr<visFile>(
                 new visFile(file_name, acq_name, instrument_name, "", freqs, inputs)
             );
