@@ -41,7 +41,7 @@ inline double tv_to_double(const timeval & tv) {
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 std::vector<complex_int> copy_vis_triangle(
-    const complex_int * buf, const std::vector<uint32_t>& inputmap,
+    const int32_t * buf, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N
 ) {
 
@@ -57,7 +57,11 @@ std::vector<complex_int> copy_vis_triangle(
     for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
         for(auto j = i; j != inputmap.end(); j++) {
             bi = prod_index(*i, *j, block, N);
-            output[pi] = buf[bi];
+
+            // IMPORTANT: for some reason the buffers are packed as imaginary
+            // *then* real. Here we need to read out the individual components.
+            output[pi].r = buf[2 * bi + 1];
+            output[pi].i = buf[2 * bi];
             pi++;
         }
     }
@@ -197,7 +201,7 @@ void hdf5Writer::main_thread() {
             // Copy the visibility data into a proper triangle and write into
             // the file
             const std::vector<complex_int> vis = copy_vis_triangle(
-                (complex_int *)frame, input_remap, BLOCK_SIZE, num_elements
+                (int32_t *)frame, input_remap, BLOCK_SIZE, num_elements
             );
 
             // Create fake entries to fill out the gain and weight datasets with
