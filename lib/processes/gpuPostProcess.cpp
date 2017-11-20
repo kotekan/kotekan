@@ -355,7 +355,8 @@ void gpuPostProcess::main_thread() {
                     if (gate_frame == NULL) goto end_loop;
 
                     if (_enable_basic_gating) {
-                        DEBUG("Copying gated data to the gate_buf!");
+//ikt - commented out to test performance without DEBUG calls.
+//                        DEBUG("Copying gated data to the gate_buf!");
                         for (int j = 0; j < num_values; ++j) {
                             // Visibilities = OFF + ON
                             // gated_vis = ON - OFF

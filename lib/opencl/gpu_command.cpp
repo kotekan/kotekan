@@ -10,7 +10,7 @@ gpu_command::gpu_command(const char* param_name, Config &param_config, const str
     config(param_config), gpuCommandState(0) , gpuKernel(NULL), unique_name(unique_name_)
 {
     name = strdup(param_name);
-    INFO("Name: %s, %s", param_name, name);
+//    INFO("Name: %s, %s", param_name, name);
 }
 
 gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name_) :
@@ -20,7 +20,7 @@ gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, C
     strcpy(gpuKernel, param_gpuKernel);
     gpuCommandState=1;
     name = strdup(param_name);
-    INFO("Name: %s, %s", param_name, name);
+//    INFO("Name: %s, %s", param_name, name);
 }
 
 gpu_command::~gpu_command()
@@ -119,8 +119,8 @@ string gpu_command::get_cl_options()
     cl_options += " -D NUM_BLOCKS=" + to_string(_num_blocks);
     cl_options += " -D NUM_TIMESAMPLES=" + to_string(_samples_per_data_set);
     cl_options += " -D NUM_BUFFERS=" + to_string(_buffer_depth);
-
-    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
+//ikt - commented out to test performance without DEBUG calls.
+//    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
 
     return cl_options;
 }

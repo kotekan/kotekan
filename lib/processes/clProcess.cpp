@@ -70,7 +70,7 @@ void clProcess::main_thread()
     //    device->prepareCommandQueue(true);
 
     device->allocateMemory();
-    DEBUG("Device Initialized\n");
+//    DEBUG("Device Initialized\n");
 
     //callBackData ** cb_data = new callBackData * [device->getInBuf()->num_buffers];
     //CHECK_MEM(cb_data);

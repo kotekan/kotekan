@@ -340,7 +340,8 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
     while ((buf->is_full[ID] == 1 ||
             buf->producers_done[ID][producer_id] == 1)
             && buf->shutdown_signal == 0) {
-        DEBUG("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
+//ikt - commented out to test performance without DEBUG calls.        
+//        DEBUG("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
               producer_name, ID, buf->buffer_name);
         print_stat = 1;
         pthread_cond_wait(&buf->empty_cond, &buf->lock);
@@ -360,7 +361,8 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
 void register_consumer(struct Buffer * buf, const char *name) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
-    DEBUG("Registering consumer %s for buffer %s", name, buf->buffer_name);
+//ikt - commented out to test performance without DEBUG calls.    
+//    DEBUG("Registering consumer %s for buffer %s", name, buf->buffer_name);
 
     if (private_get_consumer_id(buf, name) != -1) {
         ERROR("You cannot register two consumers with the same name!");
@@ -564,7 +566,8 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-    DEBUG("Buffer %s status: %s", buf->buffer_name, status_string);
+//ikt - commented out to test performance without DEBUG calls.    
+//    DEBUG("Buffer %s status: %s", buf->buffer_name, status_string);
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
