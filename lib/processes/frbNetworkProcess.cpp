@@ -94,10 +94,10 @@ void frbNetworkProcess::parse_host_name()
     case '7': rack=7; break;
     case '8': rack=8; break;
     case '9': rack=9; break;
-    case 'a': rack=10; break;
-    case 'b': rack=11; break;
-    case 'c': rack=12; break;
-    case 'd': rack=13; break;
+    case 'A': rack=10; break;
+    case 'B': rack=11; break;
+    case 'C': rack=12; break;
+    case 'D': rack=13; break;
     default: INFO("Not a valid name \n"); exit(0);
   }
   
@@ -154,10 +154,10 @@ void frbNetworkProcess::main_thread()
   std::memset((char *)&myaddr, 0, sizeof(myaddr));
 
   myaddr.sin_family = AF_INET;
-  //inet_pton(AF_INET, my_ip_address.c_str(), &myaddr.sin_addr);
+  inet_pton(AF_INET, my_ip_address.c_str(), &myaddr.sin_addr);
   
   // Comment the above line and uncomment the line below to run it on McGill nodes
-  inet_pton(AF_INET, "22.22.0.2", &myaddr.sin_addr);
+  //inet_pton(AF_INET, "22.22.0.2", &myaddr.sin_addr);
 
   myaddr.sin_port = htons(udp_port_number);
 
