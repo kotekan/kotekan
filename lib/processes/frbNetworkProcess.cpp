@@ -120,7 +120,7 @@ void frbNetworkProcess::parse_host_name()
 
   for(int i=0;i<number_of_subnets;i++) 
   {
-    temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<"."<<node;
+    temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<".1"<<node;
     my_ip_address[i] = temp_ip[i].str();
     INFO("%s ",my_ip_address[i].c_str());
   }
