@@ -44,6 +44,7 @@ buffer_read:
   udp_port_number: 1313
   number_of_nodes: 256
   packets_per_stream: 8
+  number_of_subnets: 4
   L1_node_ips:
     - 10.6.200.10
     - 10.7.200.10

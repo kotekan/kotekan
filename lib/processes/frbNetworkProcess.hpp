@@ -19,8 +19,9 @@ private:
   int udp_packet_size;  
   int udp_port_number;
   std::string file_name;
-  std::string my_ip_address;
+  std::string my_ip_address[4];
   int number_of_nodes;
+  int number_of_subnets;
   int packets_per_stream;
   int my_node_id;
   char *my_host_name;

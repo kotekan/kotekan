@@ -50,12 +50,13 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   udp_port_number = config.get_int(unique_name, "udp_port_number");
   number_of_nodes = config.get_int(unique_name, "number_of_nodes");
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
+  number_of_subnets = config.get_int(unique_name, "number_of_subnets");
 }
 
 void frbNetworkProcess::parse_host_name()
 {
   int rack=0,node=0,nos=0;
-  std::stringstream temp_ip;
+  std::stringstream temp_ip[number_of_subnets];
 
   gethostname(my_host_name, sizeof(my_host_name));
 
@@ -117,8 +118,12 @@ void frbNetworkProcess::parse_host_name()
 
   }
 
-  temp_ip<<"10.1."<<nos+rack<<"."<<node;
-  my_ip_address = temp_ip.str();
+  for(int i=0;i<number_of_subnets;i++) 
+  {
+    temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<"."<<node;
+    my_ip_address[i] = temp_ip[i].str();
+    INFO("%s ",my_ip_address[i].c_str());
+  }
   my_node_id += rack*10+node;
 }
 
@@ -137,36 +142,38 @@ void frbNetworkProcess::main_thread()
   INFO("number_of_l1_links: %d",number_of_l1_links);  
     
 
-  
+  int *sock_fd = new int[number_of_subnets];
 
-  int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
- 
-  if (sock_fd < 0)
+  for(int i=0;i<number_of_subnets;i++) 
   {
-    std::cout << "network thread: socket() failed: " <<
-    strerror(errno) << std::endl;
-    exit(0);
-  }
-  
-  struct sockaddr_in server_address[number_of_l1_links], myaddr;
-
-  
-  std::memset((char *)&myaddr, 0, sizeof(myaddr));
-
-  myaddr.sin_family = AF_INET;
-  inet_pton(AF_INET, my_ip_address.c_str(), &myaddr.sin_addr);
-  
-  // Comment the above line and uncomment the line below to run it on McGill nodes
-  //inet_pton(AF_INET, "22.22.0.2", &myaddr.sin_addr);
-
-  myaddr.sin_port = htons(udp_port_number);
-
-  // Binding port to the socket
-  if (bind(sock_fd, (struct sockaddr *)&myaddr, sizeof(myaddr)) < 0) {
-       INFO("port binding failed");
-       exit(0);
+    sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+ 
+    if (sock_fd[i] < 0)
+    {
+      std::cout << "network thread: socket() failed: " <<
+      strerror(errno) << std::endl;
+      exit(0);
     }
+  }
+
+  struct sockaddr_in server_address[number_of_l1_links], myaddr[number_of_subnets];
+
   
+  for(int i=0;i<number_of_subnets;i++) 
+  {
+    std::memset((char *)&myaddr[i], 0, sizeof(myaddr[i]));
+
+    myaddr[i].sin_family = AF_INET;
+    inet_pton(AF_INET, my_ip_address[i].c_str(), &myaddr[i].sin_addr);
+  
+    myaddr[i].sin_port = htons(udp_port_number);
+
+    // Binding port to the socket
+    if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) {
+         INFO("port binding failed");
+         exit(0);
+      }
+  }
   
   
   for(int i=0;i<number_of_l1_links;i++)
@@ -178,12 +185,15 @@ void frbNetworkProcess::main_thread()
   }
   
   int n = 256* 1024 * 1024;
-  if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
-  {
-    std::cout << "network thread: setsockopt() failed: " <<  strerror(errno) << std::endl;
-    exit(0);
+  for(int i=0;i<number_of_subnets;i++)
+  {  
+    if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
+    {
+      std::cout << "network thread: setsockopt() failed: " <<  strerror(errno) << std::endl;
+      exit(0);
+    }
   }
-  
+
   struct timespec t0,t1,temp;
   t0.tv_sec = 0;
   t0.tv_nsec = 0; /*  nanoseconds */
@@ -245,7 +255,7 @@ void frbNetworkProcess::main_thread()
     if(packet_buffer==NULL)
       break;
     
-    INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
+    INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address[2].c_str(),my_node_id);
     
 
     for(int frame=0; frame<packets_per_stream; frame++)
@@ -258,8 +268,8 @@ void frbNetworkProcess::main_thread()
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
 
          
-
-         sendto(sock_fd, &packet_buffer[(e_stream*packets_per_stream+frame)*udp_packet_size], 
+         int i = stream%number_of_subnets;
+         sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_packet_size], 
                    udp_packet_size , 0 , (struct sockaddr *) &server_address[stream] , sizeof(server_address[stream])); 
          
          

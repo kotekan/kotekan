@@ -204,8 +204,8 @@ void frbBufferWrite::main_thread() {
       frb_header_offset[ii] = 0;
     }
 
-    int frame = 0;
-    int in_frame_location = 0; //goes from 0 to 16
+    //int frame = 0;
+    //int in_frame_location = 0; //goes from 0 to 16
     uint64_t fpga_seq_num = 0;
 
     int num_L1_streams = 1024/_nbeams;
