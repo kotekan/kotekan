@@ -18,6 +18,7 @@ add_library ( kotekan_hsa
               hsaPreseedKernel.cpp
               hsaPresumZero.cpp
               hsaBeamformKernel.cpp
+              hsaBeamformReorder.cpp
               hsaBeamformTranspose.cpp
               hsaBeamformUpchan.cpp
               hsaBeamformOutput.cpp

@@ -22,6 +22,7 @@ private:
     int32_t _factor_upchan;
     int32_t _downsample_time;
     int32_t _downsample_freq;
+    vector<int32_t> _reorder_map;
 
     float * coff;
 
@@ -32,6 +33,8 @@ private:
     double * cpu_beamform_output;
     double * transposed_output;
     double * tmp128;
+    int * tmp512;
+    int * reorder_map_c;
     double * cpu_final_output;
 
 
@@ -40,6 +43,7 @@ private:
     int transposed_len;
     int output_len;
 
+    void reorder(unsigned char *data, int *map);
     void cpu_beamform_ns(double *data, unsigned long transform_length, int stop_level);
     void cpu_beamform_ew(double *input, double *output, float *Coeff, int nbeamsNS, int nbeamsEW, int npol, int nsamp_in);
     void clamping(double *input, double *output, float freq, int nbeamsNS, int nbeamsEW, int nsamp_in, int npol);
