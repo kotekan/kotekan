@@ -31,7 +31,7 @@ sizeof_per_element_data: 12
 sizeof_uint8_t: 1
 sizeof_gate_frame_header: 236
 
-num_links_fury: 1
+num_links_fury: 8
 num_links_270: 2
 num_links_280: 3
 
@@ -45,21 +45,18 @@ main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 10 * buffer_depth * num_links
             
-gpu_280_input_buffers:
-    num_frames: buffer_depth * num_links_280
+gpu_input_buffers:
     frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
     metadata_pool: main_pool
     gpu_280_input_buffer_0:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_280
     gpu_280_input_buffer_1:
         kotekan_buffer: standard
-        
-gpu_270_input_buffers:
-    num_frames: buffer_depth * num_links_270
-    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
-    metadata_pool: main_pool
+        num_frames: buffer_depth * num_links_280
     gpu_270_input_buffer_0:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_270
                       
 # Buffers
 #gpu_input_buffers:
@@ -70,27 +67,31 @@ gpu_270_input_buffers:
 #        kotekan_buffer: standard
 
 gpu_output_buffers:
-    num_frames: buffer_depth * num_links_per_gpu
     frame_size: num_local_freq * num_blocks * (block_size*block_size)*2.*num_data_sets  * sizeof_cl_int 
     metadata_pool: main_pool
     gpu_output_buffer_0:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_270
     gpu_output_buffer_1:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_280
     gpu_output_buffer_2:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_280
 
 
 beamform_output_buffers:
-    num_frames: buffer_depth * num_links_per_gpu
     frame_size: samples_per_data_set * num_data_sets * num_local_freq * 2
     metadata_pool: main_pool
     beam_output_buffer_0:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_270
     beam_output_buffer_1:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_280
     beam_output_buffer_2:
         kotekan_buffer: standard
+        num_frames: buffer_depth * num_links_280
 
 tcp_output_buffers:
     num_frames: buffer_depth
