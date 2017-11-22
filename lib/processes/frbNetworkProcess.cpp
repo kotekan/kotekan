@@ -203,6 +203,8 @@ void frbNetworkProcess::main_thread()
    
   long count=0;
 
+  int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
+
   while(!stop_thread)
   {
     
@@ -211,7 +213,7 @@ void frbNetworkProcess::main_thread()
 
     unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
     unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_node_id*240*(256/number_of_l1_links); // analytically it must be 240.3173828125
+    unsigned long wait_ns = time_interval-reminder + my_sequence_id*240; // analytically it must be 240.3173828125
  
  
     t0.tv_nsec += wait_ns;
@@ -255,25 +257,26 @@ void frbNetworkProcess::main_thread()
     if(packet_buffer==NULL)
       break;
     
-    INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address[2].c_str(),my_node_id);
+    INFO("Host name %s ip: %s node: %d sequence_id: %d",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id);
     
 
     for(int frame=0; frame<packets_per_stream; frame++)
     {
-      for(int stream=0; stream<number_of_l1_links; stream++)
+      for(int stream=0; stream<256; stream++)
       {
-        int e_stream = my_node_id + stream;
-        if(e_stream>number_of_nodes-1) e_stream -= number_of_nodes;
+        int e_stream = my_sequence_id + stream;
+        if(e_stream>255) e_stream -= 256;
         
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
 
+         if(e_stream<number_of_l1_links)
+         {
+           int i = e_stream%number_of_subnets;
+           sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_packet_size], 
+                   udp_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
+         }
          
-         int i = stream%number_of_subnets;
-         sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_packet_size], 
-                   udp_packet_size , 0 , (struct sockaddr *) &server_address[stream] , sizeof(server_address[stream])); 
-         
-         
-         long wait_per_packet = (long)(61440*(256/number_of_l1_links)); 
+         long wait_per_packet = (long)(61440); 
          
          //61521.25 is the theoritical seperation of packets in ns 
          // I have used 61440 for convinence and also hope this will take care for
@@ -298,5 +301,4 @@ void frbNetworkProcess::main_thread()
   }
   return;
 }
-
 

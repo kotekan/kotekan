@@ -175,7 +175,7 @@ void frbBufferWrite::parse_host_name()
 
   temp_ip<<"10.1."<<nos+rack<<"."<<node;
   my_ip_address = temp_ip.str();
-  my_node_id += rack*10+node;
+  my_node_id += node;
   
 }
 
