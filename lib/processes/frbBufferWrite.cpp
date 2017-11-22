@@ -167,7 +167,7 @@ void frbBufferWrite::parse_host_name()
     case '5': node=5; break;
     case '6': node=6; break;
     case '7': node=7; break;
-    case '8': aode=8; break;
+    case '8': node=8; break;
     case '9': node=9; break;
     default: INFO("Not a valid name \n"); exit(0);
 

@@ -36,7 +36,7 @@
 #include "chimeMetadataDump.hpp"
 #include "frbNetworkProcess.hpp"
 #include "frbBufferWrite.hpp"
-
+#include "frbPostProcess.hpp"
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -220,12 +220,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
     }
 
-    
+    /*    
     if (name == "frbBufferWrite") {
         return (KotekanProcess *) new frbBufferWrite(config, location, buffer_container);
     }
-    
-
+    */
+    if (name == "frbPostProcess") {
+        return (KotekanProcess *) new frbPostProcess(config, location, buffer_container);
+    }
     // OpenCL
     if (name == "clProcess") {
         #ifdef WITH_OPENCL

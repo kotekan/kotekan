@@ -11,7 +11,7 @@ using std::vector;
 
 class frbBufferWrite : public KotekanProcess {
 public:
-    frbBufferWrite(Config& config_,
+    frbBufferWrite(Config& config,
                   const string& unique_name,
                   bufferContainer &buffer_container);
     virtual ~frbBufferWrite();
