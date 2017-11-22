@@ -23,7 +23,7 @@ link_map: [0,0,0,0,0,0,0,0]
 #num_gpus: 3
 num_gpus: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
-enable_gating: 0
+enable_gating: false
 sizeof_cl_int: 4
 sizeof_tcp_frame_header: 116
 sizeof_complex_int_t: 8
@@ -77,11 +77,6 @@ gpu_input_buffers:
     gpu_input_buffer_0:
         kotekan_buffer: standard
 
-#        snprintf(buffer_name, 100, "gpu_output_buffer_%d", i);
-#        create_buffer(gpu_output_buffer[i],
-#                      buffer_depth * num_links_per_gpu,
-#                      output_len * num_data_sets  * sizeof(cl_int),
-
 gpu_output_buffers:
     num_frames: buffer_depth * num_links_per_gpu
     frame_size: num_local_freq * num_blocks * (block_size*block_size)*2.*num_data_sets  * sizeof_cl_int 
@@ -102,12 +97,6 @@ beamform_output_buffers:
     beam_output_buffer_0:
         kotekan_buffer: standard
         
-#CHECK THESE!
-#print f_size of tcp_frame_header and hardcode.
-#size_of_uint8_t = 1
-#complex_int_t = 64
-
-#printf("The size of integer is %d\n", sizeof(n));
 
 tcp_output_buffers:
     num_frames: buffer_depth

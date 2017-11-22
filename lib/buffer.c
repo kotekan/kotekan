@@ -342,7 +342,7 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
             && buf->shutdown_signal == 0) {
 //ikt - commented out to test performance without DEBUG calls.        
 //        DEBUG("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
-              producer_name, ID, buf->buffer_name);
+//              producer_name, ID, buf->buffer_name);
         print_stat = 1;
         pthread_cond_wait(&buf->empty_cond, &buf->lock);
     }

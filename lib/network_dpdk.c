@@ -609,12 +609,12 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 // Debug test to make sure this works.
  //ikt - commented out to test performance without DEBUG calls.               
  //               DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %" PRIu64 ", data frame %" PRIu64 ", vdif_time: %f",
-                        (double)now.tv_sec+(double)now.tv_usec/1000000.0,
-                        dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
-                        (seq - dpdk_net->vdif_offset) % 390625,
-                        (double)(((seq - dpdk_net->vdif_offset) / 390625) + 946684800) +
-                        (double)dpdk_net->vdif_base_time +
-                        (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
+ //                       (double)now.tv_sec+(double)now.tv_usec/1000000.0,
+ //                       dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
+ //                       (seq - dpdk_net->vdif_offset) % 390625,
+ //                       (double)(((seq - dpdk_net->vdif_offset) / 390625) + 946684800) +
+ //                       (double)dpdk_net->vdif_base_time +
+ //                       (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
             }
         }
         INFO("Got first packet: port: %d, seq: %" PRId64 "\n",
@@ -933,7 +933,7 @@ int lcore_recv_pkt(void *args)
                 if (unlikely(diff < 0)) {
  //ikt - commented out to test performance without DEBUG calls.                   
  //                   DEBUG("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
-                            port, diff, dpdk_net->link_data[port][0].last_seq, dpdk_net->link_data[port][0].seq);
+ //                           port, diff, dpdk_net->link_data[port][0].last_seq, dpdk_net->link_data[port][0].seq);
                     goto release_frame;
                 }
 
