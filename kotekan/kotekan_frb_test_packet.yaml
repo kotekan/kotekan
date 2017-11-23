@@ -29,6 +29,7 @@ main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 10 * buffer_depth
 
+
 # Buffers
 gpu_input_buffers:
     num_frames: buffer_depth
