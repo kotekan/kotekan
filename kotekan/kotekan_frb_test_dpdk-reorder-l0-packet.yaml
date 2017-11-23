@@ -122,8 +122,3 @@ postprocess:
   network_input_buffer_3: beamform_output_buffer_3
   frb_out_buf: frb_output_buffer
 
-hex_dump:
-  kotekan_process: hexDump
-  buf: frb_output_buffer
-  len: 128
-  offset: 0
