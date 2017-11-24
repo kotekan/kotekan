@@ -232,7 +232,7 @@ void clProcess::mem_reconcil_thread()
 
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
             // your test
-            std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " Mem_recon_thread:BufferID_" << j << "_" << cb_data[j]->buff_id_lock->clean << " iteration:" << cb_data[j]->cnt->iteration << std::endl;
+//            std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " Mem_recon_thread:BufferID_" << j << "_" << cb_data[j]->buff_id_lock->clean << " iteration:" << cb_data[j]->cnt->iteration << std::endl;
 
             //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
             // Copy the information contained in the input buffer

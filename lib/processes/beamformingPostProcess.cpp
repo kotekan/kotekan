@@ -81,12 +81,14 @@ void beamformingPostProcess::main_thread() {
     apply_config(0);
 
     int in_buffer_ID[_num_gpus];
+    int in_buffer_ID_final[_num_gpus];
     uint8_t * in_frame[_num_fpga_links];
     int out_buffer_ID = 0;
     int startup = 1;
 
     for (int i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
+        in_buffer_ID_final[i] = 0;
     }
 
     const uint32_t num_samples = _samples_per_data_set * _num_data_sets;
@@ -127,6 +129,8 @@ void beamformingPostProcess::main_thread() {
 
         //INFO("beamforming_post_process; waiting for GPU output.");
 
+        uint32_t first_seq_number = 0;
+
         // Get all the input buffers needed to form the output.
         for (uint32_t i = 0; i < _num_fpga_links; ++i) {
             // Get an input buffer
@@ -136,25 +140,22 @@ void beamformingPostProcess::main_thread() {
             in_frame[i] = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[gpu_id]);
             if (in_frame[i] == NULL) goto end_loop;
 
-            in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
-        }
-
-        //INFO("beamforming_post_process; got full set of GPU output buffers");
-
-        uint32_t first_seq_number =
-            (uint32_t)get_fpga_seq_num(in_buf[_link_map[0]], in_buffer_ID[0]);
-
-        for (uint32_t i = 0; i < _num_fpga_links; ++i) {
-            int gpu_id = _link_map[i];
-
-            assert(first_seq_number ==
+            if (i == 0){
+                first_seq_number = (uint32_t)get_fpga_seq_num(in_buf[_link_map[0]], in_buffer_ID[0]);
+            } else {
+                assert(first_seq_number ==
                     (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[i]));
+            }
 
             int stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[i]);
             int link_id = stream_id & 0x000F;
             int slot_id = (stream_id & 0x00F0) >> 4;
             thread_ids[i] = link_id + (slot_id << 4);
+
+            in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
+
+        //INFO("beamforming_post_process; got full set of GPU output buffers");
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
@@ -162,7 +163,7 @@ void beamformingPostProcess::main_thread() {
             // testing sync code
             startup = 0;
             current_input_location = 0;
-            struct timeval time = get_first_packet_recv_time(in_buf[_link_map[0]], in_buffer_ID[0]);
+            struct timeval time = get_first_packet_recv_time(in_buf[_link_map[0]], 0);
             second = (int)(round((double)time.tv_sec / 20.0) * 20.0) - 946728000;
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
@@ -237,7 +238,9 @@ void beamformingPostProcess::main_thread() {
         // Release the input buffers
         for (int i = 0; i < _num_fpga_links; ++i) {
             int gpu_id = _link_map[i];
-            mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[i]);
+
+            mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID_final[gpu_id]);
+            in_buffer_ID_final[gpu_id] = (in_buffer_ID_final[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
     }
     end_loop:;

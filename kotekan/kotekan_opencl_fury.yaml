@@ -1,9 +1,9 @@
 ---
 type: config
-system:
+#system:
   #mode: gpu_test
-  mode: pathfinder
-  log_level: 3
+  #mode: pathfinder
+log_level: 3
 #Have to duplicate num_elements and num_local_freq for now. Makes testing easier.
 #Eventually, remove all references to "adjusted" in code.
 num_elements: 256
