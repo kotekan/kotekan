@@ -10,30 +10,33 @@
 #include <highfive/H5File.hpp>
 
 // Structs to represent the datatypes of the index maps
-typedef struct {
+struct freq_ctype {
     double centre;
     double width;
-} freq_ctype;
+};
 
-typedef struct {
+struct input_ctype {
+    // Allow initialisation from a std::string
+    input_ctype(uint16_t id, std::string serial);
+
     uint16_t chan_id;
     char correlator_input[32];
-} input_ctype;
+};
 
-typedef struct {
+struct time_ctype {
     uint64_t fpga_count;
     double ctime;
-} time_ctype;
+};
 
-typedef struct {
+struct prod_ctype {
     uint16_t input_a;
     uint16_t input_b;
-} prod_ctype;
+};
 
-typedef struct {
+struct complex_int {
     int32_t r;
     int32_t i;
-} complex_int;
+};
 
 
 // Define an ordering on stream ids so they can be used in a std::map

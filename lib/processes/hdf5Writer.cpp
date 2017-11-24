@@ -69,6 +69,54 @@ std::vector<complex_int> copy_vis_triangle(
     return output;
 }
 
+std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
+    if(!j.is_array() || j.size() != 3) {
+        throw std::runtime_error("Could not parse json item for input reordering: " + j.dump());
+    }
+
+    uint32_t adc_id = j[0].get<int>();
+    uint32_t chan_id = j[1].get<int>();
+    std::string serial = j[2].get<std::string>();
+
+    return std::make_tuple(adc_id, chan_id, serial);
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(json& j) {
+
+    uint32_t adc_id, chan_id;
+    std::string serial;
+
+    std::vector<uint32_t> adc_ids;
+    std::vector<input_ctype> inputmap;
+
+    if(!j.is_array()) {
+        throw std::runtime_error("Was expecting list of input orders.");
+    }
+
+    for(auto& element : j) {
+        std::tie(adc_id, chan_id, serial) = parse_reorder_single(element);
+
+        adc_ids.push_back(adc_id);
+        inputmap.emplace_back(chan_id, serial);
+    }
+
+    return std::make_tuple(adc_ids, inputmap);
+
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements) {
+
+    std::vector<uint32_t> adc_ids;
+    std::vector<input_ctype> inputmap;
+
+    for(uint32_t i = 0; i < num_elements; i++) {
+        adc_ids.push_back(i);
+        inputmap.emplace_back(i, "INVALID");
+    }
+
+    return std::make_tuple(adc_ids, inputmap);
+
+}
 
 hdf5Writer::hdf5Writer(Config& config,
                        const string& unique_name,
@@ -99,23 +147,23 @@ hdf5Writer::hdf5Writer(Config& config,
         buffers.push_back({buf, 0});
     }
 
-    // Initialise the reordering mapping (to be no reordering)
-    input_remap = std::vector<uint32_t>(num_elements);
-    std::iota(input_remap.begin(), input_remap.end(), 0);
+    try {
+        json reorder_config = config.get_json_array(unique_name, "input_reorder");
 
-    // TODO: get the set of input information from the hardware map
-    // Temporarily fill out the input vector
-    for(unsigned int i=0; i < num_elements; i++) {
-        input_ctype t;
-        t.chan_id = 0;
-        std::string ts = "meh";
-        ts.copy(t.correlator_input, 32);
-        inputs.push_back(t);
+        std::tie(input_remap, inputs) = parse_reorder(reorder_config);
     }
-
+    catch(const std::exception& e) {
+        std::tie(input_remap, inputs) = default_reorder(num_elements);
+    }
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here
-    instrument_name = "chime";
+    if(config.get_bool_default(unique_name, "per_node_instrument", true)) {
+        char temp[256];
+        gethostname(temp, 256);
+        instrument_name = temp;
 
+    } else {
+        instrument_name = "chimecnBg2";
+    }
 }
 
 void hdf5Writer::apply_config(uint64_t fpga_seq) {
@@ -422,7 +470,7 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
 
 
     DataSet input_imap = indexmap.createDataSet<input_ctype>("input", DataSpace(inputs.size()));
-
+    input_imap.write(inputs);
 
     std::vector<prod_ctype> prod_vector;
     for(uint16_t i=0; i < inputs.size(); i++) {
@@ -548,6 +596,14 @@ size_t visFile::addSample(
     file->flush();
 
     return ntime;
+}
+
+
+// Initialise the serial from a std::string
+input_ctype::input_ctype(uint16_t id, std::string serial) {
+    chan_id = id;
+    memset(correlator_input, 0, 32);
+    serial.copy(correlator_input, 32);
 }
 
 
