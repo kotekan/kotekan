@@ -155,14 +155,17 @@ hdf5Writer::hdf5Writer(Config& config,
     catch(const std::exception& e) {
         std::tie(input_remap, inputs) = default_reorder(num_elements);
     }
-    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here
+    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
+    // the moment this either uses chime, or if set to use a per_node_instrument
+    // it uses the hostname of the current node
     if(config.get_bool_default(unique_name, "per_node_instrument", true)) {
         char temp[256];
         gethostname(temp, 256);
-        instrument_name = temp;
-
+        std::string t = temp;
+        // Here we trim the hostname to the first alphanumeric segment only.
+        instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
     } else {
-        instrument_name = "chimecnBg2";
+        instrument_name = "chime";
     }
 }
 
