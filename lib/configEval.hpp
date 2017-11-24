@@ -38,7 +38,6 @@ private:
     Type exp();
 
     std::list<std::string> tokens;
-    std::string current_token = "";
 };
 
 template <class Type>
@@ -48,16 +47,13 @@ configEval<Type>::configEval(Config &_config,
     config(_config), unique_name(_unique_name) {
 
     static const std::regex re(
-        R"(([0-9]*.?[0-9]+|\+|\*|\-|/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
+        "([0-9]*\\.?[0-9]+|\\+|\\*|\\-|\\/|\\)|\\(|[a-zA-Z][a-zA-Z0-9\\_]+)",
         std::regex::ECMAScript);
 
     tokens = {
         std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
         std::sregex_token_iterator()
     };
-
-    if (!tokens.empty())
-        current_token = tokens.front();
 }
 
 template <class Type>
@@ -72,30 +68,25 @@ Type configEval<Type>::compute_restult() {
 template <class Type>
 void configEval<Type>::next() {
     tokens.pop_front();
-    if (!tokens.empty()) {
-        current_token = tokens.front();
-    } else {
-        current_token = "";
-    }
 }
 
 template <class Type>
 bool configEval<Type>::isNumber() {
-    std::regex re( R"([0-9]*\.?[0-9]+)", std::regex::ECMAScript);
+    std::regex re("[0-9]*\\.?[0-9]+");
     std::cmatch m;
     return std::regex_match (tokens.front().c_str(), m, re);
 }
 
 template <class Type>
 bool configEval<Type>::isVar() {
-    std::regex re(R"([a-zA-Z][a-zA-Z0-9\\_]+)", std::regex::ECMAScript);
+    std::regex re("[a-zA-Z][a-zA-Z0-9\\_]+");
     std::cmatch m;
     return std::regex_match (tokens.front().c_str(), m, re);
 }
 
 template <class Type>
 void configEval<Type>::expect(const std::string& symbol) {
-    if (current_token == symbol) {
+    if (tokens.front() == symbol) {
         next();
     } else {
         ERROR("Expected symbol %s, got %s",
@@ -107,8 +98,8 @@ void configEval<Type>::expect(const std::string& symbol) {
 template <class Type>
 Type configEval<Type>::exp() {
     Type ret = 0;
-    if (current_token == "+" || current_token == "-") {
-        if (current_token == "-") {
+    if (tokens.front() == "+" || tokens.front() == "-") {
+        if (tokens.front() == "-") {
             next();
             ret = -term();
         } else {
@@ -118,8 +109,8 @@ Type configEval<Type>::exp() {
     } else {
         ret = term();
     }
-    while (current_token == "+" || current_token == "-") {
-        if (current_token == "+") {
+    while (tokens.front() == "+" || tokens.front() == "-") {
+        if (tokens.front() == "+") {
             next();
             ret += term();
         } else {
@@ -133,12 +124,12 @@ Type configEval<Type>::exp() {
 template <class Type>
 Type configEval<Type>::term() {
     Type ret = factor();
-    while (current_token == "*" || current_token == "/") {
-        if (current_token == "*") {
+    while (tokens.front() == "*" || tokens.front() == "/") {
+        if (tokens.front() == "*") {
             next();
             ret *= factor();
         }
-        if (current_token == "/") {
+        if (tokens.front() == "/") {
             // TODO Check for divide by zero.
             next();
             ret /= factor();
@@ -152,17 +143,17 @@ Type configEval<Type>::factor() {
     Type ret;
 
     if (isVar()) {
-        ret = (Type)config.get_double(unique_name, current_token);
+        ret = (Type)config.get_double(unique_name, tokens.front());
         next();
     } else if (isNumber()) {
-        ret = (Type)stod(current_token);
+        ret = (Type)stod(tokens.front());
         next();
-    } else if (current_token == "(") {
+    } else if (tokens.front() == "(") {
         next();
         ret = exp();
         expect(")");
     } else {
-        ERROR("Unexpected symbol %s", current_token.c_str());
+        ERROR("Unexpected symbol %s", tokens.front().c_str());
         throw std::runtime_error("Unexpected symbol");
     }
     return ret;
@@ -177,4 +168,3 @@ double eval_compute_double(Config &config,
                            const std::string &expression);
 
 #endif /* CONFIG_EVAL_HPP */
-

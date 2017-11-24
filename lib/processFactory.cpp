@@ -35,7 +35,7 @@
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
 #include "frbNetworkProcess.hpp"
-#include "frbBufferWrite.hpp"
+//#include "frbBufferWrite.hpp"
 #include "frbPostProcess.hpp"
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
@@ -220,7 +220,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
     }
 
-    /*    
+    /*      
     if (name == "frbBufferWrite") {
         return (KotekanProcess *) new frbBufferWrite(config, location, buffer_container);
     }

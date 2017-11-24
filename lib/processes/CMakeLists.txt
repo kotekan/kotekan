@@ -24,7 +24,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               accumulate.cpp
               bufferStatus.cpp
               frbNetworkProcess.cpp
-              frbBufferWrite.cpp
               frbPostProcess.cpp
               )
 

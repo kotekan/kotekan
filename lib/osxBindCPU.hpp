@@ -14,10 +14,6 @@ typedef struct cpu_set {
   uint32_t    count;
 } cpu_set_t;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 static inline void
 CPU_ZERO(cpu_set_t *cs) { cs->count = 0; }
 
@@ -28,11 +24,6 @@ static inline int
 CPU_ISSET(int num, cpu_set_t *cs) { return (cs->count & (1 << num)); }
 
 int sched_getaffinity(pid_t pid, size_t cpu_size, cpu_set_t *cpu_set);
-
 int pthread_setaffinity_np(pthread_t thread, size_t cpu_size, cpu_set_t *cpu_set);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

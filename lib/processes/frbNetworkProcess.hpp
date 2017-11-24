@@ -16,8 +16,8 @@ public:
   void main_thread();
 private:
   struct Buffer *frb_buf;
-  int udp_packet_size;  
-  int udp_port_number;
+  int udp_frb_packet_size;  
+  int udp_frb_port_number;
   std::string file_name;
   std::string my_ip_address[4];
   int number_of_nodes;

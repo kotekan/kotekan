@@ -46,8 +46,8 @@ frbNetworkProcess::~frbNetworkProcess()
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq) 
 {
-  udp_packet_size = config.get_int(unique_name, "udp_packet_size");
-  udp_port_number = config.get_int(unique_name, "udp_port_number");
+  udp_frb_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
+  udp_frb_port_number = config.get_int(unique_name, "udp_frb_port_number");
   number_of_nodes = config.get_int(unique_name, "number_of_nodes");
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
   number_of_subnets = config.get_int(unique_name, "number_of_subnets");
@@ -166,7 +166,7 @@ void frbNetworkProcess::main_thread()
     myaddr[i].sin_family = AF_INET;
     inet_pton(AF_INET, my_ip_address[i].c_str(), &myaddr[i].sin_addr);
   
-    myaddr[i].sin_port = htons(udp_port_number);
+    myaddr[i].sin_port = htons(udp_frb_port_number);
 
     // Binding port to the socket
     if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) {
@@ -181,7 +181,7 @@ void frbNetworkProcess::main_thread()
     memset(&server_address[i], 0, sizeof(server_address[i]));
     server_address[i].sin_family = AF_INET;
     inet_pton(AF_INET, link_ip[i].c_str(), &server_address[i].sin_addr);
-    server_address[i].sin_port = htons(udp_port_number);
+    server_address[i].sin_port = htons(udp_frb_port_number);
   }
   
   int n = 256* 1024 * 1024;
@@ -204,7 +204,18 @@ void frbNetworkProcess::main_thread()
   long count=0;
 
   int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
-
+  
+  for(int i=0;i<10;i++)
+  {  
+    INFO("Waiting for the buffer \n\n\n\n\n\n\n\n\n\n\n");
+    packet_buffer = wait_for_full_frame(frb_buf, unique_name.c_str(), frame_id);
+  
+    mark_frame_empty(frb_buf, unique_name.c_str(), frame_id);
+    frame_id = ( frame_id + 1 ) % frb_buf->num_frames;
+    
+    INFO("Got it \n\n\n\n\n\n\n\n\n\n\n\n");
+  }
+  
   while(!stop_thread)
   {
     
@@ -243,8 +254,11 @@ void frbNetworkProcess::main_thread()
       nsec = sec*1e9+nsec;
 
       if(abs(nsec)<50000000) temp = t0; 
-      else INFO("Not locked with NTP \n");
-
+      else
+      {
+        INFO("Not locked with NTP \n");
+        temp = t0;
+      }
     }
     
     //INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
@@ -256,8 +270,8 @@ void frbNetworkProcess::main_thread()
     packet_buffer = wait_for_full_frame(frb_buf, unique_name.c_str(), frame_id);
     if(packet_buffer==NULL)
       break;
-    
-    INFO("Host name %s ip: %s node: %d sequence_id: %d",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id);
+    uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
+    INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[12+4264]);
     
 
     for(int frame=0; frame<packets_per_stream; frame++)
@@ -272,8 +286,8 @@ void frbNetworkProcess::main_thread()
          if(e_stream<number_of_l1_links)
          {
            int i = e_stream%number_of_subnets;
-           sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_packet_size], 
-                   udp_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
+           sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
+                   udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
          }
          
          long wait_per_packet = (long)(61440); 

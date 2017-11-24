@@ -22,13 +22,11 @@ num_gpus: 4
 num_beams: 4
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 sizeof_float: 4
-f_size: 8740864
-factor: 2
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 10 * buffer_depth
-
 
 # Buffers
 gpu_input_buffers:
@@ -46,7 +44,7 @@ gpu_input_buffers:
 
 beamform_output_buffesrs:
     num_frames: buffer_depth
-    frame_size: sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/factor) * num_elements
+    frame_size: sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements
     metadata_pool: main_pool
     beamform_output_buffer_0:
         kotekan_buffer: standard
@@ -66,16 +64,16 @@ beamform_output_buffesrs:
 
 frb_output_buffer:
     num_frames: buffer_depth
-    frame_size:  f_size
+    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_header_size*8*256
     metadata_pool: main_pool
     kotekan_buffer: standard 
 
-#file_output_buffer:
-#    num_frames: buffer_depth
-#    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_header_size*8*256
-#    metadata_pool: main_pool
-#    file_output_buffer_0:
-#        kotekan_buffer: standard 
+file_output_buffer:
+    num_frames: buffer_depth
+    frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_header_size*8*256
+    metadata_pool: main_pool
+    file_output_buffer_0:
+        kotekan_buffer: standard 
     
 gpu:
   commands:
@@ -152,11 +150,11 @@ postprocess:
   network_input_buffer_3: beamform_output_buffer_3
   frb_out_buf: frb_output_buffer
 
-#hex_dump:
-#  kotekan_process: hexDump
-#  buf: frb_output_buffer
-#  len: 128
-#  offset: 0
+hex_dump:
+  kotekan_process: hexDump
+  buf: frb_output_buffer
+  len: 128
+  offset: 0
 
 #file_out:
 #  base_dir: /data/frb/
@@ -165,47 +163,3 @@ postprocess:
 #    kotekan_process: rawFileWrite
 #    in_buf: frb_output_buffer
 #    file_name: frb_out
-
-
-
-# Kotekan processes
-buffer_read:
-  kotekan_process: frbNetworkProcess
-  frb_out_buf: frb_output_buffer
-  udp_port_number: 1313
-  number_of_nodes: 256
-  packets_per_stream: 8
-  number_of_subnets: 4
-  L1_node_ips:
-    - 10.6.200.10
-    - 10.7.200.10
-    - 10.8.200.10
-    - 10.9.200.10
-    - 10.6.200.11
-    - 10.7.200.11
-    - 10.8.200.11
-    - 10.9.200.11
-    - 10.6.200.12
-    - 10.7.200.12
-    - 10.8.200.12
-    - 10.9.200.12
-    - 10.6.200.13
-    - 10.7.200.13
-    - 10.8.200.13
-    - 10.9.200.13
-    - 10.6.200.14
-    - 10.7.200.14
-    - 10.8.200.14
-    - 10.9.200.14
-    - 10.6.200.15
-    - 10.7.200.15
-    - 10.8.200.15
-    - 10.9.200.15
-    - 10.6.200.16
-    - 10.7.200.16
-    - 10.8.200.16
-    - 10.9.200.16
-    - 10.6.200.17
-    - 10.7.200.17
-    - 10.8.200.17
-    - 10.9.200.17
