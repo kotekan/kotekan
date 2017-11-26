@@ -58,7 +58,7 @@ beamform_output_buffesrs:
         kotekan_buffer: standard
 
 frb_output_buffer:
-    num_frames: 3 * buffer_depth
+    num_frames: buffer_depth
     frame_size:  sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements + udp_frb_header_size*8*256
     metadata_pool: main_pool
     kotekan_buffer: standard
@@ -125,42 +125,6 @@ postprocess:
 
 # Kotekan processes
 buffer_read:
-  kotekan_process: frbNetworkProcess
+  kotekan_process: clear_frb_out
   frb_out_buf: frb_output_buffer
-  udp_frb_port_number: 1313
-  number_of_nodes: 256
-  packets_per_stream: 8
-  number_of_subnets: 4
-  L1_node_ips:
-    - 10.6.200.10
-    - 10.7.200.10
-    - 10.8.200.10
-    - 10.9.200.10
-    - 10.6.200.11
-    - 10.7.200.11
-    - 10.8.200.11
-    - 10.9.200.11
-    - 10.6.200.12
-    - 10.7.200.12
-    - 10.8.200.12
-    - 10.9.200.12
-    - 10.6.200.13
-    - 10.7.200.13
-    - 10.8.200.13
-    - 10.9.200.13
-    - 10.6.200.14
-    - 10.7.200.14
-    - 10.8.200.14
-    - 10.9.200.14
-    - 10.6.200.15
-    - 10.7.200.15
-    - 10.8.200.15
-    - 10.9.200.15
-    - 10.6.200.16
-    - 10.7.200.16
-    - 10.8.200.16
-    - 10.9.200.16
-    - 10.6.200.17
-    - 10.7.200.17
-    - 10.8.200.17
-    - 10.9.200.17
+

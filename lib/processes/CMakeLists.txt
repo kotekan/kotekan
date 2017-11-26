@@ -25,6 +25,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferStatus.cpp
               frbNetworkProcess.cpp
               frbPostProcess.cpp
+              clear_frb_out.cpp
               )
 
 if (${USE_DPDK})

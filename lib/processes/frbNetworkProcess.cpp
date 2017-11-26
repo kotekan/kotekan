@@ -198,33 +198,39 @@ void frbNetworkProcess::main_thread()
   t0.tv_sec = 0;
   t0.tv_nsec = 0; /*  nanoseconds */
   
-  unsigned long time_interval = 125995520; //time per buffer frame in ns
+  unsigned long time_interval = 125829120; //time per buffer frame in ns
 
    
   long count=0;
 
   int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
   
-  for(int i=0;i<10;i++)
-  {  
-    INFO("Waiting for the buffer \n\n\n\n\n\n\n\n\n\n\n");
-    packet_buffer = wait_for_full_frame(frb_buf, unique_name.c_str(), frame_id);
   
-    mark_frame_empty(frb_buf, unique_name.c_str(), frame_id);
-    frame_id = ( frame_id + 1 ) % frb_buf->num_frames;
+  packet_buffer = wait_for_full_frame(frb_buf, unique_name.c_str(), frame_id);
+  mark_frame_empty(frb_buf, unique_name.c_str(), frame_id);
+  frame_id = ( frame_id + 1 ) % frb_buf->num_frames;
     
-    INFO("Got it \n\n\n\n\n\n\n\n\n\n\n\n");
+  
+  clock_gettime(CLOCK_MONOTONIC, &t0);
+  
+  t0.tv_nsec += 5*time_interval;
+  if(t0.tv_nsec>=1000000000)
+  {
+    t0.tv_sec += 1;
+    t0.tv_nsec -= 1000000000;
   }
+  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t0, NULL);
+  
   
   while(!stop_thread)
   {
     
-    
+    long lock_miss=0; 
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
     unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
     unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_sequence_id*240; // analytically it must be 240.3173828125
+    unsigned long wait_ns = time_interval-reminder + my_sequence_id*230; // analytically it must be 240.3173828125
  
  
     t0.tv_nsec += wait_ns;
@@ -242,7 +248,7 @@ void frbNetworkProcess::main_thread()
     }
     else
     {
-      temp.tv_nsec += 125995520;
+      temp.tv_nsec += time_interval;
       if(temp.tv_nsec>=1000000000)
       {
         temp.tv_sec += 1;
@@ -254,10 +260,27 @@ void frbNetworkProcess::main_thread()
       nsec = sec*1e9+nsec;
 
       if(abs(nsec)<50000000) temp = t0; 
+      else if (abs(nsec)==time_interval)
+      {
+        INFO("Buffers are too slow %d \n\n\n\n\n\n\n\n",abs(nsec));
+        t0.tv_nsec -= nsec;
+        if(t0.tv_nsec>=1000000000)
+        {
+         t0.tv_sec += 1;
+         t0.tv_nsec -= 1000000000;
+        }
+        else if(t0.tv_nsec<0)
+        {
+          t0.tv_sec -= 1;
+          t0.tv_nsec += 1000000000;
+        }
+        temp=t0;
+        lock_miss++;
+      }
       else
       {
-        INFO("Not locked with NTP \n");
-        temp = t0;
+        INFO("Not locked with NTP %d\n",abs(nsec));
+        exit(0);
       }
     }
     
@@ -271,7 +294,7 @@ void frbNetworkProcess::main_thread()
     if(packet_buffer==NULL)
       break;
     uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
-    INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[12+4264]);
+    INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*8*253+12],lock_miss);
     
 
     for(int frame=0; frame<packets_per_stream; frame++)
@@ -290,7 +313,7 @@ void frbNetworkProcess::main_thread()
                    udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
          }
          
-         long wait_per_packet = (long)(61440); 
+         long wait_per_packet = (long)(58880); 
          
          //61521.25 is the theoritical seperation of packets in ns 
          // I have used 61440 for convinence and also hope this will take care for
