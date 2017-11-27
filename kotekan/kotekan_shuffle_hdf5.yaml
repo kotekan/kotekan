@@ -151,7 +151,7 @@ hdf5_writer:
       - file_output_buffer_1
       - file_output_buffer_2
       - file_output_buffer_3
-  root_path: /mnt/gong/hdf5_test_data/inter_crate_timing_take2
+  root_path: /mnt/gong/hdf5_test_data/weekend_run1/
 #  root_path: /mnt/gong/hdf5_test_data/
   per_node_instrument: true  # Treat each individual noise as a separate instrument
   num_freq: 4

@@ -222,7 +222,10 @@ void hdf5Writer::main_thread() {
             INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
 
             // Wait for the buffer to be filled with data
-            frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
+                                            frame_id)) == nullptr) {
+		break;
+            }
 
             uint64_t fpga_seq = get_fpga_seq_num(buf, frame_id);
             stream_id_t stream_id = get_stream_id_t(buf, frame_id);
@@ -393,7 +396,7 @@ void hdf5Writer::setup_acq_start(const std::vector<timeval>& start_times) {
 
     // Create acquisition directory. Don't bother checking if it already exists, just let it transparently fail
     std::string dir_name = root_path + "/" + acq_name;
-    mkdir(dir_name.c_str(), 0700);
+    mkdir(dir_name.c_str(), 0755);
 }
 
 
