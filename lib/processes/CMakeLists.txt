@@ -4,24 +4,25 @@ project( kotekan_libs )
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
 set (KOTEKAN_PROCESS_LIB_SOURCES
-              beamformingPostProcess.cpp
-              chrxUplink.cpp
-              computeDualpolPower.cpp
-              fullPacketDump.cpp
-              gpuPostProcess.cpp
-              nDiskFileWrite.cpp
-              nDiskFileRead.cpp
-              networkPowerStream.cpp
-              networkInputPowerStream.cpp
-              nullProcess.cpp
-              pyPlotResult.cpp
-              rawFileRead.cpp
-              rawFileWrite.cpp
-              vdifStream.cpp
-              streamSingleDishVDIF.cpp
-              bufferStatus.cpp
-	      clProcess.cpp
-	      rfiRecorder.cpp
+                beamformingPostProcess.cpp
+                chrxUplink.cpp
+                computeDualpolPower.cpp
+                fullPacketDump.cpp
+                gpuPostProcess.cpp
+                nDiskFileWrite.cpp
+                nDiskFileRead.cpp
+                networkPowerStream.cpp
+                networkInputPowerStream.cpp
+                nullProcess.cpp
+                pyPlotResult.cpp
+                rawFileRead.cpp
+                rawFileWrite.cpp
+                vdifStream.cpp
+                streamSingleDishVDIF.cpp
+                bufferStatus.cpp
+                clProcess.cpp
+                rfiRecorder.cpp
+                rfiBroadcast.cpp
               )
 
 if (${USE_DPDK})

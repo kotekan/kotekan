@@ -31,14 +31,14 @@ void nullProcess::main_thread() {
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
-        INFO("null_process: waiting for buffer");
+        //INFO("null_process: waiting for buffer");
         buffer_ID = wait_for_full_buffer(buf, unique_name.c_str(), buffer_ID);
         // Check if the producer has finished, and we should exit.
         if (buffer_ID == -1) {
             break;
         }
 
-        INFO("null_process: Dropping frame %d", buffer_ID);
+        //INFO("null_process: Dropping frame %d", buffer_ID);
 
         //struct ErrorMatrix * error_matrix = get_error_matrix(buf, buffer_ID);
         //INFO("null_process: Dropping frame %d, lost packets: %d", buffer_ID, error_matrix->bad_timesamples);

@@ -38,7 +38,7 @@ void rfiRecorder::main_thread() {
     uint16_t stream_ID;
     int64_t fpga_seq_num;
     int write_count = 0;
-   // char write_buffer[10000];
+    // char write_buffer[10000];
     const int file_name_len = 100;
     char file_name[file_name_len];
     //write_buffer[0] = '\0';
@@ -51,7 +51,7 @@ void rfiRecorder::main_thread() {
             break;
         }
         stream_ID = rfi_buf->info[buffer_ID]->stream_ID;
-	fpga_seq_num = rfi_buf->info[buffer_ID]->fpga_seq_num;
+        fpga_seq_num = rfi_buf->info[buffer_ID]->fpga_seq_num;
         slot_id = (stream_ID & 0x00F0) >> 4;
         link_id = stream_ID & 0x000F;
         if(First_Time){
@@ -60,33 +60,34 @@ void rfiRecorder::main_thread() {
             f = fopen(file_name,"w");
             First_Time = false;
         }
+
         unsigned int * rfi_data = (unsigned int*)rfi_buf->data[buffer_ID];
-        //INFO("RFI RECORDER: Stream ID %d\n",stream_ID)
+        INFO("RFI RECORDER: Stream ID %d\n",stream_ID)
 
         for(int i = 0; i < _num_local_freq;i++){
-                unsigned int counter = 0;
-                for(int j = 0; j < _samples_per_data_set/_sk_step;j++){
-                        counter += rfi_data[i + _num_local_freq*j];
-                }
-                int freq_bin = slot_id + link_id*16 + 128*i;
-		float rfi_perc = (float)counter/_samples_per_data_set;
-		int seq = (int)(fpga_seq_num & 0xFFFF);
-                //float freq_mhz = 800 - freq_bin*((float)400/1024);
-		fwrite(&freq_bin,sizeof(int),1,f);
-		fwrite(&fpga_seq_num,sizeof(int64_t),1,f);
-		fwrite(&rfi_perc,sizeof(float),1,f);
-		INFO("Writing %d %d %f",freq_bin,seq,rfi_perc);
-                //char temp[100];
-                //snprintf(temp,100,"%f,%f\n",freq_mhz,(float)counter/_samples_per_data_set);
-                //strcat(write_buffer,temp);
-		//INFO("Write Buffer Size %d", strlen(write_buffer));
+            unsigned int counter = 0;
+            for(int j = 0; j < _samples_per_data_set/_sk_step;j++){
+                    counter += rfi_data[i + _num_local_freq*j];
+            }
+            int freq_bin = slot_id + link_id*16 + 128*i;
+	        float rfi_perc = (float)counter/_samples_per_data_set;
+	        int seq = (int)(fpga_seq_num & 0xFFFF);
+            //float freq_mhz = 800 - freq_bin*((float)400/1024);
+	        fwrite(&freq_bin,sizeof(int),1,f);
+	        fwrite(&fpga_seq_num,sizeof(int64_t),1,f);
+	        fwrite(&rfi_perc,sizeof(float),1,f);
+	        INFO("Writing %d %d %f",freq_bin,seq,rfi_perc);
+            //char temp[100];
+            //snprintf(temp,100,"%f,%f\n",freq_mhz,(float)counter/_samples_per_data_set);
+            //strcat(write_buffer,temp);
+	        //INFO("Write Buffer Size %d", strlen(write_buffer));
         }
         if(write_count==50){
-                //fwrite(write_buffer,sizeof(char),strlen(write_buffer),f);
-		fclose(f);
-                f = fopen(file_name,"a");
-		write_count = 0;
-                //write_buffer[0] = '\0';
+            //fwrite(write_buffer,sizeof(char),strlen(write_buffer),f);
+		    fclose(f);
+            f = fopen(file_name,"a");
+		    write_count = 0;
+            //write_buffer[0] = '\0';
         }
         write_count++;
         release_info_object(rfi_buf, buffer_ID);

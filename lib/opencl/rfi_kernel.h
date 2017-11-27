@@ -3,6 +3,8 @@
 
 #include "gpu_command.h"
 #include "device_interface.h"
+#include "restServer.hpp"
+#include <mutex>
 
 class rfi_kernel: public gpu_command
 {
@@ -12,6 +14,7 @@ public:
     ~rfi_kernel();
     virtual void build(device_interface &param_Device) override;
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    void rest_callback(connectionInstance& conn, json& json_request);
 protected:
     void apply_config(const uint64_t& fpga_seq) override;
 
@@ -26,8 +29,8 @@ private:
     float sqrtM;
     float * Mean_Array;
     vector<cl_mem> mem_Mean_Array;
-//    cl_mem mem_Mean_Array;
     Config config_local;
+    std::mutex rest_callback_mutex;
 };
 
 #endif // RFI_KERNEL_H

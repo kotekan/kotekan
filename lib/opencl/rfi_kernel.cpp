@@ -1,5 +1,9 @@
 #include "rfi_kernel.h"
 #include "math.h"
+#include <string.h>
+#include <mutex>
+
+
 rfi_kernel::rfi_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
     gpu_command(param_gpuKernel, param_name, param_config, unique_name)
 {
@@ -12,6 +16,26 @@ rfi_kernel::~rfi_kernel()
     for(int i = 0; i < num_links_per_gpu; i++){
         clReleaseMemObject(mem_Mean_Array[i]);
     }    
+}
+
+void rfi_kernel::rest_callback(connectionInstance& conn, json& json_request) {
+    std::lock_guard<std::mutex> lock(rest_callback_mutex);
+    INFO("RFI Callbak Received... Changing Parameters")
+    _rfi_sensitivity = json_request["sensitivity"];
+    _sk_step =  json_request["sk_step"];
+    gws[2] = (_samples_per_data_set/_sk_step);
+    sqrtM = sqrt(_num_elements*_sk_step);
+    
+    CHECK_CL_ERROR( clSetKernelArg(kernel,
+                                   (cl_uint)3,
+                                   sizeof(float),
+                                   &sqrtM) );
+
+    CHECK_CL_ERROR( clSetKernelArg(kernel,
+                                   (cl_uint)4,
+                                   sizeof(int),
+                                   &_rfi_sensitivity) );
+    conn.send_empty_reply(STATUS_OK);
 }
 
 void rfi_kernel::apply_config(const uint64_t& fpga_seq) {
@@ -30,7 +54,14 @@ void rfi_kernel::apply_config(const uint64_t& fpga_seq) {
 
 void rfi_kernel::build(device_interface &param_Device)
 {
+    std::lock_guard<std::mutex> lock(rest_callback_mutex);
     apply_config(0);
+    using namespace std::placeholders;
+    restServer * rest_server = get_rest_server();
+    string endpoint = "/rfi_callback/" + std::to_string(param_Device.getGpuID());
+    rest_server->register_json_callback(endpoint,
+            std::bind(&rfi_kernel::rest_callback, this, _1, _2));
+
     INFO("Starting RFI kernel build");
     gpu_command::build(param_Device);
     cl_int err;
@@ -85,12 +116,16 @@ void rfi_kernel::build(device_interface &param_Device)
 cl_event rfi_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
     gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+
+    std::lock_guard<std::mutex> lock(rest_callback_mutex);
+
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
     setKernelArg(1, param_Device.getRfiCountBuffer(param_bufferID));
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                     2,
                                     sizeof(cl_mem),
                                     (void *) &mem_Mean_Array[link_id]) )
+
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                             kernel,
                                             3,
@@ -101,28 +136,6 @@ cl_event rfi_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, devic
                                             &param_PrecedeEvent,
                                             &postEvent[param_bufferID]));
 
-/*    unsigned int count_return_array[_num_local_freq*_samples_per_data_set/_sk_step];
-    clEnqueueReadBuffer (param_Device.getQueue(1),
-        param_Device.getRfiCountBuffer(param_bufferID,link_id),
-        CL_TRUE,
-        0,
-	sizeof(count_return_array),
-        (void *)count_return_array,
-        0,
-	NULL,
-	NULL);
-    FILE *f = fopen("../../../rfi_band.csv","a");
-    for(int i = 0; i < _num_local_freq;i++){
-	unsigned int counter = 0;
-	for(int j = 0; j < _samples_per_data_set/_sk_step;j++){
-		counter += count_return_array[i + _num_local_freq*j];
-	}
-	int freq_bin = 15 + link_id*16 + 128*i;
-        float freq_mhz = 800 - freq_bin*((float)400/1024);
-	fprintf(f,"%f,%f\n",freq_mhz,(float)counter/_samples_per_data_set);
-        //INFO("Percentage Masked: %f Frequency %f\n", 100*(float)counter/_samples_per_data_set, freq_mhz);
-    }
-    fclose(f);*/
     link_id = (link_id + 1) % num_links_per_gpu;
     return postEvent[param_bufferID];
 }

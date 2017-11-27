@@ -119,9 +119,11 @@ null_0:
 null_1:
   kotekan_process: nullProcess
   in_buf: gated_output_buffer
+
 rfiRecorder:
   kotekan_process: rfiRecorder
   rfi_buf: rfi_output_buffer_0
+
 #beamform_post_process:
 #  kotekan_process: beamformingPostProcess    
 #  beam_in_buf_0: beam_output_buffer_0

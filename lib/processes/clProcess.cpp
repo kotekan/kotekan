@@ -67,8 +67,8 @@ void clProcess::main_thread()
     loopCounter * loopCnt = new loopCounter;
     bool first_run = true;
 
-    device->prepareCommandQueue(false);
-    //    device->prepareCommandQueue(true);
+   // device->prepareCommandQueue(false);
+    device->prepareCommandQueue(true);
 
     device->allocateMemory();
     DEBUG("Device Initialized\n");
@@ -92,7 +92,8 @@ void clProcess::main_thread()
     int bufferID = 0;
 
     double last_time = e_time_1();
-
+    timer tt;
+    int time_count = 0;
     for(;;) {
         // Wait for data, this call will block.
         //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
@@ -152,7 +153,9 @@ void clProcess::main_thread()
         for (int i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
             sequenceEvent = currentCommand->execute(bufferID, 0, *device, sequenceEvent);
+            tt.time_opencl_multi_kernel(sequenceEvent, currentCommand->get_name());
             cb_data[bufferID]->listCommands[i] = currentCommand;
+            //INFO("NAME: %s",currentCommand->get_name());
         }
 
         if (first_run)
@@ -177,6 +180,14 @@ void clProcess::main_thread()
 
         //buffer_list[0] = (buffer_list[0] + 1)
         bufferID = (++bufferID) % device->getInBuf()->num_buffers;
+        time_count++;
+        if(time_count == 10){
+            for (int i = 0; i < factory->getNumCommands(); i++){
+                currentCommand = factory->getNextCommand();
+                //tt.broadcast(currentCommand->get_name());
+            }
+            time_count = 0;
+        }
     }
 
     DEBUG("Closing\n");
@@ -248,7 +259,8 @@ void clProcess::mem_reconcil_thread()
 
                 mark_buffer_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
-	    copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id, cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
+            INFO("UNCOMMENT ME")
+	        copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id, cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
             mark_buffer_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             /*
             if (cb_data[j]->use_incoh_beamforming == 1)
@@ -266,8 +278,9 @@ void clProcess::mem_reconcil_thread()
             // Copy the information contained in the input buffer
             //WILL BE NEEDED ON PF.
             //pass with metadata object!!!.
-            move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                             cb_data[j]->out_buf, cb_data[j]->buffer_id);
+            INFO("UNCOMMENT ME")
+            //move_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                            // cb_data[j]->out_buf, cb_data[j]->buffer_id);
 
             //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
 
