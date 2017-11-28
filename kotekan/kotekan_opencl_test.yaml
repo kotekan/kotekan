@@ -36,7 +36,7 @@ num_links_fury: 1
 num_links_270: 2
 num_links_280: 3
 
-num_links_per_gpu: 1
+num_links_per_gpu: 8
 #if 280/270 combo
 #num_links_per_gpu: 4
 
@@ -125,7 +125,7 @@ vdif_output_buffers:
     num_frames: buffer_depth
     frame_size: 625*16*5032
     metadata_pool: main_pool
-    vdif_output_buffer_0:
+    vdif_output_buffer:
         kotekan_buffer: standard
 
 gpu:
@@ -144,7 +144,7 @@ gpu:
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  enable_beamforming: false
+  enable_beamforming: true
   instrument_lat: 49.3203
   instrument_long: -119.6175
   ra: 53.5
@@ -182,6 +182,11 @@ gen_data:
     kotekan_process: testDataGen
     network_out_buf: gpu_input_buffer_0
     
+beamform_post_process:
+  kotekan_process: beamformingPostProcess    
+  beam_in_buf_0: beam_output_buffer_0
+  vdif_out_buf: vdif_output_buffer
+  
 #null_0:
 #  kotekan_process: nullProcess
 #  in_buf: gpu_output_buffer_0

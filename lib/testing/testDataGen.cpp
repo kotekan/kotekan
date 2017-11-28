@@ -34,6 +34,8 @@ void testDataGen::main_thread() {
     bool finished_seeding_consant = false;
     static struct timeval now;
 
+    int link_id = 0;
+
     while (!stop_thread) {
         frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
@@ -70,7 +72,13 @@ void testDataGen::main_thread() {
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
-        seq_num += 32768;
+//Test PF seq_num increment.
+        if (link_id == 7){
+            link_id = 0;
+            seq_num += 32768;
+        } else {
+            link_id++;
+        }
         if (frame_id == 0) finished_seeding_consant = true;
     }
 }

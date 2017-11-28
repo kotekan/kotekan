@@ -579,6 +579,8 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
 
     struct metadataContainer * metadata_container = NULL;
 
+//    INFO("buffer metadata: from_buf-%p, from_id-%d, to_buf-%p, to_id-%d ", from_buf->metadata[from_ID], from_ID, to_buf->metadata[to_ID], to_ID);
+    
     metadata_container = from_buf->metadata[from_ID];
 
     CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
@@ -589,7 +591,8 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
         increment_metadata_ref_count(metadata_container);
     }
 
-    // If this is true then the to_buf already has a metadata container for this ID and its different!
+//    INFO("buffer metadata: from_buf-%p, from_id-%d, to_buf-%p, to_id-%d ", from_buf->metadata[from_ID], from_ID, to_buf->metadata[to_ID], to_ID);
+    
     assert(to_buf->metadata[to_ID] == metadata_container);
     CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
 }

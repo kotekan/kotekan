@@ -231,61 +231,30 @@ void clProcess::mem_reconcil_thread()
             }
 
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
-            // your test
-//            std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << " Mem_recon_thread:BufferID_" << j << "_" << cb_data[j]->buff_id_lock->clean << " iteration:" << cb_data[j]->cnt->iteration << std::endl;
 
             //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
             // Copy the information contained in the input buffer
+
             if (cb_data[j]->use_beamforming == 1)
             {
-                //std::cout << "BufferID_" << j << "beamforming" << std::endl;
-                //WILL BE NEEDED ON PF.
                 pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                     cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
                 mark_frame_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
             }
-            /*
-            if (cb_data[j]->use_incoh_beamforming == 1)
-            {
-                std::cout << "BufferID_" << j << "incoh_beamforming" << std::endl;
 
-                copy_buffer_info(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-                    cb_data[j]->beamforming_out_incoh_buf, cb_data[j]->buffer_id);
-
-                mark_buffer_full(cb_data[j]->beamforming_out_incoh_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
-            }
-*/
-            //std::cout << "BufferID_" << j << "move_info" << std::endl;
-
-            // Copy the information contained in the input buffer
-            //WILL BE NEEDED ON PF.
             pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
-
-            //std::cout << "BufferID_" << j << "mark_empty" << std::endl;
 
             // Mark the input buffer as "empty" so that it can be reused.
             mark_frame_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
-            //std::cout << "BufferID_" << j << "mark_full" << std::endl;
-
             // Mark the output buffer as full, so it can be processed.
             mark_frame_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
-
-            //std::cout << "BufferID_" << j << "cleanMe" << std::endl;
 
             for (int i = 0; i < cb_data[j]->numCommands; i++){
                 cb_data[j]->listCommands[i]->cleanMe(cb_data[j]->buffer_id);
             }
-
-            //CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->cnt->lock));
-            //cb_data[j]->cnt->iteration--;
-            //CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->cnt->lock));
-
-            //CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->cnt->cond) );
-
-            //std::cout << "BufferID_" << j << "locks (mem, clean)" << std::endl;
 
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
             cb_data[j]->buff_id_lock->mem_in_use = 0;
