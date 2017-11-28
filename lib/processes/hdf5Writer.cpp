@@ -180,15 +180,10 @@ void hdf5Writer::main_thread() {
     unsigned int frame_id;
     size_t ntime = 0;
 
-    bool init_acq_done = false;
+    // Look over the current buffers for information to setup the acquisition
+    init_acq();
 
     while (!stop_thread) {
-
-
-        if(!init_acq_done) {
-            init_acq();
-            init_acq_done = true;
-        }
 
         // Create a new file if we need to
         if (current_file == nullptr &&
@@ -234,7 +229,7 @@ void hdf5Writer::main_thread() {
 
             char time_buf[64];
             time_t temp_time = time_v.tv_sec;
-            struct tm* l_time = localtime(&temp_time);
+            struct tm* l_time = gmtime(&temp_time);
             strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", l_time);
 
             INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
@@ -341,13 +336,14 @@ void hdf5Writer::setup_freq(const std::vector<stream_id_t>& stream_ids) {
     }
 
     // Output all the frequencies that we have found
-    std::ostringstream s;
+    std::string s;
     for(auto id : stream_bin_ids) {
         std::tie(stream, bin) = id;
-        s << bin << " [" << std::fixed <<
-        std::setprecision(2) << freq_from_bin(bin) << " MHz], ";
+        char t[32];
+        snprintf(t, 32, "%i [%.2f MHz] ", bin, freq_from_bin(bin));
+        s += t;
     }
-    INFO("Frequency bins found: %s", s.str().c_str());
+    INFO("Frequency bins found: %s", s.c_str());
 
     // Sort the streams into bin order, this will give the order in which they
     // are written out
@@ -382,17 +378,14 @@ void hdf5Writer::setup_acq_start(const std::vector<timeval>& start_times) {
         }
     );
 
-    // Format the time into the acquisition name
-    time_t temp_time = earliest_time.tv_sec;
-    struct tm* l_time = localtime(&temp_time);
-    char time_buf[64];
-    strftime(time_buf, sizeof(time_buf), "%Y%m%dT%H%M%SZ", l_time);
+    // Format the time (annoyingly you still have to use streams for this)
     std::ostringstream s;
-    s << time_buf << "_" << instrument_name << "_corr";
+    s << std::put_time(std::gmtime(&(earliest_time.tv_sec)), "%Y%m%dT%H%M%SZ");
+    // Set the acq name
+    acq_name = s.str() + "_" + instrument_name + "_corr";
 
     // Set the acq fields on the instance
     acq_start_time = tv_to_double(earliest_time);
-    acq_name = s.str();
 
     // Create acquisition directory. Don't bother checking if it already exists, just let it transparently fail
     std::string dir_name = root_path + "/" + acq_name;
