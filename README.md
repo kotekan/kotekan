@@ -2,10 +2,10 @@
 
 ## Software:
 
-* CentOS 7.*, Ubuntu 14.04, 16.04, macOS
+* CentOS 7.\*, Ubuntu 14.04, 16.04, macOS
 * GCC >= 4.9.4 or CLANG >= 3.5.0
 * CMake >= 2.8
-* libevent, pthread 
+* libevent, pthread
 
 Required for some build options:
 
@@ -13,6 +13,7 @@ Required for some build options:
 * Hugepage support
 * [AMD OpenCL drivers](http://support.amd.com/en-us/download/linux) and [SDK](http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/)
 * [AMD ROCm](https://github.com/RadeonOpenCompute/ROCm)
+* [HDF5](https://www.hdfgroup.org/HDF5/) and [HighFive (Richard's fork)](https://github.com/jrs65/HighFive)
 
 ## Hardware:
 
@@ -71,7 +72,7 @@ To build just the base framework:
 	cd build
 	cmake ..
 	make
-    
+
 Cmake build options:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
@@ -79,7 +80,8 @@ Cmake build options:
 * `-DUSE_HSA=ON` - Build with HSA support.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
-* `-DDPDK_VDIF=ON` - Adjusts DPDK defines to optimize for single dish VDIF capture mode. 
+* `-DDPDK_VDIF=ON` - Adjusts DPDK defines to optimize for single dish VDIF capture mode.
+* `-DUSE_HDF5=on` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 
 **Examples:**
 
@@ -110,7 +112,7 @@ To stop kotekan
 **To run in debug mode, run from `ch_gpu/build/kotekan/`**
 
     sudo ./kotekan -c <config_file>.yaml
-    
+
 For example:
 
     sudo ./kotekan -c ../../kotekan/kotekan_gpu_replay.yaml

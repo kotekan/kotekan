@@ -75,8 +75,9 @@ endif ()
 
 
 # HDF5 stuff
-find_package(HDF5 REQUIRED)
-include_directories (${HDF5_INCLUDE_DIRS})
+if (${USE_HDF5})
+  include_directories (${HDF5_INCLUDE_DIRS})
+endif ()
 
 add_subdirectory(testing)
 target_link_libraries( kotekan_libs kotekan_testing )
