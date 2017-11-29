@@ -196,3 +196,16 @@ accumulate:
 #  const_data_check_3:
 #    kotekan_process: constDataCheck
 #    buf: file_output_buffer_3
+
+metadata_dump_0:
+  kotekan_process: chimeMetadataDump
+  buf: file_output_buffer_0
+metadata_dump_1:
+  kotekan_process: chimeMetadataDump
+  buf: file_output_buffer_1
+metadata_dump_2:
+  kotekan_process: chimeMetadataDump
+  buf: file_output_buffer_2
+metadata_dump_3:
+  kotekan_process: chimeMetadataDump
+  buf: file_output_buffer_3
