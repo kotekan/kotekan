@@ -22,21 +22,24 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               streamSingleDishVDIF.cpp
               accumulate.cpp
               bufferStatus.cpp
-              hdf5Writer.cpp
               )
 
 if (${USE_DPDK})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
 endif ()
 
+# HDF5 stuff
+if (${USE_HDF5})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} hdf5Writer.cpp)
+endif ()
+
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
-
 # HDF5 stuff
-find_package(HDF5 REQUIRED)
-include_directories (${HDF5_INCLUDE_DIRS})
-include_directories (/kotekan/HighFive/include/)
-target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+if (${USE_HDF5})
+  include_directories (${HDF5_INCLUDE_DIRS})
+  target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+endif ()
 
 # This seems like a circular reference, seems like there should be a
 # way to avoid this.
