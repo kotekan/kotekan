@@ -21,10 +21,10 @@ void hsaBeamformUpchan::apply_config(const uint64_t& fpga_seq) {
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _downsample_time = config.get_int(unique_name, "downsample_time");
     _downsample_freq = config.get_int(unique_name, "downsample_freq");
+    _num_frb_total_beams = config.get_int(unique_name, "num_frb_total_beams");
 
     input_frame_len = _num_elements * (_samples_per_data_set+32) * 2 * sizeof(float);
-    output_frame_len = _num_elements * (_samples_per_data_set/_downsample_time/_downsample_freq/2) * sizeof(float);
-
+    output_frame_len = _num_frb_total_beams * (_samples_per_data_set/_downsample_time/_downsample_freq) * sizeof(uint8_t);
 
 }
 

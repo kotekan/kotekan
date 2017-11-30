@@ -35,7 +35,7 @@ private:
     double * tmp128;
     int * tmp512;
     int * reorder_map_c;
-    double * cpu_final_output;
+    unsigned char * cpu_final_output;
 
 
     int input_len;

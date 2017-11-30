@@ -67,8 +67,7 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
             A_Type first_value = *((A_Type *)&(first_frame[i*sizeof(A_Type)]));
             A_Type second_value = *((A_Type *)&(second_frame[i*sizeof(A_Type)]));
 
-            if (std::is_same<A_Type, float>::value) { //FRB numbers are float
-                //INFO("Checking float numbers-----------");
+            if ((std::is_same<A_Type, float>::value) or (std::is_same<A_Type, unsigned char>::value)) { 
                 float diff = ((double)first_value - (double)second_value)/(double)first_value*100;
                 float diff2 = (double)first_value - (double)second_value;
                 float diff3 = ((double)first_value - (double)second_value)/(double)second_value*100;
@@ -82,7 +81,8 @@ template <typename A_Type> void testDataCheck<A_Type>::main_thread() {
                          (double)first_value, (double)second_value, diff, diff2, diff3);
                     }
                 }
-            } else {  //N2 numbers are int
+            } 
+	    else {  //N2 numbers are int
                 //INFO("Checking non float numbers-----------");
                 if (first_value != second_value) {
                     if (num_errors++ < 10000)

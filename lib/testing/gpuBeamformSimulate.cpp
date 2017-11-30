@@ -11,6 +11,7 @@
 #define light 3.e8
 #define Freq_ref 492.125984252
 #define freq1 450.
+#define scaling 400.
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         const string& unique_name,
@@ -27,7 +28,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     input_len = _samples_per_data_set * _num_elements * 2;
     input_len_padded = input_len * 2;
     transposed_len = (_samples_per_data_set+32) * _num_elements * 2;
-    output_len = _num_elements*(_samples_per_data_set/_downsample_time/_downsample_freq);
+    output_len = _num_elements*(_samples_per_data_set/_downsample_time/_downsample_freq/2);
 
 
     input_unpacked = (double *)malloc(input_len * sizeof(double));
@@ -36,7 +37,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     cpu_beamform_output = (double *)malloc(input_len * sizeof(double));
     transposed_output = (double *)malloc(transposed_len * sizeof(double));
     tmp128 = (double *)malloc(_factor_upchan*2*sizeof(double));
-    cpu_final_output = (double *)malloc(output_len*sizeof(double));
+    cpu_final_output = (unsigned char *)malloc(output_len*sizeof(unsigned char));
 
     coff = (float *) malloc(16*2*sizeof(float));
     assert(coff != nullptr);
@@ -357,24 +358,27 @@ void gpuBeamformSimulate::main_thread() {
             for (int t=0;t<nsamp_out;t++){
 	        for (int f=0;f< nfreq_out;f++){
 		  int out_id = b*nsamp_out*nfreq_out + t*nfreq_out + f;
-		  float out_real=0.0;
-		  float out_imag = 0.0;
+		  float tmp_real=0.0;
+                  float tmp_imag = 0.0;
+                  float out_sq  = 0.0;
 		  for (int pp=0;pp<npol;pp++){
 		      for (int tt=0;tt<_downsample_time;tt++){
 			  for (int ff=0;ff<_downsample_freq;ff++){
-			    out_real += cpu_beamform_output[(pp*1024*_samples_per_data_set+b*_samples_per_data_set+(t*_downsample_time+tt)*_factor_upchan+(f*_downsample_freq+ff))*2];
-			    out_imag += cpu_beamform_output[(pp*1024*_samples_per_data_set+b*_samples_per_data_set+(t*_downsample_time+tt)*_factor_upchan+(f*_downsample_freq+ff))*2 +1];
+			    tmp_real = cpu_beamform_output[(pp*1024*_samples_per_data_set+b*_samples_per_data_set+(t*_downsample_time+tt)*_factor_upchan+(f*_downsample_freq+ff))*2];
+                            tmp_imag = cpu_beamform_output[(pp*1024*_samples_per_data_set+b*_samples_per_data_set+(t*_downsample_time+tt)*_factor_upchan+(f*_downsample_freq+ff))*2 +1];
+                            out_sq += tmp_real*tmp_real + tmp_imag*tmp_imag;
 			  }
 		      }
 		  }
-		  cpu_final_output[out_id] = (out_real*out_real+out_imag*out_imag)/48.;
-	          //output  = sqrt(out_real*out_real+out_imag*out_imag)/48.;
+		  float tmp = out_sq/48./scaling;
+                  if (tmp > 255) tmp = 255;
+                  cpu_final_output[out_id] = round(tmp);
 		}
 	    }
         }
 
-        for (int i = 0; i < output_buf->frame_size/sizeof(float); i++) {
-            output[i] = (float)cpu_final_output[i];
+        for (int i = 0; i < output_buf->frame_size; i++) {
+            output[i] = (unsigned char)cpu_final_output[i];
 	    }
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
