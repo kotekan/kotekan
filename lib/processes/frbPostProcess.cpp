@@ -165,9 +165,8 @@ void frbPostProcess::main_thread() {
 		   (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
 
 	    stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-	    frb_header_coarse_freq_ids[i] = get_stream_id(in_buf[i], in_buffer_ID[i]);
-	    //This get the freq in MHz but we don't seem to need it
-	    //float freq_now = freq_from_bin(bin_number_chime(&stream_id));
+            float freq_now = bin_number_chime(&stream_id);
+            frb_header_coarse_freq_ids[i] = freq_now;
 	}
 
         // If this is the first time wait until we get the start of an interger second period.
