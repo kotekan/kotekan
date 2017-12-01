@@ -33,7 +33,7 @@ To support OpenCL builds with the full networking stack:
 
 ## DPDK
 
-Install process.  Download the DPDK version 2.2.0 from:
+Install process.  Download the DPDK version 16.11.3 from:
 
 http://fast.dpdk.org/rel/dpdk-16.11.3.tar.xz
 
