@@ -81,6 +81,15 @@ else ()
   MESSAGE("DPDK Disabled")
 endif ()
 
+if (${USE_HDF5})
+  # HDF5 setup
+  include_directories ( ${HIGHFIVE_PATH}/include )
+  find_package(HDF5 REQUIRED)
+  add_definitions(-DWITH_HDF5)
+  MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
+else ()
+  MESSAGE("HDF5 disabled")
+endif ()
 
 # Get the current working branch
 execute_process(

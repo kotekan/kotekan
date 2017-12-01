@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <sys/time.h>
+#include <time.h>
 #include <assert.h>
 #include <math.h>
 
@@ -41,6 +42,7 @@
 #include "fpga_header_functions.h"
 #include "vdif_functions.h"
 #include "chimeMetadata.h"
+#include "gpsTime.h"
 
 // 256
 #define RX_RING_SIZE 512
@@ -222,6 +224,11 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
     set_first_packet_recv_time(dpdk_net->args->buf[port][freq],
                                dpdk_net->link_data[port][freq].buffer_id,
                                now);
+    if (is_gps_global_time_set() == 1) {
+        struct timespec gps_time = compute_gps_time(new_seq);
+        set_gps_time(dpdk_net->args->buf[port][freq],
+                     dpdk_net->link_data[port][freq].buffer_id, gps_time);
+    }
 
     // We take the stream ID only from the first pair of crates,
     // to avoid overwriting it on different ports.
@@ -265,6 +272,11 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
     set_first_packet_recv_time(dpdk_net->args->vdif_buf,
                                dpdk_net->link_data[port][0].vdif_buffer_id,
                                now);
+    if (is_gps_global_time_set() == 1) {
+        struct timespec gps_time = compute_gps_time(new_seq);
+        set_gps_time(dpdk_net->args->vdif_buf,
+                     dpdk_net->link_data[port][0].buffer_id, gps_time);
+    }
 
     set_stream_id(dpdk_net->args->vdif_buf,
                   dpdk_net->link_data[port][0].vdif_buffer_id,
@@ -566,6 +578,13 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 set_first_packet_recv_time(dpdk_net->args->buf[port][freq],
                                         dpdk_net->link_data[port][freq].buffer_id,
                                         now);
+                if (is_gps_global_time_set() == 1) {
+                    struct timespec gps_time = compute_gps_time(seq - seq % integration_period);
+                    set_gps_time(dpdk_net->args->buf[port][freq],
+                                 dpdk_net->link_data[port][freq].buffer_id,
+                                 gps_time);
+                }
+
                 // We take the stream ID only from the first pair of crates,
                 // to avoid overwriting it on different ports.
                 // This makes the stream ID unique for down stream processes.
@@ -586,6 +605,12 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
             set_first_packet_recv_time(dpdk_net->args->vdif_buf,
                                     dpdk_net->link_data[port][0].vdif_buffer_id,
                                     now);
+            if (is_gps_global_time_set() == 1) {
+                struct timespec gps_time = compute_gps_time(seq - seq % integration_period);
+                set_gps_time(dpdk_net->args->vdif_buf,
+                             dpdk_net->link_data[port][0].vdif_buffer_id,
+                             gps_time);
+            }
             set_stream_id(dpdk_net->args->vdif_buf,
                           dpdk_net->link_data[port][0].vdif_buffer_id,
                           stream_id);

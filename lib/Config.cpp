@@ -40,6 +40,15 @@ int32_t Config::get_int(const string& base_path, const string& name) {
     return value.get<int32_t>();
 }
 
+uint64_t Config::get_uint64(const string& base_path, const string& name) {
+    json value = get_value(base_path, name);
+
+    if (!value.is_number_integer() && !value.is_number_float() ) {
+        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an integer or doesn't exist");
+    }
+    return value.get<uint64_t>();
+}
+
 int32_t Config::get_int_default(const string& base_path, const string& name, int32_t default_value) {
     try {
         int32_t value = get_int(base_path, name);
@@ -241,7 +250,16 @@ json Config::get_value(const string& base_path, const string& name) {
         std::size_t last_slash = search_path.find_last_of("/");
         search_path = search_path.substr(0, last_slash);
     }
-    throw std::runtime_error("The value " + name + " does not exist in the path to: " + base_path);
+    throw std::runtime_error("The config option: " + name + " is required, but was not found in the path: " + base_path);
+}
+
+bool Config::exists(const string& base_path, const string& name) {
+    try {
+        get_value(base_path, name);
+    } catch (std::runtime_error const & ex) {
+        return false;
+    }
+    return true;
 }
 
 void Config::dump_config() {
