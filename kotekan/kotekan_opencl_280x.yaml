@@ -275,6 +275,16 @@ beamform_vdif:
   vdif_port: 10251
   vdif_in_buf: vdif_output_buffer  
 
+#metadata_dump_0:
+#  kotekan_process: chimeMetadataDump
+#  buf: gpu_output_buffer_0
+#metadata_dump_1:
+#  kotekan_process: chimeMetadataDump
+#  buf: gpu_output_buffer_1
+#metadata_dump_2:
+#  kotekan_process: chimeMetadataDump
+#  buf: gpu_output_buffer_2
+
 #buffer_status:
 #  kotekan_process: bufferStatus
 #  time_delay: 5000 #microseconds

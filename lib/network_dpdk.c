@@ -931,7 +931,7 @@ int lcore_recv_pkt(void *args)
                 // There is only possible diff for all freqs.  TODO: Idealy this value would be a per port only.
                 int64_t diff = (int64_t)dpdk_net->link_data[port][0].seq - (int64_t)dpdk_net->link_data[port][0].last_seq;
                 if (unlikely(diff < 0)) {
- //ikt - commented out to test performance without DEBUG calls.                   
+ //it - commented out to test performance without DEBUG calls.                   
  //                   DEBUG("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
  //                           port, diff, dpdk_net->link_data[port][0].last_seq, dpdk_net->link_data[port][0].seq);
                     goto release_frame;
@@ -940,7 +940,8 @@ int lcore_recv_pkt(void *args)
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-                        INFO("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
+//it - commented out to test performance without INFO calls.                   
+//                        INFO("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
                         handle_lost_packets(dpdk_net, port);
                     }
 

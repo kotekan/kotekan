@@ -64,16 +64,16 @@ void vdifStream::main_thread() {
     }
 
     while(!stop_thread) {
-
-        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
-             _vdif_server_ip.c_str(),
-             _vdif_port);
+//IT - commented out to test performance without INFO calls.
+//        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
+//             _vdif_server_ip.c_str(),
+//             _vdif_port);
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
-
-        INFO("vdif_stream; got full buffer, sending to VDIF server.");
+//IT - commented out to test performance without INFO calls.
+//        INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
         start_t = e_time();
 
@@ -100,10 +100,11 @@ void vdifStream::main_thread() {
         }
 
         diff_t = e_time() - start_t;
-        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d microseconds",
-              _vdif_server_ip.c_str(),
-              _vdif_port,
-              diff_t, sleep_period);
+//IT - commented out to test performance without INFO calls.
+//        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d microseconds",
+//              _vdif_server_ip.c_str(),
+//              _vdif_port,
+//              diff_t, sleep_period);
 
         if (diff_t < 0.96) {
             sleep_period += 50;
