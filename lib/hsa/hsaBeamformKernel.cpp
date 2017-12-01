@@ -51,11 +51,23 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
 
     void * device_coeff_map = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     device.sync_copy_host_to_gpu(device_coeff_map, (void*)host_coeff, coeff_len);
+
+    gain_len = 2*2048*sizeof(float);
+    host_gain = (float *)hsa_host_malloc(gain_len);
+    FILE *ptr_myfile;
+    ptr_myfile=fopen("../../kotekan/dummy-gains.bin","rb");
+    fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+    fclose(ptr_myfile);
+    void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
+    device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
+
+
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
     hsa_host_free(host_map);
     hsa_host_free(host_coeff);
+    hsa_host_free(host_gain);
     // TODO Free device memory allocations.
 }
 
@@ -77,12 +89,14 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         void *map_buffer;
         void *coeff_buffer;
         void *output_buffer;
+	void *gain_buffer;
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory_array("beamform_output", gpu_frame_id, output_frame_len);
+    args.gain_buffer = device.get_gpu_memory("beamform_gain", gain_len);
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
