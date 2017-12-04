@@ -178,28 +178,6 @@ void hdf5Writer::main_thread() {
 
     while (!stop_thread) {
 
-        // Create a new file if we need to
-        if (current_file == nullptr &&
-            std::binary_search(enabled_chunks.begin(),
-                               enabled_chunks.end(), chunk_id)) {
-
-            // Get the timestamp of the first buffer to label the new file
-            // TODO: this won't work if we have buffers potentially out of sync
-            std::tie(buf, frame_id) = buffers[0];
-            double filestart = tv_to_double(get_first_packet_recv_time(buf, frame_id));
-
-            char temp[100];
-            snprintf(
-                temp, sizeof(temp), "%08d_%04d.h5",
-                (unsigned int)(filestart - acq_start_time), chunk_id
-            );
-            std::string file_name = temp;
-            file_name = root_path + "/" + acq_name + "/" + file_name;
-            current_file = std::unique_ptr<visFile>(
-                new visFile(file_name, acq_name, instrument_name, "", freqs, inputs)
-            );
-        }
-
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and then attempt to write
         // the data into a file
@@ -253,8 +231,9 @@ void hdf5Writer::main_thread() {
             std::vector<int32_t> gain_exp(input_remap.size(), 0);
 
             // Add all the new information to the file.
-            if(current_file != nullptr) {
-                ntime = current_file->addSample(t, freq_ind, vis, vis_weight, gain_coeff, gain_exp);
+            if(enabled) {
+                file_bundle->addSample(t, freq_ind, vis, vis_weight,
+                                       gain_coeff, gain_exp);
             }
 
             // Mark the buffer as empty and move on
@@ -264,11 +243,6 @@ void hdf5Writer::main_thread() {
             std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
 
             buf_ind++;
-        }
-
-        // Close the file when it gets too long
-        if(ntime >= MAX_NTIME) {
-            current_file = nullptr;
         }
 
     }
@@ -298,7 +272,6 @@ void hdf5Writer::init_acq() {
 
     // Use the per buffer into to setup the acqusition properties
     setup_freq(stream_ids);
-    setup_acq_start(start_times);
 
     // Set the chunk_id from the set of stream IDs we are getting.
     //
@@ -309,8 +282,21 @@ void hdf5Writer::init_acq() {
     stream_id_t ts = stream_ids[0];
     ts.unused = 0;
     chunk_id = bin_number_chime(&ts);
-
     INFO("Running on node_id=%d", chunk_id);
+
+// Determine whether this node is enabled for writing
+    enabled = std::binary_search(enabled_chunks.begin(),
+                                 enabled_chunks.end(), chunk_id);
+
+    // Create the visFileBundle. This will not create any files until addSample
+    // is called
+    // TODO: connect up notes
+    std::string notes = "";
+    file_bundle = std::unique_ptr<visFileBundle>(
+         new visFileBundle(
+             root_path, chunk_id, instrument_name, notes, freqs, inputs
+         )
+    );
 }
 
 
@@ -358,31 +344,6 @@ void hdf5Writer::setup_freq(const std::vector<stream_id_t>& stream_ids) {
         axis_ind++;
     }
 
-}
-
-
-void hdf5Writer::setup_acq_start(const std::vector<timeval>& start_times) {
-
-    // Calculate the earliest time that a buffer was received
-    timeval earliest_time = *std::min_element(
-        start_times.begin(), start_times.end(),
-        [] (timeval const& t1, timeval const& t2) {
-            return tv_to_double(t1) < tv_to_double(t2);
-        }
-    );
-
-    // Format the time (annoyingly you still have to use streams for this)
-    std::ostringstream s;
-    s << std::put_time(std::gmtime(&(earliest_time.tv_sec)), "%Y%m%dT%H%M%SZ");
-    // Set the acq name
-    acq_name = s.str() + "_" + instrument_name + "_corr";
-
-    // Set the acq fields on the instance
-    acq_start_time = tv_to_double(earliest_time);
-
-    // Create acquisition directory. Don't bother checking if it already exists, just let it transparently fail
-    std::string dir_name = root_path + "/" + acq_name;
-    mkdir(dir_name.c_str(), 0755);
 }
 
 

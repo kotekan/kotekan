@@ -48,11 +48,9 @@ private:
     std::vector<int32_t> enabled_chunks;
 
     std::string instrument_name;
-    std::string acq_name;
-    double acq_start_time;
 
     // The current file of visibilities that we are writing
-    std::unique_ptr<visFile> current_file;
+    std::unique_ptr<visFileBundle> file_bundle;
 
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<struct Buffer*, unsigned int>> buffers;
@@ -70,6 +68,7 @@ private:
 
     // A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
+    bool enabled;
 
 };
 

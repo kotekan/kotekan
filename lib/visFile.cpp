@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
+#include <sys/stat.h>
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -159,6 +160,86 @@ void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
 
 }
 
+// Quick functions for fetching datasets and dimensions
+DataSet visFile::vis() {
+    return file->getDataSet("vis");
+}
+
+DataSet visFile::vis_weight() {
+    return file->getDataSet("flags/vis_weight");
+}
+
+DataSet visFile::gain_coeff() {
+    return file->getDataSet("gain_coeff");
+}
+
+DataSet visFile::gain_exp() {
+    return file->getDataSet("gain_exp");
+}
+
+DataSet visFile::time() {
+    return file->getDataSet("index_map/time");
+}
+
+size_t visFile::num_time() {
+    return time().getSpace().getDimensions()[0];
+}
+
+size_t visFile::num_prod() {
+    return vis().getSpace().getDimensions()[2];
+}
+
+size_t visFile::num_freq() {
+    return vis().getSpace().getDimensions()[1];
+}
+
+size_t visFile::num_input() {
+    return gain_exp().getSpace().getDimensions()[1];
+}
+
+
+uint32_t visFile::extendTime(time_ctype new_time) {
+
+    // Get the current dimensions
+    size_t ntime = num_time(), nprod = num_prod(),
+           ninput = num_input(), nfreq = num_freq();
+
+    INFO("Current size: %zd; new size: %zd", ntime, ntime + 1);
+    // Add a new entry to the time axis
+    ntime++;
+    time().resize({ntime});
+    time().select({ntime - 1}, {1}).write(&new_time);
+
+    // Extend all other datasets
+    vis().resize({ntime, nfreq, nprod});
+    vis_weight().resize({ntime, nfreq, nprod});
+    gain_coeff().resize({ntime, nfreq, ninput});
+    gain_exp().resize({ntime, ninput});
+
+    // Flush the changes
+    file->flush();
+
+    return ntime - 1;
+}
+
+
+void visFile::writeSample(
+    uint32_t time_ind, uint32_t freq_ind, std::vector<complex_int> new_vis,
+    std::vector<uint8_t> new_weight, std::vector<complex_int> new_gcoeff,
+    std::vector<int32_t> new_gexp
+) {
+
+    // Get the current dimensions
+    size_t nprod = num_prod(), ninput = num_input();
+
+    vis().select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
+    vis_weight().select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_weight);
+    gain_coeff().select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(new_gcoeff);
+    gain_exp().select({time_ind, 0}, {1, ninput}).write(new_gexp);
+
+    file->flush();
+}
+
 
 size_t visFile::addSample(
     time_ctype new_time, uint32_t freq_ind, std::vector<complex_int> new_vis,
@@ -166,56 +247,151 @@ size_t visFile::addSample(
     std::vector<int32_t> new_gexp
 ) {
 
-    // TODO: extend this routine such that it can insert frequencies into
-    // previous time samples
-
-    DataSet time_imap = file->getDataSet("index_map/time");
-    DataSet vis = file->getDataSet("vis");
-    DataSet vis_weight = file->getDataSet("flags/vis_weight");
-    DataSet gain_coeff = file->getDataSet("gain_coeff");
-    DataSet gain_exp = file->getDataSet("gain_exp");
-
-    // Get size of dimensions
-    std::vector<size_t> dims = vis.getSpace().getDimensions();
-    size_t ntime = dims[0], nfreq = dims[1], nprod = dims[2];
-    dims = gain_coeff.getSpace().getDimensions();
-    size_t ninput = dims[2];
-
+    size_t ntime = num_time();
     uint32_t time_ind = ntime - 1;
 
     // Get the latest time in the file
     time_ctype last_time;
 
     if(ntime > 0) {
-        time_imap.select({time_ind}, {1}).read(&last_time);
+        time().select({time_ind}, {1}).read(&last_time);
     }
 
     // If we haven't seen the new time add it to the time axis and extend the time
     // dependent datasets
     if(ntime == 0 || new_time.fpga_count > last_time.fpga_count) {
-        INFO("Current size: %zd; new size: %zd", ntime, ntime + 1);
-
-        // Add a new entry to the time axis
-        ntime++; time_ind++;
-        time_imap.resize({ntime});
-        time_imap.select({time_ind}, {1}).write(&new_time);
-
-        // Extend all other datasets
-        vis.resize({ntime, nfreq, nprod});
-        vis_weight.resize({ntime, nfreq, nprod});
-        gain_coeff.resize({ntime, nfreq, ninput});
-        gain_exp.resize({ntime, ninput});
-
+        time_ind = extendTime(new_time);
+        ntime++;
     }
 
-    vis.select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
-    vis_weight.select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_weight);
-    gain_coeff.select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(new_gcoeff);
-    gain_exp.select({time_ind, 0}, {1, ninput}).write(new_gexp);
-
-    file->flush();
-
+    writeSample(time_ind, freq_ind, new_vis, new_weight, new_gcoeff, new_gexp);
     return ntime;
+}
+
+
+visFileBundle::visFileBundle(const std::string root_path,
+                             int freq_chunk,
+                             const std::string instrument_name,
+                             const std::string notes,
+                             const std::vector<freq_ctype>& freqs,
+                             const std::vector<input_ctype>& inputs,
+                             size_t rollover, size_t window_size) :
+
+    root_path(root_path),
+    freq_chunk(freq_chunk),
+    instrument_name(instrument_name),
+    notes(notes),
+    freqs(freqs),
+    inputs(inputs),
+    rollover(rollover),
+    window_size(window_size)
+
+{
+
+
+}
+
+
+void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
+                              std::vector<complex_int> new_vis,
+                              std::vector<uint8_t> new_weight,
+                              std::vector<complex_int> new_gcoeff,
+                              std::vector<int32_t> new_gexp) {
+
+    std::shared_ptr<visFile> file;
+    uint32_t ind;
+
+    uint64_t count = new_time.fpga_count;
+
+    if(vis_file_map.size() == 0) {
+        // If no files are currently in the map we should create a new one.
+        addFile(new_time);
+    } else {
+        // If there are files in the list we need to figure out whether to
+        // insert a new entry or not
+        uint64_t max_fpga = vis_file_map.rbegin()->first;
+        uint64_t min_fpga = vis_file_map.begin()->first;
+
+        if(count < min_fpga) {
+            // This data is older that anything else in the map so we should just drop it
+            INFO("Dropping integration as buffer (FPGA count: %" PRIu64
+                 ") arrived too late (minimum in pool %" PRIu64 ")",
+                 new_time.fpga_count, min_fpga);
+            return;
+        }
+
+        if(count > max_fpga) {
+            // We've got a later time and so we need to add a new time sample,
+            // if the current file does not need to rollover register the new
+            // sample as being in the last file, otherwise create a new file
+            std::tie(file, ind) = vis_file_map.rbegin()->second;  // Unpack the last entry
+
+            if(file->num_time() < rollover) {
+                // Extend the time axis and add into the sample map
+                ind = file->extendTime(new_time);
+                vis_file_map[count] = std::make_tuple(file, ind);
+            } else {
+                addFile(new_time);
+            }
+
+            // As we've added a new sample we need to delete the earliest sample
+            if(vis_file_map.size() > window_size) {
+                vis_file_map.erase(vis_file_map.begin());
+            }
+        }
+    }
+
+    if(vis_file_map.find(count) == vis_file_map.end()) {
+        // This is slightly subtle, but if a sample was not found at this point
+        // then it must lie within the range, but not have been saved into the
+        // files already. This means that adding it would make the files time
+        // axis be out of order, so we just skip it for now.
+        INFO("Skipping integration (FPGA count %" PRIu64
+             ") as it would be written out of order.", count);
+        return;
+    }
+
+    // We can now safely add the sample into the file
+    std::tie(file, ind) = vis_file_map[count];
+    file->writeSample(ind, freq_ind, new_vis, new_weight,
+                      new_gcoeff, new_gexp);
+
+}
+
+void visFileBundle::addFile(time_ctype first_time) {
+
+    time_t t = (time_t)first_time.ctime;
+
+    // Start the acq and create the directory if required
+    if(acq_name.empty()) {
+        // Format the time (annoyingly you still have to use streams for this)
+        std::ostringstream s;
+        s << std::put_time(std::gmtime(&t), "%Y%m%dT%H%M%SZ");
+        // Set the acq name
+        acq_name = s.str() + "_" + instrument_name + "_corr";
+
+        // Set the acq fields on the instance
+        acq_start_time = first_time.ctime;
+
+        // Create acquisition directory. Don't bother checking if it already exists, just let it transparently fail
+        mkdir((root_path + "/" + acq_name).c_str(), 0755);
+    }
+
+    // Construct the name of the new file
+    char fname_temp[100];
+    snprintf(
+        fname_temp, sizeof(fname_temp), "%08d_%04d.h5",
+        (unsigned int)(first_time.ctime - acq_start_time), freq_chunk
+    );
+    std::string file_name = fname_temp;
+    file_name = root_path + "/" + acq_name + "/" + file_name;
+
+    // Create the file, create room for the first sample and add into the file map
+    auto file = std::make_shared<visFile>(
+        file_name, acq_name, instrument_name, "", freqs, inputs
+    );
+    auto ind = file->extendTime(first_time);
+    vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
 }
 
 
