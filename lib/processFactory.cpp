@@ -33,6 +33,8 @@
 #include "accumulate.hpp"
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
+#include "bufferSend.hpp"
+#include "bufferRecv.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -220,6 +222,13 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         #else
             throw std::runtime_error("hdf5Writer is not supported on this system");
         #endif
+    }
+
+    if (name == "bufferSend") {
+        return (KotekanProcess *) new bufferSend(config, location, buffer_container);
+    }
+    if (name == "bufferRecv") {
+        return (KotekanProcess *) new bufferRecv(config, location, buffer_container);
     }
 
     // OpenCL
