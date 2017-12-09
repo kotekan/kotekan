@@ -1,0 +1,71 @@
+#ifndef VIS_UTIL_HPP
+#define VIS_UTIL_HPP
+
+#include <stdint.h>
+#include <time.h>
+#include <sys/time.h>
+#include <string>
+#include <vector>
+
+// Structs to represent the datatypes of the index maps
+struct freq_ctype {
+    double centre;
+    double width;
+};
+
+struct input_ctype {
+    // Allow initialisation from a std::string
+    input_ctype(uint16_t id, std::string serial);
+
+    uint16_t chan_id;
+    char correlator_input[32];
+};
+
+struct time_ctype {
+    uint64_t fpga_count;
+    double ctime;
+};
+
+struct prod_ctype {
+    uint16_t input_a;
+    uint16_t input_b;
+};
+
+struct complex_int {
+    int32_t r;
+    int32_t i;
+};
+
+
+// Functions for indexing into the buffer of data
+inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
+    return (n * (n + 1) / 2) - ((n - i) * (n - i + 1) / 2) + (j - i);
+}
+
+inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
+    uint32_t b_ix = cmap(i / block, j / block, N / block);
+
+    return block * block * b_ix + (i % block) * block + (j % block);
+}
+
+inline double tv_to_double(const timeval & tv) {
+    return (tv.tv_sec + 1e-6 * tv.tv_usec);
+}
+
+inline double ts_to_double(const timespec & ts) {
+    return (ts.tv_sec + 1e-6 * ts.tv_nsec);
+}
+
+
+
+void copy_vis_triangle(
+    const int32_t * buf, const std::vector<uint32_t>& inputmap,
+    size_t block, size_t n, complex_int * output
+);
+
+std::vector<complex_int> copy_vis_triangle(
+    const int32_t * buf, const std::vector<uint32_t>& inputmap,
+    size_t block, size_t N
+);
+
+#endif
