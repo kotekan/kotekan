@@ -3,38 +3,10 @@
 
 #include <iostream>
 #include <map>
-#include "errors.h"
 #include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
-
-// Structs to represent the datatypes of the index maps
-struct freq_ctype {
-    double centre;
-    double width;
-};
-
-struct input_ctype {
-    // Allow initialisation from a std::string
-    input_ctype(uint16_t id, std::string serial);
-
-    uint16_t chan_id;
-    char correlator_input[32];
-};
-
-struct time_ctype {
-    uint64_t fpga_count;
-    double ctime;
-};
-
-struct prod_ctype {
-    uint16_t input_a;
-    uint16_t input_b;
-};
-
-struct complex_int {
-    int32_t r;
-    int32_t i;
-};
+#include "visUtil.hpp"
+#include "errors.h"
 
 
 /// Class to manage access to a CHIME correlator file

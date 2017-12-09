@@ -16,51 +16,6 @@
 const size_t BLOCK_SIZE = 32;
 const size_t MAX_NTIME = 1024;
 
-// Functions for indexing into the buffer of data
-inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
-    return (n * (n + 1) / 2) - ((n - i) * (n - i + 1) / 2) + (j - i);
-}
-
-inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t b_ix = cmap(i / block, j / block, N / block);
-
-    return block * block * b_ix + (i % block) * block + (j % block);
-}
-
-inline double tv_to_double(const timeval & tv) {
-    return (tv.tv_sec + 1e-6 * tv.tv_usec);
-}
-
-// Copy the visibility triangle out of the buffer of data, allowing for a
-// possible reordering of the inputs
-std::vector<complex_int> copy_vis_triangle(
-    const int32_t * buf, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N
-) {
-
-    size_t M = inputmap.size();
-    std::vector<complex_int> output(M * (M + 1) / 2);
-    size_t pi = 0;
-    uint32_t bi;
-
-    if(*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
-        throw std::invalid_argument("Input map asks for elements out of range.");
-    }
-
-    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
-        for(auto j = i; j != inputmap.end(); j++) {
-            bi = prod_index(*i, *j, block, N);
-
-            // IMPORTANT: for some reason the buffers are packed as imaginary
-            // *then* real. Here we need to read out the individual components.
-            output[pi].r = buf[2 * bi + 1];
-            output[pi].i = buf[2 * bi];
-            pi++;
-        }
-    }
-
-    return output;
-}
 
 std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
     if(!j.is_array() || j.size() != 3) {

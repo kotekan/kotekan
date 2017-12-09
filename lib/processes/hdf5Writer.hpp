@@ -1,14 +1,14 @@
 #ifndef HDF5_WRITER_HPP
 #define HDF5_WRITER_HPP
 
+#include <unistd.h>
 #include "fpga_header_functions.h"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visFile.hpp"
 #include "errors.h"
 #include "util.h"
-#include <unistd.h>
-
+#include "visUtil.hpp"
 
 // Define an ordering on stream ids so they can be used in a std::map
 struct compareStream {
