@@ -23,6 +23,7 @@ add_library ( kotekan_opencl
               preseed_kernel.cpp
               gpu_command.cpp
               gpu_command_factory.cpp
+              clProcess.cpp
               )
 
 add_custom_target(kernel_copy

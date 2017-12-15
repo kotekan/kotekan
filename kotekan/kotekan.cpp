@@ -264,21 +264,20 @@ int main(int argc, char ** argv) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO("Opening config file %s", config_file_name);
         //config.parse_file(config_file_name, 0);
-        std::string json_string;
-        switch (opt_d_set) {
-            case false:
-                json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
-                break;
-            default:
-                json_string = exec("python /usr/sbin/yaml_to_json.py " + std::string(config_file_name));
-                break;
-        }
+        
         string exec_path;
         if (gps_time) {
             INFO("Getting GPS time from ch_master, this might take some time...");
             exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
         } else {
-            exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
+            switch (opt_d_set) {
+            case false:
+                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
+                break;
+            default:
+                exec_path = "python /usr/sbin/yaml_to_json.py " + std::string(config_file_name);
+                break;
+            }
         }
         std::string json_string = exec(exec_path.c_str());
         config_json = json::parse(json_string.c_str());
