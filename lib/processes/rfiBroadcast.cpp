@@ -35,6 +35,7 @@ rfiBroadcast::~rfiBroadcast() {
 }
 
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
+
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _num_elements = config.get_int(unique_name, "num_elements");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
@@ -43,16 +44,18 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");
     dest_protocol = config.get_string(unique_name, "destination_protocol");
+    frames_per_packet = config.get_int(unique_name, "frames_per_packet");
 }
 
 void rfiBroadcast::main_thread() {
+
     int buffer_id = 0;
-    uint bytes_written = 0;
     int64_t dummy_seq = 0;
-    int frames_per_packet = 64;
     int packet_length = frames_per_packet * _num_local_freq*(sizeof(int) + sizeof(int64_t) + sizeof(float));
     char *packet_buffer = (char *)malloc(packet_length);
-    uint data_counter = 0;
+    int data_counter = 0;
+    int bytes_written = 0;
+
     if (dest_protocol == "UDP")
     {
         // UDP variables
@@ -70,50 +73,62 @@ void rfiBroadcast::main_thread() {
             ERROR("Invalid address given for remote server");
             return;
         }
+
         INFO("RFI BROADCAST: UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
 
         for (;;) {
+
             buffer_id = wait_for_full_buffer(rfi_buf, unique_name.c_str(), buffer_id);
-            for(int k = 0; k < 128; k ++){ //Dummy Loop
-                data_counter++;
-                //READ BUFFER
-                stream_ID = rfi_buf->info[buffer_id]->stream_ID;
-                fpga_seq_num = dummy_seq;//rfi_buf->info[buffer_id]->fpga_seq_num;
-                slot_id = (k/8)%16;//(stream_ID & 0x00F0) >> 4;
-                link_id = k%8;//stream_ID & 0x000F;
-                unsigned int * rfi_data = (unsigned int*)rfi_buf->data[buffer_id];
-                //INFO("RFI BROADCAST: Reading RFI data... %d",slot_id);
-                for(int i = 0; i < _num_local_freq; i++){
-                    unsigned int counter = 0;
-                    for(int j = 0; j < _samples_per_data_set/_sk_step; j++){
-                            counter += rfi_data[i + _num_local_freq*j];
-                    }
-                    int freq_bin = slot_id + link_id*16 + 128*i;
-                    float rfi_perc = (float)counter/_samples_per_data_set;
-                    rfi_perc = (float)rand()/RAND_MAX; // Dummy Line
-                    
-                    memcpy(packet_buffer + bytes_written, &freq_bin, sizeof(int));
-                    bytes_written += sizeof(int);
-                    memcpy(packet_buffer + bytes_written, &fpga_seq_num, sizeof(int64_t));
-                    bytes_written += sizeof(int64_t);
-                    memcpy(packet_buffer + bytes_written, &rfi_perc, sizeof(float));
-                    bytes_written += sizeof(float);
+
+
+            data_counter++;
+
+            //READ BUFFER
+            unsigned int * rfi_data = (unsigned int*)rfi_buf->data[buffer_id];
+            stream_ID = rfi_buf->info[buffer_id]->stream_ID;
+            fpga_seq_num = dummy_seq;//rfi_buf->info[buffer_id]->fpga_seq_num;
+            slot_id = (stream_ID & 0x00F0) >> 4;
+            link_id = stream_ID & 0x000F;
+            
+            //INFO("RFI BROADCAST: Reading RFI data... %d",slot_id);
+            for(int i = 0; i < _num_local_freq; i++){
+
+                unsigned int counter = 0;
+                for(int j = 0; j < _samples_per_data_set/_sk_step; j++){
+                        counter += rfi_data[i + _num_local_freq*j];
                 }
-                if(data_counter == frames_per_packet){
-                    int bytes_sent = sendto(socket_fd,
-                                     packet_buffer,
-                                     bytes_written, 0,
-                                     (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
-                    if (bytes_sent != bytes_written){
-                        ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
-                    }
-                    //INFO("RFI BROADCAST: Sending %d Bytes... Freq Bin %d",bytes_written,freq_bin);
-                    bytes_written = 0;
-                    data_counter= 0;
-                    usleep(500);
-                }
+                int freq_bin = slot_id + link_id*16 + 128*i;
+                float rfi_perc = (float)counter/_samples_per_data_set;
+                //rfi_perc = (float)rand()/RAND_MAX; // Dummy Line
+                
+                //Add info to packet
+                memcpy(packet_buffer + bytes_written, &freq_bin, sizeof(int));
+                bytes_written += sizeof(int);
+                memcpy(packet_buffer + bytes_written, &fpga_seq_num, sizeof(int64_t));
+                bytes_written += sizeof(int64_t);
+                memcpy(packet_buffer + bytes_written, &rfi_perc, sizeof(float));
+                bytes_written += sizeof(float);
+
             }
+
+            if(data_counter == frames_per_packet){
+                //Send Packet
+                int bytes_sent = sendto(socket_fd,
+                                 packet_buffer,
+                                 bytes_written, 0,
+                                 (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
+
+                if (bytes_sent != bytes_written){
+                    ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
+                }
+
+                INFO("RFI BROADCAST: Sending %d Bytes... Freq Bin %d",bytes_written);
+                bytes_written = 0;
+                data_counter= 0;
+            }
+
             dummy_seq += 32768;// Dummy Line
+
             // Mark buffer as empty.
             release_info_object(rfi_buf, buffer_id);
             mark_buffer_empty(rfi_buf, unique_name.c_str(), buffer_id);
@@ -121,6 +136,7 @@ void rfiBroadcast::main_thread() {
 
         }
     }
+    //TODO ADD real TCP support, currently doesn't work
     else if (dest_protocol == "TCP")
     {
         for (;;) 
@@ -196,6 +212,7 @@ void rfiBroadcast::main_thread() {
         }
 
     }
+    
     else{
         ERROR("Bad protocol: %s\n", dest_protocol.c_str());
     }

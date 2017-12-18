@@ -31,6 +31,7 @@ private:
     int _buf_depth;
     int slot_id;
     int link_id;
+    int frames_per_packet;
 
     uint16_t stream_ID;
     int64_t fpga_seq_num;

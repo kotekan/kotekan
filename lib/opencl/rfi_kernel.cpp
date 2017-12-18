@@ -73,7 +73,7 @@ void rfi_kernel::build(device_interface &param_Device)
     CHECK_CL_ERROR ( clBuildProgram( program, 1, &valDeviceID, cl_options.c_str(), NULL, NULL ) );
     kernel = clCreateKernel( program, "rfi_chime", &err );
     CHECK_CL_ERROR(err);
-    INFO("RFI Kernel Created")
+    INFO("RFI Kernel Created ... Setting Paramters")
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                    (cl_uint)3,
                                    sizeof(float),
@@ -93,6 +93,7 @@ void rfi_kernel::build(device_interface &param_Device)
                                    (cl_uint)6,
                                    sizeof(int),
                                    &zero) );
+
     Mean_Array = (float *)malloc(_num_elements*_num_local_freq*sizeof(float)); //Allocate memory
     for (int b = 0; b < (_num_elements*_num_local_freq); b++){
         Mean_Array[b] = 2.5; //Initialize with 0's
