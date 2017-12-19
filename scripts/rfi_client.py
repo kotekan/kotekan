@@ -65,13 +65,13 @@ def init():
 
 def animate(i):
     im.set_data(waterfall)
-    x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*0.08388608)])
+    x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
     im.set_extent([x_lims[0],x_lims[1],400,800])
     return im
 
 def recvall(sock, n):
     # Helper function to recv n bytes or return None if EOF is hit
-    data = b''
+    data = ''
     while len(data) < n:
         packet = sock.recv(n - len(data))
         if not packet:
@@ -83,10 +83,10 @@ def savewaterfall():
 
     global  waterfall, t_min
 
-    if not os.path.exists("PathifnderLiveData"):
-        os.makedirs("PathifnderLiveData")
+    if not os.path.exists("PathfinderLiveData"):
+        os.makedirs("PathfinderLiveData")
 
-    np.save("PathifnderLiveData/" + t_min.strftime("%d%m%YT%H%M%SZ") ,waterfall)
+    np.save("PathfinderLiveData/" + t_min.strftime("%d%m%YT%H%M%SZ") ,waterfall)
     return
 
 def data_listener():
