@@ -22,6 +22,8 @@
 #include "output_beamform_result.h"
 #include "beamform_incoherent_kernel.h"
 #include "output_beamform_incoh_result.h"
+#include "rfi_kernel.h"
+#include "output_rfi.h"
 #include "timer.hpp"
 
 class gpu_command_factory

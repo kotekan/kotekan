@@ -16,8 +16,8 @@ num_blocks: 36
 block_size: 32
 samples_per_data_set: 32768
 num_data_sets: 1
-buffer_depth: 6
-num_gpu_frames: 256
+buffer_depth: 1
+num_gpu_frames: 64
 num_links: 8
 link_map: [0,0,0,0,0,0,0,0]
 num_gpus: 1
@@ -103,37 +103,45 @@ dpdk:
   udp_packet_size: 4800
   timesamples_per_packet: 2
   network_out_buf_0: gpu_fury_input_buffer_0
-  
-#gen_data:
-#  type: const
-#  value: 153
-#  test_data_gen_0:
-#    kotekan_process: testDataGen
-#    network_out_buf: gpu_input_buffer_0
+
+sk_step: 256
+rfi_sensitivity: 3
+rfi_zero: false
+
+gen_data:
+  type: const
+  value: 153
+  test_data_gen_0:
+    kotekan_process: testDataGen
+    network_out_buf: gpu_input_buffer_0
 
 gpu:
   commands:
   - name: input_data_stage
     kernel: ''
-  - name: beamform_phase_data
-    kernel: ''
-  - name: offset_accumulator
-    kernel: "./opencl/kernels/offset_accumulator.cl"
-  - name: preseed_multifreq
-    kernel: "./opencl/kernels/preseed_multifreq.cl"
-  - name: pairwise_correlator
-    kernel: "./opencl/kernels/pairwise_correlator.cl"
-  - name: beamform_kernel
-    kernel: "./opencl/kernels/beamform_tree_scale.cl"
-  - name: output_beamform_result
-    kernel: ''
-  - name: output_data_result
+#  - name: beamform_phase_data
+#    kernel: ''
+#  - name: offset_accumulator
+#    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+#  - name: preseed_multifreq
+#    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+#  - name: pairwise_correlator
+#    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+#  - name: beamform_kernel
+#    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+  - name: rfi_kernel
+    kernel: "../lib/opencl/kernels/rfi_chime.cl"
+#  - name: output_beamform_result
+#    kernel: ''
+#  - name: output_data_result
+#    kernel: ''
+  - name: output_rfi
     kernel: ''
   ts_element_offset: 0
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  enable_beamforming: true
+  enable_beamforming: false
   instrument_lat: 49.3203
   instrument_long: -119.6175
   ra: 53.5
@@ -150,6 +158,7 @@ gpu:
     network_buffer: gpu_fury_input_buffer_0
     output_buffer: gpu_output_buffer_0
     beam_out_buf: beam_output_buffer_0
+    rfi_out_buf: rfi_output_buffer_0
 
 # Remove from production
 #check_data:
@@ -157,7 +166,7 @@ gpu:
 #  imag: 65536
 #  const_data_check_0:
 #    kotekan_process: constDataCheck
-#    buf: gpu_output_buffer_0
+#   buf: gpu_output_buffer_0
 
 gpu_post_process:
     kotekan_process: gpuPostProcess
@@ -177,12 +186,16 @@ chrxUplink:
 
 #nullProcess used when disable upload is true and chrxUplink should not be active.
 
-#null_0:
-#  kotekan_process: nullProcess
-#  in_buf: network_output_buffer
-#null_1:
-#  kotekan_process: nullProcess
-#  in_buf: gated_output_buffer
+null_0:
+  kotekan_process: nullProcess
+  in_buf: network_output_buffer
+null_1:
+  kotekan_process: nullProcess
+  in_buf: gated_output_buffer
+
+rfiRecorder:
+  kotekan_process: rfiRecorder
+  rfi_buf: rfi_output_buffer_0
 
 beamform_post_process:
   kotekan_process: beamformingPostProcess    

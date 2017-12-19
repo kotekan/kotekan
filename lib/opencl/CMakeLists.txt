@@ -24,6 +24,8 @@ add_library ( kotekan_opencl
               gpu_command.cpp
               gpu_command_factory.cpp
               clProcess.cpp
+              rfi_kernel.cpp
+	      output_rfi.cpp
               )
 
 add_custom_target(kernel_copy

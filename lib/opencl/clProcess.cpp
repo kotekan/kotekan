@@ -32,15 +32,16 @@ clProcess::clProcess(Config& config_,
     register_producer(get_buffer("output_buffer"), unique_name.c_str());
     beamforming_out_buf = get_buffer("beam_out_buf");
     register_producer(get_buffer("beam_out_buf"), unique_name.c_str());
+    rfi_out_buf = get_buffer("rfi_out_buf");
+    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
+
     //beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
 
     //device_interface device(in_buf, out_buf, config, gpu_id,
     //                        beamforming_out_buf, beamforming_out_incoh_buf);
 
     //device = new device_interface(config, gpu_id);
-    device = new device_interface(in_buf, out_buf, config, gpu_id, beamforming_out_buf, unique_name);
-
-
+    device = new device_interface(in_buf, out_buf, config, gpu_id, beamforming_out_buf, rfi_out_buf, unique_name);
     factory = new gpu_command_factory(*device, config, unique_name);
 
     //factory.initializeCommands(device, config);
@@ -66,8 +67,8 @@ void clProcess::main_thread()
     loopCounter * loopCnt = new loopCounter;
     bool first_run = true;
 
-    device->prepareCommandQueue(false);
-    //    device->prepareCommandQueue(true);
+   // device->prepareCommandQueue(false);
+    device->prepareCommandQueue(true);
 
     device->allocateMemory();
 //    DEBUG("Device Initialized\n");
@@ -92,7 +93,8 @@ void clProcess::main_thread()
     uint8_t * frame = NULL;
 
     double last_time = e_time_1();
-
+    timer tt;
+    int time_count = 0;
     for(;;) {
         // Wait for data, this call will block.
         //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
@@ -124,7 +126,7 @@ void clProcess::main_thread()
         if (_use_beamforming) {
             wait_for_empty_frame(device->get_beamforming_out_buf(), unique_name.c_str(), frame_id);
         }
-
+	wait_for_empty_buffer(device->getRfiBuf(), unique_name.c_str(), bufferID);
         // Todo get/set time information here as well.
 
         CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock));
@@ -140,6 +142,7 @@ void clProcess::main_thread()
         cb_data[frame_id]->use_beamforming = _use_beamforming;
         cb_data[frame_id]->start_time = e_time_1();
         cb_data[frame_id]->unique_name = unique_name;
+	cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
         if (_use_beamforming == 1)
         {
             cb_data[frame_id]->beamforming_out_buf = device->get_beamforming_out_buf();
@@ -241,7 +244,6 @@ void clProcess::mem_reconcil_thread()
                     cb_data[j]->beamforming_out_buf, cb_data[j]->buffer_id);
 
                 mark_frame_full(cb_data[j]->beamforming_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
-            }
 
             pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
