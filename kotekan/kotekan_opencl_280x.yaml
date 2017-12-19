@@ -39,6 +39,9 @@ num_links_280: 3
 #if 280/270 combo
 num_links_per_gpu: 4
 
+sk_step: 256
+rfi_zero: false
+rfi_sensitivity: 3
 
 # Pool
 main_pool:
@@ -123,9 +126,6 @@ vdif_output_buffers:
     vdif_output_buffer:
         kotekan_buffer: standard
 
-sk_step: 256
-rfi_zero: false
-rfi_sensitivity: 3
 
 dpdk:
   kotekan_process: dpdkWrapper
