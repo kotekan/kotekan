@@ -46,11 +46,11 @@ cl_event output_rfi::execute(int param_bufferID, const uint64_t& fpga_seq, class
                                             param_Device.getRfiCountBuffer(param_bufferID),
                                             CL_FALSE,
                                             0,
-                                            param_Device.getRfiBuf()->buffer_size,
-                                            param_Device.getRfiBuf()->data[param_bufferID],
+                                            param_Device.getRfiBuf()->frame_size,
+                                            param_Device.getRfiBuf()->frames[param_bufferID],
                                             1,
                                             &param_PrecedeEvent,
 					    &postEvent[param_bufferID]) );
-    INFO("Copied RFI to Buffer %d, Size %d",param_bufferID,param_Device.getRfiBuf()->buffer_size);
+    INFO("Copied RFI to Buffer %d, Size %d",param_bufferID,param_Device.getRfiBuf()->frame_size);
     return postEvent[param_bufferID];
 }

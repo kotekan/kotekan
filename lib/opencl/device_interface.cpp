@@ -179,7 +179,7 @@ void device_interface::allocateMemory()
     // Setup RFI buffers
     //device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
     //CHECK_MEM(device_rfi_count_buffer);
-    for (int i = 0; i < in_buf->num_buffers; ++i) {
+    for (int i = 0; i < in_buf->num_frames; ++i) {
 	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
 	CHECK_CL_ERROR(err);
     }
@@ -293,7 +293,7 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-    for (int i = 0; i < out_buf->num_buffers; ++i) {
+    for (int i = 0; i < out_buf->num_frames; ++i) {
         CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
     }
     //free(device_rfi_count_buffer);

@@ -49,13 +49,13 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 
 void rfiBroadcast::main_thread() {
 
-    int buffer_id = 0;
+    int frame_id = 0;
     int64_t dummy_seq = 0;
     int packet_length = frames_per_packet * _num_local_freq*(sizeof(int) + sizeof(int64_t) + sizeof(float));
     char *packet_buffer = (char *)malloc(packet_length);
     int data_counter = 0;
     int bytes_written = 0;
-
+    uint8_t * frame = nullptr;
     if (dest_protocol == "UDP")
     {
         // UDP variables
@@ -77,19 +77,19 @@ void rfiBroadcast::main_thread() {
         INFO("RFI BROADCAST: UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
 
         for (;;) {
-
-            buffer_id = wait_for_full_buffer(rfi_buf, unique_name.c_str(), buffer_id);
-
-
+            INFO("RFI BROADCAST: Waiting for Frame!")
+            frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+            INFO("RFI BROADCAST: Got Frame!")
             data_counter++;
 
             //READ BUFFER
-            unsigned int * rfi_data = (unsigned int*)rfi_buf->data[buffer_id];
-            stream_ID = rfi_buf->info[buffer_id]->stream_ID;
-            fpga_seq_num = dummy_seq;//rfi_buf->info[buffer_id]->fpga_seq_num;
-            slot_id = (stream_ID & 0x00F0) >> 4;
-            link_id = stream_ID & 0x000F;
+            unsigned int * rfi_data = (unsigned int*)rfi_buf->frames[frame_id];
+            fpga_seq_num = get_fpga_seq_num(rfi_buf, frame_id);
+            stream_ID = get_stream_id_t(rfi_buf, frame_id);
+            slot_id = stream_ID.slot_id;
+            link_id = stream_ID.link_id;
             
+
             //INFO("RFI BROADCAST: Reading RFI data... %d",slot_id);
             for(int i = 0; i < _num_local_freq; i++){
 
@@ -110,7 +110,6 @@ void rfiBroadcast::main_thread() {
                 bytes_written += sizeof(float);
 
             }
-
             if(data_counter == frames_per_packet){
                 //Send Packet
                 int bytes_sent = sendto(socket_fd,
@@ -127,16 +126,16 @@ void rfiBroadcast::main_thread() {
                 data_counter= 0;
             }
 
-            dummy_seq += 32768;// Dummy Line
+            //dummy_seq += 32768;// Dummy Line
 
             // Mark buffer as empty.
-            release_info_object(rfi_buf, buffer_id);
-            mark_buffer_empty(rfi_buf, unique_name.c_str(), buffer_id);
-            buffer_id = (buffer_id + 1) % rfi_buf->num_buffers;
+            mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % rfi_buf->num_frames;
 
         }
     }
     //TODO ADD real TCP support, currently doesn't work
+    /*
     else if (dest_protocol == "TCP")
     {
         for (;;) 
@@ -211,7 +210,7 @@ void rfiBroadcast::main_thread() {
             buffer_id = (buffer_id + 1) % rfi_buf->num_buffers;
         }
 
-    }
+    }*/
     
     else{
         ERROR("Bad protocol: %s\n", dest_protocol.c_str());

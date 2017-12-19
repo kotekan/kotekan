@@ -4,10 +4,10 @@
 #include "powerStreamUtil.hpp"
 #include <sys/socket.h>
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <atomic>
-
+#include "chimeMetadata.h"
 
 class rfiBroadcast : public KotekanProcess {
 public:
@@ -29,11 +29,11 @@ private:
     int _samples_per_data_set;
     int _sk_step;
     int _buf_depth;
-    int slot_id;
-    int link_id;
+    uint8_t slot_id;
+    uint8_t link_id;
     int frames_per_packet;
 
-    uint16_t stream_ID;
+    stream_id_t stream_ID;
     int64_t fpga_seq_num;
 
     uint32_t dest_port;

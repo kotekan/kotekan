@@ -5,9 +5,10 @@
 #include <functional>
 
 #include "rfiRecorder.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
+#include "chimeMetadata.h"
 
 rfiRecorder::rfiRecorder(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
@@ -30,12 +31,14 @@ void rfiRecorder::apply_config(uint64_t fpga_seq) {
 }
 void rfiRecorder::main_thread() {
     apply_config(0);
+
     INFO("RFI RECORDER: Starting");
-    int buffer_ID = 0;
+    int frame_ID = 0;
     bool First_Time = true;
-    int slot_id, link_id;
+    uint8_t slot_id, link_id;
+    uint8_t * frame = nullptr;
     FILE *f;
-    uint16_t stream_ID;
+    stream_id_t stream_ID;
     int64_t fpga_seq_num;
     int write_count = 0;
     // char write_buffer[10000];
@@ -45,15 +48,16 @@ void rfiRecorder::main_thread() {
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
-        buffer_ID = wait_for_full_buffer(rfi_buf, unique_name.c_str(), buffer_ID);
+        frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_ID);
         // Check if the producer has finished, and we should exit.
-        if (buffer_ID == -1) {
+        if (frame_ID == -1) {
             break;
         }
-        stream_ID = rfi_buf->info[buffer_ID]->stream_ID;
-        fpga_seq_num = rfi_buf->info[buffer_ID]->fpga_seq_num;
-        slot_id = (stream_ID & 0x00F0) >> 4;
-        link_id = stream_ID & 0x000F;
+        fpga_seq_num = get_fpga_seq_num(rfi_buf, frame_ID);
+        stream_ID = get_stream_id_t(rfi_buf, frame_ID);
+        slot_id = stream_ID.slot_id;
+        link_id = stream_ID.link_id;
+
         if(First_Time){
             snprintf(file_name, file_name_len, "../../scripts/rfi_recorder_%d_%d.rfi",slot_id,link_id);
             INFO("OPENING FILE: %s", file_name);
@@ -61,7 +65,7 @@ void rfiRecorder::main_thread() {
             First_Time = false;
         }
 
-        unsigned int * rfi_data = (unsigned int*)rfi_buf->data[buffer_ID];
+        unsigned int * rfi_data = (unsigned int*)rfi_buf->frames[frame_ID];
         INFO("RFI RECORDER: Stream ID %d\n",stream_ID)
 
         for(int i = 0; i < _num_local_freq;i++){
@@ -77,10 +81,7 @@ void rfiRecorder::main_thread() {
 	        fwrite(&fpga_seq_num,sizeof(int64_t),1,f);
 	        fwrite(&rfi_perc,sizeof(float),1,f);
 	        INFO("Writing %d %d %f",freq_bin,seq,rfi_perc);
-            //char temp[100];
-            //snprintf(temp,100,"%f,%f\n",freq_mhz,(float)counter/_samples_per_data_set);
-            //strcat(write_buffer,temp);
-	        //INFO("Write Buffer Size %d", strlen(write_buffer));
+            
         }
         if(write_count==50){
             //fwrite(write_buffer,sizeof(char),strlen(write_buffer),f);
@@ -90,9 +91,9 @@ void rfiRecorder::main_thread() {
             //write_buffer[0] = '\0';
         }
         write_count++;
-        release_info_object(rfi_buf, buffer_ID);
-        mark_buffer_empty(rfi_buf, unique_name.c_str(), buffer_ID);
-        buffer_ID = (buffer_ID + 1) % rfi_buf->num_buffers;
+
+        mark_frame_empty(rfi_buf, unique_name.c_str(), frame_ID);
+        frame_ID = (frame_ID + 1) % rfi_buf->num_frames;
     }
     fclose(f);
     INFO("RFI RECORDER: Closing Rfi Recorder");
