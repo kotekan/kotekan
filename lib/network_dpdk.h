@@ -1,7 +1,7 @@
 #ifndef NETWORK_DPDK
 #define NETWORK_DPDK
 
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
 
@@ -13,11 +13,18 @@
     // A better name might be SHUFFLE_SIZE?
     #define NUM_FREQ (1)
 #else
-    #define NUM_LINKS (8)
+    #ifdef WITH_OPENCL
+        #define NUM_LINKS (8)
+        #define NUM_FREQ (1)
+    #else
+        #define NUM_LINKS (4)
+        #define NUM_FREQ (4)
+    #endif
+
     #define NUM_LCORES (4)
     // This shouldn't go above 4, since it's for the shuffle.
     // A better name might be SHUFFLE_SIZE?
-    #define NUM_FREQ (1)
+
 #endif
 
 #ifdef __cplusplus

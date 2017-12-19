@@ -1,5 +1,7 @@
 #include "time_tracking.h"
 
+static uint32_t first_fpga_seq_num;
+static uint64_t first_fpga_seq_num_time;
 
 void set_fpga_num_and_time(const struct timeval* time, const uint32_t fpga_seq_num)
 {

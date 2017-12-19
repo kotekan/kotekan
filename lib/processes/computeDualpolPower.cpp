@@ -1,5 +1,5 @@
 #include "computeDualpolPower.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "nt_memcpy.h"
 #include "Config.hpp"
@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <time.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -27,7 +28,7 @@
 #include <thread>
 #include <pthread.h>
 #include <sched.h>
-
+#include <math.h>
 #include <pmmintrin.h>
 #include <immintrin.h>
 
@@ -54,6 +55,10 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
     num_freq = config.get_int(unique_name, "num_freq");
     num_elem = config.get_int(unique_name, "num_elements");
 
+    Kurtosis = config.get_bool(unique_name, "rfi_removal"); //RFI parameters
+    sensitivity = config.get_int(unique_name, "rfi_sensitivity");
+    BackFill = config.get_bool(unique_name, "rfi_backfill");
+
     if (timesteps_in % timesteps_out)
     {
         ERROR("BAD COMBINATION OF BUFFER & INTEGRATION LENGTHS!");
@@ -72,9 +77,10 @@ computeDualpolPower::~computeDualpolPower() {
 }
 
 void computeDualpolPower::main_thread() {
-//    in_local = (unsigned char*)malloc(buf_in.buffer_size);
-  //  out_local = (unsigned char*)malloc(buf_out.buffer_size);
-
+//    in_local = (unsigned char*)malloc(buf_in.frame_size);
+  //  out_local = (unsigned char*)malloc(buf_out.frame_size);
+    srand(time(NULL));
+int r = rand();
     int buf_in_id=0;
     int buf_out_id=0;
 
@@ -82,11 +88,11 @@ void computeDualpolPower::main_thread() {
     int nloop = timesteps_out/nthreads;
     std::thread this_thread[nthreads];
 
-    for (EVER) {
-        buf_in_id = wait_for_full_buffer(buf_in, unique_name.c_str(), buf_in_id);
-        wait_for_empty_buffer(buf_out, unique_name.c_str(), buf_out_id);
-        in_local = buf_in->data[buf_in_id];
-        out_local = buf_out->data[buf_out_id];
+    while(!stop_thread) {
+        in_local = (unsigned char *) wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        if(in_local == NULL) break;
+        out_local = (unsigned char *) wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
+        if(out_local == NULL) break;
 
     //double start_time = e_time();
 
@@ -104,28 +110,31 @@ void computeDualpolPower::main_thread() {
     //double stop_time = e_time();
     //INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
-        mark_buffer_empty(buf_in, unique_name.c_str(), buf_in_id);
-        mark_buffer_full(buf_out, unique_name.c_str(), buf_out_id);
-        buf_in_id = ( buf_in_id + 1 ) % buf_in->num_buffers;
-        buf_out_id = (buf_out_id + 1) % (buf_out->num_buffers);
+        mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
+        mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
+        buf_in_id = ( buf_in_id + 1 ) % buf_in->num_frames;
+        buf_out_id = (buf_out_id + 1) % (buf_out->num_frames);
 
    }
 
-    mark_producer_done(buf_out, 0);
 }
 
 
 void computeDualpolPower::parallelSqSumVdif(int loop_idx, int loop_length){
     uint temp_buffer[num_freq*num_elem];
+    uint sq_temp_buffer[num_freq*num_elem]; //For RFI
     for (int i=loop_idx*loop_length; i<(loop_idx+1)*loop_length; i++)
         fastSqSumVdif(in_local+(i*integration_length*PACKET_LEN*num_elem),
-                temp_buffer, (uint*)(out_local+i*(1+num_freq)*num_elem*sizeof(uint)));
+                temp_buffer, sq_temp_buffer, (uint*)(out_local+i*(1+num_freq)*num_elem*sizeof(uint)));
 }
-
+int compare (const void * a, const void * b)
+{
+    return ( *(int*)a - *(int*)b );
+}
 #ifdef __AVX2__
-inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp_buf, uint *out) {
+inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp_buf, uint * sq_temp_buf, uint *out) {
     memset((void*)integration_count,0,num_elem*sizeof(uint));
-
+    float Means[num_freq*num_elem]; //Means for RFI algorithm
     for (int packet = 0; packet < integration_length; ++packet) {
         for (int pol = 0; pol < num_elem; ++pol) {
             const int idx_header = packet * PACKET_LEN * num_elem +
@@ -139,7 +148,7 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
                                     freq * 32 +
                                     VDIF_HEADER_LEN;
 
-                __m256i ymm0, ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7;
+                __m256i ymm0, ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, sq0, sq1, sq2, sq3;
 
                 // Load 64 4 bit numbers
                 ymm0 = _mm256_loadu_si256((__m256i const *)&data[index]);
@@ -176,46 +185,113 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
                 ymm2 = _mm256_unpacklo_epi16(ymm6, ymm7);
                 ymm3 = _mm256_unpackhi_epi16(ymm6, ymm7);
 
-                int out_index = pol * num_freq + freq * 32;
+		int out_index = pol * num_freq + freq * 32;
 
                 if (packet != 0) {
-                    ymm4 = _mm256_loadu_si256((__m256i const *)&temp_buf[out_index + 0*8]);
+
+		    //If RFI is to be removed
+		    if(Kurtosis){
+			    //Load integrated power**2
+			    ymm4 = _mm256_loadu_si256((__m256i const *)&sq_temp_buf[out_index + 0*8]);
+		            ymm5 = _mm256_loadu_si256((__m256i const *)&sq_temp_buf[out_index + 1*8]);
+		            ymm6 = _mm256_loadu_si256((__m256i const *)&sq_temp_buf[out_index + 2*8]);
+		            ymm7 = _mm256_loadu_si256((__m256i const *)&sq_temp_buf[out_index + 3*8]);
+
+			    //Get the current power**2 and add to integration
+			    sq0 = _mm256_add_epi32(_mm256_mullo_epi32(ymm0,ymm0), ymm4);
+		            sq1 = _mm256_add_epi32(_mm256_mullo_epi32(ymm1,ymm1), ymm5);
+		            sq2 = _mm256_add_epi32(_mm256_mullo_epi32(ymm2,ymm2), ymm6);
+		            sq3 = _mm256_add_epi32(_mm256_mullo_epi32(ymm3,ymm3), ymm7);
+		    }
+		    //Load Integrated Power
+		    ymm4 = _mm256_loadu_si256((__m256i const *)&temp_buf[out_index + 0*8]);
                     ymm5 = _mm256_loadu_si256((__m256i const *)&temp_buf[out_index + 1*8]);
                     ymm6 = _mm256_loadu_si256((__m256i const *)&temp_buf[out_index + 2*8]);
                     ymm7 = _mm256_loadu_si256((__m256i const *)&temp_buf[out_index + 3*8]);
 
+		    //Add current power to integrated sum
                     ymm0 = _mm256_add_epi32(ymm0, ymm4);
                     ymm1 = _mm256_add_epi32(ymm1, ymm5);
                     ymm2 = _mm256_add_epi32(ymm2, ymm6);
                     ymm3 = _mm256_add_epi32(ymm3, ymm7);
-                }
 
+
+                }
+		else if (Kurtosis){
+		    //Compute power squared if it's the first packet
+		    sq0 = _mm256_mullo_epi32(ymm0,ymm0);
+                    sq1 = _mm256_mullo_epi32(ymm1,ymm1);
+                    sq2 = _mm256_mullo_epi32(ymm2,ymm2);
+                    sq3 = _mm256_mullo_epi32(ymm3,ymm3);
+		}
+		//Store new integrated power sum
                 _mm256_storeu_si256((__m256i *)&temp_buf[out_index + 0*8], ymm0);
                 _mm256_storeu_si256((__m256i *)&temp_buf[out_index + 1*8], ymm1);
                 _mm256_storeu_si256((__m256i *)&temp_buf[out_index + 2*8], ymm2);
                 _mm256_storeu_si256((__m256i *)&temp_buf[out_index + 3*8], ymm3);
+
+		if(Kurtosis){
+			//Store new integrated power squared sum
+			_mm256_storeu_si256((__m256i *)&sq_temp_buf[out_index + 0*8], sq0);
+		        _mm256_storeu_si256((__m256i *)&sq_temp_buf[out_index + 1*8], sq1);
+		        _mm256_storeu_si256((__m256i *)&sq_temp_buf[out_index + 2*8], sq2);
+		        _mm256_storeu_si256((__m256i *)&sq_temp_buf[out_index + 3*8], sq3);
+		}
             }
         }
     }
 
-//    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1]);
 
-    // Reorder the numbers.
-    for (int p = 0; p<num_elem; p++) {
-        for (int i = 0; i < num_freq; ++i) {
+//    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1]);
+    if(Kurtosis){
+	for (int i = 0; i < num_freq; ++i) {
             // Fix stupid index problem
             int m32 = i % 32;
             if (m32 < 16) m32 = (m32/4)*4;
             else m32 = -12 + ((m32 - 16)/4)*4;
-            out[i+p*(num_freq+1)] = temp_buf[i+m32 + p*(num_freq+1)];
+	    float M = 0;
+	    float sq_power_across_element = 0;
+	    float power_across_element = 0;
+	    for (int p = 0; p<num_elem; p++) { //Sum across elements
+		Means[p*(num_freq+1) + num_freq] = ((float)temp_buf[i+m32 + p*(num_freq+1)]/integration_count[p])*(512.0/729);
+		power_across_element += (float)temp_buf[i+m32 + p*(num_freq+1)]/Means[p*(num_freq+1) + num_freq];
+		sq_power_across_element += (float)sq_temp_buf[i+m32 + p*(num_freq+1)]/(Means[p*(num_freq+1) + num_freq]*Means[p*(num_freq+1) + num_freq]);
+		M += (float)integration_count[p];
+		if(i==0) out[p*(num_freq+1) + num_freq] = integration_count[p];
+	    }
+	    //Calculate Kurtosis
+ 	    float SK = ((M+1)/(M-1))*((M*sq_power_across_element)/(power_across_element*power_across_element) -1);
+	    //Zero thresholded values
+	    for (int p = 0; p<num_elem; p++) {
+		if(SK < (1-sensitivity*2/sqrt(M)) || SK > (1+sensitivity*2/sqrt(M))) out[i+p*(num_freq+1)] = 0;
+		else out[i+p*(num_freq+1)] = temp_buf[i+m32 + p*(num_freq+1)];
+	    }
         }
-        out[p*(num_freq+1) + num_freq] = integration_count[p];
+	if(BackFill){//Simple backfill to make it look nice. Probably not useful
+		qsort (temp_buf, num_freq*num_elem, sizeof(uint), compare);
+		for (int p = 0; p<num_elem; p++) {
+		    for (int i = 0; i < num_freq; ++i) {
+			if(out[i+p*(num_freq+1)] == 0) out[i+p*(num_freq+1)] = temp_buf[num_freq*num_elem/2];
+		    }
+		}
+	}
     }
-
+    else{
+	// Reorder the numbers.
+	for (int p = 0; p<num_elem; p++) {
+	    for (int i = 0; i < num_freq; ++i) {
+		// Fix stupid index problem
+		int m32 = i % 32;
+		if (m32 < 16) m32 = (m32/4)*4;
+		else m32 = -12 + ((m32 - 16)/4)*4;
+		out[i+p*(num_freq+1)] = temp_buf[i+m32 + p*(num_freq+1)];
+	    }
+	    out[p*(num_freq+1) + num_freq] = integration_count[p];
+	}
+    }
 }
 #else
-inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, 
-                                                uint * temp_buf, uint *out)
+inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp_buf, uint * sq_temp_buf, uint *out)
 {
     ERROR("This system does not support AVX2, fast square-and-sum will not work");
 }

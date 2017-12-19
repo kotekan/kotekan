@@ -1,7 +1,7 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 
 // Type: one of "random", "const"
@@ -17,6 +17,7 @@ private:
     struct Buffer *buf;
     std::string type;
     int32_t value;
+    bool _pathfinder_test_mode;
 };
 
 #endif

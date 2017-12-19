@@ -1,7 +1,7 @@
 #ifndef N_DISK_FILE_READ_H
 #define N_DISK_FILE_READ_H
 
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "vdif_functions.h"
 
@@ -18,9 +18,16 @@ private:
     struct Buffer *buf;
     std::vector<std::thread> file_thread_handles;
 
-    int num_disks; 
+    uint32_t num_disks;
+    uint32_t num_elements;
+    uint32_t num_frequencies;
+    string disk_base;
     string disk_set;
     string capture;
+    int SK_STEP;
+    bool WITH_RFI;
+    bool Normalize;
+    int THRESHOLD_SENSITIVITY;
 };
 
 #endif

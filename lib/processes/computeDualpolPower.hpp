@@ -1,7 +1,7 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "KotekanProcess.hpp"
 
@@ -14,7 +14,7 @@ public:
     void apply_config(uint64_t fpga_seq);
 
 private:
-    inline void fastSqSumVdif(unsigned char *data, uint *temp_buf, uint *output);
+    inline void fastSqSumVdif(unsigned char *data, uint *temp_buf, uint *sq_temp_buf, uint *output);
     void parallelSqSumVdif(int loop_idx, int loop_length);
     struct Buffer *buf_in;
     struct Buffer *buf_out;
@@ -24,7 +24,9 @@ private:
     int timesteps_in;
     int timesteps_out;
     int integration_length;
-
+    int sensitivity;
+    bool Kurtosis;
+    bool BackFill;
     unsigned int *integration_count;
     unsigned char *in_local;
     unsigned char *out_local;

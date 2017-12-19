@@ -6,7 +6,7 @@
 #include <time.h>
 #include <thread>
 #include "bufferStatus.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
 
@@ -32,13 +32,13 @@ void bufferStatus::main_thread() {
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
-    usleep(time_delay);
-    map<string, Buffer*>::iterator it;
-    INFO("BUFFER_STATUS");
-    for ( it = buffers.begin(); it != buffers.end(); it++ )
-    {
-        print_buffer_status(it->second);
-    }
+	usleep(time_delay);
+	map<string, Buffer*>::iterator it;
+	INFO("BUFFER_STATUS");
+	for ( it = buffers.begin(); it != buffers.end(); it++ )
+	{
+		print_buffer_status(it->second);
+	}
     }
     INFO("Closing Buffer Status thread");
 }

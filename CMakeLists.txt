@@ -18,6 +18,7 @@ endif ()
 if (${USE_HSA})
   find_package( HSA )
   set(USE_HSA ${HSA_FOUND})
+  find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
 if (${USE_OPENCL})
   find_package( OpenCL )
@@ -45,6 +46,7 @@ if (${USE_HCC})
 endif ()
 if (${USE_HSA})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
+  link_directories ( /opt/rocm/hsa/lib/ )
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lhsa-runtime64 ")
   add_definitions(-DWITH_HSA)
   set(MODULES ${MODULES} "HSA ")
@@ -63,23 +65,31 @@ if (${USE_DPDK})
   # DPDK Includes
   include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
   link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-  
+
   set (DPDK_LIST
-          ethdev       rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
+          rte_ethdev   rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
           rte_power    rte_timer        rte_ring    rte_sched     rte_table
           rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000
           rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
           rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
   )
   set (DPDK_LIBS
-        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group )
-
+        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group -ldl )
   add_definitions(-DWITH_DPDK)
   MESSAGE("DPDK Enabled")
 else ()
   MESSAGE("DPDK Disabled")
 endif ()
 
+if (${USE_HDF5})
+  # HDF5 setup
+  include_directories ( ${HIGHFIVE_PATH}/include )
+  find_package(HDF5 REQUIRED)
+  add_definitions(-DWITH_HDF5)
+  MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
+else ()
+  MESSAGE("HDF5 disabled")
+endif ()
 
 # Get the current working branch
 execute_process(
@@ -115,25 +125,53 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # Required for some SSE/AVX intrinsics
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
+
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note C++11
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
+
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
+
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
+
 SET(CMAKE_INSTALL_PREFIX "/")
+
+install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+else()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+endif()
+
 install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/lib/opencl )
 install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl )
 #install(DIRECTORY kotekan/kernels/opencl DESTINATION /var/lib/kotekan/kernels/opencl )
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
+# Required for some SSE/AVX intrinsics
+#add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
+
+
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
+#set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+
+# Note C++11
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
+#set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
+#SET(CMAKE_INSTALL_PREFIX "/")
+#install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
+#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 add_subdirectory(lib)
 add_subdirectory(kotekan)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
-#add_subdirectory(vdif_dump)

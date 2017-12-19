@@ -50,8 +50,6 @@ void timer::stop(string interval_name){
 
     stop_time = clock();
 
-    string tst = std::to_string(time_list[interval_name][i]->stop_time);
-    INFO(tst.c_str());
     //Avoid overwriting 5000th stop_time value repeatedly.
     if (time_list[interval_name][i]->stop_time < 0){
         time_list[interval_name][i]->stop_time = stop_time;

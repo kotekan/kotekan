@@ -14,12 +14,14 @@
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
-#include "nullProcess.hpp"
 #include "pyPlotResult.hpp"
 #include "rawFileRead.hpp"
 #include "rawFileWrite.hpp"
 #include "vdifStream.hpp"
-
+#include "recvSingleDishVDIF.hpp"
+#include "streamSingleDishVDIF.hpp"
+#include "networkInputPowerStream.hpp"
+#include "integratePowerStream.hpp"
 #include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
 #include "gpuSimulate.hpp"
@@ -28,7 +30,13 @@
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
 #include "constDataCheck.hpp"
+#include "accumulate.hpp"
+#include "hexDump.hpp"
+#include "chimeMetadataDump.hpp"
 
+#ifdef WITH_HDF5
+    #include "hdf5Writer.hpp"
+#endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -46,8 +54,8 @@ processFactory::processFactory(Config& config,
 processFactory::~processFactory() {
 }
 
-vector<KotekanProcess*> processFactory::build_processes() {
-    vector<KotekanProcess*> processes;
+map<string, KotekanProcess *> processFactory::build_processes() {
+    map<string, KotekanProcess *> processes;
 
     // Start parsing tree, put the processes in the "processes" vector
     build_from_tree(processes, config.get_full_config_json(), "");
@@ -55,7 +63,7 @@ vector<KotekanProcess*> processFactory::build_processes() {
     return processes;
 }
 
-void processFactory::build_from_tree(vector<KotekanProcess*>& processes, json& config_tree, const string& path) {
+void processFactory::build_from_tree(map<string, KotekanProcess *>& processes, json& config_tree, const string& path) {
 
     for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
@@ -66,7 +74,11 @@ void processFactory::build_from_tree(vector<KotekanProcess*>& processes, json& c
         // Check if this is a kotekan_process block, and if so create the process.
         string process_name = it.value().value("kotekan_process", "none");
         if (process_name != "none") {
-            processes.push_back(new_process(process_name, path + "/" + it.key()));
+            string unique_name = path + "/" + it.key();
+            if (processes.count(unique_name) != 0) {
+                throw std::runtime_error("A process with the path " + unique_name + " has been defined more than once!");
+            }
+            processes[unique_name] = new_process(process_name, path + "/" + it.key());
             continue;
         }
 
@@ -84,6 +96,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     INFO("Creating process type: %s, at config tree path: %s", name.c_str(), location.c_str());
 
     // ****** processes directory ******
+    if (name == "accumulate") {
+        return (KotekanProcess *) new accumulate(config, location, buffer_container);
+    }
+
     if (name == "beamformingPostProcess") {
         return (KotekanProcess *) new beamformingPostProcess(config, location, buffer_container);
     }
@@ -107,6 +123,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new fullPacketDump(config, location, buffer_container);
     }
 
+    if (name == "hexDump") {
+        return (KotekanProcess *) new hexDump(config, location, buffer_container);
+    }
+
     if (name == "gpuPostProcess") {
         return (KotekanProcess *) new gpuPostProcess(config, location, buffer_container);
     }
@@ -123,9 +143,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new networkPowerStream(config, location, buffer_container);
     }
 
-    // Remove this when buffer consumer/producers are dynamic.
-    if (name == "nullProcess") {
-        return (KotekanProcess *) new nullProcess(config, location, buffer_container);
+    if (name == "integratePowerStream") {
+        return (KotekanProcess *) new integratePowerStream(config, location, buffer_container);
+    }
+
+    if (name == "networkInputPowerStream") {
+        return (KotekanProcess *) new networkInputPowerStream(config, location, buffer_container);
     }
 
     if (name == "pyPlotResult") {
@@ -136,8 +159,20 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new rawFileRead(config, location, buffer_container);
     }
 
+    if (name == "rawFileWrite") {
+        return (KotekanProcess *) new rawFileWrite(config, location, buffer_container);
+    }
+
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
+    }
+
+    if (name == "streamSingleDishVDIF") {
+        return (KotekanProcess *) new streamSingleDishVDIF(config, location, buffer_container);
+    }
+
+    if (name == "recvSingleDishVDIF") {
+        return (KotekanProcess *) new recvSingleDishVDIF(config, location, buffer_container);
     }
 
     // ****** testing directory ******
@@ -159,7 +194,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "testDataCheck") {
         // TODO This is a template class, how to set template type?
-        return (KotekanProcess *) new testDataCheck<int32_t>(config, location, buffer_container);
+        return (KotekanProcess *) new testDataCheck<int>(config, location, buffer_container);
+    }
+    if (name == "testDataCheckFloat") {
+        return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
     }
 
     if (name == "constDataCheck") {
@@ -169,6 +207,19 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "testDataGen") {
         return (KotekanProcess *) new testDataGen(config, location, buffer_container);
+    }
+
+    if (name == "chimeMetadataDump") {
+        return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
+    }
+
+    // HDF5
+    if (name == "hdf5Writer") {
+        #ifdef WITH_HDF5
+            return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
+        #else
+            throw std::runtime_error("hdf5Writer is not supported on this system");
+        #endif
     }
 
     // OpenCL

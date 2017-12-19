@@ -4,7 +4,7 @@
 #include "powerStreamUtil.hpp"
 #include <sys/socket.h>
 #include "Config.hpp"
-#include "buffers.h"
+#include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <atomic>
 
@@ -17,7 +17,7 @@ public:
     void main_thread();
 
     virtual void apply_config(uint64_t fpga_seq);
-    void receive_packet(void *buffer, int length);
+    void receive_packet(void *buffer, int length, int socket_fd);
 
 private:
 	void tcpConnect();
@@ -28,7 +28,6 @@ private:
     string server_ip;
     string protocol;
 
-    int socket_fd;
     bool tcp_connected=false;
     bool tcp_connecting=false;
 	std::thread connect_thread;
@@ -39,8 +38,6 @@ private:
     int elems;
 
     int id;
-
-    uint frame_idx=0;
 
     uint64_t handshake_idx=-1;
     double   handshake_utc=-1;

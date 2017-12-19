@@ -46,7 +46,6 @@ networkPowerStream::networkPowerStream(Config& config,
     header.handshake_utc = -1;
 
     frame_idx=0;
-
 }
 
 networkPowerStream::~networkPowerStream() {
@@ -56,7 +55,8 @@ void networkPowerStream::apply_config(uint64_t fpga_seq) {
 }
 
 void networkPowerStream::main_thread() {
-    int buffer_id = 0;
+    int frame_id = 0;
+    uint8_t * frame = NULL;
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     void *packet_buffer = malloc(packet_length);
         IntensityPacketHeader *packet_header = (IntensityPacketHeader *)packet_buffer;
@@ -82,34 +82,43 @@ void networkPowerStream::main_thread() {
         }
         INFO("%i %s",dest_port, dest_server_ip.c_str());
 
-        for (;;) {
+        while(!stop_thread) {
             // Wait for a full buffer.
-            buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+            frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            if (frame == NULL) break;
 
             for (int t=0; t<times; t++){
-                for (int f=0; f<freqs; f++)
-                    local_data[f] = ((float*)buf->data[buffer_id])[f]*4 +
-                                        ((float*)buf->data[buffer_id])[f+freqs]*4;
-                // Send data to remote server.
-                int bytes_sent = sendto(socket_fd,
-                                 (void*)local_data,
-                                 freqs*sizeof(char), 0,
-                                 (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
-                if (bytes_sent != freqs*sizeof(char))
-                    ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
+                packet_header->frame_idx = frame_idx++;
+                for (int p=0; p<elems; p++){
+                    packet_header->elem_idx = p;
+                    packet_header->samples_summed = ((uint*)frame)[
+                                                            t*elems*(freqs+1) + p*(freqs+1) + freqs];
+                    memcpy(local_data,
+                            frame+(t*elems+p)*(freqs+1)*sizeof(uint),
+                            freqs*sizeof(uint));
+                    // Send data to remote server.
+                    int bytes_sent = sendto(socket_fd,
+                                                packet_buffer,
+                                                packet_length, 0,
+                                     (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
+                    if (bytes_sent != packet_length)
+                        ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
+                }
             }
 
             // Mark buffer as empty.
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
-            buffer_id = (buffer_id + 1) % buf->num_buffers;
+            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % buf->num_frames;
         }
     }
     else if (dest_protocol == "TCP")
     {
         // TCP variables
-        for (;;) {
+        while (!stop_thread) {
             // Wait for a full buffer.
-            buffer_id = wait_for_full_buffer(buf, unique_name.c_str(), buffer_id);
+            frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            if (frame == NULL) break;
+
             while (atomic_flag_test_and_set(&socket_lock)) {}
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);
@@ -117,16 +126,16 @@ void networkPowerStream::main_thread() {
                     packet_header->frame_idx = frame_idx++;
                     for (int p=0; p<elems; p++){
                         packet_header->elem_idx = p;
-                        packet_header->samples_summed = ((uint*)buf->data[buffer_id])[
+                        packet_header->samples_summed = ((uint*)frame)[
                                                                 t*elems*(freqs+1) + p*(freqs+1) + freqs];
                         memcpy(local_data,
-                                buf->data[buffer_id]+t*elems*(freqs+1)*sizeof(uint)+
-                                                          p*(freqs+1)*sizeof(uint),
+                                frame+(t*elems+p)*(freqs+1)*sizeof(uint),
                                 freqs*sizeof(uint));
                         int bytes_sent = send(socket_fd,
                                                 packet_buffer,
                                                 packet_length,
                                                 0);
+
                         if (bytes_sent != packet_length) {
                             while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
@@ -151,8 +160,8 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
             }
             // Mark buffer as empty.
-            mark_buffer_empty(buf, unique_name.c_str(), buffer_id);
-            buffer_id = (buffer_id + 1) % buf->num_buffers;
+            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % buf->num_frames;
         }
 
     }
@@ -238,6 +247,5 @@ void networkPowerStream::tcpConnect()
     atomic_flag_clear(&socket_lock);
 
 }
-
 
 

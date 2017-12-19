@@ -23,12 +23,12 @@
 #include <stdexcept>
 #include <string>
 #include <array>
+#include <csignal>
+#include "configEval.hpp"
 
 extern "C" {
 #include <pthread.h>
 }
-
-#include "intensityReceiverMode.hpp"
 
 // DPDK!
 #ifdef WITH_DPDK
@@ -55,12 +55,9 @@ extern "C" {
 #include <rte_ring.h>
 }
 #include "network_dpdk.h"
-#include "packetCapMode.hpp"
-#include "singleDishMode.hpp"
 #endif
-
 #include "errors.h"
-#include "buffers.h"
+#include "buffer.h"
 
 #include "Config.hpp"
 #include "util.h"
@@ -69,17 +66,16 @@ extern "C" {
 #include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
+#include "kotekanMode.hpp"
 #include "timer.hpp"
 #include "fpga_header_functions.h"
+#include "gpsTime.h"
 
 #ifdef WITH_HSA
-    #include "chimeShuffleMode.hpp"
-    #include "gpuTestMode.hpp"
+#include "hsaBase.h"
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
-    #include "gpuTestMode.hpp"
-    #include "pathFinderMode.hpp"
 #endif
 
 using json = nlohmann::json;
@@ -87,11 +83,18 @@ using json = nlohmann::json;
 kotekanMode * kotekan_mode = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
+volatile std::sig_atomic_t sig_value = 0;
+
+void signal_handler(int signal)
+{
+    sig_value = signal;
+}
 
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]            The local JSON config file to use\n\n");
+    printf("    --config (-c) [file]            The local JSON config file to use\n");
+    printf("    --gps-time (-g)                 Used with -c, try to get GPS time (CHIME only)\n\n");
 }
 
 #ifdef WITH_DPDK
@@ -104,7 +107,7 @@ void dpdk_setup() {
 #ifdef DPDK_VDIF_MODE
     char  arg4[] = "F";//"FF";
 #else
-    char  arg4[] = "F";
+     char  arg4[] = "F";
 #endif
     char  arg5[] = "-m";
     char  arg6[] = "256";
@@ -132,7 +135,7 @@ std::string exec(const std::string &cmd) {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    int log_level = config.get_int("/system/", "log_level");
+    int log_level = config.get_int("/", "log_level");
 
     log_level_warn = 0;
     log_level_debug = 0;
@@ -149,6 +152,25 @@ void update_log_levels(Config &config) {
     }
 }
 
+void set_gps_time(Config &config) {
+    if (config.exists("/", "gps_time") &&
+        !config.exists("/gps_time", "error") &&
+        config.exists("/gps_time", "frame0_nano")) {
+
+        uint64_t frame0 = config.get_uint64("/gps_time", "frame0_nano");
+        set_global_gps_time(frame0);
+        INFO("Set FPGA frame 0 time to %" PRIu64 " nanoseconds since Unix Epoch\n", frame0);
+    } else {
+        if (config.exists("/gps_time", "error")) {
+            string error_message = config.get_string("/gps_time", "error");
+            ERROR("*****\nGPS time lookup failed with reason: \n %s\n ******\n",
+                  error_message.c_str());
+        } else {
+            WARN("No GPS time set, using system clock.");
+        }
+    }
+}
+
 int start_new_kotekan_mode(Config &config) {
 
     timer dummytimer; //Strange linker error; required to build
@@ -158,48 +180,10 @@ int start_new_kotekan_mode(Config &config) {
 
     config.dump_config();
     update_log_levels(config);
+    set_gps_time(config);
 
-    string mode = config.get_string("/system", "mode");
+    kotekan_mode = new kotekanMode(config);
 
-    if (mode == "intensity_receiver") {
-        kotekan_mode = (kotekanMode *) new intensityReceiverMode(config);
-    }
-#ifdef WITH_DPDK
-    else if (mode == "packet_cap") {
-        kotekan_mode = (kotekanMode *) new packetCapMode(config);
-    }
-    else if (mode == "chime_shuffle") {
-        #ifdef WITH_HSA
-            kotekan_mode = (kotekanMode *) new chimeShuffleMode(config);
-        #else
-        return -1;
-        #endif
-    }
-    else if (mode == "single_dish") {
-        kotekan_mode = (kotekanMode *) new singleDishMode(config);
-    }
-    else if(mode == "pathfinder") {
-        #ifdef WITH_OPENCL
-            kotekan_mode = (kotekanMode *) new pathFinderMode(config);
-        #else
-            return -1;
-        #endif
-    }
-#endif
-    else if (mode == "gpu_test") {
-        #ifdef WITH_HSA
-            kotekan_mode = (kotekanMode *) new gpuTestMode(config);
-        #else
-            #ifdef WITH_OPENCL
-                kotekan_mode = (kotekanMode *) new gpuTestMode(config);
-            #else
-                return -1;
-            #endif
-        #endif
-    }
-    else {
-        return -1;
-    }
     kotekan_mode->initalize_processes();
     kotekan_mode->start_processes();
     running = true;
@@ -211,24 +195,32 @@ int main(int argc, char ** argv) {
 #ifdef WITH_DPDK
     dpdk_setup();
 #endif
+
+#ifdef WITH_HSA
+    kotekan_hsa_start();
+#endif
     json config_json;
+
+    std::signal(SIGINT, signal_handler);
 
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
     bool opt_d_set = false;
+    bool gps_time = false;
 
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
             {"config-deamon", required_argument, 0, 'd'},
+            {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "hc:d:",
+        opt_val = getopt_long (argc, argv, "ghc:d:",
                                long_options, &option_index);
 
         // End of args
@@ -247,6 +239,8 @@ int main(int argc, char ** argv) {
             case 'd':
                 config_file_name = strdup(optarg);
                 opt_d_set = true;
+            case 'g':
+                gps_time = true;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -272,20 +266,28 @@ int main(int argc, char ** argv) {
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        INFO("Opening config file %s", config_file_name);
         //config.parse_file(config_file_name, 0);
-        std::string json_string;
-        switch (opt_d_set) {
+        
+        string exec_path;
+        if (gps_time) {
+            INFO("Getting GPS time from ch_master, this might take some time...");
+            exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
+        } else {
+            switch (opt_d_set) {
             case false:
-                json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
+                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
                 break;
             default:
-                json_string = exec("python /usr/sbin/yaml_to_json.py " + std::string(config_file_name));
+                exec_path = "python /usr/sbin/yaml_to_json.py " + std::string(config_file_name);
                 break;
+            }
         }
+        std::string json_string = exec(exec_path.c_str());
         config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
-            ERROR("Mode not supported");
+            ERROR("Error with config file, exiting...");
             return -1;
         }
     }
@@ -334,7 +336,7 @@ int main(int argc, char ** argv) {
         }
         assert(kotekan_mode != nullptr);
         kotekan_mode->stop_processes();
-        // TODO should we have three states (running, shutting down, and stoped)?
+        // TODO should we have three states (running, shutting down, and stopped)?
         // This would prevent this function from blocking on join.
         kotekan_mode->join();
         delete kotekan_mode;
@@ -350,10 +352,18 @@ int main(int argc, char ** argv) {
     });
 
     for(EVER){
-        // Note you cannot actaully kill kotekan from the REST interface, it's always running.
-        // Maybe we should transfer control to the reserver loop here, but this isn't expensive,
-        // and might be a useful loop for other things.
-        sleep(1000);
+        sleep(1);
+        if (sig_value == SIGINT) {
+            INFO("Got SIGINT, shutting down kotekan...");
+            std::lock_guard<std::mutex> lock(kotekan_state_lock);
+            if (kotekan_mode != nullptr) {
+                INFO("Attempting to stop and join kotekan_processes...");
+                kotekan_mode->stop_processes();
+                kotekan_mode->join();
+                delete kotekan_mode;
+            }
+            break;
+        }
     }
 
     INFO("kotekan shutdown successfully.");

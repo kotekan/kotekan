@@ -3,7 +3,8 @@
 #include <math.h>
 #include <time.h>
 #include "errors.h"
-#include "buffers.h"
+#include "buffer.h"
+#include "chimeMetadata.h"
 
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi
@@ -133,9 +134,9 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
         //z = (sin(dec*D2R) - sin(alt)*sin(inst_lat*D2R))/(cos(alt)*cos(inst_lat*D2R));
         phases[i] = TAU*cos(effective_angle)*offset_distance*one_over_c;
     }
-
-    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f",
-            (int)beamform_time, inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
+//ikt - commented out to test performance without INFO calls.
+//    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST = %f, ALT = %f, AZ = %f",
+//            (int)beamform_time, inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
 
     return;
 }

@@ -1,20 +1,38 @@
 ---
 type: config
-system:
-  mode: single_dish
-  log_level: 2
+log_level: 2
 
 instrument_name: aro
 
 #shared by power & network_stream
-integration_length: 16384
+integration_length: 8192
 num_freq: 1024
 num_elements: 2
 samples_per_data_set: 32768
-buffer_depth: 5
+buffer_depth: 10
 num_links: 8
 timesamples_per_packet: 2
-cpu_affinity: [8,9,10,11]
+#cpu_affinity: [8,9,10,11]
+cpu_affinity: [4]
+num_disks: 10
+
+meta_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 5 * num_disks * buffer_depth
+
+vdif_input_buf:
+  kotekan_buffer: standard
+  metadata_pool: meta_pool
+  num_frames: buffer_depth * num_disks
+  vdif_header_size: 64
+  frame_size: samples_per_data_set * num_elements * (num_freq + vdif_header_size)
+
+output_power_buf:
+  kotekan_buffer: standard
+  metadata_pool: meta_pool
+  num_frames: buffer_depth
+  sizeof_float: 4
+  frame_size: (samples_per_data_set/integration_length) * (num_freq + 1) * num_elements * sizeof_float
 
 dpdk:
   kotekan_process: dpdkWrapper
@@ -27,25 +45,29 @@ dpdk:
   num_gpu_frames: 1
 
 raw_capture:
-  note: Testing all the things!
+#############################
+# THIS IS THE PLACE TO EDIT!!!
+#############################
+  note: 400-800 MHz chime feed, j1810
   kotekan_process: nDiskFileWrite
   write_to_disk: true
   gain_files:
   - /home/squirrel/ch_acq/gains_slotNone.pkl
   - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
-  num_disks: 10
+  gain_file_dir: /tmp
   disk_base: /drives/
-  disk_set: testing
+  disk_set: D
   in_buf: vdif_input_buf
 
 power:
   kotekan_process: computeDualpolPower
   vdif_in_buf: vdif_input_buf
   power_out_buf: output_power_buf
+  cpu_affinity: [11]
 
-network_stream:
+network_stream_boris:
   kotekan_process: networkPowerStream
   power_in_buf: output_power_buf
-  destination_port: 2054
-  destination_ip: 127.0.0.1
+  destination_port: 2003
+  destination_ip: 10.72.0.2
   destination_protocol: TCP

@@ -4,25 +4,6 @@ PROJECT (kotekan)
 
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
-#CUSTOM MODES:
-SET(SOURCE_EXE ${SOURCE_EXE} singleDishMode.cpp packetCapMode.cpp intensityReceiverMode.cpp)
-
-if (${USE_DPDK})
-	SET(SOURCE_EXE ${SOURCE_EXE} packetCapMode.cpp singleDishMode.cpp)
-    if (${USE_OPENCL})
-	SET(SOURCE_EXE ${SOURCE_EXE} pathFinderMode.cpp)
-    endif ()
-endif ()
-if (${USE_HCC})
-	#SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
-endif ()
-if (${USE_HSA})
-	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp chimeShuffleMode.cpp)
-endif ()
-if (${USE_OPENCL})
-	SET(SOURCE_EXE ${SOURCE_EXE} gpuTestMode.cpp)
-endif ()
-
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
@@ -46,7 +27,7 @@ target_link_libraries( kotekan libinclude )
 if (${USE_DPDK})
 	include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
     link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-    SET( DPDK_LIBS  "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_mempool -lrte_pmd_i40e -lrte_ring -lethdev -lrte_pmd_ixgbe -Wl,--no-whole-archive" )
+    SET( DPDK_LIBS  "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_mempool -lrte_pmd_i40e -lrte_ring -lrte_ethdev -lrte_kvargs -lrte_pmd_ixgbe -ldl -Wl,--no-whole-archive" )
     target_link_libraries ( kotekan ${DPDK_LIBS} )
 endif ()
 
@@ -66,3 +47,5 @@ install(FILES kotekan_opencl_fury.yaml DESTINATION /etc/kotekan/ COMPONENT confi
 install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
 #install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
 install(PROGRAMS ../scripts/yaml_to_json.py DESTINATION /usr/sbin COMPONENT scripts)
+
+add_definitions(/D__STDC_FORMAT_MACROS)

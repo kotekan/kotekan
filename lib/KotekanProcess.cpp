@@ -40,7 +40,7 @@ void KotekanProcess::apply_cpu_affinity() {
 
     err = pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 #endif
-    
+
     // Need to add thread name
     if (err)
         ERROR("Failed to set thread affinity for ..., error code %d", err);

@@ -1,8 +1,8 @@
 #include "networkOutputSim.hpp"
-#include "buffers.h"
+#include "buffer.h"
+#include "chimeMetadata.h"
 #include "errors.h"
 #include "test_data_generation.h"
-#include "error_correction.h"
 #include "nt_memcpy.h"
 #include "Config.hpp"
 #include "util.h"
@@ -53,13 +53,14 @@ void networkOutputSim::main_thread() {
 
     apply_config(0);
 
-    int buffer_id = link_id;
-    int data_id = 0;
+    int frame_id = link_id;
+    unsigned char * frame = NULL;
     uint64_t fpga_seq_num = 0;
     int constant = 9;
 
-    for (EVER) {
-        wait_for_empty_buffer(buf, unique_name.c_str(), buffer_id);
+    while(!stop_thread) {
+        frame = (unsigned char *)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL) break;
 
         if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
             constant = 10;
@@ -67,12 +68,11 @@ void networkOutputSim::main_thread() {
             constant = 9;
         }
 
-        set_data_ID(buf, buffer_id, data_id++);
-        set_stream_ID(buf, buffer_id, stream_id);
-        set_fpga_seq_num(buf, buffer_id, fpga_seq_num);
+        set_stream_id(buf, frame_id, stream_id);
+        set_fpga_seq_num(buf, frame_id, fpga_seq_num);
         struct timeval now;
         gettimeofday(&now, NULL);
-        set_first_packet_recv_time(buf, buffer_id, now);
+        set_first_packet_recv_time(buf, frame_id, now);
 
         // TODO perfect place for lambdas here.
         if (pattern == SIM_CONSTANT) {
@@ -81,14 +81,14 @@ void networkOutputSim::main_thread() {
                                 _samples_per_data_set,
                                 _num_local_freq,
                                 _num_elem,
-                                buf->data[buffer_id]);
+                                frame);
         } else if (pattern == SIM_FULL_RANGE) {
             //INFO("Generating a full range of all possible values.");
             generate_full_range_data_set(0,
                                 _samples_per_data_set,
                                 _num_local_freq,
                                 _num_elem,
-                                buf->data[buffer_id]);
+                                frame);
         } else if (pattern == SIM_SINE) {
             stream_id_t stream_id;
             stream_id.link_id = link_id;
@@ -97,21 +97,20 @@ void networkOutputSim::main_thread() {
                                 _samples_per_data_set,
                                 _num_local_freq,
                                 _num_elem,
-                                buf->data[buffer_id]);
+                                frame);
         } else {
             ERROR("Invalid Pattern");
             exit(-1);
         }
 
-        mark_buffer_full(buf, unique_name.c_str(), buffer_id);
+        mark_frame_full(buf, unique_name.c_str(), frame_id);
 
-        buffer_id = (buffer_id + num_links_in_group) % (buf->num_buffers);
+        frame_id = (frame_id + num_links_in_group) % (buf->num_frames);
 
         fpga_seq_num += _samples_per_data_set;
 
     }
 
-    mark_producer_done(buf, link_id);
     int ret = 0;
     pthread_exit((void *) &ret);
 

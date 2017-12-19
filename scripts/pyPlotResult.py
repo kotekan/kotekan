@@ -44,12 +44,16 @@ if (data_type == "CORR_MATRIX"): #N^2
 
 	f, (ax1, ax2) = plt.subplots(1, 2, figsize=[18,6])
 
-	im=ax1.imshow(corr_matrix[:,:,1].T,origin='upper',interpolation='nearest')
-	ax1.set_title("Re(Correlation Matrix)")
+	logmag = np.log(np.array(corr_matrix[:,:,1].T)**2)
+	logmag[logmag==-np.inf] = 0
+	im=ax1.imshow(logmag, origin='upper',interpolation='nearest')
+	ax1.set_title("log(Re.^2)")
 	f.colorbar(im,ax=ax1)
 
-	im=ax2.imshow(corr_matrix[:,:,0].T,origin='upper',interpolation='nearest')
-	ax2.set_title("Im(Correlation Matrix)")
+	logmag_im = np.log(np.array(corr_matrix[:,:,0].T)**2)
+	logmag_im[logmag_im==-np.inf] = 0
+	im=ax2.imshow(logmag_im, origin='upper',interpolation='nearest')
+	ax2.set_title("log(Im.^2)")
 	f.colorbar(im,ax=ax2)
 
 	ax1.set_xlabel("X Input")

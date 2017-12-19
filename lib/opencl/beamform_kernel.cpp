@@ -1,6 +1,7 @@
 
 #include "beamform_kernel.h"
 #include "fpga_header_functions.h"
+#include "chimeMetadata.h"
 #include <string>
 
 using std::string;
@@ -22,7 +23,7 @@ void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
     _element_mask = config.get_int_array(unique_name, "element_mask");
     _product_remap = config.get_int_array(unique_name, "product_remap");
     int remap_size = _product_remap.size();
-    
+
     if (remap_size != _num_elements) {
     ERROR("The remap array must have the same size as the number of elements. array size %d, num_elements %d",
         remap_size, _num_elements);
@@ -112,7 +113,7 @@ cl_event beamform_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, 
     int64_t current_seq = get_fpga_seq_num(param_Device.getInBuf(), param_bufferID);
     int64_t bankID = (current_seq / phase_update_period) % 2;
 
-    int32_t streamID = get_streamID(param_Device.getInBuf(), param_bufferID);
+    int32_t streamID = get_stream_id(param_Device.getInBuf(), param_bufferID);
 
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
     setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_bufferID));

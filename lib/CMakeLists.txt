@@ -15,18 +15,23 @@ set (KOTEKAN_LIB_SOURCES
               KotekanProcess.cpp
               SampleProcess.cpp
               Config.cpp
-              buffers.c
+              buffer.c
+              chimeMetadata.c
+              metadata.c
               errors.c
               nt_memcpy.c
               nt_memset.c
               restServer.cpp
               util.c
-              error_correction.c
               output_formating.c
               time_tracking.c
               fpga_header_functions.c
               bufferContainer.cpp
               processFactory.cpp
+              metadataFactory.cpp
+              bufferFactory.cpp
+              configEval.cpp
+              gpsTime.c
        )
 
 if (${USE_DPDK})
@@ -59,8 +64,10 @@ endif ()
 
 if (${USE_HSA})
        add_subdirectory(hsa)
+       link_directories ( /opt/rocm/hsa/lib/ )
        target_link_libraries( kotekan_libs kotekan_hsa )
        target_link_libraries( kotekan_libs hsa-runtime64 )
+       include_directories ( /opt/rocm/hsa/include/ )
 endif ()
 
 if (${USE_OPENCL})
@@ -69,8 +76,13 @@ if (${USE_OPENCL})
        target_link_libraries( kotekan_libs kotekan_opencl )
 endif ()
 
+
+# HDF5 stuff
+if (${USE_HDF5})
+  include_directories (${HDF5_INCLUDE_DIRS})
+endif ()
+
 add_subdirectory(testing)
 target_link_libraries( kotekan_libs kotekan_testing )
 add_subdirectory(processes)
 target_link_libraries( kotekan_libs kotekan_processes )
-
