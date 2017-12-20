@@ -33,6 +33,8 @@
 #include "accumulate.hpp"
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
+#include "bufferSend.hpp"
+#include "bufferRecv.hpp"
 #include "rfiRecorder.hpp"
 #include "rfiBroadcast.hpp"
 
@@ -229,6 +231,13 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "rfiBroadcast") {
         return (KotekanProcess *) new rfiBroadcast(config, location, buffer_container);
+    }
+
+    if (name == "bufferSend") {
+        return (KotekanProcess *) new bufferSend(config, location, buffer_container);
+    }
+    if (name == "bufferRecv") {
+        return (KotekanProcess *) new bufferRecv(config, location, buffer_container);
     }
 
     // OpenCL

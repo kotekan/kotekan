@@ -24,6 +24,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
 #              bufferSend.cpp
 #              bufferRecv.cpp
               bufferStatus.cpp
+              bufferSend.cpp
+              bufferRecv.cpp
               rfiRecorder.cpp
               rfiBroadcast.cpp
               )
