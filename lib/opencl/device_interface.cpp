@@ -27,7 +27,7 @@ config(param_Config)
     num_data_sets = config.get_int(unique_name, "num_data_sets");
     num_elements = config.get_int(unique_name, "num_elements");
     num_blocks = config.get_int(unique_name, "num_blocks");
-    sk_step = config.get_int(unique_name, "sk_step");
+//    sk_step = config.get_int(unique_name, "sk_step");
     samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");    
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
@@ -179,10 +179,10 @@ void device_interface::allocateMemory()
     // Setup RFI buffers
     //device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
     //CHECK_MEM(device_rfi_count_buffer);
-    for (int i = 0; i < in_buf->num_frames; ++i) {
-	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
-	CHECK_CL_ERROR(err);
-    }
+//    for (int i = 0; i < in_buf->num_frames; ++i) {
+//	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
+//	CHECK_CL_ERROR(err);
+//    }
 
     // Setup beamforming output buffers.
     if (enable_beamforming) {

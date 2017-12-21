@@ -1,7 +1,3 @@
-
-
-
-
 ---
 type: config
 #system:
@@ -34,14 +30,15 @@ sizeof_per_frequency_data: 16
 sizeof_per_element_data: 12
 sizeof_uint8_t: 1
 sizeof_gate_frame_header: 236
+one: 1
+two: 2
+vdif_fs_1: 625
+vdif_fs_2: 16
+vdif_fs_3: 5032
 
 num_links_fury: 8
 num_links_270: 2
 num_links_280: 3
-
-sk_step: 256
-rfi_sensitivity: 3
-rfi_zero: false
 
 #num_links_per_gpu: 1
 #if 280/270 combo
@@ -61,35 +58,28 @@ gpu_fury_input_buffers:
         
 gpu_output_buffers:
     num_frames: buffer_depth * num_links_fury
-    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2.*num_data_sets  * sizeof_cl_int 
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*two*num_data_sets  * sizeof_cl_int 
     metadata_pool: main_pool
     gpu_output_buffer_0:
         kotekan_buffer: standard
 
 beamform_output_buffers:
     num_frames: buffer_depth * num_links_fury
-    frame_size: samples_per_data_set * num_data_sets * num_local_freq * 2
+    frame_size: samples_per_data_set * num_data_sets * num_local_freq * two
     metadata_pool: main_pool
     beam_output_buffer_0:
         kotekan_buffer: standard
-
-rfi_output_buffers:
-    num_frames: buffer_depth * num_links_fury
-    frame_size: num_local_freq * (samples_per_data_set/sk_step) * sizeof_cl_int 
-    metadata_pool: main_pool
-    rfi_output_buffer_0:
-        kotekan_buffer: standard
- 
+        
 
 tcp_output_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_tcp_frame_header +
-        ((num_elements * (num_elements + 1)) / 2 ) *
+        ((num_elements * (num_elements + one)) / two ) *
         num_total_freq * sizeof_complex_int_t +
         num_total_freq * sizeof_per_frequency_data +
         num_total_freq * num_elements * sizeof_per_element_data +
         ((num_elements *
-        (num_elements + 1)) / 2 ) *
+        (num_elements + one)) / two ) *
         num_total_freq * sizeof_uint8_t
     metadata_pool: main_pool
     network_output_buffer_0:
@@ -98,7 +88,7 @@ tcp_output_buffers:
 gated_output_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_gate_frame_header
-        + ((num_elements * (num_elements + 1)) / 2 ) *
+        + ((num_elements * (num_elements + one)) / two ) *
         num_total_freq * sizeof_complex_int_t
     metadata_pool: main_pool
     gated_output_buffer:
@@ -106,7 +96,7 @@ gated_output_buffers:
 
 vdif_output_buffers:
     num_frames: buffer_depth
-    frame_size: 625*16*5032
+    frame_size: vdif_fs_1 * vdif_fs_2 * vdif_fs_3
     metadata_pool: main_pool
     vdif_output_buffer:
         kotekan_buffer: standard
@@ -183,12 +173,12 @@ gpu_post_process:
     gate_out_buf: gated_output_buffer
     corr_in_buf_0: gpu_output_buffer_0
 
-chrxUplink:
-    kotekan_process: chrxUplink
-    collection_server_ip: "10.10.10.2"
-    collection_server_port: 41016
-    chrx_in_buf: network_output_buffer_0
-    gate_in_buf: gated_output_buffer
+#chrxUplink:
+#    kotekan_process: chrxUplink
+#    collection_server_ip: "10.10.10.2"
+#    collection_server_port: 41016
+#    chrx_in_buf: network_output_buffer_0
+#    gate_in_buf: gated_output_buffer
 
 #nullProcess used when disable upload is true and chrxUplink should not be active.
 
@@ -204,34 +194,16 @@ beamform_post_process:
   beam_in_buf_0: beam_output_buffer_0
   vdif_out_buf: vdif_output_buffer
 
-beamform_vdif:
-  kotekan_process: vdifStream
-  vdif_server_ip: 10.11.1.200
-  vdif_port: 10251
-  vdif_in_buf: vdif_output_buffer  
+#beamform_vdif:
+#  kotekan_process: vdifStream
+#  vdif_server_ip: 10.11.1.200
+#  vdif_port: 10251
+#  vdif_in_buf: vdif_output_buffer  
 
-#rfiRecorder:
-#  kotekan_process: rfiRecorder
-#  rfi_buf: rfi_output_buffer_0
-
-
-#rfiBroadcast:
-#  kotekan_process: rfiBroadcast
-#  destination_port: 2900
-#  destination_ip: 192.168.52.174
-#  destination_protocol: UDP
-#  frames_per_packet: 64
-#  waterfall_request_delay: 30 #seconds
-#  rfi_buf: rfi_output_buffer_0
-
-#metadata_dump_0:
-#  kotekan_process: chimeMetadataDump
-#  buf: gpu_output_buffer_0
+metadata_dump_0:
+  kotekan_process: chimeMetadataDump
+  buf: gpu_output_buffer_0
 
 #buffer_status:
 #  kotekan_process: bufferStatus
 #  time_delay: 1000 #microseconds
-
-
-
-
