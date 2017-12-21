@@ -25,6 +25,7 @@
 #include "integratePowerStream.hpp"
 #include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
+#include "gpuBeamformPulsarSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
 #include "simVdifData.hpp"
@@ -178,6 +179,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // ****** testing directory ******
     if (name == "gpuBeamformSimulate") {
         return (KotekanProcess *) new gpuBeamformSimulate(config, location, buffer_container);
+    }
+    if (name == "gpuBeamformPulsarSimulate") {
+        return (KotekanProcess *) new gpuBeamformPulsarSimulate(config, location, buffer_container);
     }
 
     if (name == "gpuSimulate") {
