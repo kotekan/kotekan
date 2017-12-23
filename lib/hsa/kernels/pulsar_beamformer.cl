@@ -51,9 +51,9 @@ __kernel void pulsarbf( __global uint *data, __global float2 *phase,  __global u
       float2 final = sum[4*get_local_id(0)] + sum[4*get_local_id(0) +1] + sum[4*get_local_id(0) +2] + sum[4*get_local_id(0)+3];
 
       //Real
-      output[ ((t*nsamp/TS+get_group_id(2))*20 + get_group_id(1)*2 + get_group_id(0))*2] = (int) final.REAL/factor+0.5;
-      //Imag
-      output[ ((t*nsamp/TS+get_group_id(2))*20 + get_group_id(1)*2 + get_group_id(0))*2+1] = (int) final.IMAG/factor+0.5;
+      uint out_real = (int) final.REAL/factor+0.5;
+      uint out_imag = (int) final.IMAG/factor+0.5;
+      output[(t*nsamp/TS+get_group_id(2))*20 + get_group_id(1)*2 + get_group_id(0)] = ((out_real<<4) & 0xF0) + (out_imag & 0x0F);
     }
     barrier(CLK_LOCAL_MEM_FENCE); //crucial if TS > 1 !
   } //end t

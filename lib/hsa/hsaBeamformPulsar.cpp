@@ -37,7 +37,7 @@ void hsaBeamformPulsar::apply_config(const uint64_t& fpga_seq) {
     _num_pol = config.get_int(unique_name, "num_pol");
 
     input_frame_len = _num_elements * _samples_per_data_set;
-    output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol * 2 * sizeof(uint8_t);
+    output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol *  sizeof(uint8_t);
 }
 
 hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
