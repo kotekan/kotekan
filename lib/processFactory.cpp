@@ -12,6 +12,7 @@
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
 #include "frbPostProcess.hpp"
+#include "pulsarPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
@@ -130,6 +131,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "frbPostProcess") {
         return (KotekanProcess *) new frbPostProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarPostProcess") {
+        return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
     }
 
     if (name == "nDiskFileWrite") {
