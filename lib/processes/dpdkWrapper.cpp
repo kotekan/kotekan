@@ -118,7 +118,6 @@ void dpdkWrapper::main_thread() {
             link_ids[i] = current_link_id++;
             INFO("link_ids[%d] = %d", i, link_ids[i]);
         }
-        
         for (int i = 0; i < _num_fpga_links; ++i) {
             tmp_buffer[i][0] = network_input_buffer[_link_map[i]];
             network_dpdk_args->num_links_in_group[i] = config.num_links_per_gpu(_link_map[i]);
@@ -134,7 +133,6 @@ void dpdkWrapper::main_thread() {
                 register_producer(tmp_buffer[i][0], network_dpdk_args->producer_names[i]);
             }
         }
-        
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
     } else if (_mode == "vdif") {

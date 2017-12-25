@@ -99,12 +99,10 @@ void chrxUplink::main_thread() {
         INFO("Finished sending frame to chrx");
 
         if (_enable_gating) {
-//ikt - commented out to test performance without DEBUG calls.
 //            DEBUG("Getting gated buffer");
             gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
             if (gate_frame == NULL) break;
 
-//ikt - commented out to test performance without DEBUG calls.
 //            DEBUG("Sending gated buffer");
             bytes_sent = send(tcp_fd, gate_frame, gate_buf->frame_size, 0);
             if (bytes_sent <= 0) {

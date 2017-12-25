@@ -251,7 +251,7 @@ static void advance_vdif_frame(struct NetworkDPDK * dpdk_net,
                           uint64_t new_seq) {
 
     // TODO it is really bad to have a blocking call here(!)
-    //DEBUG("Port %d, marking buffer %d as full\n", port, dpdk_net->link_data[port][0].vdif_buffer_id);
+    DEBUG("Port %d, marking buffer %d as full\n", port, dpdk_net->link_data[port][0].vdif_buffer_id);
     mark_frame_full(dpdk_net->args->vdif_buf,
                      dpdk_net->args->producer_names[port],
                      dpdk_net->link_data[port][0].vdif_buffer_id);
@@ -428,9 +428,9 @@ static inline void copy_data_to_vdif(struct NetworkDPDK * dpdk_net,
 
     stream_id_t stream_id = dpdk_net->link_data[port][0].s_stream_ID;
 
-    //if (port == 0) DEBUG("vdif_frame_location * frame_size = %lld; buffer size = %lld; frame_size = %lld; seq = %lld ",
-    //        vdif_frame_location * frame_size, dpdk_net->args->vdif_buf->frame_size,
-    //        frame_size, dpdk_net->link_data[port][0].seq);
+    if (port == 0) DEBUG("vdif_frame_location * frame_size = %lld; buffer size = %lld; frame_size = %lld; seq = %lld ",
+            vdif_frame_location * frame_size, dpdk_net->args->vdif_buf->frame_size,
+            frame_size, dpdk_net->link_data[port][0].seq);
     assert(((vdif_frame_location + dpdk_net->args->timesamples_per_packet)* frame_size) <= dpdk_net->args->vdif_buf->frame_size);
 
     // Setup the VDIF headers
@@ -633,14 +633,13 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 dpdk_net->vdif_time_set = 1;
 
                 // Debug test to make sure this works.
- //ikt - commented out to test performance without DEBUG calls.               
- //               DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %" PRIu64 ", data frame %" PRIu64 ", vdif_time: %f",
- //                       (double)now.tv_sec+(double)now.tv_usec/1000000.0,
- //                       dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
- //                       (seq - dpdk_net->vdif_offset) % 390625,
- //                       (double)(((seq - dpdk_net->vdif_offset) / 390625) + 946684800) +
- //                       (double)dpdk_net->vdif_base_time +
- //                       (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
+                DEBUG("Set VDIF time offsets: base_time: %f; VDIF seconds %" PRIu64 ", data frame %" PRIu64 ", vdif_time: %f",
+                        (double)now.tv_sec+(double)now.tv_usec/1000000.0,
+                        dpdk_net->vdif_base_time + ((seq - dpdk_net->vdif_offset) / 390625),
+                        (seq - dpdk_net->vdif_offset) % 390625,
+                        (double)(((seq - dpdk_net->vdif_offset) / 390625) + 946684800) +
+                        (double)dpdk_net->vdif_base_time +
+                        (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
             }
         }
         INFO("Got first packet: port: %d, seq: %" PRId64 "\n",
@@ -793,7 +792,7 @@ int lcore_recv_pkt_dump(void *args) {
                     goto release_frame;
                 }
 
-                //INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
+                INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
                 uint64_t seq = get_mbuf_seq_num(mbufs[i]);
                 int buffer_id = dpdk_net->link_data[port][0].buffer_id;
 
@@ -840,7 +839,7 @@ int lcore_recv_pkt_dump(void *args) {
 
                 dpdk_net->link_data[port][0].dump_location += dpdk_net->args->udp_packet_size;
 
-                //INFO("Port %d dump location %d, buffer size %d", port, dpdk_net->link_data[port][0].dump_location, dpdk_net->args->buf[port][0]->frame_size);
+                INFO("Port %d dump location %d, buffer size %d", port, dpdk_net->link_data[port][0].dump_location, dpdk_net->args->buf[port][0]->frame_size);
 
                 if (dpdk_net->link_data[port][0].dump_location ==
                         dpdk_net->args->buf[port][0]->frame_size) {
@@ -941,7 +940,7 @@ int lcore_recv_pkt(void *args)
                     goto release_frame;
                 }
 
-                //INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
+                INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
 
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
                     if (likely((align_first_packet(dpdk_net, mbufs[i], port) == 0))) {
@@ -957,17 +956,15 @@ int lcore_recv_pkt(void *args)
                 // There is only possible diff for all freqs.  TODO: Idealy this value would be a per port only.
                 int64_t diff = (int64_t)dpdk_net->link_data[port][0].seq - (int64_t)dpdk_net->link_data[port][0].last_seq;
                 if (unlikely(diff < 0)) {
- //it - commented out to test performance without DEBUG calls.                   
- //                   DEBUG("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
- //                           port, diff, dpdk_net->link_data[port][0].last_seq, dpdk_net->link_data[port][0].seq);
+                    DEBUG("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
+                            port, diff, dpdk_net->link_data[port][0].last_seq, dpdk_net->link_data[port][0].seq);
                     goto release_frame;
                 }
 
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-//it - commented out to test performance without INFO calls.                   
-//                        INFO("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
+                        INFO("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
                         handle_lost_packets(dpdk_net, port);
                     }
 

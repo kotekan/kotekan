@@ -48,7 +48,6 @@ void bufferFactory::build_from_tree(map<string, struct Buffer *> &buffers,
 struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &name, const string &location) {
 
     //DEBUG("Creating buffer of type: %s, at config tree path: %s", name.c_str(), location.c_str());
-    
     uint32_t num_frames = config.get_int_eval(location, "num_frames");
     uint32_t frame_size = config.get_int_eval(location, "frame_size");
     string metadataPool_name = config.get_string(location, "metadata_pool");

@@ -195,7 +195,6 @@ void gpuPostProcess::main_thread() {
         // This call is blocking!
         uint8_t * in_frame = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
         if (in_frame == NULL) break;
-//IT - commented out to test performance without INFO calls.
 //        INFO("GPU Post process got full buffer ID %d for GPU %d", in_frame_ids[gpu_id], gpu_id);
 
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
@@ -356,7 +355,6 @@ void gpuPostProcess::main_thread() {
                     if (gate_frame == NULL) goto end_loop;
 
                     if (_enable_basic_gating) {
-//ikt - commented out to test performance without DEBUG calls.
 //                        DEBUG("Copying gated data to the gate_buf!");
                         for (int j = 0; j < num_values; ++j) {
                             // Visibilities = OFF + ON
@@ -378,7 +376,6 @@ void gpuPostProcess::main_thread() {
 
                     memcpy(out_frame, buf, frame_size);
                     mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
-//IT - commented out to test performance without INFO calls.
 //                    INFO("gpu_post_process: marked output buffer full: %d", out_buffer_ID );
 
                     out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
@@ -389,7 +386,6 @@ void gpuPostProcess::main_thread() {
         }
 
         mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
-//IT - commented out to test performance without INFO calls.
 //        INFO("gpu_post_process: marked in buffer empty: gpu_id %d, buffer id %d", gpu_id, in_frame_ids[gpu_id] );
 
         in_frame_ids[gpu_id] = (in_frame_ids[gpu_id] + 1) % in_buf[gpu_id]->num_frames;

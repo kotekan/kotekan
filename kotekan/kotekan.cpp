@@ -274,13 +274,10 @@ int main(int argc, char ** argv) {
             INFO("Getting GPS time from ch_master, this might take some time...");
             exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
         } else {
-            switch (opt_d_set) {
-            case false:
-                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
-                break;
-            default:
+            if (opt_d_set) {
                 exec_path = "python /usr/sbin/yaml_to_json.py " + std::string(config_file_name);
-                break;
+            } else {
+                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
             }
         }
         std::string json_string = exec(exec_path.c_str());

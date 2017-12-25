@@ -100,11 +100,10 @@ void vdifStream::main_thread() {
         }
 
         diff_t = e_time() - start_t;
-//IT - commented out to test performance without INFO calls.
-//        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d microseconds",
-//              _vdif_server_ip.c_str(),
-//              _vdif_port,
-//              diff_t, sleep_period);
+        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d microseconds",
+              _vdif_server_ip.c_str(),
+              _vdif_port,
+              diff_t, sleep_period);
 
         if (diff_t < 0.96) {
             sleep_period += 50;
