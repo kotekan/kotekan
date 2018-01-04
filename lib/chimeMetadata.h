@@ -10,9 +10,11 @@
 extern "C" {
 #endif
 
+#pragma pack()
 struct chimeMetadata {
     int64_t fpga_seq_num;
     struct timeval first_packet_recv_time;
+    struct timespec gps_time; // The GPS time of the fpga_seq_num.
     int32_t lost_timesamples;
     uint16_t stream_ID;
 };
@@ -49,6 +51,12 @@ inline struct timeval get_first_packet_recv_time(struct Buffer * buf, int ID) {
     return chime_metadata->first_packet_recv_time;
 }
 
+inline struct timespec get_gps_time(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->gps_time;
+}
+
 inline void atomic_add_lost_timesamples(struct Buffer * buf, int ID,
                                         int64_t num_lost_samples) {
     struct metadataContainer * mc = buf->metadata[ID];
@@ -82,6 +90,12 @@ inline void set_first_packet_recv_time(struct Buffer * buf, int ID, struct timev
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     chime_metadata->first_packet_recv_time = time;
+}
+
+inline void set_gps_time(struct Buffer * buf, int ID, struct timespec time) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->gps_time = time;
 }
 
 #ifdef __cplusplus

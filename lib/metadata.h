@@ -56,6 +56,7 @@ struct metadataPool {
     int * in_use;
 
     unsigned int pool_size;
+    size_t metadata_object_size;
 
     // Prevents us from allocating the same info object twice
     pthread_mutex_t pool_lock;

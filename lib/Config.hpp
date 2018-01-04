@@ -28,6 +28,8 @@ public:
     // and return the result of evaluating it.
     int32_t get_int_eval(const string& base_path, const string& name);
 
+    uint64_t get_uint64(const string& base_path, const string& name);
+
     float get_float(const string& base_path, const string& name);
     // Same as get_float, but if it cannot find the value, it returns `default_value`
     float get_float_default(const string& base_path, const string& name, float default_value);
@@ -46,6 +48,9 @@ public:
     bool get_bool(const string& base_path, const string& name);
     // Same as get_bool, but if it cannot find the value, it returns `default_value`
     bool get_bool_default(const string& base_path, const string& name, bool default_value);
+
+    // Returns true if the path exists
+    bool exists(const string& base_path, const string& name);
 
     vector<int32_t> get_int_array(const string& base_path, const string& name);
     vector<float> get_float_array(const string& base_path, const string& name);
