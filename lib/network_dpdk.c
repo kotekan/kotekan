@@ -578,6 +578,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                 set_first_packet_recv_time(dpdk_net->args->buf[port][freq],
                                         dpdk_net->link_data[port][freq].buffer_id,
                                         now);
+
                 if (is_gps_global_time_set() == 1) {
                     struct timespec gps_time = compute_gps_time(seq - seq % integration_period);
                     set_gps_time(dpdk_net->args->buf[port][freq],

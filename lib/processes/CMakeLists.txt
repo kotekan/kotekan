@@ -9,6 +9,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               computeDualpolPower.cpp
               fullPacketDump.cpp
               gpuPostProcess.cpp
+              frbPostProcess.cpp
+	      pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp

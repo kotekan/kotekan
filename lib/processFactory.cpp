@@ -11,6 +11,8 @@
 #endif
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
+#include "frbPostProcess.hpp"
+#include "pulsarPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
@@ -24,6 +26,7 @@
 #include "integratePowerStream.hpp"
 #include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
+#include "gpuBeamformPulsarSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
 #include "simVdifData.hpp"
@@ -132,6 +135,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "gpuPostProcess") {
         return (KotekanProcess *) new gpuPostProcess(config, location, buffer_container);
     }
+    if (name == "frbPostProcess") {
+        return (KotekanProcess *) new frbPostProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarPostProcess") {
+        return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
@@ -181,6 +190,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "gpuBeamformSimulate") {
         return (KotekanProcess *) new gpuBeamformSimulate(config, location, buffer_container);
     }
+    if (name == "gpuBeamformPulsarSimulate") {
+        return (KotekanProcess *) new gpuBeamformPulsarSimulate(config, location, buffer_container);
+    }
 
     if (name == "gpuSimulate") {
         return (KotekanProcess *) new gpuSimulate(config, location, buffer_container);
@@ -200,6 +212,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "testDataCheckFloat") {
         return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
+    }
+    if (name == "testDataCheckUchar") {
+        return (KotekanProcess *) new testDataCheck<unsigned char>(config, location, buffer_container);
     }
 
     if (name == "constDataCheck") {
