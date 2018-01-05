@@ -16,6 +16,7 @@
 #include "hsaBarrier.hpp"
 #include "hsaBeamformKernel.hpp"
 #include "hsaBeamformPulsar.hpp"
+#include "hsaPulsarUpdatePhase.hpp"
 #include "hsaBeamformReorder.hpp"
 #include "hsaBeamformTranspose.hpp"
 #include "hsaBeamformUpchan.hpp"
@@ -72,6 +73,10 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_beamform_pulsar") {
             list_commands.push_back(new hsaBeamformPulsar("pulsarbf",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_pulsar_update_phase") {
+            list_commands.push_back(new hsaPulsarUpdatePhase("hsa_pulsar_update_phase",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_beamform_kernel") {
