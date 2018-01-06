@@ -48,6 +48,9 @@
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
 #endif
+#ifdef WITH_AIRSPY
+    #include "airspyInput.hpp"
+#endif
 
 processFactory::processFactory(Config& config,
                                bufferContainer& buffer_container) :
@@ -177,6 +180,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
     }
+
+#ifdef WITH_AIRSPY
+    if (name == "airspyInput") {
+        return (KotekanProcess *) new airspyInput(config, location, buffer_container);
+    }
+#endif
 
     if (name == "streamSingleDishVDIF") {
         return (KotekanProcess *) new streamSingleDishVDIF(config, location, buffer_container);
