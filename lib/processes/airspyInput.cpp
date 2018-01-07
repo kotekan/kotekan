@@ -7,7 +7,13 @@ airspyInput::airspyInput(Config& config, const string& unique_name,
 
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
-//    base_dir = config.get_string(unique_name, "base_dir");
+
+    freq = config.get_float_default(unique_name,"freq",1420) * 1000000;    //MHz
+    sample_bw = config.get_float_default(unique_name,"sample_bw",2.5)*1000000; //BW in Hz
+    gain_lna = config.get_int_default(unique_name,"gain_lna",5); //MAX: 14
+    gain_if  = config.get_int_default(unique_name,"gain_if",5);  //MAX: 15
+    gain_mix = config.get_int_default(unique_name,"gain_mix",5); //MAX: 15
+    biast_power = config.get_bool_default(unique_name,"biast_power",false) ? 1 : 0;
 }
 
 airspyInput::~airspyInput() {
@@ -26,9 +32,7 @@ void airspyInput::main_thread() {
     recv_busy = PTHREAD_MUTEX_INITIALIZER;
 
     airspy_init();
-    
-   a_device=init_device();
-
+    a_device=init_device();
     airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
 }
 
@@ -39,8 +43,13 @@ int airspyInput::airspy_callback(airspy_transfer_t* transfer){
     return 0;
 }
 void airspyInput::airspy_producer(airspy_transfer_t* transfer){
-    //first, make sure two callbacks don't do this at once
+    //make sure two callbacks don't run at once
     pthread_mutex_lock(&recv_busy);
+
+//    static double start_time = e_time();
+//    double now_time = e_time();
+//    INFO("Time since last data: %i %fms\n",transfer->sample_count, (now_time-start_time)*1000);
+//    start_time = now_time;
 
     void *in = transfer->samples;
     int bt = transfer->sample_count * BYTES_PER_SAMPLE;
@@ -53,7 +62,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer){
         int copy_length = bt < buf->frame_size ? bt : buf->frame_size;
         DEBUG("Filling Buffer %d With %d Data Samples",frame_id,copy_length);
         //FILL THE BUFFER
-        memcpy(buf_ptr, in, copy_length);
+        memcpy(buf_ptr+frame_loc, in, copy_length);
         bt-=copy_length;
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
         
@@ -77,9 +86,7 @@ struct airspy_device *airspyInput::init_device(){
         airspy_exit();
     }
 
-    int sample_rate_val=2500000;
-//  int sample_rate_val=10000000;
-    result = airspy_set_samplerate(dev, sample_rate_val);
+    result = airspy_set_samplerate(dev, sample_bw);
     if (result != AIRSPY_SUCCESS) {
         printf("airspy_set_samplerate() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
         airspy_close(dev);
@@ -93,17 +100,17 @@ struct airspy_device *airspyInput::init_device(){
         airspy_exit();
     }
 
-    result = airspy_set_vga_gain(dev, 15); //MAX:15
+    result = airspy_set_vga_gain(dev, gain_if);
     if( result != AIRSPY_SUCCESS ) {
         printf("airspy_set_vga_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
     }
 
-    result = airspy_set_freq(dev, 1420000000);
+    result = airspy_set_freq(dev, freq);
     if( result != AIRSPY_SUCCESS ) {
         printf("airspy_set_freq() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
     }
 
-    result = airspy_set_mixer_gain(dev, 15); //MAX: 15
+    result = airspy_set_mixer_gain(dev, gain_mix);
     if( result != AIRSPY_SUCCESS ) {
         printf("airspy_set_mixer_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
     }
@@ -112,13 +119,13 @@ struct airspy_device *airspyInput::init_device(){
         printf("airspy_set_mixer_agc() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
     }
 
-    result = airspy_set_lna_gain(dev, 14); //MAX: 14
+    result = airspy_set_lna_gain(dev, gain_lna);
     if( result != AIRSPY_SUCCESS ) {
         printf("airspy_set_lna_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
     }
 
 
-    result = airspy_set_rf_bias(dev, 0);//biast_val);
+    result = airspy_set_rf_bias(dev, biast_power);
     if( result != AIRSPY_SUCCESS ) {
         printf("airspy_set_rf_bias() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
         airspy_close(dev);
@@ -142,6 +149,6 @@ struct airspy_device *airspyInput::init_device(){
     printf("Serial Number: 0x%08X%08X\n",
         read_partid_serialno.serial_no[2],
         read_partid_serialno.serial_no[3]);
-//        return EXIT_FAILURE;
+
     return dev;
 }

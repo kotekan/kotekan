@@ -4,6 +4,7 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" ON)
+option(USE_FFTW "Build with FFTW F-engine" ON)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
@@ -28,12 +29,15 @@ endif ()
 
 if (${USE_AIRSPY})
   find_package( LibAirSpy )
-  set(USE_AIRSPY "false")
   set(USE_AIRSPY ${LIBAIRSPY_FOUND})
-  find_package( FFTW REQUIRED)
-  set(USE_FFTW ${FFTW_FOUND})
 endif ()
 
+if (${USE_FFTW})
+  find_package( FFTW)
+  set(USE_FFTW ${FFTW_FOUND})
+  add_definitions(-DWITH_FFTW)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lfftw3f ")
+endif()
 
 if(${DPDK_VDIF})
   add_definitions(-DDPDK_VDIF_MODE)

@@ -4,36 +4,66 @@ log_level: 2
 
 instrument_name: airspy
 
-#shared by power & network_stream
-integration_length: 8192
-num_freq: 1024
-num_elements: 2
 samples_per_data_set: 32768
+bytes_per_sample: 2
 buffer_depth: 10
-num_links: 8
-timesamples_per_packet: 2
-#cpu_affinity: [8,9,10,11]
-cpu_affinity: [4]
+cpu_affinity: [4,5,6,7]
+num_elements: 1
+one: 1
+two: 2
+sizeof_float: 4
 
 meta_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 5 * buffer_depth
 
-vdif_input_buf:
+input_buf:
   kotekan_buffer: standard
   metadata_pool: meta_pool
   num_frames: buffer_depth
-  vdif_header_size: 64
-  frame_size: samples_per_data_set 
-  #samples_per_data_set * num_elements * (num_freq + vdif_header_size)
+  frame_size: samples_per_data_set * bytes_per_sample
 
-output_power_buf:
-  kotekan_buffer: standard
-  metadata_pool: meta_pool
-  num_frames: buffer_depth
-  sizeof_float: 4
-  frame_size: (samples_per_data_set/integration_length) * num_freq * num_elements * sizeof_float
-
+sample_bw: 2.5 #MHz, must be float?
+freq: 1420.    #MHz
 airspy_input:
   kotekan_process: airspyInput
-  out_buf: vdif_input_buf
+  out_buf: input_buf
+  gain_lna: 14 #0-14
+  gain_mix: 15 #0-15
+  gain_if:  15 #0-15
+  biast_power: false
+
+spectrum_output:
+  integration_length: 32
+  spectrum_length: 1024
+
+  post_fengine_buf:
+    kotekan_buffer: standard
+    metadata_pool: meta_pool
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
+
+  fengine:
+    kotekan_process: fftwEngine
+    in_buf: input_buf
+    out_buf: post_fengine_buf
+
+  post_corr_buf:
+    kotekan_buffer: standard
+    metadata_pool: meta_pool
+    num_frames: buffer_depth
+    frame_size: ( spectrum_length + one ) * sizeof_float
+
+  xengine:
+    kotekan_process: simpleAutocorr
+    in_buf: post_fengine_buf
+    out_buf: post_corr_buf
+
+  power_stream:
+    kotekan_process: networkPowerStream
+    num_freq: 1024
+    samples_per_data_set: 32
+    destination_port: 23402
+    destination_ip: "127.0.0.1"
+    destination_protocol: "TCP"
+    power_in_buf: post_corr_buf

@@ -16,36 +16,9 @@
 #include "util.h"
 
 #define BYTES_PER_SAMPLE 2
-#define NUM_COMMANDS 8
-#define N_INPUT 2
-#define BLOCK_LENGTH (65536*4)
-#define BUF_BLOCKS 40
-#define CMD_CHKCAL 6
-#define CMD_AUTOCAL 7
 
 #include <string>
 using std::string;
-
-struct ring_buffer{
-    int head;
-    int head_pos;
-    int tail;
-    int64_t sample_counter;
-    pthread_mutex_t lock;
-    void *blocks[BUF_BLOCKS];
-};
-
-struct command_queue{
-    int cmd[NUM_COMMANDS];
-    int cur,len;
-};
-
-struct msg_header{
-    int type;
-};
-
-
-//int my_callback(airspy_transfer_t* transfer);
 
 class airspyInput : public KotekanProcess {
 public:
@@ -66,8 +39,17 @@ private:
     unsigned char* buf_ptr;
     unsigned int frame_loc;
     int frame_id;
-
     pthread_mutex_t recv_busy;
+
+
+    //options
+    int freq; //Hz
+    int sample_bw; //Hz
+    int gain_lna;
+    int gain_mix;
+    int gain_if;
+
+    int biast_power;
 };
 
 
