@@ -34,7 +34,7 @@ header_fmt = '=iiiidiiiId'
 stokes_lookup = ['YX','XY','YY','XX','LR','RL','LL','RR','I','Q','U','V']
 
 TCP_IP="0.0.0.0"
-TCP_PORT = 23402
+TCP_PORT = 23401
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((TCP_IP, TCP_PORT))
 sock.listen(1)
@@ -99,12 +99,12 @@ elemlist = np.fromstring(info_header[pkt_freqs*4*2:],dtype=np.int8)
 
 print freqlist, elemlist
 
-plot_freqs=pkt_freqs/4
+plot_freqs=pkt_freqs/2
 #freqlist = freqlist.reshape(-1,plot_freqs).mean(axis=1)
 
 plot_times=256
 plot_phase=64
-total_integration=64*4
+total_integration=64*8
 
 if (pkt_int_len > total_integration):
 	print "Pre-integrated to longer than desired time!"
@@ -180,7 +180,7 @@ times = pkt_utc0 - np.arange(plot_times)*local_integration*sec_per_pkt_frame
 date_format = md.DateFormatter('%H:%M:%S')
 medsub=False
 med_range=[-1,1]
-full_range=[45,70]
+full_range=[60,70]
 
 colorscale= med_range if medsub else full_range
 
@@ -212,7 +212,7 @@ c.set_label('Power (dB, arbitrary)')
 from matplotlib.widgets import Slider, Button
 
 rax = plt.axes([0.82, 0.03, 0.15, 0.04])
-check = Button(rax, 'Med Subtract')
+check = Button(rax, 'Raw Power')
 
 def func(event):
 	global medsub,check, colorscale

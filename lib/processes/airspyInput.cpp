@@ -60,7 +60,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer){
         }
 
         int copy_length = bt < buf->frame_size ? bt : buf->frame_size;
-        DEBUG("Filling Buffer %d With %d Data Samples",frame_id,copy_length);
+        DEBUG("Filling Buffer %d With %d Data Samples",frame_id,copy_length/2/2);
         //FILL THE BUFFER
         memcpy(buf_ptr+frame_loc, in, copy_length);
         bt-=copy_length;
@@ -93,7 +93,8 @@ struct airspy_device *airspyInput::init_device(){
         airspy_exit();
     }
 
-    result = airspy_set_sample_type(dev, (enum airspy_sample_type)5);
+//    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_RAW);
+    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_IQ);
     if (result != AIRSPY_SUCCESS) {
         printf("airspy_set_sample_type() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
         airspy_close(dev);

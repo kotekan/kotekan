@@ -11,10 +11,15 @@ fftwEngine::fftwEngine(Config& config, const string& unique_name,
     register_producer(buf_out, unique_name.c_str());
 
     spectrum_length = config.get_int_default(unique_name,"spectrum_length",1024);
-    double_spectrum_length = spectrum_length*2;
-    samples = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*double_spectrum_length);
-    spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*double_spectrum_length);
-    fft_plan = (fftwf_plan_s*)fftwf_plan_dft_1d(double_spectrum_length, samples, spectrum, 1, FFTW_ESTIMATE);
+
+//    double_spectrum_length = spectrum_length*2;
+//    samples = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*double_spectrum_length);
+//    spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*double_spectrum_length);
+//    fft_plan = (fftwf_plan_s*)fftwf_plan_dft_1d(double_spectrum_length, samples, spectrum, -1, FFTW_ESTIMATE);
+
+    samples = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*spectrum_length);
+    spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*spectrum_length);
+    fft_plan = (fftwf_plan_s*)fftwf_plan_dft_1d(spectrum_length, samples, spectrum, -1, FFTW_ESTIMATE);
 }
 
 fftwEngine::~fftwEngine() {
@@ -27,7 +32,7 @@ void fftwEngine::apply_config(uint64_t fpga_seq) {
 }
 
 void fftwEngine::main_thread() {
-    short *in_local;
+    int16_t *in_local;
     fftwf_complex *out_local;
 
     frame_in = 0;
@@ -39,14 +44,20 @@ void fftwEngine::main_thread() {
         in_local = (short*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
         out_local = (fftwf_complex*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
 
-        for (int j=0; j<samples_per_input_frame; j+=double_spectrum_length){
-//            INFO("Running FFT, %i",((short*)(in_local))[j]-(1<<11));
-            for (int i=0; i<double_spectrum_length; i++){
-                samples[i][0]=in_local[i+j]-(1<<11);
-                samples[i][1]=0;
+//        for (int j=0; j<samples_per_input_frame; j+=double_spectrum_length){
+//            for (int i=0; i<double_spectrum_length; i++){
+//                samples[i][0]=in_local[i+j]-(1<<11);
+//                samples[i][1]=0;
+        for (int j=0; j<samples_per_input_frame/2; j+=spectrum_length){
+            DEBUG("Running FFT, %i",in_local[2*j]);
+            for (int i=0; i<spectrum_length; i++){
+                samples[i][0]=in_local[2*(i+j)];
+                samples[i][1]=in_local[2*(i+j)+1];
             }
             fftwf_execute(fft_plan);
-            memcpy(out_local,spectrum,sizeof(fftwf_complex)*spectrum_length);
+//            memcpy(out_local,spectrum,sizeof(fftwf_complex)*spectrum_length);
+            memcpy(out_local,spectrum+spectrum_length/2,sizeof(fftwf_complex)*spectrum_length/2);
+            memcpy(out_local+spectrum_length/2,spectrum,sizeof(fftwf_complex)*spectrum_length/2);
             out_local += spectrum_length;
         }
 

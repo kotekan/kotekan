@@ -222,8 +222,8 @@ void networkPowerStream::tcpConnect()
         int info_size = freqs*2*sizeof(float) + elems*sizeof(char);
         void *info = malloc(info_size);
         for (int f=0; f<freqs; f++) {
-            ((float*)info)[2*f]   = freq0 + sample_bw/freqs * ((float)f);
-            ((float*)info)[2*f+1] = freq0 + sample_bw/freqs * ((float)f+1);
+            ((float*)info)[2*f]   = freq0 - sample_bw/2 + sample_bw/freqs * ((float)f);
+            ((float*)info)[2*f+1] = freq0 - sample_bw/2 + sample_bw/freqs * ((float)f+1);
 //            ((float*)info)[2*f]   = 800e6 - 400e6* f   /1024;
 //            ((float*)info)[2*f+1] = 800e6 - 400e6*(f+1)/1024;
         }

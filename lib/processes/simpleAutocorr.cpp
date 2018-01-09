@@ -38,12 +38,13 @@ void simpleAutocorr::main_thread() {
         in_local = (float*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
         for (int j=0; j<samples_per_frame; j+=spectrum_length){
             for (int i=0; i<spectrum_length; i++){
-                re = in_local[(j+i)*2];
-                im = in_local[(j+i)*2+1];
-                spectrum_out[i] += re*re + im*im;
+                re = in_local[(i+j)*2];
+                im = in_local[(i+j)*2+1];
+                spectrum_out[i] += (re*re + im*im)/integration_length;
             }
+//            printf("spectrum_out: %f\n",spectrum_out[4]);
 //            INFO("Run simpleAutocorr %i %f\n",frame_in, spectrum_out[0]);
-            integration_ct++;
+            integration_ct++;//=integration_length;
 
             if (integration_ct >= integration_length){
                 if (out_loc == 0)
