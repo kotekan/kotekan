@@ -57,6 +57,7 @@ public:
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     visFile(const std::string& name,
+            const std::string& root_path,
             const std::string& acq_name,
             const std::string& inst_name,
             const std::string& notes,
