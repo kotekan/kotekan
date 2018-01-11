@@ -2,7 +2,7 @@
 # Find the AMD clang
 # This should really test something about the clang to
 # see if it is the AMD varient, and not just check a known path.
-find_program(AMD_CLANG clang /opt/rocm/hcc-1.0/bin/ /opt/amd/llvm/bin/)
+find_program(AMD_CLANG clang PATH /opt/rocm/hcc-1.0/bin/ /opt/amd/llvm/bin/ NO_DEFAULT_PATH)
 if(NOT AMD_CLANG)
     message(FATAL_ERROR "AMD clang not found!")
 else()
@@ -69,7 +69,7 @@ FOREACH(infileName ${inCLFiles})
       set(CL_UTIL "cp" "${infile}" "${outfile}")
       set(CL_COMMENT "Copying")
     else()
-      set(CL_UTIL "${CLOC_SCRIPT} -o" "${outfile}" "${infile}")
+      set(CL_UTIL "${CLOC_SCRIPT}" "-o" "${outfile}" "${infile}")
       set(CL_COMMENT "Generating")
     endif()
     ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
