@@ -11,6 +11,8 @@
 #endif
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
+#include "frbPostProcess.hpp"
+#include "pulsarPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
@@ -24,6 +26,7 @@
 #include "integratePowerStream.hpp"
 #include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
+#include "gpuBeamformPulsarSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
 #include "simVdifData.hpp"
@@ -33,6 +36,12 @@
 #include "accumulate.hpp"
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
+#include "bufferSend.hpp"
+#include "bufferRecv.hpp"
+
+#ifdef WITH_HDF5
+    #include "hdf5Writer.hpp"
+#endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
@@ -126,6 +135,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "gpuPostProcess") {
         return (KotekanProcess *) new gpuPostProcess(config, location, buffer_container);
     }
+    if (name == "frbPostProcess") {
+        return (KotekanProcess *) new frbPostProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarPostProcess") {
+        return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
@@ -175,6 +190,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "gpuBeamformSimulate") {
         return (KotekanProcess *) new gpuBeamformSimulate(config, location, buffer_container);
     }
+    if (name == "gpuBeamformPulsarSimulate") {
+        return (KotekanProcess *) new gpuBeamformPulsarSimulate(config, location, buffer_container);
+    }
 
     if (name == "gpuSimulate") {
         return (KotekanProcess *) new gpuSimulate(config, location, buffer_container);
@@ -195,6 +213,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "testDataCheckFloat") {
         return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
     }
+    if (name == "testDataCheckUchar") {
+        return (KotekanProcess *) new testDataCheck<unsigned char>(config, location, buffer_container);
+    }
 
     if (name == "constDataCheck") {
         // TODO This is a template class, how to set template type?
@@ -207,6 +228,22 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "chimeMetadataDump") {
         return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
+    }
+
+    // HDF5
+    if (name == "hdf5Writer") {
+        #ifdef WITH_HDF5
+            return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
+        #else
+            throw std::runtime_error("hdf5Writer is not supported on this system");
+        #endif
+    }
+
+    if (name == "bufferSend") {
+        return (KotekanProcess *) new bufferSend(config, location, buffer_container);
+    }
+    if (name == "bufferRecv") {
+        return (KotekanProcess *) new bufferRecv(config, location, buffer_container);
     }
 
     // OpenCL

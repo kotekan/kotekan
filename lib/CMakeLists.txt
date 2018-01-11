@@ -29,6 +29,7 @@ set (KOTEKAN_LIB_SOURCES
               metadataFactory.cpp
               bufferFactory.cpp
               configEval.cpp
+              gpsTime.c
        )
 
 if (${USE_DPDK})
@@ -47,7 +48,7 @@ add_library ( kotekan_libs
 
 target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( kotekan_libs libinclude )
-target_link_libraries( kotekan_libs m )
+target_link_libraries( kotekan_libs m event )
 
 if (${USE_DPDK})
     include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
@@ -73,8 +74,13 @@ if (${USE_OPENCL})
        target_link_libraries( kotekan_libs kotekan_opencl )
 endif ()
 
+
+# HDF5 stuff
+if (${USE_HDF5})
+  include_directories (${HDF5_INCLUDE_DIRS})
+endif ()
+
 add_subdirectory(testing)
 target_link_libraries( kotekan_libs kotekan_testing )
 add_subdirectory(processes)
 target_link_libraries( kotekan_libs kotekan_processes )
-

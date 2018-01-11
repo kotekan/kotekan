@@ -67,6 +67,7 @@ extern "C" {
 #include "json.hpp"
 #include "restServer.hpp"
 #include "kotekanMode.hpp"
+#include "gpsTime.h"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -87,7 +88,8 @@ void signal_handler(int signal)
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]            The local JSON config file to use\n\n");
+    printf("    --config (-c) [file]            The local JSON config file to use\n");
+    printf("    --gps-time (-g)                 Used with -c, try to get GPS time (CHIME only)\n\n");
 }
 
 #ifdef WITH_DPDK
@@ -145,10 +147,30 @@ void update_log_levels(Config &config) {
     }
 }
 
+void set_gps_time(Config &config) {
+    if (config.exists("/", "gps_time") &&
+        !config.exists("/gps_time", "error") &&
+        config.exists("/gps_time", "frame0_nano")) {
+
+        uint64_t frame0 = config.get_uint64("/gps_time", "frame0_nano");
+        set_global_gps_time(frame0);
+        INFO("Set FPGA frame 0 time to %" PRIu64 " nanoseconds since Unix Epoch\n", frame0);
+    } else {
+        if (config.exists("/gps_time", "error")) {
+            string error_message = config.get_string("/gps_time", "error");
+            ERROR("*****\nGPS time lookup failed with reason: \n %s\n ******\n",
+                  error_message.c_str());
+        } else {
+            WARN("No GPS time set, using system clock.");
+        }
+    }
+}
+
 int start_new_kotekan_mode(Config &config) {
 
     config.dump_config();
     update_log_levels(config);
+    set_gps_time(config);
 
     kotekan_mode = new kotekanMode(config);
 
@@ -174,17 +196,19 @@ int main(int argc, char ** argv) {
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
+    bool gps_time = false;
 
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
+            {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "hc:",
+        opt_val = getopt_long (argc, argv, "ghc:",
                                long_options, &option_index);
 
         // End of args
@@ -199,6 +223,9 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
+                break;
+            case 'g':
+                gps_time = true;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -224,12 +251,20 @@ int main(int argc, char ** argv) {
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        INFO("Opening config file %s", config_file_name);
         //config.parse_file(config_file_name, 0);
-        std::string json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
+        string exec_path;
+        if (gps_time) {
+            INFO("Getting GPS time from ch_master, this might take some time...");
+            exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
+        } else {
+            exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
+        }
+        std::string json_string = exec(exec_path.c_str());
         config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
-            ERROR("Mode not supported");
+            ERROR("Error with config file, exiting...");
             return -1;
         }
     }
