@@ -3,8 +3,8 @@ project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
 #optional modules for GPUs and the like
-option(USE_AIRSPY "Build Airspy Producer" ON)
-option(USE_FFTW "Build with FFTW F-engine" ON)
+option(USE_AIRSPY "Build Airspy Producer" OFF)
+option(USE_FFTW "Build with FFTW F-engine" OFF)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" ON)
 option(USE_PRECOMPIPLED_OPENCL "Use precompiled OpenCL binaries" OFF)
