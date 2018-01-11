@@ -46,17 +46,13 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer){
     //make sure two callbacks don't run at once
     pthread_mutex_lock(&recv_busy);
 
-//    static double start_time = e_time();
-//    double now_time = e_time();
-//    INFO("Time since last data: %i %fms\n",transfer->sample_count, (now_time-start_time)*1000);
-//    start_time = now_time;
-
     void *in = transfer->samples;
     int bt = transfer->sample_count * BYTES_PER_SAMPLE;
     while (bt > 0){
         if (frame_loc == 0){
             DEBUG("Airspy waiting for frame_id %d",frame_id);
             buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            if (buf_ptr == NULL) break;
         }
 
         int copy_length = bt < buf->frame_size ? bt : buf->frame_size;
