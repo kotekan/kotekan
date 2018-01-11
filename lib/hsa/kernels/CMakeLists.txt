@@ -45,8 +45,6 @@ ENDFOREACH(infileName)
 if (${USE_PRECOMPIPLED_OPENCL})
   FILE(GLOB inCLFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hsaco")
-  set(CL_UTIL "cp")
-  set(CL_COMMENT "Copying")
 else()
   find_program(CLOC_SCRIPT cloc.sh)
   if(NOT CLOC_SCRIPT)
@@ -56,8 +54,6 @@ else()
   endif()
   FILE(GLOB inCLFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cl")
-  set(cl_util ${CLOC_SCRIPT})
-  set(CL_COMMENT "Generating")
 endif()
 
 FOREACH(infileName ${inCLFiles})
@@ -69,8 +65,15 @@ FOREACH(infileName ${inCLFiles})
     SET(infile "${CMAKE_CURRENT_SOURCE_DIR}/${infileName}")
 
     # Custom command to build the hasco from the OpenCL
+    if (${USE_PRECOMPIPLED_OPENCL})
+      set(CL_UTIL "cp" "${infile}" "${outfile}")
+      set(CL_COMMENT "Copying")
+    else()
+      set(CL_UTIL "${CLOC_SCRIPT} -o" "${outfile}" "${infile}")
+      set(CL_COMMENT "Generating")
+    endif()
     ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
-        COMMAND ${CL_UTIL} -o "${outfile}" "${infile}"
+        COMMAND ${CL_UTIL}
         DEPENDS "${infile}" ${CLOC_SCRIPT}
         COMMENT "${CL_COMMENT} hasco file from ${infile}: ${outfile}")
 
