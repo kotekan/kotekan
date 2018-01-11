@@ -6,6 +6,11 @@
 #include <sys/time.h>
 #include <string>
 #include <vector>
+#include "json.hpp"
+#include "Config.hpp"
+
+
+using json = nlohmann::json;
 
 // Structs to represent the datatypes of the index maps
 struct freq_ctype {
@@ -57,15 +62,21 @@ inline double ts_to_double(const timespec & ts) {
 }
 
 
-
+// Copy the visibility triangle into a contiguous array
+// ... either a preallocated one
 void copy_vis_triangle(
     const int32_t * buf, const std::vector<uint32_t>& inputmap,
     size_t block, size_t n, complex_int * output
 );
 
+// ... or allocate a vector for it
 std::vector<complex_int> copy_vis_triangle(
     const int32_t * buf, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N
 );
 
+// Parse the reordering configuration section
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(json& j);
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements);
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(Config& config, const std::string base_path);
 #endif

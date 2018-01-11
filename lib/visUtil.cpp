@@ -1,6 +1,14 @@
 #include "visUtil.hpp"
 
 
+// Initialise the serial from a std::string
+input_ctype::input_ctype(uint16_t id, std::string serial) {
+    chan_id = id;
+    memset(correlator_input, 0, 32);
+    serial.copy(correlator_input, 32);
+}
+
+
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 void copy_vis_triangle(
@@ -40,4 +48,67 @@ std::vector<complex_int> copy_vis_triangle(
     copy_vis_triangle(buf, inputmap, block, N, output.data());
 
     return output;
+}
+
+std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
+    if(!j.is_array() || j.size() != 3) {
+        throw std::runtime_error("Could not parse json item for input reordering: " + j.dump());
+    }
+
+    uint32_t adc_id = j[0].get<int>();
+    uint32_t chan_id = j[1].get<int>();
+    std::string serial = j[2].get<std::string>();
+
+    return std::make_tuple(adc_id, chan_id, serial);
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(json& j) {
+
+    uint32_t adc_id, chan_id;
+    std::string serial;
+
+    std::vector<uint32_t> adc_ids;
+    std::vector<input_ctype> inputmap;
+
+    if(!j.is_array()) {
+        throw std::runtime_error("Was expecting list of input orders.");
+    }
+
+    for(auto& element : j) {
+        std::tie(adc_id, chan_id, serial) = parse_reorder_single(element);
+
+        adc_ids.push_back(adc_id);
+        inputmap.emplace_back(chan_id, serial);
+    }
+
+    return std::make_tuple(adc_ids, inputmap);
+
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements) {
+
+    std::vector<uint32_t> adc_ids;
+    std::vector<input_ctype> inputmap;
+
+    for(uint32_t i = 0; i < num_elements; i++) {
+        adc_ids.push_back(i);
+        inputmap.emplace_back(i, "INVALID");
+    }
+
+    return std::make_tuple(adc_ids, inputmap);
+
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(Config& config, const std::string base_path) {
+
+    size_t num_elements = config.get_int("/", "num_elements");
+
+    try {
+        json reorder_config = config.get_json_array(base_path, "input_reorder");
+
+        return parse_reorder(reorder_config);
+    }
+    catch(const std::exception& e) {
+        return default_reorder(num_elements);
+    }
 }

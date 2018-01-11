@@ -17,55 +17,6 @@ const size_t BLOCK_SIZE = 32;
 const size_t MAX_NTIME = 1024;
 
 
-std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
-    if(!j.is_array() || j.size() != 3) {
-        throw std::runtime_error("Could not parse json item for input reordering: " + j.dump());
-    }
-
-    uint32_t adc_id = j[0].get<int>();
-    uint32_t chan_id = j[1].get<int>();
-    std::string serial = j[2].get<std::string>();
-
-    return std::make_tuple(adc_id, chan_id, serial);
-}
-
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(json& j) {
-
-    uint32_t adc_id, chan_id;
-    std::string serial;
-
-    std::vector<uint32_t> adc_ids;
-    std::vector<input_ctype> inputmap;
-
-    if(!j.is_array()) {
-        throw std::runtime_error("Was expecting list of input orders.");
-    }
-
-    for(auto& element : j) {
-        std::tie(adc_id, chan_id, serial) = parse_reorder_single(element);
-
-        adc_ids.push_back(adc_id);
-        inputmap.emplace_back(chan_id, serial);
-    }
-
-    return std::make_tuple(adc_ids, inputmap);
-
-}
-
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements) {
-
-    std::vector<uint32_t> adc_ids;
-    std::vector<input_ctype> inputmap;
-
-    for(uint32_t i = 0; i < num_elements; i++) {
-        adc_ids.push_back(i);
-        inputmap.emplace_back(i, "INVALID");
-    }
-
-    return std::make_tuple(adc_ids, inputmap);
-
-}
-
 hdf5Writer::hdf5Writer(Config& config,
                        const string& unique_name,
                        bufferContainer &buffer_container) :

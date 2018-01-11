@@ -30,7 +30,7 @@ endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} hdf5Writer.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} hdf5Writer.cpp visWriter.cpp)
 endif ()
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})

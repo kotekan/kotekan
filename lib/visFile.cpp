@@ -395,14 +395,6 @@ void visFileBundle::addFile(time_ctype first_time) {
 }
 
 
-// Initialise the serial from a std::string
-input_ctype::input_ctype(uint16_t id, std::string serial) {
-    chan_id = id;
-    memset(correlator_input, 0, 32);
-    serial.copy(correlator_input, 32);
-}
-
-
 // Add support for all our custom types to HighFive
 template <> inline DataType HighFive::create_datatype<freq_ctype>() {
     CompoundType f;

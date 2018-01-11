@@ -29,6 +29,7 @@ set (KOTEKAN_LIB_SOURCES
               metadataFactory.cpp
               bufferFactory.cpp
               configEval.cpp
+              visBuffer.cpp
               visUtil.cpp
        )
 
