@@ -5,8 +5,8 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 #optional modules for GPUs and the like
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" ON)
+option(USE_PRECOMPIPLED_OPENCL "Use precompiled OpenCL binaries" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
-option(USE_PRECOMPIPLED_OPENCL "Use precompiled OpenCL binaries" ON)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 
