@@ -41,6 +41,7 @@ private:
     int32_t _num_elements;
     int32_t _samples_per_data_set;
     int32_t _num_blocks;
+    int32_t _n_intg;
 };
 
 #endif

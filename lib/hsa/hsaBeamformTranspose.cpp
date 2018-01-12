@@ -6,9 +6,8 @@ hsaBeamformTranspose::hsaBeamformTranspose(const string& kernel_name, const stri
 			    bufferContainer& host_buffers,
 			    const string &unique_name ) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+    command_type = CommandType::KERNEL;
     apply_config(0);
-
-
 }
 
 hsaBeamformTranspose::~hsaBeamformTranspose() {
@@ -50,7 +49,7 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, const uint64_t& fpg
     params.group_segment_size = 8192;
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
-    
+
     return signals[gpu_frame_id];
 }
 

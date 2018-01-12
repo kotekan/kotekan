@@ -94,16 +94,21 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
             list_commands.push_back(new hsaRfiVdif("rfi_vdif",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
-	} else if (commands[i]["name"] == "hsa_rfi") {
-            list_commands.push_back(new hsaRfi("rfi_chime",
+        } else if (commands[i]["name"] == "hsa_rfi") {
+                list_commands.push_back(new hsaRfi("rfi_chime",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
- 	} else if (commands[i]["name"] == "hsa_rfi_output") {
-            list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
+        } else if (commands[i]["name"] == "hsa_rfi_output") {
+                list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else {
             ERROR("Command %s not found!", commands[i]["name"].get<string>().c_str());
+        }
+        if (list_commands[list_commands.size() - 1]->get_command_type() ==
+                CommandType::NOT_SET) {
+            throw std::runtime_error("The command " + commands[i]["name"].get<string>() +
+                    ", did not set a command type.");
         }
     }
 }

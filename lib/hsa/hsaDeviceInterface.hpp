@@ -83,6 +83,8 @@ public:
     hsa_region_t get_kernarg_region();
     hsa_agent_t get_cpu_agent();
     hsa_queue_t * get_queue();
+    uint64_t get_hsa_timestamp_freq();
+
 protected:
 
     Config &config;
@@ -95,6 +97,9 @@ protected:
 
     // This might need to be more than one queue
     hsa_queue_t* queue;
+
+    // HSA profiling time stamp resolution
+    uint64_t timestamp_frequency_hz;
 
     // GPU Information
     char agent_name[64];

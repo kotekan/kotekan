@@ -2,17 +2,15 @@
 #include "hsaCorrelatorKernel.hpp"
 #include "hsaBase.h"
 #include <unistd.h>
-// What does this mean?
-//N_INTG is the number summed in each workitem
-//if there are more, they get split across multiple workitems
-//time slice id is identified by the Y group.
+
+
 #define N_INTG 16384
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-
+    command_type = CommandType::KERNEL;
     apply_config(0);
 
     // Allocate and copy the block map
@@ -33,7 +31,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string
     // Create the extra kernel args object.
     host_kernel_args = (corr_kernel_config_t *)hsa_host_malloc(sizeof(corr_kernel_config_t));
     host_kernel_args->n_elem = _num_elements;
-    host_kernel_args->n_intg = N_INTG;
+    host_kernel_args->n_intg = _n_intg;
     host_kernel_args->n_iter = _samples_per_data_set;
     host_kernel_args->n_blk = _num_blocks;
 
@@ -44,6 +42,11 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string
 
 void hsaCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
     hsaCommand::apply_config(fpga_seq);
+
+    //N_INTG is the number summed in each workitem
+    //if there are more, they get split across multiple workitems
+    //time slice id is identified by the Y group.
+    _n_intg = config.get_int(unique_name, "n_intg");
 
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -95,7 +98,7 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
     params.workgroup_size_y = 4;
     params.workgroup_size_z = 1;
     params.grid_size_x = 16;
-    params.grid_size_y = 4*_samples_per_data_set/N_INTG;
+    params.grid_size_y = 4*_samples_per_data_set/_n_intg;
     params.grid_size_z = _num_blocks;
     params.num_dims = 3;
 

@@ -6,6 +6,7 @@ hsaBeamformReorder::hsaBeamformReorder(const string& kernel_name, const string& 
 			    bufferContainer& host_buffers,
 			    const string &unique_name ) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+    command_type = CommandType::KERNEL;
     apply_config(0);
 
     // Create a C style array for backwards compatiably.
@@ -29,7 +30,7 @@ void hsaBeamformReorder::apply_config(const uint64_t& fpga_seq) {
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _reorder_map = config.get_int_array(unique_name, "reorder_map");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    
+
     input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;
     output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set ;
 
@@ -61,7 +62,7 @@ hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_
     params.group_segment_size = 8192;
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
-    
+
     return signals[gpu_frame_id];
 }
 

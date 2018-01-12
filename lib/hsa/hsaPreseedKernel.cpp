@@ -9,6 +9,7 @@ hsaPreseedKernel::hsaPreseedKernel(const string& kernel_name, const string& kern
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
+    command_type = CommandType::KERNEL;
     apply_config(0);
 }
 

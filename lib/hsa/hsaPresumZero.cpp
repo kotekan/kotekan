@@ -5,7 +5,7 @@ hsaPresumZero::hsaPresumZero(const string& kernel_name, const string& kernel_fil
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-
+    command_type = CommandType::COPY_IN;
     apply_config(0);
     presum_zeros = hsa_host_malloc(presum_len);
     memset(presum_zeros, 0, presum_len);

@@ -70,7 +70,12 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_) :
     hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_MULTI, error_callback, NULL, UINT32_MAX, UINT32_MAX, &queue);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
+    hsa_status = hsa_amd_profiling_set_profiler_enabled(queue, 1);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
+
+    hsa_system_get_info(HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY, &timestamp_frequency_hz);
+
+    _gpu_buffer_depth = config.get_int("/", "buffer_depth");
 
 }
 
@@ -343,6 +348,10 @@ hsa_region_t hsaDeviceInterface::get_kernarg_region() {
 
 hsa_queue_t* hsaDeviceInterface::get_queue() {
     return queue;
+}
+
+uint64_t hsaDeviceInterface::get_hsa_timestamp_freq() {
+    return timestamp_frequency_hz;
 }
 
 gpuMemoryBlock::~gpuMemoryBlock()  {

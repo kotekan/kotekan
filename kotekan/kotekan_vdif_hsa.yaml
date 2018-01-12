@@ -78,11 +78,14 @@ gpu:
   buffer_depth: 4
   sk_step: 8192
   rfi_sensitivity: 5
+  frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
-    network_buffer: vdif_input_buf_0
-    output_buffer: gpu_output_buffer_0
+    in_buffers:
+      network_buf: vdif_input_buf_0
+    out_buffers:
+      output_buf: gpu_output_buffer_0
 
 power:
   kotekan_process: computeDualpolPower

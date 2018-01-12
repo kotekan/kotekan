@@ -51,6 +51,9 @@ void kotekan_hsa_start() {
     hsa_status_t hsa_status = hsa_init();
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
+    hsa_status = hsa_amd_profiling_async_copy_enable(1);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
+
     // Get the CPU agent
     hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
     if(hsa_status == HSA_STATUS_INFO_BREAK) {
