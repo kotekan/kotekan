@@ -34,6 +34,7 @@
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
 #include "visWriter.hpp"
+#include "fakeVis.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -231,6 +232,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new visDebug(config, location, buffer_container);
     }
 
+    // Generate fake visbilities
+    if (name == "fakeVis") {
+        return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
 
     // OpenCL
     if (name == "clProcess") {

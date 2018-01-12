@@ -154,7 +154,7 @@ void visDebug::main_thread() {
 
         // Print out debug information from the buffer
         auto frame = visFrameView(buffer, frame_id);
-        INFO("%s", frame.summary().c_str());
+        INFO("visDebug: %s", frame.summary().c_str());
 
         // Mark the buffers and move on
         mark_frame_empty(buffer, unique_name.c_str(), frame_id);

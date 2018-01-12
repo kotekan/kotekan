@@ -21,14 +21,12 @@ public:
 
 private:
     // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
+    size_t num_elements, num_eigenvectors, block_size, num_prod;
 
     // Output buffer
-    // TODO: Should have a single output buffer
-    //       frames per freq per time
     Buffer * output_buffer;
 
-    // List of frequencies for every buffer
+    // List of frequencies for this buffer
     std::vector<uint16_t> freq;
 
 };
