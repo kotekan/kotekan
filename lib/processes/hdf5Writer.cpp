@@ -402,7 +402,7 @@ visFile::visFile(const std::string& name,
 
     // Create the lock file first such that there is no time the file is
     // unlocked
-    lock_filename = name + ".lock";
+    lock_filename = "." + name + ".lock";
     std::ofstream lock_file(lock_filename);
     lock_file << getpid() << std::endl;
     lock_file.close();
