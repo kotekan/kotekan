@@ -52,9 +52,16 @@ vis_transform:
   output_buffer: vis_buffer
   num_eigenvectors: 4
 
-vis_debug:
-  kotekan_process: visDebug
+#vis_debug:
+  #kotekan_process: visDebug
+  #buffer: vis_buffer
+
+hdf5_writer:
+  kotekan_process: visWriter
   buffer: vis_buffer
+  num_freq: 1
+  enabled_chunks: [238, 250, 278]
+  per_node_instrument: true
 
 
 # Information for input reordering, packed as

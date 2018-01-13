@@ -243,9 +243,9 @@ void visWriter::main_thread() {
 
         // Create fake entries to fill out the gain and weight datasets with
         // because these don't correctly make it through kotekan yet
-        std::vector<complex_int> vis(frame.vis(), frame.vis() + frame.num_prod());
+        std::vector<std::complex<float>> vis(frame.vis(), frame.vis() + frame.num_prod());
         std::vector<uint8_t> vis_weight(vis.size(), 255);
-        std::vector<complex_int> gain_coeff(inputs.size(), {1, 0});
+        std::vector<std::complex<float>> gain_coeff(inputs.size(), {1, 0});
         std::vector<int32_t> gain_exp(inputs.size(), 0);
 
         // Add all the new information to the file.
