@@ -3,9 +3,6 @@
 #include "hsaBase.h"
 #include <unistd.h>
 
-
-#define N_INTG 16384
-
 hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
