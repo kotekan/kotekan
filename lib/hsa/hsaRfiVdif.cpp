@@ -23,7 +23,7 @@ hsaRfiVdif::hsaRfiVdif(const string& kernel_name, const string& kernel_file_name
                             bufferContainer& host_buffers,
                             const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-
+    command_type = CommandType::KERNEL;
     apply_config(0); //Grab values from config and calculates buffer size
 
     Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocates memory for Mean Array

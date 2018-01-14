@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include "hsaBase.h"
 
+#include <unistd.h>
+
 using std::string;
 
 #define MAX_ARGS_LEN 64
@@ -82,11 +84,36 @@ void hsaCommand::allocate_kernel_arg_memory(int max_size) {
 }
 
 void hsaCommand::finalize_frame(int frame_id) {
-    //if (signals[frame_id].handle != 0) {
-        //hsa_status_t hsa_status;
-        //hsa_status = hsa_signal_destroy(signals[frame_id]);
-        //assert(hsa_status == HSA_STATUS_SUCCESS);
-    //}
+    hsa_status_t hsa_status;
+    hsa_amd_profiling_dispatch_time_t kernel_time;
+    hsa_amd_profiling_async_copy_time_t copy_time;
+    uint64_t timestamp_frequency_hz = device.get_hsa_timestamp_freq();
+
+    if (signals[frame_id].handle == 0) {
+        return;
+    }
+
+    if (command_type == CommandType::KERNEL) {
+        hsa_status = hsa_amd_profiling_get_dispatch_time(device.get_gpu_agent(),
+                                                signals[frame_id], &kernel_time);
+        last_gpu_execution_time =
+                ((double)(kernel_time.end - kernel_time.start))/
+                (double)timestamp_frequency_hz;
+    } else if (command_type == CommandType::COPY_IN ||
+               command_type == CommandType::COPY_OUT) {
+        hsa_status = hsa_amd_profiling_get_async_copy_time(signals[frame_id],
+                                                                &copy_time);
+        last_gpu_execution_time =
+                ((double)(copy_time.end - copy_time.start))/
+                (double)timestamp_frequency_hz;
+    } else {
+        return;
+    }
+
+    // TODO Common HSA status handler is needed.
+    if (hsa_status != HSA_STATUS_SUCCESS) {
+        throw std::runtime_error("HSA Profiling call failed");
+    }
 }
 
 int hsaCommand::wait_on_precondition(int gpu_frame_id) {
@@ -222,4 +249,16 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     hsa_signal_store_screlease(device.get_queue()->doorbell_signal, packet_id);
 
     return packet->completion_signal;
+}
+
+double hsaCommand::get_last_gpu_execution_time() {
+    return last_gpu_execution_time;
+}
+
+CommandType hsaCommand::get_command_type() {
+    return command_type;
+}
+
+string hsaCommand::get_kernel_file_name() {
+    return kernel_file_name;
 }

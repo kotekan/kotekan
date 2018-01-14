@@ -6,9 +6,8 @@ hsaBeamformUpchan::hsaBeamformUpchan(const string& kernel_name, const string& ke
 			    bufferContainer& host_buffers,
 			    const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+    command_type = CommandType::KERNEL;
     apply_config(0);
-
-
 }
 
 hsaBeamformUpchan::~hsaBeamformUpchan() {

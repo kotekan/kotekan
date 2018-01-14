@@ -1,15 +1,15 @@
 /*********************************************************************************
 
 Kotekan RFI Documentation Block:
-By: Jacob Taylor 
+By: Jacob Taylor
 Date: August 2017
 File Purpose: Handles the kotekan GPU process for RFI removal in CHIME data.
-Details: 
+Details:
 	-Constructor: Applies config and sets up the Mean array
 	-apply_config: Gets values from config file and calculates buffer sizes
 	-execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
 Notes:
-	This process was designed to run on CHIME data.  
+	This process was designed to run on CHIME data.
 
 **********************************************************************************/
 
@@ -22,7 +22,7 @@ hsaRfi::hsaRfi(const string& kernel_name, const string& kernel_file_name,
                             bufferContainer& host_buffers,
                             const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-
+    command_type = CommandType::KERNEL;
     apply_config(0); //Retrieves relevant information regarding kotekan parameters
 
     Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocate memory
@@ -82,7 +82,7 @@ hsa_signal_t hsaRfi::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_sig
 
     hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
     assert(hsa_status == HSA_STATUS_SUCCESS);
-   
+
     // Obtain the current queue write index.
     uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());
     hsa_kernel_dispatch_packet_t* dispatch_packet = (hsa_kernel_dispatch_packet_t*)device.get_queue()->base_address +
