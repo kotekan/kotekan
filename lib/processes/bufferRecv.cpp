@@ -27,6 +27,11 @@ void bufferRecv::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
 }
 
+// **** TODO ****
+// Move call backs into object as non-static functions,
+// and just have a static call functions.  Enabled logging once this is done.
+// **** TODO ****
+
 void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
 {
     //DEBUG("Read Callback");
