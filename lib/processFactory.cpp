@@ -32,6 +32,7 @@
 #include "simVdifData.hpp"
 #include "testDataCheck.hpp"
 #include "testDataGen.hpp"
+#include "testDataGenQuad.hpp"
 #include "constDataCheck.hpp"
 #include "accumulate.hpp"
 #include "hexDump.hpp"
@@ -247,6 +248,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "testDataGen") {
         return (KotekanProcess *) new testDataGen(config, location, buffer_container);
+    }
+    if (name == "testDataGenQuad") {
+        return (KotekanProcess *) new testDataGenQuad(config, location, buffer_container);
     }
 
     if (name == "chimeMetadataDump") {

@@ -25,8 +25,10 @@ public:
     void main_thread();
 private:
     struct Buffer *buf;
-    int32_t ref_real;
-    int32_t ref_imag;
+    vector<int32_t> ref_real;
+    vector<int32_t> ref_imag;
+//    int32_t ref_real;
+//    int32_t ref_imag;
 };
 
 #endif

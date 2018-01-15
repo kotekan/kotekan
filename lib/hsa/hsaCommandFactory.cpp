@@ -23,6 +23,7 @@
 #include "hsaRfiVdif.hpp"
 #include "hsaRfi.hpp"
 #include "hsaRfiOutput.hpp"
+#include "hsaSleeper.hpp"
 using namespace std;
 
 hsaCommandFactory::hsaCommandFactory(Config& config_,
@@ -44,6 +45,10 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_barrier") {
             list_commands.push_back(new hsaBarrier("hsa_barrier",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_sleeper") {
+            list_commands.push_back(new hsaSleeper("hsa_sleeper",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_preseed_kernel") {
@@ -95,11 +100,11 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_rfi") {
-                list_commands.push_back(new hsaRfi("rfi_chime",
+            list_commands.push_back(new hsaRfi("rfi_chime",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_rfi_output") {
-                list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
+            list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else {

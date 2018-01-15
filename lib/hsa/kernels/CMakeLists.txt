@@ -42,7 +42,7 @@ ENDFOREACH(infileName)
 
 # Generate / copy the hsaco files from OpenCL .cl files
 
-if (${USE_PRECOMPIPLED_OPENCL})
+if (${USE_PRECOMPILED_OPENCL})
   FILE(GLOB inCLFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hsaco")
 else()
@@ -74,7 +74,7 @@ FOREACH(infileName ${inCLFiles})
     endif()
     ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
         COMMAND ${CL_UTIL}
-        DEPENDS "${infile}" ${CLOC_SCRIPT}
+#        DEPENDS "${infile}" ${CLOC_SCRIPT}
         COMMENT "${CL_COMMENT} hasco file from ${infile}: ${outfile}")
 
     # Build list of depenencies
