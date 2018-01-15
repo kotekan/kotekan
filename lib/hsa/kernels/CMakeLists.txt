@@ -65,7 +65,7 @@ FOREACH(infileName ${inCLFiles})
     SET(infile "${CMAKE_CURRENT_SOURCE_DIR}/${infileName}")
 
     # Custom command to build the hasco from the OpenCL
-    if (${USE_PRECOMPIPLED_OPENCL})
+    if (${USE_PRECOMPILED_OPENCL})
       set(CL_UTIL "cp" "${infile}" "${outfile}")
       set(CL_COMMENT "Copying")
     else()
