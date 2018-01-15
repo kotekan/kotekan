@@ -11,6 +11,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
 set (KOTEKAN_LIB_SOURCES
               KotekanProcess.cpp
+              kotekanLogging.cpp
               SampleProcess.cpp
               Config.cpp
               buffer.c

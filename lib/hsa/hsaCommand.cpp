@@ -23,6 +23,12 @@ hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_na
         unique_name(unique_name_)
 {
     apply_config(0);
+
+    // Set the local log level.
+    string s_log_level = config.get_string(unique_name, "log_level");
+    set_log_level(s_log_level);
+    set_log_prefix(unique_name);
+
     signals = (hsa_signal_t *)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t));
     assert(signals != nullptr);
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));

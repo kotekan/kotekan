@@ -7,6 +7,7 @@
 #include "chimeMetadata.h"
 #include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
+#include "kotekanLogging.hpp"
 
 #include <stdio.h>
 #include <string>
@@ -39,7 +40,7 @@ enum class CommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
 //
 // This allow us to have host->gpu copies, kernels, and gpu->host copies
 // running co-currently, at the expense of some complexity and extra memory.
-class hsaCommand
+class hsaCommand: public kotekanLogging
 {
 public:
     // Kernel file name is optional.

@@ -2,7 +2,6 @@
 #include <sched.h>
 #include "errors.h"
 #include <syslog.h>
-#include <stdarg.h>
 
 #include "KotekanProcess.hpp"
 
@@ -18,27 +17,8 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
 
     // Set the local log level.
     string s_log_level = config.get_string(unique_name, "log_level");
-    logLevel log_level;
-
-    if (strcasecmp(s_log_level.c_str(), "off") == 0) {
-        log_level = logLevel::OFF;
-    } else if (strcasecmp(s_log_level.c_str(), "error") == 0) {
-        log_level = logLevel::ERROR;
-    } else if (strcasecmp(s_log_level.c_str(), "warn") == 0) {
-        log_level = logLevel::WARN;
-    } else if (strcasecmp(s_log_level.c_str(), "info") == 0) {
-        log_level = logLevel::INFO;
-    } else if (strcasecmp(s_log_level.c_str(), "debug") == 0) {
-        log_level = logLevel::DEBUG;
-    } else if (strcasecmp(s_log_level.c_str(), "debug2") == 0) {
-        log_level = logLevel::DEBUG2;
-    } else {
-        throw std::runtime_error("The value given for log_level: '" + s_log_level + "is not valid! " +
-                "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
-    }
-
-    __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
-    INFO("Set log level to %d", __log_level);
+    set_log_level(s_log_level);
+    set_log_prefix(unique_name);
 }
 
 struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
@@ -78,21 +58,6 @@ void KotekanProcess::set_cpu_affinity(const std::vector<int> &cpu_affinity_) {
         cpu_affinity = cpu_affinity_;
     }
     apply_cpu_affinity();
-}
-
-void KotekanProcess::internal_logging(int type, const char* format, ...) {
-    const int max_log_msg_len = 1024;
-    char log_buf[max_log_msg_len];
-    va_list args;
-    va_start(args, format);
-    vsnprintf(log_buf, max_log_msg_len, format, args);
-    va_end(args);
-    syslog(type, "%s: %s", unique_name.c_str(), log_buf);
-}
-
-void Error(const char* format, ...)
-{
-
 }
 
 void KotekanProcess::start() {
