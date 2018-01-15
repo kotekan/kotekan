@@ -23,7 +23,7 @@ fakeVis::fakeVis(Config &config,
     output_buffer = buffer_container.get_buffer(buffer_name);
     register_producer(output_buffer, unique_name.c_str());
 
-    DEBUG("Frame size %d", output_buffer->num_frames);
+    DEBUG("Buffer size %d", output_buffer->num_frames);
 
     // Get frequency IDs from config
     for (int32_t f : config.get_int_array(unique_name, "freq")) {
@@ -42,6 +42,10 @@ void fakeVis::main_thread() {
     unsigned int fpga_seq = 0;
 
     while (!stop_thread) {
+
+        // Get current time TODO: does it matter if cadence is not regular?
+        timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
 
         for (uint16_t f : freq) {
             // Wait for the buffer frame to be free
@@ -63,9 +67,6 @@ void fakeVis::main_thread() {
             output_frame.freq_id() = f;
 
             // Set the time
-            // Get current time TODO: does it matter if cadence is not regular?
-            timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
             // TODO: will this work even if bufer has been created from scratch?
             //       seems to always be 0
             //uint64_t fpga_seq = get_fpga_seq_num(output_buffer, frame_id);
@@ -86,6 +87,7 @@ void fakeVis::main_thread() {
             // Advance the current frame ids
             output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
         }
+        // TODO: at some this point this should roll over I think
         fpga_seq = fpga_seq + 1.;
     }
 }
