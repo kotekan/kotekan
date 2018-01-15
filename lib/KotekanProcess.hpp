@@ -13,6 +13,15 @@
     #include <immintrin.h>
 #endif
 
+enum class logLevel {
+    OFF = 0,
+    ERROR = 1,
+    WARN = 2,
+    INFO = 3,
+    DEBUG = 4,
+    DEBUG2 = 5
+};
+
 class KotekanProcess {
 public:
     KotekanProcess(Config &config, const string& unique_name,
@@ -26,11 +35,12 @@ public:
     void join();
     void stop();
 protected:
-    std::thread this_thread;
     std::atomic_bool stop_thread;
     Config &config;
 
     std::string unique_name;
+
+    std::thread this_thread;
 
     // Set the cores the main thread is allowed to run on to the
     // cores given in cpu_affinity_
@@ -42,6 +52,10 @@ protected:
 
     // Helper function
     struct Buffer * get_buffer(const std::string &name);
+
+    void internal_logging(int type, const char * format, ...);
+
+    int __log_level;
 private:
     std::function<void(const KotekanProcess&)> main_thread_fn;
 
