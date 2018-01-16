@@ -3,19 +3,18 @@
 
 #include "Config.hpp"
 #include "errors.h"
-#include "assert.h"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
+#include "kotekanLogging.hpp"
 
 #include <stdio.h>
 #include <string>
+#include <assert.h>
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
-
-using std::string;
 
 struct kernelParams {
     uint16_t workgroup_size_x;
@@ -29,6 +28,8 @@ struct kernelParams {
     uint16_t group_segment_size;
 };
 
+enum class CommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
+
 // Note there are _gpu_buffer_depth frames, which can be thought of as distinct
 // blocks of input, output, and kernel arg memory for each chain in the
 // gpu pipeline which looks something like:
@@ -39,7 +40,7 @@ struct kernelParams {
 //
 // This allow us to have host->gpu copies, kernels, and gpu->host copies
 // running co-currently, at the expense of some complexity and extra memory.
-class hsaCommand
+class hsaCommand: public kotekanLogging
 {
 public:
     // Kernel file name is optional.
@@ -65,6 +66,14 @@ public:
     virtual void finalize_frame(int frame_id);
 
     virtual void apply_config(const uint64_t &fpga_seq);
+
+    // Get the profiling time for the last completed signal
+    double get_last_gpu_execution_time();
+
+    CommandType get_command_type();
+
+    string get_kernel_file_name();
+
 protected:
 
     // Extract the code handle for the specified kernelName from the specified fileName
@@ -89,6 +98,9 @@ protected:
     bufferContainer host_buffers;
     string unique_name;
 
+    // The subclass must set the type.
+    CommandType command_type = CommandType::NOT_SET;
+
     // Final signals array
     // Note a value of zero for one of the signals means that
     // it isn't currently set.
@@ -105,6 +117,9 @@ protected:
 
     // Config variables
     int _gpu_buffer_depth;
+
+    // Profiling time for the last signal
+    double last_gpu_execution_time = 0;
 
 private:
     // Helper functions from HSA docs for kernel packet queueing.

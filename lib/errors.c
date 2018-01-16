@@ -1,9 +1,15 @@
 #include "errors.h"
 
 // Default values for log levels.
-int log_level_warn = 1;
-int log_level_debug = 1;
-int log_level_info = 1;
+int __log_level = 3;
+
+void internal_logging(int log, const char * format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    (void) vsyslog(log, format, args);
+    va_end(args);
+}
 
 #ifdef WITH_OPENCL
 

@@ -38,6 +38,9 @@ private:
     int times;
     int elems;
 
+    float freq0;
+    float sample_bw;
+
     int id;
 
     uint frame_idx=0;

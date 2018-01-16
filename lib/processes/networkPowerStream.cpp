@@ -28,6 +28,9 @@ networkPowerStream::networkPowerStream(Config& config,
     freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name, "num_elements");
 
+    freq0 = config.get_float_default(unique_name, "freq", 1420.)*1e6;
+    sample_bw = config.get_float_default(unique_name, "sample_bw", 10.)*1e6;
+
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");
     dest_protocol = config.get_string(unique_name, "destination_protocol");
@@ -38,7 +41,7 @@ networkPowerStream::networkPowerStream(Config& config,
     header.header_length = sizeof(IntensityPacketHeader);
     header.samples_per_packet = freqs;
     header.sample_type = 4;//uint32
-    header.raw_cadence = 2.56e-6;
+    header.raw_cadence = 1 / (sample_bw / freqs);//2.56e-6;
     header.num_freqs = freqs;
     header.num_elems = elems;
     header.samples_summed = config.get_int(unique_name, "integration_length");
@@ -219,8 +222,10 @@ void networkPowerStream::tcpConnect()
         int info_size = freqs*2*sizeof(float) + elems*sizeof(char);
         void *info = malloc(info_size);
         for (int f=0; f<freqs; f++) {
-            ((float*)info)[2*f]   = 800e6 - 400e6* f   /1024;
-            ((float*)info)[2*f+1] = 800e6 - 400e6*(f+1)/1024;
+            ((float*)info)[2*f]   = freq0 - sample_bw/2 + sample_bw/freqs * ((float)f);
+            ((float*)info)[2*f+1] = freq0 - sample_bw/2 + sample_bw/freqs * ((float)f+1);
+//            ((float*)info)[2*f]   = 800e6 - 400e6* f   /1024;
+//            ((float*)info)[2*f+1] = 800e6 - 400e6*(f+1)/1024;
         }
         // - description of stream (e.g. V / H pol, Stokes-I / Q / U / V)
         //  -8  -7  -6  -5  -4  -3  -2  -1  1   2   3   4

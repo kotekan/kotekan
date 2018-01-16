@@ -57,6 +57,9 @@ void accumulate::main_thread() {
             timeval time_v = get_first_packet_recv_time(in_buf, in_frame_id);
             set_first_packet_recv_time(out_buf, out_frame_id, time_v);
 
+            timespec time_s = get_gps_time(in_buf, in_frame_id);
+            set_gps_time(out_buf, out_frame_id, time_s);
+
             uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
             atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 

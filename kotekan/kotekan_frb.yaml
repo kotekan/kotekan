@@ -1,6 +1,9 @@
 ---
 type: config
-log_level: 3
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
 udp_packet_size: 4928
 num_links: 4
 timesamples_per_packet: 16
@@ -16,6 +19,7 @@ buffer_depth: 3
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 sizeof_float: 4
+num_frb_total_beams: 1024
 
 # Pool
 main_pool:
@@ -78,26 +82,35 @@ gpu:
   num_gpus: 4
   block_size: 32
   buffer_depth: 3
+  frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
-    gpu_id: 0
-    network_buffer: gpu_input_buffer_0
-    output_buffer: beamform_output_buffer_0
+      kotekan_process: hsaProcess
+      gpu_id: 0
+      in_buffers:
+        network_buf: gpu_input_buffer_0
+      out_buffers:
+        beamform_output_buf: beamform_output_buffer_0
   gpu_1:
-    kotekan_process: hsaProcess
-    gpu_id: 1
-    network_buffer: gpu_input_buffer_1
-    output_buffer: beamform_output_buffer_1
+      kotekan_process: hsaProcess
+      gpu_id: 1
+      in_buffers:
+        network_buf: gpu_input_buffer_0
+      out_buffers:
+        beamform_output_buf: beamform_output_buffer_0
   gpu_2:
-    kotekan_process: hsaProcess
-    gpu_id: 2
-    network_buffer: gpu_input_buffer_2
-    output_buffer: beamform_output_buffer_2
+      kotekan_process: hsaProcess
+      gpu_id: 2
+      in_buffers:
+        network_buf: gpu_input_buffer_0
+      out_buffers:
+        beamform_output_buf: beamform_output_buffer_0
   gpu_3:
-    kotekan_process: hsaProcess
-    gpu_id: 3
-    network_buffer: gpu_input_buffer_3
-    output_buffer: beamform_output_buffer_3
+      kotekan_process: hsaProcess
+      gpu_id: 3
+      in_buffers:
+        network_buf: gpu_input_buffer_0
+      out_buffers:
+        beamform_output_buf: beamform_output_buffer_0
 
 #gen_data:
 #  type: const

@@ -9,6 +9,7 @@
 #include <getopt.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -69,6 +70,8 @@ extern "C" {
 #include "json.hpp"
 #include "restServer.hpp"
 #include "kotekanMode.hpp"
+#include "gpsTime.h"
+#include "KotekanProcess.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -89,7 +92,8 @@ void signal_handler(int signal)
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]            The local JSON config file to use\n\n");
+    printf("    --config (-c) [file]            The local JSON config file to use\n");
+    printf("    --gps-time (-g)                 Used with -c, try to get GPS time (CHIME only)\n\n");
 }
 
 #ifdef WITH_DPDK
@@ -130,20 +134,45 @@ std::string exec(const std::string &cmd) {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    int log_level = config.get_int("/", "log_level");
+    string s_log_level = config.get_string("/", "log_level");
+    logLevel log_level;
 
-    log_level_warn = 0;
-    log_level_debug = 0;
-    log_level_info = 0;
-    switch (log_level) {
-        case 3:
-            log_level_debug = 1;
-        case 2:
-            log_level_info = 1;
-        case 1:
-            log_level_warn = 1;
-        default:
-            break;
+    if (strcasecmp(s_log_level.c_str(), "off") == 0) {
+        log_level = logLevel::OFF;
+    } else if (strcasecmp(s_log_level.c_str(), "error") == 0) {
+        log_level = logLevel::ERROR;
+    } else if (strcasecmp(s_log_level.c_str(), "warn") == 0) {
+        log_level = logLevel::WARN;
+    } else if (strcasecmp(s_log_level.c_str(), "info") == 0) {
+        log_level = logLevel::INFO;
+    } else if (strcasecmp(s_log_level.c_str(), "debug") == 0) {
+        log_level = logLevel::DEBUG;
+    } else if (strcasecmp(s_log_level.c_str(), "debug2") == 0) {
+        log_level = logLevel::DEBUG2;
+    } else {
+        throw std::runtime_error("The value given for log_level: '" + s_log_level + "is not valid! " +
+                "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
+    }
+
+    __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
+}
+
+void set_gps_time(Config &config) {
+    if (config.exists("/", "gps_time") &&
+        !config.exists("/gps_time", "error") &&
+        config.exists("/gps_time", "frame0_nano")) {
+
+        uint64_t frame0 = config.get_uint64("/gps_time", "frame0_nano");
+        set_global_gps_time(frame0);
+        INFO("Set FPGA frame 0 time to %" PRIu64 " nanoseconds since Unix Epoch\n", frame0);
+    } else {
+        if (config.exists("/gps_time", "error")) {
+            string error_message = config.get_string("/gps_time", "error");
+            ERROR("*****\nGPS time lookup failed with reason: \n %s\n ******\n",
+                  error_message.c_str());
+        } else {
+            WARN("No GPS time set, using system clock.");
+        }
     }
 }
 
@@ -151,6 +180,7 @@ int start_new_kotekan_mode(Config &config) {
 
     config.dump_config();
     update_log_levels(config);
+    set_gps_time(config);
 
     kotekan_mode = new kotekanMode(config);
 
@@ -176,17 +206,19 @@ int main(int argc, char ** argv) {
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
+    bool gps_time = false;
 
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
+            {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "hc:",
+        opt_val = getopt_long (argc, argv, "ghc:",
                                long_options, &option_index);
 
         // End of args
@@ -201,6 +233,9 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
+                break;
+            case 'g':
+                gps_time = true;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -226,12 +261,20 @@ int main(int argc, char ** argv) {
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        INFO("Opening config file %s", config_file_name);
         //config.parse_file(config_file_name, 0);
-        std::string json_string = exec("python ../../scripts/yaml_to_json.py " + std::string(config_file_name));
+        string exec_path;
+        if (gps_time) {
+            INFO("Getting GPS time from ch_master, this might take some time...");
+            exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
+        } else {
+            exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
+        }
+        std::string json_string = exec(exec_path.c_str());
         config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
-            ERROR("Mode not supported");
+            ERROR("Error with config file, exiting...");
             return -1;
         }
     }
