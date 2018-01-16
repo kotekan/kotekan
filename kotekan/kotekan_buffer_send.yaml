@@ -1,0 +1,43 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_elements: 2048
+num_local_freq: 1
+udp_packet_size: 4928
+num_data_sets: 1
+samples_per_data_set: 32768
+buffer_depth: 8
+num_gpu_frames: 1
+block_size: 32
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+
+# Metadata pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 5 * buffer_depth
+
+# Buffers
+gpu_data_buffer:
+  kotekan_buffer: standard
+  metadata_pool: main_pool
+  num_frames: buffer_depth
+  sizeof_int: 4
+  frame_size: sizeof_int * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
+
+# Kotekan processes
+data_gen:
+  kotekan_process: testDataGen
+  network_out_buf: gpu_data_buffer
+  type: const
+  value: 127
+
+
+buffer_send:
+  kotekan_process: bufferSend
+  buf: gpu_data_buffer
+  server_ip: 127.0.0.1
+  server_port: 11024
+

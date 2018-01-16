@@ -11,6 +11,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
 set (KOTEKAN_LIB_SOURCES
               KotekanProcess.cpp
+              kotekanLogging.cpp
               SampleProcess.cpp
               Config.cpp
               buffer.c
@@ -31,6 +32,7 @@ set (KOTEKAN_LIB_SOURCES
               configEval.cpp
               visBuffer.cpp
               visUtil.cpp
+              gpsTime.c
        )
 
 if (${USE_DPDK})
@@ -52,7 +54,7 @@ add_library ( kotekan_libs
 
 target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( kotekan_libs libinclude )
-target_link_libraries( kotekan_libs m )
+target_link_libraries( kotekan_libs m event )
 
 if (${USE_DPDK})
     include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )

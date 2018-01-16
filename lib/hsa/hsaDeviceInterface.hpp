@@ -12,6 +12,7 @@
 
 #include "Config.hpp"
 #include "buffer.h"
+#include "kotekanLogging.hpp"
 
 using std::vector;
 using std::string;
@@ -38,10 +39,10 @@ struct gpuMemoryBlock {
     ~gpuMemoryBlock();
 };
 
-class hsaDeviceInterface
+class hsaDeviceInterface: public kotekanLogging
 {
 public:
-    hsaDeviceInterface(Config& config, int gpu_id);
+    hsaDeviceInterface(Config& config, int gpu_id, int gpu_buffer_depth);
     virtual ~hsaDeviceInterface();
     int get_gpu_id();
     int get_gpu_buffer_depth();
@@ -83,6 +84,8 @@ public:
     hsa_region_t get_kernarg_region();
     hsa_agent_t get_cpu_agent();
     hsa_queue_t * get_queue();
+    uint64_t get_hsa_timestamp_freq();
+
 protected:
 
     Config &config;
@@ -96,6 +99,9 @@ protected:
     // This might need to be more than one queue
     hsa_queue_t* queue;
 
+    // HSA profiling time stamp resolution
+    uint64_t timestamp_frequency_hz;
+
     // GPU Information
     char agent_name[64];
 
@@ -103,8 +109,7 @@ protected:
     hsa_agent_t cpu_agent;
     hsa_amd_memory_pool_t host_region;
 
-    // Config variable
-    int _gpu_buffer_depth;
+    int gpu_buffer_depth;
 
 private:
 

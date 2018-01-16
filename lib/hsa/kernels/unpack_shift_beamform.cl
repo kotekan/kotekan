@@ -13,7 +13,7 @@
 
 #define CUSTOM_BIT_REVERSE_9_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 15) & 0x1FE)
 
-__kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array){
+__kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array,  __global float2 *Gain){
 
   
   __local float2 local_data[2048];//4* 512 float2 * 2 float/float2 * 4 B/float = 16kB
@@ -37,15 +37,14 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     temp_3.REAL = ((int)((data_temp & 0xf0000000) >>  28u)) - 8;
     temp_3.IMAG = ((int)((data_temp & 0x0f000000) >>  24u)) - 8;
 
-
-    local_data[index_0    ] = temp_0;
-    local_data[index_0 +1 ] = temp_0;
-    local_data[index_1    ] = temp_1;
-    local_data[index_1 + 1] = temp_1;
-    local_data[index_2    ] = temp_2;
-    local_data[index_2 + 1] = temp_2;
-    local_data[index_3    ] = temp_3;
-    local_data[index_3 + 1] = temp_3;
+    local_data[index_0    ] = temp_0*Gain[get_global_id(1)*1024+local_address*4];
+    local_data[index_0 +1 ] = temp_0*Gain[get_global_id(1)*1024+local_address*4];
+    local_data[index_1    ] = temp_1*Gain[get_global_id(1)*1024+local_address*4+1];
+    local_data[index_1 + 1] = temp_1*Gain[get_global_id(1)*1024+local_address*4+1];
+    local_data[index_2    ] = temp_2*Gain[get_global_id(1)*1024+local_address*4+2];
+    local_data[index_2 + 1] = temp_2*Gain[get_global_id(1)*1024+local_address*4+2];
+    local_data[index_3    ] = temp_3*Gain[get_global_id(1)*1024+local_address*4+3];
+    local_data[index_3 + 1] = temp_3*Gain[get_global_id(1)*1024+local_address*4+3];
 
     barrier(CLK_LOCAL_MEM_FENCE);  //crucial
 

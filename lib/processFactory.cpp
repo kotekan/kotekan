@@ -11,6 +11,8 @@
 #endif
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
+#include "frbPostProcess.hpp"
+#include "pulsarPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
@@ -24,6 +26,7 @@
 #include "integratePowerStream.hpp"
 #include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
+#include "gpuBeamformPulsarSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
 #include "simVdifData.hpp"
@@ -33,6 +36,9 @@
 #include "accumulate.hpp"
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
+#include "bufferSend.hpp"
+#include "bufferRecv.hpp"
+#include "simpleAutocorr.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -42,6 +48,12 @@
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
+#endif
+#ifdef WITH_AIRSPY
+    #include "airspyInput.hpp"
+#endif
+#ifdef WITH_FFTW
+    #include "fftwEngine.hpp"
 #endif
 
 processFactory::processFactory(Config& config,
@@ -130,6 +142,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "gpuPostProcess") {
         return (KotekanProcess *) new gpuPostProcess(config, location, buffer_container);
     }
+    if (name == "frbPostProcess") {
+        return (KotekanProcess *) new frbPostProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarPostProcess") {
+        return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
@@ -167,6 +185,22 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
     }
 
+#ifdef WITH_AIRSPY
+    if (name == "airspyInput") {
+        return (KotekanProcess *) new airspyInput(config, location, buffer_container);
+    }
+#endif
+
+#ifdef WITH_FFTW
+    if (name == "fftwEngine") {
+        return (KotekanProcess *) new fftwEngine(config, location, buffer_container);
+    }
+#endif
+
+    if (name == "simpleAutocorr") {
+        return (KotekanProcess *) new simpleAutocorr(config, location, buffer_container);
+    }
+
     if (name == "streamSingleDishVDIF") {
         return (KotekanProcess *) new streamSingleDishVDIF(config, location, buffer_container);
     }
@@ -178,6 +212,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // ****** testing directory ******
     if (name == "gpuBeamformSimulate") {
         return (KotekanProcess *) new gpuBeamformSimulate(config, location, buffer_container);
+    }
+    if (name == "gpuBeamformPulsarSimulate") {
+        return (KotekanProcess *) new gpuBeamformPulsarSimulate(config, location, buffer_container);
     }
 
     if (name == "gpuSimulate") {
@@ -198,6 +235,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "testDataCheckFloat") {
         return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
+    }
+    if (name == "testDataCheckUchar") {
+        return (KotekanProcess *) new testDataCheck<unsigned char>(config, location, buffer_container);
     }
 
     if (name == "constDataCheck") {
@@ -230,6 +270,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new visDebug(config, location, buffer_container);
     }
 
+    if (name == "bufferSend") {
+        return (KotekanProcess *) new bufferSend(config, location, buffer_container);
+    }
+    if (name == "bufferRecv") {
+        return (KotekanProcess *) new bufferRecv(config, location, buffer_container);
+    }
 
     // OpenCL
     if (name == "clProcess") {

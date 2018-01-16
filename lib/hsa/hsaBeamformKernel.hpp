@@ -31,9 +31,11 @@ private:
     int32_t output_frame_len;
     int32_t map_len;
     int32_t coeff_len;
+    int32_t gain_len;
 
     uint32_t * host_map;
     float * host_coeff;
+    float * host_gain;
 
     int32_t _num_elements;
     int32_t _num_local_freq;

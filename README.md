@@ -33,7 +33,7 @@ To support OpenCL builds with the full networking stack:
 
 ## DPDK
 
-Install process.  Download the DPDK version 2.2.0 from:
+Install process.  Download the DPDK version 16.11.3 from:
 
 http://fast.dpdk.org/rel/dpdk-16.11.3.tar.xz
 
@@ -77,11 +77,14 @@ Cmake build options:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
 * `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` - Includes DPDK support.
-* `-DUSE_HSA=ON` - Build with HSA support.
+* `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
+* `-DUSE_PRECOMPILED_OPENCL=ON` - For HSA, use precompiled OpenCL .hsaco binaries. Otherwise will attempt cloc.sh to compile.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
 * `-DDPDK_VDIF=ON` - Adjusts DPDK defines to optimize for single dish VDIF capture mode.
-* `-DUSE_HDF5=on` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
+* `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
+* `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
+* `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
 
 **Examples:**
 

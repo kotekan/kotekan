@@ -26,7 +26,7 @@ import struct
 header_fmt = '=iiiidiiiId'
 
 TCP_IP="0.0.0.0"
-TCP_PORT = 2054
+TCP_PORT = 12051
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((TCP_IP, TCP_PORT))
 sock.listen(1)
