@@ -49,6 +49,7 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
 		  const uint32_t gps_time,
+		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
   //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
 
@@ -60,6 +61,11 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 	        uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
 		vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
 		vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
+		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
+		uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
+		vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
+		//if ((i==0) && (psr ==0)) INFO("---fill_header H8 -----gpu=%d  ra_part=%" PRId16 "; Dec=%" PRId16 "; eud4=%" PRIuLEAST32 "; edu3=%" PRIuLEAST32 "\n", f, ra_part, dec_part, vdif_header->eud4, vdif_header->eud3);
+		if ((i==0) && (psr ==0)) INFO("---fill_header H8 -----gpu=%d  ra_part=%hd; Dec=%hd; eud4=%" PRIuLEAST32 "\n", f, ra_part, dec_part, vdif_header->eud4);
 		vdif_header->seconds = (int)gps_time;
 		vdif_header->data_frame = ((gps_time - (int)gps_time)) / (samples_in_frame*2.56e-6); 
 		memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
@@ -114,7 +120,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.eud1 = 0;  //UD: beam number [0 to 9]
     vdif_header.eud2 = 0;  // UD: fpga count high bit
     vdif_header.eud3 = 0;  // UD: fpga count low bit
-    vdif_header.eud4 = 56;  // RaDec ? Source name ? Obs ID?
+    vdif_header.eud4 = 0;  // Ra_int + Ra_dec + Dec_int + Dec_dec ? Source name ? Obs ID?
 
 
     int frame = 0;
@@ -123,6 +129,7 @@ void pulsarPostProcess::main_thread() {
 
     int num_L1_streams = _num_pulsar;
 
+    struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t * out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == NULL) goto end_loop;
@@ -132,9 +139,14 @@ void pulsarPostProcess::main_thread() {
         for (int i = 0; i < _num_gpus; ++i) {
 	    in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
 	    if (in_frame[i] == NULL) goto end_loop;
+
+	    psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
+	    INFO("-----!!!!![postprocess H8]-------bufferID=%d GPU=%d psr_coord=(%f %f) (%f %f) (%f %f) (%f %f)",in_buffer_ID[i], i, psr_coord[i].ra[0], psr_coord[i].dec[0], psr_coord[i].ra[3], psr_coord[i].dec[3], psr_coord[i].ra[7],psr_coord[i].dec[7], psr_coord[i].ra[9], psr_coord[i].dec[9]);
+
 	    //INFO("GPU Post process got full buffer ID %d for GPU %d", in_buffer_ID[i],i);
 	}
         //INFO("pulsar_post_process; got full set of GPU output buffers");
+
 
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 	//Here add a line to get gps time using function get_gps_time()
@@ -161,6 +173,7 @@ void pulsarPostProcess::main_thread() {
 			 &vdif_header,
 			 first_seq_number,
 			 gps_time,
+			 psr_coord,
 			 (uint16_t*)freq_ids);
         }
 
@@ -185,6 +198,7 @@ void pulsarPostProcess::main_thread() {
 					 &vdif_header,
 					 fpga_seq_num,
 					 gps_time,
+					 psr_coord,
 					 (uint16_t*)freq_ids);
                     } //end if last frame
                 } //end if last sample
