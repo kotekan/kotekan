@@ -17,14 +17,17 @@ using namespace HighFive;
 
 visFile::visFile(const std::string& name,
                  const std::string& acq_name,
+                 const std::string& root_path,
                  const std::string& inst_name,
                  const std::string& notes,
                  const std::vector<freq_ctype>& freqs,
                  const std::vector<input_ctype>& inputs) {
 
+    std::string data_filename = root_path + "/" + acq_name + "/" + name;
+
     // Create the lock file first such that there is no time the file is
     // unlocked
-    lock_filename = name + ".lock";
+    lock_filename = root_path + "/" + acq_name + "/." + name + ".lock";
     std::ofstream lock_file(lock_filename);
     lock_file << getpid() << std::endl;
     lock_file.close();
@@ -34,7 +37,7 @@ visFile::visFile(const std::string& name,
     INFO("Creating new output file %s", name.c_str());
 
     file = std::unique_ptr<File>(
-        new File(name, File::ReadWrite | File::Create | File::Truncate)
+        new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
     );
 
     createIndex(freqs, inputs);
@@ -384,11 +387,10 @@ void visFileBundle::addFile(time_ctype first_time) {
         (unsigned int)(first_time.ctime - acq_start_time), freq_chunk
     );
     std::string file_name = fname_temp;
-    file_name = root_path + "/" + acq_name + "/" + file_name;
 
     // Create the file, create room for the first sample and add into the file map
     auto file = std::make_shared<visFile>(
-        file_name, acq_name, instrument_name, "", freqs, inputs
+        file_name, acq_name, root_path, instrument_name, "", freqs, inputs
     );
     auto ind = file->extendTime(first_time);
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);

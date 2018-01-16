@@ -19,12 +19,14 @@ public:
     /// Create file (and lock file).
     /// \param name Name of the file to write
     /// \param acq_name Name of the acquisition to write
+    /// \param root_path Base directory to write the acquisition into
     /// \param inst_name Instrument name (e.g. chime)
     /// \param notes Note about the acquisition
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     visFile(const std::string& name,
             const std::string& acq_name,
+            const std::string& root_path,
             const std::string& inst_name,
             const std::string& notes,
             const std::vector<freq_ctype>& freqs,

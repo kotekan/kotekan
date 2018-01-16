@@ -15,8 +15,6 @@
 #include <iostream>
 #include <fstream>
 
-const size_t DEFAULT_MAX_NTIME = 1024;
-
 
 visTransform::visTransform(Config& config,
                            const string& unique_name,
