@@ -20,7 +20,7 @@ public:
 
     int wait_on_precondition(int gpu_frame_id) override;
 
-    void calculate_phase(float *ra, float *dec, float time_now, int bank_write);
+    void calculate_phase(struct psrCoord psr_coord, timeval time_now, float freq_now, float *output);
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -33,7 +33,7 @@ public:
 
 private:
 
-    struct Buffer **in_buf;
+  //    struct Buffer *in_buf;
 
     int32_t phase_frame_len;
     float * host_phase_0;
@@ -43,11 +43,15 @@ private:
     int16_t _num_pulsar;
     int16_t _num_gpus;
 
-    float * ra;
-    float * dec;
-    float time_now;
+    int32_t metadata_buffer_id;
+    int32_t metadata_buffer_precondition_id;
+    Buffer * metadata_buf;
+  
+    struct psrCoord psr_coord;
+    struct psrCoord * psr_coord2;
+    struct timeval time_now;
 
-    float _freq;
+    float freq_now;
     //vector<int32_t> _elem_position;
     int32_t * _elem_position_c = NULL;
     float _feed_sep_NS;
@@ -56,6 +60,7 @@ private:
     std::thread phase_thread_handle;
 
     uint16_t bank_read_id;
+    uint16_t bank_write;
     std::mutex mtx_read;
     std::mutex _pulsar_lock;
 
