@@ -29,6 +29,9 @@ private:
     // List of frequencies for this buffer
     std::vector<uint16_t> freq;
 
+    // Cadence to simulate (in seconds)
+    float cadence;
+
 };
 
 #endif

@@ -30,6 +30,9 @@ fakeVis::fakeVis(Config &config,
         freq.push_back((uint16_t) f);
     }
 
+    // Get cadence
+    cadence = config.get_float(unique_name, "cadence");
+
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -39,13 +42,13 @@ void fakeVis::apply_config(uint64_t fpga_seq) {
 void fakeVis::main_thread() {
 
     unsigned int output_frame_id = 0;
-uint64_t fpga_seq = 0;
+    uint64_t fpga_seq = 0;
+    unsigned int fpga_seq_i = 800e6 / 2048 * cadence;
+    timespec ts;
+    timespec now;
+    clock_gettime(CLOCK_REALTIME, &ts);
 
     while (!stop_thread) {
-
-        // Get current time TODO: does it matter if cadence is not regular?
-        timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
 
         for (uint16_t f : freq) {
             // Wait for the buffer frame to be free
@@ -67,9 +70,6 @@ uint64_t fpga_seq = 0;
             output_frame.freq_id() = f;
 
             // Set the time
-            // TODO: will this work even if bufer has been created from scratch?
-            //       seems to always be 0
-            //uint64_t fpga_seq = get_fpga_seq_num(output_buffer, frame_id);
             output_frame.time() = std::make_tuple(fpga_seq, ts);
 
             // Copy the visibility data into a proper triangle and write into
@@ -87,7 +87,13 @@ uint64_t fpga_seq = 0;
             // Advance the current frame ids
             output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
         }
-        // TODO: at some this point this should roll over I think
-        fpga_seq = fpga_seq + 1;
+
+        // Get current time, delaying to satisfy cadence
+        clock_gettime(CLOCK_REALTIME, &now);
+        if (int delay = now.tv_sec - ts.tv_sec < cadence) sleep(cadence - delay);
+        clock_gettime(CLOCK_REALTIME, &ts);
+
+        // TODO: at some point this should roll over I think?
+        fpga_seq += fpga_seq_i;
     }
 }

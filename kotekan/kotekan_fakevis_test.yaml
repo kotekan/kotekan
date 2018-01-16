@@ -50,11 +50,19 @@ fake_vis:
   kotekan_process: fakeVis
   output_buffer: vis_buffer
   num_eigenvectors: 4
-  freq: [0,256,512,768]
+  freq: [250,256,512,768]
+  cadence: 10.
 
 vis_debug:
   kotekan_process: visDebug
   buffer: vis_buffer
+
+hdf5_writer:
+  kotekan_process: visWriter
+  buffer: vis_buffer
+  num_freq: 4
+  enabled_chunks: [238, 250, 278]
+  per_node_instrument: true
 
 
 # Information for input reordering, packed as
