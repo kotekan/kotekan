@@ -27,6 +27,11 @@ void bufferRecv::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
 }
 
+// **** TODO ****
+// Move call backs into object as non-static functions,
+// and just have a static call functions.  Enabled logging once this is done.
+// **** TODO ****
+
 void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
 {
     //DEBUG("Read Callback");
@@ -43,8 +48,8 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                        sizeof(struct bufferFrameHeader) - instance->bytes_read);
             //DEBUG("Header read bytes: %d", n);
             if (n < 0) {
-                ERROR("Reading header failed for client %s, with error %d (%s)",
-                        instance->client_ip.c_str(), errno, strerror(errno));
+                //ERROR("Reading header failed for client %s, with error %d (%s)",
+                //        instance->client_ip.c_str(), errno, strerror(errno));
                 goto end_loop;
             }
             instance->bytes_read += n;
@@ -58,12 +63,12 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                 //        instance->buf_frame_header.metadata_size, instance->buf_frame_header.frame_size);
 
                 if ((unsigned int)instance->buf->frame_size != instance->buf_frame_header.frame_size) {
-                    ERROR("Frame size does not match between server: %d and client: %d",
-                            instance->buf->frame_size, instance->buf_frame_header.frame_size);
+                //    ERROR("Frame size does not match between server: %d and client: %d",
+                //            instance->buf->frame_size, instance->buf_frame_header.frame_size);
                     throw std::runtime_error("Frame size does not match between server and client!");
                 }
                 if (instance->buf->metadata_pool->metadata_object_size != instance->buf_frame_header.metadata_size) {
-                    ERROR("Metadata size does not match between server and client!");
+                //    ERROR("Metadata size does not match between server and client!");
                     throw std::runtime_error("Metadata size does not match between server and client!");
                 }
             }
@@ -75,8 +80,8 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                     instance->buf_frame_header.metadata_size - instance->bytes_read);
             //DEBUG("Metadata read bytes: %d", n);
             if (n < 0) {
-                ERROR("Reading metadata failed for client %s, with error %d (%s)",
-                        instance->client_ip.c_str(), errno, strerror(errno));
+            //    ERROR("Reading metadata failed for client %s, with error %d (%s)",
+            //            instance->client_ip.c_str(), errno, strerror(errno));
                 goto end_loop;
             }
             instance->bytes_read += n;
@@ -90,8 +95,8 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                     (void*)(instance->frame_space + instance->bytes_read),
                     instance->buf_frame_header.frame_size - instance->bytes_read);
             if (n < 0) {
-                ERROR("Reading frame failed for client %s, with error %d (%s)",
-                        instance->client_ip.c_str(), errno, strerror(errno));
+            //    ERROR("Reading frame failed for client %s, with error %d (%s)",
+            //            instance->client_ip.c_str(), errno, strerror(errno));
                 goto end_loop;
             }
             instance->bytes_read += n;
@@ -112,8 +117,8 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
             //DEBUG("Finished state");
             int frame_id = instance->buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from %s",
-                        instance->client_ip.c_str());
+            //    WARN("No free buffer frames, dropping data from %s",
+            //            instance->client_ip.c_str());
             } else {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
@@ -132,9 +137,9 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                             instance->buf_frame_header.metadata_size);
 
                 mark_frame_full(instance->buf, instance->producer_name.c_str(), frame_id);
-                INFO("Received data from client: %s:%d into frame: %s[%d]",
-                        instance->client_ip.c_str(), instance->port,
-                        instance->buf->buffer_name, frame_id);
+            //    INFO("Received data from client: %s:%d into frame: %s[%d]",
+            //            instance->client_ip.c_str(), instance->port,
+            //            instance->buf->buffer_name, frame_id);
             }
             instance->state = connState::header;
         }
@@ -147,14 +152,14 @@ void bufferRecv::error_callback(struct bufferevent *bev, short error, void *ctx)
     connInstance * instance = (connInstance *)ctx;
     //DEBUG("Error Callback");
     if (error & BEV_EVENT_EOF) {
-        WARN("Kotekan client: %s closed connection", instance->client_ip.c_str());
+        //WARN("Kotekan client: %s closed connection", instance->client_ip.c_str());
     } else if (error & BEV_EVENT_ERROR) {
-        ERROR("Connection error with Kotekan client: %s, errno: %d, message %s",
-                instance->client_ip.c_str(), errno, strerror(errno));
+        //ERROR("Connection error with Kotekan client: %s, errno: %d, message %s",
+        //        instance->client_ip.c_str(), errno, strerror(errno));
     } else if (error & BEV_EVENT_TIMEOUT) {
-        ERROR("Connection with Kotekan client: %s timed out.", instance->client_ip.c_str());
+        //ERROR("Connection with Kotekan client: %s timed out.", instance->client_ip.c_str());
     } else {
-        ERROR("Un-handled error in error_callback %d", error);
+        //ERROR("Un-handled error in error_callback %d", error);
     }
     delete instance;
     bufferevent_free(bev);
@@ -169,7 +174,7 @@ void bufferRecv::accept_connection(evutil_socket_t listener, short event, void *
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr*)&ss, &slen);
     if (fd < 0) {
-        ERROR("Failed to accept connection.");
+        //ERROR("Failed to accept connection.");
     } else if (fd > FD_SETSIZE) {
         close(fd);
     } else {
@@ -182,7 +187,7 @@ void bufferRecv::accept_connection(evutil_socket_t listener, short event, void *
         char ip_str[256];
         inet_ntop(AF_INET, &s->sin_addr, ip_str, sizeof(ip_str));
 
-        INFO("New connection from client: %s:%d", ip_str, port);
+        //INFO("New connection from client: %s:%d", ip_str, port);
 
         // New connection instance
         connInstance * instance =

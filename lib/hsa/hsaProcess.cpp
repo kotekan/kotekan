@@ -37,7 +37,13 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
     }
 
-    device = new hsaDeviceInterface(config, gpu_id);
+    device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
+
+    string g_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
+    device->set_log_level(s_log_level);
+    device->set_log_prefix("GPU[" + to_string(gpu_id) + "] device interface");
+
     factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
 }
 

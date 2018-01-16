@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include "errors.h"
+#include <syslog.h>
 
 #include "KotekanProcess.hpp"
 
@@ -13,6 +14,11 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
     this_thread(), main_thread_fn(main_thread_ref) {
 
     set_cpu_affinity(config.get_int_array(unique_name, "cpu_affinity"));
+
+    // Set the local log level.
+    string s_log_level = config.get_string(unique_name, "log_level");
+    set_log_level(s_log_level);
+    set_log_prefix(unique_name);
 }
 
 struct Buffer* KotekanProcess::get_buffer(const std::string& name) {

@@ -52,6 +52,9 @@ else()
  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 
+IF(CMAKE_BUILD_TYPE MATCHES Debug)
+  add_definitions(-DDEBUGGING)
+endif()
 
 set(GPU_MODULES "")
 if (${USE_HCC})

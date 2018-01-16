@@ -9,6 +9,7 @@
 #include <getopt.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -68,6 +69,7 @@ extern "C" {
 #include "restServer.hpp"
 #include "kotekanMode.hpp"
 #include "gpsTime.h"
+#include "KotekanProcess.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -130,21 +132,27 @@ std::string exec(const std::string &cmd) {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    int log_level = config.get_int("/", "log_level");
+    string s_log_level = config.get_string("/", "log_level");
+    logLevel log_level;
 
-    log_level_warn = 0;
-    log_level_debug = 0;
-    log_level_info = 0;
-    switch (log_level) {
-        case 3:
-            log_level_debug = 1;
-        case 2:
-            log_level_info = 1;
-        case 1:
-            log_level_warn = 1;
-        default:
-            break;
+    if (strcasecmp(s_log_level.c_str(), "off") == 0) {
+        log_level = logLevel::OFF;
+    } else if (strcasecmp(s_log_level.c_str(), "error") == 0) {
+        log_level = logLevel::ERROR;
+    } else if (strcasecmp(s_log_level.c_str(), "warn") == 0) {
+        log_level = logLevel::WARN;
+    } else if (strcasecmp(s_log_level.c_str(), "info") == 0) {
+        log_level = logLevel::INFO;
+    } else if (strcasecmp(s_log_level.c_str(), "debug") == 0) {
+        log_level = logLevel::DEBUG;
+    } else if (strcasecmp(s_log_level.c_str(), "debug2") == 0) {
+        log_level = logLevel::DEBUG2;
+    } else {
+        throw std::runtime_error("The value given for log_level: '" + s_log_level + "is not valid! " +
+                "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
     }
+
+    __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
 void set_gps_time(Config &config) {
