@@ -71,6 +71,7 @@ void fakeVis::main_thread() {
 
             // Set the time
             output_frame.time() = std::make_tuple(fpga_seq, ts);
+            DEBUG("set time %d", ts.tv_sec);
 
             // Copy the visibility data into a proper triangle and write into
             // the file
@@ -90,7 +91,9 @@ void fakeVis::main_thread() {
 
         // Get current time, delaying to satisfy cadence
         clock_gettime(CLOCK_REALTIME, &now);
-        if (int delay = now.tv_sec - ts.tv_sec < cadence) sleep(cadence - delay);
+        if (float delay = now.tv_sec - ts.tv_sec + 1e-9 * (now.tv_nsec - ts.tv_nsec) < cadence) {
+            sleep(cadence - delay + 1);  // delay always > 0
+        }
         clock_gettime(CLOCK_REALTIME, &ts);
 
         // TODO: at some point this should roll over I think?

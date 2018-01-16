@@ -58,7 +58,7 @@ inline double tv_to_double(const timeval & tv) {
 }
 
 inline double ts_to_double(const timespec & ts) {
-    return (ts.tv_sec + 1e-6 * ts.tv_nsec);
+    return (ts.tv_sec + 1e-9 * ts.tv_nsec);
 }
 
 
