@@ -1,0 +1,23 @@
+---
+type: config
+system:
+  mode: airspy
+  log_level: 2
+
+integration_length: 8192
+num_freq: 1024
+num_elements: 1
+samples_per_data_set: 262144
+buffer_depth: 10
+num_links: 8
+timesamples_per_packet: 2
+cpu_affinity: [4]
+
+airspy:
+  kotekan_process: airspyInput
+  out_buf: airspy_input_buf
+
+nullProcess:
+  kotekan_process: nullProcess
+  in_buf: airspy_input_buf
+
