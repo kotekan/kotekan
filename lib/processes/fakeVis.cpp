@@ -26,7 +26,7 @@ fakeVis::fakeVis(Config &config,
     DEBUG("Buffer size %d", output_buffer->num_frames);
 
     // Get frequency IDs from config
-    for (int32_t f : config.get_int_array(unique_name, "freq")) {
+    for (auto f : config.get_int_array(unique_name, "freq")) {
         freq.push_back((uint16_t) f);
     }
 
@@ -39,7 +39,7 @@ void fakeVis::apply_config(uint64_t fpga_seq) {
 void fakeVis::main_thread() {
 
     unsigned int output_frame_id = 0;
-    unsigned int fpga_seq = 0;
+uint64_t fpga_seq = 0;
 
     while (!stop_thread) {
 
@@ -88,6 +88,6 @@ void fakeVis::main_thread() {
             output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
         }
         // TODO: at some this point this should roll over I think
-        fpga_seq = fpga_seq + 1.;
+        fpga_seq = fpga_seq + 1;
     }
 }
