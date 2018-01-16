@@ -6,7 +6,7 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
-option(USE_DPDK "Enable DPDK Framework" ON)
+option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_AIRSPY "Use AIRSPY settings" OFF)
 
