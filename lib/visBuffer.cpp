@@ -66,10 +66,10 @@ void visFrameView::check_and_set() {
     // This defines the packing of the buffer. The order is somewhat funky to
     // try and ensure alignment of the members. For that to be true the buffer
     // size must be a multiple of the 16 (i.e. the size of a complex double).
-    evec_ptr = (std::complex<double> *)(buffer->frames[id]);
-    eval_ptr = (double *)(evec_ptr + num_eigenvectors() * num_elements());
-    vis_ptr = (complex_int *)(eval_ptr + num_eigenvectors());
-    rms_ptr = (double *)(vis_ptr + num_prod());
+    evec_ptr = (std::complex<float> *)(buffer->frames[id]);
+    eval_ptr = (float *)(evec_ptr + num_eigenvectors() * num_elements());
+    vis_ptr = (std::complex<float> *)(eval_ptr + num_eigenvectors());
+    rms_ptr = (float *)(vis_ptr + num_prod());
 
     // Reuse the pointer arithmetic we've already done to calculate the size
     size_t required_size = ((uint8_t *)(rms_ptr + 1) - buffer->frames[id]);
@@ -108,18 +108,18 @@ uint16_t & visFrameView::dataset_id() {
 }
 
 
-complex_int * visFrameView::vis() {
+std::complex<float> * visFrameView::vis() {
     return vis_ptr;
 }
 
-double * visFrameView::eigenvalues() {
+float * visFrameView::eigenvalues() {
     return eval_ptr;
 }
 
-std::complex<double> * visFrameView::eigenvectors() {
+std::complex<float> * visFrameView::eigenvectors() {
     return evec_ptr;
 }
 
-double & visFrameView::rms() {
+float & visFrameView::rms() {
     return *rms_ptr;
 }

@@ -53,10 +53,10 @@ public:
     uint16_t & dataset_id();
 
     // Sample data
-    complex_int * vis();
-    double * eigenvalues();
-    std::complex<double> * eigenvectors();
-    double & rms();
+    std::complex<float> * vis();
+    float * eigenvalues();
+    std::complex<float> * eigenvectors();
+    float & rms();
 
     // These define the layout of the buffer, and cannot be modified after
     // creation time
@@ -69,10 +69,10 @@ public:
 
 private:
 
-    complex_int * vis_ptr;
-    double * eval_ptr;
-    std::complex<double> * evec_ptr;
-    double * rms_ptr;
+    std::complex<float> * vis_ptr;
+    float * eval_ptr;
+    std::complex<float> * evec_ptr;
+    float * rms_ptr;
 
     Buffer * const buffer;
     const int id;

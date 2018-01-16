@@ -33,10 +33,9 @@
 #include "accumulate.hpp"
 #include "hexDump.hpp"
 #include "chimeMetadataDump.hpp"
-#include "visWriter.hpp"
 
 #ifdef WITH_HDF5
-    #include "hdf5Writer.hpp"
+    #include "visWriter.hpp"
 #endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
@@ -215,9 +214,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
 
     // HDF5
-    if (name == "hdf5Writer") {
+    if (name == "visWriter") {
         #ifdef WITH_HDF5
-            return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
+            return (KotekanProcess *) new visWriter(config, location, buffer_container);
         #else
             throw std::runtime_error("hdf5Writer is not supported on this system");
         #endif

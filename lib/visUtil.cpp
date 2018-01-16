@@ -13,7 +13,7 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
 // possible reordering of the inputs
 void copy_vis_triangle(
     const int32_t * buf, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, complex_int * output
+    size_t block, size_t N, std::complex<float> * output
 ) {
 
     size_t pi = 0;
@@ -29,21 +29,20 @@ void copy_vis_triangle(
 
             // IMPORTANT: for some reason the buffers are packed as imaginary
             // *then* real. Here we need to read out the individual components.
-            output[pi].r = buf[2 * bi + 1];
-            output[pi].i = buf[2 * bi];
+            output[pi]= {(float)buf[2 * bi + 1], (float)buf[2 * bi]};
             pi++;
         }
     }
 }
 
 
-std::vector<complex_int> copy_vis_triangle(
+std::vector<std::complex<float>> copy_vis_triangle(
     const int32_t * buf, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N
 ) {
 
     size_t M = inputmap.size();
-    std::vector<complex_int> output(M * (M + 1) / 2);
+    std::vector<std::complex<float>> output(M * (M + 1) / 2);
 
     copy_vis_triangle(buf, inputmap, block, N, output.data());
 

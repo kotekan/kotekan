@@ -1,6 +1,7 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
+#include <complex>
 #include <stdint.h>
 #include <time.h>
 #include <sys/time.h>
@@ -36,12 +37,6 @@ struct prod_ctype {
     uint16_t input_b;
 };
 
-struct complex_int {
-    int32_t r;
-    int32_t i;
-};
-
-
 // Functions for indexing into the buffer of data
 inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
     return (n * (n + 1) / 2) - ((n - i) * (n - i + 1) / 2) + (j - i);
@@ -66,11 +61,11 @@ inline double ts_to_double(const timespec & ts) {
 // ... either a preallocated one
 void copy_vis_triangle(
     const int32_t * buf, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t n, complex_int * output
+    size_t block, size_t n, std::complex<float> * output
 );
 
 // ... or allocate a vector for it
-std::vector<complex_int> copy_vis_triangle(
+std::vector<std::complex<float>> copy_vis_triangle(
     const int32_t * buf, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N
 );
