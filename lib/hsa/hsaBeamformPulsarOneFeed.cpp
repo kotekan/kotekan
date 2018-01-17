@@ -1,4 +1,4 @@
-#include "hsaBeamformPulsar-OneFeed.hpp"
+#include "hsaBeamformPulsarOneFeed.hpp"
 #include "hsaBase.h"
 
 hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(const string& kernel_name, const string& kernel_file_name,
