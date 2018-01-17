@@ -17,7 +17,7 @@ hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_
 
 
 hsaInputData::~hsaInputData() {
-    hsa_host_free(presum_zeros);
+
 }
 
 void hsaInputData::apply_config(const uint64_t& fpga_seq) {
