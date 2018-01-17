@@ -16,7 +16,7 @@ hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(const string& kernel_name, co
     INFO("+++++ Pulsar beamforming with one feed (Feed %d)", _one_feed);
     for (int b=0; b < _num_pulsar; b++){
         for (int n=0; n<_num_elements; n++){
-	    if (n == _one_feed) {
+	  if ((n == _one_feed_p0) or (n == _one_feed_p1)) {
 	        host_phase[index++] = 1;
 		host_phase[index++] = 1;
 	    }
@@ -42,7 +42,8 @@ void hsaBeamformPulsarOneFeed::apply_config(const uint64_t& fpga_seq) {
     _num_pulsar = config.get_int(unique_name, "num_pulsar");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _num_pol = config.get_int(unique_name, "num_pol");
-    _one_feed = config.get_int(unique_name, "psr-test_one_feed_one_pol");
+    _one_feed_p0 = config.get_int(unique_name, "psr-test_one_feed_p0");
+    _one_feed_p1 = config.get_int(unique_name, "psr-test_one_feed_p1");
 
     input_frame_len = _num_elements * _samples_per_data_set;
     output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol *  sizeof(uint8_t);

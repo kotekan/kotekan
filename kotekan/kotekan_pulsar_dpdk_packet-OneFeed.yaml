@@ -13,7 +13,8 @@ num_local_freq: 1
 num_total_freq: 4
 num_pulsar: 10
 num_pol: 2
-psr-test_one_feed_one_pol: 0   #Cylinder A, centre feed, pol 0
+psr-test_one_feed_p0: 1712 #=D; 0=A; 764=B; 1100=C
+psr-test_one_feed_p1: 1776 #=D; 64=A; 700=B; 1036=C
 samples_per_data_set: 49152
 num_data_sets: 1
 buffer_depth: 3

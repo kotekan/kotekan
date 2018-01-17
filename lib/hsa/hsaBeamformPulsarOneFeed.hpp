@@ -28,7 +28,8 @@ private:
     int32_t _num_elements;
     int32_t _num_pulsar;
     int32_t _num_pol;
-    int32_t _one_feed;
+    int32_t _one_feed_p0;
+    int32_t _one_feed_p1;
     int32_t _samples_per_data_set;
 };
 
