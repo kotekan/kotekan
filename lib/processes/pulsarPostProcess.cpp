@@ -48,7 +48,7 @@ pulsarPostProcess::~pulsarPostProcess() {
 void pulsarPostProcess::fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
-		  const uint32_t gps_time,
+		  struct timeval * time_now,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
   //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
@@ -66,8 +66,8 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
 		//if ((i==0) && (psr ==0)) INFO("---fill_header H8 -----gpu=%d  ra_part=%" PRId16 "; Dec=%" PRId16 "; eud4=%" PRIuLEAST32 "; edu3=%" PRIuLEAST32 "\n", f, ra_part, dec_part, vdif_header->eud4, vdif_header->eud3);
 		if ((i==0) && (psr ==0)) INFO("---fill_header H8 -----gpu=%d  ra_part=%hd; Dec=%hd; eud4=%" PRIuLEAST32 "\n", f, ra_part, dec_part, vdif_header->eud4);
-		vdif_header->seconds = (int)gps_time;
-		vdif_header->data_frame = ((gps_time - (int)gps_time)) / (samples_in_frame*2.56e-6); 
+		vdif_header->seconds = time_now->tv_sec;
+		vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
 		memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
 	    }
 	}
@@ -149,8 +149,9 @@ void pulsarPostProcess::main_thread() {
 
 
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-	//Here add a line to get gps time using function get_gps_time()
-	uint32_t gps_time = 100;
+
+	//Get time, use system time for now, gps time requires ch_master
+	time_now = get_first_packet_recv_time(in_buf[0], in_buffer_ID[0]);
 
         for (int i = 0; i < _num_gpus; ++i) {
 	    assert(first_seq_number ==
@@ -172,7 +173,7 @@ void pulsarPostProcess::main_thread() {
 	    fill_headers((unsigned char*)out_frame,
 			 &vdif_header,
 			 first_seq_number,
-			 gps_time,
+			 &time_now, 
 			 psr_coord,
 			 (uint16_t*)freq_ids);
         }
@@ -193,11 +194,16 @@ void pulsarPostProcess::main_thread() {
 			if (out_frame == NULL) goto end_loop;
 			    // Fill the headers of the new buffer
 			    fpga_seq_num += samples_in_frame*num_packet;
-			    gps_time += samples_in_frame*2.56e-6;
+			    //gps_time += samples_in_frame*2.56e-6;
+			    time_now.tv_usec += samples_in_frame*2.56;
+			    if (time_now.tv_usec > 999999) {
+			        time_now.tv_usec = time_now.tv_usec % 999999;
+			        time_now.tv_sec +=1;
+			    }
 			    fill_headers((unsigned char*)out_frame,
 					 &vdif_header,
 					 fpga_seq_num,
-					 gps_time,
+					 &time_now,
 					 psr_coord,
 					 (uint16_t*)freq_ids);
                     } //end if last frame

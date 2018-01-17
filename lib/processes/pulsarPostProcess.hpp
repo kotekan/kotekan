@@ -19,7 +19,7 @@ private:
     void fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
-		  const uint32_t gps_time,
+		  struct timeval * time_now,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids);
   
@@ -35,7 +35,7 @@ private:
     int32_t _timesamples_per_pulsar_packet;
     int32_t _udp_packet_size;
     int32_t _udp_header_size;
-
+    struct timeval time_now;
 };
 
 #endif
