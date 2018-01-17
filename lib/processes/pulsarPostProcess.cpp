@@ -52,26 +52,31 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
   //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
+  for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
+      uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
+      vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
+      vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
+      vdif_header->seconds = time_now->tv_sec;
+      vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
+      
+      for (int f=0;f<_num_gpus;++f) { //4 freq
+	  vdif_header->thread_id = freq_ids[f];
 
-    for (int f=0;f<_num_gpus;++f) { //4 freq
-        vdif_header->thread_id = freq_ids[f];
-        for (int psr=0;psr<_num_pulsar; ++psr) { //10 streams
-	    vdif_header->eud1 = psr; //beam id
-	    for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
-	        uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
-		vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
-		vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
-		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
-		uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
-		vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
-		//if ((i==0) && (psr ==0)) INFO("---fill_header H8 -----gpu=%d  ra_part=%" PRId16 "; Dec=%" PRId16 "; eud4=%" PRIuLEAST32 "; edu3=%" PRIuLEAST32 "\n", f, ra_part, dec_part, vdif_header->eud4, vdif_header->eud3);
-		if ((i==0) && (psr ==0)) INFO("---fill_header H8 -----gpu=%d  ra_part=%hd; Dec=%hd; eud4=%" PRIuLEAST32 "\n", f, ra_part, dec_part, vdif_header->eud4);
-		vdif_header->seconds = time_now->tv_sec;
-		vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
-		memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
-	    }
-	}
-    }
+	  for (int psr=0;psr<_num_pulsar; ++psr) { //10 streams
+	      vdif_header->eud1 = psr; //beam id
+	      uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
+	      uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
+	      vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
+	      memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
+	  }
+      } //end freq
+      //Increment time for the next frame
+      time_now->tv_usec +=samples_in_frame*2.56;
+      if (time_now->tv_usec > 999999) {
+	  time_now->tv_usec = time_now->tv_usec % 999999;
+	  time_now->tv_sec +=1;
+      }
+  } //end packet
 }
 
 void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
@@ -141,13 +146,7 @@ void pulsarPostProcess::main_thread() {
 	    if (in_frame[i] == NULL) goto end_loop;
 
 	    psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
-	    INFO("-----!!!!![postprocess H8]-------bufferID=%d GPU=%d psr_coord=(%f %f) (%f %f) (%f %f) (%f %f)",in_buffer_ID[i], i, psr_coord[i].ra[0], psr_coord[i].dec[0], psr_coord[i].ra[3], psr_coord[i].dec[3], psr_coord[i].ra[7],psr_coord[i].dec[7], psr_coord[i].ra[9], psr_coord[i].dec[9]);
-
-	    //INFO("GPU Post process got full buffer ID %d for GPU %d", in_buffer_ID[i],i);
 	}
-        //INFO("pulsar_post_process; got full set of GPU output buffers");
-
-
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
 	//Get time, use system time for now, gps time requires ch_master
@@ -177,10 +176,8 @@ void pulsarPostProcess::main_thread() {
 			 psr_coord,
 			 (uint16_t*)freq_ids);
         }
-
         // This loop which takes data from the input buffer and formats the output.
         if (likely(startup == 0)) {
-
             for (uint i = current_input_location; i < _samples_per_data_set; ++i) {
   	        if (in_frame_location == samples_in_frame) { //last sample
                     in_frame_location = 0;
@@ -194,12 +191,6 @@ void pulsarPostProcess::main_thread() {
 			if (out_frame == NULL) goto end_loop;
 			    // Fill the headers of the new buffer
 			    fpga_seq_num += samples_in_frame*num_packet;
-			    //gps_time += samples_in_frame*2.56e-6;
-			    time_now.tv_usec += samples_in_frame*2.56;
-			    if (time_now.tv_usec > 999999) {
-			        time_now.tv_usec = time_now.tv_usec % 999999;
-			        time_now.tv_sec +=1;
-			    }
 			    fill_headers((unsigned char*)out_frame,
 					 &vdif_header,
 					 fpga_seq_num,
