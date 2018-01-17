@@ -5,6 +5,7 @@
 #include <time.h>
 #include <assert.h>
 #include <math.h>
+#include <signal.h>
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -928,19 +929,23 @@ int lcore_recv_pkt(void *args)
             for (int i = 0; i < nb_rx; ++i) {
 
                 if (unlikely((mbufs[i]->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
-                    ERROR("network_dpdk: Got bad packet checksum!");
+                    WARN("network_dpdk: Got bad packet checksum!");
                     goto release_frame;
                 }
 
                 if (unlikely( mbufs[i]->pkt_len
                         != dpdk_net->args->udp_packet_size)) {
-                    WARN("Got packet with incorrect length: %d; expected: %d",
+                    ERROR("Got packet with incorrect length: %d; expected: %d",
                             mbufs[i]->pkt_len,
                             dpdk_net->args->udp_packet_size);
-                    goto release_frame;
+                    // Getting a packet with the wrong length is almost always
+                    // a configuration/FPGA problem that needs to be addressed.
+                    // So for now we just exit kotekan with an error message.
+                    raise(SIGINT);
+                    goto exit_dpdk_lcore_loop;
                 }
 
-                //INFO("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
+                //DEBUG2("Got packet on port %d, size %d", port, mbufs[i]->pkt_len);
 
                 if (unlikely(dpdk_net->link_data[port][0].first_packet == 1)) {
                     if (likely((align_first_packet(dpdk_net, mbufs[i], port) == 0))) {
@@ -956,15 +961,21 @@ int lcore_recv_pkt(void *args)
                 // There is only possible diff for all freqs.  TODO: Idealy this value would be a per port only.
                 int64_t diff = (int64_t)dpdk_net->link_data[port][0].seq - (int64_t)dpdk_net->link_data[port][0].last_seq;
                 if (unlikely(diff < 0)) {
-                    DEBUG("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
+                    WARN("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
                             port, diff, dpdk_net->link_data[port][0].last_seq, dpdk_net->link_data[port][0].seq);
+                    // This condition should only be hit if the FPGAs have been reset
+                    if (diff < 1000) {
+                        ERROR("The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 of highest number seen.)");
+                        raise(SIGINT);
+                        goto exit_dpdk_lcore_loop;
+                    }
                     goto release_frame;
                 }
 
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-                        INFO("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
+                        DEBUG("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
                         handle_lost_packets(dpdk_net, port);
                     }
 
