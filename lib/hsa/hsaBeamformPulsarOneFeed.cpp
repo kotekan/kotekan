@@ -13,7 +13,7 @@ hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(const string& kernel_name, co
     host_phase = (float *)hsa_host_malloc(phase_len);
 
     int index = 0;
-    INFO("+++++ Pulsar beamforming with one feed (Feed %d)", _one_feed);
+    INFO("+++++ Pulsar beamforming with one feed (%d %d)", _one_feed_p0, _one_feed_p1);
     for (int b=0; b < _num_pulsar; b++){
         for (int n=0; n<_num_elements; n++){
 	  if ((n == _one_feed_p0) or (n == _one_feed_p1)) {
