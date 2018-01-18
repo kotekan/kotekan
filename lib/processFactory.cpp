@@ -39,6 +39,7 @@
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
+#include "fakeVis.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -268,6 +269,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "visDebug") {
         return (KotekanProcess *) new visDebug(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities
+    if (name == "fakeVis") {
+        return (KotekanProcess *) new fakeVis(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {

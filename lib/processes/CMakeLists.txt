@@ -27,6 +27,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
+              fakeVis.cpp
               )
 
 if (${USE_DPDK})
