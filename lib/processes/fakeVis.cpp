@@ -23,8 +23,6 @@ fakeVis::fakeVis(Config &config,
     output_buffer = buffer_container.get_buffer(buffer_name);
     register_producer(output_buffer, unique_name.c_str());
 
-    DEBUG("Buffer size %d", output_buffer->num_frames);
-
     // Get frequency IDs from config
     for (auto f : config.get_int_array(unique_name, "freq")) {
         freq.push_back((uint16_t) f);
@@ -57,7 +55,6 @@ void fakeVis::main_thread() {
             // Below adapted from visWriter
 
             // Allocate metadata and get frame
-            // TODO: how do I populate metadata?
             allocate_new_metadata_object(output_buffer, output_frame_id);
             auto output_frame = visFrameView(output_buffer, output_frame_id,
                                              num_elements, num_prod,
@@ -71,15 +68,26 @@ void fakeVis::main_thread() {
 
             // Set the time
             output_frame.time() = std::make_tuple(fpga_seq, ts);
-            DEBUG("set time %d", ts.tv_sec);
 
-            // Copy the visibility data into a proper triangle and write into
-            // the file
-            // TODO: generate fake visibilities
-            //       in the meantime visibility array and others just point to 
-            //       uninitialized area of memory
-            //copy_vis_triangle((int32_t *)frame, input_remap, block_size,
-            //                  num_elements, output_frame.vis();
+            // Insert values into vis array to help with debugging
+            // TODO: change to float
+            std::complex<float> * out_vis = output_frame.vis();
+            // Set diagonal elements to (0, row)
+            for (int i = 0; i < num_elements; i++) {
+                uint32_t pi = cmap(i, i, num_elements);
+                out_vis[pi] = {0., (float) i};
+            }
+            // Save metadata in first few cells
+            if ( sizeof(out_vis) < 4 ) {
+                INFO("Number of elements (%d) is too small to encode \
+                      debugging values in fake visibilities", num_elements);
+            } else {
+                // For simplicity overwrite diagonal if needed
+                out_vis[0] = {(float) fpga_seq, 0.};
+                out_vis[1] = {(float) (ts.tv_sec + 1e-9 * ts.tv_nsec), 0.};
+                out_vis[2] = {(float) f, 0.};
+                out_vis[3] = {(float) output_frame_id, 0.};
+            }
 
             // Mark the buffers and move on
             mark_frame_full(output_buffer, unique_name.c_str(),

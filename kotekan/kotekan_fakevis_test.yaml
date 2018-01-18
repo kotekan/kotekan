@@ -1,6 +1,6 @@
 ---
 type: config
-log_level: 3
+log_level: DEBUG
 num_elements: 2048
 num_prod: 2098176
 num_local_freq: 1
