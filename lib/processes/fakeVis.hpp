@@ -7,7 +7,11 @@
 #include "errors.h"
 #include "util.h"
 
-// Generated fake visibility buffers for downstream task development
+/**
+ * Generate fake visibility buffers for downstream task development.
+ * 
+ * ...
+ */
 class fakeVis : public KotekanProcess {
 
 public:

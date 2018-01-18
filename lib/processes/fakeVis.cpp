@@ -70,7 +70,6 @@ void fakeVis::main_thread() {
             output_frame.time() = std::make_tuple(fpga_seq, ts);
 
             // Insert values into vis array to help with debugging
-            // TODO: change to float
             std::complex<float> * out_vis = output_frame.vis();
             // Set diagonal elements to (0, row)
             for (int i = 0; i < num_elements; i++) {
