@@ -33,6 +33,7 @@ void fftwEngine::main_thread() {
     frame_in = 0;
     frame_out = 0;
 
+    int BYTES_PER_SAMPLE=2;
     int samples_per_input_frame = buf_in->frame_size/BYTES_PER_SAMPLE;
 
     while(!stop_thread) {
