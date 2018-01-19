@@ -11,7 +11,6 @@ option(USE_PRECOMPIPLED_OPENCL "Use precompiled OpenCL binaries" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
-option(USE_AIRSPY "Use AIRSPY settings" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -44,6 +43,7 @@ endif()
 if(${DPDK_VDIF})
   add_definitions(-DDPDK_VDIF_MODE)
 endif()
+
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)

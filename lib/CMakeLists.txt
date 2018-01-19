@@ -27,7 +27,6 @@ set (KOTEKAN_LIB_SOURCES
               fpga_header_functions.c
               bufferContainer.cpp
               processFactory.cpp
-              airspy_control.c
               metadataFactory.cpp
               bufferFactory.cpp
               configEval.cpp

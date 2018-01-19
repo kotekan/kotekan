@@ -57,7 +57,6 @@ extern "C" {
 }
 #include "network_dpdk.h"
 #endif
-
 #include "errors.h"
 #include "buffer.h"
 

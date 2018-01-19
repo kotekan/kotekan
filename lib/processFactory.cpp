@@ -133,7 +133,6 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new dpdkWrapper(config, location, buffer_container);
     }
 #endif
-
     if (name == "fullPacketDump") {
         return (KotekanProcess *) new fullPacketDump(config, location, buffer_container);
     }
