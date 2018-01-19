@@ -41,7 +41,7 @@ class CommandLine:
             status = True
         if argument.config:
             print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
-            for key, value in yaml.load(open(argument.config)).iteritems():
+            for key, value in yaml.load(open(argument.config)).items():
                 if(type(value) == dict):
                     if('kotekan_process' in value.keys() and value['kotekan_process'] == 'rfiBroadcast'):
                         for k in value.keys():
@@ -80,7 +80,7 @@ def animate(i):
 
 def recvall(sock, n):
     # Helper function to recv n bytes or return None if EOF is hit
-    data = ''
+    data = b''
     while len(data) < n:
         packet = sock.recv(n - len(data))
         if not packet:
@@ -111,10 +111,10 @@ def data_listener():
 
     while True:
 
-        sock_tcp.send(WATERFALLMESSAGE)
+        sock_tcp.send(WATERFALLMESSAGE.encode())
 
         data = recvall(sock_tcp, waterfallsize)
-
+        #data = sock_tcp.recv(waterfallsize)
         if(data == None):
             print("Connection to %s:%s Broken... Exiting"%(addr[0],str(addr[1])))
             break
@@ -124,9 +124,9 @@ def data_listener():
             savewaterfall()
         print(waterfall)
 
-        sock_tcp.send(TIMEMESSAGE)
+        sock_tcp.send(TIMEMESSAGE.encode())
 
-        data = recvall(sock_tcp, timesize)
+        data = recvall(sock_tcp, timesize).decode()
 
         if(data == None):
             print("Connection to %s:%s Broken... Exiting"%(addr[0],str(addr[1])))
@@ -144,7 +144,7 @@ if( __name__ == '__main__'):
     plt.ion()
 
     #Initialize Plot
-    nx, ny = app.config['waterfallX'], app.config['waterfallY']
+    nx, ny = app.config['waterfallY'], app.config['waterfallX']
     t_min = datetime.datetime.utcnow()
     waterfall = -1*np.ones([nx,ny])
 
@@ -186,5 +186,7 @@ if( __name__ == '__main__'):
     thread.start()
 
     input()
+        
+    plt.savefig("ARO_LIVE.png")
 
 

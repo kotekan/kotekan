@@ -21,6 +21,7 @@ private:
     uint32_t num_disks;
     uint32_t num_elements;
     uint32_t num_frequencies;
+    uint32_t starting_index;
     string disk_base;
     string disk_set;
     string capture; 

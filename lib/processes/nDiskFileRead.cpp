@@ -50,7 +50,7 @@ void nDiskFileRead::apply_config(uint64_t fpga_seq) {
     disk_base = config.get_string(unique_name,"disk_base"); 
     disk_set = config.get_string(unique_name,"disk_set");
     capture = config.get_string(unique_name,"capture");
-
+    starting_index = config.get_int(unique_name,"starting_file_index");
 }
 
 void nDiskFileRead::main_thread() {
@@ -79,8 +79,11 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
     unsigned int buf_id = disk_id;
     //Starting File index
-    unsigned int file_index = disk_id; 
-
+    unsigned int file_index = disk_id + starting_index; 
+    INFO("%s%s/%d/%s/%07d.vdif",disk_base.c_str(), disk_set.c_str(), 
+                                                disk_id,
+                                                capture.c_str(),
+                                                file_index)
     //Endless loop
     while (!stop_thread) { 
 
@@ -94,6 +97,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
                                                 disk_id,
                                                 capture.c_str(),
                                                 file_index);
+        
         //Open current file for reading
         FILE * in_file = fopen(file_name, "r"); 
 

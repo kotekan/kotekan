@@ -100,7 +100,7 @@ void vdifRFI::main_thread() {
         block_counter = 0;
         ptr_counter = 0;
 
-        //Loop through buffer
+        //Loop through frame
         while(ptr_counter < buf_in->frame_size){
 
 	        //Initialize Arrays for a single block

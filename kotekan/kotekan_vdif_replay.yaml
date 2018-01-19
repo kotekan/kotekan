@@ -13,7 +13,7 @@ num_freq: 1024
 num_elements: 2
 samples_per_data_set: 32768
 #samples_per_data_set: 65536
-buffer_depth: 1
+buffer_depth: 10
 num_links: 8
 timesamples_per_packet: 2
 cpu_affinity: [8,9,10,11]
@@ -23,6 +23,7 @@ sk_step: 1024
 #change the rfi_out_buf size accordingly
 # (i.e multiply it by num_elements)
 RFI_combined: True
+waterfallX: 1024
 
 meta_pool:
   kotekan_metadata_pool: chimeMetadata
@@ -58,6 +59,7 @@ replay:
   disk_base: /drives/
   disk_set: D
   out_buf: vdif_input_buf
+  starting_file_index: 0
   capture: 20170805T155218Z_aro_vdif
 
 RFI:

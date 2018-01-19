@@ -49,7 +49,7 @@ class CommandLine:
             status = True
         if argument.config:
             print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
-            for key, value in yaml.load(open(argument.config)).iteritems():
+            for key, value in yaml.load(open(argument.config)).items():
                 if(type(value) == dict):
                     if('kotekan_process' in value.keys() and value['kotekan_process'] == 'rfiBroadcast'):
                         for k in value.keys():
@@ -203,17 +203,17 @@ def TCP_stream():
 
         while True:
 
-            MESSAGE = conn.recv(1) #Client Message
+            MESSAGE = conn.recv(1).decode() #Client Message
 
             if not MESSAGE: break
 
             elif MESSAGE == "W":
-                print("Sending Watefall Data ...")
+                print("Sending Watefall Data %d ..."%(len(waterfall.tostring())))
                 conn.send(waterfall.tostring())  #Send Watefall
             elif MESSAGE == "T":
                 print("Sending Time Data ...")
                 print(len(t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
-                conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f'))  #Send Watefall
+                conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())  #Send Watefall
             print(MESSAGE)
         print("Closing Connection to %s:%s ..."%(addr[0],str(addr[1])))
         conn.close()
@@ -238,7 +238,7 @@ if( __name__ == '__main__'):
     t_min = datetime.datetime.utcnow()
 
     #Initialize Plot
-    nx, ny = app.config['waterfallX'], app.config['waterfallY']
+    nx, ny = app.config['waterfallY'], app.config['waterfallX']
     waterfall = -1*np.ones([nx,ny],dtype=float)
 
     time.sleep(1)
