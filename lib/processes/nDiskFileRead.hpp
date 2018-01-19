@@ -23,11 +23,8 @@ private:
     uint32_t num_frequencies;
     string disk_base;
     string disk_set;
-    string capture;
-    int SK_STEP;
-    bool WITH_RFI;
-    bool Normalize;
-    int THRESHOLD_SENSITIVITY;
+    string capture; 
+
 };
 
 #endif

@@ -6,7 +6,6 @@
 #include "Config.hpp"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
-#include <atomic>
 #include "chimeMetadata.h"
 
 class rfiBroadcastVdif : public KotekanProcess {
@@ -35,7 +34,6 @@ private:
     string dest_protocol;
 
     int socket_fd;
-    std::atomic_flag socket_lock;
 };
 
 #endif

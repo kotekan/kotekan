@@ -120,7 +120,7 @@ def data_listener():
             break
 
         waterfall = np.fromstring(data).reshape(waterfall.shape)
-        if(mode == 'pathfinder'):
+        if(app.mode == 'pathfinder'):
             savewaterfall()
         print(waterfall)
 

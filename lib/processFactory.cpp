@@ -9,7 +9,6 @@
 #ifdef WITH_DPDK
     #include "dpdkWrapper.hpp"
 #endif
-#include "airspyInput.hpp"
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
 #include "frbPostProcess.hpp"
@@ -40,6 +39,8 @@
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
+#include "vdifRFI.hpp"
+#include "rfiBroadcastVdif.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -132,9 +133,6 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new dpdkWrapper(config, location, buffer_container);
     }
 #endif
-    if (name == "airspyInput") {
-        return (KotekanProcess *) new airspyInput(config, location, buffer_container);
-    }
 
     if (name == "fullPacketDump") {
         return (KotekanProcess *) new fullPacketDump(config, location, buffer_container);
@@ -188,6 +186,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
+    }
+
+    if (name == "vdifRFI") {
+        return (KotekanProcess *) new vdifRFI(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVdif") {
+        return (KotekanProcess *) new rfiBroadcastVdif(config, location, buffer_container);
     }
 
 #ifdef WITH_AIRSPY

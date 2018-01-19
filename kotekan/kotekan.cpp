@@ -58,7 +58,6 @@ extern "C" {
 #include "network_dpdk.h"
 #endif
 
-#include "airspyMode.hpp"
 #include "errors.h"
 #include "buffer.h"
 

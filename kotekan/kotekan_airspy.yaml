@@ -1,6 +1,5 @@
 ---
 type: config
-
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
@@ -71,4 +70,3 @@ spectrum_output:
     destination_ip: "127.0.0.1"
     destination_protocol: TCP
     power_in_buf: post_corr_buf
-

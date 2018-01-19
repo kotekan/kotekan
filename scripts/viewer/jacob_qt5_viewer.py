@@ -334,7 +334,7 @@ class Window(QDialog):
 
 		#Intialize Handshake and Variables
 		self.TCP_IP="0.0.0.0"
-		self.TCP_PORT = 2051
+		self.TCP_PORT = 2054
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self.sock.bind((self.TCP_IP, self.TCP_PORT))
