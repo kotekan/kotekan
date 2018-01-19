@@ -82,6 +82,7 @@ struct airspy_device *airspyInput::init_device(){
         airspy_exit();
     }
 
+    //Note: Despite the name, this sets the sample bandwidth! Odd behaviour from libairspy.
     result = airspy_set_samplerate(dev, sample_bw);
     if (result != AIRSPY_SUCCESS) {
         printf("airspy_set_samplerate() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
@@ -97,14 +98,14 @@ struct airspy_device *airspyInput::init_device(){
         airspy_exit();
     }
 
-    result = airspy_set_vga_gain(dev, gain_if);
-    if( result != AIRSPY_SUCCESS ) {
-        printf("airspy_set_vga_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-    }
-
     result = airspy_set_freq(dev, freq);
     if( result != AIRSPY_SUCCESS ) {
         printf("airspy_set_freq() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+    }
+
+    result = airspy_set_vga_gain(dev, gain_if);
+    if( result != AIRSPY_SUCCESS ) {
+        printf("airspy_set_vga_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
     }
 
     result = airspy_set_mixer_gain(dev, gain_mix);

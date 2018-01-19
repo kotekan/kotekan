@@ -10,15 +10,15 @@
  * 
  * This producer depends on libfftw3.
  *
- * @param   in_buf          Buffer.  Input kotekan buffer, to be consumed from.
- * @param   out_buf         Buffer. Output kotekan buffer, to be produced into.
- * @param   spectrum_length Int. Number of samples in the input spectrum. Defaults to 1024.
+ * @conf   in_buf          Buffer.  Input kotekan buffer, to be consumed from.
+ * @conf   out_buf         Buffer. Output kotekan buffer, to be produced into.
+ * @conf   spectrum_length Int. Number of samples in the input spectrum. Defaults to 1024.
  *
  * @todo    Add checking to make sure the input and output buffers' frames are
  *          appropriately sized, i.e. integer multiples of spectrum_length.
  * @todo    Add a flag to allow real inputs.
  * @todo    Add some metadata to allow different data types for in/out.
- @
+ *
  * @author Keith Vanderlinde
  *
  */
