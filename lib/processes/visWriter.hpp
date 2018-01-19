@@ -107,8 +107,7 @@ private:
     // TODO: remove me
     // Legacy params for supporting old HDF5 writing scheme
     bool node_mode;
-    std::vector<int> enabled_chunks;
-    bool enabled;
+    std::vector<int> freq_id_list;
 };
 
 #endif

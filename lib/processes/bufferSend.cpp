@@ -52,8 +52,8 @@ void bufferSend::main_thread() {
             int32_t n = 0;
             int32_t n_sent = 0;
 
-            header.stream_id = get_stream_id(buf, frame_id);
-            header.seq_number = get_fpga_seq_num(buf, frame_id) / integration_len;
+            //header.stream_id = get_stream_id(buf, frame_id);
+            //header.seq_number = get_fpga_seq_num(buf, frame_id) / integration_len;
             header.frame_size = buf->frame_size;
             header.metadata_size = buf->metadata[frame_id]->metadata_size;
 
