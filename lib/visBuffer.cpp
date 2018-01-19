@@ -123,3 +123,28 @@ std::complex<float> * visFrameView::eigenvectors() {
 float & visFrameView::rms() {
     return *rms_ptr;
 }
+
+
+// Buggy initial brinstorm for a member function that
+// copies a frame to another buffer
+// TODO: need to debug this and add definition to visBuffer.hpp
+visFrameView visFrameView::copy_frame(Buffer * output_buffer, 
+               int output_frame_id, uint32_t output_num_elements,
+                                 uint16_t output_num_eigenvector) {
+
+    auto output_frame = visFrameView(output_buffer, output_frame_id, 
+                         output_num_elements,output_num_eigenvectors);
+
+
+    //TODO: I would here do:
+    //  output_frame.metadata = metadata
+    //but this doesn't work because metadata is private
+    //so I cannot directly access output_frame.metadata
+    //What I might have to do is create a new member function that
+    //a pointer to the metadata and call it here. 
+
+}
+
+
+
+
