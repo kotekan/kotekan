@@ -51,14 +51,14 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer){
     while (bt > 0){
         if (frame_loc == 0){
             DEBUG("Airspy waiting for frame_id %d",frame_id);
-            buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-            if (buf_ptr == NULL) break;
+            frame_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            if (frame_ptr == NULL) break;
         }
 
         int copy_length = bt < buf->frame_size ? bt : buf->frame_size;
         DEBUG("Filling Buffer %d With %d Data Samples",frame_id,copy_length/2/2);
         //FILL THE BUFFER
-        memcpy(buf_ptr+frame_loc, in, copy_length);
+        memcpy(frame_ptr+frame_loc, in, copy_length);
         bt-=copy_length;
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
         

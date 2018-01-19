@@ -1,3 +1,26 @@
+/**
+ * @class fftwEngine
+ * @brief Kotekan Process to Fourier Transform an input stream.
+ *
+ * This is a simple signal processing block which takes (complex) data from an input buffer,
+ * Fourier Transforms it with FFTW, and stuffs the results into an output buffer.
+ * Both input and output buffers' frame lengths should be integer multiples of the FFT length,
+ * though they need not be the same length as each other.
+ * 
+ * 
+ * This producer depends on libfftw3.
+ *
+ * @param   in_buf          Buffer.  Input kotekan buffer, to be consumed from.
+ * @param   out_buf         Buffer. Output kotekan buffer, to be produced into.
+ * @param   spectrum_length Int. Number of samples in the input spectrum. Assumes I/Q data.
+ *
+ * @todo    Add checking to make sure the input and output buffers' frames are
+ *          appropriately sized, i.e. integer multiples of spectrum_length.
+ *
+ * @author Keith Vanderlinde
+ *
+ */
+
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
 #include <unistd.h>
@@ -8,32 +31,42 @@
 #include "util.h"
 #include <fftw3.h>
 
-#define BYTES_PER_SAMPLE 2
-
 #include <string>
 using std::string;
 
 class fftwEngine : public KotekanProcess {
 public:
+    /// Constructor, also initializes FFTW and values from config yaml.
     fftwEngine(Config& config, const string& unique_name,
                          bufferContainer &buffer_container);
+    /// Destructor, frees local allocs and exits FFTW.
     virtual ~fftwEngine();
+    /// Primary loop, which waits on input frames, FFTs, and dumps to output.
     void main_thread();
+    /// Re-parse config, not yet implemented.
     virtual void apply_config(uint64_t fpga_seq);
 
 private:
+    /// Kotekan buffer which this process consumes from.
+    /// Data should be packed as int16_t values, [r,i] in each 32b value.
     struct Buffer *buf_in;
+    /// Kotekan buffer which this process produces into.
     struct Buffer *buf_out;
 
+    /// Frame index for the input buffer.
     int frame_in;
+    /// Frame index for the output buffer.
     int frame_out;
 
     //options
+    /// FFTW buffer for staging the input samples.
     fftwf_complex *samples;
+    /// FFTW buffer which returns the FFT'd results.
     fftwf_complex *spectrum;
+    /// FFTW object containing information about the transform
     fftwf_plan fft_plan;
+    /// Length of the FFT to run
     int spectrum_length;
-    int double_spectrum_length;
 };
 
 
