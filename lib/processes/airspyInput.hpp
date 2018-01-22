@@ -1,3 +1,24 @@
+/*****************************************
+File Contents:
+- airspyInput : public KotekanProcess
+*****************************************/
+
+#ifndef AIRSPY_INPUT_HPP
+#define AIRSPY_INPUT_HPP
+
+#include <unistd.h>
+#include <libairspy/airspy.h>
+
+#include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "errors.h"
+#include "util.h"
+
+#define BYTES_PER_SAMPLE 2
+
+#include <string>
+using std::string;
+
 /**
  * @class airspyInput
  * @brief Kotekan Process to stream data from an AirSpy SDR device.
@@ -29,23 +50,6 @@
  * @author Keith Vanderlinde
  *
  */
-
-#ifndef AIRSPY_INPUT_HPP
-#define AIRSPY_INPUT_HPP
-
-#include <unistd.h>
-#include <libairspy/airspy.h>
-
-#include "KotekanProcess.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
-
-#define BYTES_PER_SAMPLE 2
-
-#include <string>
-using std::string;
-
 class airspyInput : public KotekanProcess {
 public:
     /// Constructor, also initializes internal variables from config.
