@@ -24,7 +24,7 @@ using std::string;
  * @brief Producer ``KotekanProcess`` which streams radio data from an AirSpy SDR device into a ``Buffer``.
  *
  * Buffers:
- *  @li buf_out[output]: single buffer
+ *  @li out_buf[output]: single buffer
  *      Data format: Array of @p shorts
  *      Metadata type: none
  *
@@ -38,7 +38,7 @@ using std::string;
  * This producer depends on ``libairspy``.
  *
  * Config Parameters:
- * @conf   buf_out     Buffer (**Required**). The kotekan buffer which will be fed, can be any size.
+ * @conf   out_buf     Buffer (**Required**). The kotekan buffer which will be fed, can be any size.
  * @conf   freq        Float (default 1420.0). LO tuning frequency, in MHz.
  * @conf   sample_bw   Float (default 2.5). Bandwidth to sample from the airspy, in MHz.
  * @conf   gain_lna    Int (default 5). Gain setting of the LNA, in the range 0-14.
