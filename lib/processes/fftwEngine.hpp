@@ -21,6 +21,10 @@ using std::string;
  * @class fftwEngine
  * @brief Kotekan Process to Fourier Transform an input stream.
  *
+ * Buffers:
+ *  @li input: single
+ *  @li output: single
+ *
  * This is a simple signal processing block which takes (complex) data from an input buffer,
  * Fourier Transforms it with FFTW, and stuffs the results into an output buffer.
  * Both input and output buffers' frame lengths should be integer multiples of the FFT length,
@@ -56,9 +60,9 @@ public:
 private:
     /// Kotekan buffer which this process consumes from.
     /// Data should be packed as int16_t values, [r,i] in each 32b value.
-    struct Buffer *buf_in;
+    struct Buffer *in_buf;
     /// Kotekan buffer which this process produces into.
-    struct Buffer *buf_out;
+    struct Buffer *out_buf;
 
     /// Frame index for the input buffer.
     int frame_in;
