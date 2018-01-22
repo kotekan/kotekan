@@ -1,3 +1,22 @@
+/*****************************************
+File Contents:
+- fftwEngine : public KotekanProcess
+*****************************************/
+
+
+#ifndef FFTW_ENGINE_HPP
+#define FFTW_ENGINE_HPP
+#include <unistd.h>
+
+#include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "errors.h"
+#include "util.h"
+#include <fftw3.h>
+
+#include <string>
+using std::string;
+
 /**
  * @class fftwEngine
  * @brief Kotekan Process to Fourier Transform an input stream.
@@ -22,20 +41,6 @@
  * @author Keith Vanderlinde
  *
  */
-
-#ifndef FFTW_ENGINE_HPP
-#define FFTW_ENGINE_HPP
-#include <unistd.h>
-
-#include "KotekanProcess.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
-#include <fftw3.h>
-
-#include <string>
-using std::string;
-
 class fftwEngine : public KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
