@@ -21,7 +21,11 @@ using std::string;
 
 /**
  * @class airspyInput
- * @brief Kotekan Process to stream data from an AirSpy SDR device.
+ * @brief Producer ``KotekanProcess`` which streams radio data from an AirSpy SDR device into a ``Buffer``.
+ *
+ * Buffers:
+ *  @li input: none
+ *  @li output: single
  *
  * This is a simple producer which initializes an AirSpy dongle (https://airspy.com)
  * in streaming mode, filling samples into the provided kotekan buffer.
@@ -30,15 +34,16 @@ using std::string;
  * An internal sub-frame pointer is used to position data in subsequent callbacks within frames.
  * A pthread mutex is used to ensure callbacks don't clobber one another.
  * 
- * This producer depends on libairspy.
+ * This producer depends on ``libairspy``.
  *
- * @conf   out_buf     Float. The kotekan buffer which will be fed, can be any size.
- * @conf   freq        Float. LO tuning frequency, in MHz. Defaults to 1420.0.
- * @conf   sample_bw   Bandwidth to sample from the airspy, in MHz. Defaults to 2.5.
- * @conf   gain_lna    Gain setting of the LNA, in the range 0-14. Defaults to 5.
- * @conf   gain_mix    Gain setting of the mixer amplifier, from 0-15. Defaults to 5.
- * @conf   gain_if     Gain setting of the IF amplifier, from 0-15. Defaults to 5.
- * @conf   biast_power Whether or not to enable the 4.5V DC bias on the AirSpy RF input.
+ * Config Parameters:
+ * @conf   buf_out     Buffer (**Required**). The kotekan buffer which will be fed, can be any size.
+ * @conf   freq        Float (default 1420.0). LO tuning frequency, in MHz.
+ * @conf   sample_bw   Float (default 2.5). Bandwidth to sample from the airspy, in MHz.
+ * @conf   gain_lna    Int (default 5). Gain setting of the LNA, in the range 0-14.
+ * @conf   gain_mix    Int (default 5). Gain setting of the mixer amplifier, from 0-15.
+ * @conf   gain_if     Int (default 5). Gain setting of the IF amplifier, from 0-15.
+ * @conf   biast_power Bool (default false). Whether or not to enable the 4.5V DC bias on the AirSpy RF input.
  *
  * @warning Just realized that if things bog down and new 2 callbacks come while one is active,
  *          the order of the others will be undefined. This process may produce out-of-order samples.
