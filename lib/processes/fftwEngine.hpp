@@ -22,15 +22,19 @@ using std::string;
  * @brief Kotekan Process to Fourier Transform an input stream.
  *
  * Buffers:
- *  @li input: single
- *  @li output: single
+ *  @li in_buf[input]: single buffer
+ *      Data format: Array of @c shorts
+ *      Metadata type: none
+ *  @li out_buf[output]: single buffer
+ *      Data format: Array of @c fftwf_complex
+ *      Metadata type: none
  *
  * This is a simple signal processing block which takes (complex) data from an input buffer,
  * Fourier Transforms it with FFTW, and stuffs the results into an output buffer.
  * Both input and output buffers' frame lengths should be integer multiples of the FFT length,
  * though they need not be the same length as each other.
  * Assumes I/Q (complex) data at the input.
- * 
+ *
  * This producer depends on libfftw3.
  *
  * @conf   in_buf          Buffer.  Input kotekan buffer, to be consumed from.
@@ -81,4 +85,4 @@ private:
 };
 
 
-#endif 
+#endif

@@ -2,12 +2,20 @@
  * @class simpleAutocorr
  * @brief Kotekan Process to autocorrelate a single stream of values.
  *
+ * Buffers:
+ *  @li in_buf[input]: single buffer
+ *      Data format: Array of <tt> complex float2 </tt>
+ *      Metadata type: none
+ *  @li out_buf[output]: single buffer
+ *      Data format: Array of @c uint
+ *      Metadata type: none
+ *
  * This is a simple signal processing block which takes complex @c float2 data from an input buffer,
  * calculates the modulus squared in each spectral bin, integrates over time,
  * then stuffs the results into an output buffer.
  * Both input and output buffers' frame lengths should be integer multiples of the spectrum length,
  * though they need not be the same length as each other.
- * 
+ *
  * This producer depends on libairspy.
  *
  * @conf   in_buf               Buffer.  Input kotekan buffer, to be consumed from.
@@ -70,4 +78,4 @@ private:
 };
 
 
-#endif 
+#endif

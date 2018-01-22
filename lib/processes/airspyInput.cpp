@@ -61,7 +61,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer){
         memcpy(frame_ptr+frame_loc, in, copy_length);
         bt-=copy_length;
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
-        
+
         if (frame_loc == 0){
             DEBUG("Airspy Buffer %d Full",frame_id);
             mark_frame_full(buf, unique_name.c_str(), frame_id);
