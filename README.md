@@ -85,7 +85,7 @@ Cmake build options:
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
-* `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires sphinx.
+* `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen, sphinx, and breathe.
 
 **Examples:**
 
