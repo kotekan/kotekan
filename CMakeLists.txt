@@ -11,6 +11,7 @@ option(USE_PRECOMPIPLED_OPENCL "Use precompiled OpenCL binaries" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
+option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -194,6 +195,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+if (${COMPILE_DOCS})
+    add_subdirectory(docs)
+endif()
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
