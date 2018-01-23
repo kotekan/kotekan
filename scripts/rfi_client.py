@@ -186,7 +186,5 @@ if( __name__ == '__main__'):
     thread.start()
 
     input()
-        
-    plt.savefig("ARO_LIVE.png")
 
 
