@@ -1,4 +1,4 @@
-version: '3'
+version: '2.3'  # extends function removed in v3
 services:
     gpu:
         build: .

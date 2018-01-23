@@ -1,0 +1,19 @@
+version: '2.3'
+services:
+    gpu-cn01:
+        extends:
+            file: base.yaml
+            service: gpu
+        configs:
+                - source: ./ch_gpu/kotekan/kotekan_docker_gpu_cn01.yaml
+                  target: /kotekan_config.yaml  # do I need to specify target again?
+        hostname: cn01
+
+    receiver-1:
+        extends:
+            file: base.yaml
+            service: receiver
+        configs:
+            - source: ./ch_gpu/kotekan/kotekan_docker_receiver_1.yaml
+              target: /kotekan_config.yaml
+        hostname: recv-1
