@@ -4,6 +4,7 @@
 #include <string>
 #include <syslog.h>
 #include <stdarg.h>
+#include "errors.h"
 using std::string;
 
 enum class logLevel {
