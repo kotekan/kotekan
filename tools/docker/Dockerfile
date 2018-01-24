@@ -18,4 +18,4 @@ RUN pip install pyyaml
 #RUN apt-get install -y gcc-5 g++-5
 
 # Run kotekan when the container launches
-CMD ["/code/kotekan", "-c", "/kotekan_config.yaml"]
+CMD ["/code/build/kotekan/kotekan", "-c", "$KOTEKAN_CONFIG"]

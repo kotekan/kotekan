@@ -3,22 +3,22 @@ services:
     gpu:
         build: .
         volumes:
-            - ./ch_gpu/build/kotekan:/code
-        configs:
-            - source: ./ch_gpu/kotekan/kotekan_docker_gpu.yaml
-              target: /kotekan_config.yaml
+            - ./ch_gpu:/code
         networks:
             - receiver_net
         hostname: cn...  # Does this work?
+        environment:
+            KOTEKAN_CONFIG: /code/kotekan/kotekan_docker_gpu.yaml
     receiver:
         build: .
         volumes:
-            - ./ch_gpu/build/kotekan:/code
+            - ./ch_gpu:/code
             - ./data:/data
-        configs:
-            - source: ./ch_gpu/kotekan/kotekan_docker_receiver.yaml
-              target: /kotekan_config.yaml
         networks:
             - receiver_net
+        hostname: recv...
+        environment:
+            KOTEKAN_CONFIG: /code/kotekan/kotekan_docker_recv.yaml
 networks:
     receiver_net:
+        driver: bridge

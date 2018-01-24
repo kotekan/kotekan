@@ -1,19 +1,24 @@
 version: '2.3'
 services:
     gpu-cn01:
+        # TODO: will this pull the image if it already exists?
+        image: gpu-cn01
         extends:
             file: base.yaml
             service: gpu
-        configs:
-                - source: ./ch_gpu/kotekan/kotekan_docker_gpu_cn01.yaml
-                  target: /kotekan_config.yaml  # do I need to specify target again?
+        environment:
+            KOTEKAN_CONFIG: /code/kotekan/kotekan_docker_gpu_cn01.yaml
         hostname: cn01
 
-    receiver-1:
+    recv-1:
+        image: recv-1
         extends:
             file: base.yaml
             service: receiver
-        configs:
-            - source: ./ch_gpu/kotekan/kotekan_docker_receiver_1.yaml
-              target: /kotekan_config.yaml
+        environment:
+            KOTEKAN_CONFIG: /code/kotekan/kotekan_docker_recv_1.yaml
         hostname: recv-1
+# Need to define networks again because Docker ignores them in base.yaml
+networks:
+    receiver_net:
+        driver: bridge
