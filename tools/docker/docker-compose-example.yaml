@@ -18,6 +18,9 @@ services:
         environment:
             KOTEKAN_CONFIG: /code/kotekan/kotekan_docker_recv_1.yaml
         hostname: recv-1
+        # for running interactive container
+        #stdin_open: true
+        #tty: true
 # Need to define networks again because Docker ignores them in base.yaml
 networks:
     receiver_net:

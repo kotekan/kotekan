@@ -3,7 +3,7 @@ services:
     gpu:
         build: .
         volumes:
-            - ./ch_gpu:/code
+            - ../../:/code
         networks:
             - receiver_net
         hostname: cn...  # Does this work?
@@ -12,7 +12,7 @@ services:
     receiver:
         build: .
         volumes:
-            - ./ch_gpu:/code
+            - ../../:/code
             - ./data:/data
         networks:
             - receiver_net
