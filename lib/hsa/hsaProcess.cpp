@@ -37,7 +37,13 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
     }
 
-    device = new hsaDeviceInterface(config, gpu_id);
+    device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
+
+    string g_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
+    device->set_log_level(s_log_level);
+    device->set_log_prefix("GPU[" + to_string(gpu_id) + "] device interface");
+
     factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
 }
 
@@ -162,7 +168,10 @@ void hsaProcess::main_thread()
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
-    // TODO Make the exiting process actually work here.
+    for (signalContainer &sig_container : final_signals) {
+        sig_container.stop();
+    }
+    INFO("Waiting for HSA packet queues to finish up before freeing memory.");
     results_thread_handle.join();
 }
 
@@ -173,10 +182,15 @@ void hsaProcess::results_thread() {
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
-    while (!stop_thread) {
+    while (true) {
+
         // Wait for a signal to be completed
         //INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
-        final_signals[gpu_frame_id].wait_for_signal();
+        if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
+            // If wait_for_signal returns -1, then we don't have a signal to wait on,
+            // but we have been given a shutdown request, so break this loop.
+            break;
+        }
         //INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (uint32_t i = 0; i < commands.size(); ++i) {

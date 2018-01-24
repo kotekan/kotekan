@@ -9,6 +9,7 @@
 #include <getopt.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -68,6 +69,7 @@ extern "C" {
 #include "restServer.hpp"
 #include "kotekanMode.hpp"
 #include "gpsTime.h"
+#include "KotekanProcess.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -88,8 +90,12 @@ void signal_handler(int signal)
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]            The local JSON config file to use\n");
-    printf("    --gps-time (-g)                 Used with -c, try to get GPS time (CHIME only)\n\n");
+    printf("    --config (-c) [file]        The local JSON config file to use.\n");
+    printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
+    printf("    --syslog (-s)               Send a copy of the output to syslog.\n\n");
+    printf("If no options are given then kotekan runs in daemon mode and\n");
+    printf("expects to get it configuration via the REST endpoint '/start'.\n");
+    printf("In daemon mode output is only sent to syslog.\n\n");
 }
 
 #ifdef WITH_DPDK
@@ -130,21 +136,27 @@ std::string exec(const std::string &cmd) {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    int log_level = config.get_int("/", "log_level");
+    string s_log_level = config.get_string("/", "log_level");
+    logLevel log_level;
 
-    log_level_warn = 0;
-    log_level_debug = 0;
-    log_level_info = 0;
-    switch (log_level) {
-        case 3:
-            log_level_debug = 1;
-        case 2:
-            log_level_info = 1;
-        case 1:
-            log_level_warn = 1;
-        default:
-            break;
+    if (strcasecmp(s_log_level.c_str(), "off") == 0) {
+        log_level = logLevel::OFF;
+    } else if (strcasecmp(s_log_level.c_str(), "error") == 0) {
+        log_level = logLevel::ERROR;
+    } else if (strcasecmp(s_log_level.c_str(), "warn") == 0) {
+        log_level = logLevel::WARN;
+    } else if (strcasecmp(s_log_level.c_str(), "info") == 0) {
+        log_level = logLevel::INFO;
+    } else if (strcasecmp(s_log_level.c_str(), "debug") == 0) {
+        log_level = logLevel::DEBUG;
+    } else if (strcasecmp(s_log_level.c_str(), "debug2") == 0) {
+        log_level = logLevel::DEBUG2;
+    } else {
+        throw std::runtime_error("The value given for log_level: '" + s_log_level + "is not valid! " +
+                "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
     }
+
+    __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
 void set_gps_time(Config &config) {
@@ -195,20 +207,27 @@ int main(int argc, char ** argv) {
 
     int opt_val = 0;
     char * config_file_name = (char *)"none";
-    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
+    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool gps_time = false;
+    // We disable syslog to start.
+    // If only --config is provided, then we only send messages to stderr
+    // If --syslog is added, then output is to both syslog and stderr
+    // If no options are given then stderr is disabled, and syslog is enabled.
+    // The no options mode is the default daemon mode where it expects a remote config
+    __enable_syslog = 0;
 
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
+            {"syslog", no_argument, 0, 's'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:",
+        opt_val = getopt_long (argc, argv, "ghc:s",
                                long_options, &option_index);
 
         // End of args
@@ -223,9 +242,14 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
+                log_options |= LOG_PERROR;
+                openlog ("kotekan", log_options, LOG_LOCAL1);
                 break;
             case 'g':
                 gps_time = true;
+                break;
+            case 's':
+                __enable_syslog = 1;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -234,7 +258,12 @@ int main(int argc, char ** argv) {
         }
     }
 
-    openlog ("kotekan", log_options, LOG_LOCAL1);
+    if (string(config_file_name) == "none") {
+        __enable_syslog = 1;
+        openlog ("kotekan", log_options, LOG_LOCAL1);
+        fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
+        fprintf(stderr, "Configuration should be provided via the `/start/` REST endpoint.\n");
+    }
 
     // Load configuration file.
     //INFO("Kotekan starting with config file %s", config_file_name);
