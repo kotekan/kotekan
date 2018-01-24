@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifdef __cplusplus
 #include <cstring>
@@ -26,6 +28,13 @@ extern "C" {
 // Note both DEBUG and DEBUG2 are removed entirely when building in release mode.
 extern int __log_level;
 
+// If set to 1 use printf instead of syslog
+extern int __enable_syslog;
+
+extern const int __max_log_msg_len;
+
+void internal_logging(int log, const char * format, ...);
+
 #ifdef WITH_OPENCL
 
 #ifdef __APPLE__
@@ -39,7 +48,7 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
 
 #define CHECK_CL_ERROR( err )                                      \
     if ( err ) {                                                    \
-        syslog(LOG_ERR, "Error at %s:%d; Error type: %s",               \
+        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s",               \
                 __FILE__, __LINE__, oclGetOpenCLErrorCodeStr(err)); \
         exit( err );                                                \
     }
@@ -48,19 +57,17 @@ char* oclGetOpenCLErrorCodeStr(cl_int input);
 
 #define CHECK_ERROR( err )                                         \
     if ( err ) {                                                    \
-        syslog(LOG_ERR, "Error at %s:%d; Error type: %s",               \
+        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s",               \
                 __FILE__, __LINE__, strerror(errno));               \
         exit( errno );                                              \
     }
 
 #define CHECK_MEM( pointer )                                  \
     if ( pointer == NULL ) {                                  \
-        syslog(LOG_ERR, "Error at %s:%d; Null pointer! ",          \
+        internal_logging(LOG_ERR, "Error at %s:%d; Null pointer! ",          \
                 __FILE__, __LINE__);                          \
         exit( -1 );                                        \
     }
-
-void internal_logging(int log, const char * format, ...);
 
 #ifdef DEBUGGING
 
