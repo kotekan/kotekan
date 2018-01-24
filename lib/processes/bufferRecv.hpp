@@ -46,6 +46,10 @@ private:
     static void error_callback(struct bufferevent *bev, short error, void *ctx);
     static void accept_connection(evutil_socket_t listener, short event, void *arg);
 
+    void internal_read_callback(struct bufferevent *bev, void *ctx);
+    void internal_error_callback(struct bufferevent *bev, short error, void *ctx);
+    void internal_accept_connection(evutil_socket_t listener, short event, void *arg);
+
     struct event_base *base;
     void base_thread();
 
