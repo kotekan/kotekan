@@ -34,16 +34,18 @@ File Contents:
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf  num_elements      int The number of elements (i.e. inputs) in the
+ * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
  *                          correlator data (read from "/")
- * @conf  block_size        int The block size of the packed data (read from "/")
- * @conf  num_eigenvectors  int The number of eigenvectors to be stored
- * @conf  input_reorder     array of [int, int, string] The reordering mapping.
+ * @conf  block_size        Int. The block size of the packed data (read from "/")
+ * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
+ * @conf  input_reorder     Array of [int, int, string]. The reordering mapping.
  *                          Only the first element of each sub-array is used and
  *                          it is the the index of the input to move into this
  *                          new location. The remaining elements of the subarray
- *                          are for correctly labelling the input in @c
- *                          visWriter.
+ *                          are for correctly labelling the input in
+ *                          ``visWriter``.
+ *
+ * @author Richard Shaw
  */
 class visTransform : public KotekanProcess {
 
@@ -83,6 +85,8 @@ private:
  * @buffer in_buf The buffer to debug
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
+ *
+ * @author Richard Shaw
  */
 class visDebug : public KotekanProcess {
 
@@ -117,17 +121,19 @@ private:
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   node_mode        bool Run in @c node_mode or not (default true)
- * @conf   root_path        string Location in filesystem to write to.
- * @conf   instrument_name  string Name of the instrument acquiring data (if
- *                          @c node_mode the hostnaee is used instead)
- * @conf   freq_ids         array of int The ids of the frequencies to write
+ * @conf   node_mode        Bool. Run in @c node_mode or not (default true)
+ * @conf   root_path        String. Location in filesystem to write to.
+ * @conf   instrument_name  String. Name of the instrument acquiring data (if
+ *                          ``node_mode`` the hostname is used instead)
+ * @conf   freq_ids         Array of ints. The ids of the frequencies to write
  *                          out (only needed when not in @c node_mode).
- * @conf   input_reorder    array of [int, int, string] A description of the
+ * @conf   input_reorder    Array of [int, int, string]. A description of the
  *                          inputs. Only the last two elements of each sub-array
  *                          are used and are expected to be @c channel_id and
  *                          @c channel_serial (the first contains the @c adc_id
- *                          used for reordering om @c visTransform)
+ *                          used for reordering om ``visTransform``)
+ *
+ * @author Richard Shaw
  */
 class visWriter : public KotekanProcess {
 public:
@@ -157,22 +163,21 @@ private:
     // The current file of visibilities that we are writing
     std::unique_ptr<visFileBundle> file_bundle;
 
-    // Input buffer to read from
+    /// Input buffer to read from
     Buffer * buffer;
 
-    // The list of frequencies and inputs that gets written into the index maps
-    // of the HDF5 files
+    /// The list of frequencies and inputs that gets written into the index maps
+    /// of the HDF5 files
     std::vector<freq_ctype> freqs;
     std::vector<input_ctype> inputs;
 
-    // The mapping from frequency bin id to output frequency index
+    /// The mapping from frequency bin id to output frequency index
     std::map<uint32_t, uint32_t> freq_map;
 
-    // A unique ID for the chunk (i.e. frequency set)
+    /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
-    // TODO: remove me
-    // Legacy params for supporting old HDF5 writing scheme
+    /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;
 };
