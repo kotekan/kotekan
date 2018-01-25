@@ -23,11 +23,12 @@ File Contents:
  * elements. The remaining elements are zero. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
- * @buffer output_buffer The kotekan buffer which will be fed, can be any size.
+ * @par Buffers
+ * @buffer out_buf The kotekan buffer which will be fed, can be any size.
  *     @buffer_format visBuffer structured
 +*     @buffer_metadata visMetadata
  *
- * @conf  output_buffer     string. Name of buffer to output to.
+ * @conf  out_buf           string. Name of buffer to output to.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
 +*                          correlator data (read from "/")
 +* @conf  block_size        int. The block size of the packed data (read from "/")
@@ -60,7 +61,7 @@ private:
     size_t num_elements, num_eigenvectors, block_size, num_prod;
 
     /// Output buffer
-    Buffer * output_buffer;
+    Buffer * out_buf;
 
     /// List of frequencies for this buffer
     std::vector<uint16_t> freq;
