@@ -1,10 +1,11 @@
 #include "visUtil.hpp"
+#include <cstring>
 
 
 // Initialise the serial from a std::string
 input_ctype::input_ctype(uint16_t id, std::string serial) {
     chan_id = id;
-    memset(correlator_input, 0, 32);
+    std::memset(correlator_input, 0, 32);
     serial.copy(correlator_input, 32);
 }
 
