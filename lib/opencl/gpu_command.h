@@ -1,37 +1,7 @@
-/**
- * @class gpu_command
- * @brief Base class for defining openCL commands to execute on GPUs
- *
- * Commands executed on a GPU can either be kernels that perform a simple calculation
- * or resource management instructions to support kernel execution. Any openCL instruction
- * sent to a GPU requires a set of common support functions. The code common to all openCL classes has
- * been abstracted into this base class along with the signature of fundamental methods
- * a child class should implement when defining an openCL class.
- * 
- * This object and its subclasses is managed by a command_factory instance that initializes
- * memory resources and determines execution sequence.
- * 
- * 
- * @conf _num_adjusted_elements     Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
- * @conf _num_elements              Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
- * @conf _num_local_freq            Number of frequencies per data stream sent to each node.
- * @conf _samples_per_data_set      Total samples in each dataset. Must be a value that is a power of 2.
- * @conf _num_data_sets             Number of independent integrations within a single dataset. (eg. 8 means samples_per_data_set/8= amount of integration per dataset.)
- * @conf _num_adjusted_local_freq   Number of frequencies per data stream sent to each node.
- * @conf _num_blocks                Calculated value: num_adjusted_elements/block_size * (num_adjusted_elements/block_size + 1)/2
- * @conf _block_size                This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
- * @conf _buffer_depth              Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
- * 
- * 
- * @todo    Clean up redundancy in config values used.
- * @todo    Add dynamic memory allocation logic.
- * @todo    Move some of the correlator specific config values into the correlator kernels.
- * @todo    Rename variables to frame where buffer is current used. In some cases, frame is the correct usage.
- * @todo    BufferID used when FrameID is more appropriate. Change this naming.
- *
- * @author Ian Tretyakov
- *
- */
+/*****************************************
+File Contents:
+- gpu_command
+*****************************************/
 
 #ifndef GPU_COMMAND_H
 #define GPU_COMMAND_H
@@ -50,6 +20,41 @@
 #include "assert.h"
 #include "buffer.h"
 #include <string>
+
+/**
+ * @class gpu_command
+ * @brief Base class for defining openCL commands to execute on GPUs
+ *
+ * Commands executed on a GPU can either be kernels that perform a simple calculation
+ * or resource management instructions to support kernel execution. Any openCL instruction
+ * sent to a GPU requires a set of common support functions. The code common to all openCL classes has
+ * been abstracted into this base class along with the signature of fundamental methods
+ * a child class should implement when defining an openCL class.
+ * 
+ * This object and its subclasses is managed by a command_factory instance that initializes
+ * memory resources and determines execution sequence.
+ * 
+ * 
+ * @conf num_adjusted_elements     Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
+ * @conf num_elements              Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
+ * @conf num_local_freq            Number of frequencies per data stream sent to each node.
+ * @conf samples_per_data_set      Total samples in each dataset. Must be a value that is a power of 2.
+ * @conf num_data_sets             Number of independent integrations within a single dataset. (eg. 8 means samples_per_data_set/8= amount of integration per dataset.)
+ * @conf num_adjusted_local_freq   Number of frequencies per data stream sent to each node.
+ * @conf num_blocks                Calculated value: num_adjusted_elements/block_size * (num_adjusted_elements/block_size + 1)/2
+ * @conf block_size                This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
+ * @conf buffer_depth              Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
+ * 
+ * 
+ * @todo    Clean up redundancy in config values used.
+ * @todo    Add dynamic memory allocation logic.
+ * @todo    Move some of the correlator specific config values into the correlator kernels.
+ * @todo    Rename variables to frame where buffer is current used. In some cases, frame is the correct usage.
+ * @todo    BufferID used when FrameID is more appropriate. Change this naming.
+ *
+ * @author Ian Tretyakov
+ *
+ */
 
 class gpu_command
 {
@@ -82,9 +87,18 @@ public:
     /** The execute command does very little in the base case. The child class must provide an implementation of the 
      * logic under the signature of the method defined here. Basic functions to execute a gpu command are done in the
      * base class such as checking that the buffer_ID is positive and is less than the number of frames in the buffer. 
+     * @param param_bufferID        The bufferID associated with the GPU commands.
+     * 
+     * @param fpga_seq              Passed to apply_config.    
+     * 
+     * @param param_Device          The instance of the current device the process is executing on.
+     * 
+     * @param param_PrecedeEvent    The preceeding event in a sequence of chained event sequence of commands.
     **/
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent);
-    /// Releases the memory of the event chain arrays per buffer_id
+    /** Releases the memory of the event chain arrays per buffer_id
+     * @param param_bufferID    The bufferID to release all the memory references for.
+    **/
     virtual void cleanMe(int param_BufferID);
     /// Releases the memory of GPU resource allocation, events, and compiled GPU kernel.
     virtual void freeMe();
