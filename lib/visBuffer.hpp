@@ -47,6 +47,10 @@ public:
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
                  uint32_t num_prod, uint16_t num_eigenvectors);
 
+    // Copy frame to new buffer and create view
+    visFrameView(Buffer * buf, int frame_id,
+                                visFrameView frame_to_copy);
+
     // Sample metadata
     std::tuple<uint64_t &, timespec &> time();
     uint16_t & freq_id();

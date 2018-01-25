@@ -1,3 +1,14 @@
+#ifndef FREQ_SLICER_HPP
+#define FREQ_SLICER_HPP
+
+#include <unistd.h>
+#include "fpga_header_functions.h"
+#include "buffer.h"
+#include "KotekanProcess.hpp"
+#include "visFile.hpp"
+#include "errors.h"
+#include "util.h"
+#include "visUtil.hpp"
 
 
 // Split frequencies into upper and lower halves
@@ -16,8 +27,9 @@ public:
 
 private:
 
+// TODO: delete.
     // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
+//    size_t num_elements, num_eigenvectors, block_size;
 
     // I may have to modify this one depending on what buffers I use in my process
     // Vector of the buffers we are using and their current frame ids.

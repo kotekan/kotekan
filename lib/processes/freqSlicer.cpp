@@ -1,3 +1,20 @@
+#include "freqSlicer.hpp"
+#include "visFile.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+#include "util.h"
+#include "fpga_header_functions.h"
+#include "chimeMetadata.h"
+#include "gpuPostProcess.hpp"
+#include "errors.h"
+#include <time.h>
+#include <unistd.h>
+#include <iomanip>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <fstream>
+
 
 // This is the implementation of the constructor for freqSplit
 // This is colon means the initialization list follows. It is executed 
@@ -19,9 +36,11 @@ freqSplit::freqSplit(Config& config,
     // Fetch any simple configuration
     // This is how to get values from the config file:
     // config.get_type("level in config file","name of variable")
-    num_elements = config.get_int("/", "num_elements");
-    block_size = config.get_int("/", "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+
+// TODO: delete. I don't think I need those
+//    num_elements = config.get_int("/", "num_elements");
+//    block_size = config.get_int("/", "block_size");
+//    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> output_buffer_names =
@@ -102,27 +121,19 @@ void freqSplit::main_thread() {
         // frame's metadata pointer. Need to check.
         allocate_new_metadata_object(buf, frame_id);
 
-        // Pick specific frame in output buffer?
-        auto frame = visFrameView(buf, frame_id, num_elements,
-                                                num_eigenvectors);
+        // Copy frame and create view
+        auto frame = visFrameView(buf, frame_id, input_frame);
 
-        // TODO: I think I don't need this either, because
+
+        // TODO: delete. this was substituted by the previous one
+        // Pick specific frame in output buffer?
+//        auto frame = visFrameView(buf, frame_id, num_elements,
+//                                                num_eigenvectors);
+
+        // TODO: Dlete. I think I don't need this either, because
         // this is part of the metadata, which will be 
         // pointer-copied in it's entirety.
-        frame.dataset_id() = 0; //Marks it as chime data...
-
-
-        // TODO: Here I need to copy the input_frame to frame
-        // and copy the metadata (could be just the pointer for
-        // metadata)
-        // The best way would be to add a method to visFrameView
-        // that receives a pointer to the buffer and a frame id
-        // as arguments.
-        // It would use memcpy to copy the frame and just copy the
-        // pointer to the metadata.
-        // This method would probably make the 3 lines of code
-        // above unecessary.
-
+//        frame.dataset_id() = 0; //Marks it as chime data...
 
         // Mark the buffers and move on
         mark_frame_empty(input_buffer, unique_name.c_str(), 
