@@ -172,17 +172,12 @@ visWriter::visWriter(Config& config,
                    std::bind(&visWriter::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_freq = config.get_int(unique_name, "num_freq");
+    // num_freq = config.get_int(unique_name, "num_freq");
     root_path = config.get_string_default(unique_name, "root_path", ".");
 
     // Get the list of buffers that this process shoud connect to
     buffer = get_buffer("buffer");
     register_consumer(buffer, unique_name.c_str());
-
-    // Set the list of enabled chunks (sort such that we can use
-    // std::binary_search later on)
-    enabled_chunks = config.get_int_array(unique_name, "enabled_chunks");
-    std::sort(enabled_chunks.begin(), enabled_chunks.end());
 
     // Get the input labels
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
@@ -202,9 +197,11 @@ visWriter::visWriter(Config& config,
         instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
 
         node_mode = true;
+        num_freq = 4;
 
     } else {
         instrument_name = config.get_string_default(unique_name, "instrument_name", "chime");
+        freq_id_list = config.get_int_array(unique_name, "freq_ids");
     }
 }
 
@@ -236,21 +233,28 @@ void visWriter::main_thread() {
         auto ftime = frame.time();
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        // Lookup the frequency index if reordering, otherwise write out in buffer order
-        uint32_t freq_ind = freq_map[frame.freq_id()];
+        // Check if the frequency we are receiving is on the list of frequencies we are processing
+        if(freq_map.count(frame.freq_id()) == 0) {
+            WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id());
+        } else {
 
-        // Create fake entries to fill out the gain and weight datasets with
-        // because these don't correctly make it through kotekan yet
-        std::vector<std::complex<float>> vis(frame.vis(), frame.vis() + frame.num_prod());
-        std::vector<uint8_t> vis_weight(vis.size(), 255);
-        std::vector<std::complex<float>> gain_coeff(inputs.size(), {1, 0});
-        std::vector<int32_t> gain_exp(inputs.size(), 0);
+            INFO("Writing frequency id=%i", frame.freq_id());
 
-        // Add all the new information to the file.
-        if(enabled) {
+            // Lookup the frequency index if reordering, otherwise write out in buffer order
+            uint32_t freq_ind = freq_map[frame.freq_id()];
+
+            // Create fake entries to fill out the gain and weight datasets with
+            // because these don't correctly make it through kotekan yet
+            std::vector<std::complex<float>> vis(frame.vis(), frame.vis() + frame.num_prod());
+            std::vector<uint8_t> vis_weight(vis.size(), 255);
+            std::vector<std::complex<float>> gain_coeff(inputs.size(), {1, 0});
+            std::vector<int32_t> gain_exp(inputs.size(), 0);
+
+            // Add all the new information to the file.
             file_bundle->addSample(t, freq_ind, vis, vis_weight,
                                    gain_coeff, gain_exp);
         }
+
         // Mark the buffers and move on
         mark_frame_empty(buffer, unique_name.c_str(), frame_id);
 
@@ -296,29 +300,36 @@ void visWriter::setup_freq(const std::vector<uint32_t>& freq_ids) {
     // (freqs), set the frequency ordering (freq_map) and set the chunk ID
     // (chunk_id).
 
-    // Output all the frequencies that we have found
-    std::string s;
-    for(auto id : freq_ids) {
-        char t[32];
-        snprintf(t, 32, "%i [%.2f MHz] ", id, freq_from_bin(id));
-        s += t;
-    }
-    INFO("Frequency bins found: %s", s.c_str());
+    if(node_mode) {
+        // Output all the frequencies that we have found
+        std::string s;
+        for(auto id : freq_ids) {
+            char t[32];
+            snprintf(t, 32, "%i [%.2f MHz] ", id, freq_from_bin(id));
+            s += t;
+        }
+        INFO("Frequency bins found: %s", s.c_str());
 
-    // TODO: this uses the hacky way of deriving the chunk ID
-    chunk_id = freq_ids[0] % 256;
+        // TODO: this uses the hacky way of deriving the chunk ID
+        unsigned int node_id = freq_ids[0] % 256;
+
+        // Set the list of frequency ids that this node will deal with
+        for(unsigned int i = 0; i < 4; i++) {
+            freq_id_list.push_back(256 * i + node_id);
+        }
+    }
+
+    // Set the chunk_id
+    // TODO: eventually this should be set properly, but at the moment as we are
+    // not merging into a single dir, chunk_id=0 should always be fine
+    chunk_id = 0;
 
     // Sort the streams into bin order, this will give the order in which they
     // are written out
-    for(unsigned int i = 0; i < 4; i++) {
-        unsigned int bin = 256 * i + chunk_id;
-        freq_map[i] = bin;
-        freqs.push_back({freq_from_bin(bin), (400.0 / 1024)});
+    unsigned int fpos = 0;
+    for(auto id : freq_id_list) {
+        freq_map[id] = fpos;
+        freqs.push_back({freq_from_bin(id), (400.0 / 1024)});
+        fpos++;
     }
-
-    // Determine whether this node is enabled for writing
-    enabled = std::binary_search(enabled_chunks.begin(),
-                                 enabled_chunks.end(), chunk_id);
-
-
 }

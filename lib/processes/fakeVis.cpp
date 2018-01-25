@@ -14,7 +14,7 @@ fakeVis::fakeVis(Config &config,
     block_size = config.get_int("/", "block_size");
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
     // Is num_prod needed?
-    num_prod = config.get_int("/", "num_prod");
+    //num_prod = config.get_int("/", "num_prod");
 
     // Get the output buffer
     std::string buffer_name = config.get_string(unique_name, "output_buffer");
@@ -57,7 +57,7 @@ void fakeVis::main_thread() {
             // Allocate metadata and get frame
             allocate_new_metadata_object(output_buffer, output_frame_id);
             auto output_frame = visFrameView(output_buffer, output_frame_id,
-                                             num_elements, num_prod,
+                                             num_elements, //num_prod,
                                              num_eigenvectors);
 
             // TODO: dataset ID properly when we have gated data
