@@ -5,10 +5,10 @@ fftwEngine::fftwEngine(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&fftwEngine::main_thread, this)) {
 
-    buf_in = get_buffer("in_buf");
-    register_consumer(buf_in, unique_name.c_str());
-    buf_out = get_buffer("out_buf");
-    register_producer(buf_out, unique_name.c_str());
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
 
     spectrum_length = config.get_int_default(unique_name,"spectrum_length",1024);
 
@@ -33,12 +33,13 @@ void fftwEngine::main_thread() {
     frame_in = 0;
     frame_out = 0;
 
-    int samples_per_input_frame = buf_in->frame_size/BYTES_PER_SAMPLE;
+    int BYTES_PER_SAMPLE=2;
+    int samples_per_input_frame = in_buf->frame_size/BYTES_PER_SAMPLE;
 
     while(!stop_thread) {
-        in_local = (short*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
+        in_local = (short*)wait_for_full_frame(in_buf, unique_name.c_str(), frame_in);
         if (in_local == NULL) break;
-        out_local = (fftwf_complex*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
+        out_local = (fftwf_complex*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_out);
         if (out_local == NULL) break;
 
         for (int j=0; j<samples_per_input_frame/2; j+=spectrum_length){
@@ -53,9 +54,9 @@ void fftwEngine::main_thread() {
             out_local += spectrum_length;
         }
 
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_in);
-        mark_frame_full(buf_out, unique_name.c_str(), frame_out);
-        frame_in =  (frame_in  + 1) % buf_in->num_frames;
-        frame_out = (frame_out + 1) % buf_out->num_frames;
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_in);
+        mark_frame_full(out_buf, unique_name.c_str(), frame_out);
+        frame_in =  (frame_in  + 1) % in_buf->num_frames;
+        frame_out = (frame_out + 1) % out_buf->num_frames;
    }
 }
