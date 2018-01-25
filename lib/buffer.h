@@ -1,8 +1,8 @@
-/**
- * @file buffer.h
- * @brief The buffer object used by each link and the OpenCL thread for buffering data
- *        from the network, and transfering to the GPU.  Most functions here are thread safe.
- */
+/*****************************************
+File Contents:
+- Buffer
+- ProcessInfo
+*****************************************/
 
 #ifndef BUFFER
 #define BUFFER
@@ -10,13 +10,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define PAGESIZE_MEM 4096
-
-#define MAX_PROCESS_NAME_LEN 128
-// 10 Should be enough for most situations
-#define MAX_CONSUMERS 10
-#define MAX_PRODUCERS 10
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -30,57 +23,140 @@ extern "C" {
 
 #include "metadata.h"
 
+/// The system page size, this might become more dynamic someday
+#define PAGESIZE_MEM 4096
+
+/// The max length of a process (consumer or producer) name.
+#define MAX_PROCESS_NAME_LEN 128
+// The maximum number of consumers that can register on a buffer
+#define MAX_CONSUMERS 10
+// The maximum number of producers that can register on a buffer
+#define MAX_PRODUCERS 10
+
+/**
+ * @stuct ProcessInfo
+ * @brief Internal structure for tracking consumer and producer names.
+ */
 struct ProcessInfo {
+
+    /// Set to 1 if the process is active
     int in_use;
+
+    /// The name of the process (consumer or producer)
     char name[MAX_PROCESS_NAME_LEN];
 };
 
-/** @brief Buffer object used to contain and manage the buffers shared by the network
- *  and consumer (OpenCL, file reading) threads.
+/**
+ * @stuct Buffer
+ * @brief Kotekan's core multi-producer, multi-consumer ring buffer with metadata
  *
- * All memory here is shared between threads so it must be used with the associated locks
+ * This class is the central method for passing data between kotekan processes
+ * in a pipeline.
+ *
+ * It provides a fixed size RING buffer which can have multiple producers and
+ * consumers attached to it.   The idea is that individual processes do not need
+ * to worry about how to manage data transfer between them, it is taken care of by
+ * this class.  All the public functions here are thread safe, and if used correctly
+ * tested to be deadlock free.
+ *
+ * The terminology here is a "frame" is a block of memory of size @frame_size
+ * and the buffer consists of a ring with @c num_frames independent frames.
+ * When a frame is available for producers to add data to, it is considered "empty"
+ * When a frame is ready to be read by consumers is it considered "full"
+ * Therefore a producer asks for an "empty" frame, and marks it as "full" when done.
+ * Likewise a consumer asks for a "full" frame and marks it as "empty" when done.
+ *
+ * There can be more than one producer or consumer attached to each buffer, but
+ * each one must register with the buffer separately.
+ *
+ * Consumers must only read data from frames and not write anything back too them.
+ * More than one producer can write to a given frame in a multi producer setup,
+ * but in that case they must coordinate their address space to not overwrite
+ * each others values.  Because of this multi-producers are somewhat rare.
+ * Producers also generally shouldn't read from frames, although there is
+ * nothing wrong with doing so, it just normally doesn't make sense to do so.
+ *
+ * Unless the function @c zero_frames() is called on the buffer object, the
+ * default behaviour is not to zero the memory of the frames between uses.
+ * Therefore it is normally upto the producer(s) to ensure all memory
+ * values are either given new data, or zeroed.
+ *
+ * In the config file a buffer is created with a <tt>kotekan_buffer: standard</tt>
+ * named block.   The buffer name becomes the path name of that config block.
+ *
+ * Note if no consumer is registered for on a buffer, then it will drop
+ * the frames and log an INFO statement to notify the user that the data
+ * is being dropped.
+ *
+ * @conf frame_size The size of the individual ring frames in bytes
+ * @conf num_frames The buffer depth of size of the ring
+ * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ *
+ * See metadata.h for more information on metadata pools
+ *
+ * @author Andre Renard
  */
 struct Buffer {
 
-    /// Lock and cond variable.
+    /// The main lock for frame state management
     pthread_mutex_t lock;
+
+    /// The condition variable for calls to @c wait_for_full_buffer
     pthread_cond_t full_cond;
+
+    /// The condition variable for calls to @c wait_for_empty_buffer
     pthread_cond_t empty_cond;
 
-    /// Shutdown variable set to 1 when the system should stop returning
-    /// new frames for producers and consumers
+    /**
+     * Shutdown variable set to 1 when the system should stop returning
+     * new frames for producers and consumers
+     */
     int shutdown_signal;
 
     /// The number of frames kept by this object
     int num_frames;
 
-    /// The size of each frame.
+    /// The size of each frame in bytes.
     int frame_size;
 
-    // Each frame is padded out to a page aligned size.
+    /**
+     * Each frame is padded out to a page aligned size,
+     * your operation wants to do things paged aligned
+     * you can use this size instead, but data shouldn't
+     * be placed past the end of frame_size.  This is just for padding.
+     */
     int aligned_frame_size;
 
-    /// Array of producers which are done (marked frame as full).
-    /// [ID][producer]
-    /// zero means not done, 1 means done (marked as full)
+    /**
+     * Array of producers which are done (marked frame as full).
+     * Format is [ID][producer]
+     * zero means not done, 1 means done (marked as full)
+     */
     int ** producers_done;
 
-    /// Array of consumers which are done (marked frame as empty).
-    /// [ID][consumer]
-    /// zero means not done, 1 means done (marked as empty))
+    /**
+     * Array of consumers which are done (marked frame as empty).
+     * Format is [ID][consumer]
+     * zero means not done, 1 means done (marked as empty)
+     */
     int ** consumers_done;
 
+    /// The list of consumer names registered to this buffer
     struct ProcessInfo consumers[MAX_CONSUMERS];
+
+    /// The list of producer names registered to this buffer
     struct ProcessInfo producers[MAX_PRODUCERS];
 
-    /// Should be frames be zeroed at the end of its use.
+    /// Flag set to indicate if the frames should be zeroed between uses
     int zero_frames;
 
-    /// The array of buffers
+    /// The array of frames (the actual data we are carrying)
     uint8_t ** frames;
 
-    /// Flag vars to say which frames are full
-    /// A 0 at index I means the frame at index I is not full, one means it is full.
+    /**
+     * Flag vars to say which frames are full
+     * A 0 at index I means the frame at index I is not full, one means it is full.
+     */
     int * is_full;
 
     /// Array of buffer info objects, for tracking information about each buffer.
@@ -93,45 +169,81 @@ struct Buffer {
     char * buffer_name;
 };
 
-/** @brief Creates a buffer object.
- *  Not thread safe.
- *  @param [in] num_buf The number of buffers to create in the buffer object.
- *  @param [in] len The lenght of each buffer to be created in bytes.
- *  @param [in] pool The metadataPool, which may be shared between more than one buffer.
- *  @param [in] buffer_name The name of this buffer.
- *  @return A buffer object.
+/**
+ * Creates a buffer object.
+ *
+ * Used to create a buffer object, normally invoked by the buffer factory
+ * as a part of the pipeline generation from the config file, not intended
+ * to be called directly.
+ *
+ *  @param num_frame The number of frames to create in the buffer ring.
+ *  @param frame_size The length of each frame in bytes.
+ *  @param pool The metadataPool, which may be shared between more than one buffer.
+ *  @param buffer_name The unique name of this buffer.
+ *  @returns A buffer object.
  */
-struct Buffer * create_buffer(int num_frames, int len,
+struct Buffer * create_buffer(int num_frames, int frame_size,
                   struct metadataPool * pool, const char * buffer_name);
 
-// Calling this function makes the buffer zero frames after each use.
-void zero_frames(struct Buffer * buf);
 
-/** @brief Deletes a buffer object
- *  Not thread safe.
- *  @param [in] buf The buffer to delete.
- *  @return 0 if successful, or a non-zero standard error value if not.
+/**
+ *  Deletes a buffer object and frees all frame memory
+ *
+ *  @param buf The buffer to delete.
  */
 void delete_buffer(struct Buffer * buf);
 
+/**
+ * Zero all frames after all consumers have marked them as empty
+ *
+ * @param buf The buffer object which will be set to automatically zero all frames
+ */
+void zero_frames(struct Buffer * buf);
+
+/**
+ * Register a consumer with a given name.
+ *
+ * In order to use a buffer a consumer must first register its name so that
+ * the buffer object can track which consumers have signed off on each frame.
+ *
+ * @param buf The buffer to register on
+ * @param name The name of the consumer.
+ */
 void register_consumer(struct Buffer * buf, const char *name);
 
+/**
+ * Register a producer with a given name.
+ *
+ * In order to use a buffer a producer must first register its name so that
+ * the buffer object can track which producer have signed off on each frame.
+ *
+ * @param buf The buffer to register on
+ * @param name The name of the producer.
+ */
 void register_producer(struct Buffer * buf, const char *name);
 
-/** @brief Mark a buffer as full.
- *  This function is thread safe.
- *  @param ID The id of the frame to mark as full.
+/**
+ * Marks a buffer frame as full.
+ *
+ * This function is used by a producer to sign off that it will no longer write
+ * data to this frame.
+ *
+ * @param buf The buffer containing the frame to mark as full
+ * @param producer_name The name of the producer registered with @c register_producer()
+ * @param frame_id The frame ID to be marked as full
  */
-void mark_frame_full(struct Buffer * buf, const char * producer_name, const int ID);
+void mark_frame_full(struct Buffer * buf, const char * producer_name, const int frame_id);
 
-/** @Brief Marks a buffer as empty
- *  This function is thread safe.
- *  @param [in] buf The buffer object
- *  @param [in] ID The id of the frame to mark as empty.
+/**
+ * Marks a buffer frame as empty
+ *
+ * Used by a consumer to sign off that it will no longer read data from this frame.
+ *
+ * @param buf The buffer containing the frame to mark as empty
+ * @param consumer_name The name of the consumer registered with @c register_consumer()
+ * @param frame_id The frame ID to be marked as empty
  */
-
-
-void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int ID);
+void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int frame_id);
 
 /**
  * Blocks until the frame requested by frame_id is empty.
@@ -139,6 +251,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
  * This blocking function will return only when the frame_id request is marked
  * as empty internally, or the function @c send_shutdown_signal() is called, which
  * causes the function to return a @c NULL pointer.
+ * Generally a process should exit and cleanup if NULL is returned.
  *
  * @param[in] buf The buffer object
  * @param[in] producer_name The name of the registered producer requesting the frame_id
@@ -148,42 +261,135 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
  */
 uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int frame_id);
 
-/** @brief Waits for the buffer frame given by ID to be full.
- *  This function is thread safe.
+/**
+ * Blocks until the frame requested by frame_id is full.
+ *
+ * This blocking function will return only when the frame_id request is marked
+ * as full internally, or the function @c send_shutdown_signal() is called, which
+ * causes the function to return a @c NULL pointer.
+ * Generally a process should exit and cleanup if NULL is returned.
+ *
+ * @param[in] buf The buffer object
+ * @param[in] producer_name The name of the registered producer requesting the frame_id
+ * @param[in] frame_id The id of the frame wait for.
+ * @returns A pointer to the frame, or NULL if the buffer is shutting down.
+ * @warning You may only make this call once per registered producer.
  */
-uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int ID);
-
-/** @brief Checks if the requested buffer is empty, returns 1
- *  if the buffer is empty, and 0 if the full.  Thread safe.
- * @param [in] buf The buffer
- * @param [in] ID The id of the frame to check.
- */
-int is_frame_empty(struct Buffer * buf, const int ID);
+uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int frame_id);
 
 /**
- * @brief Returns the number of currently full frames.
+ * Checks if the requested buffer is empty.
+ *
+ * Returns 1 if the buffer is empty, and 0 if the full.
+ *
+ * @param buf The buffer object
+ * @param frame_id The id of the frame to check.
+ * @warning This should not be used to gain access to an empty frame, use @c wait_for_empty_frame()
+ */
+int is_frame_empty(struct Buffer * buf, const int frame_id);
+
+/**
+ * Returns the number of currently full frames.
+ *
+ * @param buf The buffer object
+ * @returns The number of currently full frames in the buffer
  */
 int get_num_full_frames(struct Buffer * buf);
 
 /**
- * @brief Prints a picture of the frames which are currently full.
+ * Prints a picture of the frames which are currently full.
+ *
+ * @param buf The buffer object
  */
 void print_buffer_status(struct Buffer * buf);
 
 // Needs to be called by the first producer in a chain, or by a producing generating
 // a new type of metadata for the next stage.
-void allocate_new_metadata_object(struct Buffer * buf, int ID);
+/**
+ * Allocates a new metadata object from the associated pool
+ *
+ * Needs to be called by the first producer in a chain, or by a producer
+ * generating a new type of metadata for the next stage.  If the producer is
+ * just passing the metadata down stream from the input buffer use @c pass_metadata()
+ *
+ * The metadata type is based on the pool type associated with the buffer object
+ *
+ * @param buf The buffer object
+ * @param frame_id The frame ID to assign a metadata object too.
+ */
+void allocate_new_metadata_object(struct Buffer * buf, int frame_id);
 
-// Just gets the raw metadata block, which can be cast as needed into
-// the required metadata type.
-void * get_metadata(struct Buffer * buf, int ID);
+/**
+ * Gets the raw metadata block for the given frame
+ *
+ * Returns a raw <tt>void *</tt> pointer which can then be cast as the
+ * the metadata type associated with the buffer.
+ *
+ * @warning Only call this function for a @c frame_id for which you have
+ * access via a call to @c wait_for_full_frame() and use this metadata before
+ * calling @p mark_frame_emtpy(), because it could be dereferenced and returned
+ * to the metadata pool after that call.
+ * If you are adding a new metadata object, please *also* call
+ * @c allocate_new_metadata_object() before asking for the metadata object.
+ *
+ * @param buf The buffer object
+ * @param frame_id The frame to return the metadata for.
+ * @returns A pointer to the metadata object (needs to be cast)
+ */
+void * get_metadata(struct Buffer * buf, int frame_id);
 
-struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID);
+/**
+ * Returns the container for the metadata.
+ *
+ * This works exactly the same way as @p get_metadata() but returns a
+ * @c metadataContainer which holds the reference count, locks, etc.
+ *
+ * @warning Only call this function for a @c frame_id for which you have
+ * access via a call to @c wait_for_full_frame() and use this metadata before
+ * calling @p mark_frame_emtpy(), because it could be dereferenced and returned
+ * to the metadata pool after that call.
+ * If you are adding a new metadata object, please *also* call
+ * @c allocate_new_metadata_object() before asking for the metadata object.
+ *
+ * @param buf The buffer object
+ * @param frame_id The frame to return the metadata for.
+ * @returns A pointer to the metadata_container
+ */
+struct metadataContainer * get_metadata_container(struct Buffer * buf, int frame_id);
 
-// Must be called before marking the from buffer as empty.
-void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID);
+/**
+ * Transfers metadata from one buffer to another for a given frame.
+ *
+ * This function is used by threads which are both consumers and producers
+ * and need to pass the metadata down the pipeline.
+ *
+ * It should be called only after acquiring both a full frame to read from
+ * and an empty frame to copy into. Using @c wait_for_full_frame and @c wait_for_empty_frame
+ *
+ * Note it doesn't actually copy the metadata, instead it just copies the pointer
+ * and uses reference counting to track which buffers (and frames) have registered
+ * access to this metadata object.  The process releases the metadata implicitly
+ * when the @c mark_frame_empty() function is called, which decrements
+ * the reference counter. Once it reaches zero, the the metadata is returned to the
+ * pool.
+ *
+ * @param from_buf The buffer to copy the metadata from
+ * @param from_frame_id The frame ID to copy the metadata from
+ * @param to_buf The buffer to copy the metadata into
+ * @param to_frame_id The frame ID in the @c to_buf to copy the metadata into
+ */
+void pass_metadata(struct Buffer * from_buf, int from_frame_id,
+                    struct Buffer * to_buf, int to_frame_id);
 
-// Causes all "wait" commands to wakeup and return NULL
+/**
+ * Tells the buffers to stop returning full/empty frames to consumers/producers
+ *
+ * This function should only be called by the framework, and not by processes.
+ * Once called it will cause all @c wait_for_empty_frame() and @c wait_for_full_frame()
+ * calls to wake up and return NULL, or NULL null on the next time they are called.
+ *
+ * @param buf The buffer to shutdown
+ */
 void send_shutdown_signal(struct Buffer * buf);
 
 #ifdef __cplusplus
