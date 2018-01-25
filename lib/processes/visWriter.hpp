@@ -36,7 +36,7 @@ File Contents:
  *
  * @conf  num_elements      int The number of elements (i.e. inputs) in the
  *                          correlator data (read from "/")
- * @conf  num_prod          int The block size of the packed data (read from "/")
+ * @conf  block_size        int The block size of the packed data (read from "/")
  * @conf  num_eigenvectors  int The number of eigenvectors to be stored
  * @conf  input_reorder     array of [int, int, string] The reordering mapping.
  *                          Only the first element of each sub-array is used and
