@@ -185,7 +185,6 @@ struct Buffer {
 struct Buffer * create_buffer(int num_frames, int frame_size,
                   struct metadataPool * pool, const char * buffer_name);
 
-
 /**
  *  Deletes a buffer object and frees all frame memory
  *
@@ -303,8 +302,6 @@ int get_num_full_frames(struct Buffer * buf);
  */
 void print_buffer_status(struct Buffer * buf);
 
-// Needs to be called by the first producer in a chain, or by a producing generating
-// a new type of metadata for the next stage.
 /**
  * Allocates a new metadata object from the associated pool
  *
