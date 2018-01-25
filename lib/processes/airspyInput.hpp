@@ -23,9 +23,6 @@ using std::string;
  * @class airspyInput
  * @brief Producer ``KotekanProcess`` which streams radio data from an AirSpy SDR device into a ``Buffer``.
  *
- * Buffers:
-
- *
  * This is a simple producer which initializes an AirSpy dongle (https://airspy.com)
  * in streaming mode, filling samples into the provided kotekan buffer.
  * It is agnostic about buffer framesize, simply filling in its data until a frame is full,
@@ -35,6 +32,7 @@ using std::string;
  *
  * This producer depends on ``libairspy``.
  *
+ * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
  *     @buffer_format Array of @c shorts
  *     @buffer_metadata none

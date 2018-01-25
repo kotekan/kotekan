@@ -1,5 +1,3 @@
-.. _fftwEngine:
-
 *************
 fftwEngine
 *************
