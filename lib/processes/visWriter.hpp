@@ -27,10 +27,11 @@ File Contents:
  * reformats it into a single stream in the new visBuffer format that is used
  * for the receiver.
  *
+ * @par Buffers
  * @buffer in_bufs The set of buffers coming out the GPU buffers
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
- * @buffer out_buf The merged and transforned buffer
+ * @buffer out_buf The merged and transformed buffer
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
@@ -80,8 +81,9 @@ private:
  * @class visDebug
  * @brief Output some useful properties about the buffer for debugging
  *
- * The output is produced by calling the @c summary method of @c visFrameView
+ * The output is produced by calling ``visFrameView::summary``
  *
+ * @par Buffers
  * @buffer in_buf The buffer to debug
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
@@ -109,7 +111,7 @@ private:
  * @class visWriter
  * @brief Write the data out to an HDF5 file .
  *
- * This process operates in two modes, @c node_mode where it runs on a per-GPU
+ * This process operates in two modes, ``node_mode`` where it runs on a per-GPU
  * node basis (inferring its frequency selection from that) and writes a new
  * acquisition per node. Alternatively it can be run more generally, receiving
  * and writing arbitrary frequencies, but it must be given the frequency list in
@@ -117,14 +119,16 @@ private:
  *
  * The output is written into the CHIME N^2 HDF% format version 3.0.
  *
+ * @par Buffers
  * @buffer in_buf The buffer streaming data to write
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   node_mode        Bool. Run in @c node_mode or not (default true)
+ * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
  * @conf   root_path        String. Location in filesystem to write to.
- * @conf   instrument_name  String. Name of the instrument acquiring data (if
- *                          ``node_mode`` the hostname is used instead)
+ * @conf   instrument_name  String (default: chime). Name of the instrument
+ *                          acquiring data (if ``node_mode`` the hostname is
+ *                          used instead)
  * @conf   freq_ids         Array of ints. The ids of the frequencies to write
  *                          out (only needed when not in @c node_mode).
  * @conf   input_reorder    Array of [int, int, string]. A description of the
