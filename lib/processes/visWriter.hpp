@@ -1,3 +1,11 @@
+/*****************************************
+File Contents:
+- visTransform : public KotekanProcess
+- visDebug : public KotekanProcess
+- visWriter : public KotekanProcess
+
+@todo Move processes that require HDF5 into a separate file.
+*****************************************/
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
@@ -10,22 +18,45 @@
 #include "util.h"
 #include "visUtil.hpp"
 
-// Define an ordering on stream ids so they can be used in a std::map
-/*struct compareStream {
-    bool operator() (const stream_id_t& lhs, const stream_id_t& rhs) const;
-};*/
 
-
-// Merge multiple gpu streams and transform into a visibility buffer
+/**
+ * @class visTransform
+ * @brief Merge a set of GPU buffers into a single visBuffer stream.
+ *
+ * This task takes data coming out of a collecton of GPU streams and merges and
+ * reformats it into a single stream in the new visBuffer format that is used
+ * for the receiver.
+ *
+ * @buffer in_bufs The set of buffers coming out the GPU buffers
+ *         @buffer_format GPU packed upper triangle
+ *         @buffer_metadata chimeMetadata
+ * @buffer out_buf The merged and transforned buffer
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ *
+ * @conf  num_elements      int The number of elements (i.e. inputs) in the
+ *                          correlator data (read from "/")
+ * @conf  num_prod          int The block size of the packed data (read from "/")
+ * @conf  num_eigenvectors  int The number of eigenvectors to be stored
+ * @conf  input_reorder     array of [int, int, string] The reordering mapping.
+ *                          Only the first element of each sub-array is used and
+ *                          it is the the index of the input to move into this
+ *                          new location. The remaining elements of the subarray
+ *                          are for correctly labelling the input in @c
+ *                          visWriter.
+ */
 class visTransform : public KotekanProcess {
 
 public:
+
+    // Default constructor
     visTransform(Config &config,
                 const string& unique_name,
                 bufferContainer &buffer_container);
 
     void apply_config(uint64_t fpga_seq);
 
+    // Main loop for the process
     void main_thread();
 
 private:
@@ -43,7 +74,16 @@ private:
 };
 
 
-// Provide some useful debugging out on a visibility buffer
+/**
+ * @class visDebug
+ * @brief Output some useful properties about the buffer for debugging
+ *
+ * The output is produced by calling the @c summary method of @c visFrameView
+ *
+ * @buffer in_buf The buffer to debug
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ */
 class visDebug : public KotekanProcess {
 
 public:
@@ -61,7 +101,34 @@ private:
 };
 
 
-/// Kotekan Process for writing data out into an HDF5 file.
+/**
+ * @class visWriter
+ * @brief Write the data out to an HDF5 file .
+ *
+ * This process operates in two modes, @c node_mode where it runs on a per-GPU
+ * node basis (inferring its frequency selection from that) and writes a new
+ * acquisition per node. Alternatively it can be run more generally, receiving
+ * and writing arbitrary frequencies, but it must be given the frequency list in
+ * the config.
+ *
+ * The output is written into the CHIME N^2 HDF% format version 3.0.
+ *
+ * @buffer in_buf The buffer streaming data to write
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ *
+ * @conf   node_mode        bool Run in @c node_mode or not (default true)
+ * @conf   root_path        string Location in filesystem to write to.
+ * @conf   instrument_name  string Name of the instrument acquiring data (if
+ *                          @c node_mode the hostnaee is used instead)
+ * @conf   freq_ids         array of int The ids of the frequencies to write
+ *                          out (only needed when not in @c node_mode).
+ * @conf   input_reorder    array of [int, int, string] A description of the
+ *                          inputs. Only the last two elements of each sub-array
+ *                          are used and are expected to be @c channel_id and
+ *                          @c channel_serial (the first contains the @c adc_id
+ *                          used for reordering om @c visTransform)
+ */
 class visWriter : public KotekanProcess {
 public:
     visWriter(Config &config,
