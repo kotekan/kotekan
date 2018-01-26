@@ -46,7 +46,7 @@ void rfiBroadcastVdif::apply_config(uint64_t fpga_seq) {
 void rfiBroadcastVdif::main_thread() {
 
     int frame_id = 0;
-    int i, j;
+    unsigned int i, j;
     uint8_t * frame = NULL;
 
     //Intialize empty packet header
