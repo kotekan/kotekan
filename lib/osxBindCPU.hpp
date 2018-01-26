@@ -1,5 +1,5 @@
 /**
- * @file osxBindCPU.hpp
+ * @file
  * @brief Utilities to mirror Linux CPU affinity functions on Mac systems.
  *  - sched_getaffinity
  *  - pthread_setaffinity_np

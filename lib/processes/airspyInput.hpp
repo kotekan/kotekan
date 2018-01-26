@@ -1,5 +1,5 @@
 /**
- * @file airspyInput.hpp
+ * @file
  * @brief Contains airspy producer for kotekan.
  *  - airspyInput : public KotekanProcess
  */

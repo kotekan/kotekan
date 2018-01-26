@@ -17,6 +17,13 @@ Documentation
 All files should be liberally commented, with full `doxygen <www.doxygen.org>`_ docstrings
 describing the class, variables, and all member functions.
 
+Comment blocks should use an empty ``/**`` line to begin,
+with subsequent lines beginning with ``_*_`` (space,star,space).
+The comment block should close with a ``_*/`` (space,star,slash).
+
+One-line docstrings (only to be used on private functions and variables)
+should use the standard doxygen ``///`` (triple-slash).
+
 Files
 ^^^^^^^^^^
 Header files should begin with a quick summary block, identifying themselves
@@ -25,15 +32,14 @@ and listing their content functions or classes.
 .. code-block:: c++
 
   /**
-   * @file fftwEngine.hpp
+   * @file
    * @brief An FFTW-based F-engine process.
    *  - fftwEngine : public KotekanProcess
    */
 
 Classes
 ^^^^^^^^^^
-All classes should include a comment block immediately preceeding their declaration,
-similar to the following.
+All classes should include a comment block immediately preceeding their declaration.
 
 .. code-block:: c++
 

@@ -1,5 +1,5 @@
 /**
- * @file simpleAutocorr.hpp
+ * @file
  * @brief A simple autocorrelator (sum-sq) process.
  *  - simpleAutocorr : public KotekanProcess
  */

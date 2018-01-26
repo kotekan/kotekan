@@ -1,5 +1,5 @@
 /**
- * @file fftwEngine.hpp
+ * @file
  * @brief An FFTW-based F-engine process.
  *  - fftwEngine : public KotekanProcess
  */
