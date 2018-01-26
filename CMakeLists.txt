@@ -197,7 +197,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 if (${COMPILE_DOCS})
-    add_subdirectory(docs)
+    add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
 add_subdirectory(lib)
