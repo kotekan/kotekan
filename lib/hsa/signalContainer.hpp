@@ -24,11 +24,18 @@ public:
 
     // Wait for the signal to become ready to sleep on then
     // wait for the hsa signal itself to reach zero
-    void wait_for_signal();
+    // If `stopping` is set, then sleep on signals, but exit when
+    // there are no signals to wait on.  (to clear the packet queue).
+    int wait_for_signal();
 
     // Wait for the signal object to be in its default state
     // i.e. no signal set to wait on, and signal_set == false;
     void wait_for_free_slot();
+
+    // Causes set_signal to exit and return -1 if there are no signals
+    // to wait for, otherwise we wait for the signal since we don't
+    // want to exit while there are packets in the GPU queues.
+    void stop();
 
 private:
     std::condition_variable cond_var;
@@ -36,6 +43,7 @@ private:
 
     hsa_signal_t signal;
     bool signal_set;
+    bool stopping;
 };
 
 #endif

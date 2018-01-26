@@ -8,18 +8,26 @@ kotekanLogging::kotekanLogging() {
 }
 
 void kotekanLogging::internal_logging(int type, const char* format, ...) {
+    char log_buf[__max_log_msg_len];
     if (__log_prefix != "") {
-        const int max_log_msg_len = 1024;
-        char log_buf[max_log_msg_len];
         va_list args;
         va_start(args, format);
-        vsnprintf(log_buf, max_log_msg_len, format, args);
+        vsnprintf(log_buf, __max_log_msg_len, format, args);
         va_end(args);
-        syslog(type, "%s: %s", __log_prefix.c_str(), log_buf);
+        if (__enable_syslog == 1) {
+            syslog(type, "%s: %s\n", __log_prefix.c_str(), log_buf);
+        } else {
+            fprintf(stderr, "%s: %s\n", __log_prefix.c_str(), log_buf);
+        }
     } else {
         va_list args;
         va_start(args, format);
-        (void) vsyslog(type, format, args);
+        if (__enable_syslog == 1) {
+            (void) vsyslog(type, format, args);
+        } else {
+            (void)vsnprintf(log_buf, __max_log_msg_len, format, args);
+            fprintf(stderr, "%s\n", log_buf);
+        }
         va_end(args);
     }
 }
