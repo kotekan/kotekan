@@ -1,16 +1,3 @@
-/*********************************************************************************
-
-Kotekan RFI Documentation Block:
-By: Jacob Taylor
-Date: January 2018
-File Purpose: Read VDIF data from N disks. 
-Details:
-	-Constructor: Sets up config parameters as local variables. Registers process as producer.
-	-main_thread: Creates and Handles N file reading threads
-	-file_read_thread: Reads VDIF data from disk and places in a buffer
-
-**********************************************************************************/
-
 #include "nDiskFileRead.hpp"
 #include <random>
 #include "errors.h"
@@ -43,8 +30,6 @@ void nDiskFileRead::apply_config(uint64_t fpga_seq) {
 
     //Data paramters
     num_disks = config.get_int(unique_name,"num_disks"); 
-    num_elements = config.get_int(unique_name,"num_elements");
-    num_frequencies = config.get_int(unique_name,"num_freq");
 
     //Data location parameters
     disk_base = config.get_string(unique_name,"disk_base"); 
@@ -112,7 +97,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         assert(sz == buf->frame_size);
 
         //Read into buffer
-		fread(buf_ptr,buf->frame_size,1,in_file);
+	fread(buf_ptr,buf->frame_size,1,in_file);
         fclose(in_file);
         INFO("%s Read Complete Marking Frame ID %d Full\n", file_name, buf_id);
         

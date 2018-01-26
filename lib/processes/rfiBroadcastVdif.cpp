@@ -19,12 +19,12 @@ rfiBroadcastVdif::rfiBroadcastVdif(Config& config,
                                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&rfiBroadcastVdif::main_thread, this)){
-
+    //Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
+    //Register process as consumer
     register_consumer(rfi_buf, unique_name.c_str());
-
+    //Intialize internal config
     apply_config(0);
-
 }
 
 rfiBroadcastVdif::~rfiBroadcastVdif() {
@@ -41,7 +41,6 @@ void rfiBroadcastVdif::apply_config(uint64_t fpga_seq) {
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");
     dest_protocol = config.get_string(unique_name, "destination_protocol");
-
 }
 
 void rfiBroadcastVdif::main_thread() {
@@ -50,13 +49,16 @@ void rfiBroadcastVdif::main_thread() {
     int i, j;
     uint8_t * frame = NULL;
 
+    //Intialize empty packet header
     int packet_header_length = sizeof(bool) + sizeof(int)*4 + sizeof(uint32_t);
     char *packet_header = (char *)malloc(packet_header_length);
     
+    //Declare array to hold averaged kurtosis estimates
     float RFI_Avg[_num_freq];
     unsigned int packet_header_bytes_written = 0;
     uint32_t vdif_seq_num = 0;
 
+    //Intialize empty packet
     int packet_length = packet_header_length + _num_freq*sizeof(float);
     char *packet_buffer = (char *)malloc(packet_length);
 
