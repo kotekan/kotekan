@@ -21,7 +21,8 @@ visFile::visFile(const std::string& name,
                  const std::string& inst_name,
                  const std::string& notes,
                  const std::vector<freq_ctype>& freqs,
-                 const std::vector<input_ctype>& inputs) {
+                 const std::vector<input_ctype>& inputs,
+                 const std::vector<prod_ctype>& prods) {
 
     std::string data_filename = root_path + "/" + acq_name + "/" + name;
 
@@ -40,7 +41,7 @@ visFile::visFile(const std::string& name,
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
     );
 
-    createIndex(freqs, inputs);
+    createIndex(freqs, inputs, prods);
     createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2);
 
     // === Set the required attributes for a valid file ===
@@ -78,8 +79,12 @@ visFile::~visFile() {
     std::remove(lock_filename.c_str());
 }
 
+// TODO: will need to make prods an input to this method for baseline subsetting
+//       should make use of overloading so that previous calls don't break.
+//       this should propagate to Filebundle
 void visFile::createIndex(const std::vector<freq_ctype>& freqs,
-                          const std::vector<input_ctype>& inputs) {
+                          const std::vector<input_ctype>& inputs,
+                          const std::vector<prod_ctype>& prods) {
 
     Group indexmap = file->createGroup("index_map");
 
@@ -96,16 +101,10 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
     DataSet input_imap = indexmap.createDataSet<input_ctype>("input", DataSpace(inputs.size()));
     input_imap.write(inputs);
 
-    std::vector<prod_ctype> prod_vector;
-    for(uint16_t i=0; i < inputs.size(); i++) {
-        for(uint16_t j = i; j < inputs.size(); j++) {
-            prod_vector.push_back({i, j});
-        }
-    }
     DataSet prod_imap = indexmap.createDataSet<prod_ctype>(
-        "prod", DataSpace(prod_vector.size())
+        "prod", DataSpace(prods.size())
     );
-    prod_imap.write(prod_vector);
+    prod_imap.write(prods);
 
     file->flush();
 
@@ -278,6 +277,7 @@ visFileBundle::visFileBundle(const std::string root_path,
                              const std::string notes,
                              const std::vector<freq_ctype>& freqs,
                              const std::vector<input_ctype>& inputs,
+                             const std::vector<prod_ctype>& prods,
                              size_t rollover, size_t window_size) :
 
     root_path(root_path),
@@ -286,11 +286,11 @@ visFileBundle::visFileBundle(const std::string root_path,
     notes(notes),
     freqs(freqs),
     inputs(inputs),
+    prods(prods),
     rollover(rollover),
     window_size(window_size)
 
 {
-
 
 }
 
@@ -390,7 +390,7 @@ void visFileBundle::addFile(time_ctype first_time) {
 
     // Create the file, create room for the first sample and add into the file map
     auto file = std::make_shared<visFile>(
-        file_name, acq_name, root_path, instrument_name, "", freqs, inputs
+        file_name, acq_name, root_path, instrument_name, "", freqs, inputs, prods
     );
     auto ind = file->extendTime(first_time);
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);

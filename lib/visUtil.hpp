@@ -42,6 +42,18 @@ inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
     return (n * (n + 1) / 2) - ((n - i) * (n - i + 1) / 2) + (j - i);
 }
 
+inline prod_ctype icmap(uint32_t k, uint16_t n) {
+    uint16_t ii;
+    for (ii; ii < n; ii++) {
+        if (cmap(ii, n - 1, n) >= k) {
+            break;
+        }
+    }
+
+    uint16_t j = k - cmap(ii, ii, n) + ii;
+    return {ii, j};
+}
+
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
     uint32_t b_ix = cmap(i / block, j / block, N / block);
 
