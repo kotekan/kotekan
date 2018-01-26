@@ -1,8 +1,8 @@
-/*****************************************
-File Contents:
-- fftwEngine : public KotekanProcess
-*****************************************/
-
+/**
+ * @file fftwEngine.hpp
+ * @brief An FFTW-based F-engine process.
+ *  - fftwEngine : public KotekanProcess
+ */
 
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
@@ -29,6 +29,7 @@ using std::string;
  *
  * This producer depends on libfftw3.
  *
+ * @par Buffers
  * @buffer in_buf Input kotekan buffer, to be consumed from.
  *     @buffer_format Array of @c shorts
  *     @buffer_metadata none

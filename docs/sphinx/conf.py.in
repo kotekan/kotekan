@@ -30,7 +30,11 @@
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.todo']
+extensions = ['sphinx.ext.todo',  'breathe']
+
+breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
+breathe_default_project = "kotekan"
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

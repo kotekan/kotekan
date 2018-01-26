@@ -1,0 +1,5 @@
+*************
+airspyInput
+*************
+
+.. doxygenclass:: airspyInput
