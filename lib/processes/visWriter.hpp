@@ -1,5 +1,6 @@
 /*****************************************
-File Contents:
+@file
+@brief Processes for handling visibility data.
 - visTransform : public KotekanProcess
 - visDebug : public KotekanProcess
 - visWriter : public KotekanProcess

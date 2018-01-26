@@ -1,8 +1,8 @@
 /*****************************************
-File Contents:
+@file
+@brief Code for using the visBuffer formatted data.
 - visMetadata
 - visFrameView
-
 *****************************************/
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
@@ -75,7 +75,7 @@ public:
      * @brief Create view and set structure metadata.
      *
      * This should be used for creating entirely new frames. This overload also
-     * assumes the the full visibility triangle is being stored.
+     * assumes the full visibility triangle is being stored.
      *
      * @param buf              The buffer the frame is in.
      * @param frame_id         The id of the frame to read.
@@ -132,15 +132,18 @@ public:
 
 private:
 
+    // Pointers that will index into the buffer
     std::complex<float> * vis_ptr;
     float * eval_ptr;
     std::complex<float> * evec_ptr;
     float * rms_ptr;
 
+    // References to the buffer and metadata we are using
     Buffer * const buffer;
     const int id;
     visMetadata * const  metadata;
 
+    // Validate that the defined view fits in the space allocated
     void check_and_set();
 };
 
