@@ -1,7 +1,8 @@
-/*****************************************
-File Contents:
-- hsaBeamformPulsar : public hsaCommand
-*****************************************/
+/**
+ * @file hsaBeamformPulsar.hpp
+ * @brief Brute-force beamform for kotekan pulsar obs
+ *  - hsaBeamformPulsar : public hsaCommand
+ */
 
 #ifndef HSA_BEAMFORM_PULSAR_H
 #define HSA_BEAMFORM_PULSAR_H
