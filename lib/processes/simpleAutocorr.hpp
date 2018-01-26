@@ -36,8 +36,6 @@ using std::string;
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   in_buf               Buffer.  Input kotekan buffer, to be consumed from.
- * @conf   out_buf              Buffer. Output kotekan buffer, to be produced into.
  * @conf   spectrum_length      Int. Number of samples in the spectrum. Defaults to 1024.
  * @conf   integration_length   Int. Number of time samples to sum. Defaults to 1024.
  *
