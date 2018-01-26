@@ -1,8 +1,9 @@
-/*****************************************
-File Contents:
-- Buffer
-- ProcessInfo
-*****************************************/
+/**
+ * @file buffer.h
+ * @brief The core kotekan buffer object for data transfer between processes
+ *  - buffer
+ *  - ProcessInfo
+ */
 
 #ifndef BUFFER
 #define BUFFER
