@@ -23,6 +23,7 @@
  *
  * @requires_kernel    pulsar_beamformer.hasco
  *
+ * @par GPU Memory
  * @gpu_mem  input           Input data of size input_frame_len
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c uchar
