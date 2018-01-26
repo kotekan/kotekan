@@ -12,6 +12,12 @@ Buffers
 Processes
 ----------
 
+.. toctree::
+    :glob:
+
+    processes/*
+
+
 
 Metadata
 ----------
