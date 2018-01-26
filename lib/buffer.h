@@ -1,8 +1,9 @@
-/*****************************************
-File Contents:
-- Buffer
-- ProcessInfo
-*****************************************/
+/**
+ * @file buffer.h
+ * @brief The core kotekan buffer object for data transfer between processes
+ *  - buffer
+ *  - ProcessInfo
+ */
 
 #ifndef BUFFER
 #define BUFFER
@@ -34,7 +35,7 @@ extern "C" {
 #define MAX_PRODUCERS 10
 
 /**
- * @stuct ProcessInfo
+ * @struct ProcessInfo
  * @brief Internal structure for tracking consumer and producer names.
  */
 struct ProcessInfo {
@@ -47,7 +48,7 @@ struct ProcessInfo {
 };
 
 /**
- * @stuct Buffer
+ * @struct Buffer
  * @brief Kotekan's core multi-producer, multi-consumer ring buffer with metadata
  *
  * This class is the central method for passing data between kotekan processes
@@ -59,7 +60,7 @@ struct ProcessInfo {
  * this class.  All the public functions here are thread safe, and if used correctly
  * tested to be deadlock free.
  *
- * The terminology here is a "frame" is a block of memory of size @frame_size
+ * The terminology here is a "frame" is a block of memory of size @c frame_size
  * and the buffer consists of a ring with @c num_frames independent frames.
  * When a frame is available for producers to add data to, it is considered "empty"
  * When a frame is ready to be read by consumers is it considered "full"
