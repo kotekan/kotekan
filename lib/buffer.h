@@ -1,5 +1,5 @@
 /**
- * @file buffer.h
+ * @file
  * @brief The core kotekan buffer object for data transfer between processes
  *  - buffer
  *  - ProcessInfo
@@ -277,7 +277,9 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
  * @param[in] producer_name The name of the registered producer requesting the frame_id
  * @param[in] frame_id The id of the frame to wait for.
  * @returns A pointer to the frame, or NULL if the buffer is shutting down.
- * @warning You may only make this call once per registered producer.
+ * @warning After calling this function for a given producer and frame_id it
+ *          should not be called again on that frame_id until after
+ *          a call to @c mark_frame_full() with that producer and frame_id
  */
 uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int frame_id);
 
@@ -293,7 +295,9 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
  * @param[in] producer_name The name of the registered producer requesting the frame_id
  * @param[in] frame_id The id of the frame to wait for.
  * @returns A pointer to the frame, or NULL if the buffer is shutting down.
- * @warning You may only make this call once per registered producer.
+ * @warning After calling this function for a given consumer and frame_id it
+ *          should not be called again on that frame_id until after
+ *          a call to @c mark_frame_empty() with that consumer and frame_id
  */
 uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int frame_id);
 
