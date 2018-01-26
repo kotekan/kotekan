@@ -1,4 +1,24 @@
 /**
+ * @file simpleAutocorr.hpp
+ * @brief A simple autocorrelator (sum-sq) process.
+ *  - simpleAutocorr : public KotekanProcess
+ */
+
+
+
+#ifndef SIMPLE_AUTOCORR_HPP
+#define SIMPLE_AUTOCORR_HPP
+#include <unistd.h>
+
+#include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "errors.h"
+#include "util.h"
+
+#include <string>
+using std::string;
+
+/**
  * @class simpleAutocorr
  * @brief Kotekan Process to autocorrelate a single stream of values.
  *
@@ -10,6 +30,7 @@
  *
  * This producer depends on libairspy.
  *
+ * @par Buffers
  * @buffer in_buf Input kotekan buffer, to be consumed from.
  *     @buffer_format Array of <tt> complex float2 </tt>
  *     @buffer_metadata none
@@ -28,18 +49,6 @@
  * @author Keith Vanderlinde
  *
  */
-#ifndef SIMPLE_AUTOCORR_HPP
-#define SIMPLE_AUTOCORR_HPP
-#include <unistd.h>
-
-#include "KotekanProcess.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
-
-#include <string>
-using std::string;
-
 class simpleAutocorr : public KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.

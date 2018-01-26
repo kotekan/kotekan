@@ -34,6 +34,11 @@ Classes
 ^^^^^^^^^^
 Classes in kotekan should use *CamelCase* formatting, e.g. ``myFavouriteProcess``.
 
+Functions
+^^^^^^^^^^
+With the exception of class constructors & destructors, function names should use underscore notation,
+e.g. ``my_func``.
+
 
 Config File Settings
 ^^^^^^^^^^^^^^^^^^^^^^

@@ -1,7 +1,8 @@
-/*****************************************
-File Contents:
-- airspyInput : public KotekanProcess
-*****************************************/
+/**
+ * @file airspyInput.hpp
+ * @brief Contains airspy producer for kotekan.
+ *  - airspyInput : public KotekanProcess
+ */
 
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
