@@ -37,3 +37,4 @@ Developer's Guide
    dev_rest_endpoints
    dev_style_guide
 
+You can also peruse the full `doxygen docs <doxygen/>`_.
