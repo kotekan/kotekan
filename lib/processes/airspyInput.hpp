@@ -2,7 +2,7 @@
  * @file airspyInput.hpp
  * @brief Contains airspy producer for kotekan.
  *  - airspyInput : public KotekanProcess
- **/
+ */
 
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
@@ -54,7 +54,7 @@ using std::string;
  *
  * @author Keith Vanderlinde
  *
- **/
+ */
 class airspyInput : public KotekanProcess {
 public:
     /// Constructor, also initializes internal variables from config.
@@ -88,7 +88,7 @@ public:
       *                 @li @c sample_count - number of samples included in the buffer)
       * @warning Nobody should ever call this directly, it's only meant to service the
       *          data-ready AirSpy callback.
-     **/
+      */
     static int airspy_callback(airspy_transfer_t* transfer);
 
     /**
@@ -106,7 +106,7 @@ public:
       *                 @li @c sample_count - number of samples included in the buffer)
       * @warning        Nobody should ever call this directly, it's only meant to service the
       *                 data-ready AirSpy callback.
-     **/
+      */
     void airspy_producer(airspy_transfer_t* transfer);
 
 

@@ -2,7 +2,7 @@
  * @file simpleAutocorr.hpp
  * @brief A simple autocorrelator (sum-sq) process.
  *  - simpleAutocorr : public KotekanProcess
- **/
+ */
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
@@ -46,7 +46,7 @@ using std::string;
  *
  * @author Keith Vanderlinde
  *
- **/
+ */
 class simpleAutocorr : public KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
