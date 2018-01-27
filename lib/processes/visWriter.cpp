@@ -200,6 +200,7 @@ visWriter::visWriter(Config& config,
             }
         }
     }
+    DEBUG("visWrite: len of prods %d", prods.size())
 
     if(node_mode) {
 

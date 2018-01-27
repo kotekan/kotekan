@@ -6,6 +6,7 @@
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
+#include "visUtil.hpp"
 
 class baselineSubset : public KotekanProcess {
 
@@ -20,20 +21,22 @@ public:
 
 private:
     /// Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size, num_prod;
+    size_t num_elements, num_eigenvectors, num_prod;
 
     /// Input buffer
-    Buffer * in_buffer;
+    Buffer * in_buf;
 
-    /// Vector of the output buffers and their current frame ids.
-    std::vector<std::pair<Buffer*, unsigned int>> out_buffers;
+    /// Output buffer to receive baseline subset visibilities
+    Buffer* out_buf;
 
     /// Upper limits for baseline lengths that will be passed to subset
     uint16_t xmax, ymax;
 
+    /// Vector of indices for subset of products
+    std::vector<size_t> prod_ind;
+
 };
 
-// bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax);
 
 inline bool max_bl_condition(prod_ctype prod, int xmax, int ymax) {
 

@@ -42,7 +42,7 @@ visFile::visFile(const std::string& name,
     );
 
     createIndex(freqs, inputs, prods);
-    createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2);
+    createDatasets(freqs.size(), ninput, prods.size());
 
     // === Set the required attributes for a valid file ===
     std::string version = "NT_2.4.0";

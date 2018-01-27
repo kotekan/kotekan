@@ -43,7 +43,7 @@ inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
 }
 
 inline prod_ctype icmap(uint32_t k, uint16_t n) {
-    uint16_t ii;
+    uint16_t ii = 0;
     for (ii; ii < n; ii++) {
         if (cmap(ii, n - 1, n) >= k) {
             break;
