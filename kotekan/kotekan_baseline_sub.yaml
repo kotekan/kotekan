@@ -69,8 +69,8 @@ vis_subset:
   kotekan_process: baselineSubset
   in_buf: vis_buffer
   out_buf: write_buffer
-  max_x_baseline: 1
-  max_y_baseline: 63
+  max_ew_baseline: 1
+  max_ns_baseline: 63
 
 hdf5_writer:
   kotekan_process: visWriter
@@ -78,8 +78,8 @@ hdf5_writer:
   num_freq: 4
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
-  max_x_baseline: 1
-  max_y_baseline: 63
+  max_ew_baseline: 1
+  max_ns_baseline: 63
 
 hdf5_writer_full:
   kotekan_process: visWriter

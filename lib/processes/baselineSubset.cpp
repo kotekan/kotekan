@@ -15,12 +15,14 @@ baselineSubset::baselineSubset(Config &config,
     // Get buffers
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
+    // TODO: Size of buffer is not adjusted for baseline subset.
+    //       ~ 3/4 of buffer will be unused.
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
     // Define criteria for baseline selection based on config parameters
-    xmax = config.get_int(unique_name, "max_x_baseline");
-    ymax = config.get_int(unique_name, "max_y_baseline");
+    xmax = config.get_int(unique_name, "max_ew_baseline");
+    ymax = config.get_int(unique_name, "max_ns_baseline");
 
     // Find the products in the subset
     for (size_t i = 0; i < num_prod; i++) {
@@ -58,7 +60,7 @@ void baselineSubset::main_thread() {
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, input_frame_id);
 
-        // Allocate metadata and get frame
+        // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id,
                                          num_elements, num_prod,

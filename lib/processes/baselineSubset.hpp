@@ -29,7 +29,7 @@ private:
     /// Output buffer to receive baseline subset visibilities
     Buffer* out_buf;
 
-    /// Upper limits for baseline lengths that will be passed to subset
+    /// Upper limits for baseline lengths in subset
     uint16_t xmax, ymax;
 
     /// Vector of indices for subset of products

@@ -188,9 +188,10 @@ visWriter::visWriter(Config& config,
     // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "separate_nodes", true);
 
-    // TODO: create prods array based on config parameters
-    xmax = config.get_int_default(unique_name, "max_x_baseline", 0);
-    ymax = config.get_int_default(unique_name, "max_y_baseline", 0);
+    // If this writer takes a baseline subset as input, generate subset products
+    // as specified in config.
+    xmax = config.get_int_default(unique_name, "max_ew_baseline", 0);
+    ymax = config.get_int_default(unique_name, "max_ns_baseline", 0);
     all_prods = ! (xmax + ymax);
     for(uint16_t i=0; i < inputs.size(); i++) {
         for(uint16_t j = i; j < inputs.size(); j++) {
@@ -200,7 +201,6 @@ visWriter::visWriter(Config& config,
             }
         }
     }
-    DEBUG("visWrite: len of prods %d", prods.size())
 
     if(node_mode) {
 
