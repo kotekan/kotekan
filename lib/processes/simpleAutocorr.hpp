@@ -60,7 +60,7 @@ public:
 
 private:
     /// Kotekan buffer which this process consumes from.
-    /// Data should be packed as comples @c float pairs.
+    /// Data should be packed as complex @c float pairs.
     struct Buffer *buf_in;
     /// Kotekan buffer which this process produces into.
     struct Buffer *buf_out;
