@@ -26,8 +26,6 @@ using std::string;
  * Both input and output buffers' frame lengths should be integer multiples of the spectrum length,
  * though they need not be the same length as each other.
  *
- * This producer depends on libairspy.
- *
  * @par Buffers
  * @buffer in_buf Input kotekan buffer, to be consumed from.
  *     @buffer_format Array of <tt> complex float2 </tt>
@@ -36,8 +34,8 @@ using std::string;
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   spectrum_length      Int. Number of samples in the spectrum. Defaults to 1024.
- * @conf   integration_length   Int. Number of time samples to sum. Defaults to 1024.
+ * @conf   spectrum_length      Int (default 1024). Number of samples in the spectrum.
+ * @conf   integration_length   Int (default 1024). Number of time samples to sum.
  *
  * @todo    Convert input buffer to VDIF format?
  * @todo    Add some metadata to allow different data types for in/out.
