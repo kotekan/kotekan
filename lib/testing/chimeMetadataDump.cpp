@@ -49,7 +49,7 @@ void chimeMetadataDump::main_thread() {
 
         INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
                 ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64
-                 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld), GPS time: %ld.%06ld (%s.%09ld)\n",
+                 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld), GPS time: %ld.%06ld (%s.%09ld)",
                 in_buf->buffer_name, frame_id, fpga_seq,
                 stream_id.crate_id, stream_id.slot_id,
                 stream_id.link_id, stream_id.unused, lost_samples,
