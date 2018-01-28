@@ -49,19 +49,19 @@ public:
     virtual ~integratePowerStream();
 
     /// Primary loop, which waits on input frames, integrates, and dumps to output.
-    void main_thread();
+    void main_thread() override;
 
     /// Re-parse config, not yet implemented.
-    virtual void apply_config(uint64_t fpga_seq);
+    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
 	void tcpConnect();
 
     /// Kotekan buffer which this process consumes from.
     /// Data should be packed with IntensityPacketHeader's.
-    struct Buffer *buf_in;
+    struct Buffer *in_buf;
     /// Kotekan buffer which this process produces into.
-    struct Buffer *buf_out;
+    struct Buffer *out_buf;
 
     ///Number of frequencies in the buffer
     int freqs;
