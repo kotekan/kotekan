@@ -239,7 +239,7 @@ TAB_SIZE               = 4
 # newlines (in the resulting output). You can put ^^ in the value part of an
 # alias to insert a newline as if a physical newline was in the original file.
 
-ALIASES                = conf="@param" buffer="@arg @c" \
+ALIASES                = conf="@param" \
                          buffer="- @c" \
                          buffer_format="  - @b Format: " \
                          buffer_metadata="  - @b Metadata: @c" \
