@@ -82,9 +82,6 @@ void networkInputPowerStream::main_thread() {
         if (bind(socket_fd, (struct sockaddr *) &address, sizeof(address)) < 0)
             ERROR("bind() failed");
 
-//        struct sockaddr_in sender;
-//        int slen=sizeof(sender);
-
         char *local_buf = (char*)calloc(packet_length,sizeof(char));
 
         while (!stop_thread) {

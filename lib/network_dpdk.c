@@ -152,7 +152,7 @@ static void check_port_socket_assignment() {
             "polling thread.\n\tPerformance will "
             "not be optimal.\n", port);
 
-        INFO("network_dpdk: Core %u forwarding packets. [Ctrl+C to quit]\n",
+        INFO("network_dpdk: Core %u forwarding packets. [Ctrl+C to quit]",
             rte_lcore_id());
 }
 
@@ -548,14 +548,14 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
         for (int freq = 0; freq < NUM_FREQ; ++freq) {
             s_stream_id = extract_stream_id(stream_id);
-            INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+            INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d",
                     port, s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
             if (dpdk_net->args->fake_stream_ids == 1) {
                 s_stream_id.unused = freq;
                 // HACK for 2048 with one pair of crates
                 s_stream_id.crate_id = port * 2;
                 s_stream_id.link_id = 0;
-                INFO("dpdk: Faked StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+                INFO("dpdk: Faked StreamID: crate: %d, slot: %d, link: %d, unused: %d",
                         s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
             }
 
@@ -643,7 +643,7 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
                         (double)((seq - dpdk_net->vdif_offset) % 390625)/390625.0 );
             }
         }
-        INFO("Got first packet: port: %d, seq: %" PRId64 "\n",
+        INFO("Got first packet: port: %d, seq: %" PRId64 "",
                 port, dpdk_net->link_data[port][0].seq);
 
         return 1;
@@ -807,7 +807,7 @@ int lcore_recv_pkt_dump(void *args) {
                         // It's useful to display the stream information
                         uint16_t stream_id = get_mbuf_stream_id(mbufs[i]);
                         stream_id_t s_stream_id = extract_stream_id(stream_id);
-                        INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d\n",
+                        INFO("dpdk: port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d",
                                 port, s_stream_id.crate_id, s_stream_id.slot_id, s_stream_id.link_id, s_stream_id.unused);
                         allocate_new_metadata_object(dpdk_net->args->buf[port][0], buffer_id);
                     } else {
@@ -975,7 +975,7 @@ int lcore_recv_pkt(void *args)
                 // This allows us to not do the normal GPU buffer operations.
                 if (dpdk_net->args->buf != NULL) {
                     if (unlikely(diff > (int64_t)dpdk_net->args->timesamples_per_packet)) {
-                        DEBUG("PACKET LOSS, port: %d, diff: %" PRIu64 "\n", port, diff);
+                        DEBUG("PACKET LOSS, port: %d, diff: %" PRIu64 "", port, diff);
                         handle_lost_packets(dpdk_net, port);
                     }
 
