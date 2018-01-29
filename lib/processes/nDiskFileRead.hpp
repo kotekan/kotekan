@@ -13,7 +13,7 @@ public:
     ~nDiskFileRead();
 	void file_read_thread(int disk_id);
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
 private:
     struct Buffer *buf;
     std::vector<std::thread> file_thread_handles;

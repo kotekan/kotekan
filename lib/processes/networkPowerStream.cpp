@@ -19,8 +19,8 @@ networkPowerStream::networkPowerStream(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&networkPowerStream::main_thread, this)){
 
-    buf = get_buffer("power_in_buf");
-    register_consumer(buf, unique_name.c_str());
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
 
     //PER BUFFER
     times = config.get_int(unique_name, "samples_per_data_set") /
@@ -87,7 +87,7 @@ void networkPowerStream::main_thread() {
 
         while(!stop_thread) {
             // Wait for a full buffer.
-            frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
             if (frame == NULL) break;
 
             for (int t=0; t<times; t++){
@@ -110,8 +110,8 @@ void networkPowerStream::main_thread() {
             }
 
             // Mark buffer as empty.
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % buf->num_frames;
+            mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % in_buf->num_frames;
         }
     }
     else if (dest_protocol == "TCP")
@@ -119,7 +119,7 @@ void networkPowerStream::main_thread() {
         // TCP variables
         while (!stop_thread) {
             // Wait for a full buffer.
-            frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+            frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
             if (frame == NULL) break;
 
             while (atomic_flag_test_and_set(&socket_lock)) {}
@@ -163,8 +163,8 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
             }
             // Mark buffer as empty.
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % buf->num_frames;
+            mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % in_buf->num_frames;
         }
 
     }
