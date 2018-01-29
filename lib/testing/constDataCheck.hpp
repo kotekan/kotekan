@@ -22,7 +22,7 @@ public:
                   bufferContainer &buffer_container);
     ~constDataCheck();
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
 private:
     struct Buffer *buf;
     int32_t ref_real;

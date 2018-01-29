@@ -1,5 +1,5 @@
 /**
- * @file simpleAutocorr.hpp
+ * @file
  * @brief A simple autocorrelator (sum-sq) process.
  *  - simpleAutocorr : public KotekanProcess
  */
@@ -26,8 +26,6 @@ using std::string;
  * Both input and output buffers' frame lengths should be integer multiples of the spectrum length,
  * though they need not be the same length as each other.
  *
- * This producer depends on libairspy.
- *
  * @par Buffers
  * @buffer in_buf Input kotekan buffer, to be consumed from.
  *     @buffer_format Array of <tt> complex float2 </tt>
@@ -36,10 +34,8 @@ using std::string;
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   in_buf               Buffer.  Input kotekan buffer, to be consumed from.
- * @conf   out_buf              Buffer. Output kotekan buffer, to be produced into.
- * @conf   spectrum_length      Int. Number of samples in the spectrum. Defaults to 1024.
- * @conf   integration_length   Int. Number of time samples to sum. Defaults to 1024.
+ * @conf   spectrum_length      Int (default 1024). Number of samples in the spectrum.
+ * @conf   integration_length   Int (default 1024). Number of time samples to sum.
  *
  * @todo    Convert input buffer to VDIF format?
  * @todo    Add some metadata to allow different data types for in/out.
@@ -57,14 +53,14 @@ public:
     virtual ~simpleAutocorr();
 
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.
-    void main_thread();
+    void main_thread() override;
 
     /// Re-parse config, not yet implemented.
-    virtual void apply_config(uint64_t fpga_seq);
+    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
     /// Kotekan buffer which this process consumes from.
-    /// Data should be packed as comples @c float pairs.
+    /// Data should be packed as complex @c float pairs.
     struct Buffer *buf_in;
     /// Kotekan buffer which this process produces into.
     struct Buffer *buf_out;

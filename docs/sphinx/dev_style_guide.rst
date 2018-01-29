@@ -7,8 +7,16 @@ If you're going to work on **kotekan** code, please adhere to the following guid
 Files
 ------
 
-Names & locations.
+New ``kotekanProcesses`` files should be placed in the ``lib/processes/`` folder,
+and named in *CamelCase* to match the process class they contain.
 
+Accelerator interfaces (such as e.g. OpenCL or CUDA) 
+should create their own folder within ``lib/``,
+for storage of kernel handling objects and the kernels themselves.
+
+Support scripts and components can be placed in the ``script/`` folder.
+
+Configuration (``yaml``) files should go in the ``config/`` folder.
 
 
 Documentation
@@ -16,6 +24,13 @@ Documentation
 
 All files should be liberally commented, with full `doxygen <www.doxygen.org>`_ docstrings
 describing the class, variables, and all member functions.
+
+Comment blocks should use an empty ``/**`` line to begin,
+with subsequent lines beginning with ``_*_`` (space,star,space).
+The comment block should close with a ``_*/`` (space,star,slash).
+
+One-line docstrings (only to be used on private functions and variables)
+should use the standard doxygen ``///`` (triple-slash).
 
 Files
 ^^^^^^^^^^
@@ -25,15 +40,14 @@ and listing their content functions or classes.
 .. code-block:: c++
 
   /**
-   * @file fftwEngine.hpp
+   * @file
    * @brief An FFTW-based F-engine process.
    *  - fftwEngine : public KotekanProcess
    */
 
 Classes
 ^^^^^^^^^^
-All classes should include a comment block immediately preceeding their declaration,
-similar to the following.
+All classes should include a comment block immediately preceeding their declaration.
 
 .. code-block:: c++
 

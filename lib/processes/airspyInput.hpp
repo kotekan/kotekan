@@ -1,5 +1,5 @@
 /**
- * @file airspyInput.hpp
+ * @file
  * @brief Contains airspy producer for kotekan.
  *  - airspyInput : public KotekanProcess
  */
@@ -65,10 +65,10 @@ public:
     virtual ~airspyInput();
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
     /// Not yet implemented, should update runtime parameters.
-    virtual void apply_config(uint64_t fpga_seq);
+    virtual void apply_config(uint64_t fpga_seq) override;
 
 
     /// Initializes the airspy device.
