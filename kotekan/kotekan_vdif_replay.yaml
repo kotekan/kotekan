@@ -63,12 +63,12 @@ replay:
   capture: 20170805T155218Z_aro_vdif
 
 RFI:
-  kotekan_process: vdifRFI
+  kotekan_process: rfiVDIF
   vdif_in: vdif_input_buf
   rfi_out: rfi_out_buf
 
 rfiBroadcast:
-  kotekan_process: rfiBroadcastVdif
+  kotekan_process: rfiBroadcastVDIF
   rfi_in: rfi_out_buf
   destination_port: 41215
   destination_ip: 127.0.0.1

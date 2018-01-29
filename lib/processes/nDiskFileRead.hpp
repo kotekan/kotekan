@@ -13,9 +13,9 @@
 
 /**
  * @class nDiskFileRead
- * @brief Producer ``KotekanProcess`` which reads VDIF data from multiple drive into a ``Buffer``
+ * @brief Producer ``KotekanProcess`` which reads VDIF data from multiple drives into a ``Buffer``
  *
- * This is a producer which initiates n thread to read from n disks. Each disk must contain data is the
+ * This is a producer which initiates n threads to read from n disks. Each disk must contain data in the
  * same folders as specified in the kotekan config file. Within each folder the data files must be numbered
  * incrementally across the disks. Since the file format is the most important aspect of this process, a worked
  * example for a set of 3 disks is shown below.
@@ -40,31 +40,31 @@
  * 
  * Config Parameters:
  *
- * num_disk: 3
- * disk_base: /drives/
- * disk_set: /D/
- * capture: 20170805T155218Z_aro_vdif
- * starting_index: 0
+ * - num_disk: 3
+ * - disk_base: /drives/
+ * - disk_set: /D/
+ * - capture: 20170805T155218Z_aro_vdif
+ * - starting_index: 0
  *
  * What the file paths should look like:
  *
  * Drive 0:
  *
- * /drives/D/0/20170805T155218Z_aro_vdif/0000000.vdif
- * /drives/D/0/20170805T155218Z_aro_vdif/0000003.vdif
- * /drives/D/0/20170805T155218Z_aro_vdif/0000006.vdif 
+ * - /drives/D/0/20170805T155218Z_aro_vdif/0000000.vdif
+ * - /drives/D/0/20170805T155218Z_aro_vdif/0000003.vdif
+ * - /drives/D/0/20170805T155218Z_aro_vdif/0000006.vdif 
  * 
  * Drive 1:
  *
- * /drives/D/1/20170805T155218Z_aro_vdif/0000001.vdif
- * /drives/D/1/20170805T155218Z_aro_vdif/0000004.vdif
- * /drives/D/1/20170805T155218Z_aro_vdif/0000007.vdif 
+ * - /drives/D/1/20170805T155218Z_aro_vdif/0000001.vdif
+ * - /drives/D/1/20170805T155218Z_aro_vdif/0000004.vdif
+ * - /drives/D/1/20170805T155218Z_aro_vdif/0000007.vdif 
  *
  * Drive 2:
  * 
- * /drives/D/2/20170805T155218Z_aro_vdif/0000002.vdif
- * /drives/D/2/20170805T155218Z_aro_vdif/0000005.vdif
- * /drives/D/2/20170805T155218Z_aro_vdif/0000008.vdif
+ * - /drives/D/2/20170805T155218Z_aro_vdif/0000002.vdif
+ * - /drives/D/2/20170805T155218Z_aro_vdif/0000005.vdif
+ * - /drives/D/2/20170805T155218Z_aro_vdif/0000008.vdif
  *
  * @author Jacob Taylor
  */
