@@ -15,7 +15,7 @@
 #include <atomic>
 
 /**
- * @class simpleAutocorr
+ * @class integratePowerStream
  * @brief A simple process to take a @c radioPowerStream and sum down.
  *
  * This is a simple signal processing block which takes power data from an input buffer,
