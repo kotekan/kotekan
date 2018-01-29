@@ -1,0 +1,5 @@
+********************
+integratePowerStream
+********************
+
+.. doxygenclass:: integratePowerStream

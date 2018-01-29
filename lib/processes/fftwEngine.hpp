@@ -1,5 +1,5 @@
 /**
- * @file fftwEngine.hpp
+ * @file
  * @brief An FFTW-based F-engine process.
  *  - fftwEngine : public KotekanProcess
  */
@@ -55,9 +55,9 @@ public:
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~fftwEngine();
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.
-    void main_thread();
+    void main_thread() override;
     /// Re-parse config, not yet implemented.
-    virtual void apply_config(uint64_t fpga_seq);
+    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
     /// Kotekan buffer which this process consumes from.

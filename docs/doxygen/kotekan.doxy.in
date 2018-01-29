@@ -239,7 +239,7 @@ TAB_SIZE               = 4
 # newlines (in the resulting output). You can put ^^ in the value part of an
 # alias to insert a newline as if a physical newline was in the original file.
 
-ALIASES                = conf="@param" buffer="@arg @c" \
+ALIASES                = conf="@param" \
                          buffer="- @c" \
                          buffer_format="  - @b Format: " \
                          buffer_metadata="  - @b Metadata: @c" \
@@ -1667,7 +1667,7 @@ EXTRA_SEARCH_MAPPINGS  =
 # If the GENERATE_LATEX tag is set to YES, doxygen will generate LaTeX output.
 # The default value is: YES.
 
-GENERATE_LATEX         = YES
+GENERATE_LATEX         = NO
 
 # The LATEX_OUTPUT tag is used to specify where the LaTeX docs will be put. If a
 # relative path is entered the value of OUTPUT_DIRECTORY will be put in front of

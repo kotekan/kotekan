@@ -90,10 +90,7 @@ public:
 
     //Applies the config parameters
     void apply_config(uint64_t fpga_seq) override;
-
-    //Creates n safe instances of the file_read_thread thread
-    void main_thread(); override;
-
+    void main_thread() override;
 private:
     //The kotekan buffer object the processes is producing for
     struct Buffer *buf;

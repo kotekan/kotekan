@@ -1,0 +1,6 @@
+***********************
+networkInputPowerStream
+***********************
+
+.. doxygenclass:: networkInputPowerStream
+

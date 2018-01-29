@@ -104,7 +104,7 @@ CHIME_X:
     compute_pgm_rsrc2_tgid_z_en = 1
     compute_pgm_rsrc2_user_sgpr = 3
 
-    workitem_vgpr_count = 48
+    workitem_vgpr_count = 47
     wavefront_sgpr_count = 24
 
     ;following http://gpuopen.com/amdgcn-assembly/
@@ -600,7 +600,7 @@ CHIME_X:
         ;ITERATION 0
 
         ;wait to proceed -- 35 ops is NOT ENOUGH!
-;    s_waitcnt lgkmcnt(3)
+    s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
         v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
         v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
@@ -619,7 +619,7 @@ CHIME_X:
         v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
           ds_bpermute_b32 v12, v44, v12
 
-;    s_waitcnt lgkmcnt(3)
+    s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
         v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
         v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
