@@ -16,7 +16,7 @@
  * @class chimeMetadataDump
  * @brief Displays CHIME metedata for a given buffer
  *
- * This is a simple process which prints (via the @INFO mechanism)
+ * This is a simple process which prints (via the @c INFO mechanism)
  * CHIME metadata from a target buffer.
  *
  * @par Buffers
