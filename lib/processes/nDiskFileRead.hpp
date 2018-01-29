@@ -89,10 +89,10 @@ public:
     void file_read_thread(int disk_id);
 
     //Applies the config parameters
-    void apply_config(uint64_t fpga_seq) override;
+    void apply_config(uint64_t fpga_seq);
 
     //Creates n safe instances of the file_read_thread thread
-    void main_thread();
+    void main_thread() override;
 
 private:
     //The kotekan buffer object the processes is producing for
