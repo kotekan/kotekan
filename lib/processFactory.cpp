@@ -40,6 +40,7 @@
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
+#include "fakeGpuBuffer.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -274,6 +275,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // Generate fake visbilities
     if (name == "fakeVis") {
         return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities in GPU buffer format
+    if (name == "fakeGpuBuffer") {
+        return (KotekanProcess *) new fakeGpuBuffer(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {

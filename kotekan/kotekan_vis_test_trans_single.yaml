@@ -72,18 +72,39 @@ vis_buffer:
 #  base_dir: ../../../data2/
 #  file_ext: dump
 #  file_name: cnBg8_corr_gpu3
-#
-vis_gen:
-  kotekan_process: fakeVis
-  freq: [0, 256, 512, 768]
+fakegpu0:
+    kotekan_process: fakeGpuBuffer
+    freq: 0
+    out_buf: gpu_buf0
+    cadence: 5.0
+
+fakegpu1:
+    kotekan_process: fakeGpuBuffer
+    freq: 256
+    out_buf: gpu_buf1
+    cadence: 5.0
+
+fakegpu2:
+    kotekan_process: fakeGpuBuffer
+    freq: 512
+    out_buf: gpu_buf2
+    cadence: 5.0
+
+fakegpu3:
+    kotekan_process: fakeGpuBuffer
+    freq: 768
+    out_buf: gpu_buf3
+    cadence: 5.0
+
+vis_transform:
+  kotekan_process: visTransform
+  input_buffers:
+      - gpu_buf0
+      - gpu_buf1
+      - gpu_buf2
+      - gpu_buf3
   output_buffer: vis_buffer
   num_eigenvectors: 4
-  cadence: 5.0
-  fill_ij: true
-
-#vis_debug:
-  #kotekan_process: visDebug
-  #buffer: vis_buffer
 
 hdf5_writer:
   kotekan_process: visWriter
@@ -95,7 +116,7 @@ hdf5_writer:
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
 # The first is for the reordering, the last two are for making the index map
-input_reorder:
+schminput_reorder:
     - [ 128,    0, FCC000812]
     - [ 129,    1, FCC000813]
     - [ 130,    2, FCC000814]
