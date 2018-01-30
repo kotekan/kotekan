@@ -86,24 +86,24 @@ void rfiVDIF::main_thread() {
         in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
         if (in_frame == NULL) break;
     	//Reset Counters
-	    RFI_INDEX = 0;
+        RFI_INDEX = 0;
         block_counter = 0;
         ptr_counter = 0;
 
         //Loop through frame
         while(ptr_counter < buf_in->frame_size){
 
-	        //Initialize Arrays for a single block
+            //Initialize Arrays for a single block
             unsigned char block[VDIF_BLOCK_SIZE]; 
             
-            if(block_counter == 0){ //Reset after each SK
-	            for(i = 0; i < num_elements; i++){
+            if(block_counter == 0){ //Reset after each S
+                for(i = 0; i < num_elements; i++){
                     invalid_data_counter[i] = 0;
                     for (j = 0; j < num_frequencies; j++){
-		                power_arr[i][j] = 0;
-	                   	power_sq_arr[i][j] = 0;
+                        power_arr[i][j] = 0;
+                        power_sq_arr[i][j] = 0;
                     }
-	            }
+                }
             }
 
             //Read in first block
@@ -150,7 +150,7 @@ void rfiVDIF::main_thread() {
                             //Normalize
                             power_sq_arr[i][j] /= (power_arr[i][j]/SK_STEP)*(power_arr[i][j]/SK_STEP);
                         }
-		            }   
+                    }   
                     for(i = 0; i < num_frequencies; i++){
 
                         S2[i] = 0; //Intialize
@@ -164,8 +164,8 @@ void rfiVDIF::main_thread() {
                         //Compute Kurtosis for each frequency
                         RFI_Buffer[RFI_INDEX] = ((M+1)/(M-1))*(S2[i]/M-1);
                         RFI_INDEX++;
-                        //INFO("Pre Value %f M %f Second Value %f S2 %f S2/M %f",((M+1)/(M-1)),M, (S2[i]/M-1),S2[i], S2[i]/M);
-		            }					        				    
+                        //INFO("Pre Value %f M %f Second Value %f S2 %f S2/M %f",((M+1)/(M-1)),M, (S2[i]/M-1),S2[i], S2[i]/M)
+                    }					        				    
                 }
                 else{
 
@@ -183,13 +183,12 @@ void rfiVDIF::main_thread() {
                             
                         }
                     }
-                    
                 }
                 //Reset Block Counter
                 block_counter = 0;
             }
         }
-        INFO("FIRST SK Value %f",RFI_Buffer[100])
+        //INFO("FIRST SK Value %f",RFI_Buffer[100])
         out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
         if (out_frame == NULL) break;
 
