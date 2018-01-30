@@ -39,6 +39,8 @@
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
+#include "rfiVDIF.hpp"
+#include "rfiBroadcastVDIF.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -183,6 +185,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
+    }
+
+    if (name == "rfiVDIF") {
+        return (KotekanProcess *) new rfiVDIF(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVDIF") {
+        return (KotekanProcess *) new rfiBroadcastVDIF(config, location, buffer_container);
     }
 
 #ifdef WITH_AIRSPY
