@@ -1,8 +1,8 @@
 /**
- *  * @file nDiskFileRead.hpp
- *   * @brief A process to read VDIF files from multiple drives.
- *    *  - nDiskFileRead : public KotekanProcess
- *     */
+ * @file nDiskFileRead.hpp
+ * @brief A process to read VDIF files from multiple drives.
+ *  - nDiskFileRead : public KotekanProcess
+ */
 
 #ifndef N_DISK_FILE_READ_H
 #define N_DISK_FILE_READ_H
