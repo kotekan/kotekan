@@ -85,7 +85,7 @@ void rfiVDIF::main_thread() {
         //Get a new frame
         in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
         if (in_frame == NULL) break;
-    	//Reset Counters
+        //Reset Counters
         RFI_INDEX = 0;
         block_counter = 0;
         ptr_counter = 0;
@@ -96,7 +96,7 @@ void rfiVDIF::main_thread() {
             //Initialize Arrays for a single block
             unsigned char block[VDIF_BLOCK_SIZE]; 
             
-            if(block_counter == 0){ //Reset after each S
+            if(block_counter == 0){ //Reset after each SK_Step
                 for(i = 0; i < num_elements; i++){
                     invalid_data_counter[i] = 0;
                     for (j = 0; j < num_frequencies; j++){
