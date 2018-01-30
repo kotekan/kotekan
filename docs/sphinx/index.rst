@@ -2,24 +2,18 @@
 Welcome to Kotekan's documentation!
 ====================================
 
-Overview
--------------
-
 .. toctree::
-   :maxdepth: 1
    :caption: Overview
+   :maxdepth: 1
 
    overview
    overview_theory_of_operation
    overview_compiling
 
 
-User's Guide
-------------
-
 .. toctree::
-   :maxdepth: 2
    :caption: User's Guide
+   :maxdepth: 2
 
    user_introduction
    user_config
@@ -27,12 +21,9 @@ User's Guide
 
 
 
-Developer's Guide
------------------
-
 .. toctree::
-   :maxdepth: 2
    :caption: Developer's Guide
+   :maxdepth: 2
 
    dev_introduction
    dev_buffers
