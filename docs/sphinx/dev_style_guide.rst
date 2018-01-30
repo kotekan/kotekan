@@ -4,6 +4,7 @@ Style Guide
 
 If you're going to work on **kotekan** code, please adhere to the following guidelines:
 
+
 Files
 ------
 
@@ -17,6 +18,14 @@ for storage of kernel handling objects and the kernels themselves.
 Support scripts and components can be placed in the ``script/`` folder.
 
 Configuration (``yaml``) files should go in the ``config/`` folder.
+
+
+General Structure
+-----------------
+Use 4-space tabs.
+
+No trailing whitespace.
+
 
 
 Documentation
@@ -103,6 +112,8 @@ A simple example comment follows:
    *
    */
 
+
+
 Naming
 ----------
 
@@ -130,6 +141,8 @@ Config File Settings
 Variables
 +++++++++
 Variables and parameters in the config file should use underscore naming, e.g. ``my_favourite_variable``.
+
+If you need to reference the size of a datatype, use a C-like naming, e.g. ``sizeof_float = 4``.
 
 ``Buffers``
 +++++++++++
