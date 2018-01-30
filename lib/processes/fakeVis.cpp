@@ -31,6 +31,8 @@ fakeVis::fakeVis(Config &config,
     // Get cadence
     cadence = config.get_float(unique_name, "cadence");
 
+    // Get fill type
+    fill_ij = config.get_bool_default(unique_name, "fill_ij", false);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -71,21 +73,32 @@ void fakeVis::main_thread() {
 
             // Insert values into vis array to help with debugging
             std::complex<float> * out_vis = output_frame.vis();
-            // Set diagonal elements to (0, row)
-            for (int i = 0; i < num_elements; i++) {
-                uint32_t pi = cmap(i, i, num_elements);
-                out_vis[pi] = {0., (float) i};
-            }
-            // Save metadata in first few cells
-            if ( sizeof(out_vis) < 4 ) {
-                INFO("Number of elements (%d) is too small to encode \
-                      debugging values in fake visibilities", num_elements);
+
+            if(fill_ij) {
+                int ind = 0;
+                for(int i = 0; i < num_elements; i++) {
+                    for(int j = i; j < num_elements; j++) {
+                        out_vis[ind] = {(float)i, (float)j};
+                        ind++;
+                    }
+                }
             } else {
-                // For simplicity overwrite diagonal if needed
-                out_vis[0] = {(float) fpga_seq, 0.};
-                out_vis[1] = {(float) (ts.tv_sec + 1e-9 * ts.tv_nsec), 0.};
-                out_vis[2] = {(float) f, 0.};
-                out_vis[3] = {(float) output_frame_id, 0.};
+                // Set diagonal elements to (0, row)
+                for (int i = 0; i < num_elements; i++) {
+                    uint32_t pi = cmap(i, i, num_elements);
+                    out_vis[pi] = {0., (float) i};
+                }
+                // Save metadata in first few cells
+                if ( sizeof(out_vis) < 4 ) {
+                    INFO("Number of elements (%d) is too small to encode \
+                          debugging values in fake visibilities", num_elements);
+                } else {
+                    // For simplicity overwrite diagonal if needed
+                    out_vis[0] = {(float) fpga_seq, 0.};
+                    out_vis[1] = {(float) (ts.tv_sec + 1e-9 * ts.tv_nsec), 0.};
+                    out_vis[2] = {(float) f, 0.};
+                    out_vis[3] = {(float) output_frame_id, 0.};
+                }
             }
 
             // Mark the buffers and move on

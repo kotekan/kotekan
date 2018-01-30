@@ -9,7 +9,7 @@
 
 /**
  * Generate fake visibility buffers for downstream task development.
- * 
+ *
  * ...
  */
 class fakeVis : public KotekanProcess {
@@ -36,6 +36,8 @@ private:
     // Cadence to simulate (in seconds)
     float cadence;
 
+    // Fill with feed indices
+    bool fill_ij;
 };
 
 #endif
