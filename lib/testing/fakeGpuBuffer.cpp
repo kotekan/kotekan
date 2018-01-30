@@ -36,6 +36,8 @@ void fakeGpuBuffer::main_thread() {
 
     uint64_t fpga_seq = 0;
 
+    // This encoding of the stream id should ensure that bin_number_chime gives
+    // back the original frequency ID when it is called later
     stream_id_t s = {0, (uint8_t)(freq % 256), 0, (uint8_t)(freq / 256)};
 
     while(!stop_thread) {
@@ -44,25 +46,25 @@ void fakeGpuBuffer::main_thread() {
         );
         if (output == NULL) break;
 
-        // TODO adjust to allow for more than one frequency.
-        // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU buffer in %s[%d]",
                 output_buf->buffer_name, frame_id);
 
+        // Fill the buffer with some data encoding the blocked structure. This
+        // can help with some debugging of the task ordering.
         for (int b = 0; b < num_blocks; ++b){
             for (int y = 0; y < block_size; ++y){
                 for (int x = 0; x < block_size; ++x) {
                     int ind = b * block_size * block_size + x + y * block_size;
-                    output[2 * ind + 0] = block_size * b; // + y;
-                    output[2 * ind + 1] = block_size * b; // + x;
-                    //INFO("real: %d, imag: %d", real, imag);
+                    output[2 * ind + 0] = block_size * b + y;
+                    output[2 * ind + 1] = block_size * b + x;
                 }
             }
         }
 
         allocate_new_metadata_object(output_buf, frame_id);
-        gettimeofday(&ts, NULL);
 
+        // Set the frame metadata
+        gettimeofday(&ts, NULL);
         set_fpga_seq_num(output_buf, frame_id, fpga_seq);
         set_first_packet_recv_time(output_buf, frame_id, ts);
         set_stream_id_t(output_buf, frame_id, s);

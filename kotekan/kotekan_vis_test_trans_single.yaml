@@ -116,7 +116,7 @@ hdf5_writer:
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
 # The first is for the reordering, the last two are for making the index map
-schminput_reorder:
+input_reorder:
     - [ 128,    0, FCC000812]
     - [ 129,    1, FCC000813]
     - [ 130,    2, FCC000814]
