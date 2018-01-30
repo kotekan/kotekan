@@ -12,3 +12,11 @@ REST endpoints
 
 Daemon mode
 -------------
+
+
+Common Operation Modules
+------------------------
+.. toctree::
+    :glob:
+
+    modules/*
