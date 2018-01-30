@@ -40,11 +40,11 @@ rfi_out_buf:
   kotekan_buffer: standard
   metadata_pool: meta_pool
   num_frames: buffer_depth * num_disks
-  float_size: 4
+  sizeof_float: 4
 #If combining inputs
-  frame_size: float_size * num_freq * samples_per_data_set / sk_step
+  frame_size: sizeof_float * num_freq * samples_per_data_set / sk_step
 #If not combining inputs
-#  frame_size: float_size * num_freq * samples_per_data_set * num_elements / sk_step
+#  frame_size: sizeof_float * num_freq * samples_per_data_set * num_elements / sk_step
 
 
 #output_power_buf:

@@ -1,3 +1,12 @@
+/*********************************************************************************
+* RFI Documentation Header Block
+* File: rfi_client.py
+* Purpose: A client to receive and display real-time rfi data from rfi_receiver.py
+* Python Version: 3.6 
+* Dependencies: Matplotlib, yaml, numpy, argparse
+* Help: Run "python3 rfi_client.py" -H (or --Help) for how to use.
+*********************************************************************************/
+
 import threading
 import socket
 import numpy as np
