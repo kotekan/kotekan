@@ -12,78 +12,6 @@
 
 CHIME_X:
   .amd_kernel_code_t
-;                amd_code_version_major = 1
-;                amd_code_version_minor = 1
-;                amd_machine_kind = 1
-;                amd_machine_version_major = 8
-;                amd_machine_version_minor = 0
-;                amd_machine_version_stepping = 3
-;
-;                kernel_code_entry_byte_offset = 256
-;                kernel_code_prefetch_byte_size = 0
-;                max_scratch_backing_memory_byte_size = 0
-;                granulated_workitem_vgpr_count = 12
-;                granulated_wavefront_sgpr_count = 3
-;
-;                priority = 0
-;                float_mode = 192
-;                priv = 0
-;                enable_dx10_clamp = 1
-;                debug_mode = 0
-;                enable_ieee_mode = 1
-;                enable_sgpr_private_segment_wave_byte_offset = 0
-;
-;                user_sgpr_count = 3
-;                enable_trap_handler = 1
-;                enable_sgpr_workgroup_id_x = 0
-;                enable_sgpr_workgroup_id_y = 1
-;                enable_sgpr_workgroup_id_z = 1
-;                enable_sgpr_workgroup_info = 0
-;                enable_vgpr_workitem_id = 1
-;
-;                enable_exception_msb = 0
-;                granulated_lds_size = 0
-;                enable_exception = 0
-;                enable_sgpr_private_segment_buffer = 0
-;                enable_sgpr_dispatch_ptr = 0
-;                enable_sgpr_queue_ptr = 0
-;
-;                enable_sgpr_kernarg_segment_ptr = 1
-;                enable_sgpr_dispatch_id = 0
-;                enable_sgpr_flat_scratch_init = 0
-;                enable_sgpr_private_segment_size = 0
-;                enable_sgpr_grid_workgroup_count_x = 0
-;                enable_sgpr_grid_workgroup_count_y = 0
-;                enable_sgpr_grid_workgroup_count_z = 0
-;
-;                enable_ordered_append_gds = 0
-;                private_element_size = 1
-;                is_ptr64 = 1
-;                is_dynamic_callstack = 0
-;                is_debug_enabled = 0
-;                is_xnack_enabled = 0
-;
-;                workitem_private_segment_byte_size = 0
-;                workgroup_group_segment_byte_size = 3136
-;                gds_segment_byte_size = 0
-;                kernarg_segment_byte_size = 40
-;                workgroup_fbarrier_count = 0
-;
-;                wavefront_sgpr_count = 24
-;                workitem_vgpr_count = 48
-;                reserved_vgpr_first = 0
-;                reserved_vgpr_count = 0
-;                reserved_sgpr_first = 0
-;                reserved_sgpr_count = 0
-;
-;                debug_wavefront_private_segment_offset_sgpr = 0
-;                debug_private_segment_buffer_sgpr = 0
-;                kernarg_segment_alignment = 4
-;                group_segment_alignment = 4
-;                private_segment_alignment = 4
-;                wavefront_size = 6
-;                call_convention = -1
-;                runtime_loader_kernel_symbol = 0
 
     kernel_code_version_major = 1
     kernel_code_version_minor = 0
@@ -104,7 +32,7 @@ CHIME_X:
     compute_pgm_rsrc2_tgid_z_en = 1
     compute_pgm_rsrc2_user_sgpr = 3
 
-    workitem_vgpr_count = 48
+    workitem_vgpr_count = 47
     wavefront_sgpr_count = 24
 
     ;following http://gpuopen.com/amdgcn-assembly/
@@ -119,7 +47,6 @@ CHIME_X:
 
  .end_amd_kernel_code_t
 
-;  s_sleep 1000
 
 ;s[0:1] contains input array
 ;s[10:11] contains the presum buffer
@@ -600,7 +527,7 @@ CHIME_X:
         ;ITERATION 0
 
         ;wait to proceed -- 35 ops is NOT ENOUGH!
-;    s_waitcnt lgkmcnt(3)
+    ;s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
         v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
         v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
@@ -619,7 +546,7 @@ CHIME_X:
         v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
           ds_bpermute_b32 v12, v44, v12
 
-;    s_waitcnt lgkmcnt(3)
+    ;s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
         v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
         v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
