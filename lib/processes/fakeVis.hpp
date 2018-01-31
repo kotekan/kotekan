@@ -26,14 +26,14 @@ File Contents:
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
  *     @buffer_format visBuffer structured
-+*     @buffer_metadata visMetadata
+ *     @buffer_metadata visMetadata
  *
  * @conf  out_buf           string. Name of buffer to output to.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
-+*                          correlator data (read from "/")
-+* @conf  block_size        int. The block size of the packed data (read from "/")
+ *                          correlator data (read from "/")
+ * @conf  block_size        int. The block size of the packed data (read from "/")
  * @conf  num_prod          int. The number of products in the correlator data (read from "/")
-+* @conf  num_eigenvectors  int. The number of eigenvectors to be stored
+ * @conf  num_eigenvectors  int. The number of eigenvectors to be stored
  * @conf  freq              list of int. The frequency IDs to generate frames for.
  * @conf  cadence           float. The interval of time (in seconds) between frames.
  *
