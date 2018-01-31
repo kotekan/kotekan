@@ -2,6 +2,7 @@
 #include "errors.h"
 #include <time.h>
 #include <sys/time.h>
+#include <unistd.h>
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 
