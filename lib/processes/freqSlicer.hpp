@@ -27,17 +27,20 @@ public:
 
 private:
 
-// TODO: delete.
     // Parameters saved from the config files
-//    size_t num_elements, num_eigenvectors, block_size;
+    size_t num_elements, num_eigenvectors;
+// TODO: delete.
+//    size_t block_size;
 
     // I may have to modify this one depending on what buffers I use in my process
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<Buffer*, unsigned int>> output_buffers;
-    Buffer * output_buffer; // Pointer to a Buffer object
+    Buffer * input_buffer; // Pointer to a Buffer object
 
     // TODO: I don't hink I need this. Should try to comment out
     // The mapping from buffer element order to output file element ordering
 //    std::vector<uint32_t> input_remap;
 
 };
+
+#endif

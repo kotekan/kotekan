@@ -28,6 +28,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               fakeVis.cpp
+              freqSlicer.cpp
               )
 
 if (${USE_DPDK})
