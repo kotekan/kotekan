@@ -1,5 +1,5 @@
 /**
- * @file nDiskFileRead.hpp
+ * @file
  * @brief A process to read VDIF files from multiple drives.
  *  - nDiskFileRead : public KotekanProcess
  */
@@ -68,13 +68,13 @@
  *
  * @author Jacob Taylor
  */
-
 class nDiskFileRead : public KotekanProcess {
 public:
     ///Constructor, calls apply_config to intialize parameters
     nDiskFileRead(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_containter);
+
     ///Destructor, currently does nothing 
     ~nDiskFileRead();
 

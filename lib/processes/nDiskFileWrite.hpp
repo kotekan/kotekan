@@ -1,7 +1,7 @@
 /**
- * @file nDiskFileWrite.hpp
+ * @file
  * @brief A process to read VDIF files from multiple drives.
- *  - nDiskFileRead : public KotekanProcess
+ *  - nDiskFileWrite : public KotekanProcess
  */
 
 #ifndef N_DISK_FILE_WRITE_H
@@ -70,7 +70,6 @@ using std::string;
  *
  * @author Andre Renard
  */
-
 class nDiskFileWrite : public KotekanProcess {
 public:
     ///Constructor, calls apply_config to intialize parameters
@@ -87,9 +86,10 @@ public:
     ///Creates n safe instances of the file_read_thread thread
     void main_thread() override;
 private:
-    ///The kotekan buffer object the processes is producing for
+    ///The kotekan buffer object the processes is consuming from
     struct Buffer *buf;
 
+    ///Which disk in the array is currently being written to
     uint32_t disk_id;
     ///A holder for the config parameter num_disks
     uint32_t num_disks;
