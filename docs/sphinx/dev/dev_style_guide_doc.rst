@@ -44,8 +44,8 @@ All classes should include a comment block immediately preceeding their declarat
    *
    */
 
-``kotekanProcesses``
-^^^^^^^^^^^^^^^^^^^^
+kotekanProcesses
+++++++++++++++++
 Should additionally describe their use of (and requirements for) config file options.
 Special doxygen aliases exist to help make these explicit.
 
