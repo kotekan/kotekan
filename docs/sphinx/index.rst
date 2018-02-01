@@ -13,22 +13,22 @@ Welcome to Kotekan's documentation!
 
 .. toctree::
    :caption: User's Guide
-   :maxdepth: 2
+   :maxdepth: 1
 
-   user_introduction
-   user_config
-   user_operation
+   user/user_introduction
+   user/user_config
+   user/user_operation
 
 
 
 .. toctree::
    :caption: Developer's Guide
-   :maxdepth: 2
+   :maxdepth: 1
 
-   dev_introduction
-   dev_buffers
-   dev_processes
-   dev_rest_endpoints
-   dev_style_guide
+   dev/dev_introduction
+   dev/dev_buffers
+   dev/dev_processes
+   dev/dev_rest_endpoints
+   dev/dev_style_guide
 
 You can also peruse the full `doxygen docs <doxygen/>`_.

@@ -25,7 +25,7 @@
  * The python script generates a pdf plot of the visibilitiy matrix, saving it to a timestamped file.
  *
  * @par REST Endpoints
- * @endpoint ``/plot_corr_matrix``/``gpu_id`` Any contact here triggers a plot dump.
+ * @endpoint /plot_corr_matrix/``gpu_id`` Any contact here triggers a plot dump.
  *
  * @par Buffers
  * @buffer in_buf Buffer containing the data to be plotted. Should be a blocked upper triangle correlation matrix
