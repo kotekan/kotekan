@@ -1,5 +1,6 @@
 /*****************************************
-File Contents:
+@file
+@brief Generate fake visBuffer data.
 - fakeVis : public KotekanProcess
 *****************************************/
 
@@ -28,14 +29,16 @@ File Contents:
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  out_buf           string. Name of buffer to output to.
- * @conf  num_elements      int. The number of elements (i.e. inputs) in the
- *                          correlator data (read from "/")
- * @conf  block_size        int. The block size of the packed data (read from "/")
- * @conf  num_prod          int. The number of products in the correlator data (read from "/")
- * @conf  num_eigenvectors  int. The number of eigenvectors to be stored
- * @conf  freq              list of int. The frequency IDs to generate frames for.
- * @conf  cadence           float. The interval of time (in seconds) between frames.
+ * @conf  out_buf           String. Name of buffer to output to.
+ * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
+ *                          correlator data,
+ * @conf  block_size        Int. The block size of the packed data.
+ * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
+ * @conf  freq              List of int. The frequency IDs to generate frames for.
+ * @conf  cadence           Float. The interval of time (in seconds) between frames.
+ * @conf  fill_ij           Bool (default false). Fill the real part with the index
+ *                          of feed i and the imaginary part with the index of j
+ *                          instead of the structure described above.
  *
  * @todo  It might be useful eventually to produce realistic looking mock visibilities.
  *
@@ -69,6 +72,8 @@ private:
     /// Cadence to simulate (in seconds)
     float cadence;
 
+    // Fill with feed indices
+    bool fill_ij;
 };
 
 #endif

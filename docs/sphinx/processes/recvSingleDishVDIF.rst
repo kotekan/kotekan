@@ -1,0 +1,6 @@
+***********************
+recvSingleDishVDIF
+***********************
+
+.. doxygenclass:: recvSingleDishVDIF
+

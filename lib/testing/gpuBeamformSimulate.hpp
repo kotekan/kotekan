@@ -11,7 +11,7 @@ public:
         bufferContainer &buffer_container);
     ~gpuBeamformSimulate();
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
 private:
     struct Buffer *input_buf;
     struct Buffer *output_buf;

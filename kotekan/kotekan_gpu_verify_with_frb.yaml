@@ -132,28 +132,18 @@ gpu:
     kernel: ''
   - name: hsa_preseed_kernel
     kernel: "../lib/hsa/kernels/presum.hsaco"
-  - name: hsa_barrier
-    kernel: ''
   - name: hsa_correlator_kernel
     kernel: "../lib/hsa/kernels/N2.hsaco"
-  - name: hsa_barrier
-    kernel: ''
   - name: hsa_beamform_reorder
     kernel: "../lib/hsa/kernels/reorder.hsaco"
-  - name: hsa_barrier
-    kernel: ''
   - name: hsa_beamform_kernel
     kernel: "../lib/hsa/kernels/unpack_shift_beamform.hsaco"
-  - name: hsa_barrier
-    kernel: ''
   - name: hsa_beamform_transpose
     kernel: "../lib/hsa/kernels/transpose.hsaco"
-  - name: hsa_barrier
-    kernel: ''
-  - name: hsa_beamform_upchan
-    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
-  - name: hsa_beamform_output
-    kernel: ''
+#  - name: hsa_beamform_upchan
+#    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
+#  - name: hsa_beamform_output
+#    kernel: ''
   - name: hsa_output_data
     kernel: ''
   link_map: [0,1,2,3]

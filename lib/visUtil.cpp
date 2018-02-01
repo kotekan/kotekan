@@ -1,10 +1,11 @@
 #include "visUtil.hpp"
+#include <cstring>
 
 
 // Initialise the serial from a std::string
 input_ctype::input_ctype(uint16_t id, std::string serial) {
     chan_id = id;
-    memset(correlator_input, 0, 32);
+    std::memset(correlator_input, 0, 32);
     serial.copy(correlator_input, 32);
 }
 
@@ -18,6 +19,9 @@ void copy_vis_triangle(
 
     size_t pi = 0;
     uint32_t bi;
+    uint32_t ii, jj;
+    float i_sign;
+    bool no_flip;
 
     if(*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
         throw std::invalid_argument("Input map asks for elements out of range.");
@@ -25,11 +29,20 @@ void copy_vis_triangle(
 
     for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
         for(auto j = i; j != inputmap.end(); j++) {
-            bi = prod_index(*i, *j, block, N);
+
+            // Account for the case when the reordering means we should be
+            // indexing into the lower triangle, by flipping into the upper
+            // triangle and conjugating.
+            no_flip = *i <= *j;
+            ii = no_flip ? *i : *j;
+            jj = no_flip ? *j : *i;
+            i_sign = no_flip ? 1.0 : -1.0;
+
+            bi = prod_index(ii, jj, block, N);
 
             // IMPORTANT: for some reason the buffers are packed as imaginary
-            // *then* real. Here we need to read out the individual components.
-            output[pi]= {(float)buf[2 * bi + 1], (float)buf[2 * bi]};
+            // *then* real so we need to account for that here.
+            output[pi]= {(float)buf[2 * bi + 1], i_sign * (float)buf[2 * bi]};
             pi++;
         }
     }

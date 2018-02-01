@@ -20,8 +20,6 @@
 
 #pragma pack()
 struct bufferFrameHeader {
-    uint64_t seq_number;
-    uint64_t stream_id;
     uint32_t metadata_size;
     uint32_t frame_size;
 };

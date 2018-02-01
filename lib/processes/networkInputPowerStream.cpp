@@ -20,19 +20,16 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
                    std::bind(&networkInputPowerStream::main_thread, this))
     {
 
-    buf = get_buffer("power_out_buf");
-    register_producer(buf, unique_name.c_str());
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
 
     //PER BUFFER
-    string config_base = unique_name+string("stream_")+std::to_string(id);
     freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name,"num_elements");
 
     port = config.get_int(unique_name,"port");
     server_ip = config.get_string(unique_name,"ip");
     protocol = config.get_string(unique_name,"protocol");
-
-    atomic_flag_clear(&socket_lock);
 
     times = config.get_int(unique_name, "samples_per_data_set") /
             config.get_int(unique_name, "integration_length");
@@ -85,13 +82,10 @@ void networkInputPowerStream::main_thread() {
         if (bind(socket_fd, (struct sockaddr *) &address, sizeof(address)) < 0)
             ERROR("bind() failed");
 
-        struct sockaddr_in sender;
-        int slen=sizeof(sender);
-
         char *local_buf = (char*)calloc(packet_length,sizeof(char));
 
         while (!stop_thread) {
-            frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
             if (frame == NULL) break;
 
             for (int t = 0; t < times; t++) {
@@ -100,7 +94,9 @@ void networkInputPowerStream::main_thread() {
                             local_buf,
                             packet_length, 0, NULL, 0);
                     if (len != packet_length)
+                    {
                         ERROR("BAD UDP PACKET! %i %i", len,errno)
+                    }
                     else
                     {
                         memcpy(frame+t*elems*(freqs+1)*sizeof(uint)+
@@ -110,8 +106,8 @@ void networkInputPowerStream::main_thread() {
                 }
             }
 
-            mark_frame_full(buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % buf->num_frames;
+            mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % out_buf->num_frames;
         }
 
     }
@@ -148,7 +144,7 @@ void networkInputPowerStream::main_thread() {
         uint *data = (uint*)(((char*)recv_buffer)+sizeof(IntensityPacketHeader));
 
         while (!stop_thread) {
-            unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
             if (buf_ptr == NULL) break;
 
             for (int t = 0; t < times; t++) {
@@ -160,8 +156,8 @@ void networkInputPowerStream::main_thread() {
                     buf_ptr+=(freqs+1)*sizeof(int);
                 }
             }
-            mark_frame_full(buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % buf->num_frames;
+            mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % out_buf->num_frames;
         }
         free(recv_buffer);
         free(metadata);
