@@ -1,5 +1,6 @@
 /*****************************************
-File Contents:
+@file
+@brief Extract a subset of baselines from a visBuffer.
 - baselineSubset : public KotekanProcess
 *****************************************/
 #ifndef BASELINE_SUB
