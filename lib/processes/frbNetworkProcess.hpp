@@ -1,7 +1,8 @@
-/*****************************************
-File Contents:
-- frbNetworkProcess : public KotekanProcess
-*****************************************/
+/**
+ * @file frbNetworkprocess.hpp
+ * @brief Network transmission process for FRB obs
+ *  - frbNetworkProcess : public KotekanProcess
+ */
 
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
@@ -15,12 +16,17 @@ File Contents:
  * @brief frbNetworkProcess Network transmission process for FRB obs
  *
  *
- * This is an Kotekan process that transmits 1024 beams from frbPostProcess to 256 links of frb backend. 
- * frbNetworkProcess distributes the out going traffic to four VLANS (10.6 10.7 10.8 10.9) of single 1 Gig port.
- * The frb total data rate is ~0.55 gbps.
- * The node IP address is derived by parsing the hostname. 
+ * This is an Kotekan process that read packetized data from frbPostProcess and transmits 1024 beams to 256 links of frb backend. 
+ * frbNetworkProcess distributes the out going traffic to four VLANS (10.6 10.7 10.8 10.9) on single 1 Gig port.
+ * The frb total data rate is ~0.55 gbps. The node IP address is derived by parsing the hostname. 
  *
- * @conf   udp_frb_packet_size  Int (default 4168). packet size including header
+ * @par Buffers
+ * @buffer in_buf The kotkean buffer to hold the packets to be transmitted to L1 nodes 
+ * 	@buffer_format Array of unsigned char.
+ * 	@buffer_metadata none
+ *
+ *
+ * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
  * @conf   udp_frb_port_number  Int (default 1313). udp Port number for frb streams
  * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of FRB data
@@ -47,7 +53,7 @@ public:
   ///parse config
   void apply_config(uint64_t fpga_seq) override;
 
-  /// parse hostname to derive the ip_address uses gethosname() 
+  /// parse hostname to derive the ip_address using gethosname() 
   void parse_host_name();
 
   /// main thread

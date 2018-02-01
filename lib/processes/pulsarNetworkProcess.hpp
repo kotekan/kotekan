@@ -3,6 +3,11 @@ File Contents:
 - pulsarNetworkProcess : public KotekanProcess
 *****************************************/
 
+/**
+ * @file pulsarNetworkProcess.hpp
+ * @brief Network transmission process for Pulsar obs
+ *  - pulsarNetworkProcess : public KotekanProcess
+ */
 
 #ifndef PULSARNETWORKPROCESS_HPP
 #define PULSARNETWORKPROCESS_HPP
@@ -18,13 +23,19 @@ File Contents:
  * @brief pulsarNetworkProcess Network transmission process for Pulsar obs
  *
  *
- * This is an Kotekan process that transmits 10 beams from pulsarPostProcess to 10 links of pulsar backend. 
- * pulsarNetworkProcess distributes the out going traffic to two VLANS (10.15 10.16 ) of single 1 Gig port.
- * The frb total data rate is ~0.26 gbps.
+ * This is an Kotekan process that collects packetized data from the pulsarPostProcess and 
+ * transmits 10 beams from pulsarPostProcess to 10 links of pulsar backend. 
+ * pulsarNetworkProcess distributes the out going traffic to two VLANS (10.15 & 10.16 ) of single 1 Gig port.
+ * The total pulsar data rate is ~0.26 gbps.
  * The node IP address is derived by parsing the hostname. 
  *
+ * @par Buffers
+ * @buffer in_buf The kotkean buffer to hold the packets to be transmitted to pulsar nodes
+ * 	@buffer_format Array of unsigned char.
+ * 	@buffer_metadata none
+ *
  * @conf   udp_pulsar_packet_size  Int (default 6288). packet size including header
- * @conf   udp_pulsar_port_number  Int (default 1313). udp Port number for frb streams
+ * @conf   udp_pulsar_port_number  Int (default 1414). udp Port number for pulsar streams
  * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 2). Number of subnets or VLANS used for transmission of PULSAR data
  * @conf   my_node_id           Int (parsed from the hostname) esimated from the location of node from node location. 
@@ -49,13 +60,13 @@ public:
   /// Destructor , cleaning local allocations
   virtual ~pulsarNetworkProcess();
   
-  /// parse config
+  /// Applies the config parameters
   void apply_config(uint64_t fpga_seq) override;
   
-  /// parse hostname to derive the ip_address uses gethosname()
+  /// parse hostname to derive the ip_address using gethosname()
   void parse_host_name();
 
-  /// function to add nano seconds to timespec useful for packet timming purpose
+  /// function to add nano seconds to timespec useful for flow control purpose
   void add_nsec(struct timespec &temp, long nsec);
 
   /// main thread
