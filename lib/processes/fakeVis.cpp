@@ -55,8 +55,8 @@ void fakeVis::main_thread() {
             // Below adapted from visWriter
 
             // Allocate metadata and get frame
-            allocate_new_metadata_object(output_buffer, output_frame_id);
-            auto output_frame = visFrameView(output_buffer, output_frame_id,
+            allocate_new_metadata_object(out_buf, output_frame_id);
+            auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
             // TODO: dataset ID properly when we have gated data
