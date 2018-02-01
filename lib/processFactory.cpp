@@ -41,6 +41,9 @@
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
 #include "freqSlicer.hpp"
+#include "fakeGpuBuffer.hpp"
+#include "rfiVDIF.hpp"
+#include "rfiBroadcastVDIF.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -187,6 +190,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
     }
 
+    if (name == "rfiVDIF") {
+        return (KotekanProcess *) new rfiVDIF(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVDIF") {
+        return (KotekanProcess *) new rfiBroadcastVDIF(config, location, buffer_container);
+    }
+
 #ifdef WITH_AIRSPY
     if (name == "airspyInput") {
         return (KotekanProcess *) new airspyInput(config, location, buffer_container);
@@ -280,6 +291,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // Split frequencies
     if (name == "freqSplit") {
         return (KotekanProcess *) new freqSplit(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities in GPU buffer format
+    if (name == "fakeGpuBuffer") {
+        return (KotekanProcess *) new fakeGpuBuffer(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {

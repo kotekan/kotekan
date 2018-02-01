@@ -7,32 +7,12 @@ More detailed info about processes, how they should be structured, and what shou
 
 Minimal Definition
 -------------------
-A minimalist process is defined in SampleProcess.cpp and reproduced here. This should be considered a minimal process.
+A minimalist process is defined in SampleProcess.cpp and reproduced below. This should be considered a minimal process.
 
-.. code-block:: c++
-   :linenos:
+.. literalinclude:: ../../lib/SampleProcess.cpp
+    :language: c++
+    :linenos:
 
-    #include "SampleProcess.hpp"
-    #include "errors.h"
+Using breathe to parse the autodoc,
 
-    SampleProcess::SampleProcess(Config &config, const string& unique_name,
-                                 bufferContainer &buffer_container) :
-        KotekanProcess(config, unique_name, buffer_container,
-                       std::bind(&SampleProcess::main_thread, this)) {
-    }
-
-    SampleProcess::~SampleProcess() {
-    }
-
-    void SampleProcess::apply_config(uint64_t seq) {
-        (void)seq;
-    }
-
-    void SampleProcess::main_thread() {
-        INFO("Sample Process, reached main_thread!");
-        while (!stop_thread) {
-            INFO("In thread!");
-        }
-    }
-
-
+.. doxygenclass:: SampleProcess
