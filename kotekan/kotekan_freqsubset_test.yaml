@@ -49,15 +49,15 @@ freq_subset:
 hdf5_writer_sub:
   kotekan_process: visWriter
   buffer: vis_buffer_out
-#  freq_ids: [250,256]
-  separate_nodes: false
+  freq_ids: [250,256]
+  node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_subset'
 
 hdf5_writer_full:
   kotekan_process: visWriter
   buffer: vis_buffer_in
-#  freq_ids: [250,256]
-  separate_nodes: false
+  freq_ids: [250,256]
+  node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_full'
 
 

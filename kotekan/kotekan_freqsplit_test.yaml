@@ -53,14 +53,14 @@ hdf5_writer_0:
   kotekan_process: visWriter
   in_buf: vis_buffer_0
   freq_ids: [250,256]
-  separate_nodes: false
+  node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_upper'
 
 hdf5_writer_1:
   kotekan_process: visWriter
   in_buf: vis_buffer_1
   freq_ids: [512,768]
-  separate_nodes: false
+  node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_lower'
 
 
