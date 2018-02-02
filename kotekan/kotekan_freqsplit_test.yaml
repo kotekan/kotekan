@@ -43,8 +43,8 @@ fake_vis:
 
 freq_split:
   kotekan_process: freqSplit
-  input_buffer: vis_buffer_in
-  output_buffers:
+  in_buf: vis_buffer_in
+  out_bufs:
       - vis_buffer_0
       - vis_buffer_1
   num_eigenvectors: 4

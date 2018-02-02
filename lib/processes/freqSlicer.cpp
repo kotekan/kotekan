@@ -23,15 +23,15 @@ freqSplit::freqSplit(Config& config,
                    std::bind(&freqSplit::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int("/", "num_elements");
+    num_elements = config.get_int(unique_name, "num_elements");
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> output_buffer_names =
-        config.get_string_array(unique_name, "output_buffers");
+        config.get_string_array(unique_name, "out_bufs");
 
     // Setup the input buffer
-    input_buffer = get_buffer("input_buffer");
+    input_buffer = get_buffer("in_buf");
     register_consumer(input_buffer, unique_name.c_str());
 
     // Fetch the output buffers, register them, and store them in our buffer vector
