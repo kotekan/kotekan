@@ -32,7 +32,7 @@ vis_buffers:
 
 fake_vis:
   kotekan_process: fakeVis
-  output_buffer: vis_buffer_in
+  out_buf: vis_buffer_in
   num_eigenvectors: 4
   freq: [250,256,512,768]
   cadence: 10.
@@ -51,14 +51,14 @@ freq_split:
 
 hdf5_writer_0:
   kotekan_process: visWriter
-  buffer: vis_buffer_0
+  in_buf: vis_buffer_0
   freq_ids: [250,256]
   separate_nodes: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_upper'
 
 hdf5_writer_1:
   kotekan_process: visWriter
-  buffer: vis_buffer_1
+  in_buf: vis_buffer_1
   freq_ids: [512,768]
   separate_nodes: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_lower'
