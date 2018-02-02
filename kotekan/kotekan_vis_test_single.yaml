@@ -79,6 +79,7 @@ vis_gen:
   output_buffer: vis_buffer
   num_eigenvectors: 4
   cadence: 5.0
+  fill_ij: true
 
 #vis_debug:
   #kotekan_process: visDebug

@@ -1,0 +1,6 @@
+***********************
+streamSingleDishVDIF
+***********************
+
+.. doxygenclass:: streamSingleDishVDIF
+

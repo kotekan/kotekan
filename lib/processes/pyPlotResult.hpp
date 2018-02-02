@@ -15,7 +15,7 @@ public:
                  bufferContainer &buffer_container);
     virtual ~pyPlotResult();
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
     void request_plot_callback(connectionInstance& conn, json& json_request);
 private:
     struct Buffer *buf;

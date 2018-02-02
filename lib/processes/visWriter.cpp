@@ -30,7 +30,7 @@ visTransform::visTransform(Config& config,
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "input_buffers");
+        config.get_string_array(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -40,7 +40,7 @@ visTransform::visTransform(Config& config,
     }
 
     // Setup the output vector
-    output_buffer = get_buffer("output_buffer");
+    output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
 
     // Get the indices for reordering
@@ -131,7 +131,7 @@ visDebug::visDebug(Config& config,
                    std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector
-    buffer = get_buffer("buffer");
+    buffer = get_buffer("in_buf");
     register_consumer(buffer, unique_name.c_str());
 }
 
@@ -177,7 +177,7 @@ visWriter::visWriter(Config& config,
     root_path = config.get_string_default(unique_name, "root_path", ".");
 
     // Get the list of buffers that this process shoud connect to
-    buffer = get_buffer("buffer");
+    buffer = get_buffer("in_buf");
     register_consumer(buffer, unique_name.c_str());
 
     // Get the input labels
@@ -186,7 +186,7 @@ visWriter::visWriter(Config& config,
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
     // it uses the hostname of the current node
-    node_mode = config.get_bool_default(unique_name, "separate_nodes", true);
+    node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
     // If this writer takes a baseline subset as input, generate subset products
     // as specified in config.

@@ -10,18 +10,16 @@ fakeVis::fakeVis(Config &config,
                    std::bind(&fakeVis::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int("/", "num_elements");
-    block_size = config.get_int("/", "block_size");
+    num_elements = config.get_int(unique_name, "num_elements");
+    block_size = config.get_int(unique_name, "block_size");
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
-    // Is num_prod needed?
-    //num_prod = config.get_int("/", "num_prod");
 
     // Get the output buffer
-    std::string buffer_name = config.get_string(unique_name, "output_buffer");
+    std::string buffer_name = config.get_string(unique_name, "out_buf");
 
     // Fetch the buffer, register it
-    output_buffer = buffer_container.get_buffer(buffer_name);
-    register_producer(output_buffer, unique_name.c_str());
+    out_buf = buffer_container.get_buffer(buffer_name);
+    register_producer(out_buf, unique_name.c_str());
 
     // Get frequency IDs from config
     for (auto f : config.get_int_array(unique_name, "freq")) {
@@ -31,6 +29,8 @@ fakeVis::fakeVis(Config &config,
     // Get cadence
     cadence = config.get_float(unique_name, "cadence");
 
+    // Get fill type
+    fill_ij = config.get_bool_default(unique_name, "fill_ij", false);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -50,15 +50,14 @@ void fakeVis::main_thread() {
 
         for (uint16_t f : freq) {
             // Wait for the buffer frame to be free
-            wait_for_empty_frame(output_buffer, unique_name.c_str(), output_frame_id);
+            wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id);
 
             // Below adapted from visWriter
 
             // Allocate metadata and get frame
-            allocate_new_metadata_object(output_buffer, output_frame_id);
-            auto output_frame = visFrameView(output_buffer, output_frame_id,
-                                             num_elements, //num_prod,
-                                             num_eigenvectors);
+            allocate_new_metadata_object(out_buf, output_frame_id);
+            auto output_frame = visFrameView(out_buf, output_frame_id,
+                                             num_elements, num_eigenvectors);
 
             // TODO: dataset ID properly when we have gated data
             output_frame.dataset_id() = 0;
@@ -71,29 +70,40 @@ void fakeVis::main_thread() {
 
             // Insert values into vis array to help with debugging
             std::complex<float> * out_vis = output_frame.vis();
-            // Set diagonal elements to (0, row)
-            for (int i = 0; i < num_elements; i++) {
-                uint32_t pi = cmap(i, i, num_elements);
-                out_vis[pi] = {0., (float) i};
-            }
-            // Save metadata in first few cells
-            if ( sizeof(out_vis) < 4 ) {
-                INFO("Number of elements (%d) is too small to encode \
-                      debugging values in fake visibilities", num_elements);
+
+            if(fill_ij) {
+                int ind = 0;
+                for(int i = 0; i < num_elements; i++) {
+                    for(int j = i; j < num_elements; j++) {
+                        out_vis[ind] = {(float)i, (float)j};
+                        ind++;
+                    }
+                }
             } else {
-                // For simplicity overwrite diagonal if needed
-                out_vis[0] = {(float) fpga_seq, 0.};
-                out_vis[1] = {(float) (ts.tv_sec + 1e-9 * ts.tv_nsec), 0.};
-                out_vis[2] = {(float) f, 0.};
-                out_vis[3] = {(float) output_frame_id, 0.};
+                // Set diagonal elements to (0, row)
+                for (int i = 0; i < num_elements; i++) {
+                    uint32_t pi = cmap(i, i, num_elements);
+                    out_vis[pi] = {0., (float) i};
+                }
+                // Save metadata in first few cells
+                if ( sizeof(out_vis) < 4 ) {
+                    INFO("Number of elements (%d) is too small to encode \
+                          debugging values in fake visibilities", num_elements);
+                } else {
+                    // For simplicity overwrite diagonal if needed
+                    out_vis[0] = {(float) fpga_seq, 0.};
+                    out_vis[1] = {(float) (ts.tv_sec + 1e-9 * ts.tv_nsec), 0.};
+                    out_vis[2] = {(float) f, 0.};
+                    out_vis[3] = {(float) output_frame_id, 0.};
+                }
             }
 
             // Mark the buffers and move on
-            mark_frame_full(output_buffer, unique_name.c_str(),
+            mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);
 
             // Advance the current frame ids
-            output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
+            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
         }
 
         // Get current time, delaying to satisfy cadence
