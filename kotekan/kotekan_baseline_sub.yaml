@@ -65,12 +65,17 @@ fake_vis:
 #  kotekan_process: visDebug
 #  buffer: vis_buffer
 
+# these parameters are shared between the two
+# following tasks
+max_baselines: &max_baselines
+  max_ew_baseline: 1
+  max_ns_baseline: 63
+
 vis_subset:
   kotekan_process: baselineSubset
   in_buf: vis_buffer
   out_buf: write_buffer
-  max_ew_baseline: 1
-  max_ns_baseline: 63
+  <<: *max_baselines
 
 hdf5_writer:
   kotekan_process: visWriter
@@ -78,8 +83,7 @@ hdf5_writer:
   num_freq: 4
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
-  max_ew_baseline: 1
-  max_ns_baseline: 63
+  <<: *max_baselines
 
 hdf5_writer_full:
   kotekan_process: visWriter
