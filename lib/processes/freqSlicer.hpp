@@ -67,4 +67,37 @@ private:
 
 };
 
+
+
+class freqSubset : public KotekanProcess {
+
+public:
+
+    // Default constructor
+    freqSubset(Config &config,
+              const string& unique_name,
+              bufferContainer &buffer_container);
+
+    void apply_config(uint64_t fpga_seq);
+
+    // Main loop for the process
+    void main_thread();
+
+private:
+
+    // Parameters saved from the config files
+    size_t num_elements, num_eigenvectors;
+    // List of frequencies for the subset
+    std::vector<uint16_t> subset_list;
+
+
+    // TODO: delete
+    // Vector of the buffers we are using and their current frame ids.
+//    std::vector<std::pair<Buffer*, unsigned int>> output_buffers;
+    Buffer * output_buffer;
+    Buffer * input_buffer;
+
+};
+
+
 #endif

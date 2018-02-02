@@ -293,6 +293,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new freqSplit(config, location, buffer_container);
     }
 
+    // Subset frequencies
+    if (name == "freqSubset") {
+        return (KotekanProcess *) new freqSubset(config, location, buffer_container);
+    }
+
     // Generate fake visbilities in GPU buffer format
     if (name == "fakeGpuBuffer") {
         return (KotekanProcess *) new fakeGpuBuffer(config, location, buffer_container);
