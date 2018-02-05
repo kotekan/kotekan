@@ -26,20 +26,47 @@ void eigenVis::apply_config(uint64_t fpga_seq) {
 
 void eigenVis::main_thread() {
 
-    unsigned int in_frame_id = 0, out_frame_id = 0;
-
+    unsigned int frame_id = 0;
+    const auto num_elements;
+    bool initialized = false;
+    std::complex<float> * vis_square;
 
     while (!stop_thread) {
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               in_frame_id) == nullptr) {
+
+        // Get input visibilities. We assume the shape of these doesn't change.
+        if (wait_for_full_frame(input_buf, unique_name.c_str(),
+                               frame_id) == nullptr) {
             break;
         }
-        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                               out_frame_id) == nullptr) {
-            break;
+        auto input_frame = visFrameView(input_buffer, frame_id);
+        if (!initialized) {
+            num_element = input_frame.num_elements();
+            if (input_frame.num_eigenvectors() < num_eigenvectors) {
+                throw std::runtime_error("Insufficient storage space for"
+                                         " requested number of eigenvectors.");
+            }
+            vis_square = (std::complex<float>) malloc(num_elements * num_elements
+                                                      * sizeof(*vis_square));
+            if (vis_square != nullptr) ;
+            initialized = true;
+        }
+        if (input_frame.num_prod() != num_elements * (num_elements - 1) / 2) {
+            throw std::runtime_error("Eigenvectors requier full correlation"
+                                     " triangle");
         }
 
+        // Get output buffer for visibilities. Essentially identical to input buffers.
+        if (wait_for_empty_frame(output_buf, unique_name.c_str(),
+                                frame_id) == nullptr) {
+            break;
+        }
+        auto output_frame = visFrameView(output_buf, frame_id,
+                                         input_frame.num_elements(),
+                                         input_frame.num_eigenvectors());
 
+    }
 
+    if (initialized) {
+        free(vis_square);
     }
 }
