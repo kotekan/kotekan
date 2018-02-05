@@ -1,5 +1,6 @@
 #include "hsaBeamformKernel.hpp"
 #include "hsaBase.h"
+#include <unistd.h>
 
 hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
@@ -52,15 +53,11 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
     void * device_coeff_map = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     device.sync_copy_host_to_gpu(device_coeff_map, (void*)host_coeff, coeff_len);
 
+    //Figure out which frequency, is there a better way that doesn't involve reading in the whole thing? Check later
+    metadata_buf = host_buffers.get_buffer("network_buf");
+
     gain_len = 2*2048*sizeof(float);
     host_gain = (float *)hsa_host_malloc(gain_len);
-    FILE *ptr_myfile;
-    ptr_myfile=fopen("../../kotekan/dummy-gains.bin","rb");
-    fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
-    fclose(ptr_myfile);
-    void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
-    device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
-
 
 }
 
@@ -82,7 +79,33 @@ void hsaBeamformKernel::apply_config(const uint64_t& fpga_seq) {
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
 }
 
+int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
+{
+  uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), 0);
+  if (frame == NULL) return -1;
+}
+
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+
+    stream_id_t stream_id = get_stream_id_t(metadata_buf, 0);
+    freq_now = bin_number_chime(&stream_id); 
+
+    FILE *ptr_myfile;
+    char filename[sizeof "/root/FRB-GainFiles/quick_gains_0000_reordered.bin"];
+    sprintf(filename, "/root/FRB-GainFiles/quick_gains_%04d_reordered.bin",freq_now);
+    if( access( filename, F_OK ) == -1 ) {
+      // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
+      sprintf(filename, "/root/FRB-GainFiles/dummy.bin");
+    }
+
+    ptr_myfile=fopen(filename,"rb");
+    fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+    fclose(ptr_myfile);
+    INFO("!!!!!!---------GPU got gains gains[0]=(%.2f %.2f) gains[2047]=(%.2f %.2f)", host_gain[0], host_gain[1], host_gain[4094], host_gain[4095])
+    void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
+    device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
+
+
 
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;

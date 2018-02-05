@@ -25,6 +25,7 @@ private:
     vector<int32_t> _reorder_map;
 
     float * coff;
+    float * cpu_gain;
 
     // Unpacked data
     double * input_unpacked;

@@ -1,6 +1,10 @@
 #include "gpuBeamformSimulate.hpp"
 #include "errors.h"
 #include <math.h>
+#include "fpga_header_functions.h"
+#include "chimeMetadata.h"
+#include <unistd.h>
+
 
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
 #define HI_NIBBLE(b)                    (((b) >> 4) & 0x0F)
@@ -11,7 +15,7 @@
 #define light 3.e8
 #define Freq_ref 492.125984252
 #define freq1 450.
-#define scaling 400.
+#define scaling 4000.
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         const string& unique_name,
@@ -39,6 +43,8 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     tmp128 = (double *)malloc(_factor_upchan*2*sizeof(double));
     cpu_final_output = (unsigned char *)malloc(output_len*sizeof(unsigned char));
 
+    cpu_gain = (float *) malloc(2*2048*sizeof(float));
+
     coff = (float *) malloc(16*2*sizeof(float));
     assert(coff != nullptr);
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
@@ -56,6 +62,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         reorder_map_c[i] = _reorder_map[i];
     }
 
+
 }
 
 gpuBeamformSimulate::~gpuBeamformSimulate() {
@@ -65,6 +72,7 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
     free(clamping_output);
     free(cpu_beamform_output);
     free(coff);
+    free(cpu_gain);
     free(transposed_output);
     free(tmp128);
     free(cpu_final_output);
@@ -287,6 +295,9 @@ void gpuBeamformSimulate::main_thread() {
         for (int i=0;i<output_len;i++){
             cpu_final_output[i] = 0.0;
         }
+	for (int i=0;i<2*2048;i++){
+	  cpu_gain[i] = 0.0;
+	}
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
@@ -294,6 +305,21 @@ void gpuBeamformSimulate::main_thread() {
                 input_buf->buffer_name, input_buf_id,
                 output_buf->buffer_name, output_buf_id);
 
+	stream_id_t stream_id = get_stream_id_t(input_buf, 0);
+	uint freq_now = bin_number_chime(&stream_id);
+	INFO("!!!!!!---------CPU verification got freq_now=%d",freq_now);
+	FILE *ptr_myfile;
+	char filename[sizeof "/root/FRB-GainFiles/quick_gains_0000_reordered.bin"];
+	sprintf(filename, "/root/FRB-GainFiles/quick_gains_%04d_reordered.bin",freq_now);
+	if( access( filename, F_OK ) == -1 ) {
+	  // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
+	  sprintf(filename, "/root/FRB-GainFiles/dummy.bin");
+	}
+
+	ptr_myfile=fopen(filename,"rb");
+	fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
+	fclose(ptr_myfile);
+	INFO("!!!!!!---------CPU gains gain[0](%.2f %.2f) gain[2047]=(%.2f %.2f)", cpu_gain[0], cpu_gain[1], cpu_gain[4094], cpu_gain[4095]);
 	//Reorder
 	reorder(input, reorder_map_c);
 
@@ -307,16 +333,24 @@ void gpuBeamformSimulate::main_thread() {
         // Pad to 512
         // TODO this can be simplified a fair bit.
         int index = 0;
-        for (int j = 0; j < _samples_per_data_set*2; j++){
-            for (int b = 0; b < nbeamsEW; b++){
-                for (int i = 0; i < 512; i++){
-                    if (i < 256){
-                        input_unpacked_padded[index++] = input_unpacked[2*(j*nbeams + b*nbeamsNS + i)];
-                        input_unpacked_padded[index++] = input_unpacked[2*(j*nbeams + b*nbeamsNS + i) + 1];
-                    } else{
-                        input_unpacked_padded[index++] = 0;
-                        input_unpacked_padded[index++] = 0;
-                    }
+        for (int j = 0; j < _samples_per_data_set; j++){
+	    for (int p=0;p<npol;p++){
+	        for (int b = 0; b < nbeamsEW; b++){
+		    for (int i = 0; i < 512; i++){
+		        if (i < 256){
+			    //Real
+			    input_unpacked_padded[index++] =\
+			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]\
+			      -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+			    //Imag
+			    input_unpacked_padded[index++] =\
+			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]\
+			      +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+			} else{
+			    input_unpacked_padded[index++] = 0;
+			    input_unpacked_padded[index++] = 0;
+			}
+		    }
                 }
             }
         }
