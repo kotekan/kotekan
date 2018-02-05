@@ -15,7 +15,7 @@
 #define light 3.e8
 #define Freq_ref 492.125984252
 #define freq1 450.
-#define scaling 4000.
+#define scaling 400.
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         const string& unique_name,
