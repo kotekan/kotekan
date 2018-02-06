@@ -37,4 +37,32 @@ private:
 
 };
 
+class evFile {
+
+public:
+    evFile(const std:string & fname,
+           const std:string & path,
+           const uint16_t & num_eigenvectors,
+           const std::vector<freq_ctype> & freqs,
+           const std::vector<input_ctype> & inputs,
+           const std::vector<prod_ctype> & prods);
+
+    ~evFile();
+
+    write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
+                       std::complex<float> eigenvector)
+
+private:
+
+    // file datasets
+    DataSet ev;
+    DataSet time_imap;
+    DataSet freq_imap;
+    DataSet input_imap;
+
+    // current position in file
+    size_t curr_ind;
+
+};
+
 #endif
