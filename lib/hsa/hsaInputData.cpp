@@ -7,6 +7,7 @@ hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
+    command_type = CommandType::COPY_IN;
     apply_config(0);
     network_buf = host_buffers.get_buffer("network_buf");
     network_buffer_id = 0;
@@ -16,7 +17,7 @@ hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_
 
 
 hsaInputData::~hsaInputData() {
-    hsa_host_free(presum_zeros);
+
 }
 
 void hsaInputData::apply_config(const uint64_t& fpga_seq) {

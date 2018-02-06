@@ -38,6 +38,9 @@
 #include "chimeMetadataDump.hpp"
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
+#include "simpleAutocorr.hpp"
+#include "rfiVDIF.hpp"
+#include "rfiBroadcastVDIF.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -47,6 +50,12 @@
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
+#endif
+#ifdef WITH_AIRSPY
+    #include "airspyInput.hpp"
+#endif
+#ifdef WITH_FFTW
+    #include "fftwEngine.hpp"
 #endif
 
 processFactory::processFactory(Config& config,
@@ -176,6 +185,30 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
+    }
+
+    if (name == "rfiVDIF") {
+        return (KotekanProcess *) new rfiVDIF(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVDIF") {
+        return (KotekanProcess *) new rfiBroadcastVDIF(config, location, buffer_container);
+    }
+
+#ifdef WITH_AIRSPY
+    if (name == "airspyInput") {
+        return (KotekanProcess *) new airspyInput(config, location, buffer_container);
+    }
+#endif
+
+#ifdef WITH_FFTW
+    if (name == "fftwEngine") {
+        return (KotekanProcess *) new fftwEngine(config, location, buffer_container);
+    }
+#endif
+
+    if (name == "simpleAutocorr") {
+        return (KotekanProcess *) new simpleAutocorr(config, location, buffer_container);
     }
 
     if (name == "streamSingleDishVDIF") {

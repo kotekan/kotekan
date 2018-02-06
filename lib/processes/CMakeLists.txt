@@ -22,14 +22,25 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               vdifStream.cpp
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
+              rfiVDIF.cpp
+              rfiBroadcastVDIF.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
               bufferRecv.cpp
+              simpleAutocorr.cpp
               )
 
 if (${USE_DPDK})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
+endif ()
+
+if (${USE_AIRSPY})
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} airspyInput.cpp)
+endif ()
+
+if (${USE_FFTW})
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
 # HDF5 stuff

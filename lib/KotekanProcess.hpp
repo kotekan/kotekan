@@ -8,12 +8,13 @@
 #include <vector>
 #include "Config.hpp"
 #include "bufferContainer.hpp"
+#include "kotekanLogging.hpp"
 #ifdef MAC_OSX
     #include "osxBindCPU.hpp"
     #include <immintrin.h>
 #endif
 
-class KotekanProcess {
+class KotekanProcess: public kotekanLogging {
 public:
     KotekanProcess(Config &config, const string& unique_name,
                     bufferContainer &buffer_container,
@@ -26,11 +27,12 @@ public:
     void join();
     void stop();
 protected:
-    std::thread this_thread;
     std::atomic_bool stop_thread;
     Config &config;
 
     std::string unique_name;
+
+    std::thread this_thread;
 
     // Set the cores the main thread is allowed to run on to the
     // cores given in cpu_affinity_
@@ -42,6 +44,7 @@ protected:
 
     // Helper function
     struct Buffer * get_buffer(const std::string &name);
+
 private:
     std::function<void(const KotekanProcess&)> main_thread_fn;
 

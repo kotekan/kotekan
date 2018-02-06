@@ -28,6 +28,7 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
     string url = string(msg->uri.p, msg->uri.len);
 
     if (!__rest_server->json_callbacks.count(url)) {
+        DEBUG("Endpoint %s called, but not found", url.c_str());
         mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
         return;
     }

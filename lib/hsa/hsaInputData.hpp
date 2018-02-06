@@ -29,8 +29,6 @@ private:
     Buffer * network_buf;
     int32_t input_frame_len;
 
-    void * presum_zeros;
-
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_local_freq;
     int32_t _num_elements;

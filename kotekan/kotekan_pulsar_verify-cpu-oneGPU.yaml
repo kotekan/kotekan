@@ -1,6 +1,9 @@
 ---
 type: config
-log_level: 3
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
 udp_packet_size: 4928
 num_links: 4
 timesamples_per_packet: 16
@@ -58,11 +61,14 @@ gpu:
   num_gpus: 1
   block_size: 32
   buffer_depth: 3
+  frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
-    network_buffer: gpu_input_buffer_0
-    output_buffer: pulsar_beamform_output_buffer_0
+    in_buffers:
+        network_buf: gpu_input_buffer_0
+    out_buffers:
+        beamform_output_buf: pulsar_beamform_output_buffer_0
 
 gen_data:
   type: const

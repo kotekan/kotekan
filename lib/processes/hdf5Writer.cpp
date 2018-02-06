@@ -201,9 +201,9 @@ void hdf5Writer::main_thread() {
                 (unsigned int)(filestart - acq_start_time), chunk_id
             );
             std::string file_name = temp;
-            file_name = root_path + "/" + acq_name + "/" + file_name;
+            //file_name = root_path + "/" + acq_name + "/" + file_name;
             current_file = std::unique_ptr<visFile>(
-                new visFile(file_name, acq_name, instrument_name, "", freqs, inputs)
+                new visFile(file_name, root_path, acq_name, instrument_name, "", freqs, inputs)
             );
         }
 
@@ -394,6 +394,7 @@ void hdf5Writer::setup_acq_start(const std::vector<timeval>& start_times) {
 
 
 visFile::visFile(const std::string& name,
+                 const std::string& root_path,
                  const std::string& acq_name,
                  const std::string& inst_name,
                  const std::string& notes,
@@ -402,7 +403,8 @@ visFile::visFile(const std::string& name,
 
     // Create the lock file first such that there is no time the file is
     // unlocked
-    lock_filename = name + ".lock";
+    const std::string full_file_name = root_path + "/" + acq_name + "/" + name;
+    lock_filename = root_path + "/" + acq_name + "/." + name + ".lock";
     std::ofstream lock_file(lock_filename);
     lock_file << getpid() << std::endl;
     lock_file.close();
@@ -412,7 +414,7 @@ visFile::visFile(const std::string& name,
     INFO("Creating new output file %s", name.c_str());
 
     file = std::unique_ptr<File>(
-        new File(name, File::ReadWrite | File::Create | File::Truncate)
+        new File(full_file_name, File::ReadWrite | File::Create | File::Truncate)
     );
 
     createIndex(freqs, inputs);

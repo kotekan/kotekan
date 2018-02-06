@@ -13,8 +13,8 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
     INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);
 }
 
-hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_) :
-    config(config_), gpu_id(gpu_id_){
+hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_, int gpu_buffer_depth_) :
+    config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
 
     hsa_status_t hsa_status;
 
@@ -70,8 +70,10 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_) :
     hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_MULTI, error_callback, NULL, UINT32_MAX, UINT32_MAX, &queue);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
+    hsa_status = hsa_amd_profiling_set_profiler_enabled(queue, 1);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
 
+    hsa_system_get_info(HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY, &timestamp_frequency_hz);
 }
 
 hsaDeviceInterface::~hsaDeviceInterface() {
@@ -107,7 +109,7 @@ hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, in
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    //DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
@@ -141,7 +143,7 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    //DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
@@ -150,7 +152,7 @@ void hsaDeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int length)
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
-    //DEBUG("Sync host->gpu[%d] copy %p -> %p, len: %d", gpu_id, src, dst, length);
+    DEBUG("Sync host->gpu[%d] copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -175,7 +177,7 @@ void hsaDeviceInterface::sync_copy_gpu_to_host(void *dst, void *src, int length)
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
-    //DEBUG("Sync gpu[%d]->host copy %p -> %p, len: %d", gpu_id, src, dst, length);
+    DEBUG("Sync gpu[%d]->host copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -275,7 +277,7 @@ hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t 
     if ((flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED) ||
         (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED))
     {
-        INFO("Found device region, flags=%x", flags);
+        //INFO("Found device region, flags=%x", flags);
         hsa_amd_memory_pool_t* ret = (hsa_amd_memory_pool_t*) data;
         *ret = region;
         return HSA_STATUS_INFO_BREAK;
@@ -285,14 +287,14 @@ hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t 
 }
 
 void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const int index, const int len) {
-    assert(index < _gpu_buffer_depth);
+    assert(index < gpu_buffer_depth);
     hsa_status_t hsa_status;
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
-        for (int i = 0; i < _gpu_buffer_depth; ++i) {
+        for (int i = 0; i < gpu_buffer_depth; ++i) {
             void * ptr;
             hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
-            DEBUG("Allocating GPU[%d] memory: %s[%d], len: %d, ptr: %p", gpu_id, name.c_str(), i, len, ptr);
+            INFO("Allocating GPU[%d] memory: %s[%d], len: %d, ptr: %p", gpu_id, name.c_str(), i, len, ptr);
             assert(hsa_status == HSA_STATUS_SUCCESS);
             gpu_memory[name].len = len;
             gpu_memory[name].gpu_pointers.push_back(ptr);
@@ -313,7 +315,7 @@ void* hsaDeviceInterface::get_gpu_memory(const string& name, const int len) {
     if (gpu_memory.count(name) == 0) {
         void * ptr;
         hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
-        DEBUG("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
+        INFO("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
         assert(hsa_status == HSA_STATUS_SUCCESS);
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);
@@ -330,7 +332,7 @@ int hsaDeviceInterface::get_gpu_id() {
     return gpu_id;
 }
 int hsaDeviceInterface::get_gpu_buffer_depth() {
-    return _gpu_buffer_depth;
+    return gpu_buffer_depth;
 }
 
 hsa_agent_t hsaDeviceInterface::get_gpu_agent() {
@@ -343,6 +345,10 @@ hsa_region_t hsaDeviceInterface::get_kernarg_region() {
 
 hsa_queue_t* hsaDeviceInterface::get_queue() {
     return queue;
+}
+
+uint64_t hsaDeviceInterface::get_hsa_timestamp_freq() {
+    return timestamp_frequency_hz;
 }
 
 gpuMemoryBlock::~gpuMemoryBlock()  {
