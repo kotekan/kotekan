@@ -74,6 +74,10 @@ private:
 
     // Fill with feed indices
     bool fill_ij;
+
+    // Fill with rank 1 matrix with phase = i - j.
+    // Ignored if fill_ij = true.
+    bool phase_ij;
 };
 
 #endif

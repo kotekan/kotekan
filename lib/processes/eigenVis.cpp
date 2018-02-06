@@ -11,9 +11,9 @@ eigenVis::eigenVis(Config& config,
 
     apply_config(0);
 
-    in_buf = get_buffer("in_buf");
+    in_buffer = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-    out_buf = get_buffer("out_buf");
+    out_buffer = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
 }

@@ -2,6 +2,7 @@
 #include "visBuffer.hpp"
 #include "chimeMetadata.h"
 #include <time.h>
+#include <math.h>
 
 fakeVis::fakeVis(Config &config,
                  const string& unique_name,
@@ -31,6 +32,7 @@ fakeVis::fakeVis(Config &config,
 
     // Get fill type
     fill_ij = config.get_bool_default(unique_name, "fill_ij", false);
+    phase_ij = config.get_bool_default(unique_name, "phase_ij", false);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -71,11 +73,15 @@ void fakeVis::main_thread() {
             // Insert values into vis array to help with debugging
             std::complex<float> * out_vis = output_frame.vis();
 
-            if(fill_ij) {
+            if(fill_ij || phase_ij) {
                 int ind = 0;
                 for(int i = 0; i < num_elements; i++) {
                     for(int j = i; j < num_elements; j++) {
-                        out_vis[ind] = {(float)i, (float)j};
+                        if (fill_ij) out_vis[ind] = {(float)i, (float)j};
+                        else if (phase_ij) {
+                            float phase = (float) i - (float) j;
+                            out_vis[ind] = {cos(phase), sin(phase)};
+                        }
                         ind++;
                     }
                 }
