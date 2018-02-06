@@ -12,6 +12,7 @@
 
 CHIME_X:
   .amd_kernel_code_t
+
     kernel_code_version_major = 1
     kernel_code_version_minor = 0
     machine_kind = 1
@@ -31,7 +32,7 @@ CHIME_X:
     compute_pgm_rsrc2_tgid_z_en = 1
     compute_pgm_rsrc2_user_sgpr = 3
 
-    workitem_vgpr_count = 48
+    workitem_vgpr_count = 47
     wavefront_sgpr_count = 24
 
     ;following http://gpuopen.com/amdgcn-assembly/
@@ -46,27 +47,27 @@ CHIME_X:
 
  .end_amd_kernel_code_t
 
-  s_mov_b32 s6, s4  ;Z group: block_id
-  s_mov_b32 s7, s3  ;Y group: time batch
 
 ;s[0:1] contains input array
-;s[2:3] contains output array
-;s[4:5] contains idx lookup
 ;s[10:11] contains the presum buffer
 ;s[14:15] contains config struct
+;s[20:21] contains output array
+;s[22:23] contains idx lookup
   s_load_dwordx2 s[10:11], s[0:1] 0x08
   s_load_dwordx2 s[14:15], s[0:1] 0x20
-  s_load_dwordx2 s[2:3], s[0:1] 0x10
-  s_load_dwordx2 s[4:5], s[0:1] 0x18
-
+  s_load_dwordx2 s[20:21], s[0:1] 0x10
+  s_load_dwordx2 s[22:23], s[0:1] 0x18
   s_load_dwordx2 s[0:1], s[0:1] 0x0
+  s_waitcnt 0
+
+;load config: N_ITER to s12
+  s_load_dword s12, s[14:15] 0x08
   s_waitcnt 0
 
 ;load config: N_ELEM to s14, N_INTG to s15
   s_load_dwordx2 s[14:15], s[14:15]
-;load config: N_ITER to s12
-  s_load_dword s12, s[14:15] 0x08
 ;TODO: assert N_ELEM = N*32
+  s_waitcnt 0
 
 
   ;v0, v1 are ix,iy
@@ -78,10 +79,10 @@ CHIME_X:
   v_mad_u32_u24 v1, v1, 2, v4
 
   ;extract blk_x, blk_y to s8, s9
-  s_mul_i32 s8, 8, s6 ;8B per block id
-  s_add_u32 s4, s4, s8
-  s_addc_u32 s5, s5, 0
-  s_load_dwordx2 s[8:9], s[4:5]
+  s_mul_i32 s8, 8, s4 ;8B per block id
+  s_add_u32 s22, s22, s8
+  s_addc_u32 s23, s23, 0
+  s_load_dwordx2 s[8:9], s[22:23]
   s_waitcnt 0
   s_mul_i32 s8, 8, s8 ;8 WI per block
   s_mul_i32 s9, 8, s9 ;8 WI per block
@@ -90,13 +91,13 @@ CHIME_X:
   v_add_i32_e32 v3, vcc, v1, v0
   v_and_b32_e32 v3, 0x7, v3
   v_mov_b32 v2, s15  ;N_INTG
-  v_mad_u32_u24 v3, s7, v2, v3
+  v_mad_u32_u24 v3, s3, v2, v3
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; unpack presum here!!! ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;  s_cmp_lt_u32 s7, 1000
-  s_cmp_gt_u32 s7, 0
+;;  s_cmp_lt_u32 s3, 1000
+  s_cmp_gt_u32 s3, 0
   s_cbranch_scc1 SKIP_PRESEED
 
     ;calculate base x
@@ -141,20 +142,20 @@ CHIME_X:
 
    ;stride
     s_mov_b32 s5, 228  ;stride = 32*4*2 - 3*offset
-    s_mov_b32 s4, 4
+    s_mov_b32 s6, 4
 
     ;write
     v_mov_b32 v10, 0                 ;global offset? [time? gate?]
-    v_add_i32_e32 v10, vcc, s6, v10 ;block ID
+    v_add_i32_e32 v10, vcc, s4, v10 ;block ID
     v_lshlrev_b32 v10, 3, v10       ;8 y / block
     v_add_i32_e32 v10, vcc, v1, v10 ;item Y
     v_lshlrev_b32 v10, 5, v10       ;32 x / y
     v_add_i32_e32 v10, vcc, v0, v10 ;item X
     v_lshlrev_b32 v10, 3, v10       ;8 output / x
     v_lshlrev_b32 v10, 2, v10       ;4B / output
-    v_mov_b32 v20, s2               ;output addresss
+    v_mov_b32 v20, s20               ;output addresss
     v_add_i32_e32 v20, vcc, v10, v20
-    v_mov_b32 v21, s3
+    v_mov_b32 v21, s21
     v_addc_u32 v21, vcc, v21, 0, vcc
 
     ;x0y0
@@ -165,10 +166,10 @@ CHIME_X:
       v_sub_i32_e32 v12, vcc, v10, v11
     v_add_i32_e32 v13, vcc, v10, v11
     v_sub_i32_e32 v13, vcc, s11, v13
-      ;v_add_i32_e32 v20, vcc, s4, v20
+      ;v_add_i32_e32 v20, vcc, s6, v20
       ;v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v12
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v13
   ;x1y0
@@ -177,10 +178,10 @@ CHIME_X:
       v_sub_i32_e32 v14, vcc, v10, v11
     v_add_i32_e32 v15, vcc, v10, v11
     v_sub_i32_e32 v15, vcc, s11, v15
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v14
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v15
   ;x2y0
@@ -189,10 +190,10 @@ CHIME_X:
       v_sub_i32_e32 v16, vcc, v10, v11
     v_add_i32_e32 v17, vcc, v10, v11
     v_sub_i32_e32 v17, vcc, s11, v17
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v16
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v17
   ;x3y0
@@ -201,13 +202,14 @@ CHIME_X:
       v_sub_i32_e32 v18, vcc, v10, v11
     v_add_i32_e32 v19, vcc, v10, v11
     v_sub_i32_e32 v19, vcc, s11, v19
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v18
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v19
 
+    s_waitcnt lgkmcnt(0)
     s_waitcnt 0
 
 
@@ -223,7 +225,7 @@ CHIME_X:
       v_add_i32_e32 v20, vcc, s5, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v12
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v13
   ;x1y1
@@ -232,10 +234,10 @@ CHIME_X:
       v_sub_i32_e32 v14, vcc, v10, v11
     v_add_i32_e32 v15, vcc, v10, v11
     v_sub_i32_e32 v15, vcc, s11, v15
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v14
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v15
   ;x2y1
@@ -244,10 +246,10 @@ CHIME_X:
       v_sub_i32_e32 v16, vcc, v10, v11
     v_add_i32_e32 v17, vcc, v10, v11
     v_sub_i32_e32 v17, vcc, s11, v17
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v16
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v17
   ;x3y1
@@ -256,10 +258,10 @@ CHIME_X:
       v_sub_i32_e32 v18, vcc, v10, v11
     v_add_i32_e32 v19, vcc, v10, v11
     v_sub_i32_e32 v19, vcc, s11, v19
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v18
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v19
 
@@ -278,7 +280,7 @@ CHIME_X:
       v_add_i32_e32 v20, vcc, s5, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v12
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v13
   ;x1y2
@@ -287,10 +289,10 @@ CHIME_X:
       v_sub_i32_e32 v14, vcc, v10, v11
     v_add_i32_e32 v15, vcc, v10, v11
     v_sub_i32_e32 v15, vcc, s11, v15
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v14
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v15
   ;x2y2
@@ -299,10 +301,10 @@ CHIME_X:
       v_sub_i32_e32 v16, vcc, v10, v11
     v_add_i32_e32 v17, vcc, v10, v11
     v_sub_i32_e32 v17, vcc, s11, v17
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v16
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v17
   ;x3y2
@@ -311,10 +313,10 @@ CHIME_X:
       v_sub_i32_e32 v18, vcc, v10, v11
     v_add_i32_e32 v19, vcc, v10, v11
     v_sub_i32_e32 v19, vcc, s11, v19
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v18
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v19
 
@@ -333,7 +335,7 @@ CHIME_X:
       v_add_i32_e32 v20, vcc, s5, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v12
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v13
   ;x1y3
@@ -342,10 +344,10 @@ CHIME_X:
       v_sub_i32_e32 v14, vcc, v10, v11
     v_add_i32_e32 v15, vcc, v10, v11
     v_sub_i32_e32 v15, vcc, s11, v15
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v14
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v15
   ;x2y3
@@ -354,10 +356,10 @@ CHIME_X:
       v_sub_i32_e32 v16, vcc, v10, v11
     v_add_i32_e32 v17, vcc, v10, v11
     v_sub_i32_e32 v17, vcc, s11, v17
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v16
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v17
   ;x3y3
@@ -366,10 +368,10 @@ CHIME_X:
       v_sub_i32_e32 v18, vcc, v10, v11
     v_add_i32_e32 v19, vcc, v10, v11
     v_sub_i32_e32 v19, vcc, s11, v19
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v18
-      v_add_i32_e32 v20, vcc, s4, v20
+      v_add_i32_e32 v20, vcc, s6, v20
       v_addc_u32 v21, vcc, v21, 0, vcc
     flat_atomic_add v[20:21], v19
 
@@ -525,7 +527,7 @@ CHIME_X:
         ;ITERATION 0
 
         ;wait to proceed -- 35 ops is NOT ENOUGH!
-;    s_waitcnt lgkmcnt(3)
+    ;s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
         v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
         v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
@@ -544,7 +546,7 @@ CHIME_X:
         v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
           ds_bpermute_b32 v12, v44, v12
 
-;    s_waitcnt lgkmcnt(3)
+    ;s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
         v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
         v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
@@ -724,7 +726,7 @@ CHIME_X:
 
  ;write offset
   v_mov_b32 v3, 0               ;global offset? [time? gate?]
-  v_add_i32_e32 v3, vcc, s6, v3 ;block ID
+  v_add_i32_e32 v3, vcc, s4, v3 ;block ID
   v_lshlrev_b32 v3, 3, v3       ;8 y / block
   v_add_i32_e32 v3, vcc, v1, v3 ;item Y
   v_lshlrev_b32 v3, 5, v3       ;32 x / y
@@ -761,9 +763,9 @@ CHIME_X:
   s_waitcnt 0
 
   ;base addresss
-   v_mov_b32 v2, s2
+   v_mov_b32 v2, s20
     v_add_i32_e32 v2, vcc, v3, v2
-   v_mov_b32 v3, s3
+   v_mov_b32 v3, s21
     v_addc_u32 v3, vcc, v3, 0, vcc
 
 ;ROW 0
@@ -1133,3 +1135,7 @@ CHIME_X:
 
 s_waitcnt 0
 s_endpgm
+
+.Lfunc_end0:
+     .size   CHIME_X, .Lfunc_end0-CHIME_X
+

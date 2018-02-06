@@ -1,0 +1,5 @@
+*************
+fakeVis
+*************
+
+.. doxygenclass:: fakeVis
