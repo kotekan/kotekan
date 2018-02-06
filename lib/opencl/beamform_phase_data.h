@@ -13,8 +13,9 @@
 #include <vector>
 
 /**
- * @class hsaBeamformPulsar
- * @brief hsaCommand to brute-force beamform for pulsar obs
+ * @class beamform_phase_data
+ * @brief This class is responsible for calculating phase shifts for every feed
+ *        of a given telescope every duration set by a period.
  * 
  * This code calculates phase information for the beamforming kernel. The phases are 
  * written to the gpu memory buffer on every execute() call of this code and 
