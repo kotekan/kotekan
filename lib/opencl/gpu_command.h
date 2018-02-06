@@ -1,7 +1,9 @@
-/*****************************************
-File Contents:
-- gpu_command
-*****************************************/
+/**
+ * @file gpu_command.h
+ * @brief Base class for defining openCL commands to execute on GPUs
+ *  - gpu_command
+ */ 
+
 
 #ifndef GPU_COMMAND_H
 #define GPU_COMMAND_H
