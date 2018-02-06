@@ -36,6 +36,8 @@ private:
     int32_t gain_len;
 
     Buffer * metadata_buf;
+    int32_t metadata_buffer_id;
+    int32_t metadata_buffer_precondition_id;
     int32_t freq_now;
 
     uint32_t * host_map;
