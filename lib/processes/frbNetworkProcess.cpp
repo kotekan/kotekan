@@ -36,6 +36,7 @@ std::bind(&frbNetworkProcess::main_thread, this))
   register_consumer(in_buf, unique_name.c_str());
   apply_config(0);
   my_host_name = (char*) malloc(sizeof(char)*100); 
+  CHECK_MEM(my_host_name);
 }
 
 frbNetworkProcess::~frbNetworkProcess()
@@ -52,6 +53,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
   number_of_subnets = config.get_int(unique_name, "number_of_subnets");
   beam_offset = config.get_int(unique_name, "beam_offset");
+  time_interval = config.get_int_default(unique_name, "time_interval", 125829120);
 }
 
 void frbNetworkProcess::parse_host_name()
@@ -152,8 +154,7 @@ void frbNetworkProcess::main_thread()
  
     if (sock_fd[i] < 0)
     {
-      std::cout << "network thread: socket() failed: " <<
-      strerror(errno) << std::endl;
+      ERROR("Network Thread: socket() failed: %s", strerror(errno));
       exit(0);
     }
   }
@@ -172,7 +173,7 @@ void frbNetworkProcess::main_thread()
 
     // Binding port to the socket
     if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) {
-         INFO("port binding failed");
+         ERROR("port binding failed");
          exit(0);
       }
   }
@@ -191,7 +192,7 @@ void frbNetworkProcess::main_thread()
   {  
     if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
     {
-      std::cout << "network thread: setsockopt() failed: " <<  strerror(errno) << std::endl;
+      ERROR("Network Thread: setsockopt() failed: %s " strerror(errno));
       exit(0);
     }
   }
@@ -200,7 +201,7 @@ void frbNetworkProcess::main_thread()
   t0.tv_sec = 0;
   t0.tv_nsec = 0; /*  nanoseconds */
   
-  unsigned long time_interval = 125829120; //time per buffer frame in ns
+  //unsigned long time_interval = 125829120; //time per buffer frame in ns
 
    
   long count=0;
@@ -263,7 +264,7 @@ void frbNetworkProcess::main_thread()
 
       if (abs(nsec)==time_interval && abs(nsec)!=0)
       {
-        INFO("Buffers are too slow %d \n\n\n\n\n\n\n\n",abs(nsec));
+        WARN("Buffers are too slow %d \n\n\n\n\n\n\n\n",abs(nsec));
         t0.tv_nsec -= nsec;
         if(t0.tv_nsec>=1000000000)
         {
@@ -284,9 +285,6 @@ void frbNetworkProcess::main_thread()
         temp=t0;  
       }
     }
-    
-    //INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
-
 
     t1.tv_sec = t0.tv_sec;
     t1.tv_nsec = t0.tv_nsec;
@@ -319,7 +317,7 @@ void frbNetworkProcess::main_thread()
          
          long wait_per_packet = (long)(58880); 
          
-         //61521.25 is the theoritical seperation of packets in ns 
+         //61521.25 is the theoretical seperation of packets in ns 
          // I have used 58880 for convinence and also hope this will take care for
          // any clock glitches.
 
@@ -329,8 +327,6 @@ void frbNetworkProcess::main_thread()
            t1.tv_sec = t1.tv_sec + 1;
            t1.tv_nsec = t1.tv_nsec -1000000000;
          }
-         
-         
       }
     }
     

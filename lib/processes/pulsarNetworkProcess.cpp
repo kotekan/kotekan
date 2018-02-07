@@ -35,7 +35,8 @@ std::bind(&pulsarNetworkProcess::main_thread, this))
   in_buf = get_buffer("pulsar_out_buf");
   register_consumer(in_buf, unique_name.c_str());
   apply_config(0);
-  my_host_name = (char*) malloc(sizeof(char)*100); 
+  my_host_name = (char*) malloc(sizeof(char)*100);
+  CHECK_MEM(my_host_name);
 }
 
 pulsarNetworkProcess::~pulsarNetworkProcess()
@@ -59,6 +60,7 @@ void pulsarNetworkProcess::parse_host_name()
   std::stringstream temp_ip[number_of_subnets];
 
   gethostname(my_host_name, sizeof(my_host_name));
+  CHECK_MEM(my_host_name);
 
   if(my_host_name[0] != 'c' && my_host_name[3] != 'g')
   {
