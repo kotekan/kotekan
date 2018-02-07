@@ -199,6 +199,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
     }
 
+    if (name == "rfiVDIF") {
+        return (KotekanProcess *) new rfiVDIF(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVDIF") {
+        return (KotekanProcess *) new rfiBroadcastVDIF(config, location, buffer_container);
+    }
+
 #ifdef WITH_AIRSPY
     if (name == "airspyInput") {
         return (KotekanProcess *) new airspyInput(config, location, buffer_container);
