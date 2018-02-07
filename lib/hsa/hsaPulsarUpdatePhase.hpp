@@ -33,8 +33,6 @@ public:
 
 private:
 
-  //    struct Buffer *in_buf;
-
     int32_t phase_frame_len;
     float * host_phase_0;
     float * host_phase_1;
@@ -52,7 +50,6 @@ private:
     struct timeval time_now;
 
     float freq_now;
-    //vector<int32_t> _elem_position;
     int32_t * _elem_position_c = NULL;
     float _feed_sep_NS;
     int32_t _feed_sep_EW;
