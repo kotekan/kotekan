@@ -65,11 +65,9 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
 
 
     for (int i=0;i<2048;i++){
-      host_gain[i*2] = 1.0;
-      host_gain[i*2+1] = 0.0;
+        host_gain[i*2] = 1.0;
+	host_gain[i*2+1] = 0.0;
     }
-    
-
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
@@ -85,6 +83,7 @@ void hsaBeamformKernel::apply_config(const uint64_t& fpga_seq) {
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _gain_dir = config.get_string(unique_name, "gain_dir");
 
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
@@ -104,16 +103,21 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
     freq_now = bin_number_chime(&stream_id); 
     FILE *ptr_myfile;
-    char filename[sizeof "/root/FRB-GainFiles/quick_gains_0000_reordered.bin"];
-    sprintf(filename, "/root/FRB-GainFiles/quick_gains_%04d_reordered.bin",freq_now);
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(),freq_now);
     if( access( filename, F_OK ) == -1 ) {
-      // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
-      sprintf(filename, "/root/FRB-GainFiles/dummy.bin");
+        // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
+        snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
     }
-    ptr_myfile=fopen(filename,"rb");
-    fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
-    fclose(ptr_myfile);
 
+    ptr_myfile=fopen(filename,"rb");
+    if (ptr_myfile == NULL) {
+        ERROR("GPU Cannot open gain file %s", filename);
+    }
+    else {
+        fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+	fclose(ptr_myfile);
+    }
     void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
     device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
 

@@ -4,6 +4,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include <unistd.h>
+#include <stdlib.h>
 
 
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
@@ -61,8 +62,6 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     for (uint i=0;i<512;++i){
         reorder_map_c[i] = _reorder_map[i];
     }
-
-
 }
 
 gpuBeamformSimulate::~gpuBeamformSimulate() {
@@ -86,6 +85,7 @@ void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
     _downsample_time = config.get_int(unique_name, "downsample_time");
     _downsample_freq = config.get_int(unique_name, "downsample_freq");
     _reorder_map = config.get_int_array(unique_name, "reorder_map");
+    _gain_dir = config.get_string(unique_name, "gain_dir");
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
@@ -295,8 +295,9 @@ void gpuBeamformSimulate::main_thread() {
         for (int i=0;i<output_len;i++){
             cpu_final_output[i] = 0.0;
         }
-	for (int i=0;i<2*2048;i++){
-	  cpu_gain[i] = 0.0;
+	for (int i=0;i<2048;i++){
+	  cpu_gain[i*2] = 1.0;
+	  cpu_gain[i*2+1] = 0.0;
 	}
 
         // TODO adjust to allow for more than one frequency.
@@ -307,19 +308,23 @@ void gpuBeamformSimulate::main_thread() {
 
 	stream_id_t stream_id = get_stream_id_t(input_buf, 0);
 	uint freq_now = bin_number_chime(&stream_id);
-	INFO("!!!!!!---------CPU verification got freq_now=%d",freq_now);
 	FILE *ptr_myfile;
-	char filename[sizeof "/root/FRB-GainFiles/quick_gains_0000_reordered.bin"];
-	sprintf(filename, "/root/FRB-GainFiles/quick_gains_%04d_reordered.bin",freq_now);
+	char filename[512];
+	snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
 	if( access( filename, F_OK ) == -1 ) {
-	  // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
-	  sprintf(filename, "/root/FRB-GainFiles/dummy.bin");
+	    // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
+	    snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
+	}
+	
+	ptr_myfile=fopen(filename,"rb");
+	if (ptr_myfile == NULL){
+	    ERROR("CPU verification code: Cannot open gain file %s", filename);
+	}
+	else {
+	    fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
+	    fclose(ptr_myfile);
 	}
 
-	ptr_myfile=fopen(filename,"rb");
-	fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
-	fclose(ptr_myfile);
-	INFO("!!!!!!---------CPU gains gain[0](%.2f %.2f) gain[2047]=(%.2f %.2f)", cpu_gain[0], cpu_gain[1], cpu_gain[4094], cpu_gain[4095]);
 	//Reorder
 	reorder(input, reorder_map_c);
 
@@ -339,12 +344,12 @@ void gpuBeamformSimulate::main_thread() {
 		    for (int i = 0; i < 512; i++){
 		        if (i < 256){
 			    //Real
-			    input_unpacked_padded[index++] =\
-			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]\
+			    input_unpacked_padded[index++] =
+			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
 			      -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
 			    //Imag
-			    input_unpacked_padded[index++] =\
-			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]\
+			    input_unpacked_padded[index++] =
+			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
 			      +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
 			} else{
 			    input_unpacked_padded[index++] = 0;
@@ -413,7 +418,7 @@ void gpuBeamformSimulate::main_thread() {
 
         for (int i = 0; i < output_buf->frame_size; i++) {
             output[i] = (unsigned char)cpu_final_output[i];
-	    }
+	}
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
                 input_buf->buffer_name, input_buf_id,

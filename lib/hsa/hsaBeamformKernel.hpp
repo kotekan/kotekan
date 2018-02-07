@@ -34,6 +34,7 @@ private:
     int32_t map_len;
     int32_t coeff_len;
     int32_t gain_len;
+    string _gain_dir;
 
     Buffer * metadata_buf;
     int32_t metadata_buffer_id;
