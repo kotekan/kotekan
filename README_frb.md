@@ -1,9 +1,8 @@
-To run kotekan FRB test mode, using 4 GPUs and no CPU verification:
-sudo ./kotekan -c ../../kotekan/kotekan_test.yaml
+Compile kotekan for FRB on new HSA -- use precompiled hasco for now:
+cmake -DUSE_PRECOMPILED_OPENCL=ON -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
 
-To run kotekan FRB mode, using 4 GPUs (need dpdk):
-sudo ./kotekan -c ../../kotekan/kotekan_frb.yaml
-
-To run kotekan FRB mode with CPU verification, using only one GPU:
+Run FRB with CPU verification, one GPU only
 sudo ./kotekan -c ../../kotekan/kotekan_frb_verify-cpu-oneGPU.yaml
 
+Run FRB with DPDK+packetizer, 4GPUs
+sudo ./kotekan -c ../../kotekan_frb_test_dpdk-reorder-l0-packet.yaml
