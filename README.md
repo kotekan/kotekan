@@ -1,3 +1,9 @@
+# Documentation
+
+Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.
+One day we'll move them to readthedocs...
+
+
 # Build/Run Requirements
 
 ## Software:
@@ -85,6 +91,7 @@ Cmake build options:
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
+* `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 
 **Examples:**
 

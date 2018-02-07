@@ -1,0 +1,6 @@
+***********************
+chimeMetadataDump
+***********************
+
+.. doxygenclass:: chimeMetadataDump
+

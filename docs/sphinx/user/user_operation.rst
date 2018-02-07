@@ -12,3 +12,12 @@ REST endpoints
 
 Daemon mode
 -------------
+
+
+Useful Modules
+---------------
+.. toctree::
+    :glob:
+    :maxdepth: 1
+
+    modules/*

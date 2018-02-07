@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Displays CHIME metadata for a given buffer.
+ *  - chimeMetadataDump : public KotekanProcess
+ */
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
@@ -7,23 +12,40 @@
 #include "util.h"
 #include <unistd.h>
 
-/*
- * Displays CHIME metedata for a given buffer
- * "buf": String with the name of the buffer display metadata info for.
+/**
+ * @class chimeMetadataDump
+ * @brief Displays CHIME metedata for a given buffer
+ *
+ * This is a simple process which prints (via the @c INFO mechanism)
+ * CHIME metadata from a target buffer.
+ *
+ * @par Buffers
+ * @buffer in_buf Input kotekan buffer to display metadata info for.
+ *     @buffer_format Any
+ *     @buffer_metadata chimeMetadata
+ *
+ * @author Andre Renard
+ *
  */
 
 class chimeMetadataDump : public KotekanProcess {
 public:
+    ///Constructor.
     chimeMetadataDump(Config &config,
                   const string& unique_name,
                   bufferContainer &buffer_container);
+
+    ///Destructor.
     ~chimeMetadataDump();
+
+    /// Re-parse config, not yet implemented.
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+
+    /// Primary loop, which waits on input frames, prints the metadata.
+    void main_thread() override;
 private:
-    struct Buffer *buf;
-    int32_t len;
-    int32_t offset;
+    ///Input kotekanBuffer.
+    struct Buffer *in_buf;
 };
 
 #endif

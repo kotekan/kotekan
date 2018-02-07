@@ -1,0 +1,5 @@
+*****************
+simpleAutocorr
+*****************
+
+.. doxygenclass:: simpleAutocorr
