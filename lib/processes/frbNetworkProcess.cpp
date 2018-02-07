@@ -53,7 +53,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
   number_of_subnets = config.get_int(unique_name, "number_of_subnets");
   beam_offset = config.get_int(unique_name, "beam_offset");
-  time_interval = config.get_int_default(unique_name, "time_interval", 125829120);
+  time_interval = config.get_uint64(unique_name, "time_interval");
 }
 
 void frbNetworkProcess::parse_host_name()
