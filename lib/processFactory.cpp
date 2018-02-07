@@ -39,6 +39,8 @@
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
+#include "rfiVDIF.hpp"
+#include "rfiBroadcastVDIF.hpp"
 #include "frbNetworkProcess.hpp"
 #include "pulsarNetworkProcess.hpp"
 #include "frbPostProcess_in.hpp"
