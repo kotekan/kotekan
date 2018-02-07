@@ -51,32 +51,32 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		  struct timeval * time_now,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
-  //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
-  for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
-      uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
-      vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
-      vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
-      vdif_header->seconds = time_now->tv_sec;
-      vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
-      
-      for (int f=0;f<_num_gpus;++f) { //4 freq
-	  vdif_header->thread_id = freq_ids[f];
+    //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
+    for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
+        uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
+	vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
+	vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
+	vdif_header->seconds = time_now->tv_sec;
+	vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
+	
+	for (int f=0;f<_num_gpus;++f) { //4 freq
+	    vdif_header->thread_id = freq_ids[f];
 
-	  for (int psr=0;psr<_num_pulsar; ++psr) { //10 streams
-	      vdif_header->eud1 = psr; //beam id
-	      uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
-	      uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
-	      vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
-	      memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
-	  }
-      } //end freq
-      //Increment time for the next frame
-      time_now->tv_usec +=samples_in_frame*2.56;
-      if (time_now->tv_usec > 999999) {
-	  time_now->tv_usec = time_now->tv_usec % 999999;
-	  time_now->tv_sec +=1;
-      }
-  } //end packet
+	    for (int psr=0;psr<_num_pulsar; ++psr) { //10 streams
+	        vdif_header->eud1 = psr; //beam id
+		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
+		uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
+		vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
+		memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
+	    }
+	} //end freq
+	//Increment time for the next frame
+	time_now->tv_usec +=samples_in_frame*2.56;
+	if (time_now->tv_usec > 999999) {
+	    time_now->tv_usec = time_now->tv_usec % 1000000;
+	    time_now->tv_sec +=1;
+	}
+    } //end packet
 }
 
 void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
@@ -172,7 +172,7 @@ void pulsarPostProcess::main_thread() {
 	    fill_headers((unsigned char*)out_frame,
 			 &vdif_header,
 			 first_seq_number,
-			 &time_now, 
+			 &time_now,
 			 psr_coord,
 			 (uint16_t*)freq_ids);
         }
