@@ -51,6 +51,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   number_of_nodes = config.get_int(unique_name, "number_of_nodes");
   packets_per_stream = config.get_int(unique_name, "packets_per_stream");
   number_of_subnets = config.get_int(unique_name, "number_of_subnets");
+  beam_offset = config.get_int(unique_name, "beam_offset");
 }
 
 void frbNetworkProcess::parse_host_name()
@@ -296,7 +297,7 @@ void frbNetworkProcess::main_thread()
     uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
     INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*4*253+12],lock_miss);
     
-
+    int link=0;
     for(int frame=0; frame<packets_per_stream; frame++)
     {
       for(int stream=0; stream<256; stream++)
@@ -305,18 +306,21 @@ void frbNetworkProcess::main_thread()
         if(e_stream>255) e_stream -= 256;
         
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
-
-         if(e_stream<number_of_l1_links)
+        
+         if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
          {
-           int i = e_stream%number_of_subnets;
+           int i = link%2;
            sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
                    udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
+  
+           link++;
+           if(link==number_of_l1_links) link=0;
          }
          
          long wait_per_packet = (long)(58880); 
          
          //61521.25 is the theoritical seperation of packets in ns 
-         // I have used 61440 for convinence and also hope this will take care for
+         // I have used 58880 for convinence and also hope this will take care for
          // any clock glitches.
 
          t1.tv_nsec = t1.tv_nsec+wait_per_packet;

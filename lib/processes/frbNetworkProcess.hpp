@@ -86,6 +86,9 @@ private:
 
   /// host name from the gethosename()
   char *my_host_name;
+
+  /// beam offset for 8-node frb system
+  int beam_offset;
 };
  
 #endif
