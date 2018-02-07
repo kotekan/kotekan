@@ -31,7 +31,9 @@
  * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of FRB data
  * @conf   packets_per_stream   Int (default 8). Number of subnets or VLANS used for transmission of FRB data
- * @conf   my_node_id           Int (parsed from the hostname) esimated from the location of node from node location. 
+ * @conf   my_node_id           Int (parsed from the hostname) esimated from the location of node from node location.
+ * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
+ * @conf   time_interval        Unsigned long (default 125829120). Time per buffer in ns.
  *
  * @todo   Resolve the issue of NTP clock vs Monotonic clock. 
  *
@@ -89,6 +91,9 @@ private:
 
   /// beam offset for 8-node frb system
   int beam_offset;
+
+  // time per buffer frame in ns
+  unsigned long time_interval;
 };
  
 #endif

@@ -192,7 +192,7 @@ void frbNetworkProcess::main_thread()
   {  
     if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
     {
-      ERROR("Network Thread: setsockopt() failed: %s " strerror(errno));
+      ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
       exit(0);
     }
   }
