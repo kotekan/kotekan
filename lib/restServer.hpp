@@ -30,6 +30,14 @@ public:
     void send_binary_reply(uint8_t * data, int len);
     void send_empty_reply(int status_code);
 
+    /**
+     * Sends an HTTP response with "content-type" header set to "text/plain"
+     *
+     * @param[in] reply The body of the reply
+     * @param[in] status_code HTTP response status code (default = HTTP_OK = 200)
+     */
+    void send_text_reply(const string &reply, int status_code=STATUS_OK);
+
     // TODO use move constructors with this.
     string get_body();
     string get_full_message();

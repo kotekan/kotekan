@@ -140,6 +140,11 @@ void connectionInstance::send_empty_reply(int status_code) {
     mg_send_head(nc, status_code, 0, NULL);
 }
 
+void connectionInstance::send_text_reply(const string &reply, int status_code) {
+    mg_send_head(nc, status_code, reply.length(), "Content-Type: text/plain");
+    mg_send(nc, (void *) reply.c_str(), reply.length());
+}
+
 void connectionInstance::send_binary_reply(uint8_t * data, int len) {
     assert(data != nullptr);
     assert(len > 0);
