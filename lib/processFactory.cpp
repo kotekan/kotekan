@@ -40,6 +40,7 @@
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
+#include "eigenVis.hpp"
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
@@ -285,6 +286,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // Generate fake visbilities
     if (name == "fakeVis") {
         return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+
+    // Visibility analysis
+    if (name == "eigenVis") {
+        return (KotekanProcess *) new eigenVis(config, location, buffer_container);
     }
 
     // Generate fake visbilities in GPU buffer format

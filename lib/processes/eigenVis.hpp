@@ -13,8 +13,8 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();
 private:
-    struct Buffer *input_buf;
-    struct Buffer *output_buf;
+    struct Buffer *input_buffer;
+    struct Buffer *output_buffer;
 
     int32_t num_eigenvectors;
 };
