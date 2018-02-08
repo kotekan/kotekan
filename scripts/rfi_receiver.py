@@ -30,8 +30,9 @@ class CommandLine:
         self.TCP_PORT = 41214
         self.mode = 'pathfinder'
         self.config = {'frames_per_packet': 64, 'num_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
-                        'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'vdif_rfi_header_size': 21, 'sk_step': 256}
-        self.supportedModes = ['vdif','pathfinder']
+                        'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'vdif_rfi_header_size': 21,
+                        'sk_step': 256, 'chime_rfi_header_size': 31}
+        self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
         parser.add_argument("-r", "--receive", help = "Example: 127.0.0.1:2900", required = False, default = "")
@@ -80,11 +81,56 @@ class CommandLine:
                 print("Setting mode to %s mode."%(argument.mode))
             else:
                 print("This mode in currently not supported, reverting to default")
+                print("Supported Modes Include:")
+                for mode in self.supportedModes:
+                    print("- ",mode)
             status = True
         if not status:
-            print("Maybe you want to use -H or -s or -p or -p as arguments ?") 
+            print("Remember: You can use -H or - Help to see configuration options") 
 
-def VDIFheadercheck(header,app):
+class Stream:
+
+    def __init__(self, header):
+
+        encoded_stream_id = header['encoded_stream_ID']
+        self.slot_id = encoded_stream_id & 0x000F 
+        self.link_id = (encoded_stream_id & 0x00F0) >> 4
+        self.crate = (encoded_stream_id & 0x0F00) >> 8
+        self.unused = (encoded_stream_id & 0xF000) >> 12
+        self.bins = [self.slot_id + self.link_id * 16 + i * 128 for i in range(header['num_local_freq'])]
+        self.freqs = [800.0 - float(b) * 400.0/1024.0 for b in self.bins]
+        self.bins = np.array(self.bins).astype(int)
+        self.freqs = np.array(self.freqs)
+
+def chimeHeaderCheck(header,app):
+
+    if(header['combined_flag'] != 1):
+        print("Chime Header Error: Only Combined RFI values are currently supported ")
+        return False
+    if(header['sk_step'] != app.config['sk_step']):
+        print("Chime Header Error: SK Step does not match config")
+        return False
+    if(header['num_elements'] != app.config['num_elements']):
+        print("Chime Header Error: Number of Elements does not match config")
+        return False
+    if(header['num_timesteps'] != app.config['samples_per_data_set']):
+        print("Chime Header Error: Samples per Dataset does not match config")
+        return False
+    if(header['num_global_freq'] != app.config['num_freq']):
+        print("Chime Header Error: Number of Global Frequencies does not match config")
+        return False
+    if(header['num_local_freq'] != app.config['num_local_freq']):
+        print("VDIF Header Error: Number of Local Frequencies does not match config")
+        return False
+    if(header['fpga_seq_num'] < 0):
+        print("Chime Header Error: Invalid FPGA sequenc Number")
+        return False
+
+    print("First Packet Received, Valid Chime Header Confirmed.")
+    return True
+
+
+def VDIFHeaderCheck(header,app):
     
     if(header['combined_flag'] != 1):
         print("VDIF Header Error: Only Combined RFI values are currently supported ")
@@ -102,6 +148,7 @@ def VDIFheadercheck(header,app):
         print("VDIF Header Error: Number of Frequencies does not match config")
         return False
     return True
+
 def data_listener():
 
     global sock_udp, waterfall, t_min, app
@@ -115,10 +162,14 @@ def data_listener():
     global_freq = app.config['num_freq']
     sk_step = app.config['sk_step']
     vdifRFIHeaderSize = app.config['vdif_rfi_header_size']
+    chimeRFIHeaderSize = app.config['chime_rfi_header_size']
     mode = app.mode
-    #Intialization Variables
     firstPacket = True
     vdifPacketSize = global_freq*4 + vdifRFIHeaderSize
+    chimePacketSize = chimeRFIHeaderSize + 4*local_freq
+    chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1), ('encoded_stream_ID',np.uint16,1),('sk_step',np.uint32,1),
+        ('num_elements',np.uint32,1),('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),
+        ('num_local_freq',np.uint32,1),('fpga_seq_num',np.uint64,1)])
 
     while True:
 
@@ -159,6 +210,44 @@ def data_listener():
                 waterfall[(data['bin']).astype(int),((data['seq']-min_seq)/timesteps_per_frame ).astype(int)] = data['mask']
                 #print(data['bin'])
 
+        elif (mode == 'chime'):
+
+            #Receive packet from port
+            packet, addr = sock_udp.recvfrom(chimePacketSize)
+        
+            if(packet != ''):
+
+                print('Receiving UDP Packet...')
+                header = np.fromstring(packet[:chimeRFIHeaderSize],dtype=chimeHeaderDataType)
+                data = np.fromstring(packet[chimeRFIHeaderSize:],dtype=np.float32)
+
+                if(firstPacket):
+
+                    if(chimeHeaderCheck(header,app) == False):
+                        break
+
+                    stream = Stream(header)
+                    t_min = datetime.datetime.utcnow()
+                    min_seq = header['fpga_seq_num']
+                    max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame
+                    firstPacket = False
+
+                else:
+
+                    if(header['fpga_seq_num'] > max_seq):
+
+                        roll_amount = int(-1*waterfall.shape[1]/8)
+
+                        #DO THE ROLL, Note: Roll Amount is negative
+                        waterfall = np.roll(waterfall,roll_amount,axis=1)
+                        waterfall[:,roll_amount:] = -1
+                        min_seq -= roll_amount*timesteps_per_frame
+                        max_seq -= roll_amount*timesteps_per_frame
+                        #Adjust Time
+                        t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
+
+            waterfall[stream.bins,int((header['fpga_seq_num']-min_seq)/timesteps_per_frame)] = data
+
         elif (mode == 'vdif'):
 
             packet, addr = sock_udp.recvfrom(vdifPacketSize)
@@ -167,14 +256,14 @@ def data_listener():
 
                 print('Receiving UDP Packet...')
 
-                header = np.fromstring(packet[:vdifRFIHeaderSize],dtype=np.dtype([('combined_flag', np.uint8 ,1), ('sk_step', np.int32,1), ('num_elements', np.int32,1),
-                                                             ('num_times_per_frame', np.int32,1), ('num_freq', np.int32,1), ('seq', np.uint32 ,1)]))
+                header = np.fromstring(packet[:vdifRFIHeaderSize],dtype=np.dtype([('combined_flag', np.uint8 ,1),
+                    ('sk_step', np.int32,1), ('num_elements', np.int32,1),
+                    ('num_times_per_frame', np.int32,1), ('num_freq', np.int32,1), ('seq', np.uint32 ,1)]))
                 data = np.fromstring(packet[vdifRFIHeaderSize:],dtype=np.float32)
 
                 if(firstPacket):
 
-                    #TODO add header check here
-                    if(VDIFheadercheck(header,app) == False):
+                    if(VDIFHeaderCheck(header,app) == False):
                         break
                     t_min = datetime.datetime.utcnow()
                     min_seq = header['seq']

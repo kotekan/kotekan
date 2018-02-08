@@ -15,17 +15,20 @@ public:
                          hsa_signal_t precede_signal) override;
 
 private:
-    int32_t input_frame_len;
-    int32_t mean_len;
-    bool rfi_zero;
+    uint32_t input_frame_len;
+    uint32_t output_frame_len;
+    uint32_t swap_len;
+    uint32_t mask_len;
+    
+    float *swap;
+    uint8_t *InputMask;
 
-    float * Mean_Array;
+    uint32_t _num_elements;
+    uint32_t _num_local_freq;
+    uint32_t _samples_per_data_set;
 
-    int32_t _num_elements;
-    int32_t _num_local_freq;
-    int32_t _samples_per_data_set;
-    int32_t _sk_step;
-    int32_t rfi_sensitivity;
+    uint32_t _sk_step;
+    uint32_t _num_bad_inputs;
 };
 
 #endif
