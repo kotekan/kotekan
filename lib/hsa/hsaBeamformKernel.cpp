@@ -65,7 +65,7 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
 
 
     for (int i=0;i<2048;i++){
-        host_gain[i*2] = 1.0;
+        host_gain[i*2] = 0.0;
 	host_gain[i*2+1] = 0.0;
     }
 }
@@ -105,14 +105,13 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     FILE *ptr_myfile;
     char filename[256];
     snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(),freq_now);
-    if( access( filename, F_OK ) == -1 ) {
-        // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
-        snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
-    }
-
     ptr_myfile=fopen(filename,"rb");
     if (ptr_myfile == NULL) {
         ERROR("GPU Cannot open gain file %s", filename);
+	for (int i=0;i<2048;i++){
+	  host_gain[i*2] = 0.0;
+	  host_gain[i*2+1] = 0.0;
+	}
     }
     else {
         fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
