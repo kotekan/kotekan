@@ -10,7 +10,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
-
+#include "timing_mach.h"
  /**
  * @class frbNetworkProcess
  * @brief frbNetworkProcess Network transmission process for FRB obs

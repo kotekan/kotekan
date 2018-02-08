@@ -16,7 +16,7 @@ File Contents:
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
-
+#include <timing_mach.h>
 
 /**
  * @class pulsarNetworkProcess

@@ -222,8 +222,9 @@ void frbNetworkProcess::main_thread()
     t0.tv_sec += 1;
     t0.tv_nsec -= 1000000000;
   }
-  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t0, NULL);
-  
+//  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t0, NULL);
+    clock_nanosleep_abstime(&t0);
+
   
   while(!stop_thread)
   {
@@ -303,8 +304,9 @@ void frbNetworkProcess::main_thread()
         int e_stream = my_sequence_id + stream;
         if(e_stream>255) e_stream -= 256;
         
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
-        
+//        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
+          clock_nanosleep_abstime(&t1);
+
          if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
          {
            int i = link%2;
