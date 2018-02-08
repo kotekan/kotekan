@@ -2,10 +2,12 @@
 #include "visBuffer.hpp"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
+#include "visFile.hpp"
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
 #include <algorithm>
+#include <sys/stat.h>
 
 using namespace HighFive;
 
@@ -37,8 +39,9 @@ writeEigenvec::writeEigenvec(Config &config,
     // TODO: this may not be the case. would need to read them from buffer
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
 
-    // open file for writing
-    // TODO: need to deal with existing files
+    // open file for writing. delete existing file.
+    struct stat check_exists;
+    if (stat(ev_fname.c_str(), &check_exists) == 0) std::remove(ev_fname.c_str());
     file = std::unique_ptr<evFile>(
             new evFile(ev_fname, num_eigenvectors, ev_file_len,
                        freqs, inputs)
@@ -47,9 +50,7 @@ writeEigenvec::writeEigenvec(Config &config,
 }
 
 writeEigenvec::~writeEigenvec() {
-
     file->flush();
-    // TODO: delete file?
 }
 
 void writeEigenvec::apply_config(uint64_t fpga_seq) {
@@ -151,7 +152,7 @@ evFile::evFile(const std::string & fname,
     Group indexmap = file->createGroup("index_map");
 
     DataSet time_imap = indexmap.createDataSet<time_ctype>(
-      "time", DataSpace(ntimes)
+            "time", DataSpace(ntimes)
     );
 
     DataSet freq_imap = indexmap.createDataSet<freq_ctype>(
