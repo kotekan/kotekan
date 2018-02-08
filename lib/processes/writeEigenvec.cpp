@@ -74,12 +74,19 @@ void writeEigenvec::main_thread() {
         // Find the index of this frequency in the file
         // TODO: use correct scheme
         size_t freq_ind = frame.freq_id() - freq_half * 512;
-        
+
+        // Put the time into correct format
         auto ftime = frame.time();
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        file->write_eigenvectors(t, freq_ind, frame.eigenvectors(),
-                                 frame.eigenvalues(), frame.rms());
+        // Get data and write to file
+        std::complex<float> * evec_ptr = frame.eigenvectors();
+        std::vector<std::complex<float>> evec(evec_ptr, evec_ptr + num_eigenvectors);
+        float * eval_ptr = frame.eigenvalues();
+        std::vector<float> eval(eval_ptr, eval_ptr + num_eigenvectors);
+        float rms = frame.rms();
+
+        file->write_eigenvectors(t, freq_ind, evec, eval, rms);
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -131,7 +138,7 @@ evFile::evFile(const std::string & fname,
 
     // Create rms dataset
     std::vector<size_t> rms_dims = {ntimes, nfreq};
-    std::vector<std::string> eval_axes = {"time", "freq"};
+    std::vector<std::string> rms_axes = {"time", "freq"};
     DataSpace rms_space = DataSpace(rms_dims);
     DataSet rms = file->createDataSet(
             "rms", rms_space, create_datatype<float>()
@@ -171,8 +178,8 @@ void evFile::flush() {
 }
 
 void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
-                          std::complex<float> * eigenvectors,
-                          float * eigenvalues, float rms) {
+                          std::vector<std::complex<float>> eigenvectors,
+                          std::vector<float> eigenvalues, float new_rms) {
 
     // Find position in file
     uint64_t curr_time = new_time.fpga_count;
@@ -199,7 +206,7 @@ void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
     // write rms
     rms().select(
             {curr_ind, freq_ind}, {1, 1}
-    ).write(rms);
+    ).write(new_rms);
     // write time
     time().select({curr_ind}, {1}).write(new_time);
 
