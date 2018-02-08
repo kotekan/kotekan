@@ -44,24 +44,19 @@ void bufferSend::main_thread() {
 
         if (connected) {
             // Send header
-            // Note this only works with CHIME metadata for now, but
-            // it could be extended to work with any metadata providing
-            // some kind of stream ID and seq number.
             struct bufferFrameHeader header;
             const size_t header_len = sizeof(struct bufferFrameHeader);
             int32_t n = 0;
             int32_t n_sent = 0;
 
-            header.stream_id = get_stream_id(buf, frame_id);
-            header.seq_number = get_fpga_seq_num(buf, frame_id) / integration_len;
             header.frame_size = buf->frame_size;
             header.metadata_size = buf->metadata[frame_id]->metadata_size;
 
-            //INFO("Header: stream_id: %d, seq_number: %d, frame_size: %d, metadata_size: %d",
-            //        header.stream_id, header.seq_number, header.frame_size, header.metadata_size);
+            DEBUG2("frame_size: %d, metadata_size: %d",
+                    header.frame_size, header.metadata_size);
 
             // Recover from partial sends
-            //DEBUG("Sending header");
+            DEBUG2("Sending header");
             while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent],
                                 header_len - n_sent, 0)) > 0) {
                 n_sent += n;
@@ -72,10 +67,10 @@ void bufferSend::main_thread() {
                 close_connection();
                 continue;
             }
-            //DEBUG("Sent header: %d", n_sent);
+            DEBUG2("Sent header: %d", n_sent);
 
             // Send metadata
-            //DEBUG("Sending metadata");
+            DEBUG2("Sending metadata");
             n_sent = 0;
             while ((n = send(socket_fd,
                                 &((uint8_t*)buf->metadata[frame_id]->metadata)[n_sent],
@@ -87,10 +82,10 @@ void bufferSend::main_thread() {
                 close_connection();
                 continue;
             }
-            //DEBUG("Sent metadata: %d", n_sent);
+            DEBUG2("Sent metadata: %d", n_sent);
 
             // Send buffer frame.
-            //DEBUG("Sending frame with %d bytes", header.frame_size);
+            DEBUG2("Sending frame with %d bytes", header.frame_size);
             n_sent = 0;
             while ((n = send(socket_fd, &frame[n_sent],
                                 (int32_t)header.frame_size - n_sent, 0)) > 0) {
@@ -102,7 +97,7 @@ void bufferSend::main_thread() {
                 close_connection();
                 continue;
             }
-            //DEBUG("Sent frame: %d", n_sent);
+            DEBUG2("Sent frame: %d", n_sent);
             INFO("Sent frame: %s[%d] to %s:%d", buf->buffer_name, frame_id, server_ip.c_str(), server_port);
 
         } else {
