@@ -31,9 +31,8 @@ for i in range(1024):
 
 
 data2 = np.zeros(2048,dtype=complex)
-for i in range(2048):
-    #data2[i] = data[New[i]]
-    data2[i] = data[New2[i]]
+#data2 = data[New]
+data2 = data[New2]
 
 #Write out as binary
 freq = float(INF.split(".npy")[0].split("_")[-1])
