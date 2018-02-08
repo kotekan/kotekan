@@ -2,5 +2,39 @@
 MacOS
 *********************
 
-**Kotekan** uses cmake to manage its compile-time settings. A host of options are supported, and will some day be described here. Pull automagically from the readme.md?
+MacOS is known to work with most (non-GPU / non-DPDK) options.
 
+You'll need to have `Homebrew <https://brew.sh/>`_ installed, along with Python (we recommend `Anaconda <https://anaconda.org/anaconda/python>`_).
+
+.. code:: bash
+
+    brew install libevent
+    pip install pyyaml
+
+
+To include **Airspy** input:
+
+.. code:: bash
+
+    brew install airspy
+    cd <kotekan_dir>/build
+    cmake .. -DUSE_AIRSPY=ON
+
+
+To include **FFTW** processes:
+
+.. code:: bash
+
+    brew install fftw
+    cd <kotekan_dir>/build
+    cmake .. -DUSE_FFTW=ON
+
+
+With these installed, you should be able to build & run kotekan!
+
+.. code:: bash
+
+    cd <kotekan_dir>/build
+    make
+    cd kotekan
+    ./kotekan -c `<config_file.yaml>`
