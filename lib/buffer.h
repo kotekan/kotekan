@@ -197,7 +197,7 @@ struct Buffer {
  * as a part of the pipeline generation from the config file, not intended
  * to be called directly.
  *
- * @param[in] num_frame The number of frames to create in the buffer ring.
+ * @param[in] num_frames The number of frames to create in the buffer ring.
  * @param[in] frame_size The length of each frame in bytes.
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
@@ -292,7 +292,7 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
  * Generally a process should exit and cleanup if NULL is returned.
  *
  * @param[in] buf The buffer object
- * @param[in] producer_name The name of the registered producer requesting the frame_id
+ * @param[in] consumer_name The name of the registered producer requesting the frame_id
  * @param[in] frame_id The id of the frame to wait for.
  * @returns A pointer to the frame, or NULL if the buffer is shutting down.
  * @warning After calling this function for a given consumer and frame_id it

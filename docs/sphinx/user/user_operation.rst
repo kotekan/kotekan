@@ -14,9 +14,10 @@ Daemon mode
 -------------
 
 
-Common Operation Modules
-------------------------
+Useful Modules
+---------------
 .. toctree::
     :glob:
+    :maxdepth: 1
 
     modules/*

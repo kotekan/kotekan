@@ -41,6 +41,9 @@
 #include "simpleAutocorr.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
+#include "frbNetworkProcess.hpp"
+#include "pulsarNetworkProcess.hpp"
+#include "frbPostProcess_in.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -149,6 +152,15 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "pulsarPostProcess") {
         return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
+    if (name == "frbNetworkProcess") {
+        return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarNetworkProcess") {
+        return (KotekanProcess *) new pulsarNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "frbPostProcess_in") {
+        return (KotekanProcess *) new frbPostProcess_in(config, location, buffer_container);
     }
 
     if (name == "nDiskFileWrite") {

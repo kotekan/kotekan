@@ -37,14 +37,25 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     temp_3.REAL = ((int)((data_temp & 0xf0000000) >>  28u)) - 8;
     temp_3.IMAG = ((int)((data_temp & 0x0f000000) >>  24u)) - 8;
 
-    local_data[index_0    ] = temp_0*Gain[get_global_id(1)*1024+local_address*4];
-    local_data[index_0 +1 ] = temp_0*Gain[get_global_id(1)*1024+local_address*4];
-    local_data[index_1    ] = temp_1*Gain[get_global_id(1)*1024+local_address*4+1];
-    local_data[index_1 + 1] = temp_1*Gain[get_global_id(1)*1024+local_address*4+1];
-    local_data[index_2    ] = temp_2*Gain[get_global_id(1)*1024+local_address*4+2];
-    local_data[index_2 + 1] = temp_2*Gain[get_global_id(1)*1024+local_address*4+2];
-    local_data[index_3    ] = temp_3*Gain[get_global_id(1)*1024+local_address*4+3];
-    local_data[index_3 + 1] = temp_3*Gain[get_global_id(1)*1024+local_address*4+3];
+    uint gain_id = get_global_id(1)*1024+local_address*4;
+    local_data[index_0    ].REAL = temp_0.REAL*Gain[gain_id].REAL - temp_0.IMAG*Gain[gain_id].IMAG;
+    local_data[index_0    ].IMAG = temp_0.REAL*Gain[gain_id].IMAG + temp_0.IMAG*Gain[gain_id].REAL;
+    local_data[index_0 +1 ]      = local_data[index_0    ];
+
+    gain_id = gain_id + 1;
+    local_data[index_1    ].REAL = temp_1.REAL*Gain[gain_id].REAL - temp_1.IMAG*Gain[gain_id].IMAG;
+    local_data[index_1    ].IMAG = temp_1.REAL*Gain[gain_id].IMAG + temp_1.IMAG*Gain[gain_id].REAL;
+    local_data[index_1 +1 ]      = local_data[index_1    ];
+
+    gain_id = gain_id + 1;
+    local_data[index_2    ].REAL = temp_2.REAL*Gain[gain_id].REAL - temp_2.IMAG*Gain[gain_id].IMAG;
+    local_data[index_2    ].IMAG = temp_2.REAL*Gain[gain_id].IMAG + temp_2.IMAG*Gain[gain_id].REAL;
+    local_data[index_2 +1 ]      = local_data[index_2    ];
+
+    gain_id = gain_id + 1;
+    local_data[index_3    ].REAL = temp_3.REAL*Gain[gain_id].REAL - temp_3.IMAG*Gain[gain_id].IMAG;
+    local_data[index_3    ].IMAG = temp_3.REAL*Gain[gain_id].IMAG + temp_3.IMAG*Gain[gain_id].REAL;
+    local_data[index_3 +1 ]      = local_data[index_3    ];
 
     barrier(CLK_LOCAL_MEM_FENCE);  //crucial
 
