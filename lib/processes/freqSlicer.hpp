@@ -2,8 +2,8 @@
 @file
 @brief Processes for splitting and subsetting visibility data by frequency.
 - freqSplit : public KotekanProcess
+- freqSubset : public KotekanProcess
 
-@todo Add process for frequency subsetting
 *****************************************/
 #ifndef FREQ_SLICER_HPP
 #define FREQ_SLICER_HPP
@@ -69,6 +69,31 @@ private:
 
 
 
+// Output a buffer with a subset of the input frequencies
+/**
+ * @class freqSubset
+ * @brief Outputs a visBuffer stream with a subset of the input frequencies.
+ *
+ * This task takes data coming out of a visBuffer stream and selects a subset of
+ * frequencies to be passed on to the output buffer.
+ *
+ * @par Buffers
+ * @buffer output_buffer The buffer containing the subset of frequencies
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ * @buffer input_buffer The original buffer with all frequencies
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ *
+ * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
+ *                          correlator data (read from "/").
+ * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
+ *
+ * @conf  subset_list       Vector of Int. The list of frequencies that go
+ *                          in the subset.
+ *
+ * @author Mateus Fandino
+ */
 class freqSubset : public KotekanProcess {
 
 public:
