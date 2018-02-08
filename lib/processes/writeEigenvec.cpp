@@ -22,21 +22,17 @@ writeEigenvec::writeEigenvec(Config &config,
     ev_fname = config.get_string_default(unique_name, "ev_file", "./ev.h5");
     // Default value is 1h / 10s cadence
     ev_file_len = config.get_int_default(unique_name, "ev_file_len", 360);
-    freq_half = config.get_int_default(unique_name, "freq_half", 0);
+    // Frequencies to include in file
+    for (auto f : config.get_int_array(unique_name, "freqs")) {
+        freq_ids.push_back((uint16_t) f);
+        freqs.push_back({freq_from_bin(f), (400.0 / 1024)});
+    }
 
     // Fetch the buffer, register it
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    // Assuming half the band is available at each receiver node
-    // TODO: use correct scheme
-    for (int i = 0; i < 512; i ++) {
-        int id = i + 512 * freq_half;
-        freqs.push_back({freq_from_bin(id), (400.0 / 1024)});
-    }
-
     // Assuming all inputs are included
-    // TODO: this may not be the case. would need to read them from buffer
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
 
     // open file for writing. delete existing file.
@@ -73,8 +69,8 @@ void writeEigenvec::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         // Find the index of this frequency in the file
-        // TODO: use correct scheme
-        size_t freq_ind = frame.freq_id() - freq_half * 512;
+        uint16_t freq_ind = std::find(freq_ids.begin(), freq_ids.end(), 
+                frame.freq_id()) - freq_ids.begin();
 
         // Put the time into correct format
         auto ftime = frame.time();

@@ -74,11 +74,10 @@ private:
     std::string ev_fname;
     /// Number of frames to hold in file
     size_t ev_file_len;
-    /// Which half of the band this receiver node holds
-    int freq_half;
 
     /// Vectors of frequencies and inputs in the data
     std::vector<freq_ctype> freqs;
+    std::vector<uint16_t> freq_ids;
     std::vector<input_ctype> inputs;
 
     /// File to write to
