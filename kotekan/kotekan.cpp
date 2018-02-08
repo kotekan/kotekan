@@ -357,6 +357,15 @@ int main(int argc, char ** argv) {
         conn.send_json_reply(reply);
     });
 
+    rest_server->register_get_callback("/metrics", [&](connectionInstance &conn){
+        std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        if (running) {
+            conn.send_text_reply("kotekan_running 1\n");
+        } else {
+            conn.send_text_reply("kotekan_running 0\n");
+        }
+      });
+
     for(EVER){
         sleep(1);
         if (sig_value == SIGINT) {

@@ -30,6 +30,9 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               fakeVis.cpp
+              frbNetworkProcess.cpp
+              pulsarNetworkProcess.cpp
+              frbPostProcess_in.cpp
               )
 
 if (${USE_DPDK})
