@@ -47,9 +47,9 @@ file_read:
 
 vis_transform:
   kotekan_process: visTransform
-  input_buffers:
+  in_bufs:
       - gpu_data_buffer
-  output_buffer: vis_buffer
+  out_buf: vis_buffer
   num_eigenvectors: 4
 
 #vis_debug:
@@ -58,7 +58,7 @@ vis_transform:
 
 hdf5_writer:
   kotekan_process: visWriter
-  buffer: vis_buffer
+  in_buf: vis_buffer
   num_freq: 1
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
