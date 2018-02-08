@@ -20,7 +20,7 @@ writeEigenvec::writeEigenvec(Config &config,
     ev_fname = config.get_string_default(unique_name, "ev_file", "./ev.h5");
     // Default value is 1h / 10s cadence
     ev_file_len = config.get_int_default(unique_name, "ev_file_len", 360);
-    freq_half = config.get_int(unique_name, "freq_half");
+    freq_half = config.get_int_default(unique_name, "freq_half", 0);
 
     // Fetch the buffer, register it
     in_buf = get_buffer("in_buf");
@@ -78,8 +78,8 @@ void writeEigenvec::main_thread() {
         auto ftime = frame.time();
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        file->write_eigenvectors(t, freq_ind,
-                                 frame.eigenvectors(), frame.eigenvalues());
+        file->write_eigenvectors(t, freq_ind, frame.eigenvectors(),
+                                 frame.eigenvalues(), frame.rms());
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -89,9 +89,7 @@ void writeEigenvec::main_thread() {
 }
 
 
-// TODO: include additional data:
-//          - sum of remaining eigenvalues
-//          - weights use in decomposition
+// TODO: include weights used in decomposition
 evFile::evFile(const std::string & fname,
                const uint16_t & num_eigenvectors,
                const size_t & file_len,
@@ -131,11 +129,22 @@ evFile::evFile(const std::string & fname,
             "axis", DataSpace::From(eval_axes)
     ).write(eval_axes);
 
+    // Create rms dataset
+    std::vector<size_t> rms_dims = {ntimes, nfreq};
+    std::vector<std::string> eval_axes = {"time", "freq"};
+    DataSpace rms_space = DataSpace(rms_dims);
+    DataSet rms = file->createDataSet(
+            "rms", rms_space, create_datatype<float>()
+    );
+    rms.createAttribute<std::string>(
+            "axis", DataSpace::From(rms_axes)
+    ).write(rms_axes);
+
     // Create index map
     Group indexmap = file->createGroup("index_map");
 
-    DataSet time_imap = indexmap.createDataSet(
-      "time", DataSpace(ntimes), create_datatype<time_ctype>()
+    DataSet time_imap = indexmap.createDataSet<time_ctype>(
+      "time", DataSpace(ntimes)
     );
 
     DataSet freq_imap = indexmap.createDataSet<freq_ctype>(
@@ -163,7 +172,7 @@ void evFile::flush() {
 
 void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
                           std::complex<float> * eigenvectors,
-                          float * eigenvalues) {
+                          float * eigenvalues, float rms) {
 
     // Find position in file
     uint64_t curr_time = new_time.fpga_count;
@@ -187,6 +196,10 @@ void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
     eval().select(
             {curr_ind, freq_ind, 0}, {1, 1, nev}
     ).write(eigenvalues);
+    // write rms
+    rms().select(
+            {curr_ind, freq_ind}, {1, 1}
+    ).write(rms);
     // write time
     time().select({curr_ind}, {1}).write(new_time);
 
@@ -198,6 +211,10 @@ DataSet evFile::evec() {
 
 DataSet evFile::eval() {
     return file->getDataSet("eigenvalue");
+}
+
+DataSet evFile::rms() {
+    return file->getDataSet("rms");
 }
 
 DataSet evFile::time() {

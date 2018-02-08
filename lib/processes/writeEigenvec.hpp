@@ -8,6 +8,7 @@
 #include "util.h"
 #include "visUtil.hpp"
 #include <highfive/H5File.hpp>
+#include <highfive/H5DataSet.hpp>
 
 
 class evFile {
@@ -31,6 +32,7 @@ public:
     /// Access datasets
     HighFive::DataSet evec();
     HighFive::DataSet eval();
+    HighFive::DataSet rms();
     HighFive::DataSet time();
     HighFive::DataSet freq();
     HighFive::DataSet prod();
