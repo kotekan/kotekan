@@ -119,26 +119,13 @@ freqSubset::freqSubset(Config& config,
         subset_list.push_back((uint16_t) ff);
     }
 
-// TODO: delete    
-//    // Get the list of buffers that this process shoud connect to
-//    std::vector<std::string> output_buffer_names =
-//        config.get_string_array(unique_name, "output_buffers");
-
     // Setup the input buffer
-    input_buffer = get_buffer("input_buffer");
+    input_buffer = get_buffer("in_buf");
     register_consumer(input_buffer, unique_name.c_str());
 
     // Setup the output buffer
-    output_buffer = get_buffer("output_buffer");
+    output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
-
-// TODO: delete
-//    // Fetch the output buffers, register them, and store them in our buffer vector
-//    for(auto name : output_buffer_names) {
-//        auto buf = buffer_container.get_buffer(name);
-//        register_producer(buf, unique_name.c_str());
-//        output_buffers.push_back({buf, 0});
-//    }
 
 }
 
@@ -172,12 +159,6 @@ void freqSubset::main_thread() {
         // TODO: Aparently std::set can be used to speed up this search
         if (std::find(subset_list.begin(), subset_list.end(), freq) 
                                                 != subset_list.end()) {
-
-// TODO: delete 
-//        auto& buffer_pair = output_buffers[buf_ind];
-//        std::tie(buf, frame_id) = buffer_pair; 
-//
-//        INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
 
             // Wait for the output buffer to be empty of data
             if(wait_for_empty_frame(output_buffer, unique_name.c_str(),

@@ -40,23 +40,23 @@ fake_vis:
 #  buffer: vis_buffer
 
 freq_subset:
-  kotekan_process: freqSplit
-  input_buffer: vis_buffer_in
-  output_buffer: vis_buffer_out
+  kotekan_process: freqSubset
+  in_buf: vis_buffer_in
+  out_buf: vis_buffer_out
   subset_list: [256,512,602,603]
   num_eigenvectors: 4
 
 hdf5_writer_sub:
   kotekan_process: visWriter
-  buffer: vis_buffer_out
-  freq_ids: [250,256]
+  in_buf: vis_buffer_out
+  freq_ids: [256,512,602,603]
   node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_subset'
 
 hdf5_writer_full:
   kotekan_process: visWriter
-  buffer: vis_buffer_in
-  freq_ids: [250,256]
+  in_buf: vis_buffer_in
+  freq_ids: [250,256,512,602,768]
   node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_full'
 
