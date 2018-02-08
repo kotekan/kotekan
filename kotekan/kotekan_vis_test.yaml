@@ -1,6 +1,6 @@
 ---
 type: config
-log_level: 3
+log_level: info
 num_elements: 2048
 num_local_freq: 1
 udp_packet_size: 4928
