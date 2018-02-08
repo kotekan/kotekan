@@ -21,7 +21,7 @@ hsaRfiOutput::hsaRfiOutput(Config& config, const string &unique_name,
     command_type = CommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
-    output_buffer = host_buffers.get_buffer("output_buf");
+    output_buffer = host_buffers.get_buffer("rfi_output_buf");
 
     network_buffer_id = 0;
     output_buffer_id = 0;
@@ -54,6 +54,13 @@ hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, h
             gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
 
+    //float SK[output_buffer->frame_size/sizeof(float)];
+    //memcpy(SK,host_output_ptr,output_buffer->frame_size);
+
+//    for(int i = 0; i < output_buffer->frame_size/sizeof(float); i++){
+//        INFO("SK %f",SK[i]);
+//    }
+
     output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];
@@ -64,8 +71,8 @@ void hsaRfiOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     // Copy the information contained in the input buffer
-    //move_buffer_info(network_buffer, network_buffer_id,
-    //                 output_buffer, output_buffer_id);
+    pass_metadata(network_buffer, network_buffer_id,
+                  output_buffer, output_buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
     mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
