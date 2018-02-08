@@ -17,9 +17,11 @@ airspyInput::airspyInput(Config& config, const string& unique_name,
 }
 
 airspyInput::~airspyInput() {
-   airspy_stop_rx(a_device);
-   airspy_close(a_device);
-   airspy_exit();
+    if (a_device != NULL) {
+        airspy_stop_rx(a_device);
+        airspy_close(a_device);
+    }
+    airspy_exit();
 }
 
 void airspyInput::apply_config(uint64_t fpga_seq) {
@@ -33,6 +35,10 @@ void airspyInput::main_thread() {
 
     airspy_init();
     a_device=init_device();
+    if (a_device == NULL) {
+        raise(SIGINT);
+        return;
+    }
     airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
 }
 
@@ -79,60 +85,62 @@ struct airspy_device *airspyInput::init_device(){
     result = airspy_open(&dev);
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_open() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_exit();
+        return NULL;
     }
 
     //Note: Despite the name, this sets the sample bandwidth! Odd behaviour from libairspy.
     result = airspy_set_samplerate(dev, sample_bw);
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_set_samplerate() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_close(dev);
-        airspy_exit();
+        return NULL;
     }
 
-//    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_RAW);
     result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_IQ);
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_set_sample_type() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_close(dev);
-        airspy_exit();
+        return NULL;
     }
 
     result = airspy_set_freq(dev, freq);
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_set_freq() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_vga_gain(dev, gain_if);
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_set_vga_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_mixer_gain(dev, gain_mix);
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_set_mixer_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
     result = airspy_set_mixer_agc(dev, 0); //Auto gain control: 0/1
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_set_mixer_agc() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_lna_gain(dev, gain_lna);
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_set_lna_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
 
     result = airspy_set_rf_bias(dev, biast_power);
     if( result != AIRSPY_SUCCESS ) {
         ERROR("airspy_set_rf_bias() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_close(dev);
-        airspy_exit();
+        return NULL;
     }
 
     result = airspy_board_id_read(dev, &board_id);
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_board_id_read() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
     INFO("Board ID Number: %d (%s)\n", board_id, airspy_board_id_name((enum airspy_board_id)board_id));
 
@@ -140,6 +148,7 @@ struct airspy_device *airspyInput::init_device(){
     result = airspy_board_partid_serialno_read(dev, &read_partid_serialno);
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_board_partid_serialno_read() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
     INFO("Part ID Number: 0x%08X 0x%08X\n",
         read_partid_serialno.part_id[0],

@@ -8,6 +8,7 @@
 #define AIRSPY_INPUT_HPP
 
 #include <unistd.h>
+#include <signal.h>
 #include <libairspy/airspy.h>
 
 #include "KotekanProcess.hpp"
