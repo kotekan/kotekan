@@ -13,8 +13,8 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 void copy_vis_triangle(
-    const int32_t * buf, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, std::complex<float> * output
+    const int32_t * inputdata, const std::vector<uint32_t>& inputmap,
+    size_t block, size_t N, gsl::span<cfloat> output
 ) {
 
     size_t pi = 0;
@@ -42,24 +42,10 @@ void copy_vis_triangle(
 
             // IMPORTANT: for some reason the buffers are packed as imaginary
             // *then* real so we need to account for that here.
-            output[pi]= {(float)buf[2 * bi + 1], i_sign * (float)buf[2 * bi]};
+            output[pi]= {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
             pi++;
         }
     }
-}
-
-
-std::vector<std::complex<float>> copy_vis_triangle(
-    const int32_t * buf, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N
-) {
-
-    size_t M = inputmap.size();
-    std::vector<std::complex<float>> output(M * (M + 1) / 2);
-
-    copy_vis_triangle(buf, inputmap, block, N, output.data());
-
-    return output;
 }
 
 std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
@@ -111,7 +97,8 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size
 
 }
 
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(Config& config, const std::string base_path) {
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+parse_reorder_default(Config& config, const std::string base_path) {
 
     size_t num_elements = config.get_int("/", "num_elements");
 
@@ -123,4 +110,34 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_defaul
     catch(const std::exception& e) {
         return default_reorder(num_elements);
     }
+}
+
+
+size_t _member_alignment(size_t offset, size_t size) {
+    return (((size - (offset % size)) % size) + offset);
+}
+
+struct_layout struct_alignment(
+    std::vector<std::tuple<std::string, size_t, size_t>> members
+) {
+
+    std::string name;
+    size_t size, num, end = 0, max_size = 0;
+
+    std::map<std::string, std::pair<size_t, size_t>> layout;
+
+    for(auto member : members) {
+        std::tie(name, size, num) = member;
+
+        // Uses the end of the *last* member
+        size_t start = _member_alignment(end, size);
+        end = start + size * num;
+        max_size = std::max(max_size, size);
+
+        layout[name] = {start, end};
+    }
+
+    layout["_struct"] = {0, _member_alignment(end, max_size)};
+
+    return layout;
 }

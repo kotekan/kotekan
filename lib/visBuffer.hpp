@@ -11,6 +11,7 @@
 #include <sys/time.h>
 #include <tuple>
 #include <complex>
+#include <gsl/gsl>
 
 #include "visUtil.hpp"
 
@@ -64,7 +65,7 @@ public:
     /**
      * @brief Create view without modifying layout.
      *
-     * This should be used for viewing already create buffers.
+     * This should be used for viewing already created buffers.
      *
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
@@ -104,47 +105,66 @@ public:
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
                  uint32_t num_prod, uint16_t num_eigenvectors);
 
-    /// Return a tuple of references to the time parameters.
-    std::tuple<uint64_t &, timespec &> time();
-    /// Return a reference to the frequency ID.
-    uint16_t & freq_id();
-    /// Return a reference to the dataset ID.
-    uint16_t & dataset_id();
-
-    /// Return a pointer to the start of the visibility data.
-    std::complex<float> * vis();
-    /// Return a pointer to the start of the eigenvalues.
-    float * eigenvalues();
-    /// Return a pointer to the start of the eigenvector data.
-    std::complex<float> * eigenvectors();
-    /// Return a reference to the RMS parameteres.
-    float & rms();
-
-    /// Return a copy of the number of elements in the data.
-    uint32_t num_elements();
-    /// Return a copy of the number of products in the data.
-    uint32_t num_prod();
-    /// Return a copy of the number of eigenvectors/values in the data.
-    uint32_t num_eigenvectors();
+    /**
+     * @brief Get the layout of the buffer from the structural parameters.
+     *
+     * @param num_elements     Number of elements.
+     * @param num_prod         Number of products.
+     * @param num_eigenvectors Number of eigenvectors.
+     *
+     * @returns A map from member name to start and end in bytes. The start
+     *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
+     *          `_struct`.
+     */
+    static struct_layout bufferStructure(uint32_t num_elements,
+                                         uint32_t num_prod,
+                                         uint16_t num_eigenvectors);
 
     /// Return a summary of the visibility buffer contents
-    std::string summary();
-
+    std::string summary() const;
+    
 private:
 
-    // Pointers that will index into the buffer
-    std::complex<float> * vis_ptr;
-    float * eval_ptr;
-    std::complex<float> * evec_ptr;
-    float * rms_ptr;
-
-    // References to the buffer and metadata we are using
+    // References to the buffer and metadata we are viewing
     Buffer * const buffer;
     const int id;
-    visMetadata * const  metadata;
+    visMetadata * const metadata;
 
-    // Validate that the defined view fits in the space allocated
-    void check_and_set();
+    // Pointer to frame data. In theory this is redundant as it can be derived
+    // from buffer and id, but it's nice for brevity
+    uint8_t * const frame;
+
+    // The calculated layout of the buffer
+    struct_layout buffer_layout;
+
+
+public:
+
+    /// The number of elements in the data (read only).
+    const uint32_t& num_elements;
+    /// The number of products in the data (read only).
+    const uint32_t& num_prod;
+    /// The number of eigenvectors/values in the data (read only).
+    const uint32_t& num_eigenvectors;
+
+    /// A tuple of references to the underlying time parameters
+    std::tuple<uint64_t&, timespec&> time;
+    /// A reference to the frequency ID.
+    uint16_t& freq_id;
+    /// A reference to the dataset ID.
+    uint16_t& dataset_id;
+
+    /// View of the visibility data.
+    const gsl::span<cfloat> vis;
+    /// View of the weight data.
+    const gsl::span<float> weight;
+    /// View of the eigenvalues.
+    const gsl::span<float> eigenvalues;
+    /// View of the eigenvectors (packed as ev,feed).
+    const gsl::span<cfloat> eigenvectors;
+    /// The RMS of residual visibilities
+    float& rms;
+
 };
 
 

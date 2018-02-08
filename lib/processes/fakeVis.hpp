@@ -61,7 +61,7 @@ public:
 
 private:
     /// Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size, num_prod;
+    size_t num_elements, num_eigenvectors, block_size;
 
     /// Output buffer
     Buffer * out_buf;
