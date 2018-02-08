@@ -1,28 +1,9 @@
-************
-Style Guide
-************
-
-If you're going to work on **kotekan** code, please adhere to the following guidelines:
-
-Files
-------
-
-New ``kotekanProcesses`` files should be placed in the ``lib/processes/`` folder,
-and named in *CamelCase* to match the process class they contain.
-
-Accelerator interfaces (such as e.g. OpenCL or CUDA) 
-should create their own folder within ``lib/``,
-for storage of kernel handling objects and the kernels themselves.
-
-Support scripts and components can be placed in the ``script/`` folder.
-
-Configuration (``yaml``) files should go in the ``config/`` folder.
-
-
+*************
 Documentation
--------------
+*************
 
-All files should be liberally commented, with full `doxygen <www.doxygen.org>`_ docstrings
+All files should be liberally commented to allow others to debug,
+and populated with full `doxygen <www.doxygen.org>`_ docstrings
 describing the class, variables, and all member functions.
 
 Comment blocks should use an empty ``/**`` line to begin,
@@ -63,8 +44,8 @@ All classes should include a comment block immediately preceeding their declarat
    *
    */
 
-``kotekanProcesses``
-^^^^^^^^^^^^^^^^^^^^
+kotekanProcesses
+++++++++++++++++
 Should additionally describe their use of (and requirements for) config file options.
 Special doxygen aliases exist to help make these explicit.
 
@@ -102,46 +83,3 @@ A simple example comment follows:
    * @author Keith Vanderlinde
    *
    */
-
-Naming
-----------
-
-
-Classes
-^^^^^^^^^^
-Classes in kotekan should use *CamelCase* formatting, e.g. ``myFavouriteProcess``.
-
-Functions
-^^^^^^^^^^
-With the exception of class constructors & destructors, function names should use underscore notation,
-e.g. ``my_func``.
-
-
-Config File Settings
-^^^^^^^^^^^^^^^^^^^^^^
-
-Variables
-+++++++++
-Variables and parameters in the config file should use underscore naming, e.g. ``my_favourite_variable``.
-
-``Buffers``
-+++++++++++
-``Buffers`` used by a ``KotekanProcess`` should be named ``in_buf`` or ``out_buf``,
-for input (being produced into) and output (being consumed from), respectively.
-
-When multiple ``Buffers`` of a similar type are needed,
-they should go into an array of buffers, similarly named.
-
-If multiple ``Buffers`` of different types are used by a single process,
-a short identifier should be appended to their names,
-e.g. ``in_buf_voltages`` and ``in_buf_pointing``.
-
-
-Variables
-^^^^^^^^^^
-
-Structs
-^^^^^^^^^^
-
-Enums
-^^^^^^^^^^
