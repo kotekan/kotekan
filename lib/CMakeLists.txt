@@ -31,6 +31,7 @@ set (KOTEKAN_LIB_SOURCES
               bufferFactory.cpp
               configEval.cpp
               gpsTime.c
+              prometheusMetrics.cpp
        )
 
 if (${USE_DPDK})
