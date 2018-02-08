@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdint.h>
+#include <memory.h>
 
 #include "nt_memcpy.h"
 
+#ifdef WITH_AVX
 // Assumes that the dest pointer is 16 byte alligned.
 // Assumes that the len is divisible by 128
 void nt_memcpy(void* dest, void* src, size_t len)
@@ -88,4 +90,8 @@ void nt_unaligned_memcpy(void* dest, void* src, size_t len)
         dest_p += 8;
     }
 }
-
+#else
+inline void nt_memcpy(void* dest, void* src, size_t len) {memcpy(dest,src,len);}
+inline void nt_aligned_memcpy(void* dest, void* src, size_t len) {memcpy(dest,src,len);}
+inline void nt_unaligned_memcpy(void* dest, void* src, size_t len) {memcpy(dest,src,len);}
+#endif

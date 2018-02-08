@@ -10,7 +10,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fullPacketDump.cpp
               gpuPostProcess.cpp
               frbPostProcess.cpp
-	      pulsarPostProcess.cpp
+              pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
@@ -34,27 +34,31 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
 if (${USE_DPDK})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
 endif ()
-
 if (${USE_AIRSPY})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} airspyInput.cpp)
 endif ()
-
 if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
-
-# HDF5 stuff
 if (${USE_HDF5})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} hdf5Writer.cpp)
 endif ()
 
+
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
-# HDF5 stuff
+
+if (${USE_AIRSPY})
+  target_link_libraries ( kotekan_processes -lairspy)
+endif ()
+if (${USE_FFTW})
+  target_link_libraries ( kotekan_processes -lfftw3f)
+endif ()
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
+
 
 # This seems like a circular reference, seems like there should be a
 # way to avoid this.

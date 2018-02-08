@@ -69,4 +69,4 @@ spectrum_output:
     destination_port: 23401
     destination_ip: "127.0.0.1"
     destination_protocol: TCP
-    power_in_buf: post_corr_buf
+    in_buf: post_corr_buf
