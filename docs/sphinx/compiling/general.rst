@@ -23,6 +23,10 @@ Compiling **Kotekan**
    centos
    macos
 
+Required
+=========
+* pthreads
+* python and python-YAML
 
 Required for some options
 ==========================
