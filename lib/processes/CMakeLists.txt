@@ -10,7 +10,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fullPacketDump.cpp
               gpuPostProcess.cpp
               frbPostProcess.cpp
-	      pulsarPostProcess.cpp
+	          pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
@@ -29,7 +29,13 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
+              fakeVis.cpp
+              frbPostProcess_in.cpp
               )
+
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp)
+endif ()
 
 if (${USE_DPDK})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
@@ -45,7 +51,7 @@ endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} hdf5Writer.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
 endif ()
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})

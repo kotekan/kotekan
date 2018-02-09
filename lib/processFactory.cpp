@@ -39,11 +39,18 @@
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
+#include "fakeVis.hpp"
+#include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
+#ifndef MAC_OSX
+#include "frbNetworkProcess.hpp"
+#include "pulsarNetworkProcess.hpp"
+#endif
+#include "frbPostProcess_in.hpp"
 
 #ifdef WITH_HDF5
-    #include "hdf5Writer.hpp"
+    #include "visWriter.hpp"
 #endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
@@ -149,6 +156,17 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "pulsarPostProcess") {
         return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
+#ifndef MAC_OSX
+    if (name == "frbNetworkProcess") {
+        return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarNetworkProcess") {
+        return (KotekanProcess *) new pulsarNetworkProcess(config, location, buffer_container);
+    }
+#endif
+    if (name == "frbPostProcess_in") {
+        return (KotekanProcess *) new frbPostProcess_in(config, location, buffer_container);
     }
 
     if (name == "nDiskFileWrite") {
@@ -264,12 +282,30 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
 
     // HDF5
-    if (name == "hdf5Writer") {
+    if (name == "visWriter") {
         #ifdef WITH_HDF5
-            return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
+            return (KotekanProcess *) new visWriter(config, location, buffer_container);
         #else
             throw std::runtime_error("hdf5Writer is not supported on this system");
         #endif
+    }
+
+    // vis processes
+    if (name == "visTransform") {
+        return (KotekanProcess *) new visTransform(config, location, buffer_container);
+    }
+    if (name == "visDebug") {
+        return (KotekanProcess *) new visDebug(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities
+    if (name == "fakeVis") {
+        return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities in GPU buffer format
+    if (name == "fakeGpuBuffer") {
+        return (KotekanProcess *) new fakeGpuBuffer(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {
