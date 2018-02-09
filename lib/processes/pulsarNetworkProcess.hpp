@@ -1,10 +1,5 @@
-/*****************************************
-File Contents:
-- pulsarNetworkProcess : public KotekanProcess
-*****************************************/
-
 /**
- * @file pulsarNetworkProcess.hpp
+ * @file
  * @brief Network transmission process for Pulsar obs
  *  - pulsarNetworkProcess : public KotekanProcess
  */
@@ -70,7 +65,7 @@ public:
   void add_nsec(struct timespec &temp, long nsec);
 
   /// main thread
-  void main_thread();
+  void main_thread() override;
 private:
 
   /// pointer to Input Pulsar buffer 

@@ -49,6 +49,13 @@ networkPowerStream::networkPowerStream(Config& config,
     header.handshake_utc = -1;
 
     frame_idx=0;
+
+#ifdef MAC_OSX
+    //MacOS throws SIGPIPE on a TCP disconnect,
+    //blows up kotekan if we don't ignore it.
+    INFO("Disabling SIGPIPE on OSX.");
+    signal(SIGPIPE, SIG_IGN);
+#endif
 }
 
 networkPowerStream::~networkPowerStream() {
@@ -138,8 +145,8 @@ void networkPowerStream::main_thread() {
                                                 packet_buffer,
                                                 packet_length,
                                                 0);
-
                         if (bytes_sent != packet_length) {
+                            ERROR("Lost TCP connection!");
                             while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
                             tcp_connected=false;

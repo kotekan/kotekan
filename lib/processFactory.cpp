@@ -43,10 +43,8 @@
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
-#ifndef MAC_OSX
 #include "frbNetworkProcess.hpp"
 #include "pulsarNetworkProcess.hpp"
-#endif
 #include "frbPostProcess_in.hpp"
 
 #ifdef WITH_HDF5
@@ -157,14 +155,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "pulsarPostProcess") {
         return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
     }
-#ifndef MAC_OSX
     if (name == "frbNetworkProcess") {
         return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
     }
     if (name == "pulsarNetworkProcess") {
         return (KotekanProcess *) new pulsarNetworkProcess(config, location, buffer_container);
     }
-#endif
     if (name == "frbPostProcess_in") {
         return (KotekanProcess *) new frbPostProcess_in(config, location, buffer_container);
     }
@@ -281,15 +277,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
     }
 
+#ifdef WITH_HDF5
     // HDF5
     if (name == "visWriter") {
-        #ifdef WITH_HDF5
-            return (KotekanProcess *) new visWriter(config, location, buffer_container);
-        #else
-            throw std::runtime_error("hdf5Writer is not supported on this system");
-        #endif
+        return (KotekanProcess *) new visWriter(config, location, buffer_container);
     }
-
     // vis processes
     if (name == "visTransform") {
         return (KotekanProcess *) new visTransform(config, location, buffer_container);
@@ -297,6 +289,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "visDebug") {
         return (KotekanProcess *) new visDebug(config, location, buffer_container);
     }
+#endif
 
     // Generate fake visbilities
     if (name == "fakeVis") {

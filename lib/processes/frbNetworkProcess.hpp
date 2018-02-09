@@ -1,5 +1,5 @@
 /**
- * @file frbNetworkprocess.hpp
+ * @file
  * @brief Network transmission process for FRB obs
  *  - frbNetworkProcess : public KotekanProcess
  */
@@ -59,7 +59,7 @@ public:
   void parse_host_name();
 
   /// main thread
-  void main_thread();
+  void main_thread() override;
 private:
 
   /// pointer to Input FRB buffer 
