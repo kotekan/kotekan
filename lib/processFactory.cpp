@@ -41,6 +41,7 @@
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
 #include "fakeGpuBuffer.hpp"
+#include "writeEigenvec.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -287,6 +288,10 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "bufferRecv") {
         return (KotekanProcess *) new bufferRecv(config, location, buffer_container);
+    }
+
+    if (name == "writeEigenvec") {
+        return (KotekanProcess *) new writeEigenvec(config, location, buffer_container);
     }
 
     // OpenCL
