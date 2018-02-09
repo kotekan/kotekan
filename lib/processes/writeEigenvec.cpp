@@ -8,6 +8,8 @@
 #include <highfive/H5File.hpp>
 #include <algorithm>
 #include <sys/stat.h>
+#include <iostream>
+#include <typeinfo>
 
 using namespace HighFive;
 
@@ -23,7 +25,7 @@ writeEigenvec::writeEigenvec(Config &config,
     // Default value is 1h / 10s cadence
     ev_file_len = config.get_int_default(unique_name, "ev_file_len", 360);
     // Frequencies to include in file
-    for (auto f : config.get_int_array(unique_name, "freqs")) {
+    for (auto f : config.get_int_array(unique_name, "freq")) {
         freq_ids.push_back((uint16_t) f);
         freqs.push_back({freq_from_bin(f), (400.0 / 1024)});
     }
@@ -77,11 +79,30 @@ void writeEigenvec::main_thread() {
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
         // Get data and write to file
+        // TODO: once we have a better idea how HDF5 handles writing, could skip this extra copy
         std::complex<float> * evec_ptr = frame.eigenvectors();
-        std::vector<std::complex<float>> evec(evec_ptr, evec_ptr + num_eigenvectors);
+        //std::vector<std::complex<float>> evec;
+        std::vector<std::vector<std::complex<float>>> evec_alt;
+        for (size_t i = 0; i < num_eigenvectors; i++) {
+        //for (size_t i = 0; i < num_eigenvectors * inputs.size(); i++) {
+            //evec.push_back(std::vector<std::complex<float>(evec_ptr, evec_ptr + inputs.size()));
+            evec_alt.push_back(std::vector<std::complex<float>>(evec_ptr + inputs.size() * i,
+                                                            evec_ptr + inputs.size() * (i+1)));
+            //evec.push_back(* (frame.eigenvectors() + i));
+        }
+        std::vector<std::complex<float>> evec(evec_ptr, evec_ptr + num_eigenvectors * inputs.size());
         float * eval_ptr = frame.eigenvalues();
         std::vector<float> eval(eval_ptr, eval_ptr + num_eigenvectors);
         float rms = frame.rms();
+
+        DEBUG("addr of evec %d", &evec[0]);
+        DEBUG("addr of evec.data() %d", evec.data());
+        DEBUG("addr of evec_alt %d", &evec_alt[0]);
+        DEBUG("addr of evec_alt.data() %d", evec_alt.data());
+        DEBUG("size of evec %d", evec.size());
+        DEBUG("size of evec_alt %d", evec_alt.size());
+        DEBUG("size of evec.data() %d", sizeof(*evec.data()));
+        DEBUG("size of evec_alt.data() %d", sizeof(*evec_alt.data()));
 
         file->write_eigenvectors(t, freq_ind, evec, eval, rms);
 
@@ -176,30 +197,36 @@ void evFile::flush() {
 
 void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
                           std::vector<std::complex<float>> eigenvectors,
+                          //std::vector<std::vector<std::complex<float>>> eigenvectors,
                           std::vector<float> eigenvalues, float new_rms) {
 
     // Find position in file
-    uint64_t curr_time = new_time.fpga_count;
     size_t curr_ind;
-    auto time_ind = std::find(curr_times.begin(), curr_times.end(), curr_time);
-    // Increment current end of file position
-    if (time_ind == curr_times.end()) {
-        curr_ind = eof_ind;
-        eof_ind = (eof_ind + 1) % ntimes;
-        curr_times[curr_ind] = curr_time;
+    if (curr_times.size() == 0) {
+        curr_ind = 0;
     } else {
-        curr_ind = *time_ind;
+        uint64_t curr_time = new_time.fpga_count;
+        auto time_ind = std::find(curr_times.begin(), curr_times.end(), curr_time);
+        // Increment current end of file position
+        if (time_ind == curr_times.end()) {
+            curr_ind = eof_ind;
+            eof_ind = (eof_ind + 1) % ntimes;
+            curr_times[curr_ind] = curr_time;
+        } else {
+            curr_ind = time_ind - curr_times.begin();
+        }
     }
 
     // write eigenvectors
-    // TODO: check dimensions work out
+    // TODO: why does this only work when I use a vector<vector>.data()?
     evec().select(
             {curr_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}
-    ).write(eigenvectors);
+    //).write(eigenvectors.data());
+    ).write(&eigenvectors[0]);
     // write eigenvalues
     eval().select(
             {curr_ind, freq_ind, 0}, {1, 1, nev}
-    ).write(eigenvalues);
+    ).write(eigenvalues.data());
     // write rms
     rms().select(
             {curr_ind, freq_ind}, {1, 1}

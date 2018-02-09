@@ -27,6 +27,7 @@ public:
     /// Write a set of eigenvectors/values to file for a given time and frequency
     void write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
                             std::vector<std::complex<float>> eigenvectors,
+                            //std::vector<std::vector<std::complex<float>>> eigenvectors,
                             std::vector<float> eigenvalues, float rms);
 
     /// Access datasets
