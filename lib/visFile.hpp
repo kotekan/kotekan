@@ -17,13 +17,13 @@ class visFile {
 public:
 
     /// Create file (and lock file).
-    /// \param name Name of the file to write
-    /// \param acq_name Name of the acquisition to write
-    /// \param root_path Base directory to write the acquisition into
-    /// \param inst_name Instrument name (e.g. chime)
-    /// \param notes Note about the acquisition
-    /// \param freqs Frequencies channels that will be in the file
-    /// \param inputs Inputs that are in the file
+    /// @param name Name of the file to write
+    /// @param acq_name Name of the acquisition to write
+    /// @param root_path Base directory to write the acquisition into
+    /// @param inst_name Instrument name (e.g. chime)
+    /// @param notes Note about the acquisition
+    /// @param freqs Frequencies channels that will be in the file
+    /// @param inputs Inputs that are in the file
     visFile(const std::string& name,
             const std::string& acq_name,
             const std::string& root_path,
@@ -35,13 +35,13 @@ public:
 
 
     /// Write a new time sample into this file
-    /// \param new_time Time of sample
-    /// \param freq_ind Index of the frequency we are writing
-    /// \param new_vis Visibility data for this frequency
-    /// \param new_weight Visibility weights for this frequency
-    /// \param new_gcoeff Gain coefficient data
-    /// \param new_gexp Gain exponent data
-    /// \return The number of entries in the time axis
+    /// @param new_time Time of sample
+    /// @param freq_ind Index of the frequency we are writing
+    /// @param new_vis Visibility data for this frequency
+    /// @param new_weight Visibility weights for this frequency
+    /// @param new_gcoeff Gain coefficient data
+    /// @param new_gexp Gain exponent data
+    /// @return The number of entries in the time axis
     size_t addSample(time_ctype new_time, uint32_t freq_ind,
                      std::vector<std::complex<float>> new_vis,
                      std::vector<uint8_t> new_weight,
@@ -96,12 +96,14 @@ class visFileBundle {
 public:
 
     /// Initialise the file bundle
-    /// \param acq_name Name of the acquisition to write
-    /// \param freq_chunk ID of the frequency chunk being written
-    /// \param inst_name Instrument name (e.g. chime)
-    /// \param notes Note about the acquisition
-    /// \param freqs Frequencies channels that will be in the file
-    /// \param inputs Inputs that are in the file
+    /// @param acq_name Name of the acquisition to write
+    /// @param freq_chunk ID of the frequency chunk being written
+    /// @param instrument_name Instrument name (e.g. chime)
+    /// @param notes Note about the acquisition
+    /// @param freqs Frequencies channels that will be in the file
+    /// @param inputs Inputs that are in the file
+    /// @param rollover ???
+    /// @param window_size ???
     visFileBundle(const std::string acq_name,
                   int freq_chunk,
                   const std::string instrument_name,
@@ -113,13 +115,13 @@ public:
 
 
     /// Write a new time sample into this set of files
-    /// \param new_time Time of sample
-    /// \param freq_ind Index of the frequency we are writing
-    /// \param new_vis Visibility data for this frequency
-    /// \param new_weight Visibility weights for this frequency
-    /// \param new_gcoeff Gain coefficient data
-    /// \param new_gexp Gain exponent data
-    /// \return The number of entries in the time axis
+    /// @param new_time Time of sample
+    /// @param freq_ind Index of the frequency we are writing
+    /// @param new_vis Visibility data for this frequency
+    /// @param new_weight Visibility weights for this frequency
+    /// @param new_gcoeff Gain coefficient data
+    /// @param new_gexp Gain exponent data
+    /// @return The number of entries in the time axis
     void addSample(time_ctype new_time, uint32_t freq_ind,
                    std::vector<std::complex<float>> new_vis,
                    std::vector<uint8_t> new_weight,
