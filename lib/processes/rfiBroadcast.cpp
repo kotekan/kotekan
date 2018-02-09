@@ -13,7 +13,7 @@
 #include "rfiBroadcast.hpp"
 #include "util.h"
 #include "errors.h"
-#include "fpga_header_functions.h"
+#include "chimeMetadata.h"
 
 rfiBroadcast::rfiBroadcast(Config& config,
                                        const string& unique_name,
@@ -53,16 +53,20 @@ void rfiBroadcast::main_thread() {
     uint8_t * frame = NULL;
 
     //Intialize empty packet header
-    uint32_t packet_header_length = sizeof(bool) + sizeof(uint16_t) + sizeof(int)*5 + sizeof(uint64_t);
+    uint32_t packet_header_length = sizeof(bool) + sizeof(uint16_t) + sizeof(int)*5 + sizeof(int64_t);
     char *packet_header = (char *)malloc(packet_header_length);
-    uint16_t encoded_stream_id = (uint16_t )0;//encode_stream_id(get_stream_id_t(rfi_buf, frame_id));   
     //Declare array to hold averaged kurtosis estimates
     float RFI_Avg[_num_local_freq];
     uint32_t packet_header_bytes_written = 0;
     uint32_t packet_length = packet_header_length + _num_local_freq*sizeof(float);
     //uint32_t seq_num = 0;
-    uint64_t seq_num = (uint64_t) 0; //get_fpga_seq_num(rfi_buf, frame_id);
-    //Intialize empty packet
+    frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+    INFO("GOT FIRST FRAME")
+    int64_t seq_num = get_fpga_seq_num(rfi_buf, frame_id);
+    INFO("GOT SEQ NUM")
+    uint16_t encoded_stream_id = get_stream_id(rfi_buf, frame_id); 
+    INFO("Seq: %ld Stream: %d", (long)seq_num, encoded_stream_id);
+    mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
     //Intialize empty packet
     char *packet_buffer = (char *)malloc(packet_length);
 
@@ -111,10 +115,10 @@ void rfiBroadcast::main_thread() {
             float rfi_data[_num_local_freq*_samples_per_data_set/_sk_step];
             memcpy(rfi_data, frame, rfi_buf->frame_size);
 
-            seq_num = (uint64_t) 0;//get_fpga_seq_num(rfi_buf, frame_id);
+            seq_num = get_fpga_seq_num(rfi_buf, frame_id);
             //Adjust Header
-            memcpy(packet_header + packet_header_bytes_written, &seq_num, sizeof(uint64_t));
-            packet_header_bytes_written += sizeof(uint64_t);
+            memcpy(packet_header + packet_header_bytes_written, &seq_num, sizeof(int64_t));
+            packet_header_bytes_written += sizeof(int64_t);
             
             //Add Header to packet
             memcpy(packet_buffer, packet_header, packet_header_length);
@@ -126,7 +130,7 @@ void rfiBroadcast::main_thread() {
                     RFI_Avg[i] += rfi_data[i + _num_local_freq*j];
                 }
                 RFI_Avg[i] /= (_samples_per_data_set/_sk_step);
-                INFO("SK value %f for freq %d", RFI_Avg[i], i)
+                //INFO("SK value %f for freq %d", RFI_Avg[i], i)
             }
 
             //Add Data to packet
@@ -143,16 +147,16 @@ void rfiBroadcast::main_thread() {
             }
             
             //Prepare Header For Adjustment
-            packet_header_bytes_written -= sizeof(uint32_t); 
+            packet_header_bytes_written -= sizeof(int64_t); 
             
             //Adjust Packet Number
-            seq_num++;
+            //seq_num++;
 
             // Mark frame as empty.
             mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % rfi_buf->num_frames;
             
-            INFO("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
+            //INFO("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
         }
     }
     else{

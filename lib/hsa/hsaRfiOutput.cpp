@@ -75,7 +75,7 @@ void hsaRfiOutput::finalize_frame(int frame_id) {
                   output_buffer, output_buffer_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
-    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
+    //mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
 
     // Mark the output buffer as full, so it can be processed.
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
