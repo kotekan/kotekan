@@ -29,8 +29,8 @@ buffer_recv:
 
 hdf5_writer:
   kotekan_process: visWriter
-  buffer: vis_buffer
-  separate_nodes: false
+  in_buf: vis_buffer
+  node_mode: false
   freq_ids: [0, 256]
 
 

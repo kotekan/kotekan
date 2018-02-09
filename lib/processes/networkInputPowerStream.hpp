@@ -16,7 +16,7 @@
 
 
 /**
- * @class networkPowerStream
+ * @class networkInputPowerStream
  * @brief Process to take an intensity stream and stream to a remote client.
  *
  * This is a consumer process which takes intensity data from a buffer and streams

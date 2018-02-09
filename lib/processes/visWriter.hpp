@@ -37,8 +37,8 @@
  *         @buffer_metadata visMetadata
  *
  * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
- *                          correlator data (read from "/")
- * @conf  block_size        Int. The block size of the packed data (read from "/")
+ *                          correlator data.
+ * @conf  block_size        Int. The block size of the packed data.
  * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
  * @conf  input_reorder     Array of [int, int, string]. The reordering mapping.
  *                          Only the first element of each sub-array is used and
@@ -69,8 +69,8 @@ private:
     size_t num_elements, num_eigenvectors, block_size;
 
     // Vector of the buffers we are using and their current frame ids.
-    std::vector<std::pair<Buffer*, unsigned int>> input_buffers;
-    Buffer * output_buffer;
+    std::vector<std::pair<Buffer*, unsigned int>> in_bufs;
+    Buffer * out_buf;
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
@@ -104,7 +104,7 @@ public:
 
 private:
 
-    Buffer * buffer;
+    Buffer * in_buf;
 };
 
 
@@ -169,7 +169,7 @@ private:
     std::unique_ptr<visFileBundle> file_bundle;
 
     /// Input buffer to read from
-    Buffer * buffer;
+    Buffer * in_buf;
 
     /// The list of frequencies and inputs that gets written into the index maps
     /// of the HDF5 files

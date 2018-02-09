@@ -1,3 +1,9 @@
+# Documentation
+
+Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.
+One day we'll move them to readthedocs...
+
+
 # Build/Run Requirements
 
 ## Software:
