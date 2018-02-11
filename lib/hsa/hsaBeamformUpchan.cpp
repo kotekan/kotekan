@@ -28,15 +28,15 @@ void hsaBeamformUpchan::apply_config(const uint64_t& fpga_seq) {
 }
 
 hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *output_buffer;
     } args;
     memset(&args, 0, sizeof(args));
-
+/*
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
+*/
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
