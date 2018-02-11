@@ -1,5 +1,5 @@
 /**
- * @file hsaBeamformPulsar.hpp
+ * @file
  * @brief Brute-force beamform for kotekan pulsar obs
  *  - hsaBeamformPulsar : public hsaCommand
  */
