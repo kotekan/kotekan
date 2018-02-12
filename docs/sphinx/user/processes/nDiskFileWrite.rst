@@ -1,0 +1,6 @@
+***********************
+nDiskFileWrite
+***********************
+
+.. doxygenclass:: nDiskFileWrite
+
