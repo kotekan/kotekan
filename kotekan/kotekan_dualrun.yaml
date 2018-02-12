@@ -95,16 +95,6 @@ file_output_buffers:
     file_output_buffer_3:
         kotekan_buffer: standard
 
-dpdk:
-  kotekan_process: dpdkWrapper
-  mode: shuffle4
-  num_lcores: 4
-  link_map: [0,1,2,3]
-  network_out_buf_0: gpu_input_buffer_0
-  network_out_buf_1: gpu_input_buffer_1
-  network_out_buf_2: gpu_input_buffer_2
-  network_out_buf_3: gpu_input_buffer_3
-
 
 gpu:
   commands:
@@ -197,6 +187,17 @@ accumulate:
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
 
+######## NORMAL RUN !! ##########
+dpdk:
+  kotekan_process: dpdkWrapper
+  mode: shuffle4
+  num_lcores: 4
+  link_map: [0,1,2,3]
+  network_out_buf_0: gpu_input_buffer_0
+  network_out_buf_1: gpu_input_buffer_1
+  network_out_buf_2: gpu_input_buffer_2
+  network_out_buf_3: gpu_input_buffer_3
+######## NORMAL RUN !! ##########
 
 
 ####### N2 VERIFY !!! ###########
@@ -231,6 +232,7 @@ accumulate:
 #  const_data_check_3:
 #    kotekan_process: constDataCheck
 #    buf: gpu_output_buffer_3
+####### N2 VERIFY !!! ###########
 
 
 
@@ -241,6 +243,15 @@ accumulate:
 #  test_data_gen_0:
 #    kotekan_process: testDataGen
 #    network_out_buf: gpu_input_buffer_0
+#  test_data_gen_1:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_1
+#  test_data_gen_2:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_2
+#  test_data_gen_3:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_3
 #
 #cpu_output_buffers:
 #    num_frames: buffer_depth
@@ -248,15 +259,47 @@ accumulate:
 #    metadata_pool: main_pool
 #    cpu_output_buffer_0:
 #        kotekan_buffer: standard
+#    cpu_output_buffer_1:
+#        kotekan_buffer: standard
+#    cpu_output_buffer_2:
+#        kotekan_buffer: standard
+#    cpu_output_buffer_3:
+#        kotekan_buffer: standard
 #
 #cpu_simulate:
 #  cpu_data_sim_0:
 #    kotekan_process: gpuBeamformSimulate
 #    network_in_buf: gpu_input_buffer_0
 #    beam_out_buf: cpu_output_buffer_0
+#  cpu_data_sim_1:
+#    kotekan_process: gpuBeamformSimulate
+#    network_in_buf: gpu_input_buffer_1
+#    beam_out_buf: cpu_output_buffer_1
+#  cpu_data_sim_2:
+#    kotekan_process: gpuBeamformSimulate
+#    network_in_buf: gpu_input_buffer_2
+#    beam_out_buf: cpu_output_buffer_2
+#  cpu_data_sim_3:
+#    kotekan_process: gpuBeamformSimulate
+#    network_in_buf: gpu_input_buffer_3
+#    beam_out_buf: cpu_output_buffer_3
 #
 #check_data:
 #  bf_data_check_0:
 #    kotekan_process: testDataCheckUchar
 #    first_buf : beamform_output_buffer_0
 #    second_buf: cpu_output_buffer_0
+#  bf_data_check_1:
+#    kotekan_process: testDataCheckUchar
+#    first_buf : beamform_output_buffer_1
+#    second_buf: cpu_output_buffer_1
+#  bf_data_check_2:
+#    kotekan_process: testDataCheckUchar
+#    first_buf : beamform_output_buffer_2
+#    second_buf: cpu_output_buffer_2
+#  bf_data_check_3:
+#    kotekan_process: testDataCheckUchar
+#    first_buf : beamform_output_buffer_3
+#    second_buf: cpu_output_buffer_3
+####### FRB VERIFY!!! ###########
+
