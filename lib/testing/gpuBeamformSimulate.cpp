@@ -296,7 +296,7 @@ void gpuBeamformSimulate::main_thread() {
             cpu_final_output[i] = 0.0;
         }
 	for (int i=0;i<2048;i++){
-	  cpu_gain[i*2] = 1.0;
+	  cpu_gain[i*2] = 0.0;
 	  cpu_gain[i*2+1] = 0.0;
 	}
 
