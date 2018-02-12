@@ -1,5 +1,5 @@
-#ifndef HSA_RFI_H
-#define HSA_RFI_H
+#ifndef HSA_RFI_TIME_SUM_H
+#define HSA_RFI_TIME_SUM_H
 
 #include "hsaCommand.hpp"
 
@@ -9,7 +9,7 @@ public:
     hsaRfi(Config &config,const string &unique_name,
             bufferContainer &host_buffers, hsaDeviceInterface &device);
 
-    virtual ~hsaRfi();
+    virtual ~hsaRfiTimeSum();
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -17,10 +17,8 @@ public:
 private:
     uint32_t input_frame_len;
     uint32_t output_frame_len;
-    uint32_t swap_len;
     uint32_t mask_len;
     
-    float *swap;
     uint8_t *InputMask;
 
     uint32_t _num_elements;
