@@ -26,7 +26,7 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
     metadata_buffer_precondition_id = 0;
     freq_now = 0;
 
-    first_pass=false;
+    first_pass=true;
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
@@ -137,13 +137,12 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     } args;
     memset(&args, 0, sizeof(args));
 
-/*
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);
     args.gain_buffer = device.get_gpu_memory("beamform_gain", gain_len);
-*/
+
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     kernelParams params;

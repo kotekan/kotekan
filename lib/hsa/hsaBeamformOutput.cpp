@@ -40,7 +40,7 @@ hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fp
     void * host_output_ptr = (void *)output_buffer->frames[output_buffer_excute_id];
 
     device.async_copy_gpu_to_host(host_output_ptr,
-            gpu_output_ptr, 1,//output_buffer->frame_size,
+            gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
 
     output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_frames;

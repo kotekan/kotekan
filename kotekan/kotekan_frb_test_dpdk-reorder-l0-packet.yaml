@@ -3,7 +3,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: info
+log_level: warn
 udp_packet_size: 4928
 udp_frb_packet_size: 4264
 udp_frb_header_size: 168
@@ -24,7 +24,7 @@ num_beams: 4
 num_frb_total_beams: 1024
 num_data_sets: 1
 num_gpus: 4
-buffer_depth: 3
+buffer_depth: 8
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 sizeof_float: 4
@@ -143,11 +143,11 @@ postprocess:
   network_input_buffer_3: beamform_output_buffer_3
   frb_out_buf: frb_output_buffer
 
-hex_dump:
-  kotekan_process: hexDump
-  buf: frb_output_buffer
-  len: 128
-  offset: 0
+#hex_dump:
+#  kotekan_process: hexDump
+#  buf: frb_output_buffer
+#  len: 128
+#  offset: 0
 
 #file_out:
 #  base_dir: /data/frb/

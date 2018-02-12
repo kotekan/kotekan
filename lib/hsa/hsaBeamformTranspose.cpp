@@ -31,10 +31,9 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, const uint64_t& fpg
         void *output_buffer;
     } args;
     memset(&args, 0, sizeof(args));
-/*
     args.beamform_buffer = device.get_gpu_memory("beamform_output", beamform_frame_len);
     args.output_buffer = device.get_gpu_memory("transposed_output", output_frame_len);
-*/
+
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 

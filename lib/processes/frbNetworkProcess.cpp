@@ -32,7 +32,7 @@ KotekanProcess(config_, unique_name, buffer_container,
 std::bind(&frbNetworkProcess::main_thread, this))
 {
   
-  in_buf = get_buffer("frb_out_buf");
+  in_buf = get_buffer("in_buf");
   register_consumer(in_buf, unique_name.c_str());
   apply_config(0);
   my_host_name = (char*) malloc(sizeof(char)*100); 
@@ -47,13 +47,13 @@ frbNetworkProcess::~frbNetworkProcess()
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq) 
 {
-  udp_frb_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
-  udp_frb_port_number = config.get_int(unique_name, "udp_frb_port_number");
-  number_of_nodes = config.get_int(unique_name, "number_of_nodes");
-  packets_per_stream = config.get_int(unique_name, "packets_per_stream");
-  number_of_subnets = config.get_int(unique_name, "number_of_subnets");
-  beam_offset = config.get_int(unique_name, "beam_offset");
-  time_interval = config.get_uint64(unique_name, "time_interval");
+  udp_frb_packet_size = config.get_int_default(unique_name, "udp_frb_packet_size", 4264);
+  udp_frb_port_number = config.get_int_default(unique_name, "udp_frb_port_number", 1313);
+  number_of_nodes = config.get_int_default(unique_name, "number_of_nodes", 256);
+  number_of_subnets = config.get_int_default(unique_name, "number_of_subnets",4);
+  packets_per_stream = config.get_int_default(unique_name, "packets_per_stream",8);
+  beam_offset = config.get_int_default(unique_name, "beam_offset",0);
+  time_interval = config.get_uint64_default(unique_name, "time_interval",125829120);
 }
 
 void frbNetworkProcess::parse_host_name()
