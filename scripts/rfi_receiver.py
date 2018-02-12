@@ -1,3 +1,4 @@
+"""
 /*********************************************************************************
 * RFI Documentation Header Block
 * File: rfi_receiver.py
@@ -6,6 +7,7 @@
 * Dependencies: yaml, numpy, argparse
 * Help: Run "python3 rfi_receiver.py" -H (or --Help) for how to use.
 *********************************************************************************/
+"""
 
 import threading
 import socket
@@ -92,15 +94,19 @@ class Stream:
 
     def __init__(self, header):
 
-        encoded_stream_id = header['encoded_stream_ID']
-        self.slot_id = encoded_stream_id & 0x000F 
-        self.link_id = (encoded_stream_id & 0x00F0) >> 4
+        encoded_stream_id = header['encoded_stream_ID'][0]
+        self.link_id = encoded_stream_id & 0x000F 
+        self.slot_id = (encoded_stream_id & 0x00F0) >> 4
         self.crate = (encoded_stream_id & 0x0F00) >> 8
         self.unused = (encoded_stream_id & 0xF000) >> 12
-        self.bins = [self.slot_id + self.link_id * 16 + i * 128 for i in range(header['num_local_freq'])]
+        #self.bins = [self.slot_id + self.link_id * 16 + i * 128 for i in range(header['num_local_freq'])]
+        self.bins = [self.crate*16 + self.slot_id + self.link_id*32 + self.unused *256 for i in range(header['num_local_freq'])]
         self.freqs = [800.0 - float(b) * 400.0/1024.0 for b in self.bins]
         self.bins = np.array(self.bins).astype(int)
         self.freqs = np.array(self.freqs)
+        print("Stream Created %d %d %d %d"%( self.slot_id, self.link_id, self.crate, self.unused))
+        print(self.bins, self.freqs)
+
 
 def chimeHeaderCheck(header,app):
 
@@ -169,7 +175,8 @@ def data_listener():
     chimePacketSize = chimeRFIHeaderSize + 4*local_freq
     chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1), ('encoded_stream_ID',np.uint16,1),('sk_step',np.uint32,1),
         ('num_elements',np.uint32,1),('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),
-        ('num_local_freq',np.uint32,1),('fpga_seq_num',np.uint64,1)])
+        ('num_local_freq',np.uint32,1),('fpga_seq_num',np.int64,1)])
+    stream_dict = dict()
 
     while True:
 
@@ -221,20 +228,25 @@ def data_listener():
                 header = np.fromstring(packet[:chimeRFIHeaderSize],dtype=chimeHeaderDataType)
                 data = np.fromstring(packet[chimeRFIHeaderSize:],dtype=np.float32)
 
-                if(firstPacket):
-
+                #Create a new stream object each time a new stream connects
+                if(header['encoded_stream_ID'][0] not in stream_dict.keys()):
+                    
+                    #Check that the new stream is providing the correct data
                     if(chimeHeaderCheck(header,app) == False):
                         break
+                    #Add to the dictionary of Streams
+                    stream_dict[header['encoded_stream_ID'][0]] = Stream(header)
+                
+                if(firstPacket):
 
-                    stream = Stream(header)
                     t_min = datetime.datetime.utcnow()
-                    min_seq = header['fpga_seq_num']
+                    min_seq = header['fpga_seq_num'][0]
                     max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame
-                    firstPacket = False
+                    firstPacket = False       
 
                 else:
 
-                    if(header['fpga_seq_num'] > max_seq):
+                    if(header['fpga_seq_num'][0] > max_seq):
 
                         roll_amount = int(-1*waterfall.shape[1]/8)
 
@@ -246,7 +258,7 @@ def data_listener():
                         #Adjust Time
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
 
-            waterfall[stream.bins,int((header['fpga_seq_num']-min_seq)/timesteps_per_frame)] = data
+            waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-min_seq)/timesteps_per_frame)] = data
 
         elif (mode == 'vdif'):
 

@@ -130,7 +130,7 @@ void rfiBroadcast::main_thread() {
                     RFI_Avg[i] += rfi_data[i + _num_local_freq*j];
                 }
                 RFI_Avg[i] /= (_samples_per_data_set/_sk_step);
-                //INFO("SK value %f for freq %d", RFI_Avg[i], i)
+                INFO("SK value %f for freq %d, stream %d", RFI_Avg[i], i, encoded_stream_id)
             }
 
             //Add Data to packet

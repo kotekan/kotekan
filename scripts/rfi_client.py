@@ -1,3 +1,4 @@
+"""
 /*********************************************************************************
 * RFI Documentation Header Block
 * File: rfi_client.py
@@ -6,6 +7,7 @@
 * Dependencies: Matplotlib, yaml, numpy, argparse
 * Help: Run "python3 rfi_client.py" -H (or --Help) for how to use.
 *********************************************************************************/
+"""
 
 import threading
 import socket

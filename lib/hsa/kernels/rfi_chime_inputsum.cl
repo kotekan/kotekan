@@ -44,6 +44,6 @@ rfi_chime_inputsum(
 
     if(lx == 0){
         output[gy] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1);
-        printf("Kurtosis Out %f \n", (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1));
+        //printf("Kurtosis Out %f \n", (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1));
     }
 }

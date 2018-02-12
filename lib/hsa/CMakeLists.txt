@@ -21,7 +21,8 @@ add_library ( kotekan_hsa
 
 # RFI Kernels:
               hsaRfiVdif.cpp
-              hsaRfi.cpp
+              hsaRfiTimeSum.cpp
+              hsaRfiInputSum.cpp
               hsaRfiOutput.cpp
 
 # CHIME N2 Kernels & copy-out:

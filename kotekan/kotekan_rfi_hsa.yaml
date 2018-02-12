@@ -4,13 +4,13 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: DEBUG
-num_elements: 256
-num_local_freq: 8
+num_elements: 2048
+num_local_freq: 1
 num_freq: 1024
 udp_packet_size: 4928
 num_data_sets: 1
 samples_per_data_set: 32768
-buffer_depth: 16
+buffer_depth: 8
 num_links: 4
 block_size: 32
 timesamples_per_packet: 2
@@ -52,18 +52,18 @@ gpu_output_buffers:
         kotekan_buffer: standard
 
 
-#gpu_rfi_output_buffers:
-#    num_frames: buffer_depth
-#    frame_size: 4 * num_local_freq * samples_per_data_set / sk_step
-#    metadata_pool: main_pool
-#    gpu_rfi_output_buffer_0:
-#        kotekan_buffer: standard
-#    gpu_rfi_output_buffer_1:
-#        kotekan_buffer: standard
-#    gpu_rfi_output_buffer_2:
-#        kotekan_buffer: standard
-#    gpu_rfi_output_buffer_3:
-#        kotekan_buffer: standard
+gpu_rfi_output_buffers:
+    num_frames: buffer_depth
+    frame_size: 4 * num_local_freq * samples_per_data_set / sk_step
+    metadata_pool: main_pool
+    gpu_rfi_output_buffer_0:
+        kotekan_buffer: standard
+    gpu_rfi_output_buffer_1:
+        kotekan_buffer: standard
+    gpu_rfi_output_buffer_2:
+        kotekan_buffer: standard
+    gpu_rfi_output_buffer_3:
+        kotekan_buffer: standard
 
 
 #file_output_buffers:
@@ -81,7 +81,7 @@ gpu_output_buffers:
 
 #gen_data:
 #  type: const
-#  value: 153
+#  value: 255
 #  test_data_gen_0:
 #    kotekan_process: testDataGen
 #    network_out_buf: network_input_buffer_0
@@ -112,10 +112,12 @@ gpu:
     commands:
     - name: hsa_input_data
       kernel: ''
-    - name: hsa_rfi
-      kernel: '../lib/hsa/kernels/rfi_chime.hsaco'
- #   - name: hsa_rfi_output
- #     kernel: ''
+    - name: hsa_rfi_time_sum
+      kernel: '../lib/hsa/kernels/rfi_chime_timesum.hsaco'
+    - name: hsa_rfi_input_sum
+      kernel: '../lib/hsa/kernels/rfi_chime_inputsum.hsaco'
+    - name: hsa_rfi_output
+      kernel: ''
     - name: hsa_output_data
       kernel: ''
     link_map: [0,1,2,3]
@@ -135,7 +137,7 @@ gpu:
           network_buf: network_input_buffer_0
         out_buffers:
           output_buf: gpu_output_buffer_0  
-#          rfi_output_buf: gpu_rfi_output_buffer_0
+          rfi_output_buf: gpu_rfi_output_buffer_0
     gpu_1:
         kotekan_process: hsaProcess
         gpu_id: 1
@@ -143,7 +145,7 @@ gpu:
           network_buf: network_input_buffer_1
         out_buffers:
           output_buf: gpu_output_buffer_1
-#          rfi_output_buf: gpu_rfi_output_buffer_1
+          rfi_output_buf: gpu_rfi_output_buffer_1
     gpu_2:
         kotekan_process: hsaProcess
         gpu_id: 2
@@ -151,7 +153,7 @@ gpu:
           network_buf: network_input_buffer_2
         out_buffers:
           output_buf: gpu_output_buffer_2
-#          rfi_output_buf: gpu_rfi_output_buffer_2
+          rfi_output_buf: gpu_rfi_output_buffer_2
     gpu_3:
         kotekan_process: hsaProcess
         gpu_id: 3
@@ -159,35 +161,39 @@ gpu:
           network_buf: network_input_buffer_3
         out_buffers:
           output_buf: gpu_output_buffer_3
-#          rfi_output_buf: gpu_rfi_output_buffer_3
+          rfi_output_buf: gpu_rfi_output_buffer_3
 
-#rfiBroadcast:
-#  kotekan_process: rfiBroadcast
-#  rfi_in: gpu_rfi_output_buffer_0
-#  destination_port: 41215
-#  destination_ip: 10.1.13.1
-#  destination_protocol: UDP
+rfiBroadcast:
+  kotekan_process: rfiBroadcast
+  rfi_in: gpu_rfi_output_buffer_0
+  destination_port: 41215
+  destination_ip: 10.1.13.1
+#  destination_ip: 127.0.0.1
+  destination_protocol: UDP
 
-#rfiBroadcast1:
-#  kotekan_process: rfiBroadcast
-#  rfi_in: gpu_rfi_output_buffer_1
-#  destination_port: 41215
-#  destination_ip: 10.1.13.1
-#  destination_protocol: UDP
+rfiBroadcast1:
+  kotekan_process: rfiBroadcast
+  rfi_in: gpu_rfi_output_buffer_1
+  destination_port: 41215
+  destination_ip: 10.1.13.1
+#  destination_ip: 127.0.0.1
+  destination_protocol: UDP
 
-#rfiBroadcast2:
-#  kotekan_process: rfiBroadcast
-#  rfi_in: gpu_rfi_output_buffer_2
-#  destination_port: 41215
-#  destination_ip: 10.1.13.1
-#  destination_protocol: UDP
+rfiBroadcast2:
+  kotekan_process: rfiBroadcast
+  rfi_in: gpu_rfi_output_buffer_2
+  destination_port: 41215
+  destination_ip: 10.1.13.1
+#  destination_ip: 127.0.0.1
+  destination_protocol: UDP
 
-#rfiBroadcast3:
-#  kotekan_process: rfiBroadcast
-#  rfi_in: gpu_rfi_output_buffer_3
-#  destination_port: 41215
-#  destination_ip: 10.1.13.1
-#  destination_protocol: UDP
+rfiBroadcast3:
+  kotekan_process: rfiBroadcast
+  rfi_in: gpu_rfi_output_buffer_3
+  destination_port: 41215
+  destination_ip: 10.1.13.1
+#  destination_ip: 127.0.0.1 
+  destination_protocol: UDP
 
 #accumulate:
 #    acc_0:
