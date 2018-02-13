@@ -311,15 +311,14 @@ void gpuBeamformSimulate::main_thread() {
 	FILE *ptr_myfile;
 	char filename[512];
 	snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
-	if( access( filename, F_OK ) == -1 ) {
-	    // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
-	    snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
-	}
-	
-	ptr_myfile=fopen(filename,"rb");
+
 	if (ptr_myfile == NULL){
 	    ERROR("CPU verification code: Cannot open gain file %s", filename);
-	}
+	    for (int i=0;i<2048;i++){
+	        cpu_gain[i*2] = 0.0;
+		cpu_gain[i*2+1] = 0.0;
+	    }
+        }
 	else {
 	    fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
 	    fclose(ptr_myfile);
