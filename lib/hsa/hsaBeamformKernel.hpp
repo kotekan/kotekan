@@ -49,6 +49,7 @@ private:
     int32_t _num_elements;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
+    bool first_pass; //so gains only load at the start!
 };
 
 #endif
