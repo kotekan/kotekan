@@ -37,10 +37,9 @@ void hsaBeamformReorder::apply_config(const uint64_t& fpga_seq) {
 }
 
 hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
-	void *map_buffer;
+        void *map_buffer;
         void *output_buffer;
     } args;
     memset(&args, 0, sizeof(args));

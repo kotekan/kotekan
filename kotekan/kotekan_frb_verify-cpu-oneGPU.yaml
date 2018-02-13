@@ -80,7 +80,7 @@ gpu:
   - name: hsa_beamform_transpose
     kernel: "../lib/hsa/kernels/transpose.hsaco"
   - name: hsa_beamform_upchan
-    kernel: "../lib/hsa/kernels/upchannelize-working.hsaco"
+    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
   - name: hsa_beamform_output
     kernel: ''
   link_map: [0,1,2,3]
