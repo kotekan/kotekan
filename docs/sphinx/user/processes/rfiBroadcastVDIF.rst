@@ -1,0 +1,5 @@
+*****************
+rfiBroadcastVDIF
+*****************
+
+.. doxygenclass:: rfiBroadcastVDIF

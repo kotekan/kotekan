@@ -175,12 +175,12 @@ accumulate:
 
 vis_transform:
   kotekan_process: visTransform
-  input_buffers:
+  in_bufs:
       - file_output_buffer_0
       - file_output_buffer_1
       - file_output_buffer_2
       - file_output_buffer_3
-  output_buffer: vis_buffer
+  out_buf: vis_buffer
   num_eigenvectors: 4
 
 buffer_send:

@@ -44,6 +44,11 @@
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
+#ifndef MAC_OSX
+#include "frbNetworkProcess.hpp"
+#include "pulsarNetworkProcess.hpp"
+#endif
+#include "frbPostProcess_in.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -152,6 +157,17 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "pulsarPostProcess") {
         return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
+#ifndef MAC_OSX
+    if (name == "frbNetworkProcess") {
+        return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarNetworkProcess") {
+        return (KotekanProcess *) new pulsarNetworkProcess(config, location, buffer_container);
+    }
+#endif
+    if (name == "frbPostProcess_in") {
+        return (KotekanProcess *) new frbPostProcess_in(config, location, buffer_container);
     }
 
     if (name == "nDiskFileWrite") {
@@ -291,6 +307,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // Split frequencies
     if (name == "freqSplit") {
         return (KotekanProcess *) new freqSplit(config, location, buffer_container);
+    }
+
+    // Subset frequencies
+    if (name == "freqSubset") {
+        return (KotekanProcess *) new freqSubset(config, location, buffer_container);
     }
 
     // Generate fake visbilities in GPU buffer format

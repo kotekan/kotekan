@@ -2,8 +2,8 @@
 @file
 @brief Processes for splitting and subsetting visibility data by frequency.
 - freqSplit : public KotekanProcess
+- freqSubset : public KotekanProcess
 
-@todo Add process for frequency subsetting
 *****************************************/
 #ifndef FREQ_SLICER_HPP
 #define FREQ_SLICER_HPP
@@ -18,7 +18,6 @@
 #include "visUtil.hpp"
 
 
-// Split frequencies into upper and lower halves
 /**
  * @class freqSplit
  * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half of the band.
@@ -40,6 +39,7 @@
  *                          correlator data (read from "/")
  * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
  *
+ * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
  */
 class freqSplit : public KotekanProcess {
@@ -66,5 +66,60 @@ private:
     Buffer * input_buffer;
 
 };
+
+
+
+/**
+ * @class freqSubset
+ * @brief Outputs a visBuffer stream with a subset of the input frequencies.
+ *
+ * This task takes data coming out of a visBuffer stream and selects a subset of
+ * frequencies to be passed on to the output buffer.
+ *
+ * @par Buffers
+ * @buffer output_buffer The buffer containing the subset of frequencies
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ * @buffer input_buffer The original buffer with all frequencies
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ *
+ * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
+ *                          correlator data (read from "/").
+ * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
+ *
+ * @conf  subset_list       Vector of Int. The list of frequencies that go
+ *                          in the subset.
+ *
+ * @author Mateus Fandino
+ */
+class freqSubset : public KotekanProcess {
+
+public:
+
+    /// Default constructor
+    freqSubset(Config &config,
+               const string& unique_name,
+               bufferContainer &buffer_container);
+
+    void apply_config(uint64_t fpga_seq);
+
+    /// Main loop for the process
+    void main_thread();
+
+private:
+
+    // Parameters saved from the config files
+    size_t num_elements, num_eigenvectors;
+    // List of frequencies for the subset
+    std::vector<uint16_t> subset_list;
+
+    /// Output buffer with subset of frequencies
+    Buffer * output_buffer;
+    /// Input buffer with all frequencies
+    Buffer * input_buffer;
+
+};
+
 
 #endif

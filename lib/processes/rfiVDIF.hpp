@@ -57,7 +57,7 @@ public:
     void apply_config(uint64_t fpga_seq) override;
 
     //Main thread: reads vdif_in buffer, computes kurtosis values, fills rfi_out buffer
-    void main_thread();
+    void main_thread() override;
 
 private:
     //Kotekan Buffer for VDIF input

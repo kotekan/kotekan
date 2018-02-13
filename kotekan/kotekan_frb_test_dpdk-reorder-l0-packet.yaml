@@ -14,11 +14,12 @@ timesamples_per_frb_packet: 16
 num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
-samples_per_data_set: 38400
+samples_per_data_set: 49152
 downsample_time: 3
 downsample_freq: 8
 factor_upchan: 128
 factor_upchan_out: 16
+gain_dir: /root/FRB-GainFiles
 num_beams: 4
 num_frb_total_beams: 1024
 num_data_sets: 1
@@ -48,7 +49,7 @@ gpu_input_buffers:
     gpu_input_buffer_3:
         kotekan_buffer: standard
 
-beamform_output_buffesrs:
+beamform_output_buffers:
     num_frames: buffer_depth
     frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams
     metadata_pool: main_pool
@@ -66,6 +67,13 @@ frb_output_buffer:
     frame_size: udp_frb_packet_size*8*256
     metadata_pool: main_pool
     kotekan_buffer: standard
+
+#file_output_buffer:
+#    num_frames: buffer_depth
+#    frame_size: udp_frb_packet_size*8*256
+#    metadata_pool: main_pool
+#    file_output_buffer_0:
+#        kotekan_buffer: standard
 
 dpdk:
   kotekan_process: dpdkWrapper
@@ -90,7 +98,7 @@ gpu:
   - name: hsa_beamform_transpose
     kernel: "../lib/hsa/kernels/transpose.hsaco"
   - name: hsa_beamform_upchan
-    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
+    kernel: "../lib/hsa/kernels/upchannelize-working.hsaco"
   - name: hsa_beamform_output
     kernel: ''
   link_map: [0,1,2,3]
@@ -135,3 +143,16 @@ postprocess:
   network_input_buffer_3: beamform_output_buffer_3
   frb_out_buf: frb_output_buffer
 
+hex_dump:
+  kotekan_process: hexDump
+  buf: frb_output_buffer
+  len: 128
+  offset: 0
+
+#file_out:
+#  base_dir: /data/frb/
+#  file_ext: dump
+#  file_0:
+#    kotekan_process: rawFileWrite
+#    in_buf: frb_output_buffer
+#    file_name: frb_out

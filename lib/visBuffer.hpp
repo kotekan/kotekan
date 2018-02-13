@@ -115,8 +115,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      */
-    visFrameView(Buffer * buf, int frame_id,
-                                visFrameView frame_to_copy);
+    visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
 
     /// Return a tuple of references to the time parameters.
     std::tuple<uint64_t &, timespec &> time();
