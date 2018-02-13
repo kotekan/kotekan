@@ -18,7 +18,6 @@
 #include "visUtil.hpp"
 
 
-// Split frequencies into upper and lower halves
 /**
  * @class freqSplit
  * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half of the band.
@@ -40,6 +39,7 @@
  *                          correlator data (read from "/")
  * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
  *
+ * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
  */
 class freqSplit : public KotekanProcess {
@@ -69,7 +69,6 @@ private:
 
 
 
-// Output a buffer with a subset of the input frequencies
 /**
  * @class freqSubset
  * @brief Outputs a visBuffer stream with a subset of the input frequencies.
@@ -100,8 +99,8 @@ public:
 
     /// Default constructor
     freqSubset(Config &config,
-              const string& unique_name,
-              bufferContainer &buffer_container);
+               const string& unique_name,
+               bufferContainer &buffer_container);
 
     void apply_config(uint64_t fpga_seq);
 

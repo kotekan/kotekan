@@ -32,7 +32,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
 
 
 visFrameView::visFrameView(Buffer * buf, int frame_id,
-                                visFrameView frame_to_copy):
+                           visFrameView frame_to_copy):
     buffer(buf),
     id(frame_id),
     metadata((visMetadata *)buf->metadata[id]->metadata)
@@ -143,6 +143,3 @@ std::complex<float> * visFrameView::eigenvectors() {
 float & visFrameView::rms() {
     return *rms_ptr;
 }
-
-
-

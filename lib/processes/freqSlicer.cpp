@@ -17,8 +17,8 @@
 
 
 freqSplit::freqSplit(Config& config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container) : 
+                     const string& unique_name,
+                     bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&freqSplit::main_thread, this)) {
 
@@ -40,7 +40,6 @@ freqSplit::freqSplit(Config& config,
         register_producer(buf, unique_name.c_str());
         output_buffers.push_back({buf, 0});
     }
-
 }
 
 void freqSplit::apply_config(uint64_t fpga_seq) {
@@ -58,7 +57,7 @@ void freqSplit::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(input_buffer, 
+        if(wait_for_full_frame(input_buffer,
                     unique_name.c_str(),input_frame_id) == nullptr) {
             break;
         }
@@ -77,7 +76,7 @@ void freqSplit::main_thread() {
             buf_ind=1;
         }
         auto& buffer_pair = output_buffers[buf_ind];
-        std::tie(buf, frame_id) = buffer_pair; 
+        std::tie(buf, frame_id) = buffer_pair;
 
         INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
 
@@ -93,7 +92,7 @@ void freqSplit::main_thread() {
         auto frame = visFrameView(buf, frame_id, input_frame);
 
         // Mark the buffers and move on
-        mark_frame_empty(input_buffer, unique_name.c_str(), 
+        mark_frame_empty(input_buffer, unique_name.c_str(),
                                                 input_frame_id);
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
@@ -101,13 +100,13 @@ void freqSplit::main_thread() {
         std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
         input_frame_id = (input_frame_id + 1) % input_buffer->num_frames;
     }
-        
+
 }
 
 
 freqSubset::freqSubset(Config& config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container) : 
+                       const string& unique_name,
+                       bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&freqSubset::main_thread, this)) {
 
@@ -143,7 +142,7 @@ void freqSubset::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(input_buffer, 
+        if(wait_for_full_frame(input_buffer,
                     unique_name.c_str(),input_frame_id) == nullptr) {
             break;
         }
@@ -157,7 +156,7 @@ void freqSubset::main_thread() {
 
         // If this frame is part of subset
         // TODO: Aparently std::set can be used to speed up this search
-        if (std::find(subset_list.begin(), subset_list.end(), freq) 
+        if (std::find(subset_list.begin(), subset_list.end(), freq)
                                                 != subset_list.end()) {
 
             // Wait for the output buffer to be empty of data
@@ -165,26 +164,23 @@ void freqSubset::main_thread() {
                                             output_frame_id) == nullptr) {
                 break;
             }
-    
+
             allocate_new_metadata_object(output_buffer, output_frame_id);
-    
+
             // Copy frame and create view
-            auto output_frame = visFrameView(output_buffer, 
+            auto output_frame = visFrameView(output_buffer,
                                             output_frame_id, input_frame);
-    
+
             // Mark the output buffer and move on
-            mark_frame_full(output_buffer, unique_name.c_str(), 
+            mark_frame_full(output_buffer, unique_name.c_str(),
                                                         output_frame_id);
             // Advance the current frame ids
             output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
         }
         // Mark the input buffer and move on
-        mark_frame_empty(input_buffer, unique_name.c_str(), 
+        mark_frame_empty(input_buffer, unique_name.c_str(),
                                                 input_frame_id);
         // Advance the current input frame id
         input_frame_id = (input_frame_id + 1) % input_buffer->num_frames;
     }
 }
-
-
-
