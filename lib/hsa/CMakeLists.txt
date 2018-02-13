@@ -25,6 +25,7 @@ add_library ( kotekan_hsa
               hsaBeamformTranspose.cpp
               hsaBeamformUpchan.cpp
               hsaBeamformOutput.cpp
+              hsaBeamformOutputSolo.cpp
               hsaCommand.cpp
               hsaCommandFactory.cpp
               hsaDeviceInterface.cpp

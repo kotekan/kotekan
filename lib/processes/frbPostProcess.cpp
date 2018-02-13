@@ -99,7 +99,6 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_frb_header_size");
-    _freq_array = config.get_int_array(unique_name, "freq_array");
 
     _fpga_counts_per_sample = _downsample_time * _factor_upchan;
       
@@ -132,7 +131,7 @@ void frbPostProcess::main_thread() {
         frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
     }
     for (int ii=0;ii<_nfreq_coarse;++ii){
-        frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
+        frb_header_coarse_freq_ids[ii] = 0;
     }
     for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
         frb_header_scale[ii] = 1.; 
