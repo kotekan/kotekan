@@ -44,7 +44,7 @@ visFile::visFile(const std::string& name,
     createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2);
 
     // === Set the required attributes for a valid file ===
-    std::string version = "NT_2.4.0";
+    std::string version = "NT_3.0.0";
     file->createAttribute<std::string>(
         "archive_version", DataSpace::From(version)).write(version);
     file->createAttribute<std::string>(
