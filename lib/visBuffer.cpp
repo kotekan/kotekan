@@ -81,6 +81,21 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
 }
 
 
+visFrameView::visFrameView(Buffer * buf, int frame_id,
+                           visFrameView frame_to_copy) :
+    visFrameView(buf, frame_id, frame_to_copy.num_elements,
+                 frame_to_copy.num_prod, frame_to_copy.num_eigenvectors)
+{
+    // Copy over the metadata values
+    *metadata = *(frame_to_copy.metadata);
+
+    // Copy the frame data here:
+    // NOTE: this copies the full buffer memory, not only the individual components
+    std::memcpy(buffer->frames[id], frame_to_copy.buffer->frames[id],
+                frame_to_copy.buffer->frame_size);
+}
+
+
 std::string visFrameView::summary() const {
 
     std::string msg = "visBuffer: freq=" + std::to_string(freq_id) + " fpga_seq=" + std::to_string(std::get<0>(time));

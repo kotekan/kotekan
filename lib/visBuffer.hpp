@@ -106,6 +106,19 @@ public:
                  uint32_t num_prod, uint16_t num_eigenvectors);
 
     /**
+     * @brief Copy frame to a new buffer and create view of copied frame
+     *
+     * This should be used for copying a frame from one buffer to another.
+     *
+     * @param buf              The buffer the frame is in.
+     * @param frame_id         The id of the frame to read.
+     * @param frame_to_copy    An instance of visFrameView corresponding to the frame to be copied.
+     *
+     * @warning The metadata object must already have been allocated.
+     */
+    visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
+
+    /**
      * @brief Get the layout of the buffer from the structural parameters.
      *
      * @param num_elements     Number of elements.
@@ -116,13 +129,13 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      */
-    static struct_layout bufferStructure(uint32_t num_elements,
-                                         uint32_t num_prod,
-                                         uint16_t num_eigenvectors);
+    static struct_layout bufferLayout(uint32_t num_elements,
+                                      uint32_t num_prod,
+                                      uint16_t num_eigenvectors);
 
     /// Return a summary of the visibility buffer contents
     std::string summary() const;
-    
+
 private:
 
     // References to the buffer and metadata we are viewing

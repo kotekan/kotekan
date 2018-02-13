@@ -40,6 +40,7 @@
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
+#include "freqSlicer.hpp"
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
@@ -301,6 +302,16 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // Generate fake visbilities
     if (name == "fakeVis") {
         return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+
+    // Split frequencies
+    if (name == "freqSplit") {
+        return (KotekanProcess *) new freqSplit(config, location, buffer_container);
+    }
+
+    // Subset frequencies
+    if (name == "freqSubset") {
+        return (KotekanProcess *) new freqSubset(config, location, buffer_container);
     }
 
     // Generate fake visbilities in GPU buffer format
