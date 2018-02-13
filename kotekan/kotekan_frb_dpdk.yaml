@@ -132,19 +132,19 @@ frb:
     network_input_buffer_2: beamform_output_buffer_2
     network_input_buffer_3: beamform_output_buffer_3
     frb_out_buf: frb_output_buffer
-  file_output_buffer:
-    num_frames: buffer_depth
-    frame_size: udp_frb_packet_size*8*256
-    metadata_pool: main_pool
-    file_output_buffer_0:
-        kotekan_buffer: standard
-  file_out:
-    base_dir: /data/frb/
-    file_ext: dump
-    file_0:
-        kotekan_process: rawFileWrite
-        in_buf: frb_output_buffer
-        file_name: frb_out
+#  file_output_buffer:
+#    num_frames: buffer_depth
+#    frame_size: udp_frb_packet_size*8*256
+#    metadata_pool: main_pool
+#    file_output_buffer_0:
+#        kotekan_buffer: standard
+#  file_out:
+#    base_dir: /data/frb/
+#    file_ext: dump
+#    file_0:
+#        kotekan_process: rawFileWrite
+#        in_buf: frb_output_buffer
+#        file_name: frb_out
 
 
 hex_dump:
