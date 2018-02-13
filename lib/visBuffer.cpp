@@ -30,6 +30,25 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
 }
 
 
+
+visFrameView::visFrameView(Buffer * buf, int frame_id,
+                           visFrameView frame_to_copy):
+    buffer(buf),
+    id(frame_id),
+    metadata((visMetadata *)buf->metadata[id]->metadata)
+{
+    // Copy the value of metadata:
+    *metadata = *(frame_to_copy.metadata);
+    check_and_set();
+    // Copy the frame data here:
+    std::memcpy(buffer->frames[id],frame_to_copy.buffer->frames[id],
+                                   frame_to_copy.buffer->frame_size);
+}
+
+
+
+
+
 std::string visFrameView::summary() {
 
     auto t = time();
@@ -82,6 +101,7 @@ void visFrameView::check_and_set() {
     }
 
 }
+
 uint32_t visFrameView::num_elements() {
     return metadata->num_elements;
 }
