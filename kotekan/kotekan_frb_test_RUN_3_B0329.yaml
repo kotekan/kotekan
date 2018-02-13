@@ -150,7 +150,7 @@ buffer_read:
   number_of_nodes: 256
   packets_per_stream: 8
   number_of_subnets: 4
-  beam_offset: 60
+  beam_offset: 224
   time_interval: 125829120
   L1_node_ips:
     - 10.6.200.10
