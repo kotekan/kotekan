@@ -123,3 +123,26 @@ std::complex<float> * visFrameView::eigenvectors() {
 float & visFrameView::rms() {
     return *rms_ptr;
 }
+
+// I'm not sure if this is fully implemented or not. -KM
+visFrameView visFrameView::copy_to_buffer(Buffer * buf, int frame_id) {
+    auto out = visFrameView(buf, frame_id, num_elements(), num_prod(),
+                            num_eigenvectors());
+    out.dataset_id() = dataset_id();
+    out.freq_id() = freq_id();
+    out.time() = time();
+
+    for (int i = 0; i < num_prod(); i++){
+        out.vis()[i] = vis()[i];
+    }
+    for (int i = 0; i < num_eigenvectors(); i++) {
+        for (int j = 0; j < num_elements(); j++) {
+            out.eigenvectors()[i * num_elements() + j] =
+                    eigenvectors()[i * num_elements() + j];
+        }
+        out.eigenvalues()[i] = eigenvalues()[i];
+    }
+    out.rms() = rms();
+
+    return out;
+}

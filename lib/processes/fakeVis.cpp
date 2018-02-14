@@ -77,8 +77,9 @@ void fakeVis::main_thread() {
                 int ind = 0;
                 for(int i = 0; i < num_elements; i++) {
                     for(int j = i; j < num_elements; j++) {
-                        if (fill_ij) out_vis[ind] = {(float)i, (float)j};
-                        else if (phase_ij) {
+                        if (fill_ij) {
+                            out_vis[ind] = {(float)i, (float)j};
+                        } else if (phase_ij) {
                             float phase = (float) i - (float) j;
                             out_vis[ind] = {cos(phase), sin(phase)};
                         }

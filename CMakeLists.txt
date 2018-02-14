@@ -5,6 +5,7 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
+option(USE_LAPACK "Build with LAPACK Linear Algebra (OpenBLAS)" OFF)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" ON)
 option(USE_PRECOMPILED_OPENCL "Use precompiled OpenCL binaries" OFF)
@@ -39,6 +40,10 @@ if (${USE_FFTW})
   set(USE_FFTW ${FFTW_FOUND})
   add_definitions(-DWITH_FFTW)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lfftw3f ")
+endif()
+
+if (${USE_LAPACK})
+  find_package( OpenBLAS REQUIRED)
 endif()
 
 if(${DPDK_VDIF})

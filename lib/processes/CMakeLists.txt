@@ -50,6 +50,8 @@ if (${USE_HDF5})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
 endif ()
 
+
+
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
 # HDF5 stuff
