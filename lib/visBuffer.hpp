@@ -150,7 +150,8 @@ private:
     // The calculated layout of the buffer
     struct_layout buffer_layout;
 
-
+// NOTE: these need to be defined in a final public block to ensure that they
+// are initialised after the above members.
 public:
 
     /// The number of elements in the data (read only).

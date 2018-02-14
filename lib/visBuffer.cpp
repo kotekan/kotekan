@@ -41,7 +41,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params
-    buffer_layout(bufferStructure(n_elements, n_prod, n_eigenvectors)),
+    buffer_layout(bufferLayout(n_elements, n_prod, n_eigenvectors)),
 
     // Set the const refs to the structural metadata
     num_elements(metadata->num_elements),
@@ -98,36 +98,25 @@ visFrameView::visFrameView(Buffer * buf, int frame_id,
 
 std::string visFrameView::summary() const {
 
-    std::string msg = "visBuffer: freq=" + std::to_string(freq_id) + " fpga_seq=" + std::to_string(std::get<0>(time));
+    std::ostringstream s;
 
-    /*
-    uint64_t fpga_seq = get_fpga_seq_num(buf, frame_id);
-    stream_id_t stream_id = get_stream_id_t(buf, frame_id);
-    timeval time_v = get_first_packet_recv_time(buf, frame_id);
-    uint64_t lost_samples = get_lost_timesamples(buf, frame_id);
+    auto tm = gmtime(&(std::get<1>(time).tv_sec));
 
-    char time_buf[64];
-    time_t temp_time = time_v.tv_sec;
-    struct tm* l_time = gmtime(&temp_time);
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", l_time);
+    s << "visBuffer: freq=" << freq_id
+      << " dataset=" << dataset_id
+      << " fpga_seq=" << std::get<0>(time)
+      << " time=" << std::put_time(tm, "%F %T");
 
-    INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
-            ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64
-            ", time stamp: %ld.%06ld (%s.%06ld)",
-            buf->buffer_name, frame_id, fpga_seq,
-            stream_id.crate_id, stream_id.slot_id,
-            stream_id.link_id, stream_id.unused, lost_samples,
-            time_v.tv_sec, time_v.tv_usec, time_buf, time_v.tv_usec);
-    */
-
-    return msg;
-
+    return s.str();
 }
 
-struct_layout visFrameView::bufferStructure(uint32_t num_elements,
-                                            uint32_t num_prod,
-                                            uint16_t num_eigenvectors)
+
+struct_layout visFrameView::bufferLayout(uint32_t num_elements,
+                                         uint32_t num_prod,
+                                         uint16_t num_eigenvectors)
 {
+    // TODO: get the types of each element using a template on the member
+    // definition
     std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
         {"vis", sizeof(cfloat), num_prod},
         {"weight", sizeof(float),  num_prod},
