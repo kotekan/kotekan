@@ -9,13 +9,8 @@
 #define FREQ_SLICER_HPP
 
 #include <unistd.h>
-#include "fpga_header_functions.h"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
-#include "visFile.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
 
 
 /**

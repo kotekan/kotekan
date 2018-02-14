@@ -1,19 +1,7 @@
 #include "freqSlicer.hpp"
-#include "visFile.hpp"
 #include "visBuffer.hpp"
-#include "visUtil.hpp"
-#include "util.h"
-#include "fpga_header_functions.h"
-#include "chimeMetadata.h"
-#include "gpuPostProcess.hpp"
 #include "errors.h"
-#include <time.h>
-#include <unistd.h>
-#include <iomanip>
 #include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
 
 
 freqSplit::freqSplit(Config& config,
