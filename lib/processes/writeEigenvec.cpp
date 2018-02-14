@@ -104,7 +104,7 @@ void writeEigenvec::main_thread() {
         DEBUG("size of evec.data() %d", sizeof(*evec.data()));
         DEBUG("size of evec_alt.data() %d", sizeof(*evec_alt.data()));
 
-        file->write_eigenvectors(t, freq_ind, evec, eval, rms);
+        file->write_eigenvectors(t, freq_ind, evec_alt, eval, rms);
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -196,14 +196,15 @@ void evFile::flush() {
 }
 
 void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
-                          std::vector<std::complex<float>> eigenvectors,
-                          //std::vector<std::vector<std::complex<float>>> eigenvectors,
+                          //std::vector<std::complex<float>> eigenvectors,
+                          std::vector<std::vector<std::complex<float>>> eigenvectors,
                           std::vector<float> eigenvalues, float new_rms) {
 
     // Find position in file
     size_t curr_ind;
-    if (curr_times.size() == 0) {
-        curr_ind = 0;
+    if (curr_times.size() < ntimes) {
+        curr_ind = curr_times.size();
+        curr_times.push_back(new_time.fpga_count);
     } else {
         uint64_t curr_time = new_time.fpga_count;
         auto time_ind = std::find(curr_times.begin(), curr_times.end(), curr_time);
