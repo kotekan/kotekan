@@ -7,8 +7,10 @@
 #include <sys/time.h>
 #include <string>
 #include <vector>
-#include <gsl/gsl>
+
+#include "gsl-lite.hpp"
 #include "json.hpp"
+
 #include "Config.hpp"
 
 

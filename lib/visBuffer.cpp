@@ -102,7 +102,8 @@ std::string visFrameView::summary() const {
 
     auto tm = gmtime(&(std::get<1>(time).tv_sec));
 
-    s << "visBuffer: freq=" << freq_id
+    s << "visBuffer[name=" << buffer->buffer_name << "]:"
+      << " freq=" << freq_id
       << " dataset=" << dataset_id
       << " fpga_seq=" << std::get<0>(time)
       << " time=" << std::put_time(tm, "%F %T");

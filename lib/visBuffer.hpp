@@ -11,10 +11,10 @@
 #include <sys/time.h>
 #include <tuple>
 #include <complex>
-#include <gsl/gsl>
+
+#include "gsl-lite.hpp"
 
 #include "visUtil.hpp"
-
 #include "buffer.h"
 
 /**
@@ -55,6 +55,11 @@ struct visMetadata {
  * interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
+ *
+ * @note There are multiple constructors: one for viewing already initialised
+ *       buffers; one for initialising a buffer and returning a view of it; and
+ *       one for copying an existing buffer into a new location and returning a
+ *       view of that. Make sure to pick the right one!
  *
  * @author Richard Shaw
  */
