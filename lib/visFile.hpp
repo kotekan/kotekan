@@ -2,9 +2,12 @@
 #define VIS_FILE_HPP
 
 #include <iostream>
+#include <cstdint>
 #include <map>
+
 #include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
+
 #include "visUtil.hpp"
 #include "errors.h"
 

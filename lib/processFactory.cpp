@@ -49,6 +49,7 @@
 #include "pulsarNetworkProcess.hpp"
 #endif
 #include "frbPostProcess_in.hpp"
+#include "visProcess.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
