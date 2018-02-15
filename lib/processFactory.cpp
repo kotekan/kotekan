@@ -292,6 +292,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         #endif
     }
 
+    if (name == "writeEigenvec") {
+        #ifdef WITH_HDF5
+            return (KotekanProcess *) new writeEigenvec(config, location, buffer_container);
+        #else
+            throw std::runtime_error("writeEigenvec: hdf5 writing is not supported on this system");
+        #endif
+    }
+
     // vis processes
     if (name == "visTransform") {
         return (KotekanProcess *) new visTransform(config, location, buffer_container);
@@ -325,10 +333,6 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "bufferRecv") {
         return (KotekanProcess *) new bufferRecv(config, location, buffer_container);
-    }
-
-    if (name == "writeEigenvec") {
-        return (KotekanProcess *) new writeEigenvec(config, location, buffer_container);
     }
 
     // OpenCL
