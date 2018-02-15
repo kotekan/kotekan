@@ -188,19 +188,19 @@ void frbPostProcess::main_thread() {
 		for (int thread_id = 0; thread_id < _num_gpus; ++thread_id) { //loop the 4 GPUs (input)
 		    float * in_buf_data = (float *)in_frame[thread_id];
 		    //Scale and offset
-		    for (int i=0; i<_nbeams;i++){ //1024
+		    for (int b=0; b<_nbeams;b++){ //1024
 		        for (int t=0;t<8;t++){ //packets
-			    float max = in_buf_data[i*num_samples*16+ (t*16)*16]; //initialize
-			    float min = in_buf_data[i*num_samples*16+ (t*16)*16]; //initialize
+			    float max = in_buf_data[b*num_samples*16+ (t*16)*16]; //initialize
+			    float min = in_buf_data[b*num_samples*16+ (t*16)*16]; //initialize
 			    for (int tt=0;tt<16;tt++){
 			        for (int ff=0;ff<16;ff++){
-				    int id = i*num_samples*16+ (t*16+tt)*16 +ff;
+				    int id = b*num_samples*16+ (t*16+tt)*16 +ff;
 				    if (in_buf_data[id] > max) max = in_buf_data[id];
 				    if (in_buf_data[id] < min) min = in_buf_data[id];
 				}
 			    }
-			    frb_header_scale[(t*_nbeams*_nfreq_coarse)  +i*_nfreq_coarse+thread_id] = (max-min)/255.; 
-			    frb_header_offset[(t*_nbeams*_nfreq_coarse) +i*_nfreq_coarse+thread_id] = 255-max/(max-min)*255.;
+			    frb_header_scale[(t*_nbeams*_nfreq_coarse)  +b*_nfreq_coarse+thread_id] = (max-min)/255.; 
+			    frb_header_offset[(t*_nbeams*_nfreq_coarse) +b*_nfreq_coarse+thread_id] = 255-max/(max-min)*255.;
 			} // end t
 		    } // end nbeam		 
 		    for (int stream = 0; stream<num_L1_streams; ++stream) { //loop the output buffer  256 streams

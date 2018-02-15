@@ -14,7 +14,7 @@ num_data_sets: 1
 num_gpus: 4
 buffer_depth: 6
 num_gpu_frames: 1
-cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+cpu_affinity: [4,5,6,7,8,9,10,11]
 #-----FRB specific global parameters----
 downsample_time: 3
 downsample_freq: 8
@@ -127,6 +127,7 @@ frb:
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
+    cpu_affinity: [11] 
     kotekan_process: frbPostProcess
     network_input_buffer_0: beamform_output_buffer_0
     network_input_buffer_1: beamform_output_buffer_1
