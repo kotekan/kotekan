@@ -289,7 +289,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
             throw std::runtime_error("hdf5Writer is not supported on this system");
         #endif
     }
-
+    #ifdef WITH_HDF5
     // vis processes
     if (name == "visTransform") {
         return (KotekanProcess *) new visTransform(config, location, buffer_container);
@@ -302,6 +302,7 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "fakeVis") {
         return (KotekanProcess *) new fakeVis(config, location, buffer_container);
     }
+    #endif
 
     // Generate fake visbilities in GPU buffer format
     if (name == "fakeGpuBuffer") {
