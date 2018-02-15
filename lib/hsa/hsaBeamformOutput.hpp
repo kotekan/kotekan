@@ -7,10 +7,8 @@ class hsaBeamformOutputData: public hsaCommand
 {
 public:
 
-    hsaBeamformOutputData(const string &kernel_name, const string &kernel_file_name,
-                  hsaDeviceInterface &device, Config &config,
-                  bufferContainer &host_buffers,
-                  const string &unique_name);
+    hsaBeamformOutputData(Config &config, const string &unique_name,
+                  bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaBeamformOutputData();
 
@@ -30,5 +28,6 @@ private:
     int32_t output_buffer_precondition_id;
     int32_t output_buffer_excute_id;
 };
+REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
 #endif

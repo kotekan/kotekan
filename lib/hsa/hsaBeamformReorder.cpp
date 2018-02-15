@@ -1,13 +1,18 @@
 #include "hsaBeamformReorder.hpp"
 #include "hsaBase.h"
 
-hsaBeamformReorder::hsaBeamformReorder(const string& kernel_name, const string& kernel_file_name,
-			    hsaDeviceInterface& device, Config& config,
-			    bufferContainer& host_buffers,
-			    const string &unique_name ) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("reorder", "reorder.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
-    apply_config(0);
+
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _reorder_map = config.get_int_array(unique_name, "reorder_map");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+
+    input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;
+    output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set ;
 
     // Create a C style array for backwards compatiably.
     map_len = 512 * sizeof(int);
@@ -23,24 +28,11 @@ hsaBeamformReorder::~hsaBeamformReorder() {
     hsa_host_free(_reorder_map_c);
 }
 
-void hsaBeamformReorder::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _reorder_map = config.get_int_array(unique_name, "reorder_map");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-
-    input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;
-    output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set ;
-
-}
-
 hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
-	void *map_buffer;
+        void *map_buffer;
         void *output_buffer;
     } args;
     memset(&args, 0, sizeof(args));

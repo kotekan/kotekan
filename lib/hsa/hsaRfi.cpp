@@ -17,13 +17,23 @@ Notes:
 #include "hsaBase.h"
 #include <math.h>
 
-hsaRfi::hsaRfi(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+hsaRfi::hsaRfi(Config& config, const string &unique_name,
+                bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("rfi_chime","rfi_chime.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
-    apply_config(0); //Retrieves relevant information regarding kotekan parameters
+
+    //Retrieves relevant information regarding kotekan parameters
+    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+
+    _sk_step = config.get_int(unique_name, "sk_step"); //RFI paramters
+    rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
+    rfi_zero = config.get_bool(unique_name, "rfi_zero");
+
+    input_frame_len = _num_elements*_num_local_freq*_samples_per_data_set; //Buffer sizes
+    mean_len = _num_elements*_num_local_freq*sizeof(float);
+
 
     Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocate memory
 
@@ -38,21 +48,6 @@ hsaRfi::hsaRfi(const string& kernel_name, const string& kernel_file_name,
 
 hsaRfi::~hsaRfi() {
     // TODO Free device memory allocations.
-}
-
-void hsaRfi::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-
-    _sk_step = config.get_int(unique_name, "sk_step"); //RFI paramters
-    rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
-    rfi_zero = config.get_bool(unique_name, "rfi_zero");
-
-    input_frame_len = _num_elements*_num_local_freq*_samples_per_data_set; //Buffer sizes
-    mean_len = _num_elements*_num_local_freq*sizeof(float);
 }
 
 hsa_signal_t hsaRfi::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

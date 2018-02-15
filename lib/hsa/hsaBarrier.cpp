@@ -1,12 +1,11 @@
 #include "hsaBarrier.hpp"
 #include <unistd.h>
 
-hsaBarrier::hsaBarrier(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device,
-               config, host_buffers, unique_name) {
+hsaBarrier::hsaBarrier(Config& config,
+                       const string &unique_name, 
+                       bufferContainer& host_buffers,
+                       hsaDeviceInterface& device) :
+    hsaCommand("", "", config, unique_name, host_buffers, device) {
     command_type = CommandType::BARRIER;
 }
 

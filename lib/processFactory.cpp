@@ -281,22 +281,18 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
     }
 
+    #ifdef WITH_HDF5
     // HDF5
-    if (name == "visWriter") {
-        #ifdef WITH_HDF5
+        if (name == "visWriter") {
             return (KotekanProcess *) new visWriter(config, location, buffer_container);
-        #else
-            throw std::runtime_error("hdf5Writer is not supported on this system");
-        #endif
-    }
-
-    // vis processes
-    if (name == "visTransform") {
-        return (KotekanProcess *) new visTransform(config, location, buffer_container);
-    }
-    if (name == "visDebug") {
-        return (KotekanProcess *) new visDebug(config, location, buffer_container);
-    }
+        // vis processes
+        if (name == "visTransform") {
+            return (KotekanProcess *) new visTransform(config, location, buffer_container);
+        }
+        if (name == "visDebug") {
+            return (KotekanProcess *) new visDebug(config, location, buffer_container);
+        }
+    #endif
 
     // Generate fake visbilities
     if (name == "fakeVis") {

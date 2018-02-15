@@ -7,10 +7,8 @@ class hsaBarrier: public hsaCommand
 {
 public:
 
-    hsaBarrier(const string &kernel_name, const string &kernel_file_name,
-                    hsaDeviceInterface &device, Config &config,
-                    bufferContainer &host_buffers,
-                    const string &unique_name);
+    hsaBarrier(Config &config, const string &unique_name,
+               bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaBarrier();
 
@@ -18,5 +16,6 @@ public:
 
     void finalize_frame(int frame_id) override;
 };
+REGISTER_HSA_COMMAND(hsaBarrier);
 
 #endif

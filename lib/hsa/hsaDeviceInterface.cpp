@@ -16,16 +16,15 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
 hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_, int gpu_buffer_depth_) :
     config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
 
+    //Make a dummy instance for the static factory...
+    if (gpu_id < 0) return;
+
     hsa_status_t hsa_status;
 
     // Function parameters
     gpu_config_t gpu_config;
     gpu_config.agent = &gpu_agent;
     gpu_config.gpu_id = gpu_id;
-
-    gpu_mem_config_t gpu_mem_config;
-    gpu_mem_config.region = &global_region;
-    gpu_mem_config.gpu_id = gpu_id;
 
     // Get the CPU agent
     hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
@@ -238,7 +237,6 @@ hsa_status_t hsaDeviceInterface::get_gpu_agent(hsa_agent_t agent, void* data) {
             hsa_queue_type_t queue_type;
             hsa_agent_get_info(agent, HSA_AGENT_INFO_QUEUE_TYPE, &queue_type);
             if (queue_type == HSA_QUEUE_TYPE_MULTI) {
-                hsa_agent_t* ret = (hsa_agent_t*)data;
                 *gpu_config->agent = agent;
                 return HSA_STATUS_INFO_BREAK;
             }

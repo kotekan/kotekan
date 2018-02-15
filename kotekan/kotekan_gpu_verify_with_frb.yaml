@@ -121,31 +121,22 @@ gen_data:
     network_out_buf: gpu_input_buffer_3
 
 gpu:
+  kernel_path: "../lib/hsa/kernels/"
+  gain_dir: /root/FRB-GainFiles
   commands:
-  - name: hsa_input_data
-    kernel: ''
-  - name: hsa_presum_zero
-    kernel: ''
-  - name: hsa_output_data_zero
-    kernel: ''
-  - name: hsa_barrier
-    kernel: ''
-  - name: hsa_preseed_kernel
-    kernel: "../lib/hsa/kernels/presum.hsaco"
-  - name: hsa_correlator_kernel
-    kernel: "../lib/hsa/kernels/N2.hsaco"
-  - name: hsa_beamform_reorder
-    kernel: "../lib/hsa/kernels/reorder.hsaco"
-  - name: hsa_beamform_kernel
-    kernel: "../lib/hsa/kernels/unpack_shift_beamform.hsaco"
-  - name: hsa_beamform_transpose
-    kernel: "../lib/hsa/kernels/transpose.hsaco"
-#  - name: hsa_beamform_upchan
-#    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
-#  - name: hsa_beamform_output
-#    kernel: ''
-  - name: hsa_output_data
-    kernel: ''
+  - name: hsaInputData
+  - name: hsaPresumZero
+  - name: hsaOutputDataZero
+  - name: hsaBarrier
+  - name: hsaPresumKernel
+  - name: hsaCorrelatorKernel
+  - name: hsaBeamformReorder
+  - name: hsaBeamformKernel
+  - name: hsaBeamformTranspose
+  - name: hsaBeamformUpchan
+#      kernel: "upchannelize-working.hsaco"
+  - name: hsaBeamformOutputData
+  - name: hsaOutputData
   link_map: [0,1,2,3]
   num_gpus: 4
   block_size: 32

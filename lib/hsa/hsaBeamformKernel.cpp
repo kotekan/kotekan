@@ -2,14 +2,20 @@
 #include "hsaBase.h"
 #include <unistd.h>
 
-hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
+hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+                            hsaDeviceInterface& device) :
+    hsaCommand("zero_padded_FFT512","unpack_shift_beamform.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    apply_config(0);
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _gain_dir = config.get_string(unique_name, "gain_dir");
+
+    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
+
 
     map_len = 256 * sizeof(int);
     host_map = (uint32_t *)hsa_host_malloc(map_len);
@@ -77,18 +83,6 @@ hsaBeamformKernel::~hsaBeamformKernel() {
     // TODO Free device memory allocations.
 }
 
-void hsaBeamformKernel::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _gain_dir = config.get_string(unique_name, "gain_dir");
-
-    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
-}
-
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
 {
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
@@ -99,7 +93,6 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
 
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    void * host_memory_frame = (void *)metadata_buf->frames[metadata_buffer_id];
     stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
     freq_now = bin_number_chime(&stream_id); 
     FILE *ptr_myfile;
@@ -116,7 +109,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     }
     else {
         fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
-	fclose(ptr_myfile);
+        fclose(ptr_myfile);
     }
     void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
     device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
@@ -128,7 +121,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         void *map_buffer;
         void *coeff_buffer;
         void *output_buffer;
-	void *gain_buffer;
+        void *gain_buffer;
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);

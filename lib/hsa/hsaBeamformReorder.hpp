@@ -7,14 +7,10 @@
 class hsaBeamformReorder: public hsaCommand
 {
 public:
-    hsaBeamformReorder(const string &kernel_name, const string &kernel_file_name,
-                         hsaDeviceInterface &device, Config &config,
-			 bufferContainer &host_buffers,
-			 const string &unique_name);
+    hsaBeamformReorder(Config &config,const string &unique_name,
+                       bufferContainer &host_buffers,hsaDeviceInterface &device);
 
     virtual ~hsaBeamformReorder();
-
-    void apply_config(const uint64_t& fpga_seq) override;
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -30,5 +26,6 @@ private:
     vector<int32_t> _reorder_map;
     int * _reorder_map_c;
 };
+REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 #endif

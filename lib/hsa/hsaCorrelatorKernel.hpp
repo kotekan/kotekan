@@ -16,13 +16,10 @@ class hsaCorrelatorKernel: public hsaCommand
 {
 public:
 
-    hsaCorrelatorKernel(const string &kernel_name, const string &kernel_file_name,
-                        hsaDeviceInterface &device, Config &config,
-                        bufferContainer &host_buffers, const string &unique_name);
+    hsaCorrelatorKernel(Config &config, const string &unique_name,
+                        bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaCorrelatorKernel();
-
-    void apply_config(const uint64_t& fpga_seq) override;
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -43,5 +40,6 @@ private:
     int32_t _num_blocks;
     int32_t _n_intg;
 };
+REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
 #endif

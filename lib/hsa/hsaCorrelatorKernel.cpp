@@ -1,14 +1,33 @@
-
 #include "hsaCorrelatorKernel.hpp"
 #include "hsaBase.h"
 #include <unistd.h>
 
-hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers, const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+
+
+hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("CHIME_X","N2.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
-    apply_config(0);
+
+
+    //N_INTG is the number summed in each workitem
+    //if there are more, they get split across multiple workitems
+    //time slice id is identified by the Y group.
+    _n_intg = config.get_int(unique_name, "n_intg");
+
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    int block_size = config.get_int(unique_name, "block_size");
+    _num_blocks = (int32_t)(_num_elements / block_size) *
+                    (_num_elements / block_size + 1) / 2.;
+    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
+    // I don't really like this way of getting to correlator output size (AR)
+    corr_frame_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
+    block_map_len = _num_blocks * 2 * sizeof(uint32_t);
+
+
 
     // Allocate and copy the block map
     host_block_map = (uint32_t *)hsa_host_malloc(block_map_len);
@@ -35,27 +54,6 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(const string& kernel_name, const string
     void * device_kernel_args = device.get_gpu_memory("corr_kernel_config", sizeof(corr_kernel_config_t));
     device.sync_copy_host_to_gpu(device_kernel_args, host_kernel_args, sizeof(corr_kernel_config_t));
 
-}
-
-void hsaCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    //N_INTG is the number summed in each workitem
-    //if there are more, they get split across multiple workitems
-    //time slice id is identified by the Y group.
-    _n_intg = config.get_int(unique_name, "n_intg");
-
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    int block_size = config.get_int(unique_name, "block_size");
-    _num_blocks = (int32_t)(_num_elements / block_size) *
-                    (_num_elements / block_size + 1) / 2.;
-    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
-    // I don't really like this way of getting to correlator output size (AR)
-    corr_frame_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
-    block_map_len = _num_blocks * 2 * sizeof(uint32_t);
 }
 
 hsaCorrelatorKernel::~hsaCorrelatorKernel() {

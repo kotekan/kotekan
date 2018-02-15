@@ -1,27 +1,19 @@
 #include "hsaBeamformTranspose.hpp"
 #include "hsaBase.h"
 
-hsaBeamformTranspose::hsaBeamformTranspose(const string& kernel_name, const string& kernel_file_name,
-			    hsaDeviceInterface& device, Config& config,
-			    bufferContainer& host_buffers,
-			    const string &unique_name ) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string &unique_name,
+                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("transpose", "transpose.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
-    apply_config(0);
-}
-
-hsaBeamformTranspose::~hsaBeamformTranspose() {
-
-}
-
-void hsaBeamformTranspose::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
 
     _num_elements = config.get_int(unique_name, "num_elements");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 
     beamform_frame_len  = _num_elements * _samples_per_data_set * 2 * sizeof(float);
     output_frame_len = _num_elements * (_samples_per_data_set+32) * 2 * sizeof(float);
+}
+
+hsaBeamformTranspose::~hsaBeamformTranspose() {
 
 }
 

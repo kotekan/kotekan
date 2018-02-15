@@ -9,14 +9,10 @@
 class hsaPulsarUpdatePhase: public hsaCommand
 {
 public:
-    hsaPulsarUpdatePhase(const string &kernel_name, const string &kernel_file_name,
-                        hsaDeviceInterface &device, Config &config,
-                        bufferContainer &host_buffers,
-                        const string &unique_name);
+    hsaPulsarUpdatePhase( Config &config,const string &unique_name,
+                        bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaPulsarUpdatePhase();
-
-    void apply_config(const uint64_t& fpga_seq) override;
 
     int wait_on_precondition(int gpu_frame_id) override;
 
@@ -62,5 +58,6 @@ private:
     std::mutex _pulsar_lock;
 
 };
+REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
 #endif

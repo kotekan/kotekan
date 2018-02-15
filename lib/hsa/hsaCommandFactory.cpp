@@ -7,124 +7,27 @@
 #include <vector>
 
 #include "json.hpp"
-#include "hsaCorrelatorKernel.hpp"
-#include "hsaPreseedKernel.hpp"
-#include "hsaInputData.hpp"
-#include "hsaPresumZero.hpp"
-#include "hsaOutputData.hpp"
-#include "hsaOutputDataZero.hpp"
-#include "hsaBarrier.hpp"
-#include "hsaBeamformKernel.hpp"
-#include "hsaBeamformPulsar.hpp"
-#include "hsaBeamformPulsarOneFeed.hpp"
-#include "hsaPulsarUpdatePhase.hpp"
-#include "hsaBeamformReorder.hpp"
-#include "hsaBeamformTranspose.hpp"
-#include "hsaBeamformUpchan.hpp"
-#include "hsaBeamformOutput.hpp"
-#include "hsaRfiVdif.hpp"
-#include "hsaRfi.hpp"
-#include "hsaRfiOutput.hpp"
-using namespace std;
 
 hsaCommandFactory::hsaCommandFactory(Config& config_,
-                                            hsaDeviceInterface& device_,
-                                            bufferContainer &host_buffers_,
-                                            const string &unique_name_) :
-    config(config_),
-    device(device_),
-    host_buffers(host_buffers_),
-    unique_name(unique_name_){
-
+                                     const string &unique_name_,
+                                     bufferContainer &host_buffers_,
+                                     hsaDeviceInterface& device_) :
+                                        config(config_),
+                                        device(device_),
+                                        host_buffers(host_buffers_),
+                                        unique_name(unique_name_){
+    //Dummy constructor to deal with singleton instance for initialization
+    if (unique_name == "") return;
     vector<json> commands = config.get_json_array(unique_name, "commands");
 
+    auto fac = hsaCommandFactory::Instance();
     for (uint32_t i = 0; i < commands.size(); i++){
-
-        if (commands[i]["name"] == "hsa_correlator_kernel") {
-            list_commands.push_back(new hsaCorrelatorKernel("CHIME_X",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_barrier") {
-            list_commands.push_back(new hsaBarrier("hsa_barrier",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_preseed_kernel") {
-            list_commands.push_back(new hsaPreseedKernel("ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_input_data") {
-            list_commands.push_back(new hsaInputData("hsa_input_data",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_presum_zero") {
-            list_commands.push_back(new hsaPresumZero("hsa_presum_zero",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_output_data") {
-            list_commands.push_back(new hsaOutputData("hsa_output_data",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_output_data_zero") {
-            list_commands.push_back(new hsaOutputDataZero("hsa_output_data_zero",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_reorder") {
-            list_commands.push_back(new hsaBeamformReorder("reorder",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_pulsar") {
-            list_commands.push_back(new hsaBeamformPulsar("pulsarbf",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_pulsar_one_feed") {
-            list_commands.push_back(new hsaBeamformPulsarOneFeed("pulsarbf",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_pulsar_update_phase") {
-            list_commands.push_back(new hsaPulsarUpdatePhase("hsa_pulsar_update_phase",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_kernel") {
-            list_commands.push_back(new hsaBeamformKernel("zero_padded_FFT512",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_transpose") {
-            list_commands.push_back(new hsaBeamformTranspose("transpose",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_upchan") {
-            list_commands.push_back(new hsaBeamformUpchan("upchannelize",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_output") {
-            list_commands.push_back(new hsaBeamformOutputData("hsa_beamform_output",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_rfi_vdif") {
-            list_commands.push_back(new hsaRfiVdif("rfi_vdif",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_rfi") {
-                list_commands.push_back(new hsaRfi("rfi_chime",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_rfi_output") {
-                list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else {
-            ERROR("Command %s not found!", commands[i]["name"].get<string>().c_str());
-        }
-        if (list_commands[list_commands.size() - 1]->get_command_type() ==
-                CommandType::NOT_SET) {
-            throw std::runtime_error("The command " + commands[i]["name"].get<string>() +
-                    ", did not set a command type.");
-        }
+        auto cmd = fac.create(commands[i]["name"], config, unique_name, host_buffers, device);
+        list_commands.push_back(cmd);
     }
 }
 
 hsaCommandFactory::~hsaCommandFactory() {
-    // Does this work?
     for (auto command : list_commands) {
         delete command;
     }
@@ -133,3 +36,36 @@ hsaCommandFactory::~hsaCommandFactory() {
 vector<hsaCommand*>& hsaCommandFactory::get_commands() {
     return list_commands;
 }
+
+/////// NEW BS-Y CODE ////////
+
+hsaCommandFactory& hsaCommandFactory::Instance() {
+    static hsaCommandFactory factory(*new Config(),"",*new bufferContainer(),
+                                     *new hsaDeviceInterface(*new Config(), -1, -1));
+    return factory;
+}
+
+hsaCommand* hsaCommandFactory::create(const string &name,
+                                      Config& config,
+                                      const string &unique_name,
+                                      bufferContainer &host_buffers,
+                                      hsaDeviceInterface& device) const
+{
+    auto i = _hsa_commands.find(name);
+    if (i == _hsa_commands.end())
+    {
+        throw std::runtime_error("Unrecognized HSA command! ("+name+")");
+    }
+    ihsaCommandMaker* maker = i->second;
+    return maker->create(config,unique_name,host_buffers,device);
+}
+
+void hsaCommandFactory::hsaRegisterCommand(const std::string& key, ihsaCommandMaker* cmd)
+{
+    if (_hsa_commands.find(key) != _hsa_commands.end())
+    {
+        throw std::runtime_error("Multiple makers for given key: " + key);
+    }
+    _hsa_commands[key] = cmd;
+}
+

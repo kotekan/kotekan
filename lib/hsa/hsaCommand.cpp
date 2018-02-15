@@ -1,28 +1,23 @@
 #include "hsaCommand.hpp"
-#include <string.h>
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <stdlib.h>
-#include "hsaBase.h"
-
-#include <unistd.h>
 
 using std::string;
 
 #define MAX_ARGS_LEN 64
 
-hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_name_,
-        hsaDeviceInterface& device_, Config& config_,
-        bufferContainer &host_buffers_, const string &unique_name_) :
-        command_name(command_name_),
-        kernel_file_name(kernel_file_name_),
+hsaCommand::hsaCommand(
+        const string &default_kernel_command,
+        const string &default_kernel_file_name,
+        Config& config_, const string &unique_name_,
+        bufferContainer &host_buffers_,
+        hsaDeviceInterface& device_) :
+        kernel_command(default_kernel_command),
+        kernel_file_name(default_kernel_file_name),
         config(config_),
-        device(device_),
+        unique_name(unique_name_),
         host_buffers(host_buffers_),
-        unique_name(unique_name_)
+        device(device_)
 {
-    apply_config(0);
+    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
 
     // Set the local log level.
     string s_log_level = config.get_string(unique_name, "log_level");
@@ -42,10 +37,13 @@ hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_na
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.
-    if (kernel_file_name != "") {
+    if (default_kernel_file_name != "") {
+        kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
+                           config.get_string_default(unique_name,"kernel",default_kernel_file_name);
+        kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
         // Should this be moved to the base class?
         allocate_kernel_arg_memory(MAX_ARGS_LEN);
-        kernel_object = load_hsaco_file(kernel_file_name, command_name);
+        kernel_object = load_hsaco_file(kernel_file_name, kernel_command);
     }
 }
 
@@ -71,12 +69,7 @@ hsaCommand::~hsaCommand() {
 }
 
 string &hsaCommand::get_name() {
-    return command_name;
-}
-
-void hsaCommand::apply_config(const uint64_t& fpga_seq) {
-    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
-    //INFO("GPU Buffer depth: %d", _gpu_buffer_depth);
+    return kernel_command;
 }
 
 void hsaCommand::allocate_kernel_arg_memory(int max_size) {
