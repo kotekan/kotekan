@@ -8,8 +8,6 @@
 #include <highfive/H5File.hpp>
 #include <algorithm>
 #include <sys/stat.h>
-#include <iostream>
-#include <typeinfo>
 
 using namespace HighFive;
 
@@ -238,6 +236,6 @@ DataSet evFile::freq() {
     return file->getDataSet("index_map/freq");
 }
 
-DataSet evFile::prod() {
-    return file->getDataSet("index_map/prod");
+DataSet evFile::input() {
+    return file->getDataSet("index_map/input");
 }
