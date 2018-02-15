@@ -281,10 +281,7 @@ __kernel void upchannelize(__global float2 *data, __global unsigned char *result
           outtmp_int = 255;
     	}
         else {
-          uint int_part = (int) outtmp;
-          float decimal_part = outtmp - int_part;
-	  if (decimal_part >= 0.5) int_part += 1;
-          outtmp_int = int_part;
+          outtmp_int = (uint) (outtmp + 0.5) ;
         }
  	results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp_int;
       }
