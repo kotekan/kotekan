@@ -58,6 +58,5 @@ private:
     std::mutex _pulsar_lock;
 
 };
-REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
 #endif

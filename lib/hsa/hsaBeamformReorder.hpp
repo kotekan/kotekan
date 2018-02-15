@@ -26,6 +26,5 @@ private:
     vector<int32_t> _reorder_map;
     int * _reorder_map_c;
 };
-REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 #endif

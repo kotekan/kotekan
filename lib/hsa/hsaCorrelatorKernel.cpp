@@ -1,8 +1,6 @@
 #include "hsaCorrelatorKernel.hpp"
-#include "hsaBase.h"
-#include <unistd.h>
 
-
+REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

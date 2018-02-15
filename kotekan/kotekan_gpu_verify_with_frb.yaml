@@ -134,7 +134,6 @@ gpu:
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
-#      kernel: "upchannelize-working.hsaco"
   - name: hsaBeamformOutputData
   - name: hsaOutputData
   link_map: [0,1,2,3]

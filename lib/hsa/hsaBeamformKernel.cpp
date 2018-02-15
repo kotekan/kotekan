@@ -1,6 +1,6 @@
 #include "hsaBeamformKernel.hpp"
-#include "hsaBase.h"
-#include <unistd.h>
+
+REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,

@@ -22,6 +22,5 @@ private:
     int32_t _num_elements;
     int32_t _samples_per_data_set;
 };
-REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 
 #endif

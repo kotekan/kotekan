@@ -1,5 +1,6 @@
 #include "hsaBeamformReorder.hpp"
-#include "hsaBase.h"
+
+REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

@@ -2,7 +2,7 @@
 #define HSA_RFI_VDIF_H
 
 #include "hsaCommand.hpp"
-
+#include "vdif_functions.h"
 
 class hsaRfiVdif: public hsaCommand
 {
@@ -28,6 +28,5 @@ private:
     int32_t _sk_step;
     int32_t rfi_sensitivity;
 };
-REGISTER_HSA_COMMAND(hsaRfiVdif);
 
 #endif

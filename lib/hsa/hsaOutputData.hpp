@@ -28,6 +28,5 @@ private:
     int32_t output_buffer_precondition_id;
     int32_t output_buffer_excute_id;
 };
-REGISTER_HSA_COMMAND(hsaOutputData);
 
 #endif

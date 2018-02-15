@@ -23,6 +23,5 @@ private:
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_blocks;
 };
-REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
 #endif

@@ -1,5 +1,7 @@
 #include "hsaBeamformOutput.hpp"
 
+REGISTER_HSA_COMMAND(hsaBeamformOutputData);
+
 hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string &unique_name,
         bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand("", "", config, unique_name, host_buffers, device) {

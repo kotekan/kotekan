@@ -1,5 +1,6 @@
 #include "hsaOutputDataZero.hpp"
-#include "hsaBase.h"
+
+REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
 hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

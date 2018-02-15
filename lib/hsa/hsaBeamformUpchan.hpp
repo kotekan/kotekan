@@ -24,6 +24,5 @@ private:
     int32_t _downsample_freq;
     int32_t _num_frb_total_beams;
 };
-REGISTER_HSA_COMMAND(hsaBeamformUpchan);
 
 #endif

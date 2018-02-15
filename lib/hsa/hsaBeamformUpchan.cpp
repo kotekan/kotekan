@@ -1,5 +1,6 @@
 #include "hsaBeamformUpchan.hpp"
-#include "hsaBase.h"
+
+REGISTER_HSA_COMMAND(hsaBeamformUpchan);
 
 hsaBeamformUpchan::hsaBeamformUpchan(Config& config,const string &unique_name,
                             bufferContainer& host_buffers,hsaDeviceInterface& device) :

@@ -7,8 +7,8 @@
 #include "hsaPulsarUpdatePhase.hpp"
 //#include "buffer.h"
 //#include "bufferContainer.hpp" 
-# define likely(x)      __builtin_expect(!!(x), 1)
-# define unlikely(x)    __builtin_expect(!!(x), 0)
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
 
 #define PI 3.14159265
 #define light 3.e8
@@ -17,6 +17,8 @@
 #define TAU 2*PI
 #define inst_long -119.6175
 #define inst_lat 49.3203
+
+REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
 hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :

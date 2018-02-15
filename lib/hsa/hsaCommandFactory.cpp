@@ -54,17 +54,17 @@ hsaCommand* hsaCommandFactory::create(const string &name,
     auto i = _hsa_commands.find(name);
     if (i == _hsa_commands.end())
     {
-        throw std::runtime_error("Unrecognized HSA command! ("+name+")");
+        ERROR("Unrecognized HSA command! (%s)", name.c_str());
     }
-    ihsaCommandMaker* maker = i->second;
+    hsaCommandMaker* maker = i->second;
     return maker->create(config,unique_name,host_buffers,device);
 }
 
-void hsaCommandFactory::hsaRegisterCommand(const std::string& key, ihsaCommandMaker* cmd)
+void hsaCommandFactory::hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd)
 {
     if (_hsa_commands.find(key) != _hsa_commands.end())
     {
-        throw std::runtime_error("Multiple makers for given key: " + key);
+        ERROR("Multiple HSA Commands registered as '%s'!",key.c_str());
     }
     _hsa_commands[key] = cmd;
 }

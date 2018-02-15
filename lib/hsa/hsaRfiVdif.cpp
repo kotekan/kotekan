@@ -14,9 +14,8 @@ Notes:
 **********************************************************************************/
 
 #include "hsaRfiVdif.hpp"
-#include "hsaBase.h"
-#include "vdif_functions.h"
-#include <math.h>
+
+REGISTER_HSA_COMMAND(hsaRfiVdif);
 
 hsaRfiVdif::hsaRfiVdif(Config& config,const string &unique_name,
                         bufferContainer& host_buffers,

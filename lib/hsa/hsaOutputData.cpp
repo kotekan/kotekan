@@ -1,5 +1,6 @@
 #include "hsaOutputData.hpp"
-#include <unistd.h>
+
+REGISTER_HSA_COMMAND(hsaOutputData);
 
 hsaOutputData::hsaOutputData(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

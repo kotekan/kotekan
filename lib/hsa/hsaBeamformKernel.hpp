@@ -45,6 +45,5 @@ private:
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
 };
-REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 #endif

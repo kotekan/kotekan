@@ -14,8 +14,8 @@ Notes:
 **********************************************************************************/
 
 #include "hsaRfi.hpp"
-#include "hsaBase.h"
-#include <math.h>
+
+REGISTER_HSA_COMMAND(hsaRfi);
 
 hsaRfi::hsaRfi(Config& config, const string &unique_name,
                 bufferContainer& host_buffers, hsaDeviceInterface& device) :

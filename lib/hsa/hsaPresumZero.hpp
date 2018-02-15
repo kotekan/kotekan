@@ -25,6 +25,5 @@ private:
     int32_t _num_local_freq;
     int32_t _num_elements;
 };
-REGISTER_HSA_COMMAND(hsaPresumZero);
 
 #endif

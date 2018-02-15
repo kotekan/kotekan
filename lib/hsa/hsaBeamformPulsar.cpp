@@ -1,5 +1,6 @@
 #include "hsaBeamformPulsar.hpp"
-#include "hsaBase.h"
+
+REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
 hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

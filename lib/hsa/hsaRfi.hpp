@@ -27,6 +27,5 @@ private:
     int32_t _sk_step;
     int32_t rfi_sensitivity;
 };
-REGISTER_HSA_COMMAND(hsaRfi);
 
 #endif

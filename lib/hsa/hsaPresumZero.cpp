@@ -1,5 +1,6 @@
 #include "hsaPresumZero.hpp"
-#include "hsaBase.h"
+
+REGISTER_HSA_COMMAND(hsaPresumZero);
 
 hsaPresumZero::hsaPresumZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

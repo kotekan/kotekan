@@ -1,5 +1,7 @@
 #include "hsaPresumKernel.hpp"
 
+REGISTER_HSA_COMMAND(hsaPresumKernel);
+
 hsaPresumKernel::hsaPresumKernel(
                             Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :

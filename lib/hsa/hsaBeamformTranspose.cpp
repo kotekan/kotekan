@@ -1,5 +1,6 @@
 #include "hsaBeamformTranspose.hpp"
-#include "hsaBase.h"
+
+REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 
 hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string &unique_name,
                                 bufferContainer& host_buffers, hsaDeviceInterface& device) :

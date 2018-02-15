@@ -7,7 +7,7 @@
 
 class hsaCommand;
 
-class ihsaCommandMaker{
+class hsaCommandMaker{
 public:
     virtual hsaCommand *create(Config &config, const string &unique_name,
                 bufferContainer &host_buffers, hsaDeviceInterface &device) const = 0;
@@ -20,7 +20,7 @@ public:
                          bufferContainer &host_buffers, hsaDeviceInterface &device);
     virtual ~hsaCommandFactory();
 
-    void hsaRegisterCommand(const std::string& key, ihsaCommandMaker* cmd);
+    void hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd);
     static hsaCommandFactory& Instance();
 
     vector<hsaCommand *> &get_commands();
@@ -33,7 +33,7 @@ protected:
     vector<hsaCommand *> list_commands;
 
 private:
-    std::map<std::string, ihsaCommandMaker*> _hsa_commands;
+    std::map<std::string, hsaCommandMaker*> _hsa_commands;
 
     hsaCommand* create(const string &name,
                        Config& config,
@@ -43,10 +43,10 @@ private:
 };
 
 template<typename T>
-class hsaCommandMaker : public ihsaCommandMaker
+class hsaCommandMakerTemplate : public hsaCommandMaker
 {
     public:
-        hsaCommandMaker(const std::string& key)
+        hsaCommandMakerTemplate(const std::string& key)
         {
             printf("Registering! %s\n",key.c_str());
             hsaCommandFactory::Instance().hsaRegisterCommand(key, this);
@@ -57,6 +57,6 @@ class hsaCommandMaker : public ihsaCommandMaker
             return new T(config, unique_name, host_buffers, device);
         }
 }; 
-#define REGISTER_HSA_COMMAND(T) static hsaCommandMaker<T> maker(#T);
+#define REGISTER_HSA_COMMAND(T) static hsaCommandMakerTemplate<T> maker(#T);
 
 #endif // GPU_COMMAND_FACTORY_H

@@ -32,6 +32,5 @@ class hsaInputData: public hsaCommand
         int32_t _samples_per_data_set;
 
 };
-REGISTER_HSA_COMMAND(hsaInputData);
 
 #endif

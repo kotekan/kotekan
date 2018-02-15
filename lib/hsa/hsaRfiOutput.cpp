@@ -12,7 +12,8 @@ Notes:
 **********************************************************************************/
 
 #include "hsaRfiOutput.hpp"
-#include <unistd.h>
+
+REGISTER_HSA_COMMAND(hsaRfiOutput);
 
 hsaRfiOutput::hsaRfiOutput(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :

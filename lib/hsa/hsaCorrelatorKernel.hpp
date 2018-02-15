@@ -40,6 +40,5 @@ private:
     int32_t _num_blocks;
     int32_t _n_intg;
 };
-REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
 #endif
