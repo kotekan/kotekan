@@ -34,7 +34,7 @@
  * @conf   L1_node_ips          Array of Strings. List of IPs to send to. (?)
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
  * @conf   time_interval        Unsigned long (default 125829120). Time per buffer in ns.
- *
+ * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
  * @todo   Resolve the issue of NTP clock vs Monotonic clock. 
  *
  * @author Arun Naidu
@@ -94,6 +94,9 @@ private:
 
   // time per buffer frame in ns
   unsigned long time_interval;
+
+  //Beam Configuration Mode
+  bool column_mode;
 };
  
 #endif

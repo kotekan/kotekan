@@ -132,6 +132,38 @@ frb:
     network_input_buffer_2: beamform_output_buffer_2
     network_input_buffer_3: beamform_output_buffer_3
     frb_out_buf: frb_output_buffer
+  buffer_read:
+    kotekan_process: frbNetworkProcess
+    in_buf: frb_output_buffer
+    udp_frb_port_number: 1313
+    number_of_nodes: 256
+    packets_per_stream: 8
+    number_of_subnets: 4
+    column_mode: true
+    beam_offset: 108
+    time_interval: 125829120
+    L1_node_ips:
+      - 10.6.200.10
+      - 10.7.200.10
+      - 10.6.200.11
+      - 10.7.200.11
+      - 10.6.200.12
+      - 10.7.200.12
+      - 10.6.200.13
+      - 10.7.200.13
+      - 10.6.200.14
+      - 10.7.200.14
+      - 10.6.200.15
+      - 10.7.200.15
+      - 10.6.200.16
+      - 10.7.200.16
+      - 10.6.200.17
+      - 10.7.200.17
+
+# FRB Run 5 2019-03-14 Offsets
+# B0329 - 108
+# Crab  - 036
+
 #  file_output_buffer:
 #    num_frames: buffer_depth
 #    frame_size: udp_frb_packet_size*8*256
@@ -147,10 +179,10 @@ frb:
 #        file_name: frb_out
 
 
-hex_dump:
-  kotekan_process: hexDump
-  buf: frb_output_buffer
-  len: 128
-  offset: 0
+#hex_dump:
+#  kotekan_process: hexDump
+#  buf: frb_output_buffer
+#  len: 128
+#  offset: 0
 
 

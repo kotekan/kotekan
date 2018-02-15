@@ -54,6 +54,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   packets_per_stream = config.get_int_default(unique_name, "packets_per_stream",8);
   beam_offset = config.get_int_default(unique_name, "beam_offset",0);
   time_interval = config.get_uint64_default(unique_name, "time_interval",125829120);
+  column_mode = config.get_bool_default(unique_name, "column_mode", false);
 }
 
 void frbNetworkProcess::parse_host_name()
@@ -307,9 +308,13 @@ void frbNetworkProcess::main_thread()
          
          for(int link=0;link<number_of_l1_links;link++)
          {    
-           if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
-           //if(e_stream<number_of_l1_links)
+           if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
            {
+             
+           //}
+           //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //if(e_stream==beam_offset/4+link)
+           //{
           
              int i = link%2;
              sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
