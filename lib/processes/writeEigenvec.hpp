@@ -55,7 +55,7 @@ public:
     /// @param eigenvalues The eigenvalues to write out
     /// @param rms The RMS value to write out
     void write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
-                            std::vector<std::complex<float>> eigenvectors,
+                            std::vector<cfloat> eigenvectors,
                             std::vector<float> eigenvalues, float rms);
 
     /// Access eigenvector dataset

@@ -78,7 +78,7 @@ void writeEigenvec::main_thread() {
 
         // Get data and write to file
         // TODO: once we have a better idea how HDF5 handles writing, could skip this extra copy
-        std::vector<std::complex<float>> evec(frame.eigenvectors.begin(), 
+        std::vector<cfloat> evec(frame.eigenvectors.begin(), 
                                               frame.eigenvectors.end());
 
         std::vector<float> eval(frame.eigenvalues.begin(), frame.eigenvalues.end());
@@ -118,7 +118,7 @@ evFile::evFile(const std::string & fname,
     std::vector<std::string> ev_axes = {"time", "freq", "eigenmode", "input"};
     DataSpace ev_space = DataSpace(ev_dims);
     DataSet ev = file->createDataSet(
-            "eigenvector", ev_space, create_datatype<std::complex<float>>()
+            "eigenvector", ev_space, create_datatype<cfloat>()
     );
     ev.createAttribute<std::string>(
             "axis", DataSpace::From(ev_axes)
@@ -177,7 +177,7 @@ void evFile::flush() {
 }
 
 void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
-                          std::vector<std::complex<float>> eigenvectors,
+                          std::vector<cfloat> eigenvectors,
                           std::vector<float> eigenvalues, float new_rms) {
 
     // Find position in file
@@ -202,7 +202,7 @@ void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
     // need to cast to const ptr to fall into correct template
     evec().select(
             {curr_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}
-    ).write((const std::complex<float> *) eigenvectors.data());
+    ).write((const cfloat *) eigenvectors.data());
     // write eigenvalues
     eval().select(
             {curr_ind, freq_ind, 0}, {1, 1, nev}
