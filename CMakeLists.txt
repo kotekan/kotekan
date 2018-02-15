@@ -7,10 +7,11 @@ option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" ON)
-option(USE_PRECOMPIPLED_OPENCL "Use precompiled OpenCL binaries" OFF)
+option(USE_PRECOMPILED_OPENCL "Use precompiled OpenCL binaries" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
+option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -176,7 +177,7 @@ else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
 # Required for some SSE/AVX intrinsics
 #add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
@@ -194,6 +195,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+if (${COMPILE_DOCS})
+    add_subdirectory(docs EXCLUDE_FROM_ALL)
+endif()
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)

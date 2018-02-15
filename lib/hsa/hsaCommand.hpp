@@ -121,7 +121,6 @@ protected:
     // Profiling time for the last signal
     double last_gpu_execution_time = 0;
 
-private:
     // Helper functions from HSA docs for kernel packet queueing.
     // Some (or all) of this could likely be moved into enqueue_kernel()
     void packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest);

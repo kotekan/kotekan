@@ -43,7 +43,7 @@ public:
     void main_thread();
 private:
 
-    Buffer *output_buf;
+    Buffer* out_buf;
 
     // Parameters read from the config
     int freq;

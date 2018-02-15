@@ -1,0 +1,5 @@
+*****************
+visDebug
+*****************
+
+.. doxygenclass:: visDebug

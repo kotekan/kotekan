@@ -1,0 +1,6 @@
+***********************
+pyPlotResult
+***********************
+
+.. doxygenclass:: pyPlotResult
+

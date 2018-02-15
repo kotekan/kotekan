@@ -5,18 +5,24 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 udp_packet_size: 4928
+udp_pulsar_packet_size: 6288
+udp_pulsar_header_size: 32
 num_links: 4
-timesamples_per_packet: 16
+timesamples_per_packet: 2
+timesamples_per_pulsar_packet: 3125
+upd_pulsar_packet_in_stream: 16
 num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
-samples_per_data_set: 38400
-downsample_time: 3
-downsample_freq: 8
-factor_upchan: 128
+num_pulsar: 10
+num_pol: 2
+psr-test_one_feed_p0: 1712 #=D; 0=A; 764=B; 1100=C
+psr-test_one_feed_p1: 1776 #=D; 64=A; 700=B; 1036=C
+samples_per_data_set: 49152
 num_data_sets: 1
 buffer_depth: 3
 num_gpu_frames: 1
+num_gpus: 4
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 sizeof_float: 4
 num_frb_total_beams: 1024
@@ -24,7 +30,7 @@ num_frb_total_beams: 1024
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 10 * buffer_depth
+    num_metadata_objects: 5 * buffer_depth
 
 # Buffers
 gpu_input_buffers:
@@ -40,20 +46,25 @@ gpu_input_buffers:
     gpu_input_buffer_3:
         kotekan_buffer: standard
 
-beamform_output_buffesrs:
+pulsar_beamform_output_buffers:
     num_frames: buffer_depth
-    frame_size: sizeof_float * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq/2) * num_elements
+    frame_size: samples_per_data_set * num_pulsar * num_pol 
     metadata_pool: main_pool
-    beamform_output_buffer_0:
+    pulsar_beamform_output_buffer_0:
         kotekan_buffer: standard
-    beamform_output_buffer_1:
+    pulsar_beamform_output_buffer_1:
         kotekan_buffer: standard
-    beamform_output_buffer_2:
+    pulsar_beamform_output_buffer_2:
         kotekan_buffer: standard
-    beamform_output_buffer_3:
+    pulsar_beamform_output_buffer_3:
         kotekan_buffer: standard
 
-# Processes
+pulsar_output_buffer:
+    num_frames: buffer_depth
+    frame_size: udp_pulsar_packet_size* num_pulsar * num_gpus * upd_pulsar_packet_in_stream
+    metadata_pool: main_pool
+    kotekan_buffer: standard
+
 dpdk:
   kotekan_process: dpdkWrapper
   mode: shuffle4
@@ -70,12 +81,8 @@ gpu:
     kernel: ''
   - name: hsa_barrier
     kernel: ''
-  - name: hsa_beamform_kernel
-    kernel: "../lib/hsa/kernels/unpack_shift_beamform.hsaco"
-  - name: hsa_beamform_transpose
-    kernel: "../lib/hsa/kernels/transpose.hsaco"
-  - name: hsa_beamform_upchan
-    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
+  - name: hsa_beamform_pulsar_one_feed
+    kernel: "../lib/hsa/kernels/pulsar_beamformer.hsaco"
   - name: hsa_beamform_output
     kernel: ''
   link_map: [0,1,2,3]
@@ -94,36 +101,36 @@ gpu:
       kotekan_process: hsaProcess
       gpu_id: 1
       in_buffers:
-        network_buf: gpu_input_buffer_0
+        network_buf: gpu_input_buffer_1
       out_buffers:
-        beamform_output_buf: beamform_output_buffer_0
+        beamform_output_buf: beamform_output_buffer_1
   gpu_2:
       kotekan_process: hsaProcess
       gpu_id: 2
       in_buffers:
-        network_buf: gpu_input_buffer_0
+        network_buf: gpu_input_buffer_2
       out_buffers:
-        beamform_output_buf: beamform_output_buffer_0
+        beamform_output_buf: beamform_output_buffer_2
   gpu_3:
       kotekan_process: hsaProcess
       gpu_id: 3
       in_buffers:
-        network_buf: gpu_input_buffer_0
+        network_buf: gpu_input_buffer_3
       out_buffers:
-        beamform_output_buf: beamform_output_buffer_0
+        beamform_output_buf: beamform_output_buffer_3
 
-#gen_data:
-#  type: const
-#  value: 153
-#  test_data_gen_0:
-#    kotekan_process: testDataGen
-#    network_out_buf: gpu_input_buffer_0
-#  test_data_gen_1:
-#    kotekan_process: testDataGen
-#    network_out_buf: gpu_input_buffer_1
-#  test_data_gen_2:
-#    kotekan_process: testDataGen
-#    network_out_buf: gpu_input_buffer_2
-#  test_data_gen_3:
-#    kotekan_process: testDataGen
-#    network_out_buf: gpu_input_buffer_3
+
+postprocess:
+  kotekan_process: pulsarPostProcess
+  network_input_buffer_0: pulsar_beamform_output_buffer_0
+  network_input_buffer_1: pulsar_beamform_output_buffer_1
+  network_input_buffer_2: pulsar_beamform_output_buffer_2
+  network_input_buffer_3: pulsar_beamform_output_buffer_3
+  pulsar_out_buf: pulsar_output_buffer
+
+
+hex_dump:
+  kotekan_process: hexDump
+  buf: pulsar_output_buffer
+  len: 128
+  offset: 0

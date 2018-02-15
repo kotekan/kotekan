@@ -11,7 +11,7 @@ public:
         bufferContainer &buffer_container);
     ~gpuBeamformSimulate();
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
 private:
     struct Buffer *input_buf;
     struct Buffer *output_buf;
@@ -23,8 +23,10 @@ private:
     int32_t _downsample_time;
     int32_t _downsample_freq;
     vector<int32_t> _reorder_map;
+    string _gain_dir;
 
     float * coff;
+    float * cpu_gain;
 
     // Unpacked data
     double * input_unpacked;

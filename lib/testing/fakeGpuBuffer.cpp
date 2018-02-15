@@ -11,8 +11,8 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&fakeGpuBuffer::main_thread, this)) {
 
-    output_buf = get_buffer("out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
 
     freq = config.get_int(unique_name, "freq");
     cadence = config.get_float_default(unique_name, "cadence", 5.0);
@@ -21,7 +21,7 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     int nb1 = config.get_int(unique_name, "num_elements") / block_size;
     num_blocks = nb1 * (nb1 + 1) / 2;
 
-    INFO("Block size %i, num blocks %i", block_size, num_blocks);
+    DEBUG("Block size %i, num blocks %i", block_size, num_blocks);
 }
 
 fakeGpuBuffer::~fakeGpuBuffer() {
@@ -43,12 +43,12 @@ void fakeGpuBuffer::main_thread() {
 
     while(!stop_thread) {
         int32_t * output = (int *)wait_for_empty_frame(
-            output_buf, unique_name.c_str(), frame_id
+            out_buf, unique_name.c_str(), frame_id
         );
         if (output == NULL) break;
 
         INFO("Simulating GPU buffer in %s[%d]",
-                output_buf->buffer_name, frame_id);
+                out_buf->buffer_name, frame_id);
 
         // Fill the buffer with some data encoding the blocked structure. This
         // can help with some debugging of the task ordering.
@@ -62,19 +62,19 @@ void fakeGpuBuffer::main_thread() {
             }
         }
 
-        allocate_new_metadata_object(output_buf, frame_id);
+        allocate_new_metadata_object(out_buf, frame_id);
 
         // Set the frame metadata
         gettimeofday(&ts, NULL);
-        set_fpga_seq_num(output_buf, frame_id, fpga_seq);
-        set_first_packet_recv_time(output_buf, frame_id, ts);
-        set_stream_id_t(output_buf, frame_id, s);
+        set_fpga_seq_num(out_buf, frame_id, fpga_seq);
+        set_first_packet_recv_time(out_buf, frame_id, ts);
+        set_stream_id_t(out_buf, frame_id, s);
 
-        mark_frame_full(output_buf, unique_name.c_str(), frame_id);
+        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
 
         fpga_seq++;
 
-        frame_id = (frame_id + 1) % output_buf->num_frames;
+        frame_id = (frame_id + 1) % out_buf->num_frames;
         sleep(cadence);
     }
 }
