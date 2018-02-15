@@ -22,7 +22,7 @@ fakeVis::fakeVis(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Get frequency IDs from config
-    for (auto f : config.get_int_array(unique_name, "freq")) {
+    for (auto f : config.get_int_array(unique_name, "freq_ids")) {
         freq.push_back((uint16_t) f);
     }
 

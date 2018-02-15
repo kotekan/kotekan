@@ -23,7 +23,7 @@ writeEigenvec::writeEigenvec(Config &config,
     // Default value is 1h / 10s cadence
     ev_file_len = config.get_int_default(unique_name, "ev_file_len", 360);
     // Frequencies to include in file
-    for (auto f : config.get_int_array(unique_name, "freq")) {
+    for (auto f : config.get_int_array(unique_name, "freq_ids")) {
         freq_ids.push_back((uint16_t) f);
         freqs.push_back({freq_from_bin(f), (400.0 / 1024)});
     }

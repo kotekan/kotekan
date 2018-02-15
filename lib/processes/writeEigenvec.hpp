@@ -102,7 +102,7 @@ private:
  *     @buffer_metadata visMetadata
  *
  * @conf  num_eigenvectors  Int. The number of eigenvectors carried with the visibilitues.
- * @conf  freq              List of int. The frequency IDs to expect.
+ * @conf  freq_ids          List of int. The frequency IDs to expect.
  * @conf  ev_file           String. The path to the file to write to (will be overwritten).
  * @conf  ev_file_len       Int. The number of frames to buffer in the file.
  *
