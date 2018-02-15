@@ -50,7 +50,10 @@ void fakeVis::main_thread() {
 
         for (uint16_t f : freq) {
             // Wait for the buffer frame to be free
-            wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id);
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), 
+                                     output_frame_id) == nullptr) {
+                break;
+            }
 
             // Below adapted from visWriter
 
@@ -97,6 +100,16 @@ void fakeVis::main_thread() {
                     out_vis[3] = {(float) output_frame_id, 0.};
                 }
             }
+
+            // Insert values into eigenvectors, eigenvalues and rms
+            for (int i = 0; i < num_eigenvectors; i++) {
+                for (int j = 0; j < num_elements; j++) {
+                    int k = i * num_elements + j;
+                    output_frame.eigenvectors[k] = k;
+                }
+                output_frame.eigenvalues[i] = i;
+            }
+            output_frame.rms = 1.;
 
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
