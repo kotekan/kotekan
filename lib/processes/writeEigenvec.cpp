@@ -72,21 +72,20 @@ void writeEigenvec::main_thread() {
 
         // Find the index of this frequency in the file
         uint16_t freq_ind = std::find(freq_ids.begin(), freq_ids.end(), 
-                frame.freq_id()) - freq_ids.begin();
+                frame.freq_id) - freq_ids.begin();
 
         // Put the time into correct format
-        auto ftime = frame.time();
+        auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
         // Get data and write to file
         // TODO: once we have a better idea how HDF5 handles writing, could skip this extra copy
-        std::complex<float> * evec_ptr = frame.eigenvectors();
-        std::vector<std::complex<float>> evec(evec_ptr, evec_ptr + num_eigenvectors * inputs.size());
+        std::vector<std::complex<float>> evec(frame.eigenvectors.begin(), 
+                                              frame.eigenvectors.end());
 
-        float * eval_ptr = frame.eigenvalues();
-        std::vector<float> eval(eval_ptr, eval_ptr + num_eigenvectors);
+        std::vector<float> eval(frame.eigenvalues.begin(), frame.eigenvalues.end());
 
-        float rms = frame.rms();
+        float rms = frame.rms;
 
         file->write_eigenvectors(t, freq_ind, evec, eval, rms);
 
