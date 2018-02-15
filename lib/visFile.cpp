@@ -131,7 +131,7 @@ void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
 
 
     DataSet vis = file->createDataSet(
-        "vis", vis_space, create_datatype<std::complex<float>>(), vis_dims
+        "vis", vis_space, create_datatype<cfloat>(), vis_dims
     );
     vis.createAttribute<std::string>(
         "axis", DataSpace::From(vis_axes)).write(vis_axes);
@@ -146,7 +146,7 @@ void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
 
 
     DataSet gain_coeff = file->createDataSet(
-        "gain_coeff", gain_space, create_datatype<std::complex<float>>(), gain_dims
+        "gain_coeff", gain_space, create_datatype<cfloat>(), gain_dims
     );
     gain_coeff.createAttribute<std::string>(
         "axis", DataSpace::From(gain_axes)).write(gain_axes);
@@ -227,8 +227,8 @@ uint32_t visFile::extendTime(time_ctype new_time) {
 
 
 void visFile::writeSample(
-    uint32_t time_ind, uint32_t freq_ind, std::vector<std::complex<float>> new_vis,
-    std::vector<uint8_t> new_weight, std::vector<std::complex<float>> new_gcoeff,
+    uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
+    std::vector<uint8_t> new_weight, std::vector<cfloat> new_gcoeff,
     std::vector<int32_t> new_gexp
 ) {
 
@@ -245,8 +245,8 @@ void visFile::writeSample(
 
 
 size_t visFile::addSample(
-    time_ctype new_time, uint32_t freq_ind, std::vector<std::complex<float>> new_vis,
-    std::vector<uint8_t> new_weight, std::vector<std::complex<float>> new_gcoeff,
+    time_ctype new_time, uint32_t freq_ind, std::vector<cfloat> new_vis,
+    std::vector<uint8_t> new_weight, std::vector<cfloat> new_gcoeff,
     std::vector<int32_t> new_gexp
 ) {
 
@@ -296,9 +296,9 @@ visFileBundle::visFileBundle(const std::string root_path,
 
 
 void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
-                              std::vector<std::complex<float>> new_vis,
+                              std::vector<cfloat> new_vis,
                               std::vector<uint8_t> new_weight,
-                              std::vector<std::complex<float>> new_gcoeff,
+                              std::vector<cfloat> new_gcoeff,
                               std::vector<int32_t> new_gexp) {
 
     std::shared_ptr<visFile> file;
@@ -436,7 +436,7 @@ template <> inline DataType HighFive::create_datatype<prod_ctype>() {
     return p;
 }
 
-template <> inline DataType HighFive::create_datatype<std::complex<float>>() {
+template <> inline DataType HighFive::create_datatype<cfloat>() {
     CompoundType c;
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);

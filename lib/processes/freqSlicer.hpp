@@ -9,13 +9,8 @@
 #define FREQ_SLICER_HPP
 
 #include <unistd.h>
-#include "fpga_header_functions.h"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
-#include "visFile.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
 
 
 /**
@@ -28,16 +23,12 @@
  * streams.
  *
  * @par Buffers
- * @buffer output_buffers The two buffers containing the respective upper or lower band frequencies
+ * @buffer in_buf The buffer to be split
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
- * @buffer input_buffer The buffer to be split
+ * @buffer out_bufs The two buffers containing the respective upper or lower band frequencies
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
- *
- * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
- *                          correlator data (read from "/")
- * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
  *
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
@@ -57,14 +48,9 @@ public:
     void main_thread();
 
 private:
-
-    // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors;
-
     // Vector of the buffers we are using and their current frame ids.
-    std::vector<std::pair<Buffer*, unsigned int>> output_buffers;
-    Buffer * input_buffer;
-
+    std::vector<std::pair<Buffer*, unsigned int>> out_bufs;
+    Buffer * in_buf;
 };
 
 
@@ -77,16 +63,12 @@ private:
  * frequencies to be passed on to the output buffer.
  *
  * @par Buffers
- * @buffer output_buffer The buffer containing the subset of frequencies
+ * @buffer in_buf The original buffer with all frequencies
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
- * @buffer input_buffer The original buffer with all frequencies
+ * @buffer out_buf The buffer containing the subset of frequencies
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
- *
- * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
- *                          correlator data (read from "/").
- * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
  *
  * @conf  subset_list       Vector of Int. The list of frequencies that go
  *                          in the subset.
@@ -108,17 +90,13 @@ public:
     void main_thread();
 
 private:
-
-    // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors;
     // List of frequencies for the subset
     std::vector<uint16_t> subset_list;
 
     /// Output buffer with subset of frequencies
-    Buffer * output_buffer;
+    Buffer * out_buf;
     /// Input buffer with all frequencies
-    Buffer * input_buffer;
-
+    Buffer * in_buf;
 };
 
 

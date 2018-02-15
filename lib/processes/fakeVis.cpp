@@ -60,16 +60,16 @@ void fakeVis::main_thread() {
                                              num_elements, num_eigenvectors);
 
             // TODO: dataset ID properly when we have gated data
-            output_frame.dataset_id() = 0;
+            output_frame.dataset_id = 0;
 
             // Set the frequency index
-            output_frame.freq_id() = f;
+            output_frame.freq_id = f;
 
             // Set the time
-            output_frame.time() = std::make_tuple(fpga_seq, ts);
+            output_frame.time = std::make_tuple(fpga_seq, ts);
 
             // Insert values into vis array to help with debugging
-            std::complex<float> * out_vis = output_frame.vis();
+            auto out_vis = output_frame.vis;
 
             if(fill_ij) {
                 int ind = 0;
@@ -113,7 +113,6 @@ void fakeVis::main_thread() {
         }
         clock_gettime(CLOCK_REALTIME, &ts);
 
-        // TODO: at some point this should roll over I think?
         fpga_seq += fpga_seq_i;
     }
 }

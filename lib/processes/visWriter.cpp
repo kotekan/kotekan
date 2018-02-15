@@ -85,11 +85,11 @@ void visTransform::main_thread() {
                                              num_elements, num_eigenvectors);
 
             // TODO: set the dataset ID properly when we have gated data
-            output_frame.dataset_id() = 0;
+            output_frame.dataset_id = 0;
 
             // Set the frequency index from the stream id of this buffer
             stream_id_t stream_id = get_stream_id_t(buf, frame_id);
-            output_frame.freq_id() = bin_number_chime(&stream_id);
+            output_frame.freq_id = bin_number_chime(&stream_id);
 
             // Set the time
             // TODO: get the GPS time instead
@@ -97,7 +97,7 @@ void visTransform::main_thread() {
             timeval tv = get_first_packet_recv_time(buf, frame_id);
             timespec ts;
             TIMEVAL_TO_TIMESPEC(&tv, &ts);
-            output_frame.time() = std::make_tuple(fpga_seq, ts);
+            output_frame.time = std::make_tuple(fpga_seq, ts);
 
             // TODO: do something with the list timesamples data
             // uint64_t lost_samples = get_lost_timesamples(buf, frame_id);
@@ -105,7 +105,7 @@ void visTransform::main_thread() {
             // Copy the visibility data into a proper triangle and write into
             // the file
             copy_vis_triangle((int32_t *)frame, input_remap, block_size,
-                              num_elements, output_frame.vis());
+                              num_elements, output_frame.vis);
 
             // Mark the buffers and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -230,24 +230,25 @@ void visWriter::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         // Construct the new time
-        auto ftime = frame.time();
+        auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
         // Check if the frequency we are receiving is on the list of frequencies we are processing
-        if(freq_map.count(frame.freq_id()) == 0) {
-            WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id());
+        if(freq_map.count(frame.freq_id) == 0) {
+            WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id);
         } else {
 
-            INFO("Writing frequency id=%i", frame.freq_id());
+            INFO("Writing frequency id=%i", frame.freq_id);
 
             // Lookup the frequency index if reordering, otherwise write out in buffer order
-            uint32_t freq_ind = freq_map[frame.freq_id()];
+            uint32_t freq_ind = freq_map[frame.freq_id];
 
             // Create fake entries to fill out the gain and weight datasets with
             // because these don't correctly make it through kotekan yet
-            std::vector<std::complex<float>> vis(frame.vis(), frame.vis() + frame.num_prod());
-            std::vector<uint8_t> vis_weight(vis.size(), 255);
-            std::vector<std::complex<float>> gain_coeff(inputs.size(), {1, 0});
+            // TODO: these should be read directly from the span
+            std::vector<cfloat> vis(frame.vis.begin(), frame.vis.end());
+            std::vector<uint8_t> vis_weight(vis.size(), 1.0);
+            std::vector<cfloat> gain_coeff(inputs.size(), {1, 0});
             std::vector<int32_t> gain_exp(inputs.size(), 0);
 
             // Add all the new information to the file.
@@ -272,13 +273,11 @@ void visWriter::init_acq() {
     // the acq. For the moment just read the first frame.
     unsigned int frame_id = 0;
     std::vector<uint32_t> freq_ids;
-    //std::vector<timespec> start_times;
 
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
     auto frame = visFrameView(in_buf, frame_id);
-    freq_ids.push_back(frame.freq_id());
-    //start_times.push_back(std::get<1>(frame.time()));
+    freq_ids.push_back(frame.freq_id);
 
     // Use the per buffer info to setup the acqusition properties
     setup_freq(freq_ids);
