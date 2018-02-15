@@ -215,12 +215,13 @@ int main(int argc, char ** argv) {
             {"config-deamon", required_argument, 0, 'd'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
+            {"syslog", no_argument, 0, 's'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:d:",
+        opt_val = getopt_long (argc, argv, "ghc:d:s:",
                                long_options, &option_index);
 
         // End of args
@@ -239,6 +240,7 @@ int main(int argc, char ** argv) {
             case 'd':
                 config_file_name = strdup(optarg);
                 opt_d_set = true;
+                break
             case 'g':
                 gps_time = true;
                 break;

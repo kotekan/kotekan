@@ -198,7 +198,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     assert (ID >= 0);
     assert (ID < buf->num_frames);
 
-    DEBUG("Frame %s[%d] being marked full by producer %s\n", buf->buffer_name, ID, name);
+    //DEBUG("Frame %s[%d] being marked full by producer %s\n", buf->buffer_name, ID, name);
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
@@ -445,7 +445,7 @@ void private_mark_consumer_done(struct Buffer * buf, const char * name, const in
         ERROR("The consumer %s hasn't been registered!", name);
     }
 
-    DEBUG("%s->consumers_done[%d][%d] == %d", buf->buffer_name, ID, consumer_id, buf->consumers_done[ID][consumer_id] );
+    //DEBUG("%s->consumers_done[%d][%d] == %d", buf->buffer_name, ID, consumer_id, buf->consumers_done[ID][consumer_id] );
 
     assert(consumer_id != -1);
     // The consumer we are marking as done, shouldn't already be done!
@@ -460,7 +460,7 @@ void private_mark_producer_done(struct Buffer * buf, const char * name, const in
         ERROR("The producer %s hasn't been registered!", name);
     }
 
-    DEBUG("%s->producers_done[%d][%d] == %d", buf->buffer_name, ID, producer_id, buf->producers_done[ID][producer_id] );
+    //DEBUG("%s->producers_done[%d][%d] == %d", buf->buffer_name, ID, producer_id, buf->producers_done[ID][producer_id] );
 
     assert(producer_id != -1);
     // The producer we are marking as done, shouldn't already be done!
@@ -576,8 +576,6 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
 
     struct metadataContainer * metadata_container = NULL;
 
-//    INFO("buffer metadata: from_buf-%p, from_id-%d, to_buf-%p, to_id-%d ", from_buf->metadata[from_ID], from_ID, to_buf->metadata[to_ID], to_ID);
-    
     metadata_container = from_buf->metadata[from_ID];
 
     CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
@@ -588,8 +586,7 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
         increment_metadata_ref_count(metadata_container);
     }
 
-//    INFO("buffer metadata: from_buf-%p, from_id-%d, to_buf-%p, to_id-%d ", from_buf->metadata[from_ID], from_ID, to_buf->metadata[to_ID], to_ID);
-    
+    // If this is true then the to_buf already has a metadata container for this ID and its different!
     assert(to_buf->metadata[to_ID] == metadata_container);
     CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
 }
