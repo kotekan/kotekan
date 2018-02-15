@@ -11,7 +11,7 @@ public:
         bufferContainer &buffer_container);
     ~gpuBeamformSimulate();
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
 private:
     struct Buffer *input_buf;
     struct Buffer *output_buf;
@@ -22,8 +22,11 @@ private:
     int32_t _factor_upchan;
     int32_t _downsample_time;
     int32_t _downsample_freq;
+    vector<int32_t> _reorder_map;
+    string _gain_dir;
 
     float * coff;
+    float * cpu_gain;
 
     // Unpacked data
     double * input_unpacked;
@@ -32,7 +35,9 @@ private:
     double * cpu_beamform_output;
     double * transposed_output;
     double * tmp128;
-    double * cpu_final_output;
+    int * tmp512;
+    int * reorder_map_c;
+    unsigned char * cpu_final_output;
 
 
     int input_len;
@@ -40,6 +45,7 @@ private:
     int transposed_len;
     int output_len;
 
+    void reorder(unsigned char *data, int *map);
     void cpu_beamform_ns(double *data, unsigned long transform_length, int stop_level);
     void cpu_beamform_ew(double *input, double *output, float *Coeff, int nbeamsNS, int nbeamsEW, int npol, int nsamp_in);
     void clamping(double *input, double *output, float freq, int nbeamsNS, int nbeamsEW, int nsamp_in, int npol);

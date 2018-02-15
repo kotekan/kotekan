@@ -48,7 +48,7 @@ configEval<Type>::configEval(Config &_config,
     config(_config), unique_name(_unique_name) {
 
     static const std::regex re(
-        R"(([0-9]*.?[0-9]+|\+|\*|\-|/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
+        R"(([0-9]*\.?[0-9]+|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
         std::regex::ECMAScript);
 
     tokens = {
@@ -88,7 +88,7 @@ bool configEval<Type>::isNumber() {
 
 template <class Type>
 bool configEval<Type>::isVar() {
-    std::regex re(R"([a-zA-Z][a-zA-Z0-9\\_]+)", std::regex::ECMAScript);
+    std::regex re(R"([a-zA-Z][a-zA-Z0-9_]+)", std::regex::ECMAScript);
     std::cmatch m;
     return std::regex_match (tokens.front().c_str(), m, re);
 }
@@ -162,7 +162,7 @@ Type configEval<Type>::factor() {
         ret = exp();
         expect(")");
     } else {
-        ERROR("Unexpected symbol %s", current_token.c_str());
+        ERROR("Unexpected symbol '%s'", current_token.c_str());
         throw std::runtime_error("Unexpected symbol");
     }
     return ret;

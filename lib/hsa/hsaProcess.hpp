@@ -5,6 +5,7 @@
 #include <mutex>
 #include <thread>
 
+#include "json.hpp"
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
@@ -13,10 +14,13 @@
 #include "hsaCommand.hpp"
 #include "signalContainer.hpp"
 #include "bufferContainer.hpp"
+#include "restServer.hpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
+
+using nlohmann::json;
 
 class hsaProcess : public KotekanProcess {
 public:
@@ -29,6 +33,8 @@ public:
     void results_thread();
 
     virtual void apply_config(uint64_t fpga_seq);
+
+    void profile_callback(connectionInstance& conn, json& json_request);
 
 private:
 
@@ -45,6 +51,9 @@ private:
 
     // TODO should this be removed?
     bufferContainer local_buffer_container;
+
+    // The mean expected time between frames in seconds
+    double frame_arrival_period;
 };
 
 #endif

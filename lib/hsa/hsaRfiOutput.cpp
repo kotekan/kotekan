@@ -18,6 +18,7 @@ hsaRfiOutput::hsaRfiOutput(const string& kernel_name, const string& kernel_file_
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
+    command_type = CommandType::COPY_OUT;
     apply_config(0);
 
     network_buffer = host_buffers.get_buffer("network_buf");

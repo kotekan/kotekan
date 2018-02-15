@@ -19,13 +19,31 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
 
     final_signals.resize(_gpu_buffer_depth);
 
-    // TODO move this into the config.
-    local_buffer_container.add_buffer("network_buf", get_buffer("network_buffer"));
-    register_consumer(get_buffer("network_buffer"), unique_name.c_str());
-    local_buffer_container.add_buffer("output_buf", get_buffer("output_buffer"));
-    register_producer(get_buffer("output_buffer"), unique_name.c_str());
+    json in_bufs = config.get_value(unique_name, "in_buffers");
+    for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
+        string internal_name = it.key();
+        string global_buffer_name = it.value();
+        struct Buffer * buf = buffer_container.get_buffer(global_buffer_name);
+        local_buffer_container.add_buffer(internal_name, buf);
+        register_consumer(buf, unique_name.c_str());
+    }
 
-    device = new hsaDeviceInterface(config, gpu_id);
+    json out_bufs = config.get_value(unique_name, "out_buffers");
+    for (json::iterator it = out_bufs.begin(); it != out_bufs.end(); ++it) {
+        string internal_name = it.key();
+        string global_buffer_name = it.value();
+        struct Buffer * buf = buffer_container.get_buffer(global_buffer_name);
+        local_buffer_container.add_buffer(internal_name, buf);
+        register_producer(buf, unique_name.c_str());
+    }
+
+    device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
+
+    string g_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
+    device->set_log_level(s_log_level);
+    device->set_log_prefix("GPU[" + to_string(gpu_id) + "] device interface");
+
     factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
 }
 
@@ -33,6 +51,8 @@ void hsaProcess::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
     _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
     gpu_id = config.get_int(unique_name, "gpu_id");
+
+    frame_arrival_period = config.get_double_eval(unique_name, "frame_arrival_period");
 }
 
 hsaProcess::~hsaProcess() {
@@ -40,10 +60,67 @@ hsaProcess::~hsaProcess() {
     delete device;
 }
 
+void hsaProcess::profile_callback(connectionInstance& conn, json& json_request) {
+
+    DEBUG("Profile call made.");
+
+    json reply;
+    // Move to this class?
+    vector<hsaCommand *> &commands = factory->get_commands();
+
+    reply["copy_in"] = json::array();
+    reply["kernel"] = json::array();
+    reply["copy_out"] = json::array();
+
+    double total_copy_in_time = 0;
+    double total_copy_out_time = 0;
+    double total_kernel_time = 0;
+
+    for (uint32_t i = 0; i < commands.size(); ++i) {
+        double time = commands[i]->get_last_gpu_execution_time();
+        double utilization = time/frame_arrival_period;
+        if (commands[i]->get_command_type() == CommandType::KERNEL) {
+
+            reply["kernel"].push_back({{"name", commands[i]->get_kernel_file_name()},
+                                        {"time", time},
+                                        {"utilization", utilization} });
+            total_kernel_time += commands[i]->get_last_gpu_execution_time();
+        } else if (commands[i]->get_command_type() == CommandType::COPY_IN) {
+
+            reply["copy_in"].push_back({{"name", commands[i]->get_name()},
+                                        {"time", time},
+                                        {"utilization", utilization} });
+            total_copy_in_time += commands[i]->get_last_gpu_execution_time();
+        } else if (commands[i]->get_command_type() == CommandType::COPY_OUT) {
+
+            reply["copy_out"].push_back({{"name", commands[i]->get_name()},
+                                        {"time", time},
+                                        {"utilization", utilization} });
+            total_copy_out_time += commands[i]->get_last_gpu_execution_time();
+        } else {
+            continue;
+        }
+    }
+
+    reply["copy_in_total_time"] = total_copy_in_time;
+    reply["kernel_total_time"] = total_kernel_time;
+    reply["copy_out_total_time"] = total_copy_out_time;
+    reply["copy_in_utilization"] = total_copy_in_time/frame_arrival_period;
+    reply["kernel_utilization"] = total_kernel_time/frame_arrival_period;
+    reply["copy_out_utilization"] = total_copy_out_time/frame_arrival_period;
+
+    conn.send_json_reply(reply);
+}
+
 void hsaProcess::main_thread()
 {
-
     vector<hsaCommand *> &commands = factory->get_commands();
+
+    using namespace std::placeholders;
+    restServer * rest_server = get_rest_server();
+    string endpoint = "/gpu_profile/" + std::to_string(gpu_id);
+    rest_server->register_json_callback(endpoint,
+            std::bind(&hsaProcess::profile_callback, this, _1, _2));
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
@@ -91,7 +168,10 @@ void hsaProcess::main_thread()
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
-    // TODO Make the exiting process actually work here.
+    for (signalContainer &sig_container : final_signals) {
+        sig_container.stop();
+    }
+    INFO("Waiting for HSA packet queues to finish up before freeing memory.");
     results_thread_handle.join();
 }
 
@@ -102,10 +182,15 @@ void hsaProcess::results_thread() {
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
-    while (!stop_thread) {
+    while (true) {
+
         // Wait for a signal to be completed
         //INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
-        final_signals[gpu_frame_id].wait_for_signal();
+        if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
+            // If wait_for_signal returns -1, then we don't have a signal to wait on,
+            // but we have been given a shutdown request, so break this loop.
+            break;
+        }
         //INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (uint32_t i = 0; i < commands.size(); ++i) {

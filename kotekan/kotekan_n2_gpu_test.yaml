@@ -1,6 +1,9 @@
 ---
 type: config
-log_level: 3
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
 num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
@@ -85,26 +88,37 @@ gpu:
   link_map: [0,1,2,3]
   num_gpus: 4
   buffer_depth: 4
+  # Internal N^2 kernel parameter, only needed for N2.hsaco
+  n_intg: 16384
+  frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
-    network_buffer: gpu_input_buffer_0
-    output_buffer: gpu_output_buffer_0
+    in_buffers:
+      network_buf: gpu_input_buffer_0
+    out_buffers:
+      output_buf: gpu_output_buffer_0
   gpu_1:
     kotekan_process: hsaProcess
     gpu_id: 1
-    network_buffer: gpu_input_buffer_1
-    output_buffer: gpu_output_buffer_1
+    in_buffers:
+      network_buf: gpu_input_buffer_1
+    out_buffers:
+      output_buf: gpu_output_buffer_1
   gpu_2:
     kotekan_process: hsaProcess
     gpu_id: 2
-    network_buffer: gpu_input_buffer_2
-    output_buffer: gpu_output_buffer_2
+    in_buffers:
+      network_buf: gpu_input_buffer_2
+    out_buffers:
+      output_buf: gpu_output_buffer_2
   gpu_3:
     kotekan_process: hsaProcess
     gpu_id: 3
-    network_buffer: gpu_input_buffer_3
-    output_buffer: gpu_output_buffer_3
+    in_buffers:
+      network_buf: gpu_input_buffer_3
+    out_buffers:
+      output_buf: gpu_output_buffer_3
 
 check_data:
   real: 65536

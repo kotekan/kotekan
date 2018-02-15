@@ -26,8 +26,21 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
 
     struct http_message *msg = (struct http_message *)ev_data;
     string url = string(msg->uri.p, msg->uri.len);
+    string method = string(msg->method.p, msg->method.len);
+
+    if (method == "GET") {
+        if (!__rest_server->get_callbacks.count(url)) {
+            DEBUG("GET Endpoint %s called, but not found", url.c_str());
+            mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
+            return;
+        }
+        connectionInstance conn(nc, ev, ev_data);
+        __rest_server->get_callbacks[url](conn);
+        return;
+    }
 
     if (!__rest_server->json_callbacks.count(url)) {
+        DEBUG("Endpoint %s called, but not found", url.c_str());
         mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
         return;
     }
@@ -39,6 +52,14 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
 
     connectionInstance conn(nc, ev, ev_data);
     __rest_server->json_callbacks[url](conn, json_request);
+}
+
+void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
+    if (get_callbacks.count(endpoint)) {
+        WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
+    }
+    INFO("Adding REST endpoint: %s", endpoint.c_str());
+    get_callbacks[endpoint] = callback;
 }
 
 void restServer::register_json_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
@@ -117,6 +138,11 @@ string connectionInstance::get_full_message() {
 
 void connectionInstance::send_empty_reply(int status_code) {
     mg_send_head(nc, status_code, 0, NULL);
+}
+
+void connectionInstance::send_text_reply(const string &reply, int status_code) {
+    mg_send_head(nc, status_code, reply.length(), "Content-Type: text/plain");
+    mg_send(nc, (void *) reply.c_str(), reply.length());
 }
 
 void connectionInstance::send_binary_reply(uint8_t * data, int len) {

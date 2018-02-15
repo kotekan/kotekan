@@ -4,7 +4,9 @@ project( libkotekan_testing )
 add_library ( kotekan_testing
               chimeMetadataDump.cpp
               constDataCheck.cpp
+              fakeGpuBuffer.cpp
               gpuBeamformSimulate.cpp
+              gpuBeamformPulsarSimulate.cpp
               gpuSimulate.cpp
               hexDump.cpp
               networkOutputSim.cpp
@@ -13,5 +15,4 @@ add_library ( kotekan_testing
               testDataGen.cpp
               test_data_generation.c
               )
-
 add_definitions(/D__STDC_FORMAT_MACROS)

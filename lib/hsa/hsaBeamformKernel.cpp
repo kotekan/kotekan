@@ -1,11 +1,13 @@
 #include "hsaBeamformKernel.hpp"
 #include "hsaBase.h"
+#include <unistd.h>
 
 hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& kernel_file_name,
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers,
                             const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+    command_type = CommandType::KERNEL;
 
     apply_config(0);
 
@@ -51,11 +53,27 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
 
     void * device_coeff_map = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     device.sync_copy_host_to_gpu(device_coeff_map, (void*)host_coeff, coeff_len);
+
+    //Figure out which frequency, is there a better way that doesn't involve reading in the whole thing? Check later
+    metadata_buf = host_buffers.get_buffer("network_buf");
+    metadata_buffer_id = 0;
+    metadata_buffer_precondition_id = 0;
+    freq_now = 0;
+
+    gain_len = 2*2048*sizeof(float);
+    host_gain = (float *)hsa_host_malloc(gain_len);
+
+
+    for (int i=0;i<2048;i++){
+        host_gain[i*2] = 1.0;
+	host_gain[i*2+1] = 0.0;
+    }
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
     hsa_host_free(host_map);
     hsa_host_free(host_coeff);
+    hsa_host_free(host_gain);
     // TODO Free device memory allocations.
 }
 
@@ -65,24 +83,59 @@ void hsaBeamformKernel::apply_config(const uint64_t& fpga_seq) {
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _gain_dir = config.get_string(unique_name, "gain_dir");
 
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
 }
 
+int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
+{
+    uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
+    if (frame == NULL) return -1;
+    metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
+    return 0;
+}
+
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+
+    void * host_memory_frame = (void *)metadata_buf->frames[metadata_buffer_id];
+    stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
+    freq_now = bin_number_chime(&stream_id); 
+    FILE *ptr_myfile;
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(),freq_now);
+    if( access( filename, F_OK ) == -1 ) {
+        // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
+        snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
+    }
+
+    ptr_myfile=fopen(filename,"rb");
+    if (ptr_myfile == NULL) {
+        ERROR("GPU Cannot open gain file %s", filename);
+    }
+    else {
+        fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+	fclose(ptr_myfile);
+    }
+    void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
+    device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
+
+    metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *map_buffer;
         void *coeff_buffer;
         void *output_buffer;
+	void *gain_buffer;
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
-    args.output_buffer = device.get_gpu_memory_array("beamform_output", gpu_frame_id, output_frame_len);
+    args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);
+    args.gain_buffer = device.get_gpu_memory("beamform_gain", gain_len);
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 

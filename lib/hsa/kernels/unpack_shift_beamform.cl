@@ -13,7 +13,7 @@
 
 #define CUSTOM_BIT_REVERSE_9_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 15) & 0x1FE)
 
-__kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array){
+__kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array,  __global float2 *Gain){
 
   
   __local float2 local_data[2048];//4* 512 float2 * 2 float/float2 * 4 B/float = 16kB
@@ -37,15 +37,25 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     temp_3.REAL = ((int)((data_temp & 0xf0000000) >>  28u)) - 8;
     temp_3.IMAG = ((int)((data_temp & 0x0f000000) >>  24u)) - 8;
 
+    uint gain_id = get_global_id(1)*1024+local_address*4;
+    local_data[index_0    ].REAL = temp_0.REAL*Gain[gain_id].REAL - temp_0.IMAG*Gain[gain_id].IMAG;
+    local_data[index_0    ].IMAG = temp_0.REAL*Gain[gain_id].IMAG + temp_0.IMAG*Gain[gain_id].REAL;
+    local_data[index_0 +1 ]      = local_data[index_0    ];
 
-    local_data[index_0    ] = temp_0;
-    local_data[index_0 +1 ] = temp_0;
-    local_data[index_1    ] = temp_1;
-    local_data[index_1 + 1] = temp_1;
-    local_data[index_2    ] = temp_2;
-    local_data[index_2 + 1] = temp_2;
-    local_data[index_3    ] = temp_3;
-    local_data[index_3 + 1] = temp_3;
+    gain_id = gain_id + 1;
+    local_data[index_1    ].REAL = temp_1.REAL*Gain[gain_id].REAL - temp_1.IMAG*Gain[gain_id].IMAG;
+    local_data[index_1    ].IMAG = temp_1.REAL*Gain[gain_id].IMAG + temp_1.IMAG*Gain[gain_id].REAL;
+    local_data[index_1 +1 ]      = local_data[index_1    ];
+
+    gain_id = gain_id + 1;
+    local_data[index_2    ].REAL = temp_2.REAL*Gain[gain_id].REAL - temp_2.IMAG*Gain[gain_id].IMAG;
+    local_data[index_2    ].IMAG = temp_2.REAL*Gain[gain_id].IMAG + temp_2.IMAG*Gain[gain_id].REAL;
+    local_data[index_2 +1 ]      = local_data[index_2    ];
+
+    gain_id = gain_id + 1;
+    local_data[index_3    ].REAL = temp_3.REAL*Gain[gain_id].REAL - temp_3.IMAG*Gain[gain_id].IMAG;
+    local_data[index_3    ].IMAG = temp_3.REAL*Gain[gain_id].IMAG + temp_3.IMAG*Gain[gain_id].REAL;
+    local_data[index_3 +1 ]      = local_data[index_3    ];
 
     barrier(CLK_LOCAL_MEM_FENCE);  //crucial
 

@@ -27,9 +27,14 @@ void bufferRecv::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
 }
 
-void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
+void bufferRecv::read_callback(bufferevent* bev, void* ctx) {
+    connInstance * instance = (connInstance *) ctx;
+    instance->buffer_recv->internal_read_callback(bev, ctx);
+}
+
+void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
 {
-    //DEBUG("Read Callback");
+    DEBUG2("Read Callback");
     struct evbuffer *input;
     input = bufferevent_get_input(bev);
     connInstance * instance = (connInstance *) ctx;
@@ -41,7 +46,7 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
             n = evbuffer_remove(input,
                        (void*)(((int8_t*)&instance->buf_frame_header) + instance->bytes_read),
                        sizeof(struct bufferFrameHeader) - instance->bytes_read);
-            //DEBUG("Header read bytes: %d", n);
+            DEBUG2("Header read bytes: %d", n);
             if (n < 0) {
                 ERROR("Reading header failed for client %s, with error %d (%s)",
                         instance->client_ip.c_str(), errno, strerror(errno));
@@ -53,9 +58,8 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                 instance->state = connState::metadata;
                 instance->bytes_read = 0;
 
-                //DEBUG("Got header: seq_number: %d, stream_id: %d, metadata_size: %d, frame_size: %d",
-                //        instance->buf_frame_header.seq_number, instance->buf_frame_header.stream_id,
-                //        instance->buf_frame_header.metadata_size, instance->buf_frame_header.frame_size);
+                DEBUG2("Got header: metadata_size: %d, frame_size: %d",
+                        instance->buf_frame_header.metadata_size, instance->buf_frame_header.frame_size);
 
                 if ((unsigned int)instance->buf->frame_size != instance->buf_frame_header.frame_size) {
                     ERROR("Frame size does not match between server: %d and client: %d",
@@ -73,7 +77,7 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
             n = evbuffer_remove(input,
                     (void*)(instance->metadata_space + instance->bytes_read),
                     instance->buf_frame_header.metadata_size - instance->bytes_read);
-            //DEBUG("Metadata read bytes: %d", n);
+            DEBUG2("Metadata read bytes: %d", n);
             if (n < 0) {
                 ERROR("Reading metadata failed for client %s, with error %d (%s)",
                         instance->client_ip.c_str(), errno, strerror(errno));
@@ -95,7 +99,7 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
                 goto end_loop;
             }
             instance->bytes_read += n;
-            //DEBUG("Frame read bytes: %d, total read: %d", n, instance->bytes_read);
+            DEBUG("Frame read bytes: %d, total read: %d", n, instance->bytes_read);
             if (instance->bytes_read >= instance->buf_frame_header.frame_size) {
                 assert(instance->bytes_read == instance->buf_frame_header.frame_size);
                 instance->state = connState::finished;
@@ -109,7 +113,7 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
 
         if (instance->state == connState::finished) {
             // Get empty frame if one exists.
-            //DEBUG("Finished state");
+            DEBUG2("Finished state");
             int frame_id = instance->buffer_recv->get_next_frame();
             if (frame_id == -1) {
                 WARN("No free buffer frames, dropping data from %s",
@@ -145,7 +149,12 @@ void bufferRecv::read_callback(struct bufferevent *bev, void *ctx)
 void bufferRecv::error_callback(struct bufferevent *bev, short error, void *ctx)
 {
     connInstance * instance = (connInstance *)ctx;
-    //DEBUG("Error Callback");
+    instance->buffer_recv->internal_error_callback(bev, error, ctx);
+}
+
+void bufferRecv::internal_error_callback(bufferevent* bev, short error, void* ctx) {
+    connInstance * instance = (connInstance *)ctx;
+    DEBUG("Error Callback");
     if (error & BEV_EVENT_EOF) {
         WARN("Kotekan client: %s closed connection", instance->client_ip.c_str());
     } else if (error & BEV_EVENT_ERROR) {
@@ -160,7 +169,12 @@ void bufferRecv::error_callback(struct bufferevent *bev, short error, void *ctx)
     bufferevent_free(bev);
 }
 
-void bufferRecv::accept_connection(evutil_socket_t listener, short event, void *arg)
+void bufferRecv::accept_connection(int listener, short event, void* arg) {
+    struct acceptArgs * accept_args = (struct acceptArgs *)arg;
+    accept_args->buffer_recv->internal_accept_connection(listener, event, arg);
+}
+
+void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void *arg)
 {
     //DEBUG("Accept connection");
     struct acceptArgs * accept_args = (struct acceptArgs *)arg;
@@ -169,7 +183,7 @@ void bufferRecv::accept_connection(evutil_socket_t listener, short event, void *
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr*)&ss, &slen);
     if (fd < 0) {
-        ERROR("Failed to accept connection.");
+        //ERROR("Failed to accept connection.");
     } else if (fd > FD_SETSIZE) {
         close(fd);
     } else {
@@ -182,7 +196,7 @@ void bufferRecv::accept_connection(evutil_socket_t listener, short event, void *
         char ip_str[256];
         inet_ntop(AF_INET, &s->sin_addr, ip_str, sizeof(ip_str));
 
-        INFO("New connection from client: %s:%d", ip_str, port);
+        //INFO("New connection from client: %s:%d", ip_str, port);
 
         // New connection instance
         connInstance * instance =
@@ -199,9 +213,9 @@ void bufferRecv::accept_connection(evutil_socket_t listener, short event, void *
                                 accept_args->buf->metadata_pool->metadata_object_size +
                                 accept_args->buf->frame_size;
         bufferevent_setwatermark(bev, EV_READ, expected_size, 0);
-        const int timeout_sec = 2;
-        struct timeval read_timeout = {timeout_sec,0};
-        struct timeval write_timeout = {timeout_sec,0};
+        const int timeout_sec = 30;
+        struct timeval read_timeout = {timeout_sec, 0};
+        struct timeval write_timeout = {timeout_sec, 0};
         bufferevent_set_timeouts(bev, &read_timeout, &write_timeout);
         bufferevent_enable(bev, EV_READ|EV_WRITE);
     }

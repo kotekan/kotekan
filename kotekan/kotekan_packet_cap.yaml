@@ -1,6 +1,9 @@
 ---
 type: config
-log_level: 3
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
 udp_packet_size: 4928
 num_data_sets: 1
 samples_per_data_set: 32768

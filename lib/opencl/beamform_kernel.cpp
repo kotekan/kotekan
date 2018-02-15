@@ -29,13 +29,10 @@ void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
         remap_size, _num_elements);
     }
     _inverse_product_remap.reserve(remap_size);
-    //_inverse_product_remap = malloc(remap_size * sizeof(int));
-    //CHECK_MEM(_inverse_product_remap);
     // Given a channel ID, where is it in FPGA order.
     for(int i = 0; i < remap_size; ++i) {
         _inverse_product_remap[_product_remap[i]] = i;
     }
-    //_inverse_product_remap = config.get_int_array(unique_name, "inverse_product_remap");
     _scale_factor = config.get_int(unique_name, "scale_factor");
 }
 

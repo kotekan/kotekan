@@ -30,6 +30,14 @@ public:
     void send_binary_reply(uint8_t * data, int len);
     void send_empty_reply(int status_code);
 
+    /**
+     * Sends an HTTP response with "content-type" header set to "text/plain"
+     *
+     * @param[in] reply The body of the reply
+     * @param[in] status_code HTTP response status code (default = HTTP_OK = 200)
+     */
+    void send_text_reply(const string &reply, int status_code=STATUS_OK);
+
     // TODO use move constructors with this.
     string get_body();
     string get_full_message();
@@ -49,6 +57,17 @@ public:
 
     void mongoose_thread();
 
+    /**
+     * Registers a callback for a specified HTTP endpoint.
+     *
+     * @param[in] endpoint Path section of the URL that is handled by the callback
+     * @param[in] callback Callback function invoked to handle the request on the endpoint
+     *
+     * @note Re-registering on an endpoint will override the previous
+     * callback value.
+     */
+    void register_get_callback(string endpoint,
+                               std::function<void(connectionInstance &)> callback);
     void register_json_callback(string endpoint,
                         std::function<void(connectionInstance &, json &)> callback);
     std::map<string, std::function<void(connectionInstance &, json &)>> json_callbacks;
@@ -56,6 +75,7 @@ public:
     static void handle_request(struct mg_connection *nc, int ev, void *ev_data);
 
 private:
+    std::map<string, std::function<void(connectionInstance &)>> get_callbacks;
 
     // Returns the json parsed object from med.body, in json_parse
     // Returns 0 if the body is valid json.

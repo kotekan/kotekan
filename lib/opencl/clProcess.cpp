@@ -6,17 +6,18 @@
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
 #include "device_interface.h"
+#include "util.h"
 
 #include <iostream>
 #include <sys/time.h>
 
 using namespace std;
 
-double e_time_1(void){
-    static struct timeval now;
-    gettimeofday(&now, NULL);
-    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
-}
+//double e_time_1(void){
+//    static struct timeval now;
+//    gettimeofday(&now, NULL);
+//    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
+//}
 
 // TODO Remove the GPU_ID from this constructor
 clProcess::clProcess(Config& config_,
@@ -92,14 +93,14 @@ void clProcess::main_thread()
     int frame_id = 0;
     uint8_t * frame = NULL;
 
-    double last_time = e_time_1();
+    double last_time = e_time();
     timer tt;
     int time_count = 0;
     for(;;) {
         // Wait for data, this call will block.
         //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
         frame = wait_for_full_frame(device->getInBuf(), unique_name.c_str(), frame_id);
-        double cur_time = e_time_1();
+        double cur_time = e_time();
         //INFO("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
 
@@ -140,7 +141,7 @@ void clProcess::main_thread()
         cb_data[frame_id]->numCommands = factory->getNumCommands();
         cb_data[frame_id]->cnt = loopCnt;
         cb_data[frame_id]->use_beamforming = _use_beamforming;
-        cb_data[frame_id]->start_time = e_time_1();
+        cb_data[frame_id]->start_time = e_time();
         cb_data[frame_id]->unique_name = unique_name;
 //	    cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
         if (_use_beamforming == 1)
@@ -151,6 +152,7 @@ void clProcess::main_thread()
         sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
 
         //DEBUG("cb_data initialized\n");
+        usleep(gpu_id*10000);
         for (int i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
             sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
@@ -224,7 +226,7 @@ void clProcess::mem_reconcil_thread()
         for (int j=0;j<frame_id_limit;j++)
         {
             start = std::clock();
-            double end_time_1 = e_time_1();
+            double end_time_1 = e_time();
 
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
 
@@ -267,7 +269,7 @@ void clProcess::mem_reconcil_thread()
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
 
             CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->buff_id_lock->mem_cond) );
-            double end_time_2 = e_time_1();
+            double end_time_2 = e_time();
             //INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
         }
     }

@@ -5,7 +5,7 @@ hsaOutputDataZero::hsaOutputDataZero(const string& kernel_name, const string& ke
                             hsaDeviceInterface& device, Config& config,
                             bufferContainer& host_buffers, const string &unique_name) :
     hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-
+    command_type = CommandType::COPY_IN;
     apply_config(0);
 
     output_zeros = hsa_host_malloc(output_len);

@@ -8,20 +8,21 @@
 #define IMAG    y
 #define offset 128
 #define n_all 256
+#define scaling 400.
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
 //LWS = {     64 ,  1  }
 //GWS = {nsamp/6*, 1024}
 
-__kernel void upchannelize(__global float2 *data, __global float *results_array){
+__kernel void upchannelize(__global float2 *data, __global unsigned char *results_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
   uint nsamp_out = get_global_size(0)*6/128/3;
   __local float2 local_data[384];
   uint local_address = get_local_id(0);
-  float2 outtmp;
+  float outtmp;
   outtmp = 0;
 
   for (int p=0;p<2;p++){
@@ -269,12 +270,20 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       for (int j=0;j<3;j++){
 	for (int i=0;i<8;i++){
-	  outtmp += local_data[ get_local_id(0)*8 +j*128+i];
+	  outtmp += local_data[ get_local_id(0)*8 +j*128 +i].REAL*local_data[ get_local_id(0)*8 +j*128 +i].REAL+local_data[ get_local_id(0)*8 +j*128 +i].IMAG*local_data[ get_local_id(0)*8 +j*128 +i].IMAG;
 	}
       }
       barrier(CLK_LOCAL_MEM_FENCE);
       if (p == 1) {
-	results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] =  (outtmp.REAL*outtmp.REAL+ outtmp.IMAG*outtmp.IMAG)/48.;
+        uchar outtmp_int ;
+    	outtmp = outtmp/48./scaling; //This is float
+    	if (outtmp > 255) {
+          outtmp_int = 255;
+    	}
+        else {
+          outtmp_int = (uint) (outtmp + 0.5) ;
+        }
+ 	results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp_int;
       }
     }
   } //end loop of 2 pol

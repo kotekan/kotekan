@@ -13,6 +13,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 set (KOTEKAN_LIB_SOURCES
               timer.cpp
               KotekanProcess.cpp
+              kotekanLogging.cpp
               SampleProcess.cpp
               Config.cpp
               buffer.c
@@ -31,6 +32,8 @@ set (KOTEKAN_LIB_SOURCES
               metadataFactory.cpp
               bufferFactory.cpp
               configEval.cpp
+              visBuffer.cpp
+              visUtil.cpp
               gpsTime.c
        )
 
@@ -38,6 +41,9 @@ if (${USE_DPDK})
        set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} network_dpdk.c)
 endif ()
 
+if (${USE_HDF5})
+  set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} visFile.cpp)
+endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} osxBindCPU.cpp)
@@ -76,10 +82,11 @@ if (${USE_OPENCL})
        target_link_libraries( kotekan_libs kotekan_opencl )
 endif ()
 
-
 # HDF5 stuff
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
+  include_directories (/kotekan/HighFive/include/)
+  target_link_libraries ( kotekan_libs ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
 
 add_subdirectory(testing)

@@ -26,6 +26,7 @@ private:
     int32_t _samples_per_data_set;
     int32_t _downsample_time;
     int32_t _downsample_freq;
+    int32_t _num_frb_total_beams;
 };
 
 #endif

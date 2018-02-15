@@ -11,6 +11,8 @@
 #endif
 #include "fullPacketDump.hpp"
 #include "gpuPostProcess.hpp"
+#include "frbPostProcess.hpp"
+#include "pulsarPostProcess.hpp"
 #include "nDiskFileWrite.hpp"
 #include "nDiskFileRead.hpp"
 #include "networkPowerStream.hpp"
@@ -24,6 +26,7 @@
 #include "integratePowerStream.hpp"
 #include "bufferStatus.hpp"
 #include "gpuBeamformSimulate.hpp"
+#include "gpuBeamformPulsarSimulate.hpp"
 #include "gpuSimulate.hpp"
 #include "networkOutputSim.hpp"
 #include "simVdifData.hpp"
@@ -35,15 +38,32 @@
 #include "chimeMetadataDump.hpp"
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
+#include "simpleAutocorr.hpp"
+#include "fakeVis.hpp"
+#include "fakeGpuBuffer.hpp"
+#include "rfiVDIF.hpp"
+#include "rfiBroadcastVDIF.hpp"
+#ifndef MAC_OSX
+#include "frbNetworkProcess.hpp"
+#include "pulsarNetworkProcess.hpp"
+#endif
+#include "frbPostProcess_in.hpp"
 
 #ifdef WITH_HDF5
-    #include "hdf5Writer.hpp"
+    #include "visWriter.hpp"
 #endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
+    #include "timer.hpp"
+#endif
+#ifdef WITH_AIRSPY
+    #include "airspyInput.hpp"
+#endif
+#ifdef WITH_FFTW
+    #include "fftwEngine.hpp"
 #endif
 
 processFactory::processFactory(Config& config,
@@ -132,6 +152,23 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "gpuPostProcess") {
         return (KotekanProcess *) new gpuPostProcess(config, location, buffer_container);
     }
+    if (name == "frbPostProcess") {
+        return (KotekanProcess *) new frbPostProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarPostProcess") {
+        return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
+    }
+#ifndef MAC_OSX
+    if (name == "frbNetworkProcess") {
+        return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarNetworkProcess") {
+        return (KotekanProcess *) new pulsarNetworkProcess(config, location, buffer_container);
+    }
+#endif
+    if (name == "frbPostProcess_in") {
+        return (KotekanProcess *) new frbPostProcess_in(config, location, buffer_container);
+    }
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
@@ -169,6 +206,30 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
     }
 
+    if (name == "rfiVDIF") {
+        return (KotekanProcess *) new rfiVDIF(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVDIF") {
+        return (KotekanProcess *) new rfiBroadcastVDIF(config, location, buffer_container);
+    }
+
+#ifdef WITH_AIRSPY
+    if (name == "airspyInput") {
+        return (KotekanProcess *) new airspyInput(config, location, buffer_container);
+    }
+#endif
+
+#ifdef WITH_FFTW
+    if (name == "fftwEngine") {
+        return (KotekanProcess *) new fftwEngine(config, location, buffer_container);
+    }
+#endif
+
+    if (name == "simpleAutocorr") {
+        return (KotekanProcess *) new simpleAutocorr(config, location, buffer_container);
+    }
+
     if (name == "streamSingleDishVDIF") {
         return (KotekanProcess *) new streamSingleDishVDIF(config, location, buffer_container);
     }
@@ -180,6 +241,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // ****** testing directory ******
     if (name == "gpuBeamformSimulate") {
         return (KotekanProcess *) new gpuBeamformSimulate(config, location, buffer_container);
+    }
+    if (name == "gpuBeamformPulsarSimulate") {
+        return (KotekanProcess *) new gpuBeamformPulsarSimulate(config, location, buffer_container);
     }
 
     if (name == "gpuSimulate") {
@@ -201,6 +265,9 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "testDataCheckFloat") {
         return (KotekanProcess *) new testDataCheck<float>(config, location, buffer_container);
     }
+    if (name == "testDataCheckUchar") {
+        return (KotekanProcess *) new testDataCheck<unsigned char>(config, location, buffer_container);
+    }
 
     if (name == "constDataCheck") {
         // TODO This is a template class, how to set template type?
@@ -216,12 +283,31 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
 
     // HDF5
-    if (name == "hdf5Writer") {
+    if (name == "visWriter") {
         #ifdef WITH_HDF5
-            return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
+            return (KotekanProcess *) new visWriter(config, location, buffer_container);
         #else
             throw std::runtime_error("hdf5Writer is not supported on this system");
         #endif
+    }
+    #ifdef WITH_HDF5
+    // vis processes
+    if (name == "visTransform") {
+        return (KotekanProcess *) new visTransform(config, location, buffer_container);
+    }
+    if (name == "visDebug") {
+        return (KotekanProcess *) new visDebug(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities
+    if (name == "fakeVis") {
+        return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+    #endif
+
+    // Generate fake visbilities in GPU buffer format
+    if (name == "fakeGpuBuffer") {
+        return (KotekanProcess *) new fakeGpuBuffer(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {

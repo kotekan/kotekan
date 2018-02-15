@@ -1,0 +1,34 @@
+
+Welcome to Kotekan's documentation!
+====================================
+
+.. toctree::
+   :caption: Overview
+   :maxdepth: 1
+
+   overview
+   overview_theory_of_operation
+   overview_compiling
+
+
+.. toctree::
+   :caption: User's Guide
+   :maxdepth: 1
+
+   user/user_introduction
+   user/user_config
+   user/user_operation
+
+
+
+.. toctree::
+   :caption: Developer's Guide
+   :maxdepth: 1
+
+   dev/dev_introduction
+   dev/dev_buffers
+   dev/dev_processes
+   dev/dev_rest_endpoints
+   dev/dev_style_guide
+
+You can also peruse the full `doxygen docs <doxygen/>`_.

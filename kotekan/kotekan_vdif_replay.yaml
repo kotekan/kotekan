@@ -1,6 +1,9 @@
 ---
 type: config
-log_level: 2
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
 
 instrument_name: aro
 
@@ -8,13 +11,19 @@ instrument_name: aro
 integration_length: 8192
 num_freq: 1024
 num_elements: 2
-#samples_per_data_set: 65536
 samples_per_data_set: 32768
-buffer_depth: 1
+#samples_per_data_set: 65536
+buffer_depth: 10
 num_links: 8
 timesamples_per_packet: 2
 cpu_affinity: [8,9,10,11]
 num_disks: 10
+sk_step: 1024
+#If you change this to False remember to  
+#change the rfi_out_buf size accordingly
+# (i.e multiply it by num_elements)
+RFI_combined: True
+waterfallX: 1024
 
 meta_pool:
   kotekan_metadata_pool: chimeMetadata
@@ -24,63 +33,62 @@ vdif_input_buf:
   kotekan_buffer: standard
   metadata_pool: meta_pool
   num_frames: buffer_depth * num_disks
-  vdif_header_size: 64
-  frame_size: samples_per_data_set * num_elements * (num_freq + vdif_header_size)
+  vdif_header_size: 32
+  frame_size: samples_per_data_set * num_elements * (num_freq + vdif_header_size) 
 
-output_power_buf:
+rfi_out_buf:
   kotekan_buffer: standard
   metadata_pool: meta_pool
-  num_frames: buffer_depth
+  num_frames: buffer_depth * num_disks
   sizeof_float: 4
-  frame_size: (samples_per_data_set/integration_length) * (num_freq + 1) * num_elements * sizeof_float
+#If combining inputs
+  frame_size: sizeof_float * num_freq * samples_per_data_set / sk_step
+#If not combining inputs
+#  frame_size: sizeof_float * num_freq * samples_per_data_set * num_elements / sk_step
 
-#dpdk:
-#  kotekan_process: dpdkWrapper
-#  udp_packet_size: 4680
-#  mode: vdif
-#  num_lcores: 8
-#  vdif_buf: vdif_input_buf
-#  # These values shouldn't be needed!
-#  num_data_sets: 1
-#  num_gpu_frames: 1
+
+#output_power_buf:
+#  kotekan_buffer: standard
+#  metadata_pool: meta_pool
+#  num_frames: buffer_depth
+#  sizeof_float: 4
+#  frame_size: (samples_per_data_set/integration_length) * (num_freq + 1) * num_elements * sizeof_float
 
 replay:
   kotekan_process: nDiskFileRead
   disk_base: /drives/
   disk_set: D
   out_buf: vdif_input_buf
-  capture: 20170804T192150Z_aro_vdif
-  sk_step: 16384
-  rfi: False
-  rfi_sensitivity: 3
-  normalize: True
+  starting_file_index: 0
+  capture: 20170805T155218Z_aro_vdif
 
-raw_capture:
-  kotekan_process: nDiskFileWrite
-  write_to_disk: false
-  gain_files:
-  - /home/squirrel/ch_acq/gains_slotNone.pkl
-  - /home/squirrel/ch_acq/gains_noisy_slotNone.pkl
-  gain_file_dir: /tmp
-  disk_base: /drives/
-  disk_set: testing
-  in_buf: vdif_input_buf
+RFI:
+  kotekan_process: rfiVDIF
+  vdif_in: vdif_input_buf
+  rfi_out: rfi_out_buf
 
-power:
-  kotekan_process: computeDualpolPower
-  rfi_removal: False
-  rfi_sensitivity: 3
-  rfi_backfill: False
-  vdif_in_buf: vdif_input_buf
-  power_out_buf: output_power_buf
-
-network_stream:
-  kotekan_process: networkPowerStream
-  power_in_buf: output_power_buf
-  destination_port: 2051
+rfiBroadcast:
+  kotekan_process: rfiBroadcastVDIF
+  rfi_in: rfi_out_buf
+  destination_port: 41215
   destination_ip: 127.0.0.1
-  destination_protocol: TCP
+  destination_protocol: UDP
 
-buffer_status:
-  kotekan_process: bufferStatus
-  time_delay: 1000000 #microseconds
+#power:
+#  kotekan_process: computeDualpolPower
+#  rfi_removal: False
+#  rfi_sensitivity: 3
+#  rfi_backfill: False
+#  vdif_in_buf: vdif_input_buf
+#  power_out_buf: output_power_buf
+
+#network_stream:
+#  kotekan_process: networkPowerStream
+#  power_in_buf: output_power_buf
+#  destination_port: 2051
+#  destination_ip: 127.0.0.1
+#  destination_protocol: TCP
+
+#buffer_status:
+#  kotekan_process: bufferStatus
+# time_delay: 1000000 #microseconds

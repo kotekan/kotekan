@@ -1,14 +1,32 @@
 #include "hsaBarrier.hpp"
 #include <unistd.h>
 
+hsaBarrier::hsaBarrier(const string& kernel_name, const string& kernel_file_name,
+                            hsaDeviceInterface& device, Config& config,
+                            bufferContainer& host_buffers,
+                            const string &unique_name) :
+    hsaCommand(kernel_name, kernel_file_name, device,
+               config, host_buffers, unique_name) {
+    command_type = CommandType::BARRIER;
+}
+
+
 hsaBarrier::~hsaBarrier() {
 
 }
 
 hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    // Get the current write index.
-    uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());
+    // Get the queue index
+    uint64_t index = hsa_queue_add_write_index_relaxed(device.get_queue(), 1);
+
+    // Make sure the queue isn't full
+    // Should never hit this condition, but lets be safe.
+    // See the HSA docs for details.
+    while (index - hsa_queue_load_read_index_relaxed(device.get_queue())
+            >= device.get_queue()->size);
+
+    // Get the packet address.
     hsa_barrier_and_packet_t* barrier_and_packet =
             (hsa_barrier_and_packet_t*)device.get_queue()->base_address +
                                             (index % device.get_queue()->size);
@@ -17,15 +35,18 @@ hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
     // Set the packet details, including the preceded signal to wait on.
     memset(((uint8_t*) barrier_and_packet) + 4, 0, sizeof(*barrier_and_packet) - 4);
     barrier_and_packet->dep_signal[0] = precede_signal;
-    barrier_and_packet->header = HSA_PACKET_TYPE_BARRIER_AND;
 
-    hsa_queue_add_write_index_acquire(device.get_queue(), 1);
-    hsa_signal_store_relaxed(device.get_queue()->doorbell_signal, index);
+    //Set packet header after packet body.
+    packet_store_release((uint32_t*)barrier_and_packet, header(HSA_PACKET_TYPE_BARRIER_AND), 0);
+
+    //Signal doorbell after packet header.
+    hsa_signal_store_screlease(device.get_queue()->doorbell_signal, index);
 
     // Does not generate a completion signal at this time, although it could.
     hsa_signal_t empty_signal;
     empty_signal.handle = 0;
     return empty_signal;
+
 }
 
 // If a completion signal was created this would clean it.
