@@ -26,8 +26,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferStatus.cpp
               bufferSend.cpp
               bufferRecv.cpp
-              rfiRecorder.cpp
-              rfiBroadcast.cpp
               )
 
 if (${USE_DPDK})

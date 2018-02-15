@@ -35,8 +35,6 @@
 #include "chimeMetadataDump.hpp"
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
-#include "rfiRecorder.hpp"
-#include "rfiBroadcast.hpp"
 
 #ifdef WITH_HDF5
     #include "hdf5Writer.hpp"
@@ -224,13 +222,6 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         #else
             throw std::runtime_error("hdf5Writer is not supported on this system");
         #endif
-    }
-    if (name == "rfiRecorder") {
-        return (KotekanProcess *) new rfiRecorder(config, location, buffer_container);
-    }
-
-    if (name == "rfiBroadcast") {
-        return (KotekanProcess *) new rfiBroadcast(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {
