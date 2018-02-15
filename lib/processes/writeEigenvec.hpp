@@ -32,12 +32,15 @@
 class evFile {
 
 public:
-    /// Create SWMR file
-    /// @param fname Path to the file to write
-    /// @param num_eigenvectors The number of eigenvectors per frame
-    /// @param num_times The total length of the file (number of frames to buffer)
-    /// @param freqs The list of frequencies for which eigenvectors will be provided
-    /// @param inputs The list of inputs that make up the eigenvectors
+    /**
+     * @brief Create SWMR HDF5 file
+     *
+     * @param fname Path to the file to write
+     * @param num_eigenvectors The number of eigenvectors per frame
+     * @param num_times The total length of the file (number of frames to buffer)
+     * @param freqs The list of frequencies for which eigenvectors will be provided
+     * @param inputs The list of inputs that make up the eigenvectors
+     */
     evFile(const std::string & fname,
            const uint16_t & num_eigenvectors,
            const size_t & num_times,
@@ -48,12 +51,15 @@ public:
     /// Flush the HDF5 file to disk
     void flush();
 
-    /// Write a set of eigenvectors/values to file for a given time and frequency
-    /// @param new_time The time of the new sample
-    /// @param freq_ind The index to the list of frequencies corresponding to this sample
-    /// @param eigenvectors The eigenvectors to write out
-    /// @param eigenvalues The eigenvalues to write out
-    /// @param rms The RMS value to write out
+    /**
+     * @brief Write a set of eigenvectors/values to file for a given time and frequency
+     *
+     * @param new_time The time of the new sample
+     * @param freq_ind The index to the list of frequencies corresponding to this sample
+     * @param eigenvectors The eigenvectors to write out
+     * @param eigenvalues The eigenvalues to write out
+     * @param rms The RMS value to write out
+     */
     void write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
                             std::vector<cfloat> eigenvectors,
                             std::vector<float> eigenvalues, float rms);
