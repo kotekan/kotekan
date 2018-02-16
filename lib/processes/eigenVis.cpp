@@ -97,8 +97,7 @@ void eigenVis::main_thread() {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        auto output_frame = input_frame.copy_to_buffer(output_buffer,
-                                                       output_frame_id);
+        auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
 
         // Finish up interation.
         mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id);

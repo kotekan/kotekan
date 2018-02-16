@@ -141,9 +141,6 @@ public:
     /// Return a summary of the visibility buffer contents
     std::string summary() const;
 
-    // Copy to another empty buffer.
-    visFrameView copy_to_buffer(Buffer * buf, int frame_id);
-
 private:
 
     // References to the buffer and metadata we are viewing
