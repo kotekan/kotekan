@@ -12,7 +12,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
-add_library ( kotekan_libs )
+add_library ( kotekan_libs "empty.c" )
 
 add_subdirectory(core)
 target_link_libraries( kotekan_libs kotekan_core )
@@ -24,13 +24,19 @@ add_subdirectory(utils)
 target_link_libraries( kotekan_libs kotekan_utils )
 
 ### SELF-REGISTERING BITS:
-target_link_libraries( kotekan_libs )
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  target_link_libraries( kotekan_libs -Wl,--whole-archive )
+endif ()
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  target_link_libraries( kotekan_libs -Wl,-all_load )
+endif ()
+
 
   add_subdirectory(testing)
-  target_link_libraries( kotekan_libs -Wl,--whole-archive kotekan_testing )
+  target_link_libraries( kotekan_libs kotekan_testing )
 
   add_subdirectory(processes)
-  target_link_libraries( kotekan_libs -Wl,--whole-archive kotekan_processes )
+  target_link_libraries( kotekan_libs kotekan_processes )
 
   if (${USE_HCC})
          add_subdirectory(hcc)
@@ -51,7 +57,9 @@ target_link_libraries( kotekan_libs )
          target_link_libraries( kotekan_libs kotekan_opencl )
   endif ()
 
-target_link_libraries( kotekan_libs -Wl,--no-whole-archive )
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  target_link_libraries( kotekan_libs -Wl,--no-whole-archive )
+endif ()
 ### END SELF-REGISTERING BITS
 
 # HDF5 stuff

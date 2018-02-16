@@ -16,15 +16,15 @@ set (KOTEKAN_UTIL_SOURCES
        )
 
 if (${USE_DPDK})
-       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} network_dpdk.c)
+       set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} network_dpdk.c)
 endif ()
 
 if (${USE_HDF5})
-  set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} visFile.cpp)
+  set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFile.cpp)
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} osxBindCPU.cpp)
+       set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} osxBindCPU.cpp)
 endif ()
 
 add_library ( kotekan_utils
