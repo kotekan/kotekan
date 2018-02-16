@@ -43,6 +43,7 @@ if (${USE_FFTW})
 endif()
 
 if (${USE_LAPACK})
+  add_definitions(-DWITH_LAPACK)
   find_package( OpenBLAS REQUIRED)
 endif()
 

@@ -40,7 +40,6 @@
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
-#include "eigenVis.hpp"
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
@@ -59,6 +58,9 @@
 #endif
 #ifdef WITH_FFTW
     #include "fftwEngine.hpp"
+#endif
+#ifdef WITH_LAPACK
+    #include "eigenVis.hpp"
 #endif
 
 processFactory::processFactory(Config& config,
