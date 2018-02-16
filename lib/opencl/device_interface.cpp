@@ -293,9 +293,9 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-    for (int i = 0; i < out_buf->num_frames; ++i) {
-        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
-    }
+//    for (int i = 0; i < out_buf->num_frames; ++i) {
+//        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
+//    }
     //free(device_rfi_count_buffer);
 
 

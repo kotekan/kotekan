@@ -67,6 +67,7 @@ void clProcess::main_thread()
 
     loopCounter * loopCnt = new loopCounter;
     bool first_run = true;
+    bool first_seq = true;
 
    // device->prepareCommandQueue(false);
     device->prepareCommandQueue(true);
@@ -96,7 +97,9 @@ void clProcess::main_thread()
     double last_time = e_time();
     timer tt;
     int time_count = 0;
-    for(;;) {
+    kill_thread * kill = new kill_thread;
+    
+    while (!stop_thread) {
         // Wait for data, this call will block.
         //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
         frame = wait_for_full_frame(device->getInBuf(), unique_name.c_str(), frame_id);
@@ -143,13 +146,14 @@ void clProcess::main_thread()
         cb_data[frame_id]->use_beamforming = _use_beamforming;
         cb_data[frame_id]->start_time = e_time();
         cb_data[frame_id]->unique_name = unique_name;
+        cb_data[frame_id]->kill = kill;
 //	    cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
         if (_use_beamforming == 1)
         {
             cb_data[frame_id]->beamforming_out_buf = device->get_beamforming_out_buf();
         }
 
-        sequenceEvent = NULL; //WILL THE INIT COMMAND WORK WITH A NULL PRECEEDING EVENT?
+        sequenceEvent = NULL;
 
         //DEBUG("cb_data initialized\n");
         usleep(gpu_id*10000);
@@ -179,15 +183,24 @@ void clProcess::main_thread()
                                             &read_complete,
                                             cb_data[frame_id]) );
 
+        DEBUG("enqueued frame_id %d ", frame_id);
+
         //buffer_list[0] = (buffer_list[0] + 1)
         frame_id = (++frame_id) % device->getInBuf()->num_frames;
+        
+        if (frame_id == 0 && first_seq == true){
+            first_seq = false;
+        }
     }
 
     DEBUG("Closing\n");
 
-    // TODO Make the exiting process actually work here.
-    mem_reconcil_thread_handle.join();
+    CHECK_ERROR( pthread_mutex_lock(&kill->lock));
+    kill->kill_switch = 1;
+    CHECK_ERROR( pthread_mutex_unlock(&kill->lock));
 
+    //CHECK_ERROR( pthread_cond_broadcast(&kill->cond) );
+    
     CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock) );
     DEBUG("LockCnt\n");
     while ( loopCnt->iteration > 0) {
@@ -195,24 +208,41 @@ void clProcess::main_thread()
     }
     CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock) );
 
-
+    // Address all lingering clean condition blocks
+    if (first_seq == true){
+        cb_data[frame_id]->kill = kill;
+        cb_data[frame_id]->cnt = loopCnt;
+    }
+    CHECK_ERROR( pthread_mutex_lock(&cb_data[frame_id]->buff_id_lock->lock));
+    cb_data[frame_id]->buff_id_lock->clean = 1;
+    CHECK_ERROR( pthread_mutex_unlock(&cb_data[frame_id]->buff_id_lock->lock));
+    CHECK_ERROR( pthread_cond_broadcast(&cb_data[frame_id]->buff_id_lock->clean_cond));
+  
     DEBUG("LockConditionReleased\n");
     factory->deallocateResources();
     DEBUG("FactoryDone\n");
     device->deallocateResources();
     DEBUG("DeviceDone\n");
-
+    
 //    mark_producer_done(device->getOutBuf(), 0);
 //    if (_use_beamforming == 1)
 //    {
 //        mark_producer_done(device->get_beamforming_out_buf(), 0);
 //    }
 
+    DEBUG("joining mem_reconcil_thread\n");
+    // TODO Make the exiting process actually work here.
+    if (mem_reconcil_thread_handle.joinable())
+        mem_reconcil_thread_handle.join();
+    
+    DEBUG("joining mem_reconcil_thread success\n");
+    
     delete loopCnt;
-    //delete[] cb_data;
     for (auto command : cb_data) {
         delete command;
     }
+    
+    INFO("deleted cb_data\n");
     int ret;
     pthread_exit((void *) &ret);
 }
@@ -222,7 +252,10 @@ void clProcess::mem_reconcil_thread()
     //Based on assumption that buffer_ids are processed in order, so start with [0].]
     int frame_id_limit = cb_data[0]->in_buf->num_frames;
     std::clock_t    start;
-    for(;;) {
+    bool break_loop = false;
+    bool thread_kill = false;
+    
+    while(true) {
         for (int j=0;j<frame_id_limit;j++)
         {
             start = std::clock();
@@ -231,11 +264,41 @@ void clProcess::mem_reconcil_thread()
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
 
             while (cb_data[j]->buff_id_lock->clean == 0) {
-                pthread_cond_wait(&cb_data[j]->buff_id_lock->clean_cond, &cb_data[j]->buff_id_lock->lock);
-                //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data[j]->buffer_id);
+                if (break_loop == false){
+                    DEBUG("Wait on frame_id %d ",j);
+                    pthread_cond_wait(&cb_data[j]->buff_id_lock->clean_cond, &cb_data[j]->buff_id_lock->lock);
+                    //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data[j]->buffer_id);
+                    DEBUG("Flipped frame_id %d ",j);
+                }
+                DEBUG("in loop");
             }
 
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
+            
+            DEBUG("left loop");
+            CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->kill->lock));
+            DEBUG("check kill");
+            if (cb_data[j]->kill->kill_switch == 1){
+                DEBUG("killed");
+                thread_kill = true;
+            }
+            CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->kill->lock));
+
+            CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->cnt->lock));
+
+            if (thread_kill == true){
+                DEBUG("stop thread set");
+                if (cb_data[j]->cnt->iteration == 0){
+                    DEBUG("break loop set");
+                    break_loop = true;
+                }
+            }
+            CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->cnt->lock));
+            
+            if (break_loop == true){
+                DEBUG("break out of fist loop");
+                break;
+            }
 
             //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data->buffer_id);
             // Copy the information contained in the input buffer
@@ -272,7 +335,12 @@ void clProcess::mem_reconcil_thread()
             double end_time_2 = e_time();
             //INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
         }
+        if (break_loop == true){
+            DEBUG("break out of second loop");
+            break;
     }
+}
+    DEBUG("loops broken");
 }
 
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)

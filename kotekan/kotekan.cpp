@@ -75,6 +75,9 @@ extern "C" {
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
+#ifdef WITH_OPENCL
+#include "timer.hpp"
+#endif
 
 using json = nlohmann::json;
 
@@ -258,7 +261,7 @@ int main(int argc, char ** argv) {
             case 'd':
                 config_file_name = strdup(optarg);
                 opt_d_set = true;
-                break
+                break;
             case 'g':
                 gps_time = true;
                 break;

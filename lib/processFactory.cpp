@@ -57,7 +57,6 @@
 #endif
 #ifdef WITH_OPENCL
     #include "clProcess.hpp"
-    #include "timer.hpp"
 #endif
 #ifdef WITH_AIRSPY
     #include "airspyInput.hpp"

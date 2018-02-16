@@ -3,7 +3,7 @@ type: config
 #system:
   #mode: gpu_test
   #mode: pathfinder
-log_level: 3
+log_level: info
 #Have to duplicate num_elements and num_local_freq for now. Makes testing easier.
 #Eventually, remove all references to "adjusted" in code.
 num_elements: 256
@@ -31,6 +31,7 @@ sizeof_per_frequency_data: 16
 sizeof_per_element_data: 12
 sizeof_uint8_t: 1
 sizeof_gate_frame_header: 236
+pathfinder_test_mode: true
 
 num_links_fury: 1
 num_links_270: 2

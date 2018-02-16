@@ -37,6 +37,17 @@ struct buffer_id_lock {
     pthread_cond_t mem_cond;
     pthread_cond_t clean_cond;
 };
+struct kill_thread {
+    kill_thread() {
+        CHECK_ERROR( pthread_mutex_init(&lock, NULL) );
+    }
+    ~kill_thread() {
+        CHECK_ERROR( pthread_mutex_destroy(&lock) );
+    }
+    int kill_switch = 0;
+
+    pthread_mutex_t lock;  // Lock for the is_ready function.
+};
 class callBackData {
 public:
     callBackData();
@@ -58,6 +69,7 @@ public:
     struct Buffer * rfi_out_buf;
     struct loopCounter * cnt;
     struct buffer_id_lock * buff_id_lock;
+    struct kill_thread * kill;
 };
 
 #endif // CALLBACKDATA_H
