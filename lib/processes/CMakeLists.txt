@@ -30,7 +30,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               fakeVis.cpp
-              eigenVis.cpp
               )
 
 if (${USE_DPDK})
@@ -50,6 +49,9 @@ if (${USE_HDF5})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
 endif ()
 
+if (${USE_LAPACK})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
+endif ()
 
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
@@ -59,6 +61,12 @@ if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
+
+if (${USE_LAPACK})
+  include_directories (${OpenBLAS_INCLUDE_DIRS})
+  target_link_libraries ( kotekan_processes  ${OpenBLAS_LIBRARIES} )
+endif ()
+
 
 # This seems like a circular reference, seems like there should be a
 # way to avoid this.

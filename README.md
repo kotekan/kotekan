@@ -13,7 +13,8 @@ Required for some build options:
 * Hugepage support
 * [AMD OpenCL drivers](http://support.amd.com/en-us/download/linux) and [SDK](http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/)
 * [AMD ROCm](https://github.com/RadeonOpenCompute/ROCm)
-* [HDF5](https://www.hdfgroup.org/HDF5/) and [HighFive (Richard's fork)](https://github.com/jrs65/HighFive)
+* [HDF5](https://www.hdfgroup.org/HDF5/) and [HighFive](https://github.com/jrs65/HighFive)
+* [OpenBLAS](http://www.openblas.net/)
 
 ## Hardware:
 
@@ -85,6 +86,7 @@ Cmake build options:
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
+* `-DUSE_LAPACK=ON` - Build processes depending on LAPACK. Currently only the OpenBLAS implimentation is supported.
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 
 **Examples:**
@@ -123,4 +125,4 @@ For example:
 
 When installed kotekan's config files are located at /etc/kotekan/
 
-If running with no options then kotekan just stats a rest server, and waits for someone to send it a config in json format on port `12048`
+If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json format on port `12048`
