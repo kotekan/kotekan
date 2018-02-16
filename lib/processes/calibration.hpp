@@ -26,6 +26,8 @@
  * pass through the buffers along with the visbilities. These can be read from disk as
  * they are written out.
  *
+ * @todo Include weigths used in decomposition.
+ *
  * @author  Tristan Pinsonneault-Marotte
  *
  */
