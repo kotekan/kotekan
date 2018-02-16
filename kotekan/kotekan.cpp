@@ -63,8 +63,6 @@ extern "C" {
 #include "Config.hpp"
 #include "util.h"
 #include "version.h"
-#include "networkOutputSim.hpp"
-#include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
 #include "kotekanMode.hpp"

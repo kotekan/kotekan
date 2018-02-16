@@ -10,6 +10,8 @@
 #include "buffer.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(rawFileWrite);
+
 rawFileWrite::rawFileWrite(Config& config,
                  const string& unique_name,
                  bufferContainer &buffer_container) :

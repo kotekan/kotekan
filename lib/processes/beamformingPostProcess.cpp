@@ -17,6 +17,8 @@ using std::string;
 #include "time_tracking.h"
 #include "vdif_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(beamformingPostProcess);
+
 beamformingPostProcess::beamformingPostProcess(Config& config,
         const string& unique_name,
         bufferContainer &buffer_container) :

@@ -13,6 +13,8 @@
 #include "util.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(networkPowerStream);
+
 networkPowerStream::networkPowerStream(Config& config,
                                        const string& unique_name,
                                        bufferContainer &buffer_container) :

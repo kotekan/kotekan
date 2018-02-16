@@ -10,6 +10,8 @@
 #include "errors.h"
 #include "output_formating.h"
 
+REGISTER_KOTEKAN_PROCESS(bufferStatus);
+
 bufferStatus::bufferStatus(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,

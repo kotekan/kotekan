@@ -4,6 +4,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+REGISTER_KOTEKAN_PROCESS(simVdifData);
+
 simVdifData::simVdifData(Config& config, const string& unique_name,
                         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this))

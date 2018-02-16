@@ -6,6 +6,8 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(fakeGpuBuffer);
+
 fakeGpuBuffer::fakeGpuBuffer(Config& config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :

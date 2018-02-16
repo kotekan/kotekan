@@ -1,5 +1,7 @@
 #include "constDataCheck.hpp"
 
+REGISTER_KOTEKAN_PROCESS(constDataCheck);
+
 constDataCheck::constDataCheck(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :

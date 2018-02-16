@@ -8,6 +8,8 @@
 
 using std::string;
 
+REGISTER_KOTEKAN_PROCESS(nDiskFileRead);
+
 nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
                                 bufferContainer &buffer_containter) :
     KotekanProcess(config, unique_name, buffer_containter,

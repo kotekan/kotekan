@@ -18,6 +18,8 @@
 #define freq1 450.
 #define scaling 400.
 
+REGISTER_KOTEKAN_PROCESS(gpuBeamformSimulate);
+
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         const string& unique_name,
         bufferContainer &buffer_container) :

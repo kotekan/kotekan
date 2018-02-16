@@ -23,6 +23,8 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(pulsarPostProcess);
+
 pulsarPostProcess::pulsarPostProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :

@@ -3,6 +3,8 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(accumulate);
+
 accumulate::accumulate(Config& config,
                        const string& unique_name,
                        bufferContainer &buffer_container) :

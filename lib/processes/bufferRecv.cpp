@@ -8,6 +8,8 @@
 
 using namespace std::placeholders;
 
+REGISTER_KOTEKAN_PROCESS(bufferRecv);
+
 bufferRecv::bufferRecv(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :

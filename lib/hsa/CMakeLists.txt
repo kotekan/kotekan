@@ -44,6 +44,8 @@ add_library ( kotekan_hsa
               hsaPulsarUpdatePhase.cpp
               )
 
+target_link_libraries( kotekan_hsa kotekan_utils )
+
 add_subdirectory(kernels)
 add_dependencies( kotekan_hsa makeHSACOKernels )
 

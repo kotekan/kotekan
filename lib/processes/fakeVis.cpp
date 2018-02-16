@@ -3,6 +3,8 @@
 #include "chimeMetadata.h"
 #include <time.h>
 
+REGISTER_KOTEKAN_PROCESS(fakeVis);
+
 fakeVis::fakeVis(Config &config,
                  const string& unique_name,
                  bufferContainer &buffer_container) :
