@@ -5,10 +5,11 @@
 #include "KotekanProcess.hpp"
 
 class eigenVis : public KotekanProcess {
+
 public:
     eigenVis(Config& config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+             const string& unique_name,
+             bufferContainer &buffer_container);
     ~eigenVis();
     void apply_config(uint64_t fpga_seq) override;
     void main_thread();

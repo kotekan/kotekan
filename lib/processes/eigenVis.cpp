@@ -51,8 +51,8 @@ void eigenVis::main_thread() {
         }
         auto input_frame = visFrameView(input_buffer, input_frame_id);
         if (!initialized) {
-            num_elements = input_frame.num_elements();
-            if (input_frame.num_eigenvectors() < num_eigenvectors) {
+            num_elements = input_frame.num_elements;
+            if (input_frame.num_eigenvectors < num_eigenvectors) {
                 throw std::runtime_error("Insufficient storage space for"
                                          " requested number of eigenvectors.");
             }
@@ -68,8 +68,8 @@ void eigenVis::main_thread() {
             }
             initialized = true;
         }
-        INFO("%d, %d", input_frame.num_prod(), num_elements);
-        if (input_frame.num_prod() != num_elements * (num_elements + 1) / 2) {
+        INFO("%d, %d", input_frame.num_prod, num_elements);
+        if (input_frame.num_prod != num_elements * (num_elements + 1) / 2) {
             throw std::runtime_error("Eigenvectors require full correlation"
                                      " triangle");
         }
@@ -78,7 +78,7 @@ void eigenVis::main_thread() {
         int prod_ind = 0;
         for(int i = 0; i < num_elements; i++) {
             for(int j = i; j < num_elements; j++) {
-                vis_square[i * num_elements + j] = input_frame.vis()[prod_ind];
+                vis_square[i * num_elements + j] = input_frame.vis[prod_ind];
                 prod_ind++;
             }
         }

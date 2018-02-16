@@ -318,7 +318,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     // Visibility analysis
     if (name == "eigenVis") {
-        return (KotekanProcess *) new eigenVis(config, location, buffer_container);
+        #ifdef WITH_LAPACK
+            return (KotekanProcess *) new eigenVis(config, location, buffer_container);
+        #else
+            throw std::runtime_error("eigenVis: LAPACK linear algebra not supported by this build.");
+        #endif
+    }
 
     // Split frequencies
     if (name == "freqSplit") {
