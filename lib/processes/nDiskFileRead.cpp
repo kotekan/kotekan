@@ -99,7 +99,9 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         assert(sz == buf->frame_size);
 
         //Read into buffer
-	fread(buf_ptr,buf->frame_size,1,in_file);
+        if ((uint)buf->frame_size != fread(buf_ptr,buf->frame_size,1,in_file)){
+            ERROR("Error reading from file!");
+        }
         fclose(in_file);
         INFO("%s Read Complete Marking Frame ID %d Full\n", file_name, buf_id);
         

@@ -108,9 +108,9 @@ void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
     free(tmp512);
 }
 
-void gpuBeamformSimulate::cpu_beamform_ns(double *data, unsigned long transform_length,  int stop_level)
+void gpuBeamformSimulate::cpu_beamform_ns(double *data, uint64_t transform_length,  int stop_level)
 {
-    unsigned long n,m,j,i;
+    uint64_t n,m,j,i;
     double wr,wi,theta;
     double tempr,tempi;
     n=transform_length << 1;
@@ -128,16 +128,16 @@ void gpuBeamformSimulate::cpu_beamform_ns(double *data, unsigned long transform_
         }
         j += m;
     }
-    long int step_stop;
+    uint64_t step_stop;
     if (stop_level < -1) //neg values mean do the whole sequence; the last stage has pairs half the transform length apart
         step_stop = transform_length/2;
     else
         step_stop =pow(2,stop_level);
 
-    for (long int step_size = 1; step_size <= step_stop ; step_size +=step_size) {
+    for (uint64_t step_size = 1; step_size <= step_stop ; step_size +=step_size) {
         theta = -3.141592654/(step_size);
-        for (int index = 0; index < transform_length; index += step_size*2){
-            for (int minor_index = 0; minor_index < step_size; minor_index++){
+        for (uint64_t index = 0; index < transform_length; index += step_size*2){
+            for (uint32_t minor_index = 0; minor_index < step_size; minor_index++){
                 wr = cos(minor_index*theta);
                 wi = sin(minor_index*theta);
                 int first_index = (index+minor_index)*2;
@@ -323,7 +323,10 @@ void gpuBeamformSimulate::main_thread() {
 	    ERROR("CPU verification code: Cannot open gain file %s", filename);
 	}
 	else {
-	    fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
+        uint32_t read_length = sizeof(float)*2*2048;
+        if (read_length != fread(cpu_gain,read_length,1,ptr_myfile)){
+            ERROR("Couldn't read gain file...");
+        }
 	    fclose(ptr_myfile);
 	}
 

@@ -37,7 +37,7 @@ hsaRfi::hsaRfi(Config& config, const string &unique_name,
 
     Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocate memory
 
-    for (int b = 0; b < mean_len/sizeof(float); b++){
+    for (uint32_t b = 0; b < mean_len/sizeof(float); b++){
         Mean_Array[b] = 0; //Initialize with 0's
     }
 

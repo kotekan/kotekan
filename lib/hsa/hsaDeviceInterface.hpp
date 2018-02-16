@@ -33,7 +33,7 @@ struct gpu_mem_config_t {
 // Store named set of gpu pointer(s) with uniform size
 struct gpuMemoryBlock {
     vector<void*> gpu_pointers;
-    int len;
+    uint32_t len;
 
     // Need to be able to release the hsa pointers
     ~gpuMemoryBlock();
@@ -54,14 +54,14 @@ public:
     // it with gpu_buffer_depth pointers of size len
     // NOTE: if accessing an existing named region then len must match the existing
     // length or the system will throw an assert.
-    void *get_gpu_memory_array(const string &name, const int index, const int len);
+    void *get_gpu_memory_array(const string &name, const uint32_t index, const uint32_t len);
 
     // Same as get_gpu_memory_array but gets just one gpu memory buffer
     // This can be used when internal memory is needed.
     // i.e. memory used for lookup tables that are the same between runs
     // or temporary buffers between kernels.
     // Should NOT be used for any memory that's copied between GPU and HOST memory.
-    void *get_gpu_memory(const string &name, const int len);
+    void *get_gpu_memory(const string &name, const uint32_t len);
 
     // Note, if precede_signal is 0, then we don't wait on any signal.
     // These functions should only be called once per command, and
@@ -89,7 +89,7 @@ public:
 protected:
 
     Config &config;
-    int gpu_id; // Internal GPU ID.
+    uint32_t gpu_id; // Internal GPU ID.
 
     // GPU HSA variables
     hsa_agent_t gpu_agent;
@@ -109,7 +109,7 @@ protected:
     hsa_agent_t cpu_agent;
     hsa_amd_memory_pool_t host_region;
 
-    int gpu_buffer_depth;
+    uint32_t gpu_buffer_depth;
 
 private:
 

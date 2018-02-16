@@ -30,12 +30,12 @@ private:
     struct Buffer *vdif_buf;
 
     // Config variables
-    int32_t _num_fpga_links;
-    int32_t _samples_per_data_set;
-    int32_t _num_data_sets;
+    uint32_t _num_fpga_links;
+    uint32_t _samples_per_data_set;
+    uint32_t _num_data_sets;
     vector<int32_t> _link_map;
-    int32_t _num_local_freq;
-    int32_t _num_gpus;
+    uint32_t _num_local_freq;
+    uint32_t _num_gpus;
 
 };
 

@@ -58,7 +58,6 @@ void simVdifData::main_thread() {
             0,      //uint32_t eud3 : 32;
             0       //uint32_t eud4 : 32;
     };
-    int frame_length = sizeof(header) + freqs * sizeof(char);
 
     std::random_device rd;
     std::mt19937 gen(rd());

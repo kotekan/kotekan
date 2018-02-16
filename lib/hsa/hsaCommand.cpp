@@ -7,7 +7,8 @@ using std::string;
 hsaCommand::hsaCommand(
         const string &default_kernel_command,
         const string &default_kernel_file_name,
-        Config& config_, const string &unique_name_,
+        Config& config_,
+        const string &unique_name_,
         bufferContainer &host_buffers_,
         hsaDeviceInterface& device_) :
         kernel_command(default_kernel_command),
@@ -236,7 +237,8 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
 
     // Create the completion signal for this kernel run.
     assert(hsa_signal_load_relaxed(signals[gpu_frame_id])==0 && "frame signal not complete.");
-    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
+//    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
+    hsa_signal_store_release(signals[gpu_frame_id], 1);
     packet->completion_signal = signals[gpu_frame_id];
 
     // Create the AQL packet header as an atomic operation,

@@ -59,4 +59,6 @@ class hsaCommandMakerTemplate : public hsaCommandMaker
 }; 
 #define REGISTER_HSA_COMMAND(T) static hsaCommandMakerTemplate<T> maker(#T);
 
+#include "hsaCommand.hpp"
+
 #endif // GPU_COMMAND_FACTORY_H

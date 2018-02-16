@@ -108,7 +108,10 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         ERROR("GPU Cannot open gain file %s", filename);
     }
     else {
-        fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+        uint32_t read_length = sizeof(float)*2*2048;
+        if (read_length != fread(host_gain,read_length,1,ptr_myfile)){
+            ERROR("Couldn't read gain file...");
+        }
         fclose(ptr_myfile);
     }
     void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);

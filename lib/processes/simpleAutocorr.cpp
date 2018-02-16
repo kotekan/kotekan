@@ -54,7 +54,7 @@ void simpleAutocorr::main_thread() {
                     out_local[out_loc++] = spectrum_out[i];
                 out_local[out_loc++] = integration_ct;
 
-                if (out_loc*sizeof(uint) == buf_out->frame_size){
+                if (out_loc*sizeof(uint) == (uint32_t)buf_out->frame_size){
                     mark_frame_full(buf_out, unique_name.c_str(), frame_out);
                     frame_out = (frame_out + 1) % buf_out->num_frames;
                     out_loc = 0;
