@@ -49,7 +49,7 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_preseed_kernel") {
-            list_commands.push_back(new hsaPreseedKernel("ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii",
+            list_commands.push_back(new hsaPreseedKernel("CHIME_presum",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_input_data") {
