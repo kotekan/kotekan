@@ -30,7 +30,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               fakeVis.cpp
-              writeEigenvec.cpp
+              calibration.cpp
               freqSlicer.cpp
               frbPostProcess_in.cpp
               )

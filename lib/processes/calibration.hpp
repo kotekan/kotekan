@@ -1,12 +1,12 @@
 /*****************************************
 @file
 @brief Write out eigenvectors to file.
-- writeEigenvec : public KotekanProcess
-- evFile
+- eigenWriter : public KotekanProcess
+- eigenFile
 *****************************************/
 
-#ifndef WRITE_EIGENVEC
-#define WRITE_EIGENVEC
+#ifndef CAL_PROC
+#define CAL_PROC
 
 #include <unistd.h>
 #include "buffer.h"
@@ -18,7 +18,7 @@
 #include <highfive/H5DataSet.hpp>
 
 /**
- * @class evFile
+ * @class eigenFile
  * @brief Rolling HDF5 file for holding a set number of visibility eigenvectors on disk.
  *
  * Creates an HDF5 file in single writer multiple reader mode to serve as a ring buffer
@@ -29,7 +29,7 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class evFile {
+class eigenFile {
 
 public:
     /**
@@ -41,12 +41,12 @@ public:
      * @param freqs The list of frequencies for which eigenvectors will be provided
      * @param inputs The list of inputs that make up the eigenvectors
      */
-    evFile(const std::string & fname,
-           const uint16_t & num_eigenvectors,
-           const size_t & num_times,
-           const std::vector<freq_ctype> & freqs,
-           const std::vector<input_ctype> & inputs);
-    ~evFile();
+    eigenFile(const std::string & fname,
+              const uint16_t & num_eigenvectors,
+              const size_t & num_times,
+              const std::vector<freq_ctype> & freqs,
+              const std::vector<input_ctype> & inputs);
+    ~eigenFile();
 
     /// Flush the HDF5 file to disk
     void flush();
@@ -94,12 +94,12 @@ private:
 };
 
 /**
- * @class writeEigenvec
+ * @class eigenWriter
  * @brief Consumer ``KotekanProcess`` that extracts eigenvectors etc from a ``visBuffer``
  *        and writes them to disk in a rolling HDF5 file.
  *
  * This process reads the eigenvectors, eigenvalues, and RMS values carried in an input
- * visbility buffer and writes them to an ``evFile'' HDF5 file in single writer multiple
+ * visbility buffer and writes them to an ``eigenFile'' HDF5 file in single writer multiple
  * reader mode. This file has a specified length and rolls over when it fills up. 
  *
  * @par Buffers
@@ -117,16 +117,16 @@ private:
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class writeEigenvec : public KotekanProcess {
+class eigenWriter : public KotekanProcess {
 
 public:
     /// Constructor. Loads config options. Creates output file.
-    writeEigenvec(Config &config,
+    eigenWriter(Config &config,
                   const string& unique_name,
                   bufferContainer &buffer_container);
 
     /// Destructor. Flushes file contents to disk.
-    ~writeEigenvec();
+    ~eigenWriter();
 
     /// Not yet implemented, should update runtime parameters.
     void apply_config(uint64_t fpga_seq);
@@ -148,7 +148,7 @@ private:
     std::vector<input_ctype> inputs;
 
     /// File to write to
-    std::unique_ptr<evFile> file;
+    std::unique_ptr<eigenFile> file;
 
     /// Input buffer
     Buffer * in_buf;

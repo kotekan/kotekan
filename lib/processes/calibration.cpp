@@ -1,4 +1,4 @@
-#include "writeEigenvec.hpp"
+#include "calibration.hpp"
 #include "visBuffer.hpp"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
@@ -11,11 +11,11 @@
 
 using namespace HighFive;
 
-writeEigenvec::writeEigenvec(Config &config,
-                             const string& unique_name,
-                             bufferContainer &buffer_container) :
+eigenWriter::eigenWriter(Config &config,
+                         const string& unique_name,
+                         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&writeEigenvec::main_thread, this)) {
+                   std::bind(&eigenWriter::main_thread, this)) {
 
     // Get parameters from config
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
@@ -38,22 +38,22 @@ writeEigenvec::writeEigenvec(Config &config,
     // open file for writing. delete existing file.
     struct stat check_exists;
     if (stat(ev_fname.c_str(), &check_exists) == 0) std::remove(ev_fname.c_str());
-    file = std::unique_ptr<evFile>(
-            new evFile(ev_fname, num_eigenvectors, ev_file_len,
-                       freqs, inputs)
+    file = std::unique_ptr<eigenFile>(
+            new eigenFile(ev_fname, num_eigenvectors, ev_file_len,
+                          freqs, inputs)
     );
 
 }
 
-writeEigenvec::~writeEigenvec() {
+eigenWriter::~eigenWriter() {
     file->flush();
 }
 
-void writeEigenvec::apply_config(uint64_t fpga_seq) {
+void eigenWriter::apply_config(uint64_t fpga_seq) {
 
 }
 
-void writeEigenvec::main_thread() {
+void eigenWriter::main_thread() {
 
     unsigned int frame_id = 0;
 
@@ -96,11 +96,11 @@ void writeEigenvec::main_thread() {
 
 
 // TODO: include weights used in decomposition
-evFile::evFile(const std::string & fname,
-               const uint16_t & num_eigenvectors,
-               const size_t & file_len,
-               const std::vector<freq_ctype> & freqs,
-               const std::vector<input_ctype> & inputs) {
+eigenFile::eigenFile(const std::string & fname,
+                     const uint16_t & num_eigenvectors,
+                     const size_t & file_len,
+                     const std::vector<freq_ctype> & freqs,
+                     const std::vector<input_ctype> & inputs) {
 
     ninput = inputs.size();
     nfreq = freqs.size();
@@ -168,17 +168,18 @@ evFile::evFile(const std::string & fname,
 
 }
 
-evFile::~evFile() {
+eigenFile::~eigenFile() {
     file->flush();
 }
 
-void evFile::flush() {
+void eigenFile::flush() {
     file->flush();
 }
 
-void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
-                          std::vector<cfloat> eigenvectors,
-                          std::vector<float> eigenvalues, float new_rms) {
+void eigenFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
+                                   std::vector<cfloat> eigenvectors,
+                                   std::vector<float> eigenvalues,
+                                   float new_rms) {
 
     // Find position in file
     size_t curr_ind;
@@ -216,26 +217,26 @@ void evFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
 
 }
 
-DataSet evFile::evec() {
+DataSet eigenFile::evec() {
     return file->getDataSet("eigenvector");
 }
 
-DataSet evFile::eval() {
+DataSet eigenFile::eval() {
     return file->getDataSet("eigenvalue");
 }
 
-DataSet evFile::rms() {
+DataSet eigenFile::rms() {
     return file->getDataSet("rms");
 }
 
-DataSet evFile::time() {
+DataSet eigenFile::time() {
     return file->getDataSet("index_map/time");
 }
 
-DataSet evFile::freq() {
+DataSet eigenFile::freq() {
     return file->getDataSet("index_map/freq");
 }
 
-DataSet evFile::input() {
+DataSet eigenFile::input() {
     return file->getDataSet("index_map/input");
 }

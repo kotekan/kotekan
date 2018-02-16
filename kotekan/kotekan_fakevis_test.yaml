@@ -61,7 +61,7 @@ vis_debug:
   in_buf: vis_buffer
 
 evec_writer:
-  kotekan_process: writeEigenvec
+  kotekan_process: eigenWriter
   in_buf: vis_buffer
   ev_file_len: 5
   num_eigenvectors: 4

@@ -42,7 +42,6 @@
 #include "fakeVis.hpp"
 #include "freqSlicer.hpp"
 #include "fakeGpuBuffer.hpp"
-#include "writeEigenvec.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
 #ifndef MAC_OSX
@@ -53,6 +52,7 @@
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
+    #include "calibration.hpp"
 #endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
@@ -292,11 +292,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         #endif
     }
 
-    if (name == "writeEigenvec") {
+    if (name == "eigenWriter") {
         #ifdef WITH_HDF5
-            return (KotekanProcess *) new writeEigenvec(config, location, buffer_container);
+            return (KotekanProcess *) new eigenWriter(config, location, buffer_container);
         #else
-            throw std::runtime_error("writeEigenvec: hdf5 writing is not supported on this system");
+            throw std::runtime_error("eigenWriter: hdf5 writing is not supported on this system");
         #endif
     }
 
