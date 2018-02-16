@@ -23,7 +23,7 @@ fakeVis::fakeVis(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Get frequency IDs from config
-    for (auto f : config.get_int_array(unique_name, "freq")) {
+    for (auto f : config.get_int_array(unique_name, "freq_ids")) {
         freq.push_back((uint16_t) f);
     }
 
@@ -52,7 +52,10 @@ void fakeVis::main_thread() {
 
         for (uint16_t f : freq) {
             // Wait for the buffer frame to be free
-            wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id);
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), 
+                                     output_frame_id) == nullptr) {
+                break;
+            }
 
             // Below adapted from visWriter
 
@@ -62,16 +65,16 @@ void fakeVis::main_thread() {
                                              num_elements, num_eigenvectors);
 
             // TODO: dataset ID properly when we have gated data
-            output_frame.dataset_id() = 0;
+            output_frame.dataset_id = 0;
 
             // Set the frequency index
-            output_frame.freq_id() = f;
+            output_frame.freq_id = f;
 
             // Set the time
-            output_frame.time() = std::make_tuple(fpga_seq, ts);
+            output_frame.time = std::make_tuple(fpga_seq, ts);
 
             // Insert values into vis array to help with debugging
-            std::complex<float> * out_vis = output_frame.vis();
+            auto out_vis = output_frame.vis;
 
             if(fill_ij || phase_ij) {
                 int ind = 0;
@@ -105,6 +108,16 @@ void fakeVis::main_thread() {
                 }
             }
 
+            // Insert values into eigenvectors, eigenvalues and rms
+            for (int i = 0; i < num_eigenvectors; i++) {
+                for (int j = 0; j < num_elements; j++) {
+                    int k = i * num_elements + j;
+                    output_frame.eigenvectors[k] = k;
+                }
+                output_frame.eigenvalues[i] = i;
+            }
+            output_frame.rms = 1.;
+
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);
@@ -120,7 +133,6 @@ void fakeVis::main_thread() {
         }
         clock_gettime(CLOCK_REALTIME, &ts);
 
-        // TODO: at some point this should roll over I think?
         fpga_seq += fpga_seq_i;
     }
 }

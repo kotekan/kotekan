@@ -23,8 +23,8 @@ visTransform::visTransform(Config& config,
                    std::bind(&visTransform::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int("/", "num_elements");
-    block_size = config.get_int("/", "block_size");
+    num_elements = config.get_int(unique_name, "num_elements");
+    block_size = config.get_int(unique_name, "block_size");
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
 
     // Get the list of buffers that this process shoud connect to
@@ -35,12 +35,12 @@ visTransform::visTransform(Config& config,
     for(auto name : input_buffer_names) {
         auto buf = buffer_container.get_buffer(name);
         register_consumer(buf, unique_name.c_str());
-        input_buffers.push_back({buf, 0});
+        in_bufs.push_back({buf, 0});
     }
 
     // Setup the output vector
-    output_buffer = get_buffer("out_buf");
-    register_producer(output_buffer, unique_name.c_str());
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
 
     // Get the indices for reordering
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
@@ -63,7 +63,7 @@ void visTransform::main_thread() {
         // available buffers, wait for data to appear and then attempt to write
         // the data into a file
         unsigned int buf_ind = 0;
-        for(auto& buffer_pair : input_buffers) {
+        for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
             INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
@@ -75,21 +75,21 @@ void visTransform::main_thread() {
             }
 
             // Wait for the buffer to be filled with data
-            if(wait_for_empty_frame(output_buffer, unique_name.c_str(),
+            if(wait_for_empty_frame(out_buf, unique_name.c_str(),
                                     output_frame_id) == nullptr) {
                 break;
             }
-            allocate_new_metadata_object(output_buffer, output_frame_id);
+            allocate_new_metadata_object(out_buf, output_frame_id);
 
-            auto output_frame = visFrameView(output_buffer, output_frame_id,
+            auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
             // TODO: set the dataset ID properly when we have gated data
-            output_frame.dataset_id() = 0;
+            output_frame.dataset_id = 0;
 
             // Set the frequency index from the stream id of this buffer
             stream_id_t stream_id = get_stream_id_t(buf, frame_id);
-            output_frame.freq_id() = bin_number_chime(&stream_id);
+            output_frame.freq_id = bin_number_chime(&stream_id);
 
             // Set the time
             // TODO: get the GPS time instead
@@ -97,7 +97,7 @@ void visTransform::main_thread() {
             timeval tv = get_first_packet_recv_time(buf, frame_id);
             timespec ts;
             TIMEVAL_TO_TIMESPEC(&tv, &ts);
-            output_frame.time() = std::make_tuple(fpga_seq, ts);
+            output_frame.time = std::make_tuple(fpga_seq, ts);
 
             // TODO: do something with the list timesamples data
             // uint64_t lost_samples = get_lost_timesamples(buf, frame_id);
@@ -105,16 +105,16 @@ void visTransform::main_thread() {
             // Copy the visibility data into a proper triangle and write into
             // the file
             copy_vis_triangle((int32_t *)frame, input_remap, block_size,
-                              num_elements, output_frame.vis());
+                              num_elements, output_frame.vis);
 
             // Mark the buffers and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            mark_frame_full(output_buffer, unique_name.c_str(),
+            mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);
 
             // Advance the current frame ids
             std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
-            output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
+            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
             buf_ind++;
         }
 
@@ -130,8 +130,8 @@ visDebug::visDebug(Config& config,
                    std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector
-    buffer = get_buffer("in_buf");
-    register_consumer(buffer, unique_name.c_str());
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
 }
 
 void visDebug::apply_config(uint64_t fpga_seq) {
@@ -145,20 +145,20 @@ void visDebug::main_thread() {
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if(wait_for_full_frame(buffer, unique_name.c_str(),
+        if(wait_for_full_frame(in_buf, unique_name.c_str(),
                                frame_id) == nullptr) {
             break;
         }
 
         // Print out debug information from the buffer
-        auto frame = visFrameView(buffer, frame_id);
+        auto frame = visFrameView(in_buf, frame_id);
         INFO("%s", frame.summary().c_str());
 
         // Mark the buffers and move on
-        mark_frame_empty(buffer, unique_name.c_str(), frame_id);
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
 
         // Advance the current frame ids
-        frame_id = (frame_id + 1) % buffer->num_frames;
+        frame_id = (frame_id + 1) % in_buf->num_frames;
 
     }
 
@@ -176,8 +176,8 @@ visWriter::visWriter(Config& config,
     root_path = config.get_string_default(unique_name, "root_path", ".");
 
     // Get the list of buffers that this process shoud connect to
-    buffer = get_buffer("in_buf");
-    register_consumer(buffer, unique_name.c_str());
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
 
     // Get the input labels
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
@@ -221,33 +221,34 @@ void visWriter::main_thread() {
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if(wait_for_full_frame(buffer, unique_name.c_str(),
+        if(wait_for_full_frame(in_buf, unique_name.c_str(),
                                frame_id) == nullptr) {
             break;
         }
 
         // Get a view of the current frame
-        auto frame = visFrameView(buffer, frame_id);
+        auto frame = visFrameView(in_buf, frame_id);
 
         // Construct the new time
-        auto ftime = frame.time();
+        auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
         // Check if the frequency we are receiving is on the list of frequencies we are processing
-        if(freq_map.count(frame.freq_id()) == 0) {
-            WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id());
+        if(freq_map.count(frame.freq_id) == 0) {
+            WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id);
         } else {
 
-            INFO("Writing frequency id=%i", frame.freq_id());
+            INFO("Writing frequency id=%i", frame.freq_id);
 
             // Lookup the frequency index if reordering, otherwise write out in buffer order
-            uint32_t freq_ind = freq_map[frame.freq_id()];
+            uint32_t freq_ind = freq_map[frame.freq_id];
 
             // Create fake entries to fill out the gain and weight datasets with
             // because these don't correctly make it through kotekan yet
-            std::vector<std::complex<float>> vis(frame.vis(), frame.vis() + frame.num_prod());
-            std::vector<uint8_t> vis_weight(vis.size(), 255);
-            std::vector<std::complex<float>> gain_coeff(inputs.size(), {1, 0});
+            // TODO: these should be read directly from the span
+            std::vector<cfloat> vis(frame.vis.begin(), frame.vis.end());
+            std::vector<uint8_t> vis_weight(vis.size(), 1.0);
+            std::vector<cfloat> gain_coeff(inputs.size(), {1, 0});
             std::vector<int32_t> gain_exp(inputs.size(), 0);
 
             // Add all the new information to the file.
@@ -255,11 +256,11 @@ void visWriter::main_thread() {
                                    gain_coeff, gain_exp);
         }
 
-        // Mark the buffers and move on
-        mark_frame_empty(buffer, unique_name.c_str(), frame_id);
+        // Mark the buffer and move on
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
 
         // Advance the current frame ids
-        frame_id = (frame_id + 1) % buffer->num_frames;
+        frame_id = (frame_id + 1) % in_buf->num_frames;
 
     }
 }
@@ -272,13 +273,11 @@ void visWriter::init_acq() {
     // the acq. For the moment just read the first frame.
     unsigned int frame_id = 0;
     std::vector<uint32_t> freq_ids;
-    //std::vector<timespec> start_times;
 
-    wait_for_full_frame(buffer, unique_name.c_str(), frame_id);
+    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
-    auto frame = visFrameView(buffer, frame_id);
-    freq_ids.push_back(frame.freq_id());
-    //start_times.push_back(std::get<1>(frame.time()));
+    auto frame = visFrameView(in_buf, frame_id);
+    freq_ids.push_back(frame.freq_id);
 
     // Use the per buffer info to setup the acqusition properties
     setup_freq(freq_ids);

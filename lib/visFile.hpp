@@ -43,18 +43,18 @@ public:
     /// \param new_gexp Gain exponent data
     /// \return The number of entries in the time axis
     size_t addSample(time_ctype new_time, uint32_t freq_ind,
-                     std::vector<std::complex<float>> new_vis,
+                     std::vector<cfloat> new_vis,
                      std::vector<uint8_t> new_weight,
-                     std::vector<std::complex<float>> new_gcoeff,
+                     std::vector<cfloat> new_gcoeff,
                      std::vector<int32_t> new_gexp);
 
     uint32_t extendTime(time_ctype new_time);
 
 
     void writeSample(uint32_t time_ind, uint32_t freq_ind,
-                     std::vector<std::complex<float>> new_vis,
+                     std::vector<cfloat> new_vis,
                      std::vector<uint8_t> new_weight,
-                     std::vector<std::complex<float>> new_gcoeff,
+                     std::vector<cfloat> new_gcoeff,
                      std::vector<int32_t> new_gexp);
 
     size_t num_time();
@@ -121,9 +121,9 @@ public:
     /// \param new_gexp Gain exponent data
     /// \return The number of entries in the time axis
     void addSample(time_ctype new_time, uint32_t freq_ind,
-                   std::vector<std::complex<float>> new_vis,
+                   std::vector<cfloat> new_vis,
                    std::vector<uint8_t> new_weight,
-                   std::vector<std::complex<float>> new_gcoeff,
+                   std::vector<cfloat> new_gcoeff,
                    std::vector<int32_t> new_gexp);
 
 private:
@@ -157,7 +157,7 @@ template <> DataType create_datatype<freq_ctype>();
 template <> DataType create_datatype<time_ctype>();
 template <> DataType create_datatype<input_ctype>();
 template <> DataType create_datatype<prod_ctype>();
-template <> DataType create_datatype<std::complex<float>>();
+template <> DataType create_datatype<cfloat>();
 };
 
 

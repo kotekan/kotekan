@@ -23,8 +23,10 @@ private:
     int32_t _downsample_time;
     int32_t _downsample_freq;
     vector<int32_t> _reorder_map;
+    string _gain_dir;
 
     float * coff;
+    float * cpu_gain;
 
     // Unpacked data
     double * input_unpacked;

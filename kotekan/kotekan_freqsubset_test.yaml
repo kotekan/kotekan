@@ -1,10 +1,8 @@
 ---
 type: config
-# Logging level can be one of:
-# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
-# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: info
+log_level: DEBUG
 num_elements: 2048
+num_prod: 2098176
 num_local_freq: 1
 udp_packet_size: 4928
 num_data_sets: 1
@@ -15,33 +13,52 @@ block_size: 32
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
 
 # Metadata pool
-main_pool:
-  kotekan_metadata_pool: chimeMetadata
+vis_pool:
+  kotekan_metadata_pool: visMetadata
   num_metadata_objects: 5 * buffer_depth
 
-# Buffers
-gpu_data_buffer:
-  kotekan_buffer: standard
-  metadata_pool: main_pool
+vis_buffers:
+    #  kotekan_buffer: standard
+  metadata_pool: vis_pool
   num_frames: buffer_depth
   sizeof_int: 4
-  frame_size: sizeof_int * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
+  frame_size: 2 * sizeof_int * num_local_freq * num_elements * num_elements
+  vis_buffer_in:
+      kotekan_buffer: standard
+  vis_buffer_out:
+      kotekan_buffer: standard
 
-# Kotekan processes
-file_read:
-  kotekan_process: rawFileRead
-  buf: gpu_data_buffer
-  base_dir: ../../../data/
-  file_ext: dump
-  file_name: cnDg5_corr_gpu0
+fake_vis:
+  kotekan_process: fakeVis
+  out_buf: vis_buffer_in
+  num_eigenvectors: 4
+  freq: [250,256,512,768]
+  cadence: 10.
 
-hdf5_writer:
-  kotekan_process: hdf5Writer
-  buffers:
-      - gpu_data_buffer
-  num_freq: 1
-  enabled_chunks: [238, 250, 278]
-  per_node_instrument: true
+#vis_debug:
+#  kotekan_process: visDebug
+#  buffer: vis_buffer
+
+freq_subset:
+  kotekan_process: freqSubset
+  in_buf: vis_buffer_in
+  out_buf: vis_buffer_out
+  subset_list: [256,512,602,603]
+  num_eigenvectors: 4
+
+hdf5_writer_sub:
+  kotekan_process: visWriter
+  in_buf: vis_buffer_out
+  freq_ids: [256,512,602,603]
+  node_mode: false
+  root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_subset'
+
+hdf5_writer_full:
+  kotekan_process: visWriter
+  in_buf: vis_buffer_in
+  freq_ids: [250,256,512,602,768]
+  node_mode: false
+  root_path: '/home/fandino/chime/kotekan_dev/test_data/freq_full'
 
 
 # Information for input reordering, packed as

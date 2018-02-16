@@ -1,5 +1,5 @@
 /**
- * @file nDiskFileRead.hpp
+ * @file
  * @brief A process to read VDIF files from multiple drives.
  *  - nDiskFileRead : public KotekanProcess
  */
@@ -68,14 +68,14 @@
  *
  * @author Jacob Taylor
  */
-
 class nDiskFileRead : public KotekanProcess {
 public:
-    //Constructor, calls apply_config to intialize parameters
+    ///Constructor, calls apply_config to intialize parameters
     nDiskFileRead(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_containter);
-    //Destructor, currently does nothing 
+
+    ///Destructor, currently does nothing 
     ~nDiskFileRead();
 
     /**
@@ -88,26 +88,26 @@ public:
      */
     void file_read_thread(int disk_id);
 
-    //Applies the config parameters
+    ///Applies the config parameters
     void apply_config(uint64_t fpga_seq) override;
 
-    //Creates n safe instances of the file_read_thread thread
+    ///Creates n safe instances of the file_read_thread thread
     void main_thread() override;
 
 private:
-    //The kotekan buffer object the processes is producing for
+    ///The kotekan buffer object the processes is producing for
     struct Buffer *buf;
-    //Vector to hold the thread handles
+    ///Vector to hold the thread handles
     std::vector<std::thread> file_thread_handles;
-    //A holder for the config parameter num_disks
+    ///A holder for the config parameter num_disks
     uint32_t num_disks;
-    //A holder for the config parameter starting_file_index
+    ///A holder for the config parameter starting_file_index
     uint32_t starting_index;
-    //A holder for the config parameter disk_base
+    ///A holder for the config parameter disk_base
     string disk_base;
-    //A holder for the config parameter disk_set
+    ///A holder for the config parameter disk_set
     string disk_set;
-    //A holder for the config parameter capture
+    ///A holder for the config parameter capture
     string capture; 
 };
 
