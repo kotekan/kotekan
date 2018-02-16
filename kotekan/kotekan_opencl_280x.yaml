@@ -30,6 +30,11 @@ sizeof_per_frequency_data: 16
 sizeof_per_element_data: 12
 sizeof_uint8_t: 1
 sizeof_gate_frame_header: 236
+one: 1
+two: 2
+vdif_fs_1: 625
+vdif_fs_2: 16
+vdif_fs_3: 5032
 
 num_links_fury: 8
 num_links_270: 2
@@ -67,7 +72,7 @@ gpu_input_buffers:
 #        kotekan_buffer: standard
 
 gpu_output_buffers:
-    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2.*num_data_sets  * sizeof_cl_int 
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*two*num_data_sets  * sizeof_cl_int 
     metadata_pool: main_pool
     gpu_output_buffer_0:
         kotekan_buffer: standard
@@ -81,7 +86,7 @@ gpu_output_buffers:
 
 
 beamform_output_buffers:
-    frame_size: samples_per_data_set * num_data_sets * num_local_freq * 2
+    frame_size: samples_per_data_set * num_data_sets * num_local_freq * two
     metadata_pool: main_pool
     beam_output_buffer_0:
         kotekan_buffer: standard
@@ -96,12 +101,12 @@ beamform_output_buffers:
 tcp_output_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_tcp_frame_header +
-        ((num_elements * (num_elements + 1)) / 2 ) *
+        ((num_elements * (num_elements + one)) / two ) *
         num_total_freq * sizeof_complex_int_t +
         num_total_freq * sizeof_per_frequency_data +
         num_total_freq * num_elements * sizeof_per_element_data +
         ((num_elements *
-        (num_elements + 1)) / 2 ) *
+        (num_elements + one)) / two ) *
         num_total_freq * sizeof_uint8_t
     metadata_pool: main_pool
     network_output_buffer:
@@ -110,7 +115,7 @@ tcp_output_buffers:
 gated_output_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_gate_frame_header
-        + ((num_elements * (num_elements + 1)) / 2 ) *
+        + ((num_elements * (num_elements + one)) / two ) *
         num_total_freq * sizeof_complex_int_t
     metadata_pool: main_pool
     gated_output_buffer:
@@ -118,7 +123,7 @@ gated_output_buffers:
 
 vdif_output_buffers:
     num_frames: buffer_depth
-    frame_size: 625*16*5032
+    frame_size: vdif_fs_1 * vdif_fs_2 * vdif_fs_3
     metadata_pool: main_pool
     vdif_output_buffer:
         kotekan_buffer: standard
