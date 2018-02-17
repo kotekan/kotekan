@@ -218,7 +218,7 @@ int main(int argc, char ** argv) {
 
     int opt_val = 0;
     char * config_file_name = (char *)"none";
-    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY | LOG_PERROR;
+    int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool opt_d_set = false;
     bool gps_time = false;
     // We disable syslog to start.

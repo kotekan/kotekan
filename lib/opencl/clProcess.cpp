@@ -207,6 +207,12 @@ void clProcess::main_thread()
         pthread_cond_wait(&loopCnt->cond, &loopCnt->lock);
     }
     CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock) );
+    
+    DEBUG("LockConditionReleased\n");
+    factory->deallocateResources();
+    DEBUG("FactoryDone\n");
+    device->deallocateResources();
+    DEBUG("DeviceDone\n");
 
     // Address all lingering clean condition blocks
     if (first_seq == true){
@@ -217,12 +223,6 @@ void clProcess::main_thread()
     cb_data[frame_id]->buff_id_lock->clean = 1;
     CHECK_ERROR( pthread_mutex_unlock(&cb_data[frame_id]->buff_id_lock->lock));
     CHECK_ERROR( pthread_cond_broadcast(&cb_data[frame_id]->buff_id_lock->clean_cond));
-  
-    DEBUG("LockConditionReleased\n");
-    factory->deallocateResources();
-    DEBUG("FactoryDone\n");
-    device->deallocateResources();
-    DEBUG("DeviceDone\n");
     
 //    mark_producer_done(device->getOutBuf(), 0);
 //    if (_use_beamforming == 1)

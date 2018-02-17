@@ -11,7 +11,6 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
 set (KOTEKAN_LIB_SOURCES
-              timer.cpp
               KotekanProcess.cpp
               kotekanLogging.cpp
               SampleProcess.cpp
@@ -36,6 +35,10 @@ set (KOTEKAN_LIB_SOURCES
               visUtil.cpp
               gpsTime.c
        )
+
+if (${USE_OPENCL})
+       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} timer.cpp)
+endif ()
 
 if (${USE_DPDK})
        set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} network_dpdk.c)
