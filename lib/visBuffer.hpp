@@ -16,6 +16,7 @@
 
 #include "visUtil.hpp"
 #include "buffer.h"
+#include "chimeMetadata.h"
 
 /**
  * @struct visMetadata
@@ -134,12 +135,25 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      */
-    static struct_layout bufferLayout(uint32_t num_elements,
-                                      uint32_t num_prod,
-                                      uint16_t num_eigenvectors);
+    static struct_layout calculate_buffer_layout(uint32_t num_elements,
+                                                 uint32_t num_prod,
+                                                 uint16_t num_eigenvectors);
 
     /// Return a summary of the visibility buffer contents
     std::string summary() const;
+
+    /**
+     * @brief Fill the visMetadata from a chimeMetadata struct.
+     *
+     * The time field is filled with the GPS time if it is set (checked via
+     * `is_gps_global_time_set`), otherwise the `first_packet_recv_time` is
+     * used. Also note, there is no dataset information in chimeMetadata so the
+     * `dataset_id` is set to zero.
+     *
+     * @param chime_metadata Metadata to fill from.
+     *
+     */
+     void fill_chime_metadata(const chimeMetadata * chime_metadata);
 
 private:
 
@@ -164,7 +178,7 @@ public:
     /// The number of products in the data (read only).
     const uint32_t& num_prod;
     /// The number of eigenvectors/values in the data (read only).
-    const uint32_t& num_eigenvectors;
+    const uint16_t& num_eigenvectors;
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
