@@ -67,7 +67,7 @@ private:
     Buffer * out_buf;
 
     /// List of frequencies for this buffer
-    std::vector<uint16_t> freq;
+    std::vector<uint32_t> freq;
 
     /// Cadence to simulate (in seconds)
     float cadence;
