@@ -37,14 +37,14 @@ if (${USE_OPENCL})
         "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
         "opencl/kernels/")
     add_dependencies( kotekan kernel_opencl_copy )
+    install(FILES kotekan_opencl_280x.yaml DESTINATION /etc/kotekan/ COMPONENT config)
+    install(FILES kotekan_opencl_fury.yaml DESTINATION /etc/kotekan/ COMPONENT config)
+    install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
 endif ()
 
 add_dependencies( kotekan kotekan_libs )
 
 install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
-install(FILES kotekan_opencl_280x.yaml DESTINATION /etc/kotekan/ COMPONENT config)
-install(FILES kotekan_opencl_fury.yaml DESTINATION /etc/kotekan/ COMPONENT config)
-install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
 #install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
 install(PROGRAMS ../scripts/yaml_to_json.py DESTINATION /usr/sbin COMPONENT scripts)
 
