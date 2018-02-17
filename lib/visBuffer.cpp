@@ -118,12 +118,12 @@ struct_layout visFrameView::bufferLayout(uint32_t num_elements,
 {
     // TODO: get the types of each element using a template on the member
     // definition
-    std::vector<std::tuple<std::string, size_t, size_t>> buffer_members {
-        {"vis", sizeof(cfloat), num_prod},
-        {"weight", sizeof(float),  num_prod},
-        {"evals", sizeof(float),  num_eigenvectors},
-        {"evecs", sizeof(cfloat), num_eigenvectors * num_elements},
-        {"rms", sizeof(float),  1}
+    std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
+        std::make_tuple("vis", sizeof(cfloat), num_prod),
+        std::make_tuple("weight", sizeof(float),  num_prod),
+        std::make_tuple("evals", sizeof(float),  num_eigenvectors),
+        std::make_tuple("evecs", sizeof(cfloat), num_eigenvectors * num_elements),
+        std::make_tuple("rms", sizeof(float),  1)
     };
 
     return struct_alignment(buffer_members);
