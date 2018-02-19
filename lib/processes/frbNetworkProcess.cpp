@@ -315,7 +315,10 @@ void frbNetworkProcess::main_thread()
          //}
          for(int link=0;link<number_of_l1_links;link++)
          {
-           if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //Block Mode
+           //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //RA Mode
+           if (e_stream==beam_offset/4+link)
            {
              int i = link%2;
              sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
