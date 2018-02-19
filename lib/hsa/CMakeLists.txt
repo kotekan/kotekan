@@ -37,6 +37,7 @@ add_library ( kotekan_hsa
               hsaBeamformTranspose.cpp
               hsaBeamformUpchan.cpp
               hsaBeamformOutput.cpp
+              hsaBeamformOutputSolo.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
               hsaBeamformPulsar.cpp

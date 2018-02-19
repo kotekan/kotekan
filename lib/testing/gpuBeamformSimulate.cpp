@@ -15,8 +15,8 @@
 #define feed_sep 0.3048
 #define light 3.e8
 #define Freq_ref 492.125984252
-#define freq1 450.
-#define scaling 400.
+#define freq1 800. //in simulation mode, no freq from dpdk, which shows up as freq bin 0 = 800MHz
+#define scaling 4000.
 
 REGISTER_KOTEKAN_PROCESS(gpuBeamformSimulate);
 
@@ -44,7 +44,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     cpu_beamform_output = (double *)malloc(input_len * sizeof(double));
     transposed_output = (double *)malloc(transposed_len * sizeof(double));
     tmp128 = (double *)malloc(_factor_upchan*2*sizeof(double));
-    cpu_final_output = (unsigned char *)malloc(output_len*sizeof(unsigned char));
+    cpu_final_output = (double *)malloc(output_len*sizeof(double));
 
     cpu_gain = (float *) malloc(2*2048*sizeof(float));
 
@@ -284,7 +284,8 @@ void gpuBeamformSimulate::main_thread() {
 
         unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
         if (input == NULL) break;
-        unsigned char * output = (unsigned char *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+        //unsigned char * output = (unsigned char *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+	float * output = (float *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
         if (output == NULL) break;
 
         for (int i=0;i<input_len;i++){
@@ -313,15 +314,14 @@ void gpuBeamformSimulate::main_thread() {
 	FILE *ptr_myfile;
 	char filename[512];
 	snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
-	if( access( filename, F_OK ) == -1 ) {
-	    // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
-	    snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
-	}
-	
-	ptr_myfile=fopen(filename,"rb");
+
 	if (ptr_myfile == NULL){
 	    ERROR("CPU verification code: Cannot open gain file %s", filename);
-	}
+	    for (int i=0;i<2048;i++){
+	        cpu_gain[i*2] = 1.0;
+		cpu_gain[i*2+1] = 0.0;
+	    }
+        }
 	else {
         uint32_t read_length = sizeof(float)*2*2048;
         if (read_length != fread(cpu_gain,read_length,1,ptr_myfile)){
@@ -414,15 +414,15 @@ void gpuBeamformSimulate::main_thread() {
 			  }
 		      }
 		  }
-		  float tmp = out_sq/48./scaling;
-                  if (tmp > 255) tmp = 255;
-                  cpu_final_output[out_id] = round(tmp);
+		  float tmp = out_sq/48.;
+                  //if (tmp > 255) tmp = 255;
+                  cpu_final_output[out_id] = tmp; //round(tmp);
 		}
 	    }
         }
-
-        for (int i = 0; i < output_buf->frame_size; i++) {
-            output[i] = (unsigned char)cpu_final_output[i];
+	for (int i = 0; i < output_buf->frame_size/sizeof(float); i++) {
+	  //for (int i = 0; i < output_buf->frame_size; i++) {
+            output[i] = (float)cpu_final_output[i];
 	}
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",

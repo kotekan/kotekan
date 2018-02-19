@@ -8,6 +8,7 @@
 
 #include "json.hpp"
 
+
 hsaCommandFactory::hsaCommandFactory(Config& config_,
                                      const string &unique_name_,
                                      bufferContainer &host_buffers_,
@@ -36,8 +37,6 @@ hsaCommandFactory::~hsaCommandFactory() {
 vector<hsaCommand*>& hsaCommandFactory::get_commands() {
     return list_commands;
 }
-
-/////// NEW BS-Y CODE ////////
 
 hsaCommandFactory& hsaCommandFactory::Instance() {
     static hsaCommandFactory factory(*new Config(),"",*new bufferContainer(),
