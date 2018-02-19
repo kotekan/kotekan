@@ -27,14 +27,14 @@ visFrameView::visFrameView(Buffer * buf, int frame_id) :
 }
 
 visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                           uint16_t num_eigenvectors) :
+                           uint32_t num_eigenvectors) :
     visFrameView(buf, frame_id, num_elements,
                  num_elements * (num_elements + 1) / 2, num_eigenvectors)
 {
 }
 
 visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
-                           uint32_t n_prod, uint16_t n_eigenvectors) :
+                           uint32_t n_prod, uint32_t n_eigenvectors) :
     buffer(buf),
     id(frame_id),
     metadata((visMetadata *)buf->metadata[id]->metadata),
@@ -114,16 +114,16 @@ std::string visFrameView::summary() const {
 
 struct_layout visFrameView::bufferLayout(uint32_t num_elements,
                                          uint32_t num_prod,
-                                         uint16_t num_eigenvectors)
+                                         uint32_t num_eigenvectors)
 {
     // TODO: get the types of each element using a template on the member
     // definition
     std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
-        {"vis", sizeof(cfloat), num_prod},
-        {"weight", sizeof(float),  num_prod},
-        {"evals", sizeof(float),  num_eigenvectors},
-        {"evecs", sizeof(cfloat), num_eigenvectors * num_elements},
-        {"rms", sizeof(float),  1}
+        std::make_tuple("vis", sizeof(cfloat), num_prod),
+        std::make_tuple("weight", sizeof(float),  num_prod),
+        std::make_tuple("evals", sizeof(float),  num_eigenvectors),
+        std::make_tuple("evecs", sizeof(cfloat), num_eigenvectors * num_elements),
+        std::make_tuple("rms", sizeof(float),  1)
     };
 
     return struct_alignment(buffer_members);

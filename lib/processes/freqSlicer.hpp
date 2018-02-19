@@ -91,7 +91,7 @@ public:
 
 private:
     // List of frequencies for the subset
-    std::vector<uint16_t> subset_list;
+    std::vector<uint32_t> subset_list;
 
     /// Output buffer with subset of frequencies
     Buffer * out_buf;
