@@ -42,14 +42,14 @@ gpu_input_buffers:
 
 beamform_output_buffers:
     num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams *sizeof_float
+    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams 
     metadata_pool: main_pool
     beamform_output_buffer_0:
         kotekan_buffer: standard
 
 cpu_output_buffers:
     num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams *sizeof_float
+    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams 
     metadata_pool: main_pool
     cpu_output_buffer_0:
         kotekan_buffer: standard
