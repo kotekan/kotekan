@@ -216,7 +216,7 @@ void frbNetworkProcess::main_thread()
    
   clock_gettime(CLOCK_MONOTONIC, &t0);
   
-  t0.tv_nsec += 8*time_interval;
+  t0.tv_nsec += 2*time_interval;
   if(t0.tv_nsec>=1000000000)
   {
     t0.tv_sec += 1;
@@ -295,7 +295,6 @@ void frbNetworkProcess::main_thread()
     uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
     INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*4*253+12],lock_miss);
     
-    int link=0;
     for(int frame=0; frame<packets_per_stream; frame++)
     {
       for(int stream=0; stream<256; stream++)
@@ -305,14 +304,23 @@ void frbNetworkProcess::main_thread()
         
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
         
-         if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
+         //if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
+         //{
+         //  int i = link%2;
+         //  sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
+         //          udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
+         //
+         //  link++;
+         //  if(link==number_of_l1_links) link=0;
+         //}
+         for(int link=0;link<number_of_l1_links;link++)
          {
-           int i = link%2;
-           sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
-                   udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
-  
-           link++;
-           if(link==number_of_l1_links) link=0;
+           if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           {
+             int i = link%2;
+             sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
+                    udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link])); 
+           }
          }
          
          long wait_per_packet = (long)(58880); 
