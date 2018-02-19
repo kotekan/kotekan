@@ -42,7 +42,7 @@ struct gpuMemoryBlock {
 class hsaDeviceInterface: public kotekanLogging
 {
 public:
-    hsaDeviceInterface(Config& config, int gpu_id, int gpu_buffer_depth);
+    hsaDeviceInterface(Config& config, int32_t gpu_id, int gpu_buffer_depth);
     virtual ~hsaDeviceInterface();
     int get_gpu_id();
     int get_gpu_buffer_depth();
@@ -89,7 +89,7 @@ public:
 protected:
 
     Config &config;
-    uint32_t gpu_id; // Internal GPU ID.
+    int32_t gpu_id; // Internal GPU ID.
 
     // GPU HSA variables
     hsa_agent_t gpu_agent;

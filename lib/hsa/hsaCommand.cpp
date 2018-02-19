@@ -200,12 +200,12 @@ uint16_t hsaCommand::header(hsa_packet_type_t type) {
 hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gpu_frame_id) {
 
     // Get the queue index
-    uint64_t packet_id = hsa_queue_add_write_index_screlease(device.get_queue(), 1);
+    uint64_t packet_id = hsa_queue_add_write_index_acquire(device.get_queue(), 1);
 
     // Make sure the queue isn't full
     // Should never hit this condition, but lets be safe.
     // See the HSA docs for details.
-    while (packet_id - hsa_queue_load_read_index_scacquire(device.get_queue())
+    while (packet_id - hsa_queue_load_read_index_relaxed(device.get_queue())
             >= device.get_queue()->size);
 
     // Get the packet address
@@ -238,7 +238,7 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     // Create the completion signal for this kernel run.
     assert(hsa_signal_load_relaxed(signals[gpu_frame_id])==0 && "frame signal not complete.");
 //    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
-    hsa_signal_store_release(signals[gpu_frame_id], 1);
+    while (0 < hsa_signal_cas_release(signals[gpu_frame_id], 0, 1));
     packet->completion_signal = signals[gpu_frame_id];
 
     // Create the AQL packet header as an atomic operation,

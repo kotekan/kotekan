@@ -56,8 +56,8 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
     //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
     for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
-	vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
-	vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
+	vdif_header->eud2 = (fpga_now & (0xFFFFFFFFl<<32))>>32;
+	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
 	vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
 	

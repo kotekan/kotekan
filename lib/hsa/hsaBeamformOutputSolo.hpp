@@ -1,18 +1,16 @@
-#ifndef HSA_BEAMFORM_OUTPUT_DATA_SOLO_H
-#define HSA_BEAMFORM_OUTPUT_DATA_SOLO_H
+#ifndef HSA_BEAMFORM_OUTPUT_SOLO_H
+#define HSA_BEAMFORM_OUTPUT_SOLO_H
 
 #include "hsaCommand.hpp"
 
-class hsaBeamformOutputDataSolo: public hsaCommand
+class hsaBeamformOutputSolo: public hsaCommand
 {
 public:
 
-    hsaBeamformOutputDataSolo(const string &kernel_name, const string &kernel_file_name,
-                  hsaDeviceInterface &device, Config &config,
-                  bufferContainer &host_buffers,
-                  const string &unique_name);
+    hsaBeamformOutputSolo(Config &config, const string &unique_name,
+                  bufferContainer &host_buffers, hsaDeviceInterface &device);
 
-    virtual ~hsaBeamformOutputDataSolo();
+    virtual ~hsaBeamformOutputSolo();
 
     int wait_on_precondition(int gpu_frame_id) override;
 
