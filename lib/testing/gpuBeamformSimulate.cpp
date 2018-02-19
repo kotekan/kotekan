@@ -42,7 +42,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     cpu_beamform_output = (double *)malloc(input_len * sizeof(double));
     transposed_output = (double *)malloc(transposed_len * sizeof(double));
     tmp128 = (double *)malloc(_factor_upchan*2*sizeof(double));
-    cpu_final_output = (double *)malloc(output_len*sizeof(double));
+    cpu_final_output = (unsigned char *)malloc(output_len*sizeof(unsigned char));
 
     cpu_gain = (float *) malloc(2*2048*sizeof(float));
 
@@ -282,8 +282,8 @@ void gpuBeamformSimulate::main_thread() {
 
         unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
         if (input == NULL) break;
-        //unsigned char * output = (unsigned char *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
-	float * output = (float *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+        unsigned char * output = (unsigned char *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+
         if (output == NULL) break;
 
         for (int i=0;i<input_len;i++){
@@ -409,15 +409,14 @@ void gpuBeamformSimulate::main_thread() {
 			  }
 		      }
 		  }
-		  float tmp = out_sq/48.;
-                  //if (tmp > 255) tmp = 255;
-                  cpu_final_output[out_id] = tmp; //round(tmp);
+		  float tmp = out_sq/48./scaling;
+                  if (tmp > 255) tmp = 255;
+                  cpu_final_output[out_id] = round(tmp);
 		}
 	    }
         }
-	for (int i = 0; i < output_buf->frame_size/sizeof(float); i++) {
-	  //for (int i = 0; i < output_buf->frame_size; i++) {
-            output[i] = (float)cpu_final_output[i];
+	for (int i = 0; i < output_buf->frame_size; i++) {
+            output[i] = (unsigned char)cpu_final_output[i];
 	}
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
