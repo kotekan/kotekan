@@ -106,6 +106,6 @@ cpu_simulate:
 
 check_data:
   bf_data_check_0:
-    kotekan_process: testDataCheckFloat
+    kotekan_process: testDataCheckUchar
     first_buf : beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
