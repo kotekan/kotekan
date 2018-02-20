@@ -70,7 +70,7 @@ hdf5_writer:
   kotekan_process: visWriter
   in_buf: write_buffer
   num_freq: 4
-  enabled_chunks: [238, 250, 278]
+  #enabled_chunks: [238, 250, 278]
   per_node_instrument: true
 
 

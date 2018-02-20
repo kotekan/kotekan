@@ -34,9 +34,11 @@ void eigenVis::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int num_elements;
     bool initialized = false;
-    std::complex<float> * vis_square;
-    std::complex<float> * evecs;
-    float * evals;
+
+    // Should turn these into gsl::span.
+    std::vector<cfloat>* vis_square;
+    std::vector<cfloat>* evecs;
+    std::vector<float>* evals;
 
     int info, ev_found, nside, nev;
 
@@ -56,11 +58,11 @@ void eigenVis::main_thread() {
                 throw std::runtime_error("Insufficient storage space for"
                                          " requested number of eigenvectors.");
             }
-            vis_square = (std::complex<float> *) malloc(num_elements * num_elements
-                                                        * sizeof(*vis_square));
-            evecs = (std::complex<float> *) malloc(num_elements * num_eigenvectors
-                                                   * sizeof(*evecs));
-            evals = (float *) malloc(num_elements * sizeof(*evals));
+
+
+            vis_square = new std::vector<cfloat>(num_elements * num_elements);
+            evecs = new std::vector<cfloat>(num_elements * num_eigenvectors);
+            evals = new std::vector<float>(num_elements);
 
             if (vis_square == nullptr){
                 // XXX What is the right thing to do here?
@@ -68,27 +70,28 @@ void eigenVis::main_thread() {
             }
             initialized = true;
         }
-        INFO("%d, %d", input_frame.num_prod, num_elements);
         if (input_frame.num_prod != num_elements * (num_elements + 1) / 2) {
             throw std::runtime_error("Eigenvectors require full correlation"
                                      " triangle");
         }
 
-        // Fill the upper half of the square version of the visibilities.
+        // Fill the upper half (lower in fortran order!) of the square version
+        // of the visibilities.
         int prod_ind = 0;
         for(int i = 0; i < num_elements; i++) {
             for(int j = i; j < num_elements; j++) {
-                vis_square[i * num_elements + j] = input_frame.vis[prod_ind];
+                (*vis_square)[i * num_elements + j] = input_frame.vis[prod_ind];
                 prod_ind++;
             }
         }
 
         nside = (int) num_elements;
         nev = (int) num_eigenvectors;
-        info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'U', nside,
-                              (lapack_complex_float *) vis_square, nside,
+        info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
+                              (lapack_complex_float *) (vis_square->data()), nside,
                               0.0, 0.0, nside - nev + 1, nside, 0.0,
-                              &ev_found, evals, (lapack_complex_float *) evecs,
+                              &ev_found, evals->data(),
+                              (lapack_complex_float *) (evecs->data()),
                               nside, NULL);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
@@ -99,6 +102,12 @@ void eigenVis::main_thread() {
         allocate_new_metadata_object(output_buffer, output_frame_id);
         auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
 
+        // Copy in eigenvectors and eigenvalues.
+        gsl::span<cfloat> evecs_s{*evecs};
+        gsl::span<float> evals_s{*evals};
+        copy(evecs_s, output_frame.eigenvectors);
+        copy(evals_s.subspan(0, num_eigenvectors), output_frame.eigenvalues);
+
         // Finish up interation.
         mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id);
         mark_frame_full(output_buffer, unique_name.c_str(),
@@ -108,8 +117,8 @@ void eigenVis::main_thread() {
     }
 
     if (initialized) {
-        free(vis_square);
-        free(evecs);
-        free(evals);
+        delete vis_square;
+        delete evecs;
+        delete evals;
     }
 }
