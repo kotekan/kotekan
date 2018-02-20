@@ -15,3 +15,4 @@ add_library ( kotekan_testing
               testDataGen.cpp
               test_data_generation.c
               )
+add_definitions(/D__STDC_FORMAT_MACROS)

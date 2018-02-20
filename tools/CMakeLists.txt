@@ -6,7 +6,7 @@
 #add_executable(gpu_stream_dump gpu_stream_dump.c)
 
 # Include chime lib
-#include_directories (${CHIME_SOURCE_DIR}/lib)
+#include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 #link_directories (${CHIME_BINARY_DIR}/lib)
 #include_directories( ${OPENCL_INCLUDE_DIRS} )
 

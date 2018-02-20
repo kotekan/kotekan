@@ -40,7 +40,7 @@ void constDataCheck::main_thread() {
             int32_t real = *((int32_t *)&(frame[(i+1)*sizeof(int32_t)]));
 
             if (real != ref_real || imag != ref_imag) {
-                if (num_errors++ < 10000)
+                if (num_errors++ < 100)
                     ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di\n",
                         buf->buffer_name, frame_id, i/2,
                         ref_real, ref_imag, real, imag);
