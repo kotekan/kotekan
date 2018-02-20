@@ -32,7 +32,6 @@ add_library ( kotekan_hsa
               hsaRfiVdif.cpp
               hsaRfi.cpp
               hsaRfiOutput.cpp
-              hsaSleeper.cpp
               )
 
 add_subdirectory(kernels)
