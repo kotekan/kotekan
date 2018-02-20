@@ -6,10 +6,8 @@ constDataCheck::constDataCheck(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&constDataCheck::main_thread, this)) {
 
-    buf = get_buffer("buf");
+    buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
-//    ref_real = config.get_int(unique_name, "real");
-//    ref_imag = config.get_int(unique_name, "imag");
     ref_real = config.get_int_array(unique_name, "real");
     ref_imag = config.get_int_array(unique_name, "imag");
 }

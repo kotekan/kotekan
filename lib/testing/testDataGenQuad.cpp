@@ -10,10 +10,10 @@ testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name,
                    buffer_container, std::bind(&testDataGenQuad::main_thread, this)) {
 
-    buf[0] = get_buffer("network_out_buf0");
-    buf[1] = get_buffer("network_out_buf1");
-    buf[2] = get_buffer("network_out_buf2");
-    buf[3] = get_buffer("network_out_buf3");
+    buf[0] = get_buffer("out_buf0");
+    buf[1] = get_buffer("out_buf1");
+    buf[2] = get_buffer("out_buf2");
+    buf[3] = get_buffer("out_buf3");
     for (int i=0; i<4; i++)
         register_producer(buf[i], unique_name.c_str());
 
@@ -39,8 +39,8 @@ void testDataGenQuad::main_thread() {
     bool finished_seeding_consant = false;
     static struct timeval now;
 
-//pre-seed everything!
-INFO("Seeding...");
+    //pre-seed everything!
+    INFO("Seeding...");
     gettimeofday(&now, NULL);
     for (int b=0; b<4; b++){
       for (int f=0; f<buf[0]->num_frames; f++){
@@ -62,11 +62,11 @@ INFO("Seeding...");
 //mark the first one full to kick things off
     for (int b=0; b<4; b++)
         mark_frame_full(buf[b], unique_name.c_str(), 0);
-INFO("Seeded!");
+    INFO("Seeded!");
 
 
     while (!stop_thread) {
-INFO("Next seed!");
+        INFO("Next seed!");
 
         for (int i=0; i<4; i++) {
             frame[i] = wait_for_empty_frame(buf[i], unique_name.c_str(), frame_id);
@@ -82,8 +82,9 @@ INFO("Next seed!");
             set_first_packet_recv_time(buf[i], frame_id, now);
         }
 
-        usleep(120000);
-//        usleep(125829);
+        //This is nominally the CHIME pace?
+        //Todo: Calculate from buffer lengths, etc.
+        usleep(125829);
 
         for (int i=0; i<4; i++) {
             INFO("Skipped a %s test data set in %s[%d]", type.c_str(), buf[i]->buffer_name, frame_id);

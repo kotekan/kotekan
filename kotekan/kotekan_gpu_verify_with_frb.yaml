@@ -100,10 +100,10 @@ gen_data:
   value: [153,170,200,100] #(9,9)->(1,1), #(10,10)->(2,2) 
   test_data_gen_quad:
     kotekan_process: testDataGenQuad
-    network_out_buf0: gpu_input_buffer_0
-    network_out_buf1: gpu_input_buffer_1
-    network_out_buf2: gpu_input_buffer_2
-    network_out_buf3: gpu_input_buffer_3
+    out_buf0: gpu_input_buffer_0
+    out_buf1: gpu_input_buffer_1
+    out_buf2: gpu_input_buffer_2
+    out_buf3: gpu_input_buffer_3
 
 gpu:
   commands:
@@ -185,16 +185,16 @@ check_data:
   imag: [0,0]
   const_data_check_0:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_0
+    in_buf: gpu_output_buffer_0
   const_data_check_1:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_1
+    in_buf: gpu_output_buffer_1
   const_data_check_2:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_2
+    in_buf: gpu_output_buffer_2
   const_data_check_3:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_3
+    in_buf: gpu_output_buffer_3
 
 accumulate:
     acc_0:

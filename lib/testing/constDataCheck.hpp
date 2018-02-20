@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Contains a consumer to verify that buffers match a constant value.
+ *  - testDataGenQuad : public KotekanProcess
+ */
+
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
@@ -7,28 +13,41 @@
 #include "util.h"
 #include <unistd.h>
 
-/*
- * Checks that the contents of "buf" match the complex number given by "real" and "imag"
- * Configuration options
- * "buf": String with the name of the buffer to check
- * "real": Expected real value (int)
- * "imag": Expected imaginary value (int)
+/**
+ * @class constDataCheck
+ * @brief Consumer which verifies constant-value ``Buffers``, useful for verification.
+ *        Will throw ERROR messages for failed verifications.
+ *
+ * @par Buffers
+ * @buffer in_buf A kotekan buffer which will be verified, can be any size.
+ *     @buffer_format Array of @c ints. 
+ *     @buffer_metadata none
+ *
+ * @conf   real        Int Array. Expected real component, will loop through the array on subsequent frames.
+ * @conf   imag        Int Array.  Expected real component, will loop through the array on subsequent frames.
+ *
+ * @author Andre Renard
+ *
  */
-
 class constDataCheck : public KotekanProcess {
 public:
+    /// Constructor, also initializes internal variables from config.
     constDataCheck(Config &config,
                   const string& unique_name,
                   bufferContainer &buffer_container);
+
+    /// Destructor, cleans up local allocs.
     ~constDataCheck();
+
+    /// Not yet implemented, should update runtime parameters.
     void apply_config(uint64_t fpga_seq) override;
+
+    /// Primary loop to wait for buffers, verify, lather, rinse and repeat.
     void main_thread() override;
 private:
     struct Buffer *buf;
     vector<int32_t> ref_real;
     vector<int32_t> ref_imag;
-//    int32_t ref_real;
-//    int32_t ref_imag;
 };
 
 #endif
