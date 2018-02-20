@@ -26,6 +26,8 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(pulsarNetworkProcess);
+
 pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, 
 const string& unique_name, bufferContainer &buffer_container) :
 KotekanProcess(config_, unique_name, buffer_container,

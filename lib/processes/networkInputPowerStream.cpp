@@ -13,6 +13,8 @@
 #include "util.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(networkInputPowerStream);
+
 networkInputPowerStream::networkInputPowerStream(Config& config,
                                        const string& unique_name,
                                        bufferContainer &buffer_container) :
@@ -90,7 +92,7 @@ void networkInputPowerStream::main_thread() {
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++){
-                    int len = recvfrom(socket_fd,
+                    uint32_t len = recvfrom(socket_fd,
                             local_buf,
                             packet_length, 0, NULL, 0);
                     if (len != packet_length)

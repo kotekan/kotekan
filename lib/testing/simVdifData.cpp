@@ -4,6 +4,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+REGISTER_KOTEKAN_PROCESS(simVdifData);
+
 simVdifData::simVdifData(Config& config, const string& unique_name,
                         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this))
@@ -56,7 +58,6 @@ void simVdifData::main_thread() {
             0,      //uint32_t eud3 : 32;
             0       //uint32_t eud4 : 32;
     };
-    int frame_length = sizeof(header) + freqs * sizeof(char);
 
     std::random_device rd;
     std::mt19937 gen(rd());

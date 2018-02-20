@@ -30,7 +30,6 @@ hsaBeamformReorder::~hsaBeamformReorder() {
 }
 
 hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *map_buffer;

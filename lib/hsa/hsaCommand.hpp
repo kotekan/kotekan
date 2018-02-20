@@ -102,9 +102,9 @@ protected:
     string kernel_file_name;
 
     Config &config;
-    hsaDeviceInterface &device;
-    bufferContainer host_buffers;
     string unique_name;
+    bufferContainer host_buffers;
+    hsaDeviceInterface &device;
 
     // The subclass must set the type.
     CommandType command_type = CommandType::NOT_SET;

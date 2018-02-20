@@ -14,14 +14,13 @@ hsaBeamformUpchan::hsaBeamformUpchan(Config& config,const string &unique_name,
     _num_frb_total_beams = config.get_int(unique_name, "num_frb_total_beams");
 
     input_frame_len = _num_elements * (_samples_per_data_set+32) * 2 * sizeof(float);
-    output_frame_len = _num_frb_total_beams * (_samples_per_data_set/_downsample_time/_downsample_freq) * sizeof(uint8_t);
+    output_frame_len = _num_frb_total_beams * (_samples_per_data_set/_downsample_time/_downsample_freq) * sizeof(float);
 }
 
 hsaBeamformUpchan::~hsaBeamformUpchan() {
 }
 
 hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *output_buffer;
@@ -30,6 +29,7 @@ hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, const uint64_t& fpga_s
 
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
+
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 

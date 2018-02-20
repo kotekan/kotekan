@@ -8,6 +8,8 @@
 #include <iostream>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(hsaProcess);
+
 hsaProcess::hsaProcess(Config& config, const string& unique_name,
                      bufferContainer &buffer_container):
         KotekanProcess(config, unique_name, buffer_container,

@@ -13,7 +13,7 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
     INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);
 }
 
-hsaDeviceInterface::hsaDeviceInterface(Config& config_, int gpu_id_, int gpu_buffer_depth_) :
+hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
     config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
 
     //Make a dummy instance for the static factory...
@@ -88,7 +88,8 @@ hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, in
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
-    hsa_signal_store_relaxed(copy_signal, 1);
+//    hsa_signal_store_release(copy_signal, 1);
+    while (0 < hsa_signal_cas_release(copy_signal, 0, 1));
 
     hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, src);
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -122,7 +123,8 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
-    hsa_signal_store_relaxed(copy_signal, 1);
+//    hsa_signal_store_release(copy_signal, 1);
+    while (0 < hsa_signal_cas_release(copy_signal, 0, 1));
 
     //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
     //assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -284,12 +286,12 @@ hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t 
     return HSA_STATUS_SUCCESS;
 }
 
-void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const int index, const int len) {
+void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index, const uint32_t len) {
     assert(index < gpu_buffer_depth);
     hsa_status_t hsa_status;
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
-        for (int i = 0; i < gpu_buffer_depth; ++i) {
+        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
             void * ptr;
             hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
             INFO("Allocating GPU[%d] memory: %s[%d], len: %d, ptr: %p", gpu_id, name.c_str(), i, len, ptr);
@@ -307,7 +309,7 @@ void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const int ind
     return gpu_memory[name].gpu_pointers[index];
 }
 
-void* hsaDeviceInterface::get_gpu_memory(const string& name, const int len) {
+void* hsaDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
     hsa_status_t hsa_status;
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {

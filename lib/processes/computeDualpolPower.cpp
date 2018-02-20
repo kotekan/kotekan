@@ -39,6 +39,8 @@
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
 //#define NUM_FREQ 1024
 
+REGISTER_KOTEKAN_PROCESS(computeDualpolPower);
+
 computeDualpolPower::computeDualpolPower(Config &config, const string& unique_name,
                         bufferContainer &buffer_container) :
                   KotekanProcess(config, unique_name, buffer_container,
@@ -77,10 +79,8 @@ computeDualpolPower::~computeDualpolPower() {
 }
 
 void computeDualpolPower::main_thread() {
-//    in_local = (unsigned char*)malloc(buf_in.frame_size);
-  //  out_local = (unsigned char*)malloc(buf_out.frame_size);
     srand(time(NULL));
-int r = rand();
+
     int buf_in_id=0;
     int buf_out_id=0;
 

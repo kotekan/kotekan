@@ -26,13 +26,15 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(frbNetworkProcess);
+
 frbNetworkProcess::frbNetworkProcess(Config& config_, 
 const string& unique_name, bufferContainer &buffer_container) :
 KotekanProcess(config_, unique_name, buffer_container,
 std::bind(&frbNetworkProcess::main_thread, this))
 {
   
-  in_buf = get_buffer("frb_out_buf");
+  in_buf = get_buffer("in_buf");
   register_consumer(in_buf, unique_name.c_str());
   apply_config(0);
   my_host_name = (char*) malloc(sizeof(char)*100); 
@@ -47,13 +49,14 @@ frbNetworkProcess::~frbNetworkProcess()
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq) 
 {
-  udp_frb_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
-  udp_frb_port_number = config.get_int(unique_name, "udp_frb_port_number");
-  number_of_nodes = config.get_int(unique_name, "number_of_nodes");
-  packets_per_stream = config.get_int(unique_name, "packets_per_stream");
-  number_of_subnets = config.get_int(unique_name, "number_of_subnets");
-  beam_offset = config.get_int(unique_name, "beam_offset");
-  time_interval = config.get_uint64(unique_name, "time_interval");
+  udp_frb_packet_size = config.get_int_default(unique_name, "udp_frb_packet_size", 4264);
+  udp_frb_port_number = config.get_int_default(unique_name, "udp_frb_port_number", 1313);
+  number_of_nodes = config.get_int_default(unique_name, "number_of_nodes", 256);
+  number_of_subnets = config.get_int_default(unique_name, "number_of_subnets",4);
+  packets_per_stream = config.get_int_default(unique_name, "packets_per_stream",8);
+  beam_offset = config.get_int_default(unique_name, "beam_offset",0);
+  time_interval = config.get_uint64_default(unique_name, "time_interval",125829120);
+  column_mode = config.get_bool_default(unique_name, "column_mode", false);
 }
 
 void frbNetworkProcess::parse_host_name()
@@ -216,7 +219,7 @@ void frbNetworkProcess::main_thread()
    
   clock_gettime(CLOCK_MONOTONIC, &t0);
   
-  t0.tv_nsec += 8*time_interval;
+  t0.tv_nsec += 2*time_interval;
   if(t0.tv_nsec>=1000000000)
   {
     t0.tv_sec += 1;
@@ -295,7 +298,7 @@ void frbNetworkProcess::main_thread()
     uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
     INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*4*253+12],lock_miss);
     
-    int link=0;
+    
     for(int frame=0; frame<packets_per_stream; frame++)
     {
       for(int stream=0; stream<256; stream++)
@@ -304,17 +307,25 @@ void frbNetworkProcess::main_thread()
         if(e_stream>255) e_stream -= 256;
         
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
-        
-         if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
-         {
-           int i = link%2;
-           sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
-                   udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
-  
-           link++;
-           if(link==number_of_l1_links) link=0;
-         }
          
+         for(int link=0;link<number_of_l1_links;link++)
+         {    
+           if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
+           {
+             
+           //}
+           //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //if(e_stream==beam_offset/4+link)
+           //{
+          
+             int i = link%2;
+             sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
+                     udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link])); 
+  
+             //link++;
+             //if(link==number_of_l1_links) link=0;
+           }
+         }
          long wait_per_packet = (long)(58880); 
          
          //61521.25 is the theoretical seperation of packets in ns 

@@ -21,6 +21,8 @@
 #include "version.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(gpuPostProcess);
+
 gpuPostProcess::gpuPostProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :

@@ -48,7 +48,7 @@ class hsaCommandMakerTemplate : public hsaCommandMaker
     public:
         hsaCommandMakerTemplate(const std::string& key)
         {
-            printf("Registering! %s\n",key.c_str());
+            printf("Registering an HSA Command! %s\n",key.c_str());
             hsaCommandFactory::Instance().hsaRegisterCommand(key, this);
         }
         virtual hsaCommand *create(Config &config, const string &unique_name,
@@ -58,5 +58,7 @@ class hsaCommandMakerTemplate : public hsaCommandMaker
         }
 }; 
 #define REGISTER_HSA_COMMAND(T) static hsaCommandMakerTemplate<T> maker(#T);
+
+#include "hsaCommand.hpp"
 
 #endif // GPU_COMMAND_FACTORY_H

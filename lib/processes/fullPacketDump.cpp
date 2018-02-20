@@ -12,6 +12,8 @@
 
 #define MAX_NUM_PACKETS 100
 
+REGISTER_KOTEKAN_PROCESS(fullPacketDump);
+
 fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
                                bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,

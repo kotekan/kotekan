@@ -5,6 +5,8 @@
 
 #include <unistd.h>
 
+REGISTER_KOTEKAN_PROCESS(dpdkWrapper);
+
 dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,

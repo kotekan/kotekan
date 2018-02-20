@@ -11,6 +11,8 @@
 #define Freq_ref 492.125984252
 #define freq1 450.
 
+REGISTER_KOTEKAN_PROCESS(gpuBeamformPulsarSimulate);
+
 gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config,
         const string& unique_name,
         bufferContainer &buffer_container) :

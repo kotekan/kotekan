@@ -3,6 +3,8 @@
 #include "chimeMetadata.h"
 #include <time.h>
 
+REGISTER_KOTEKAN_PROCESS(fakeVis);
+
 fakeVis::fakeVis(Config &config,
                  const string& unique_name,
                  bufferContainer &buffer_container) :
@@ -73,15 +75,15 @@ void fakeVis::main_thread() {
 
             if(fill_ij) {
                 int ind = 0;
-                for(int i = 0; i < num_elements; i++) {
-                    for(int j = i; j < num_elements; j++) {
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
                         out_vis[ind] = {(float)i, (float)j};
                         ind++;
                     }
                 }
             } else {
                 // Set diagonal elements to (0, row)
-                for (int i = 0; i < num_elements; i++) {
+                for (uint32_t i = 0; i < num_elements; i++) {
                     uint32_t pi = cmap(i, i, num_elements);
                     out_vis[pi] = {0., (float) i};
                 }

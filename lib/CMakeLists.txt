@@ -4,81 +4,63 @@ project( kotekan_libs )
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 
-set (KOTEKAN_LIB_SOURCES
-              KotekanProcess.cpp
-              kotekanLogging.cpp
-              SampleProcess.cpp
-              Config.cpp
-              buffer.c
-              chimeMetadata.c
-              metadata.c
-              errors.c
-              nt_memcpy.c
-              nt_memset.c
-              restServer.cpp
-              util.c
-              output_formating.c
-              time_tracking.c
-              fpga_header_functions.c
-              bufferContainer.cpp
-              processFactory.cpp
-              metadataFactory.cpp
-              bufferFactory.cpp
-              configEval.cpp
-              visBuffer.cpp
-              visUtil.cpp
-              gpsTime.c
-       )
+add_library ( kotekan_libs "empty.c" )
 
-if (${USE_DPDK})
-       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} network_dpdk.c)
+add_subdirectory(core)
+target_link_libraries( kotekan_libs kotekan_core )
+
+add_subdirectory(metadata)
+target_link_libraries( kotekan_libs kotekan_metadata )
+
+add_subdirectory(utils)
+target_link_libraries( kotekan_libs kotekan_utils )
+
+### SELF-REGISTERING BITS:
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  target_link_libraries( kotekan_libs -Wl,--whole-archive )
 endif ()
-
-if (${USE_HDF5})
-  set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} visFile.cpp)
-endif ()
-
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} osxBindCPU.cpp)
-#else ()
-#       set (KOTEKAN_LIB_SOURCES ${KOTEKAN_LIB_SOURCES} simple_udp_cap.c)
+  target_link_libraries( kotekan_libs -Wl,-all_load )
 endif ()
 
-add_library ( kotekan_libs
-              ${KOTEKAN_LIB_SOURCES})
 
-target_link_libraries( kotekan_libs ${CMAKE_THREAD_LIBS_INIT} )
-target_link_libraries( kotekan_libs libinclude )
-target_link_libraries( kotekan_libs m event )
+  add_subdirectory(testing)
+  target_link_libraries( kotekan_libs kotekan_testing )
 
-if (${USE_DPDK})
-    include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
-    link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
+  add_subdirectory(processes)
+  target_link_libraries( kotekan_libs kotekan_processes )
+
+  if (${USE_HCC})
+         add_subdirectory(hcc)
+         target_link_libraries( kotekan_libs kotekan_hcc )
+  endif ()
+
+  if (${USE_HSA})
+         add_subdirectory(hsa)
+         link_directories ( /opt/rocm/hsa/lib/ )
+         target_link_libraries( kotekan_libs kotekan_hsa )
+         target_link_libraries( kotekan_libs hsa-runtime64 )
+         include_directories ( /opt/rocm/hsa/include/ )
+  endif ()
+
+  if (${USE_OPENCL})
+         add_subdirectory(opencl)
+         target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
+         target_link_libraries( kotekan_libs kotekan_opencl )
+  endif ()
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  target_link_libraries( kotekan_libs -Wl,--no-whole-archive )
 endif ()
-
-if (${USE_HCC})
-       add_subdirectory(hcc)
-       target_link_libraries( kotekan_libs kotekan_hcc )
-endif ()
-
-if (${USE_HSA})
-       add_subdirectory(hsa)
-       link_directories ( /opt/rocm/hsa/lib/ )
-       target_link_libraries( kotekan_libs -Wl,--whole-archive kotekan_hsa -Wl,--no-whole-archive )
-       target_link_libraries( kotekan_libs hsa-runtime64 )
-       include_directories ( /opt/rocm/hsa/include/ )
-endif ()
-
-if (${USE_OPENCL})
-       add_subdirectory(opencl)
-       target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
-       target_link_libraries( kotekan_libs kotekan_opencl )
-endif ()
+### END SELF-REGISTERING BITS
 
 # HDF5 stuff
 if (${USE_HDF5})
@@ -87,7 +69,3 @@ if (${USE_HDF5})
   target_link_libraries ( kotekan_libs ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
 
-add_subdirectory(testing)
-target_link_libraries( kotekan_libs kotekan_testing )
-add_subdirectory(processes)
-target_link_libraries( kotekan_libs kotekan_processes )
