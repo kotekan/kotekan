@@ -15,7 +15,7 @@
  * -- create_metadata_pool
  * -- delete_metadata_pool
  * -- request_metadata_object
- * return_metadata_to_pool
+ * -- return_metadata_to_pool
  */
 
 #ifndef METADATA_H
@@ -192,7 +192,7 @@ struct metadataContainer * request_metadata_object(struct metadataPool * pool);
 /**
  * @brief Returns a metadata container with a reference count of zero to its pool
  * @param[in] pool The pool to return the container too.
- * @param[in] container The container to return to the pool.ß
+ * @param[in] container The container to return to the pool.
  */
 void return_metadata_to_pool(struct metadataPool * pool, struct metadataContainer * container);
 
