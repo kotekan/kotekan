@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Contains a consumer to verify that buffers match a constant value.
- *  - testDataGenQuad : public KotekanProcess
+ *  - constDataCheck : public KotekanProcess
  */
 
 #ifndef CONST_DATA_CHECK_H
@@ -24,7 +24,7 @@
  *     @buffer_metadata none
  *
  * @conf   real        Int Array. Expected real component, will loop through the array on subsequent frames.
- * @conf   imag        Int Array.  Expected real component, will loop through the array on subsequent frames.
+ * @conf   imag        Int Array. Expected imag component, will loop through the array on subsequent frames.
  *
  * @author Andre Renard
  *
