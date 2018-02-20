@@ -16,6 +16,8 @@
 #include "hsaBarrier.hpp"
 #include "hsaBeamformKernel.hpp"
 #include "hsaBeamformPulsar.hpp"
+#include "hsaBeamformPulsarOneFeed.hpp"
+#include "hsaPulsarUpdatePhase.hpp"
 #include "hsaBeamformReorder.hpp"
 #include "hsaBeamformTranspose.hpp"
 #include "hsaBeamformUpchan.hpp"
@@ -52,7 +54,7 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_preseed_kernel") {
-            list_commands.push_back(new hsaPreseedKernel("ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii",
+            list_commands.push_back(new hsaPreseedKernel("CHIME_presum",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_input_data") {
@@ -77,6 +79,14 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_beamform_pulsar") {
             list_commands.push_back(new hsaBeamformPulsar("pulsarbf",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_beamform_pulsar_one_feed") {
+            list_commands.push_back(new hsaBeamformPulsarOneFeed("pulsarbf",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_pulsar_update_phase") {
+            list_commands.push_back(new hsaPulsarUpdatePhase("hsa_pulsar_update_phase",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_beamform_kernel") {

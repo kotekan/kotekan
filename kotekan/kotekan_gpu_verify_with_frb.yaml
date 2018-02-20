@@ -134,7 +134,7 @@ gpu:
   link_map: [0,1,2,3]
   num_gpus: 4
   block_size: 32
-  buffer_depth: 3
+  buffer_depth: 4
   n_intg: 24576 #16384
   samples_per_second: 390625
   frame_arrival_period: samples_per_data_set / samples_per_second

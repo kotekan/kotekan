@@ -37,6 +37,8 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
     }
 
+    log_profiling = config.get_bool_default(unique_name, "log_profiling", false);
+
     device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
 
     string g_log_level = config.get_string(unique_name, "log_level");
@@ -185,18 +187,29 @@ void hsaProcess::results_thread() {
     while (true) {
 
         // Wait for a signal to be completed
-        //INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        DEBUG2("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
         if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
         }
-        //INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        DEBUG2("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (uint32_t i = 0; i < commands.size(); ++i) {
             commands[i]->finalize_frame(gpu_frame_id);
         }
-        //INFO("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+        DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+
+        if (log_profiling) {
+            string output = "";
+            for (uint32_t i = 0; i < commands.size(); ++i) {
+                if (commands[i]->get_command_type() == CommandType::KERNEL) {
+                    output += "kernel: " + commands[i]->get_name() +
+                              " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; ";
+                }
+            }
+            INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
+        }
 
         final_signals[gpu_frame_id].reset();
 

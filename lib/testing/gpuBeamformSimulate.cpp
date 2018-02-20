@@ -1,6 +1,11 @@
 #include "gpuBeamformSimulate.hpp"
 #include "errors.h"
 #include <math.h>
+#include "fpga_header_functions.h"
+#include "chimeMetadata.h"
+#include <unistd.h>
+#include <stdlib.h>
+
 
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
 #define HI_NIBBLE(b)                    (((b) >> 4) & 0x0F)
@@ -39,6 +44,8 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     tmp128 = (double *)malloc(_factor_upchan*2*sizeof(double));
     cpu_final_output = (unsigned char *)malloc(output_len*sizeof(unsigned char));
 
+    cpu_gain = (float *) malloc(2*2048*sizeof(float));
+
     coff = (float *) malloc(16*2*sizeof(float));
     assert(coff != nullptr);
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
@@ -55,7 +62,6 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     for (uint i=0;i<512;++i){
         reorder_map_c[i] = _reorder_map[i];
     }
-
 }
 
 gpuBeamformSimulate::~gpuBeamformSimulate() {
@@ -65,6 +71,7 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
     free(clamping_output);
     free(cpu_beamform_output);
     free(coff);
+    free(cpu_gain);
     free(transposed_output);
     free(tmp128);
     free(cpu_final_output);
@@ -78,6 +85,7 @@ void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
     _downsample_time = config.get_int(unique_name, "downsample_time");
     _downsample_freq = config.get_int(unique_name, "downsample_freq");
     _reorder_map = config.get_int_array(unique_name, "reorder_map");
+    _gain_dir = config.get_string(unique_name, "gain_dir");
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
@@ -287,12 +295,35 @@ void gpuBeamformSimulate::main_thread() {
         for (int i=0;i<output_len;i++){
             cpu_final_output[i] = 0.0;
         }
+	for (int i=0;i<2048;i++){
+	  cpu_gain[i*2] = 1.0;
+	  cpu_gain[i*2+1] = 0.0;
+	}
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU beamform processing for %s[%d] putting result in %s[%d]",
                 input_buf->buffer_name, input_buf_id,
                 output_buf->buffer_name, output_buf_id);
+
+	stream_id_t stream_id = get_stream_id_t(input_buf, 0);
+	uint freq_now = bin_number_chime(&stream_id);
+	FILE *ptr_myfile;
+	char filename[512];
+	snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
+	if( access( filename, F_OK ) == -1 ) {
+	    // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
+	    snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
+	}
+	
+	ptr_myfile=fopen(filename,"rb");
+	if (ptr_myfile == NULL){
+	    ERROR("CPU verification code: Cannot open gain file %s", filename);
+	}
+	else {
+	    fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
+	    fclose(ptr_myfile);
+	}
 
 	//Reorder
 	reorder(input, reorder_map_c);
@@ -307,16 +338,24 @@ void gpuBeamformSimulate::main_thread() {
         // Pad to 512
         // TODO this can be simplified a fair bit.
         int index = 0;
-        for (int j = 0; j < _samples_per_data_set*2; j++){
-            for (int b = 0; b < nbeamsEW; b++){
-                for (int i = 0; i < 512; i++){
-                    if (i < 256){
-                        input_unpacked_padded[index++] = input_unpacked[2*(j*nbeams + b*nbeamsNS + i)];
-                        input_unpacked_padded[index++] = input_unpacked[2*(j*nbeams + b*nbeamsNS + i) + 1];
-                    } else{
-                        input_unpacked_padded[index++] = 0;
-                        input_unpacked_padded[index++] = 0;
-                    }
+        for (int j = 0; j < _samples_per_data_set; j++){
+	    for (int p=0;p<npol;p++){
+	        for (int b = 0; b < nbeamsEW; b++){
+		    for (int i = 0; i < 512; i++){
+		        if (i < 256){
+			    //Real
+			    input_unpacked_padded[index++] =
+			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
+			      -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+			    //Imag
+			    input_unpacked_padded[index++] =
+			      input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
+			      +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+			} else{
+			    input_unpacked_padded[index++] = 0;
+			    input_unpacked_padded[index++] = 0;
+			}
+		    }
                 }
             }
         }
@@ -379,7 +418,7 @@ void gpuBeamformSimulate::main_thread() {
 
         for (int i = 0; i < output_buf->frame_size; i++) {
             output[i] = (unsigned char)cpu_final_output[i];
-	    }
+	}
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
                 input_buf->buffer_name, input_buf_id,

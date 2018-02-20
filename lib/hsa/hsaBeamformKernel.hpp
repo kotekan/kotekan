@@ -23,6 +23,8 @@ public:
 
     void apply_config(const uint64_t& fpga_seq) override;
 
+    int wait_on_precondition(int gpu_frame_id) override;
+
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 
@@ -32,6 +34,12 @@ private:
     int32_t map_len;
     int32_t coeff_len;
     int32_t gain_len;
+    string _gain_dir;
+
+    Buffer * metadata_buf;
+    int32_t metadata_buffer_id;
+    int32_t metadata_buffer_precondition_id;
+    int32_t freq_now;
 
     uint32_t * host_map;
     float * host_coeff;

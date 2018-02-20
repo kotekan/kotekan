@@ -19,6 +19,8 @@ add_library ( kotekan_hsa
               hsaPresumZero.cpp
               hsaBeamformKernel.cpp
               hsaBeamformPulsar.cpp
+	      hsaBeamformPulsarOneFeed.cpp
+	      hsaPulsarUpdatePhase.cpp
               hsaBeamformReorder.cpp
               hsaBeamformTranspose.cpp
               hsaBeamformUpchan.cpp

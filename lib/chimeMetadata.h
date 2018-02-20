@@ -11,12 +11,19 @@ extern "C" {
 #endif
 
 #pragma pack()
+
+struct psrCoord {
+  float ra[10];
+  float dec[10];
+};
+
 struct chimeMetadata {
     int64_t fpga_seq_num;
     struct timeval first_packet_recv_time;
     struct timespec gps_time; // The GPS time of the fpga_seq_num.
     int32_t lost_timesamples;
     uint16_t stream_ID;
+    struct psrCoord psr_coord;
 };
 
 // Helper functions to save lots of pointer work
@@ -25,6 +32,12 @@ inline int64_t get_fpga_seq_num(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->fpga_seq_num;
+}
+
+inline struct psrCoord get_psr_coord(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->psr_coord;
 }
 
 inline int32_t get_lost_timesamples(struct Buffer * buf, int ID) {
@@ -73,6 +86,12 @@ inline void set_fpga_seq_num(struct Buffer * buf, int ID, int64_t seq) {
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     chime_metadata->fpga_seq_num = seq;
 }
+
+inline void set_psr_coord(struct Buffer * buf, int ID, struct psrCoord psr_coord) {
+    struct chimeMetadata * chime_metadata =
+      (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->psr_coord = psr_coord;
+  }
 
 inline void set_stream_id(struct Buffer * buf, int ID, uint16_t stream_id) {
     struct chimeMetadata * chime_metadata =

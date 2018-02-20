@@ -33,7 +33,7 @@ void constDataCheck::main_thread() {
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
-        //INFO("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        DEBUG("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
 
         bool error = false;
         num_errors = 0;
