@@ -240,7 +240,7 @@ int main(int argc, char ** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:d:s:",
+        opt_val = getopt_long (argc, argv, "ghc:d:s",
                                long_options, &option_index);
 
         // End of args
