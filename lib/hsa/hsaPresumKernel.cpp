@@ -13,6 +13,10 @@ hsaPresumKernel::hsaPresumKernel(
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
+
+    //pre-allocate GPU memory
+    device.get_gpu_memory_array("input", 0, input_frame_len);
+    device.get_gpu_memory_array("presum", 0, presum_len);
 }
 
 hsaPresumKernel::~hsaPresumKernel() {

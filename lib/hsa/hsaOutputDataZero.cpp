@@ -11,7 +11,7 @@ hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
     int num_elements = config.get_int(unique_name, "num_elements");
     _num_blocks = (int32_t)(num_elements / block_size) *
                     (num_elements / block_size + 1) / 2.;
-    output_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
+    output_len = _num_blocks * block_size * block_size * 2 * sizeof(int32_t);
 
     output_zeros = hsa_host_malloc(output_len);
     INFO("hsaOutputDataZero gpu[%d], Creating the output zero buffer: %p, len: %d",

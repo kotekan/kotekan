@@ -22,7 +22,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     // I don't really like this way of getting to correlator output size (AR)
-    corr_frame_len = _num_blocks * 32 * 32 * 2 * sizeof(int32_t);
+    corr_frame_len = _num_blocks * block_size * block_size * 2 * sizeof(int32_t);
     block_map_len = _num_blocks * 2 * sizeof(uint32_t);
 
 
@@ -31,7 +31,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     host_block_map = (uint32_t *)hsa_host_malloc(block_map_len);
     int block_id = 0;
     for (int y = 0; block_id < _num_blocks; y++) {
-        for (int x = y; x < _num_elements/32; x++) {
+        for (int x = y; x < _num_elements/block_size; x++) {
             host_block_map[2*block_id+0] = x;
             host_block_map[2*block_id+1] = y;
             block_id++;
@@ -52,6 +52,12 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     void * device_kernel_args = device.get_gpu_memory("corr_kernel_config", sizeof(corr_kernel_config_t));
     device.sync_copy_host_to_gpu(device_kernel_args, host_kernel_args, sizeof(corr_kernel_config_t));
 
+    //pre-allocate GPU memory
+    device.get_gpu_memory_array("input", 0, input_frame_len);
+    device.get_gpu_memory_array("presum", 0, presum_len);
+    device.get_gpu_memory_array("corr", 0, corr_frame_len);
+    device.get_gpu_memory("block_map", block_map_len);
+    device.get_gpu_memory("corr_kernel_config", sizeof(corr_kernel_config_t));
 }
 
 hsaCorrelatorKernel::~hsaCorrelatorKernel() {

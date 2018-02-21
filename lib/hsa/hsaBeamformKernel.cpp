@@ -89,7 +89,6 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
     if (first_pass){
-        void * host_memory_frame = (void *)metadata_buf->frames[metadata_buffer_id];
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_now = bin_number_chime(&stream_id); 
         float freq_MHz = freq_from_bin(freq_now);

@@ -17,7 +17,7 @@ hsaBarrier::~hsaBarrier() {
 hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
     // Get the queue index
-    uint64_t index = hsa_queue_add_write_index_acquire(device.get_queue(), 1);
+    uint64_t index = hsa_queue_add_write_index_scacquire(device.get_queue(), 1);
 
     // Make sure the queue isn't full
     // Should never hit this condition, but lets be safe.
@@ -37,7 +37,7 @@ hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
     barrier_and_packet->dep_signal[0] = precede_signal;
     barrier_and_packet->completion_signal = signals[gpu_frame_id];
 
-    while (0 < hsa_signal_cas_release(signals[gpu_frame_id], 0, 1));
+    while (0 < hsa_signal_cas_screlease(signals[gpu_frame_id], 0, 1));
 
 
     //Set packet header after packet body.

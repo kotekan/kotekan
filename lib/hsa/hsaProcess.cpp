@@ -126,6 +126,7 @@ void hsaProcess::main_thread()
     int gpu_frame_id = 0;
     bool first_run = true;
 
+    usleep(1000000);
     while (!stop_thread) {
 
         // Wait for all the required preconditions
@@ -133,8 +134,10 @@ void hsaProcess::main_thread()
         // and for there to be free space in the output buffers.
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (uint32_t i = 0; i < commands.size(); ++i) {
-            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0)
+            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0){
+                ERROR("Error waiting for an HSA command precondition! (%s)",commands[i]->get_name().c_str());
                 break;
+            }
         }
 
         //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
