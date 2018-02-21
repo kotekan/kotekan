@@ -31,7 +31,7 @@ void constDataCheck::main_thread() {
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
-        INFO("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        DEBUG("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
 
         bool error = false;
         num_errors = 0;
@@ -42,7 +42,7 @@ void constDataCheck::main_thread() {
             int32_t real = *((int32_t *)&(frame[(i+1)*sizeof(int32_t)]));
 
             if (real != ref_real || imag != ref_imag) {
-                if (num_errors++ < 10000)
+                if (num_errors++ < 1000)
                     ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di",
                         buf->buffer_name, frame_id, i/2,
                         ref_real, ref_imag, real, imag);

@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
 set (KOTEKAN_PROCESS_LIB_SOURCES
               beamformingPostProcess.cpp

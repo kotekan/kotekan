@@ -68,7 +68,6 @@ struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t obje
     CHECK_MEM(pool);
 
     pool->pool_size = num_metadata_objects;
-    pool->metadata_object_size = object_size;
     CHECK_ERROR( pthread_mutex_init(&pool->pool_lock, NULL) );
 
     pool->in_use = malloc(pool->pool_size * sizeof(int));

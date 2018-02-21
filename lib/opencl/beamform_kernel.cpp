@@ -1,12 +1,13 @@
 
 #include "beamform_kernel.h"
 #include "fpga_header_functions.h"
+#include "chimeMetadata.h"
 #include <string>
 
 using std::string;
 
-beamform_kernel::beamform_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config):
-    gpu_command(param_gpuKernel, param_name, param_config)
+beamform_kernel::beamform_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
 {
 
 }
@@ -19,9 +20,20 @@ beamform_kernel::~beamform_kernel()
 void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
 
-    _element_mask = config.get_int_array("/beamforming", "element_mask");
-    _inverse_product_remap = config.get_int_array("/processing", "inverse_product_remap");
-    _scale_factor = config.get_int("/beamforming", "scale_factor");
+    _element_mask = config.get_int_array(unique_name, "element_mask");
+    _product_remap = config.get_int_array(unique_name, "product_remap");
+    int remap_size = _product_remap.size();
+
+    if (remap_size != _num_elements) {
+    ERROR("The remap array must have the same size as the number of elements. array size %d, num_elements %d",
+        remap_size, _num_elements);
+    }
+    _inverse_product_remap.reserve(remap_size);
+    // Given a channel ID, where is it in FPGA order.
+    for(int i = 0; i < remap_size; ++i) {
+        _inverse_product_remap[_product_remap[i]] = i;
+    }
+    _scale_factor = config.get_int(unique_name, "scale_factor");
 }
 
 void beamform_kernel::build(class device_interface& param_Device)
@@ -98,7 +110,7 @@ cl_event beamform_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, 
     int64_t current_seq = get_fpga_seq_num(param_Device.getInBuf(), param_bufferID);
     int64_t bankID = (current_seq / phase_update_period) % 2;
 
-    int32_t streamID = get_streamID(param_Device.getInBuf(), param_bufferID);
+    int32_t streamID = get_stream_id(param_Device.getInBuf(), param_bufferID);
 
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
     setKernelArg(1, param_Device.get_device_beamform_output_buffer(param_bufferID));
