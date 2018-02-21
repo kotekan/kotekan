@@ -16,6 +16,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     if (type == "const")
         value = config.get_int(unique_name, "value");
     assert(type == "const" || type == "random");
+    _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
 }
 
 testDataGen::~testDataGen() {
@@ -33,6 +34,8 @@ void testDataGen::main_thread() {
     uint64_t seq_num = 0;
     bool finished_seeding_consant = false;
     static struct timeval now;
+
+    int link_id = 0;
 
     while (!stop_thread) {
         frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
@@ -70,7 +73,18 @@ void testDataGen::main_thread() {
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
-        seq_num += 32768;
+        
+        if (_pathfinder_test_mode == true){
+            //Test PF seq_num increment.
+            if (link_id == 7){
+                link_id = 0;
+                seq_num += 32768;
+            } else {
+                link_id++;
+            }
+        } else {
+            seq_num += 32768;
+        }
         if (frame_id == 0) finished_seeding_consant = true;
     }
 }
