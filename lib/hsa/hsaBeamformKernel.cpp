@@ -48,8 +48,7 @@ void hsaBeamformKernel::apply_config(const uint64_t& fpga_seq) {
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
 }
 
-int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
-{
+int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == NULL) return -1;
     metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
@@ -57,8 +56,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float *host_coeff) 
-{
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float *host_coeff) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
@@ -93,7 +91,6 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
 
 
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
     if (first_pass){
         void * host_memory_frame = (void *)metadata_buf->frames[metadata_buffer_id];
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);

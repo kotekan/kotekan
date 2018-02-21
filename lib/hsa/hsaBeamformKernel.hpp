@@ -23,7 +23,7 @@ public:
     void apply_config(const uint64_t& fpga_seq) override;
 
     int wait_on_precondition(int gpu_frame_id) override;
-    
+
     void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff);
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
