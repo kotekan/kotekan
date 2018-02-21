@@ -44,7 +44,6 @@ void timer::stop(string interval_name){
     int i;
 
     clock_t stop_time;
-    float interval;
 
     i = time_list[interval_name].size() - 1;
 
@@ -166,7 +165,7 @@ float timer::calculate_std(string interval_name){
 //    std::transform(time_list[interval_name].begin(), time_list[interval_name].end(), diff.begin()
 //    , [mean](const struct time_interval *  x) { return x->interval - mean; });
 //    , [mean](auto x) { return (*x)[0]->interval - mean; });
-    for (int i=0; i<time_list[interval_name].size(); i++)
+    for (uint32_t i=0; i<time_list[interval_name].size(); i++)
     {
         diff.push_back(time_list[interval_name][i]->interval - mean);
     }
@@ -188,8 +187,11 @@ void timer::time_opencl_single_kernel(cl_command_queue commands, cl_event profil
 
     clFinish(commands);
     err = clWaitForEvents(1, &profile_event );
+    if (err != CL_SUCCESS) ERROR("Error Waiting for CL profile event!");
     err = clGetEventProfilingInfo(profile_event, CL_PROFILING_COMMAND_START,sizeof(cl_ulong), &ev_start_time, &return_bytes);
+    if (err != CL_SUCCESS) ERROR("Couldn't Get Profiling Start Time!");
     err = clGetEventProfilingInfo(profile_event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ev_end_time, &return_bytes);
+    if (err != CL_SUCCESS) ERROR("Couldn't Get Profiling Stop Time!");
 
     auto it = time_list.find(interval_name);
 
@@ -239,6 +241,7 @@ void timer::time_opencl_multi_kernel(cl_event profile_event, string interval_nam
         i = time_list[interval_name].size() - 1;
 
         err = clSetEventCallback (profile_event, CL_COMPLETE, &profileCallback, (void *)time_list[interval_name][i]);
+        if (err != CL_SUCCESS) ERROR("Couldn't Set Profiling Callback!");
     }
 
 
@@ -270,7 +273,9 @@ void CL_CALLBACK profileCallback(cl_event ev, cl_int event_status, void * data){
     CHECK_ERROR( pthread_mutex_lock(&cur_profile->lock));
 
     err = clGetEventProfilingInfo( ev, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &ev_start_time, &return_bytes);
+    if (err != CL_SUCCESS) ERROR("Couldn't Get Profiling Start Time!");
     err = clGetEventProfilingInfo( ev, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ev_end_time, &return_bytes);
+    if (err != CL_SUCCESS) ERROR("Couldn't Set Profiling Stop Time!");
 
     cur_profile->start_time = (clock_t)ev_start_time;
 

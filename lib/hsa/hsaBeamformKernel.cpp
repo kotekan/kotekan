@@ -104,7 +104,10 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
             }
         }
         else {
-            fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+            uint32_t file_length = sizeof(float)*2*2048;
+            if (file_length != fread(host_gain,file_length,1,ptr_myfile)){
+                ERROR("Gain file wasn't long enough! Something went wrong, breaking...");
+            }
             fclose(ptr_myfile);
         }
         void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);

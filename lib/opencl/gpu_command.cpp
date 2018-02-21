@@ -75,7 +75,7 @@ void gpu_command::build(class device_interface &param_Device)
         program_buffer = (char*)malloc(program_size+1);
         program_buffer[program_size] = '\0';
         int sizeRead = fread(program_buffer, sizeof(char), program_size, fp);
-        if (sizeRead < program_size)
+        if (sizeRead < (int32_t)program_size)
             ERROR("Error reading the file: %s", gpuKernel);
         fclose(fp);
         program = clCreateProgramWithSource(param_Device.getContext(),

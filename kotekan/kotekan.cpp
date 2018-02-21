@@ -73,9 +73,6 @@ extern "C" {
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
-//#ifdef WITH_OPENCL
-//#include "timer.hpp"
-//#endif
 
 using json = nlohmann::json;
 
