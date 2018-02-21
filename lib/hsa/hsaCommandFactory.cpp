@@ -105,11 +105,11 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_rfi") {
-                list_commands.push_back(new hsaRfi("rfi_chime",
+            list_commands.push_back(new hsaRfi("rfi_chime",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_rfi_output") {
-                list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
+            list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else {
