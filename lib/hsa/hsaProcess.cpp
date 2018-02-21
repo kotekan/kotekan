@@ -128,7 +128,6 @@ void hsaProcess::main_thread()
     int gpu_frame_id = 0;
     bool first_run = true;
 
-    usleep(1000000);
     while (!stop_thread) {
 
         // Wait for all the required preconditions

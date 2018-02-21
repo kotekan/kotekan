@@ -16,6 +16,5 @@ public:
 
     void finalize_frame(int frame_id) override;
 };
-REGISTER_HSA_COMMAND(hsaBarrier);
 
 #endif
