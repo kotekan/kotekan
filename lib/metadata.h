@@ -161,6 +161,9 @@ struct metadataPool {
     /// The size of the @c metadataContainer array.
     unsigned int pool_size;
 
+    /// The size of the object stored by the metadata containers
+    size_t metadata_object_size;
+
     /// Locks requests for metadata to avoid race conditions.
     pthread_mutex_t pool_lock;
 };
