@@ -181,14 +181,6 @@ void set_gps_time(Config &config) {
 }
 
 int start_new_kotekan_mode(Config &config) {
-
-//    #ifdef WITH_OPENCL
-//        timer dummytimer; //Strange linker error; required to build
-//        time_interval dummyinterval; //Strange linker error; required to build
-//    #endif
-    stream_id_t dummy_stream_id; //More weird Linker stuff
-    uint32_t dummy_bin = bin_number(&dummy_stream_id, 1);
-
     config.dump_config();
     update_log_levels(config);
     set_gps_time(config);
