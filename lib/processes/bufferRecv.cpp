@@ -68,10 +68,10 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
                             instance->buf->frame_size, instance->buf_frame_header.frame_size);
                     throw std::runtime_error("Frame size does not match between server and client!");
                 }
-//                if (instance->buf->metadata_pool->metadata_object_size != instance->buf_frame_header.metadata_size) {
-//                    ERROR("Metadata size does not match between server and client!");
-//                    throw std::runtime_error("Metadata size does not match between server and client!");
-//                }
+                if (instance->buf->metadata_pool->metadata_object_size != instance->buf_frame_header.metadata_size) {
+                    ERROR("Metadata size does not match between server and client!");
+                    throw std::runtime_error("Metadata size does not match between server and client!");
+                }
             }
 
             break;
@@ -313,7 +313,7 @@ connInstance::connInstance(const string& producer_name,
                     {
     frame_space = (uint8_t *)malloc(buf->frame_size);
     CHECK_MEM(frame_space);
-//    metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
+    metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
     CHECK_MEM(metadata_space);
 }
 
