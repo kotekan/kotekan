@@ -41,8 +41,8 @@ frbPostProcess::frbPostProcess(Config& config_,
     //Dynamic header
     frb_header_beam_ids = new uint16_t[_nbeams];
     frb_header_coarse_freq_ids = new uint16_t[_nfreq_coarse];
-    frb_header_scale = new float[ 8 * _nbeams * _nfreq_coarse];
-    frb_header_offset = new float[8 *_nbeams * _nfreq_coarse];
+    frb_header_scale = new float[_nbeams * _nfreq_coarse];
+    frb_header_offset = new float[_nbeams * _nfreq_coarse];
 
 }
 
@@ -80,9 +80,9 @@ void frbPostProcess::fill_headers(unsigned char * out_buf,
 	    memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams], 
 		   frb_header_coarse_freq_ids, sizeof(uint16_t)*_nfreq_coarse);
 	    memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse], 
-		   &frb_header_scale[i*_nbeams*_nfreq_coarse], sizeof(float)*_nbeams*_nfreq_coarse);
+		   frb_header_scale, sizeof(float)*_nbeams*_nfreq_coarse);
 	    memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse + 4*_nbeams*_nfreq_coarse], 
-		   &frb_header_offset[i*_nbeams*_nfreq_coarse], sizeof(float)*_nbeams*_nfreq_coarse);
+		   frb_header_offset, sizeof(float)*_nbeams*_nfreq_coarse);
 	}
     }
 }
@@ -111,12 +111,12 @@ void frbPostProcess::main_thread() {
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
     uint8_t * in_frame[_num_gpus];
     int out_buffer_ID = 0;  
-    int startup = 1;
+    int startup = 1; //related to the likely & unlikely
 
     for (int i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
-    const uint32_t num_samples = _samples_per_data_set / _downsample_time / _factor_upchan ; //128
+    const uint32_t num_samples = _samples_per_data_set / _downsample_time / _factor_upchan ; //It is 100 for now, but should be 128.
     uint32_t current_input_location = 0; //goes from 0 to num_samples
 
     struct FRBHeader frb_header;
@@ -133,9 +133,9 @@ void frbPostProcess::main_thread() {
         frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
     }
     for (int ii=0;ii<_nfreq_coarse;++ii){
-        frb_header_coarse_freq_ids[ii] = 0;
+        frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
     }
-    for (int ii =0; ii<8*_nbeams * _nfreq_coarse;++ii){
+    for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
         frb_header_scale[ii] = 1.; 
 	frb_header_offset[ii] = 0;
     }
@@ -158,6 +158,7 @@ void frbPostProcess::main_thread() {
 	    //INFO("GPU Post process got full buffer ID %d for GPU %d", in_buffer_ID[i],i);
 	}
         //INFO("frb_post_process; got full set of GPU output buffers");
+
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
         for (int i = 0; i < _num_gpus; ++i) {
@@ -168,72 +169,75 @@ void frbPostProcess::main_thread() {
             float freq_now = bin_number_chime(&stream_id);
             frb_header_coarse_freq_ids[i] = freq_now;
 	}
-	fpga_seq_num = first_seq_number;
-	if (unlikely(startup == 1)) {
-	    startup = 0;
-	    current_input_location = 0;
-	}
-	if (likely(startup == 0)) {
-	    for (uint i = current_input_location; i < num_samples; ++i) { //up to 128
-	        if (in_frame_location == 16) { //last sample
-		    in_frame_location = 0;
-		    frame++;
-		    if (frame == 8) { //last frame
+
+        // If this is the first time wait until we get the start of an interger second period.
+        if (unlikely(startup == 1)) {
+	    // testing sync code
+            startup = 0;
+            current_input_location = 0;
+
+            // Fill the first output buffer headers
+	    fpga_seq_num = first_seq_number;
+	    fill_headers((unsigned char*)out_frame,
+			 &frb_header,
+			 first_seq_number,
+			 num_L1_streams,
+			 (uint16_t*)frb_header_coarse_freq_ids,
+			 (float*)frb_header_scale,
+			 (float*)frb_header_offset);
+        }
+
+        // This loop which takes data from the input buffer and formats the output.
+        if (likely(startup == 0)) {
+
+            for (uint i = current_input_location; i < num_samples; ++i) {
+  	        if (in_frame_location == 16) { //last sample
+                    in_frame_location = 0;
+                    frame++;
+                    if (frame == 8) { //last frame
 		        frame = 0;
 			mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
-			out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;
+                        // Get a new output buffer
+                        out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;
 			out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
 			if (out_frame == NULL) goto end_loop;
-		    } //end if last frame
-		} //end if last sample
+			    // Fill the headers of the new buffer
+			    fpga_seq_num += 16*8*_fpga_counts_per_sample;
+			    fill_headers((unsigned char*)out_frame,
+					 &frb_header,
+					 fpga_seq_num,
+					 num_L1_streams, 
+					 (uint16_t*)frb_header_coarse_freq_ids,
+					 (float*)frb_header_scale,
+					 (float*)frb_header_offset);
+                    } //end if last frame
+                } //end if last sample
+
 		unsigned char * out_buf = (unsigned char*)out_frame;
 		for (int thread_id = 0; thread_id < _num_gpus; ++thread_id) { //loop the 4 GPUs (input)
-		    float * in_buf_data = (float *)in_frame[thread_id];
-		    //Scale and offset
-		    for (int b=0; b<_nbeams;b++){ //1024
-		        for (int t=0;t<8;t++){ //packets
-			    float max = in_buf_data[b*num_samples*16+ (t*16)*16]; //initialize
-			    float min = in_buf_data[b*num_samples*16+ (t*16)*16]; //initialize
-			    for (int tt=0;tt<16;tt++){
-			        for (int ff=0;ff<16;ff++){
-				    int id = b*num_samples*16+ (t*16+tt)*16 +ff;
-				    if (in_buf_data[id] > max) max = in_buf_data[id];
-				    if (in_buf_data[id] < min) min = in_buf_data[id];
-				}
-			    }
-			    frb_header_scale[(t*_nbeams*_nfreq_coarse)  +b*_nfreq_coarse+thread_id] = (max-min)/255.; 
-			    frb_header_offset[(t*_nbeams*_nfreq_coarse) +b*_nfreq_coarse+thread_id] = 255-max/(max-min)*255.;
-			} // end t
-		    } // end nbeam		 
+		    unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
 		    for (int stream = 0; stream<num_L1_streams; ++stream) { //loop the output buffer  256 streams
-		        for (int beam = 0; beam<_nbeams; ++beam){   //4 beams
+ 		        for (int beam = 0; beam<_nbeams; ++beam){   //4 beams
 			    for (int freq = 0; freq < _factor_upchan_out; ++freq) { //loop 16
-			        uint32_t out_index = stream*_udp_packet_size*8 + frame * _udp_packet_size 
-				  + beam*_num_gpus*16*16 + thread_id*16*16   + freq*16 + in_frame_location + _udp_header_size;
-				float scale = frb_header_scale[(frame*_nbeams*_nfreq_coarse)  +(stream*4+beam)*_nfreq_coarse+thread_id];
-				float offset = frb_header_scale[(frame*_nbeams*_nfreq_coarse) +(stream*4+beam)*_nfreq_coarse+thread_id];
-				out_buf[out_index] = int(in_buf_data[ (stream*_nbeams+beam)*num_samples*16 + i*16 + freq]/scale + offset);
+				uint32_t out_index = stream*_udp_packet_size*8 + frame * _udp_packet_size 
+				                       + beam*_num_gpus*16*16 
+				                       + thread_id*16*16   + freq*16 + in_frame_location + _udp_header_size;
+				out_buf[out_index] = in_buf_data[ (stream*_nbeams+beam)*num_samples*16 + i*16 + freq];
 			    } //end loop freq
 			} //end loop beam
 		    } //end loop streams
 		} //end loop 4 GPUs
 		in_frame_location++;
-	    } //end looping 128 time samples 
+	    } //end looping 100 time samples 
 	    current_input_location = 0;
 	} //end if not start up
 
-	fill_headers((unsigned char*)out_frame,
-		     &frb_header,
-		     fpga_seq_num,
-		     num_L1_streams,
-		     (uint16_t*)frb_header_coarse_freq_ids,
-		     (float*)frb_header_scale,
-		     (float*)frb_header_offset);
-	
         // Release the input buffers
 	for (int i = 0; i < _num_gpus; ++i) {
+	    //release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
 	    mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
 	    in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
+
         }
     } //end stop thread
     end_loop:;
