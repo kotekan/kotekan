@@ -1,7 +1,7 @@
 #include "output_data_result.h"
 
-output_data_result::output_data_result(const char* param_name, Config &param_config):
-    gpu_command(param_name, param_config)
+output_data_result::output_data_result(const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_name, param_config, unique_name)
 {
 }
 

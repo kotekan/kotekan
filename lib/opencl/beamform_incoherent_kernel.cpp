@@ -2,8 +2,8 @@
 #include "beamform_incoherent_kernel.h"
 #include "fpga_header_functions.h"
 
-beamform_incoherent_kernel::beamform_incoherent_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config):
-    gpu_command(param_gpuKernel, param_name, param_config)
+beamform_incoherent_kernel::beamform_incoherent_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
 {
 
 }

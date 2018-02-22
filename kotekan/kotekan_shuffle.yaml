@@ -200,20 +200,20 @@ accumulate:
 #    file_name: corr_gpu3
 
 #check_data:
-#  real: 8388608
-#  imag: 0
+#  real: [8388608]
+#  imag: [0]
 #  const_data_check_0:
 #    kotekan_process: constDataCheck
-#    buf: file_output_buffer_0
+#    in_buf: file_output_buffer_0
 #  const_data_check_1:
 #    kotekan_process: constDataCheck
-#    buf: file_output_buffer_1
+#    in_buf: file_output_buffer_1
 #  const_data_check_2:
 #    kotekan_process: constDataCheck
-#    buf: file_output_buffer_2
+#    in_buf: file_output_buffer_2
 #  const_data_check_3:
 #    kotekan_process: constDataCheck
-#    buf: file_output_buffer_3
+#    in_buf: file_output_buffer_3
 
 metadata_dump_0:
   kotekan_process: chimeMetadataDump

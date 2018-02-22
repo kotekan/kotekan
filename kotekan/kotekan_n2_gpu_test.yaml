@@ -91,6 +91,7 @@ gpu:
   # Internal N^2 kernel parameter, only needed for N2.hsaco
   n_intg: 16384
   frame_arrival_period: samples_per_data_set / 390625
+  log_profiling: true
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
@@ -121,17 +122,18 @@ gpu:
       output_buf: gpu_output_buffer_3
 
 check_data:
-  real: 65536
-  imag: 0
+  real: [65536]
+  imag: [0]
+  log_level: WARN
   const_data_check_0:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_0
+    in_buf: gpu_output_buffer_0
   const_data_check_1:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_1
+    in_buf: gpu_output_buffer_1
   const_data_check_2:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_2
+    in_buf: gpu_output_buffer_2
   const_data_check_3:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_3
+    in_buf: gpu_output_buffer_3

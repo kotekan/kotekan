@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
 set (KOTEKAN_PROCESS_LIB_SOURCES
               beamformingPostProcess.cpp
@@ -10,7 +10,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fullPacketDump.cpp
               gpuPostProcess.cpp
               frbPostProcess.cpp
-	      pulsarPostProcess.cpp
+              pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
@@ -29,10 +29,13 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
-              frbNetworkProcess.cpp
-              pulsarNetworkProcess.cpp
+              fakeVis.cpp
               frbPostProcess_in.cpp
               )
+
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp)
+endif ()
 
 if (${USE_DPDK})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
@@ -48,7 +51,7 @@ endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} hdf5Writer.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
 endif ()
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
