@@ -16,9 +16,6 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
 hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
     config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
 
-    //Make a dummy instance for the static factory...
-    if (gpu_id < 0) return;
-
     hsa_status_t hsa_status;
 
     // Function parameters

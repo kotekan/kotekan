@@ -21,9 +21,8 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
     if (unique_name == "") return;
     vector<json> commands = config.get_json_array(unique_name, "commands");
 
-    auto fac = hsaCommandFactory::Instance();
     for (uint32_t i = 0; i < commands.size(); i++){
-        auto cmd = fac.create(commands[i]["name"], config, unique_name, host_buffers, device);
+        auto cmd = create(commands[i]["name"], config, unique_name, host_buffers, device);
         list_commands.push_back(cmd);
     }
 }
@@ -38,20 +37,15 @@ vector<hsaCommand*>& hsaCommandFactory::get_commands() {
     return list_commands;
 }
 
-hsaCommandFactory& hsaCommandFactory::Instance() {
-    static hsaCommandFactory factory(*new Config(),"",*new bufferContainer(),
-                                     *new hsaDeviceInterface(*new Config(), -1, -1));
-    return factory;
-}
-
 hsaCommand* hsaCommandFactory::create(const string &name,
                                       Config& config,
                                       const string &unique_name,
                                       bufferContainer &host_buffers,
                                       hsaDeviceInterface& device) const
 {
-    auto i = _hsa_commands.find(name);
-    if (i == _hsa_commands.end())
+    auto fac = hsaCommandFactoryRegistry::Instance();
+    auto i = fac._hsa_commands.find(name);
+    if (i == fac._hsa_commands.end())
     {
         ERROR("Unrecognized HSA command! (%s)", name.c_str());
     }
@@ -59,7 +53,16 @@ hsaCommand* hsaCommandFactory::create(const string &name,
     return maker->create(config,unique_name,host_buffers,device);
 }
 
-void hsaCommandFactory::hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd)
+
+
+hsaCommandFactoryRegistry::hsaCommandFactoryRegistry(){}
+
+hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::Instance() {
+    static hsaCommandFactoryRegistry factory;
+    return factory;
+}
+
+void hsaCommandFactoryRegistry::hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd)
 {
     if (_hsa_commands.find(key) != _hsa_commands.end())
     {
@@ -67,4 +70,3 @@ void hsaCommandFactory::hsaRegisterCommand(const std::string& key, hsaCommandMak
     }
     _hsa_commands[key] = cmd;
 }
-

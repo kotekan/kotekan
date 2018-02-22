@@ -36,10 +36,6 @@ public:
     // This should only be called once.
     map<string, KotekanProcess *> build_processes();
 
-    //Add the process to the registry.
-    void kotekanRegisterProcess(const std::string& key, kotekanProcessMaker* cmd);
-    static processFactory& Instance();
-
 private:
 
     void build_from_tree(map<string, KotekanProcess *> &processes, json &config_tree, const string &path);
@@ -48,8 +44,6 @@ private:
     Config &config;
     bufferContainer &buffer_container;
 
-private:
-    std::map<std::string, kotekanProcessMaker*> _kotekan_processes;
 
     KotekanProcess *create(const string &name,
                        Config& config,
@@ -57,6 +51,17 @@ private:
                        bufferContainer &host_buffers) const;
 };
 
+class processFactoryRegistry {
+public:
+    static processFactoryRegistry& Instance();
+    std::map<std::string, kotekanProcessMaker*> _kotekan_processes;
+
+    //Add the process to the registry.
+    void kotekanRegisterProcess(const std::string& key, kotekanProcessMaker* cmd);
+
+private:
+    processFactoryRegistry();
+};
 
 template<typename T>
 class kotekanProcessMakerTemplate : public kotekanProcessMaker
@@ -65,7 +70,7 @@ class kotekanProcessMakerTemplate : public kotekanProcessMaker
         kotekanProcessMakerTemplate(const std::string& key)
         {
             printf("Registering a KotekanProcess! %s\n",key.c_str());
-            processFactory::Instance().kotekanRegisterProcess(key, this);
+            processFactoryRegistry::Instance().kotekanRegisterProcess(key, this);
         }
         virtual KotekanProcess *create(Config &config, const string &unique_name,
                     bufferContainer &host_buffers) const

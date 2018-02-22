@@ -51,7 +51,7 @@ gpu_input_buffers:
 
 beamform_output_buffesrs:
     num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams
     metadata_pool: main_pool
     beamform_output_buffer_0:
         kotekan_buffer: standard
@@ -183,20 +183,20 @@ gpu:
 #  frb_out_buf: frb_output_buffer
 
 check_data:
-  real: 98304
-  imag: 0
+  real: [98304]
+  imag: [0]
   const_data_check_0:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_0
+    in_buf: gpu_output_buffer_0
   const_data_check_1:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_1
+    in_buf: gpu_output_buffer_1
   const_data_check_2:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_2
+    in_buf: gpu_output_buffer_2
   const_data_check_3:
     kotekan_process: constDataCheck
-    buf: gpu_output_buffer_3
+    in_buf: gpu_output_buffer_3
 
 #accumulate:
 #    acc_0:
