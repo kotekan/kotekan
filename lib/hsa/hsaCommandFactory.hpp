@@ -68,7 +68,7 @@ class hsaCommandMakerTemplate : public hsaCommandMaker
             return new T(config, unique_name, host_buffers, device);
         }
 }; 
-#define REGISTER_HSA_COMMAND(T) static hsaCommandMakerTemplate<T> maker(#T);
+#define REGISTER_HSA_COMMAND(T) static hsaCommandMakerTemplate<T> maker##T(#T);
 
 #include "hsaCommand.hpp"
 
