@@ -70,6 +70,7 @@ extern "C" {
 #include "kotekanMode.hpp"
 #include "gpsTime.h"
 #include "KotekanProcess.hpp"
+#include "prometheusMetrics.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -357,17 +358,17 @@ int main(int argc, char ** argv) {
         conn.send_json_reply(reply);
     });
 
-    rest_server->register_get_callback("/metrics", [&](connectionInstance &conn){
-        std::lock_guard<std::mutex> lock(kotekan_state_lock);
-        if (running) {
-            conn.send_text_reply("kotekan_running 1\n");
-        } else {
-            conn.send_text_reply("kotekan_running 0\n");
-        }
-      });
+    prometheusMetrics * metrics = prometheusMetrics::instance();
+    metrics->register_with_server(rest_server);
 
     for(EVER){
         sleep(1);
+        // Update running state
+        {
+            std::lock_guard<std::mutex> lock(kotekan_state_lock);
+            metrics->add_process_metric("running", "main", running);
+        }
+
         if (sig_value == SIGINT) {
             INFO("Got SIGINT, shutting down kotekan...");
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
