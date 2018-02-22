@@ -42,8 +42,7 @@ hsaBeamformKernel::~hsaBeamformKernel() {
     // TODO Free device memory allocations.
 }
 
-int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
-{
+int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == NULL) return -1;
     metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
@@ -51,8 +50,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id)
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float *host_coeff) 
-{
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float *host_coeff) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
@@ -87,10 +85,9 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
 
 
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
     if (first_pass){
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-        freq_now = bin_number_chime(&stream_id); 
+        freq_now = bin_number_chime(&stream_id);
         float freq_MHz = freq_from_bin(freq_now);
         FILE *ptr_myfile;
         char filename[256];

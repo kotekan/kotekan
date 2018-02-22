@@ -50,11 +50,11 @@ void hsaBeamformOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     pass_metadata(network_buffer, network_buffer_id,
-                  output_buffer,  output_buffer_id);
+                  output_buffer, output_buffer_id);
 
 // NOTE: HACK TO ALLOW RUN ALONGSIDE N2! WILL NOT WORK INDEPENDENTLY!
 //    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
-    mark_frame_full(  output_buffer, unique_name.c_str(), output_buffer_id);
+    mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
-    output_buffer_id  =  (output_buffer_id + 1) %  output_buffer->num_frames;
+    output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
 }
