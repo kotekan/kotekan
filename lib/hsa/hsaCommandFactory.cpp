@@ -22,6 +22,7 @@
 #include "hsaBeamformTranspose.hpp"
 #include "hsaBeamformUpchan.hpp"
 #include "hsaBeamformOutput.hpp"
+#include "hsaBeamformOutputSolo.hpp"
 #include "hsaRfiVdif.hpp"
 #include "hsaRfi.hpp"
 #include "hsaRfiOutput.hpp"
@@ -98,6 +99,10 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_beamform_output") {
             list_commands.push_back(new hsaBeamformOutputData("hsa_beamform_output",
+                    commands[i]["kernel"].get<string>(),
+                    device, config, host_buffers, unique_name));
+        } else if (commands[i]["name"] == "hsa_beamform_output_solo") {
+            list_commands.push_back(new hsaBeamformOutputDataSolo("hsa_beamform_output_solo",
                     commands[i]["kernel"].get<string>(),
                     device, config, host_buffers, unique_name));
         } else if (commands[i]["name"] == "hsa_rfi_vdif") {

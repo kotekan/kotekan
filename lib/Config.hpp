@@ -29,6 +29,7 @@ public:
     int32_t get_int_eval(const string& base_path, const string& name);
 
     uint64_t get_uint64(const string& base_path, const string& name);
+    uint64_t get_uint64_default(const string& base_path, const string& name, uint64_t default_value);
 
     float get_float(const string& base_path, const string& name);
     // Same as get_float, but if it cannot find the value, it returns `default_value`

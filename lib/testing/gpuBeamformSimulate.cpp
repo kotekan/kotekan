@@ -15,8 +15,8 @@
 #define feed_sep 0.3048
 #define light 3.e8
 #define Freq_ref 492.125984252
-#define freq1 450.
-#define scaling 400.
+#define freq1 800. //in simulation mode, no freq from dpdk, which shows up as freq bin 0 = 800MHz
+#define scaling 4000.
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         const string& unique_name,
@@ -283,6 +283,7 @@ void gpuBeamformSimulate::main_thread() {
         unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
         if (input == NULL) break;
         unsigned char * output = (unsigned char *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+
         if (output == NULL) break;
 
         for (int i=0;i<input_len;i++){
@@ -311,15 +312,14 @@ void gpuBeamformSimulate::main_thread() {
 	FILE *ptr_myfile;
 	char filename[512];
 	snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
-	if( access( filename, F_OK ) == -1 ) {
-	    // file doesn't exists (since some freq are missing), for those freq we just read in 1+0j
-	    snprintf(filename, sizeof(filename), "%s/dummy.bin", _gain_dir.c_str());
-	}
-	
-	ptr_myfile=fopen(filename,"rb");
+
 	if (ptr_myfile == NULL){
 	    ERROR("CPU verification code: Cannot open gain file %s", filename);
-	}
+	    for (int i=0;i<2048;i++){
+	        cpu_gain[i*2] = 1.0;
+		cpu_gain[i*2+1] = 0.0;
+	    }
+        }
 	else {
 	    fread(cpu_gain,sizeof(float)*2*2048,1,ptr_myfile);
 	    fclose(ptr_myfile);
@@ -415,8 +415,7 @@ void gpuBeamformSimulate::main_thread() {
 		}
 	    }
         }
-
-        for (int i = 0; i < output_buf->frame_size; i++) {
+	for (int i = 0; i < output_buf->frame_size; i++) {
             output[i] = (unsigned char)cpu_final_output[i];
 	}
 
