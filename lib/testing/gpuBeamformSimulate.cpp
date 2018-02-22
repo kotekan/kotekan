@@ -384,7 +384,7 @@ void gpuBeamformSimulate::main_thread() {
             for (int n=0;n <  _samples_per_data_set/_factor_upchan; n++){
                 int index=0;
                 for (int i=0;i< _factor_upchan;i++){
-                    tmp128[index++] = transposed_output[(b*(_samples_per_data_set+32)        +n*_factor_upchan+i)*2];
+                    tmp128[index++] = transposed_output[(b*(_samples_per_data_set+32) +n*_factor_upchan+i)*2];
                     tmp128[index++] = transposed_output[(b*(_samples_per_data_set+32) +n*_factor_upchan+i)*2+1];
                 }
                 upchannelize(tmp128, _factor_upchan);
@@ -416,7 +416,7 @@ void gpuBeamformSimulate::main_thread() {
                   }
                   float tmp = out_sq/48./scaling;
                   if (tmp > 255) tmp = 255;
-                  cpu_final_output[out_id] = round(tmp);
+                  cpu_final_output[out_id] = roundf(tmp);
                 }
             }
         }

@@ -115,6 +115,7 @@ else()
                   "/opt/rocm/lib/opencl.amdgcn.bc"
                   "/opt/rocm/lib/ockl.amdgcn.bc"
                   "/opt/rocm/lib/irif.amdgcn.bc"
+                  "/opt/rocm/lib/ocml.amdgcn.bc"
                   "-o" ${lnkdbcfile}
           COMMAND "/opt/rocm/opencl/bin/x86_64/opt"
                   "-O2"
