@@ -136,7 +136,7 @@ void hsaProcess::main_thread()
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (uint32_t i = 0; i < commands.size(); ++i) {
             if (commands[i]->wait_on_precondition(gpu_frame_id) != 0){
-                ERROR("Error waiting for an HSA command precondition! (Command %i, '%s')",i,commands[i]->get_name().c_str());
+                ERROR("Received exit in HSA command precondition! (Command %i, '%s')",i,commands[i]->get_name().c_str());
                 break;
             }
         }

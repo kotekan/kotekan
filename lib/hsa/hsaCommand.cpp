@@ -126,6 +126,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     hsa_status_t hsa_status;
 
     // Open file.
+    INFO("Loading %s %s",file_name.c_str(), kernel_name.c_str());
     std::ifstream file(file_name, std::ios::in | std::ios::binary);
     assert(file.is_open() && file.good());
 

@@ -212,7 +212,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
         bufferevent_setcb(bev, &bufferRecv::read_callback, NULL,
                                &bufferRecv::error_callback, (void *)instance);
         size_t expected_size = sizeof(struct bufferFrameHeader) +
-//                                accept_args->buf->metadata_pool->metadata_object_size +
+                                accept_args->buf->metadata_pool->metadata_object_size +
                                 accept_args->buf->frame_size;
         bufferevent_setwatermark(bev, EV_READ, expected_size, 0);
         const int timeout_sec = 30;

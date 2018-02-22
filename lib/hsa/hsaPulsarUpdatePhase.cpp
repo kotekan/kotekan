@@ -105,7 +105,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
         double az = (sin(psr_coord.dec[b]*D2R) - sin(alt)*sin(inst_lat*D2R))/(cos(alt)*cos(inst_lat*D2R));
         az = acos(az);
         if(sin(hour_angle*D2R) >= 0){az = TAU - az;}
-        
+
         double projection_angle, effective_angle, offset_distance;
         for(int i = 0; i < _num_elements; ++i){
             //Why does this not depend on the frequency? CHECK
@@ -125,7 +125,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     //From the metadata, figure out the frequency
     stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
     freq_now = bin_number_chime(&stream_id);
-    
+
     //GPS time, need ch_master
     /*struct timespec time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
     time_now = get_gps_time(metadata_buf, metadata_buffer_id);
@@ -170,7 +170,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     // Do the data copy. Now I am doing async everytime there is new data 
     //(i.e., when main_thread is being called, in principle I just need to copy in 
     //when there is an update, which is of slower cadence. Down the road optimization
-    
+
     // Get the gpu memory pointer. i will need multiple frame, 
     //because while it has been sent away for async copy, the next update might be happening.
     void * gpu_memory_frame = device.get_gpu_memory("beamform_phase", 
@@ -193,7 +193,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
             INFO("Reading phase from CPU bank id=1");
             device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_1, phase_frame_len, precede_signal, signals[gpu_frame_id]);
         }
-    }         
+    }
     return signals[gpu_frame_id];
 }
 

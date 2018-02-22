@@ -65,21 +65,17 @@ cpu_output_buffers:
 #  network_out_buf_3: gpu_input_buffer_3
 
 gpu:
+  kernel_path: "../lib/hsa/kernels/"
+#  gain_dir: "../../kotekan/"
+  gain_dir: "./"
   commands:
-  - name: hsa_input_data
-    kernel: ''
-  - name: hsa_barrier
-    kernel: ''
-  - name: hsa_beamform_reorder
-    kernel: "../lib/hsa/kernels/reorder.hsaco"
-  - name: hsa_beamform_kernel
-    kernel: "../lib/hsa/kernels/unpack_shift_beamform.hsaco"
-  - name: hsa_beamform_transpose
-    kernel: "../lib/hsa/kernels/transpose.hsaco"
-  - name: hsa_beamform_upchan
-    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
-  - name: hsa_beamform_output_solo
-    kernel: ''
+  - name: hsaInputData
+  - name: hsaBarrier
+  - name: hsaBeamformReorder
+  - name: hsaBeamformKernel
+  - name: hsaBeamformTranspose
+  - name: hsaBeamformUpchan
+  - name: hsaBeamformOutputSolo
   block_size: 32
   buffer_depth: 3
   frame_arrival_period: samples_per_data_set / 390625
