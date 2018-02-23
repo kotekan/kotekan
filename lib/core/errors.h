@@ -1,7 +1,7 @@
 #ifndef ERRORS
 #define ERRORS
 
-#define __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS 1
 #include <syslog.h>
 #include <stdlib.h>
 #include <inttypes.h>
