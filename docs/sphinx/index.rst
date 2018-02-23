@@ -2,10 +2,8 @@
 Welcome to Kotekan's documentation!
 ====================================
 
-Overview
--------------
-
 .. toctree::
+   :caption: Overview
    :maxdepth: 1
 
    overview
@@ -13,27 +11,24 @@ Overview
    overview_compiling
 
 
-User's Guide
--------------
+.. toctree::
+   :caption: User's Guide
+   :maxdepth: 1
+
+   user/user_introduction
+   user/user_config
+   user/user_operation
+
+
 
 .. toctree::
-   :maxdepth: 2
+   :caption: Developer's Guide
+   :maxdepth: 1
 
-   user_introduction
-   user_config
-   user_operation
+   dev/dev_introduction
+   dev/dev_buffers
+   dev/dev_processes
+   dev/dev_rest_endpoints
+   dev/dev_style_guide
 
-
-
-Developer's Guide
------------------
-
-.. toctree::
-   :maxdepth: 2
-
-   dev_introduction
-   dev_buffers
-   dev_processes
-   dev_rest_endpoints
-   dev_style_guide
-
+You can also peruse the full `doxygen docs <doxygen/>`_.

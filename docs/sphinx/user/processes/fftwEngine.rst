@@ -1,0 +1,5 @@
+*************
+fftwEngine
+*************
+
+.. doxygenclass:: fftwEngine

@@ -12,14 +12,15 @@ public:
                   const string& unique_name,
                   bufferContainer &buffer_container);
     virtual ~pulsarPostProcess();
-    void main_thread();
-    virtual void apply_config(uint64_t fpga_seq);
+    void main_thread() override;
+    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
     void fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
-		  const uint32_t gps_time,
+		  struct timeval * time_now,
+		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids);
   
     struct Buffer **in_buf;
@@ -34,7 +35,7 @@ private:
     int32_t _timesamples_per_pulsar_packet;
     int32_t _udp_packet_size;
     int32_t _udp_header_size;
-
+    struct timeval time_now;
 };
 
 #endif

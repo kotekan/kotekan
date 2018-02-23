@@ -31,9 +31,9 @@ freq: 1421.    #MHz
 airspy_input:
   kotekan_process: airspyInput
   out_buf: input_buf
-  gain_lna: 14 #0-14
-  gain_mix: 6 #0-15
-  gain_if:  6 #0-15
+  gain_lna: 10 #0-14
+  gain_mix: 10 #0-15
+  gain_if:  10 #0-15
   biast_power: false
 
 spectrum_output:

@@ -39,9 +39,16 @@
 #include "bufferSend.hpp"
 #include "bufferRecv.hpp"
 #include "simpleAutocorr.hpp"
+#include "fakeVis.hpp"
+#include "fakeGpuBuffer.hpp"
+#include "rfiVDIF.hpp"
+#include "rfiBroadcastVDIF.hpp"
+#include "frbNetworkProcess.hpp"
+#include "pulsarNetworkProcess.hpp"
+#include "frbPostProcess_in.hpp"
 
 #ifdef WITH_HDF5
-    #include "hdf5Writer.hpp"
+    #include "visWriter.hpp"
 #endif
 #ifdef WITH_HSA
     #include "hsaProcess.hpp"
@@ -148,6 +155,15 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     if (name == "pulsarPostProcess") {
         return (KotekanProcess *) new pulsarPostProcess(config, location, buffer_container);
     }
+    if (name == "frbNetworkProcess") {
+        return (KotekanProcess *) new frbNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "pulsarNetworkProcess") {
+        return (KotekanProcess *) new pulsarNetworkProcess(config, location, buffer_container);
+    }
+    if (name == "frbPostProcess_in") {
+        return (KotekanProcess *) new frbPostProcess_in(config, location, buffer_container);
+    }
 
     if (name == "nDiskFileWrite") {
         return (KotekanProcess *) new nDiskFileWrite(config, location, buffer_container);
@@ -183,6 +199,14 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
 
     if (name == "vdifStream") {
         return (KotekanProcess *) new vdifStream(config, location, buffer_container);
+    }
+
+    if (name == "rfiVDIF") {
+        return (KotekanProcess *) new rfiVDIF(config, location, buffer_container);
+    }
+
+    if (name == "rfiBroadcastVDIF") {
+        return (KotekanProcess *) new rfiBroadcastVDIF(config, location, buffer_container);
     }
 
 #ifdef WITH_AIRSPY
@@ -253,13 +277,28 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new chimeMetadataDump(config, location, buffer_container);
     }
 
+#ifdef WITH_HDF5
     // HDF5
-    if (name == "hdf5Writer") {
-        #ifdef WITH_HDF5
-            return (KotekanProcess *) new hdf5Writer(config, location, buffer_container);
-        #else
-            throw std::runtime_error("hdf5Writer is not supported on this system");
-        #endif
+    if (name == "visWriter") {
+        return (KotekanProcess *) new visWriter(config, location, buffer_container);
+    }
+    // vis processes
+    if (name == "visTransform") {
+        return (KotekanProcess *) new visTransform(config, location, buffer_container);
+    }
+    if (name == "visDebug") {
+        return (KotekanProcess *) new visDebug(config, location, buffer_container);
+    }
+#endif
+
+    // Generate fake visbilities
+    if (name == "fakeVis") {
+        return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+
+    // Generate fake visbilities in GPU buffer format
+    if (name == "fakeGpuBuffer") {
+        return (KotekanProcess *) new fakeGpuBuffer(config, location, buffer_container);
     }
 
     if (name == "bufferSend") {
