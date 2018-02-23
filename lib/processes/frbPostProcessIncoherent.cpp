@@ -12,7 +12,7 @@ using std::string;
 # define unlikely(x)    __builtin_expect(!!(x), 0)
 
 #include "buffer.h"
-#include "frbPostProcess_in.hpp"
+#include "frbPostProcessIncoherent.hpp"
 #include "Config.hpp"
 #include "util.h"
 #include "errors.h"
@@ -20,13 +20,13 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
-REGISTER_KOTEKAN_PROCESS(frbPostProcess_in);
+REGISTER_KOTEKAN_PROCESS(frbPostProcessIncoherent);
 
-frbPostProcess_in::frbPostProcess_in(Config& config_,
+frbPostProcessIncoherent::frbPostProcessIncoherent(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :
         KotekanProcess(config_, unique_name, buffer_container,
-                       std::bind(&frbPostProcess_in::main_thread, this)){
+                       std::bind(&frbPostProcessIncoherent::main_thread, this)){
 
     apply_config(0);
 
@@ -46,7 +46,7 @@ frbPostProcess_in::frbPostProcess_in(Config& config_,
 
 }
 
-frbPostProcess_in::~frbPostProcess_in() {
+frbPostProcessIncoherent::~frbPostProcessIncoherent() {
     free(in_buf);
     free(frb_header_beam_ids);
     free(frb_header_coarse_freq_ids);
@@ -55,7 +55,7 @@ frbPostProcess_in::~frbPostProcess_in() {
 
 }
 
-void frbPostProcess_in::fill_headers(unsigned char * out_buf,
+void frbPostProcessIncoherent::fill_headers(unsigned char * out_buf,
                   struct FRBHeader * frb_header,
                   const uint64_t fpga_seq_num,
 		  const uint16_t num_L1_streams, //256
@@ -87,7 +87,7 @@ void frbPostProcess_in::fill_headers(unsigned char * out_buf,
     }
 }
 
-void frbPostProcess_in::apply_config(uint64_t fpga_seq) {
+void frbPostProcessIncoherent::apply_config(uint64_t fpga_seq) {
     if (!config.update_needed(fpga_seq))
         return;
 
@@ -107,7 +107,7 @@ void frbPostProcess_in::apply_config(uint64_t fpga_seq) {
       
 }
 
-void frbPostProcess_in::main_thread() {
+void frbPostProcessIncoherent::main_thread() {
 
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
     uint8_t * in_frame[_num_gpus];

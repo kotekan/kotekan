@@ -1,20 +1,17 @@
-#ifndef FRB_POST_PROCESS_IN
-#define FRB_POST_PROCESS_IN
+#ifndef FRB_POST_PROCESS_INCOHERENT
+#define FRB_POST_PROCESS_INCOHERENT
 
 #include "KotekanProcess.hpp"
-//#include "Config.hpp"
-//#include "buffers.h"
 #include <vector>
-//#include "fpga_header_functions.h"
 
 using std::vector;
 
-class frbPostProcess_in : public KotekanProcess {
+class frbPostProcessIncoherent : public KotekanProcess {
 public:
-    frbPostProcess_in(Config& config_,
+    frbPostProcessIncoherent(Config& config_,
                   const string& unique_name,
                   bufferContainer &buffer_container);
-    virtual ~frbPostProcess_in();
+    virtual ~frbPostProcessIncoherent();
     void main_thread();
     virtual void apply_config(uint64_t fpga_seq);
 
