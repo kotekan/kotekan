@@ -58,6 +58,8 @@ hdf5_writer_strip:
   freq_ids: [250,256,512,768]
   node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/strip'
+  max_ew_baseline: 0
+  max_ns_baseline: 0
 
 hdf5_writer_full:
   kotekan_process: visWriter
@@ -65,6 +67,8 @@ hdf5_writer_full:
   freq_ids: [250,256,512,768]
   node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/stripfull'
+#  max_ew_baseline: 0
+#  max_ns_baseline: 0
 
 
 # Information for input reordering, packed as

@@ -190,9 +190,9 @@ visWriter::visWriter(Config& config,
 
     // If this writer takes a baseline subset as input, generate subset products
     // as specified in config.
-    xmax = config.get_int_default(unique_name, "max_ew_baseline", 0);
-    ymax = config.get_int_default(unique_name, "max_ns_baseline", 0);
-    all_prods = ! (xmax + ymax);
+    xmax = config.get_int_default(unique_name, "max_ew_baseline", -1);
+    ymax = config.get_int_default(unique_name, "max_ns_baseline", -1);
+    all_prods = ((xmax + ymax)==-2);
     for(uint16_t i=0; i < inputs.size(); i++) {
         for(uint16_t j = i; j < inputs.size(); j++) {
             // restrict products to those within max baseline length

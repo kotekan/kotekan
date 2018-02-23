@@ -67,13 +67,13 @@ void baselineSubset::main_thread() {
                                          num_eigenvectors);
 
         // Copy over metadata
-        output_frame.dataset_id() = frame.dataset_id();
-        output_frame.freq_id() = frame.freq_id();
-        output_frame.time() = frame.time();
+        output_frame.dataset_id = frame.dataset_id;
+        output_frame.freq_id = frame.freq_id;
+        output_frame.time = frame.time;
 
         // Copy over subset of visibilities
         for (size_t i = 0; i < num_prod; i++) {
-            output_frame.vis()[i] = frame.vis()[prod_ind[i]];
+            output_frame.vis[i] = frame.vis[prod_ind[i]];
         }
 
         // Mark the buffers and move on
