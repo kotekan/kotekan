@@ -93,7 +93,7 @@ void visWriter::main_thread() {
             // because these don't correctly make it through kotekan yet
             // TODO: these should be read directly from the span
             std::vector<cfloat> vis(frame.vis.begin(), frame.vis.end());
-            std::vector<uint8_t> vis_weight(vis.size(), 1.0);
+            std::vector<float> vis_weight(frame.weight.begin(), frame.weight.end());
             std::vector<cfloat> gain_coeff(inputs.size(), {1, 0});
             std::vector<int32_t> gain_exp(inputs.size(), 0);
 

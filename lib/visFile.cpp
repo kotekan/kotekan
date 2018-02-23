@@ -139,7 +139,7 @@ void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
 
     Group flags = file->createGroup("flags");
     DataSet vis_weight = flags.createDataSet(
-        "vis_weight", vis_space, create_datatype<unsigned char>(), vis_dims
+        "vis_weight", vis_space, create_datatype<float>(), vis_dims
     );
     vis_weight.createAttribute<std::string>(
         "axis", DataSpace::From(vis_axes)).write(vis_axes);
@@ -228,7 +228,7 @@ uint32_t visFile::extendTime(time_ctype new_time) {
 
 void visFile::writeSample(
     uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
-    std::vector<uint8_t> new_weight, std::vector<cfloat> new_gcoeff,
+    std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
     std::vector<int32_t> new_gexp
 ) {
 
@@ -246,7 +246,7 @@ void visFile::writeSample(
 
 size_t visFile::addSample(
     time_ctype new_time, uint32_t freq_ind, std::vector<cfloat> new_vis,
-    std::vector<uint8_t> new_weight, std::vector<cfloat> new_gcoeff,
+    std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
     std::vector<int32_t> new_gexp
 ) {
 
@@ -297,7 +297,7 @@ visFileBundle::visFileBundle(const std::string root_path,
 
 void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
                               std::vector<cfloat> new_vis,
-                              std::vector<uint8_t> new_weight,
+                              std::vector<float> new_weight,
                               std::vector<cfloat> new_gcoeff,
                               std::vector<int32_t> new_gexp) {
 

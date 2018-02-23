@@ -174,10 +174,11 @@ visAccumulate::visAccumulate(Config& config,
         // Calculate nearest *even* number of frames
         num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
 
-        INFO("Integrating for %i gpu frames (~%.1f s)", _num_gpu_frames, int_time);
+        INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)",
+             num_gpu_frames, frame_length * num_gpu_frames, int_time);
     } else {
         num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
-        INFO("Integrating for %i gpu frames.", _num_gpu_frames);
+        INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
 }
@@ -242,9 +243,6 @@ void visAccumulate::main_thread() {
         copy_vis_triangle((const int32_t *)in_frame, input_remap, block_size, num_elements, vis);
 
         auto output_frame = visFrameView(out_buf, out_frame_id);
-
-        std::transform(vis.begin(), vis.end(), output_frame.vis.begin(), output_frame.vis.begin(),
-                       [&](cfloat& a, cfloat& b) -> cfloat { return a + b; });
 
         // First, divide through by the number of accumulations done in the GPUs
         // themselves. Then accumulate the weighted vis into the main vis buffer

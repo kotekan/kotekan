@@ -80,8 +80,8 @@ void fakeGpuBuffer::main_thread() {
         );
         if (output == NULL) break;
 
-        INFO("Simulating GPU buffer in %s[%d]",
-                out_buf->buffer_name, frame_id);
+        DEBUG("Simulating GPU buffer in %s[%d]",
+              out_buf->buffer_name, frame_id);
 
         // Fill the buffer with the specified pattern
         (this->*fill)(output, frame_count);
@@ -139,8 +139,8 @@ void fakeGpuBuffer::fill_pattern_accumulate(int32_t* data, int frame_number) {
         for(int j = i; j < num_elements; j++) {
             uint32_t bi = prod_index(i, j, block_size, num_elements);
 
-            data[2 * bi    ] = j + (frame_number % 2);  // Imag
-            data[2 * bi + 1] = i + (frame_number % 2);  // Real
+            data[2 * bi    ] = (j + (frame_number % 2)) * samples_per_data_set;  // Imag
+            data[2 * bi + 1] = (i + (frame_number % 2)) * samples_per_data_set;  // Real
         }
     }
 }
