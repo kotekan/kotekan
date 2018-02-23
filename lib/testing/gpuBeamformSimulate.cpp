@@ -66,7 +66,6 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
 }
 
 gpuBeamformSimulate::~gpuBeamformSimulate() {
-
     free(input_unpacked_padded);
     free(input_unpacked);
     free(clamping_output);
@@ -93,7 +92,6 @@ void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
-  
     tmp512 = (int *) malloc(2048*sizeof(int));
     for (int j=0;j<_samples_per_data_set;j++){
         for (int i=0; i<512; i++){
@@ -321,10 +319,14 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
         else {
-        uint32_t read_length = sizeof(float)*2*2048;
-        if (read_length != fread(cpu_gain,read_length,1,ptr_myfile)){
-            ERROR("Couldn't read gain file...");
-        }
+            uint32_t read_length = sizeof(float)*2*2048;
+            if (read_length != fread(cpu_gain,read_length,1,ptr_myfile)){
+                ERROR("Couldn't read gain file...");
+            }
+            for (uint32_t i=0; i<2048; i++){
+                host_gain[i*2  ] = host_gain[i*2  ] * scaling;
+                host_gain[i*2+1] = host_gain[i*2+1] * scaling;
+            }
             fclose(ptr_myfile);
         }
 

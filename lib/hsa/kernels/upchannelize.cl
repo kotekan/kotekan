@@ -8,7 +8,6 @@
 #define IMAG    y
 #define offset 128
 #define n_all 256
-//#define scaling 4000.
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
