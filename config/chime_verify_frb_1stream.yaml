@@ -1,3 +1,14 @@
+##########################################
+#
+# chime_verify_frb_1stream.yaml
+#
+# CHIME config to exercise full GPU FRB kernels,
+# feeding in random data and validating the output
+# against CPU-based calculations.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:

@@ -1,3 +1,14 @@
+##########################################
+#
+# chime_verify_n2.yaml
+#
+# CHIME config to exercise full GPU functionality (N2 + FRB),
+# feeding in constant data and validating the N2 output
+# against pre-calculated correct answers.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:

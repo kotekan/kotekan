@@ -1,3 +1,14 @@
+##########################################
+#
+# chime_no_output.yaml
+#
+# CHIME config to exercise full GPU functionality (N2 + FRB),
+# without generating any output.
+# Easily adapted to provide validation on N2 data.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:
