@@ -34,7 +34,8 @@ hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa
     //INFO("hsaBarrier got write index: %" PRIu64 ", packet_address: %p, precede_signal: %lu", index, barrier_and_packet, precede_signal.handle);
 
     // Set the packet details, including the preceded signal to wait on.
-    barrier_and_packet->header = HSA_PACKET_TYPE_INVALID;
+//    barrier_and_packet->header = HSA_PACKET_TYPE_INVALID;
+    packet_store_release((uint32_t*)barrier_and_packet, header(HSA_PACKET_TYPE_INVALID), 0);
     memset(((uint8_t*) barrier_and_packet) + 4, 0, sizeof(*barrier_and_packet) - 4);
     barrier_and_packet->dep_signal[0] = precede_signal;
     barrier_and_packet->completion_signal = signals[gpu_frame_id];
