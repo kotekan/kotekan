@@ -32,22 +32,14 @@ using nlohmann::json;
 class prometheusMetrics {
 public:
 
-    /// Constructor, not used directly
-    prometheusMetrics();
-
-    /// Destructor, not used directly
+    /// Destructor
     ~prometheusMetrics();
 
     /**
      * @brief Returns the singleton instance of the prometheusMetrics object.
      * @return A pointer to the prometheusMetrics object
      */
-    static prometheusMetrics *instance()
-    {
-        if (!__instance)
-          __instance = new prometheusMetrics;
-        return __instance;
-    }
+    static prometheusMetrics &instance();
 
     /**
      * @brief Registers this class with the REST server, creating the
@@ -149,8 +141,8 @@ private:
         }
     };
 
-    /// The singleton instance value;
-    static prometheusMetrics *__instance;
+    /// Constructor, not used directly
+    prometheusMetrics();
 
     /**
      * The metric storage object with the format:

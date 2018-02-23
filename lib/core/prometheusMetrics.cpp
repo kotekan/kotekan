@@ -2,13 +2,17 @@
 #include "errors.h"
 #include "metadata.h"
 
-prometheusMetrics *prometheusMetrics::__instance = 0;
-
 prometheusMetrics::prometheusMetrics() {
     char local_host_name[128];
     gethostname(local_host_name, sizeof(local_host_name));
     hostname = string(local_host_name);
 }
+
+prometheusMetrics &prometheusMetrics::instance() {
+    static prometheusMetrics _instance;
+    return _instance;
+}
+
 
 prometheusMetrics::~prometheusMetrics() {
     for (auto &process_metric : process_metrics)

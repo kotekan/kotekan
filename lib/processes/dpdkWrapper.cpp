@@ -191,37 +191,37 @@ void dpdkWrapper::main_thread() {
         CPU_SET(j, &cpuset);
     CHECK_ERROR( pthread_setaffinity_np(network_dpdk_t, sizeof(cpu_set_t), &cpuset) );
 
-    prometheusMetrics * metrics = prometheusMetrics::instance();
+    prometheusMetrics &metrics = prometheusMetrics::instance();
 
     while(!stop_thread) {
         usleep(200000);
         for (int i = 0; i < _num_fpga_links; ++i) {
             // Add packet metrics
-            metrics->add_process_metric("rx_packets_total",
+            metrics.add_process_metric("rx_packets_total",
                                         unique_name,
                                         network_dpdk_args->rx_packets_total[i],
                                         "port='" + std::to_string(i) + "'");
-            metrics->add_process_metric("lost_packets_total",
+            metrics.add_process_metric("lost_packets_total",
                                         unique_name,
                                         network_dpdk_args->lost_packets_total[i],
                                         "port='" + std::to_string(i) + "'");
             // Give these metrics in terms of frames as well
-            metrics->add_process_metric("rx_frames_total",
+            metrics.add_process_metric("rx_frames_total",
                                         unique_name,
                                         network_dpdk_args->rx_packets_total[i] * _timesamples_per_packet,
                                         "port='" + std::to_string(i) + "'");
-            metrics->add_process_metric("lost_frames_total",
+            metrics.add_process_metric("lost_frames_total",
                                         unique_name,
                                         network_dpdk_args->lost_packets_total[i] * _timesamples_per_packet,
                                         "port='" + std::to_string(i) + "'");
 
             // Add total rx bytes
-            metrics->add_process_metric("rx_bytes_total",
+            metrics.add_process_metric("rx_bytes_total",
                                         unique_name,
                                         network_dpdk_args->rx_bytes_total[i],
                                         "port='" + std::to_string(i) + "'");
 
-            metrics->add_process_metric("rx_errors_total",
+            metrics.add_process_metric("rx_errors_total",
                                         unique_name,
                                         network_dpdk_args->rx_errors_total[i],
                                         "port='" + std::to_string(i) + "'");
