@@ -126,6 +126,14 @@ private:
  *                              `num_gpu_frames` (which it overrides).
  *                              Internally it picks the nearest acceptable value
  *                              of `num_gpu_frames`.
+ * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
+ *                              correlator data.
+ * @conf  block_size            Int. The block size of the packed data.
+ * @conf  num_eigenvectors      Int. The number of eigenvectors to be stored
+ * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
+ *                              Only the first element of each sub-array is used and it is the the index of
+ *                              the input to move into this new location. The remaining elements of the
+ *                              subarray are for correctly labelling the input in ``visWriter``.
  *
  * @author Richard Shaw
  */
@@ -139,11 +147,17 @@ public:
     void main_thread() override;
 
 private:
+
+    // Buffers to read/write
     Buffer* in_buf;
     Buffer* out_buf;
 
-    uint32_t _samples_per_data_set;
-    uint32_t _num_gpu_frames;
+    // Parameters saved from the config files
+    size_t num_elements, num_eigenvectors, block_size;
+    size_t samples_per_data_set, num_gpu_frames;
+
+    // The mapping from buffer element order to output file element ordering
+    std::vector<uint32_t> input_remap;
 };
 
 #endif

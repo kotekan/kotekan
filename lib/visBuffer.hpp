@@ -62,6 +62,9 @@ struct visMetadata {
  *       one for copying an existing buffer into a new location and returning a
  *       view of that. Make sure to pick the right one!
  *
+ * @todo This may want changing to use reference wrappers instead of bare
+ *       references.
+ * 
  * @author Richard Shaw
  */
 class visFrameView {

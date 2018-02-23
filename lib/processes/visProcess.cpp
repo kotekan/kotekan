@@ -154,7 +154,14 @@ visAccumulate::visAccumulate(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    // Fetch any simple configuration
+    num_elements = config.get_int(unique_name, "num_elements");
+    block_size = config.get_int(unique_name, "block_size");
+    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+
+    // Get the indices for reordering
+    input_remap = std::get<0>(parse_reorder_default(config, unique_name));
 
     float int_time = config.get_float_default(unique_name, "integration_time", -1.0);
 
@@ -162,14 +169,14 @@ visAccumulate::visAccumulate(Config& config,
     // we need to integrate for.
     if(int_time >= 0.0) {
         // TODO: don't hard code the sample time length
-        float frame_length = _samples_per_data_set * 2.56e-6;
+        float frame_length = samples_per_data_set * 2.56e-6;
 
         // Calculate nearest *even* number of frames
-        _num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
+        num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
 
         INFO("Integrating for %i gpu frames (~%.1f s)", _num_gpu_frames, int_time);
     } else {
-        _num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
+        num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", _num_gpu_frames);
     }
 
@@ -182,7 +189,7 @@ void visAccumulate::apply_config(uint64_t fpga_seq) {
 }
 
 void visAccumulate::main_thread() {
-/*
+
     int in_frame_id = 0;
     int out_frame_id = 0;
     int64_t frame_id = 0;
@@ -192,10 +199,15 @@ void visAccumulate::main_thread() {
 
     uint8_t * in_frame;
 
+    size_t nprod = num_elements * (num_elements + 1) / 2;
+
+    std::vector<cfloat> vis(nprod);
+    std::vector<cfloat> vis_even(nprod);
+
     while (!stop_thread) {
 
-        if(in_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
-                                          in_frame_id) == nullptr) {
+        if((in_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
+                                           in_frame_id)) == nullptr) {
             break;
         }
 
@@ -203,36 +215,83 @@ void visAccumulate::main_thread() {
 
         seq_num = get_fpga_seq_num(in_buf, in_frame_id);
 
-        // We've started a new frame, initialisation
-        if (frame_id % _num_gpu_frames == 0) {
-            uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-            if (out_frame == NULL) break;
-            output = (int32_t *)out_frame;
+        // We've started a new frame, start the initialisation
+        if (frame_id % num_gpu_frames == 0) {
+
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                     out_frame_id) == nullptr) {
+                break;
+            }
 
             allocate_new_metadata_object(out_buf, out_frame_id);
+            auto output_frame = visFrameView(out_buf, out_frame_id, num_elements, num_eigenvectors);
 
-            // Copy over metadata
-
-            // Copy over initial data
-
-        } else {
-            // Add up the number of lost samples from each input frame.
-            uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
-            atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
-
-            for (int i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
-                output[i] += input[i];
-            }
+            // Transfer over the metadata
+            output_frame.fill_chime_metadata((const chimeMetadata *)in_buf->metadata[in_frame_id]->metadata);
+            
+            // Zero out existing data
+            std::fill(output_frame.vis.begin(), output_frame.vis.end(), 0.0);
+            std::fill(output_frame.weight.begin(), output_frame.weight.end(), 0.0);
+            std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
+            std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
         }
 
+        // Copy out the visibilities from the blocked representation and reorder
+        // them. This is done for simplicity, now we can just use them how we
+        // want without any remapping
+        copy_vis_triangle((const int32_t *)in_frame, input_remap, block_size, num_elements, vis);
+
+        auto output_frame = visFrameView(out_buf, out_frame_id);
+
+        std::transform(vis.begin(), vis.end(), output_frame.vis.begin(), output_frame.vis.begin(),
+                       [&](cfloat& a, cfloat& b) -> cfloat { return a + b; });
+
+        // First, divide through by the number of accumulations done in the GPUs
+        // themselves. Then accumulate the weighted vis into the main vis buffer
+        // to progressively calculate the average
+        for(size_t i = 0; i < nprod; i++) {
+            vis[i] /= (float)(samples_per_data_set);
+
+            output_frame.vis[i] += vis[i] / (float)(num_gpu_frames);
+        }
+
+        // We are calculating the weights by differencing even and odd samples.
+        // Every even sample we save the set of visibilities...
+        if(frame_id % 2 == 0) {
+            std::swap(vis, vis_even);  // Swap the vis into a separate vector to save it
+        }
+        // ... every odd sample we accumulate the squared differences into the weight dataset
+        // NOTE: this incrementally calculates the variance, but eventually
+        // output_frame.weight will hold the *inverse* variance
+        else {
+            for(size_t i = 0; i < nprod; i++) {
+                auto t = abs(vis[i] - vis_even[i]) / (float)(num_gpu_frames);
+                output_frame.weight[i] += pow(t, 2);
+            }
+        }
+        
+        // TODO: do something with the lost packet counts
+
+        // TODO: gating should go in here. Gates much be created such that the
+        // squared sum of the weights is equal to 1.
+
+        // Move the input buffer on one step
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
+        
+        // Increment the frame counter which counts the number of GPU frames we've seen
         frame_id++;
 
-        if (frame_id % _num_gpu_frames == 0) {
+        // Once we've integrated over the required number of frames, then do any
+        // final cleanups and release the data...
+        if (frame_id % num_gpu_frames == 0) {
+
+            // Invert everything in the weight dataset
+            for(size_t i = 0; i < nprod; i++) {
+                output_frame.weight[i] = 1.0 / output_frame.weight[i];
+            }
             mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
         }
     }
-    */
 }
