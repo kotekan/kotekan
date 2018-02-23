@@ -122,13 +122,14 @@ frb:
   timesamples_per_frb_packet: 16
   num_beams: 4
   frb_output_buffer:
-    num_frames: buffer_depth
+    num_frames: 4 * buffer_depth
     frame_size: udp_frb_packet_size*8*256
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
     cpu_affinity: [11]
-    kotekan_process: frbPostProcess
+#    kotekan_process: frbPostProcess
+    kotekan_process: frbPostProcess_in
     network_input_buffer_0: beamform_output_buffer_0
     network_input_buffer_1: beamform_output_buffer_1
     network_input_buffer_2: beamform_output_buffer_2
@@ -141,8 +142,8 @@ frb:
     number_of_nodes: 256
     packets_per_stream: 8
     number_of_subnets: 4
-    column_mode: true
-    beam_offset: 108
+    #column_mode: true
+    beam_offset: 0
     time_interval: 125829120
     L1_node_ips:
       - 10.6.200.10

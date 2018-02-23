@@ -1,5 +1,5 @@
-#ifndef FRB_POST_PROCESS_IN_HPP
-#define FRB_POST_PROCESS_IN_HPP
+#ifndef FRB_POST_PROCESS_IN
+#define FRB_POST_PROCESS_IN
 
 #include "KotekanProcess.hpp"
 //#include "Config.hpp"

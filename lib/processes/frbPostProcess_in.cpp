@@ -64,7 +64,7 @@ void frbPostProcess_in::fill_headers(unsigned char * out_buf,
 		  float * frb_header_offset){  
     // Populate the headers
     //assert(sizeof(struct FRBHeader) == _udp_header_size);
-
+    INFO("frequency value %d %d %d %d",frb_header_coarse_freq_ids[0],frb_header_coarse_freq_ids[1],frb_header_coarse_freq_ids[2],frb_header_coarse_freq_ids[3]);
     for (int j=0;j<num_L1_streams; ++j) { //256 streams
         for (int k=0;k<_nbeams;++k) { //the 4 beams are supposed to be consecutive
 	    frb_header_beam_ids[k] = j*_nbeams+k;
@@ -101,22 +101,20 @@ void frbPostProcess_in::apply_config(uint64_t fpga_seq) {
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_frb_header_size");
-    _freq_array = config.get_int_array(unique_name, "freq_array");
+    //_freq_array = config.get_int_array(unique_name, "freq_array");
 
     _fpga_counts_per_sample = _downsample_time * _factor_upchan;
       
 }
 
 void frbPostProcess_in::main_thread() {
-    
-    float *temp_avg = new float[128];
-    float sum=0.0, sqr=0.0;
 
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
     uint8_t * in_frame[_num_gpus];
     int out_buffer_ID = 0;  
     int startup = 1; //related to the likely & unlikely
-
+    float *avg_beam = new float[1024*8];
+    
     for (int i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
@@ -194,51 +192,78 @@ void frbPostProcess_in::main_thread() {
         // This loop which takes data from the input buffer and formats the output.
         if (likely(startup == 0)) {
 
-            for (uint32_t i = current_input_location; i < num_samples; ++i) {
+            for (uint i = current_input_location; i < num_samples; ++i) {
   	        if (in_frame_location == 16) { //last sample
                     in_frame_location = 0;
                     frame++;
                     if (frame == 8) { //last frame
 		        frame = 0;
-                        //summing all the 1024 beams to form the incoherent beam
                         
-                        for(int f=0; f<8; f++)
-                        {
-                          for(int sample=0; sample<16; sample++)
+                       float *mean = new float[4];
+                       float *scale = new float[4];
+                       float *sqr = new float[4];
+                                              
+                       for(int freq_i=0; freq_i<4; freq_i++)
+                       { 
+                         mean[freq_i]= 0.0; 
+                         scale[freq_i] = 1.0;
+                         sqr[freq_i] = 0.0;
+                         
+                       }  
+                       for(int stream_i=0;stream_i<8; stream_i++)
+                       {
+                          for(int freq_i=0; freq_i<4; freq_i++)
                           {
-                            float t=0.0;
-                            for(int s=0; s<256; s++)
+                            for(int sample_i=0; sample_i<256; sample_i++)
                             {
-                              for(int b=0; b<4; b++)
-                              {
-                                t += out_frame[_udp_packet_size*8*s+f*_udp_packet_size+_udp_header_size+b*16+sample];
-                              }
+                              avg_beam[stream_i*1024+freq_i*256+sample_i] /= 1024.0;
+                              mean[freq_i] += avg_beam[stream_i*1024+freq_i*256+sample_i];
+                              sqr[freq_i] += std::pow(avg_beam[stream_i*1024+freq_i*256+sample_i],2);
+                              //if(avg_beam[stream_i*1024+freq_i*16+sample_i]>max[freq_i]) max[freq_i]=avg_beam[stream_i*1024+freq_i*16+sample_i];
+                              //if(avg_beam[stream_i*1024+freq_i*16+sample_i]<min[freq_i]) min[freq_i]=avg_beam[stream_i*1024+freq_i*16+sample_i];
                             }
-                            t /= 1024;
-                            sum += t;
-                            sqr += t*t;
-                            temp_avg[16*f+sample] = t;
                           }
                         }
-                      
-                      
-                      float std = std::sqrt((sqr/128.0) -std::pow((sum/128.0),2));
-                      frb_header_scale[0] = 5.0/std;
-                      frb_header_offset[0] = sum/128.0;
-                      
-                      for(int f=0;f<8;f++)
-                      {
-                        for(int sample=0;sample<16; sample++)
+                        
+                        for(int freq_i=0; freq_i<4; freq_i++)
                         {
-                          out_frame[f*_udp_packet_size+_udp_header_size+sample] = (temp_avg[16*f+sample]- frb_header_offset[0])/frb_header_scale[0];
+                          mean[freq_i] /= 8*16.0*16.0;
+                          sqr[freq_i] /= 8*16.0*16.0;
+                          float st = std::sqrt(sqr[freq_i]-std::pow(mean[freq_i],2));
+                          scale[freq_i] = (4*st)/(255.0);
+                          //INFO("avg__data %f %f %f %f",avg_beam[2],sqr[0],mean[0],scale[0]);
+                          //exit(0);
                         }
-                      }
-                     
-   
+                        float temp_avg; 
+                        for(int stream_i=0;stream_i<8;stream_i++)
+                        { 
+                           for(int freq_i=0; freq_i<4; freq_i++)
+                           {
+                            for(int sample_i=0; sample_i<256; sample_i++)
+                            {
+                               temp_avg = 128+(((avg_beam[stream_i*1024+freq_i*256+sample_i]-mean[freq_i]))*(1.0/scale[freq_i]));
+                               if(temp_avg >0 && temp_avg<256) 
+                               out_frame[stream_i*_udp_packet_size+_udp_header_size+freq_i*256+sample_i] = (uint8_t)(int)temp_avg;
+                               else if(temp_avg<0) 
+                               out_frame[stream_i*_udp_packet_size+_udp_header_size+freq_i*256+sample_i] = 0;
+                               else if(temp_avg>255)
+                               {
+                               //INFO("avg__data %f %f %f %f",temp_avg,sqr[0],mean[0],scale[0]);
+                               //exit(0);
+                               out_frame[stream_i*_udp_packet_size+_udp_header_size+freq_i*256+sample_i] = 255;
+                               }
+                               //INFO("avg__data %f %f %f %f %d",temp_avg,sqr[freq_i],mean[freq_i],scale[freq_i],freq_i,sample_i);
+                             }
+                          }
+                          memcpy(&out_frame[stream_i*_udp_packet_size+40],scale,sizeof(float)*4);
+                          memcpy(&out_frame[stream_i*_udp_packet_size+104],mean,sizeof(float)*4);
+                        }
+                        INFO("avg__data %f %f %f %f",temp_avg,avg_beam[23],mean[2],scale[2]);
+		       	for(int e_i=0;e_i<8*1024;e_i++) avg_beam[e_i]=0.0;
+                                     
+                        mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
+                        
                           
-
-
-			mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;
 			out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
@@ -265,6 +290,8 @@ void frbPostProcess_in::main_thread() {
 				                       + beam*_num_gpus*16*16 
 				                       + thread_id*16*16   + freq*16 + in_frame_location + _udp_header_size;
 				out_buf[out_index] = in_buf_data[ (stream*_nbeams+beam)*num_samples*16 + i*16 + freq];
+                                avg_beam[1024*frame+thread_id*16*16+freq*16+in_frame_location] += (float)(int)out_buf[out_index];        
+                                
 			    } //end loop freq
 			} //end loop beam
 		    } //end loop streams

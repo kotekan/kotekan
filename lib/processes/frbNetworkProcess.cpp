@@ -301,9 +301,9 @@ void frbNetworkProcess::main_thread()
          
          for(int link=0;link<number_of_l1_links;link++)
          {    
-           if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
+           //if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
+           if (e_stream==beam_offset/4+link) 
            {
-             
            //}
            //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
            //if(e_stream==beam_offset/4+link)
