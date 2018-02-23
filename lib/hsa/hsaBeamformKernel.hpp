@@ -13,14 +13,10 @@
 class hsaBeamformKernel: public hsaCommand
 {
 public:
-    hsaBeamformKernel(const string &kernel_name, const string &kernel_file_name,
-                        hsaDeviceInterface &device, Config &config,
-                        bufferContainer &host_buffers,
-                        const string &unique_name);
+    hsaBeamformKernel(Config &config, const string &unique_name, 
+                        bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaBeamformKernel();
-
-    void apply_config(const uint64_t& fpga_seq) override;
 
     int wait_on_precondition(int gpu_frame_id) override;
 
@@ -45,6 +41,9 @@ private:
     uint32_t * host_map;
     float * host_coeff;
     float * host_gain;
+
+    float scaling;
+    bool zero_missing_gains;
 
     int32_t _num_elements;
     int32_t _num_local_freq;

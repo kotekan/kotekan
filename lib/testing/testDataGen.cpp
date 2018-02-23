@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(testDataGen);
+
 testDataGen::testDataGen(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name,

@@ -1,13 +1,11 @@
 #include "hsaBeamformOutput.hpp"
 
-hsaBeamformOutputData::hsaBeamformOutputData(const string& kernel_name,
-        const string& kernel_file_name, hsaDeviceInterface& device,
-        Config& config, bufferContainer& host_buffers,
-        const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-    command_type = CommandType::COPY_OUT;
+REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
-    apply_config(0);
+hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string &unique_name,
+        bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("", "", config, unique_name, host_buffers, device) {
+    command_type = CommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
     output_buffer = host_buffers.get_buffer("beamform_output_buf");

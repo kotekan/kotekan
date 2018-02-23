@@ -1,15 +1,24 @@
 #include "hsaBeamformKernel.hpp"
-#include "hsaBase.h"
-#include <unistd.h>
 
-hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
+REGISTER_HSA_COMMAND(hsaBeamformKernel);
+
+hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+                            hsaDeviceInterface& device) :
+    hsaCommand("zero_padded_FFT512","unpack_shift_beamform.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    apply_config(0);
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _gain_dir = config.get_string(unique_name, "gain_dir");
+
+    scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
+    zero_missing_gains = config.get_bool_default(unique_name,"frb_zero_missing_gains", true);
+
+    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
+
 
     map_len = 256 * sizeof(int);
     host_map = (uint32_t *)hsa_host_malloc(map_len);
@@ -34,18 +43,6 @@ hsaBeamformKernel::~hsaBeamformKernel() {
     hsa_host_free(host_coeff);
     hsa_host_free(host_gain);
     // TODO Free device memory allocations.
-}
-
-void hsaBeamformKernel::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _gain_dir = config.get_string(unique_name, "gain_dir");
-
-    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
@@ -92,7 +89,6 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
 
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
     if (first_pass){
-        void * host_memory_frame = (void *)metadata_buf->frames[metadata_buffer_id];
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_now = bin_number_chime(&stream_id);
         float freq_MHz = freq_from_bin(freq_now);
@@ -103,13 +99,20 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         if (ptr_myfile == NULL) {
             ERROR("GPU Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                host_gain[i*2] = 0.0;
+                host_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
                 host_gain[i*2+1] = 0.0;
             }
         }
         else {
-            fread(host_gain,sizeof(float)*2*2048,1,ptr_myfile);
+            uint32_t file_length = sizeof(float)*2*2048;
+            if (file_length != fread(host_gain,file_length,1,ptr_myfile)){
+                ERROR("Gain file wasn't long enough! Something went wrong, breaking...");
+            }
             fclose(ptr_myfile);
+            for (uint32_t i=0; i<2048; i++){
+                host_gain[i*2  ] = host_gain[i*2  ] * scaling;
+                host_gain[i*2+1] = host_gain[i*2+1] * scaling;
+            }
         }
         void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
         device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);

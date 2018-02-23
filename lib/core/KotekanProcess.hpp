@@ -9,6 +9,7 @@
 #include "Config.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
+#include "processFactory.hpp"
 #ifdef MAC_OSX
     #include "osxBindCPU.hpp"
     #include <immintrin.h>

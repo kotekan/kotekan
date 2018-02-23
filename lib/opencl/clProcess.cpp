@@ -19,6 +19,8 @@ using namespace std;
 //    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 //}
 
+REGISTER_KOTEKAN_PROCESS(clProcess);
+
 // TODO Remove the GPU_ID from this constructor
 clProcess::clProcess(Config& config_,
         const string& unique_name,
@@ -96,7 +98,6 @@ void clProcess::main_thread()
 
     double last_time = e_time();
     timer tt;
-    int time_count = 0;
     kill_thread * kill = new kill_thread;
     
     while (!stop_thread) {
@@ -104,7 +105,7 @@ void clProcess::main_thread()
         //Now will return a uint8_t* wait_for_empty_frame(...)!!!!
         frame = wait_for_full_frame(device->getInBuf(), unique_name.c_str(), frame_id);
         double cur_time = e_time();
-        //INFO("Got full buffer after time: %f", cur_time - last_time );
+        DEBUG("Got full buffer after time: %f", cur_time - last_time );
         last_time = cur_time;
 
         //INFO("GPU_THREAD: got full buffer ID %d", bufferID);
@@ -157,7 +158,7 @@ void clProcess::main_thread()
 
         //DEBUG("cb_data initialized\n");
         usleep(gpu_id*10000);
-        for (int i = 0; i < factory->getNumCommands(); i++){
+        for (uint32_t i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
             sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
             cb_data[frame_id]->listCommands[i] = currentCommand;
@@ -186,7 +187,7 @@ void clProcess::main_thread()
         DEBUG("enqueued frame_id %d ", frame_id);
 
         //buffer_list[0] = (buffer_list[0] + 1)
-        frame_id = (++frame_id) % device->getInBuf()->num_frames;
+        frame_id = (frame_id+1) % device->getInBuf()->num_frames;
         
         if (frame_id == 0 && first_seq == true){
             first_seq = false;
@@ -251,14 +252,12 @@ void clProcess::mem_reconcil_thread()
 {
     //Based on assumption that buffer_ids are processed in order, so start with [0].]
     int frame_id_limit = cb_data[0]->in_buf->num_frames;
-    std::clock_t    start;
     bool break_loop = false;
     bool thread_kill = false;
     
     while(true) {
         for (int j=0;j<frame_id_limit;j++)
         {
-            start = std::clock();
             double end_time_1 = e_time();
 
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->buff_id_lock->lock));
@@ -333,7 +332,7 @@ void clProcess::mem_reconcil_thread()
 
             CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->buff_id_lock->mem_cond) );
             double end_time_2 = e_time();
-            //INFO("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
+            DEBUG("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
         }
         if (break_loop == true){
             DEBUG("break out of second loop");
@@ -346,7 +345,7 @@ void clProcess::mem_reconcil_thread()
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
 {
     struct callBackData * cur_cb_data = (struct callBackData *) data;
-    std::clock_t    start;
+//    std::clock_t    start;
 
     CHECK_ERROR( pthread_mutex_lock(&cur_cb_data->cnt->lock));
     cur_cb_data->cnt->iteration--;
@@ -354,7 +353,7 @@ void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* 
 
     //CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->cnt->cond) );
 
-    start = std::clock();
+//    start = std::clock();
 
     CHECK_ERROR( pthread_mutex_lock(&cur_cb_data->buff_id_lock->lock));
     cur_cb_data->buff_id_lock->clean = 1;

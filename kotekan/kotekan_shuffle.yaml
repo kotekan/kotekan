@@ -90,20 +90,14 @@ dpdk:
 
 gpu:
     commands:
-    - name: hsa_input_data
-      kernel: ''
-    - name: hsa_presum_zero
-      kernel: ''
-    - name: hsa_output_data_zero
-      kernel: ''
-    - name: hsa_barrier
-      kernel: ''
-    - name: hsa_preseed_kernel
-      kernel: "../lib/hsa/kernels/presum.hsaco"
-    - name: hsa_correlator_kernel
-      kernel: "../lib/hsa/kernels/N2.hsaco"
-    - name: hsa_output_data
-      kernel: ''
+    - name: hsaInputData
+    - name: hsaPresumZero
+    - name: hsaOutputDataZero
+    - name: hsaBarrier
+    - name: hsaPresumKernel
+    - name: hsaCorrelatorKernel
+    - name: hsaOutputData
+    kernel_path: "../lib/hsa/kernels/"
     link_map: [0,1,2,3]
     num_gpus: 4
     buffer_depth: 5
@@ -228,6 +222,6 @@ metadata_dump_3:
   kotekan_process: chimeMetadataDump
   in_buf: file_output_buffer_3
 
-#buffer_status:
-#  kotekan_process: bufferStatus
-#  time_delay: 100000
+buffer_status:
+  kotekan_process: bufferStatus
+  time_delay: 100000

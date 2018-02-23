@@ -17,6 +17,8 @@ using std::string;
 #include "time_tracking.h"
 #include "vdif_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(beamformingPostProcess);
+
 beamformingPostProcess::beamformingPostProcess(Config& config,
         const string& unique_name,
         bufferContainer &buffer_container) :
@@ -27,7 +29,7 @@ beamformingPostProcess::beamformingPostProcess(Config& config,
     //_num_gpus = config.get_int("/gpu", "num_gpus");
     _num_gpus = config.get_int(unique_name, "num_gpus");
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
-    for (int i = 0; i < _num_gpus; ++i) {
+    for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("beam_in_buf_" + std::to_string(i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
@@ -53,7 +55,7 @@ void beamformingPostProcess::fill_headers(unsigned char * out_buf,
     for (int i = 0; i < 625; ++i) {
         vdif_header->data_frame = i;
 
-        for(int j = 0; j < num_links; ++j) {
+        for(uint32_t j = 0; j < num_links; ++j) {
             vdif_header->thread_id = thread_id[j];
             vdif_header->eud2 = fpga_seq_num + 625 * i;
 
@@ -86,7 +88,7 @@ void beamformingPostProcess::main_thread() {
     int out_buffer_ID = 0;
     int startup = 1;
 
-    for (int i = 0; i < _num_gpus; ++i) {
+    for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
         in_buffer_ID_final[i] = 0;
     }
@@ -183,7 +185,7 @@ void beamformingPostProcess::main_thread() {
             // frame = get_vdif_frame( first_seq_number + current_input_location );
             // in_frame_location = get_vdif_location( first_seq_number + current_input_location );
 
-            for (int i = current_input_location; i < num_samples; ++i) {
+            for (uint32_t i = current_input_location; i < num_samples; ++i) {
 
                 if (unlikely(in_frame_location == 625)) {
                     in_frame_location = 0;
@@ -210,7 +212,7 @@ void beamformingPostProcess::main_thread() {
                     }
                 }
 
-                for (int thread_id = 0; thread_id < _num_fpga_links; ++thread_id) {
+                for (uint32_t thread_id = 0; thread_id < _num_fpga_links; ++thread_id) {
                     unsigned char * out_buf = (unsigned char*)vdif_frame;
                     uint32_t station_0_index = frame * frame_size * _num_fpga_links * 2
                                                 + thread_id * frame_size * 2
@@ -222,7 +224,7 @@ void beamformingPostProcess::main_thread() {
 
                     //DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
 
-                    for (int freq = 0; freq < _num_local_freq; ++freq) {
+                    for (uint32_t freq = 0; freq < _num_local_freq; ++freq) {
                         unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
                         // The two polarizations.
                         // Each sample is 4-bit real, 4-bit complex, so byte operations work just fine here.
@@ -237,7 +239,7 @@ void beamformingPostProcess::main_thread() {
         }
 
         // Release the input buffers
-        for (int i = 0; i < _num_fpga_links; ++i) {
+        for (uint32_t i = 0; i < _num_fpga_links; ++i) {
             int gpu_id = _link_map[i];
 
             mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID_final[gpu_id]);

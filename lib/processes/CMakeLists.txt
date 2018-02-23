@@ -62,6 +62,4 @@ if (${USE_HDF5})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
 
-# This seems like a circular reference, seems like there should be a
-# way to avoid this.
-target_link_libraries( kotekan_processes kotekan_libs )
+target_link_libraries( kotekan_processes kotekan_utils kotekan_core )

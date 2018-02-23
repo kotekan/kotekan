@@ -1,5 +1,7 @@
 #include "constDataCheck.hpp"
 
+REGISTER_KOTEKAN_PROCESS(constDataCheck);
+
 constDataCheck::constDataCheck(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :
@@ -45,7 +47,7 @@ void constDataCheck::main_thread() {
 
             if (real != rfr || imag != rfi) {
                 if (num_errors++ < 1000)
-                    ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di\n",
+                    ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di",
                         buf->buffer_name, frame_id, i/2,
                         rfr, rfi, real, imag);
                 error = true;

@@ -37,7 +37,6 @@ using std::string;
 using std::vector;
 using std::map;
 
-#pragma(1)
 struct time_interval {
     time_interval(){
         CHECK_ERROR( pthread_mutex_init(&lock, NULL) );

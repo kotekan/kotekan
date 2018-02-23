@@ -1,6 +1,8 @@
 #include "hexDump.hpp"
 #include "util.h"
 
+REGISTER_KOTEKAN_PROCESS(hexDump);
+
 hexDump::hexDump(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :

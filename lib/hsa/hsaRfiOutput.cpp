@@ -12,14 +12,13 @@ Notes:
 **********************************************************************************/
 
 #include "hsaRfiOutput.hpp"
-#include <unistd.h>
 
-hsaRfiOutput::hsaRfiOutput(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers, const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
+REGISTER_HSA_COMMAND(hsaRfiOutput);
+
+hsaRfiOutput::hsaRfiOutput(Config& config, const string &unique_name,
+                           bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("","", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_OUT;
-    apply_config(0);
 
     network_buffer = host_buffers.get_buffer("network_buf");
     output_buffer = host_buffers.get_buffer("output_buf");

@@ -15,6 +15,8 @@
 #include "output_formating.h"
 #include <unistd.h>
 
+REGISTER_KOTEKAN_PROCESS(chrxUplink);
+
 chrxUplink::chrxUplink(Config &config,
                   const string& unique_name,
                   bufferContainer &buffer_container) :
