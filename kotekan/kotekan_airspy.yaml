@@ -31,9 +31,9 @@ freq: 1421.    #MHz
 airspy_input:
   kotekan_process: airspyInput
   out_buf: input_buf
-  gain_lna: 4 #0-14
-  gain_mix: 1 #0-15
-  gain_if:  10 #0-15
+  gain_lna: 14 #0-14
+  gain_mix: 6 #0-15
+  gain_if:  6 #0-15
   biast_power: false
 
 spectrum_output:
@@ -69,4 +69,4 @@ spectrum_output:
     destination_port: 23401
     destination_ip: "127.0.0.1"
     destination_protocol: TCP
-    power_in_buf: post_corr_buf
+    in_buf: post_corr_buf
