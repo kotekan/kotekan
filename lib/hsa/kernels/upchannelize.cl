@@ -8,7 +8,7 @@
 #define IMAG    y
 #define offset 128
 #define n_all 256
-#define scaling 4000.
+//#define scaling 4000.
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
@@ -274,7 +274,7 @@ __kernel void upchannelize(__global float2 *data, __global unsigned char *result
       }
       barrier(CLK_LOCAL_MEM_FENCE);
       if (p == 1) {
-        unsigned char outtmp_int = convert_uchar_sat_rte(outtmp/48./scaling);
+        unsigned char outtmp_int = convert_uchar_sat_rte(outtmp/48.);
         results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp_int;
       }
     }

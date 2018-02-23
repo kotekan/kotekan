@@ -13,6 +13,9 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _gain_dir = config.get_string(unique_name, "gain_dir");
 
+    scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
+    zero_missing_gains = config.get_bool_default(unique_name,"frb_zero_missing_gains", true);
+
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
 
@@ -96,7 +99,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         if (ptr_myfile == NULL) {
             ERROR("GPU Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                host_gain[i*2] = 1.0;
+                host_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
                 host_gain[i*2+1] = 0.0;
             }
         }
@@ -106,6 +109,10 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
                 ERROR("Gain file wasn't long enough! Something went wrong, breaking...");
             }
             fclose(ptr_myfile);
+            for (uint32_t i=0; i<2048; i++){
+                host_gain[i*2  ] = host_gain[i*2  ] * scaling;
+                host_gain[i*2+1] = host_gain[i*2+1] * scaling;
+            }
         }
         void * device_gain = device.get_gpu_memory("beamform_gain", gain_len);
         device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);

@@ -42,6 +42,9 @@ private:
     float * host_coeff;
     float * host_gain;
 
+    float scaling;
+    bool zero_missing_gains;
+
     int32_t _num_elements;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;

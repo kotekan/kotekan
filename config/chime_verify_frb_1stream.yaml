@@ -64,7 +64,7 @@ cpu_output_buffers:
 #  network_out_buf_2: gpu_input_buffer_2
 #  network_out_buf_3: gpu_input_buffer_3
 
-frb_scaling: 4000.
+frb_scaling: 1./4000.
 frb_zero_missing_gains: false
 
 gpu:

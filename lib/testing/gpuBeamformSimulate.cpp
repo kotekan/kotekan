@@ -16,7 +16,6 @@
 #define light 3.e8
 #define Freq_ref 492.125984252
 #define freq1 800. //in simulation mode, no freq from dpdk, which shows up as freq bin 0 = 800MHz
-#define scaling 4000.
 
 REGISTER_KOTEKAN_PROCESS(gpuBeamformSimulate);
 
@@ -88,6 +87,9 @@ void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
     _downsample_freq = config.get_int(unique_name, "downsample_freq");
     _reorder_map = config.get_int_array(unique_name, "reorder_map");
     _gain_dir = config.get_string(unique_name, "gain_dir");
+
+    scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
+    zero_missing_gains = config.get_bool_default(unique_name,"frb_zero_missing_gains", true);
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
@@ -298,10 +300,6 @@ void gpuBeamformSimulate::main_thread() {
         for (int i=0;i<output_len;i++){
             cpu_final_output[i] = 0.0;
         }
-        for (int i=0;i<2048;i++){
-          cpu_gain[i*2] = 1.0;
-          cpu_gain[i*2+1] = 0.0;
-        }
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
@@ -318,7 +316,7 @@ void gpuBeamformSimulate::main_thread() {
         if (ptr_myfile == NULL){
             ERROR("CPU verification code: Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                cpu_gain[i*2] = 1.0;
+                cpu_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
                 cpu_gain[i*2+1] = 0.0;
             }
         }
@@ -414,7 +412,7 @@ void gpuBeamformSimulate::main_thread() {
                           }
                       }
                   }
-                  float tmp = out_sq/48./scaling;
+                  float tmp = out_sq/48.;
                   if (tmp > 255) tmp = 255;
                   cpu_final_output[out_id] = roundf(tmp);
                 }
