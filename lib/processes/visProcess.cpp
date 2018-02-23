@@ -6,6 +6,7 @@
 #include <time.h>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 
 
 visTransform::visTransform(Config& config,
@@ -292,4 +293,86 @@ void visAccumulate::main_thread() {
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
         }
     }
+}
+
+
+visMerge::visMerge(Config& config,
+                   const string& unique_name,
+                   bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&visMerge::main_thread, this)) {
+                    
+    // Setup the output vector
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
+
+    // Get the list of buffers that this process shoud connect to
+    std::vector<std::string> input_buffer_names =
+        config.get_string_array(unique_name, "in_bufs");
+
+    // Fetch the input buffers, register them, and store them in our buffer vector
+    for(auto name : input_buffer_names) {
+        auto buf = buffer_container.get_buffer(name);
+
+        if(buf->frame_size > out_buf->frame_size) {
+            throw std::invalid_argument("Input buffer [" + name + 
+                                        "] larger that output buffer size.");
+        }
+
+        register_consumer(buf, unique_name.c_str());
+        in_bufs.push_back({buf, 0});
+    }
+
+}
+
+void visMerge::apply_config(uint64_t fpga_seq) {
+
+}
+
+void visMerge::main_thread() {
+
+    uint8_t * frame = nullptr;
+    struct Buffer* buf;
+    unsigned int frame_id = 0;
+    unsigned int output_frame_id = 0;
+
+    while (!stop_thread) {
+
+        // This is where all the main set of work happens. Iterate over the
+        // available buffers, wait for data to appear and then attempt to write
+        // the data into a file
+        for(auto& buffer_pair : in_bufs) {
+            std::tie(buf, frame_id) = buffer_pair;
+
+            // Wait for the buffer to be filled with data
+            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
+                                            frame_id)) == nullptr) {
+                break;
+            }
+
+            // Wait for the buffer to be filled with data
+            if(wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                    output_frame_id) == nullptr) {
+                break;
+            }
+
+            // Transfer metadata
+            pass_metadata(buf, frame_id, out_buf, output_frame_id);
+
+            // Copy the frame data here:
+            std::memcpy(buf->frames[frame_id], out_buf->frames[output_frame_id],
+                        buf->frame_size);
+
+            // Mark the buffers and move on
+            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            mark_frame_full(out_buf, unique_name.c_str(),
+                            output_frame_id);
+
+            // Advance the current frame ids
+            std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
+            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
+        }
+
+    }
+
 }

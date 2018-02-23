@@ -160,4 +160,43 @@ private:
     std::vector<uint32_t> input_remap;
 };
 
+/**
+ * @class visMerge
+ * @brief Merge a set of buffers into a single visBuffer stream.
+ *
+ * In reality this probably works on any buffer format, though it is only
+ * tested against visBuffer data.
+ * 
+ * @par Buffers
+ * @buffer in_bufs The set of buffers to merge together.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata.
+ * @buffer out_buf The merged output stream.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ *
+ * @author Richard Shaw
+ */
+class visMerge : public KotekanProcess {
+
+public:
+
+    // Default constructor
+    visMerge(Config &config,
+             const string& unique_name,
+             bufferContainer &buffer_container);
+
+    void apply_config(uint64_t fpga_seq);
+
+    // Main loop for the process
+    void main_thread();
+
+private:
+
+    // Vector of the buffers we are using and their current frame ids.
+    std::vector<std::pair<Buffer*, unsigned int>> in_bufs;
+    Buffer * out_buf;
+};
+
+
 #endif
