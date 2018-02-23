@@ -1,28 +1,24 @@
 #include "hsaCommand.hpp"
-#include <string.h>
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <stdlib.h>
-#include "hsaBase.h"
-
-#include <unistd.h>
 
 using std::string;
 
 #define MAX_ARGS_LEN 64
 
-hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_name_,
-        hsaDeviceInterface& device_, Config& config_,
-        bufferContainer &host_buffers_, const string &unique_name_) :
-        command_name(command_name_),
-        kernel_file_name(kernel_file_name_),
+hsaCommand::hsaCommand(
+        const string &default_kernel_command,
+        const string &default_kernel_file_name,
+        Config& config_,
+        const string &unique_name_,
+        bufferContainer &host_buffers_,
+        hsaDeviceInterface& device_) :
+        kernel_command(default_kernel_command),
+        kernel_file_name(default_kernel_file_name),
         config(config_),
-        device(device_),
+        unique_name(unique_name_),
         host_buffers(host_buffers_),
-        unique_name(unique_name_)
+        device(device_)
 {
-    apply_config(0);
+    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
 
     // Set the local log level.
     string s_log_level = config.get_string(unique_name, "log_level");
@@ -42,10 +38,13 @@ hsaCommand::hsaCommand(const string &command_name_, const string &kernel_file_na
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.
-    if (kernel_file_name != "") {
+    if (default_kernel_file_name != "") {
+        kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
+                           config.get_string_default(unique_name,"kernel",default_kernel_file_name);
+        kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
         // Should this be moved to the base class?
         allocate_kernel_arg_memory(MAX_ARGS_LEN);
-        kernel_object = load_hsaco_file(kernel_file_name, command_name);
+        kernel_object = load_hsaco_file(kernel_file_name, kernel_command);
     }
 }
 
@@ -71,12 +70,7 @@ hsaCommand::~hsaCommand() {
 }
 
 string &hsaCommand::get_name() {
-    return command_name;
-}
-
-void hsaCommand::apply_config(const uint64_t& fpga_seq) {
-    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
-    //INFO("GPU Buffer depth: %d", _gpu_buffer_depth);
+    return kernel_command;
 }
 
 void hsaCommand::allocate_kernel_arg_memory(int max_size) {
@@ -132,6 +126,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     hsa_status_t hsa_status;
 
     // Open file.
+    INFO("Loading %s %s",file_name.c_str(), kernel_name.c_str());
     std::ifstream file(file_name, std::ios::in | std::ios::binary);
     assert(file.is_open() && file.good());
 
@@ -181,9 +176,11 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
 
     uint32_t group_segment_size;
     hsa_status = hsa_executable_symbol_get_info(kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE, &group_segment_size);
+    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(), group_segment_size);
 
     uint32_t priv_segment_size;
     hsa_status = hsa_executable_symbol_get_info(kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE, &priv_segment_size);
+    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(), priv_segment_size);
 
     // Free raw code object memory.
     free((void*)raw_code_object);
@@ -192,7 +189,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
 }
 
 void hsaCommand::packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest) {
-    __atomic_store_n(packet, header | (rest << 16),   __ATOMIC_RELEASE);
+    __atomic_store_n(packet, header | (((uint32_t)rest) << 16),   __ATOMIC_RELEASE);
 }
 
 uint16_t hsaCommand::header(hsa_packet_type_t type) {
@@ -206,12 +203,12 @@ uint16_t hsaCommand::header(hsa_packet_type_t type) {
 hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gpu_frame_id) {
 
     // Get the queue index
-    uint64_t packet_id = hsa_queue_add_write_index_screlease(device.get_queue(), 1);
+    uint64_t packet_id = hsa_queue_add_write_index_scacquire(device.get_queue(), 1);
 
     // Make sure the queue isn't full
     // Should never hit this condition, but lets be safe.
     // See the HSA docs for details.
-    while (packet_id - hsa_queue_load_read_index_scacquire(device.get_queue())
+    while (packet_id - hsa_queue_load_read_index_relaxed(device.get_queue())
             >= device.get_queue()->size);
 
     // Get the packet address
@@ -219,6 +216,7 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
             (hsa_kernel_dispatch_packet_t*) device.get_queue()->base_address
             + (packet_id % device.get_queue()->size);
 
+    packet->header = HSA_PACKET_TYPE_INVALID;
     // Zero the packet (see HSA docs)
     memset(((uint8_t*) packet) + 4, 0, sizeof(hsa_kernel_dispatch_packet_t) - 4);
 
@@ -242,8 +240,9 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
 
     // Create the completion signal for this kernel run.
-    assert(hsa_signal_load_relaxed(signals[gpu_frame_id])==0 && "frame signal not complete.");
-    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
+//    assert(hsa_signal_load_relaxed(signals[gpu_frame_id])==0 && "frame signal not complete.");
+//    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
+    while (0 < hsa_signal_cas_screlease(signals[gpu_frame_id], 0, 1));
     packet->completion_signal = signals[gpu_frame_id];
 
     // Create the AQL packet header as an atomic operation,

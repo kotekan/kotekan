@@ -1,42 +1,10 @@
 #include "hsaBeamformPulsarOneFeed.hpp"
-#include "hsaBase.h"
 
-hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+REGISTER_HSA_COMMAND(hsaBeamformPulsarOneFeed);
 
-    apply_config(0);
-
-    phase_len = _num_elements*_num_pulsar*2*sizeof(float);
-    host_phase = (float *)hsa_host_malloc(phase_len);
-
-    int index = 0;
-    INFO("+++++ Pulsar beamforming with one feed (%d %d)", _one_feed_p0, _one_feed_p1);
-    for (int b=0; b < _num_pulsar; b++){
-        for (int n=0; n<_num_elements; n++){
-	  if ((n == _one_feed_p0) or (n == _one_feed_p1)) {
-	        host_phase[index++] = 1;
-		host_phase[index++] = 1;
-	    }
-	    else {
-	        host_phase[index++] = 0;
-		host_phase[index++] = 0;
-	    }
-	}
-    }
-
-    void * device_phase = device.get_gpu_memory("beamform_phase", phase_len);
-    device.sync_copy_host_to_gpu(device_phase, (void *)host_phase, phase_len);
-}
-
-hsaBeamformPulsarOneFeed::~hsaBeamformPulsarOneFeed() {
-    hsa_host_free(host_phase);
-}
-
-void hsaBeamformPulsarOneFeed::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
+hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("pulsarbf", "pulsar_beamformer.hsaco", config, unique_name, host_buffers, device) {
 
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_pulsar = config.get_int(unique_name, "num_pulsar");
@@ -47,6 +15,31 @@ void hsaBeamformPulsarOneFeed::apply_config(const uint64_t& fpga_seq) {
 
     input_frame_len = _num_elements * _samples_per_data_set;
     output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol *  sizeof(uint8_t);
+
+    phase_len = _num_elements*_num_pulsar*2*sizeof(float);
+    host_phase = (float *)hsa_host_malloc(phase_len);
+
+    int index = 0;
+    INFO("+++++ Pulsar beamforming with one feed (%d %d)", _one_feed_p0, _one_feed_p1);
+    for (int b=0; b < _num_pulsar; b++){
+        for (int n=0; n<_num_elements; n++){
+          if ((n == _one_feed_p0) or (n == _one_feed_p1)) {
+                host_phase[index++] = 1;
+                host_phase[index++] = 1;
+            }
+            else {
+                host_phase[index++] = 0;
+                host_phase[index++] = 0;
+            }
+        }
+    }
+
+    void * device_phase = device.get_gpu_memory("beamform_phase", phase_len);
+    device.sync_copy_host_to_gpu(device_phase, (void *)host_phase, phase_len);
+}
+
+hsaBeamformPulsarOneFeed::~hsaBeamformPulsarOneFeed() {
+    hsa_host_free(host_phase);
 }
 
 hsa_signal_t hsaBeamformPulsarOneFeed::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

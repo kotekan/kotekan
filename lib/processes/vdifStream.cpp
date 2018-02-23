@@ -13,6 +13,8 @@
 #include "util.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(vdifStream);
+
 vdifStream::vdifStream(Config& config, const string& unique_name,
                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
@@ -25,8 +27,8 @@ vdifStream::~vdifStream() {
 }
 
 void vdifStream::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
+    //if (!config.update_needed(fpga_seq))
+    //    return;
 
     _vdif_port = config.get_int(unique_name, "vdif_port");
     _vdif_server_ip = config.get_string(unique_name, "vdif_server_ip");
@@ -64,16 +66,16 @@ void vdifStream::main_thread() {
     }
 
     while(!stop_thread) {
-
-        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
-             _vdif_server_ip.c_str(),
-             _vdif_port);
+//IT - commented out to test performance without INFO calls.
+//        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
+//             _vdif_server_ip.c_str(),
+//             _vdif_port);
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
-
-        INFO("vdif_stream; got full buffer, sending to VDIF server.");
+//IT - commented out to test performance without INFO calls.
+//        INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
         start_t = e_time();
 
@@ -90,7 +92,7 @@ void vdifStream::main_thread() {
             }
 
             if (bytes_sent == -1) {
-                ERROR("Cannot send VDIF packet");
+                ERROR("Cannot send VDIF packet, error: %s", strerror(errno));
                 return;
             }
 

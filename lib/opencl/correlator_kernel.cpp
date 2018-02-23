@@ -3,8 +3,8 @@
 #include <string>
 using std::string;
 
-correlator_kernel::correlator_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config):
-    gpu_command(param_gpuKernel, param_name, param_config)
+correlator_kernel::correlator_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
+    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
 {
 }
 
@@ -109,7 +109,7 @@ void correlator_kernel::defineOutputDataMap(device_interface& param_Device)
 
     //TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y indices for an upper triangle.
     // Time Test kernels using them compared to the lookup tables for NUM_ELEM = 256
-    int largest_num_blocks_1D = _num_adjusted_elements /_num_blocks;
+    int largest_num_blocks_1D = _num_adjusted_elements /_block_size;
     int index_1D = 0;
     for (int j = 0; j < largest_num_blocks_1D; j++){
         for (int i = j; i < largest_num_blocks_1D; i++){

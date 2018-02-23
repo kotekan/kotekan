@@ -10,6 +10,8 @@
 #include "buffer.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(rawFileWrite);
+
 rawFileWrite::rawFileWrite(Config& config,
                  const string& unique_name,
                  bufferContainer &buffer_container) :
@@ -70,12 +72,12 @@ void rawFileWrite::main_thread() {
         }
         // Write metadata size to disk, if there is no metadata in the frame, then
         // just save 0 to the first word.
-        if (write(fd, (void *)&metadata_size, sizeof(metadata_size)) != sizeof(metadata_size)) {
+        if (write(fd, (void *)&metadata_size, sizeof(metadata_size)) != (int32_t)sizeof(metadata_size)) {
             ERROR("Failed to write metadata_size to disk for file %s", full_path);
             exit(-1);
         }
         if (mc !=NULL) {
-            if (write(fd, mc->metadata, mc->metadata_size) != mc->metadata_size) {
+            if (write(fd, mc->metadata, mc->metadata_size) != (int32_t)mc->metadata_size) {
                 ERROR("Failed to write metadata_size to disk for file %s", full_path);
                 exit(-1);
             }

@@ -8,6 +8,8 @@ inline bool file_exists(char * name) {
     return (stat (name, &buf) == 0);
 }
 
+REGISTER_KOTEKAN_PROCESS(rawFileRead);
+
 rawFileRead::rawFileRead(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,

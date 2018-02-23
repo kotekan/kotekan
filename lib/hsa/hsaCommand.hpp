@@ -8,10 +8,19 @@
 #include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
+#include "hsaBase.h"
+#include "hsaCommandFactory.hpp"
 
 #include <stdio.h>
 #include <string>
 #include <assert.h>
+#include <string.h>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
@@ -40,13 +49,14 @@ enum class CommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
 //
 // This allow us to have host->gpu copies, kernels, and gpu->host copies
 // running co-currently, at the expense of some complexity and extra memory.
+
 class hsaCommand: public kotekanLogging
 {
 public:
     // Kernel file name is optional.
-    hsaCommand(const string &kernel_name, const string &kernel_file_name,
-                hsaDeviceInterface &device, Config &config,
-                bufferContainer &host_buffers, const string &unique_name);
+    hsaCommand(const string &default_kernel_command, const string &default_kernel_file_name,
+                Config &config, const string &unique_name,
+                bufferContainer &host_buffers, hsaDeviceInterface &device);
     virtual ~hsaCommand();
     string &get_name();
 
@@ -64,8 +74,6 @@ public:
     // Note that as a byproduct of this, one shouldn't use the signal after this
     // function has been cased.
     virtual void finalize_frame(int frame_id);
-
-    virtual void apply_config(const uint64_t &fpga_seq);
 
     // Get the profiling time for the last completed signal
     double get_last_gpu_execution_time();
@@ -88,15 +96,15 @@ protected:
     hsa_signal_t enqueue_kernel(const kernelParams &dims, const int gpu_frame_id);
 
     // The command or kernel name
-    string command_name;
+    string kernel_command;
 
     // The file which containts the kernel, if applicable.
     string kernel_file_name;
 
     Config &config;
-    hsaDeviceInterface &device;
-    bufferContainer host_buffers;
     string unique_name;
+    bufferContainer host_buffers;
+    hsaDeviceInterface &device;
 
     // The subclass must set the type.
     CommandType command_type = CommandType::NOT_SET;
@@ -126,6 +134,7 @@ protected:
     void packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest);
     uint16_t header(hsa_packet_type_t type);
 };
+
 
 #endif // GPU_COMMAND_H
 

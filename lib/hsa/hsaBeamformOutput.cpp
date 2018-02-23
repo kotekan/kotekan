@@ -1,13 +1,11 @@
 #include "hsaBeamformOutput.hpp"
 
-hsaBeamformOutputData::hsaBeamformOutputData(const string& kernel_name,
-        const string& kernel_file_name, hsaDeviceInterface& device,
-        Config& config, bufferContainer& host_buffers,
-        const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
-    command_type = CommandType::COPY_OUT;
+REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
-    apply_config(0);
+hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string &unique_name,
+        bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("", "", config, unique_name, host_buffers, device) {
+    command_type = CommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
     output_buffer = host_buffers.get_buffer("beamform_output_buf");
@@ -29,7 +27,7 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
     INFO("Got empty buffer for output %s[%d], for GPU[%d][%d]", output_buffer->buffer_name,
             output_buffer_precondition_id, device.get_gpu_id(), gpu_frame_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) %
-                                    output_buffer->num_frames;
+                                     output_buffer->num_frames;
     return 0;
 }
 
@@ -52,9 +50,10 @@ void hsaBeamformOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     pass_metadata(network_buffer, network_buffer_id,
-    		  output_buffer, output_buffer_id);
+                  output_buffer, output_buffer_id);
 
-    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
+// NOTE: HACK TO ALLOW RUN ALONGSIDE N2! WILL NOT WORK INDEPENDENTLY!
+//    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;

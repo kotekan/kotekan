@@ -23,6 +23,8 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(pulsarPostProcess);
+
 pulsarPostProcess::pulsarPostProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :
@@ -32,7 +34,7 @@ pulsarPostProcess::pulsarPostProcess(Config& config_,
     apply_config(0);
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
-    for (int i = 0; i < _num_gpus; ++i) {
+    for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("network_input_buffer_" + std::to_string(i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
@@ -54,15 +56,15 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
     //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
     for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
-	vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
-	vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
+	vdif_header->eud2 = (fpga_now & (0xFFFFFFFFl<<32))>>32;
+	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
 	vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
 	
-	for (int f=0;f<_num_gpus;++f) { //4 freq
+	for (uint32_t f=0;f<_num_gpus;++f) { //4 freq
 	    vdif_header->thread_id = freq_ids[f];
 
-	    for (int psr=0;psr<_num_pulsar; ++psr) { //10 streams
+	    for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
 	        vdif_header->eud1 = psr; //beam id
 		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
 		uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
@@ -102,7 +104,7 @@ void pulsarPostProcess::main_thread() {
     int startup = 1; //related to the likely & unlikely
     uint freq_ids[_num_gpus] ;
 
-    for (int i = 0; i < _num_gpus; ++i) {
+    for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
     uint32_t current_input_location = 0; //goes from 0 to _samples_per_data_set
@@ -132,8 +134,6 @@ void pulsarPostProcess::main_thread() {
     int in_frame_location = 0; //goes from 0 to 3125
     uint64_t fpga_seq_num = 0;
 
-    int num_L1_streams = _num_pulsar;
-
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t * out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
@@ -141,7 +141,7 @@ void pulsarPostProcess::main_thread() {
 
     while(!stop_thread) {
         // Get an input buffer, This call is blocking!
-        for (int i = 0; i < _num_gpus; ++i) {
+        for (uint32_t i = 0; i < _num_gpus; ++i) {
 	    in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
 	    if (in_frame[i] == NULL) goto end_loop;
 
@@ -152,7 +152,7 @@ void pulsarPostProcess::main_thread() {
 	//Get time, use system time for now, gps time requires ch_master
 	time_now = get_first_packet_recv_time(in_buf[0], in_buffer_ID[0]);
 
-        for (int i = 0; i < _num_gpus; ++i) {
+        for (uint32_t i = 0; i < _num_gpus; ++i) {
 	    assert(first_seq_number ==
 		   (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
 
@@ -201,10 +201,10 @@ void pulsarPostProcess::main_thread() {
                 } //end if last sample
 
 		unsigned char * out_buf = (unsigned char*)out_frame;
-		for (int thread_id = 0; thread_id < _num_gpus; ++thread_id) { //loop the 4 GPUs (input)
+		for (uint32_t thread_id = 0; thread_id < _num_gpus; ++thread_id) { //loop the 4 GPUs (input)
 		    unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
-		    for (int psr = 0; psr<_num_pulsar; ++psr) { //loop psr
- 		        for (int p=0;p<_num_pol; ++p) {
+		    for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
+ 		        for (uint32_t p=0;p<_num_pol; ++p) {
 			    uint32_t out_index = (psr+thread_id*_num_pulsar) *_udp_packet_size*num_packet + frame * _udp_packet_size 
 			                          + p*samples_in_frame + in_frame_location + _udp_header_size ;
 			    out_buf[out_index] = in_buf_data[i*_num_pulsar*_num_pol + psr*_num_pol + p]; 
@@ -222,7 +222,7 @@ void pulsarPostProcess::main_thread() {
 	} //end if not start up
 
         // Release the input buffers
-	for (int i = 0; i < _num_gpus; ++i) {
+	for (uint32_t i = 0; i < _num_gpus; ++i) {
 	    //release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
 	    mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
 	    in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;

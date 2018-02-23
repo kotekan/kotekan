@@ -49,6 +49,8 @@ private:
 
     uint32_t gpu_id;
 
+    bool log_profiling;
+
     // TODO should this be removed?
     bufferContainer local_buffer_container;
 

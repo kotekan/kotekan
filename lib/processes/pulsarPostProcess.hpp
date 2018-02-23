@@ -27,14 +27,14 @@ private:
     struct Buffer *pulsar_buf;
 
     // Config variables
-    int32_t _num_gpus;
-    int32_t _samples_per_data_set;
-    int32_t _nfreq_coarse;
-    int32_t _num_pulsar;
-    int32_t _num_pol;
-    int32_t _timesamples_per_pulsar_packet;
-    int32_t _udp_packet_size;
-    int32_t _udp_header_size;
+    uint32_t _num_gpus;
+    uint32_t _samples_per_data_set;
+    uint32_t _nfreq_coarse;
+    uint32_t _num_pulsar;
+    uint32_t _num_pol;
+    uint32_t _timesamples_per_pulsar_packet;
+    uint32_t _udp_packet_size;
+    uint32_t _udp_header_size;
     struct timeval time_now;
 };
 

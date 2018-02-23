@@ -63,11 +63,10 @@ extern "C" {
 #include "Config.hpp"
 #include "util.h"
 #include "version.h"
-#include "networkOutputSim.hpp"
-#include "SampleProcess.hpp"
 #include "json.hpp"
 #include "restServer.hpp"
 #include "kotekanMode.hpp"
+#include "fpga_header_functions.h"
 #include "gpsTime.h"
 #include "KotekanProcess.hpp"
 
@@ -179,7 +178,6 @@ void set_gps_time(Config &config) {
 }
 
 int start_new_kotekan_mode(Config &config) {
-
     config.dump_config();
     update_log_levels(config);
     set_gps_time(config);
@@ -208,6 +206,7 @@ int main(int argc, char ** argv) {
     int opt_val = 0;
     char * config_file_name = (char *)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
+    bool opt_d_set = false;
     bool gps_time = false;
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
@@ -219,6 +218,7 @@ int main(int argc, char ** argv) {
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
+            {"config-deamon", required_argument, 0, 'd'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
@@ -227,7 +227,7 @@ int main(int argc, char ** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:s",
+        opt_val = getopt_long (argc, argv, "ghc:d:s",
                                long_options, &option_index);
 
         // End of args
@@ -244,6 +244,10 @@ int main(int argc, char ** argv) {
                 config_file_name = strdup(optarg);
                 log_options |= LOG_PERROR;
                 openlog ("kotekan", log_options, LOG_LOCAL1);
+                break;
+            case 'd':
+                config_file_name = strdup(optarg);
+                opt_d_set = true;
                 break;
             case 'g':
                 gps_time = true;
@@ -282,12 +286,17 @@ int main(int argc, char ** argv) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO("Opening config file %s", config_file_name);
         //config.parse_file(config_file_name, 0);
+        
         string exec_path;
         if (gps_time) {
             INFO("Getting GPS time from ch_master, this might take some time...");
             exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
         } else {
-            exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
+            if (opt_d_set) {
+                exec_path = "python /usr/sbin/yaml_to_json.py " + std::string(config_file_name);
+            } else {
+                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
+            }
         }
         std::string json_string = exec(exec_path.c_str());
         config_json = json::parse(json_string.c_str());

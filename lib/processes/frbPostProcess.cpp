@@ -20,6 +20,8 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(frbPostProcess);
+
 frbPostProcess::frbPostProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :
@@ -99,7 +101,6 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_frb_header_size");
-    _freq_array = config.get_int_array(unique_name, "freq_array");
 
     _fpga_counts_per_sample = _downsample_time * _factor_upchan;
       

@@ -1,25 +1,20 @@
 #include "hsaPresumZero.hpp"
-#include "hsaBase.h"
 
-hsaPresumZero::hsaPresumZero(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers, const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+REGISTER_HSA_COMMAND(hsaPresumZero);
+
+hsaPresumZero::hsaPresumZero(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("","", config, unique_name, host_buffers, device) {
     command_type = CommandType::COPY_IN;
-    apply_config(0);
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     presum_zeros = hsa_host_malloc(presum_len);
     memset(presum_zeros, 0, presum_len);
 }
 
 hsaPresumZero::~hsaPresumZero() {
     hsa_host_free(presum_zeros);
-}
-
-void hsaPresumZero::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
 }
 
 hsa_signal_t hsaPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
