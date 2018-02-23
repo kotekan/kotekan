@@ -19,8 +19,9 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                                         unique_name(unique_name_){
 
     auto known_commands = hsaCommandFactoryRegistry::getRegisteredCommands();
-    for (auto it = known_commands.begin(); it != known_commands.end(); ++it){
-        INFO("Registered HSA Command: %s",it->first.c_str());
+//    for (auto it = known_commands.begin(); it != known_commands.end(); ++it){
+    for (auto &command : known_commands){
+        INFO("Registered HSA Command: %s",command.first.c_str());
     }
 
     vector<json> commands = config.get_json_array(unique_name, "commands");
@@ -62,15 +63,15 @@ hsaCommand* hsaCommandFactory::create(const string &name,
 
 void hsaCommandFactoryRegistry::hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd)
 {
-    hsaCommandFactoryRegistry::Instance().hsaReg(key,cmd);
+    hsaCommandFactoryRegistry::instance().hsaReg(key,cmd);
 }
 
 std::map<std::string, hsaCommandMaker*> hsaCommandFactoryRegistry::getRegisteredCommands(){
-    return hsaCommandFactoryRegistry::Instance()._hsa_commands;
+    return hsaCommandFactoryRegistry::instance()._hsa_commands;
 }
 
 
-hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::Instance() {
+hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::instance() {
     static hsaCommandFactoryRegistry factory;
     return factory;
 }

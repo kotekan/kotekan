@@ -61,7 +61,7 @@ public:
 private:
     processFactoryRegistry();
     void kotekanReg(const std::string& key, kotekanProcessMaker* proc);
-    static processFactoryRegistry& Instance();
+    static processFactoryRegistry& instance();
     std::map<std::string, kotekanProcessMaker*> _kotekan_processes;
 };
 

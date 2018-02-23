@@ -48,7 +48,7 @@ public:
     static std::map<std::string, hsaCommandMaker*> getRegisteredCommands();
 
 private:
-    static hsaCommandFactoryRegistry& Instance();
+    static hsaCommandFactoryRegistry& instance();
     void hsaReg(const std::string& key, hsaCommandMaker* cmd);
     std::map<std::string, hsaCommandMaker*> _hsa_commands;
     hsaCommandFactoryRegistry();

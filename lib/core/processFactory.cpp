@@ -7,8 +7,8 @@ processFactory::processFactory(Config& config,
     buffer_container(buffer_container) {
 
     auto known_processes = processFactoryRegistry::getRegisteredProcesses();
-    for (auto it = known_processes.begin(); it != known_processes.end(); ++it){
-        INFO("Registered Kotekan Process: %s",it->first.c_str());
+    for (auto &process : known_processes){
+        INFO("Registered Kotekan Process: %s",process.first.c_str());
     }
 }
 
@@ -55,7 +55,6 @@ KotekanProcess* processFactory::create(const string &name,
                                       bufferContainer &host_buffers) const
 {
     auto known_processes = processFactoryRegistry::getRegisteredProcesses();
-    //processFactoryRegistry reg = processFactoryRegistry::Instance();
     auto i = known_processes.find(name);
     if (i == known_processes.end())
     {
@@ -70,15 +69,15 @@ KotekanProcess* processFactory::create(const string &name,
 
 void processFactoryRegistry::kotekanRegisterProcess(const std::string& key, kotekanProcessMaker* proc)
 {
-    processFactoryRegistry::Instance().kotekanReg(key,proc);
+    processFactoryRegistry::instance().kotekanReg(key,proc);
 }
 
 std::map<std::string, kotekanProcessMaker*> processFactoryRegistry::getRegisteredProcesses(){
-    return processFactoryRegistry::Instance()._kotekan_processes;
+    return processFactoryRegistry::instance()._kotekan_processes;
 }
 
 
-processFactoryRegistry& processFactoryRegistry::Instance() {
+processFactoryRegistry& processFactoryRegistry::instance() {
     static processFactoryRegistry factory;
     return factory;
 }
