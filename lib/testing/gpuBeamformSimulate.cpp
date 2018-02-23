@@ -324,8 +324,8 @@ void gpuBeamformSimulate::main_thread() {
                 ERROR("Couldn't read gain file...");
             }
             for (uint32_t i=0; i<2048; i++){
-                host_gain[i*2  ] = host_gain[i*2  ] * scaling;
-                host_gain[i*2+1] = host_gain[i*2+1] * scaling;
+                cpu_gain[i*2  ] = cpu_gain[i*2  ] * scaling;
+                cpu_gain[i*2+1] = cpu_gain[i*2+1] * scaling;
             }
             fclose(ptr_myfile);
         }
