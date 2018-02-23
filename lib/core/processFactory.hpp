@@ -54,13 +54,13 @@ private:
 class processFactoryRegistry {
 public:
     //Add the process to the registry.
-    static void kotekanRegisterProcess(const std::string& key, kotekanProcessMaker* proc);
+    static void kotekan_register_process(const std::string& key, kotekanProcessMaker* proc);
     //INFO all the known commands out.
-    static std::map<std::string, kotekanProcessMaker*> getRegisteredProcesses();
+    static std::map<std::string, kotekanProcessMaker*> get_registered_processes();
 
 private:
     processFactoryRegistry();
-    void kotekanReg(const std::string& key, kotekanProcessMaker* proc);
+    void kotekan_reg(const std::string& key, kotekanProcessMaker* proc);
     static processFactoryRegistry& instance();
     std::map<std::string, kotekanProcessMaker*> _kotekan_processes;
 };
@@ -72,7 +72,7 @@ class kotekanProcessMakerTemplate : public kotekanProcessMaker
         kotekanProcessMakerTemplate(const std::string& key)
         {
             printf("Registering a KotekanProcess! %s\n",key.c_str());
-            processFactoryRegistry::kotekanRegisterProcess(key, this);
+            processFactoryRegistry::kotekan_register_process(key, this);
         }
         virtual KotekanProcess *create(Config &config, const string &unique_name,
                     bufferContainer &host_buffers) const

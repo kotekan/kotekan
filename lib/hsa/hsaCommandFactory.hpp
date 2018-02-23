@@ -43,13 +43,13 @@ private:
 class hsaCommandFactoryRegistry {
 public:
     //Add the process to the registry.
-    static void hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd);
+    static void hsa_register_command(const std::string& key, hsaCommandMaker* cmd);
     //INFO all the known commands out.
-    static std::map<std::string, hsaCommandMaker*> getRegisteredCommands();
+    static std::map<std::string, hsaCommandMaker*> get_registered_commands();
 
 private:
     static hsaCommandFactoryRegistry& instance();
-    void hsaReg(const std::string& key, hsaCommandMaker* cmd);
+    void hsa_reg(const std::string& key, hsaCommandMaker* cmd);
     std::map<std::string, hsaCommandMaker*> _hsa_commands;
     hsaCommandFactoryRegistry();
 };
@@ -61,7 +61,7 @@ class hsaCommandMakerTemplate : public hsaCommandMaker
     public:
         hsaCommandMakerTemplate(const std::string& key)
         {
-            hsaCommandFactoryRegistry::hsaRegisterCommand(key, this);
+            hsaCommandFactoryRegistry::hsa_register_command(key, this);
         }
         virtual hsaCommand *create(Config &config, const string &unique_name,
                     bufferContainer &host_buffers, hsaDeviceInterface &device) const

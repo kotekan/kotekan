@@ -18,7 +18,7 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                                         host_buffers(host_buffers_),
                                         unique_name(unique_name_){
 
-    auto known_commands = hsaCommandFactoryRegistry::getRegisteredCommands();
+    auto known_commands = hsaCommandFactoryRegistry::get_registered_commands();
 //    for (auto it = known_commands.begin(); it != known_commands.end(); ++it){
     for (auto &command : known_commands){
         INFO("Registered HSA Command: %s",command.first.c_str());
@@ -48,7 +48,7 @@ hsaCommand* hsaCommandFactory::create(const string &name,
                                       bufferContainer &host_buffers,
                                       hsaDeviceInterface& device) const
 {
-    auto known_commands = hsaCommandFactoryRegistry::getRegisteredCommands();
+    auto known_commands = hsaCommandFactoryRegistry::get_registered_commands();
     auto i = known_commands.find(name);
     if (i == known_commands.end())
     {
@@ -61,12 +61,12 @@ hsaCommand* hsaCommandFactory::create(const string &name,
 
 
 
-void hsaCommandFactoryRegistry::hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd)
+void hsaCommandFactoryRegistry::hsa_register_command(const std::string& key, hsaCommandMaker* cmd)
 {
-    hsaCommandFactoryRegistry::instance().hsaReg(key,cmd);
+    hsaCommandFactoryRegistry::instance().hsa_reg(key,cmd);
 }
 
-std::map<std::string, hsaCommandMaker*> hsaCommandFactoryRegistry::getRegisteredCommands(){
+std::map<std::string, hsaCommandMaker*> hsaCommandFactoryRegistry::get_registered_commands(){
     return hsaCommandFactoryRegistry::instance()._hsa_commands;
 }
 
@@ -78,7 +78,7 @@ hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::instance() {
 
 hsaCommandFactoryRegistry::hsaCommandFactoryRegistry(){}
 
-void hsaCommandFactoryRegistry::hsaReg(const std::string& key, hsaCommandMaker* cmd)
+void hsaCommandFactoryRegistry::hsa_reg(const std::string& key, hsaCommandMaker* cmd)
 {
     if (_hsa_commands.find(key) != _hsa_commands.end())
     {
