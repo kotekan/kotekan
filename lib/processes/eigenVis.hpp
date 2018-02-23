@@ -18,6 +18,7 @@ private:
     struct Buffer *output_buffer;
 
     int32_t num_eigenvectors;
+    int32_t num_diagonals_filled;
 };
 
 #endif

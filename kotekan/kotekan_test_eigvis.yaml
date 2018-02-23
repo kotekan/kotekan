@@ -63,6 +63,7 @@ fake_vis:
 eig_vis:
   kotekan_process: eigenVis
   num_eigenvectors: 4
+  num_diagonals_filled: 30
   in_buf: vis_buffer
   out_buf: write_buffer
 
