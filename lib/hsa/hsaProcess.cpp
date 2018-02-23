@@ -8,7 +8,7 @@
 #include <iostream>
 #include <sys/time.h>
 
-using namespace std;
+REGISTER_KOTEKAN_PROCESS(hsaProcess);
 
 hsaProcess::hsaProcess(Config& config, const string& unique_name,
                      bufferContainer &buffer_container):
@@ -44,9 +44,9 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     string g_log_level = config.get_string(unique_name, "log_level");
     string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
     device->set_log_level(s_log_level);
-    device->set_log_prefix("GPU[" + to_string(gpu_id) + "] device interface");
+    device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
-    factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
+    factory = new hsaCommandFactory(config, unique_name, local_buffer_container, *device);
 }
 
 void hsaProcess::apply_config(uint64_t fpga_seq) {
@@ -118,11 +118,11 @@ void hsaProcess::main_thread()
 {
     vector<hsaCommand *> &commands = factory->get_commands();
 
-    using namespace std::placeholders;
+//    using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
     string endpoint = "/gpu_profile/" + std::to_string(gpu_id);
     rest_server->register_json_callback(endpoint,
-            std::bind(&hsaProcess::profile_callback, this, _1, _2));
+            std::bind(&hsaProcess::profile_callback, this, std::placeholders::_1, std::placeholders::_2));
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
@@ -135,8 +135,10 @@ void hsaProcess::main_thread()
         // and for there to be free space in the output buffers.
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (uint32_t i = 0; i < commands.size(); ++i) {
-            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0)
+            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0){
+                INFO("Received exit in HSA command precondition! (Command %i, '%s')",i,commands[i]->get_name().c_str());
                 break;
+            }
         }
 
         //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);

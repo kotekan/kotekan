@@ -23,6 +23,8 @@
 #include <inttypes.h>
 #include <functional>
 
+REGISTER_KOTEKAN_PROCESS(networkOutputSim);
+
 networkOutputSim::networkOutputSim(Config &config_,
                      const string& unique_name,
                      bufferContainer &buffer_container) :

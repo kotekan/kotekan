@@ -7,129 +7,32 @@
 #include <vector>
 
 #include "json.hpp"
-#include "hsaCorrelatorKernel.hpp"
-#include "hsaPreseedKernel.hpp"
-#include "hsaInputData.hpp"
-#include "hsaPresumZero.hpp"
-#include "hsaOutputData.hpp"
-#include "hsaOutputDataZero.hpp"
-#include "hsaBarrier.hpp"
-#include "hsaBeamformKernel.hpp"
-#include "hsaBeamformPulsar.hpp"
-#include "hsaBeamformPulsarOneFeed.hpp"
-#include "hsaPulsarUpdatePhase.hpp"
-#include "hsaBeamformReorder.hpp"
-#include "hsaBeamformTranspose.hpp"
-#include "hsaBeamformUpchan.hpp"
-#include "hsaBeamformOutput.hpp"
-#include "hsaBeamformOutputSolo.hpp"
-#include "hsaRfiVdif.hpp"
-#include "hsaRfi.hpp"
-#include "hsaRfiOutput.hpp"
-using namespace std;
+
 
 hsaCommandFactory::hsaCommandFactory(Config& config_,
-                                            hsaDeviceInterface& device_,
-                                            bufferContainer &host_buffers_,
-                                            const string &unique_name_) :
-    config(config_),
-    device(device_),
-    host_buffers(host_buffers_),
-    unique_name(unique_name_){
+                                     const string &unique_name_,
+                                     bufferContainer &host_buffers_,
+                                     hsaDeviceInterface& device_) :
+                                        config(config_),
+                                        device(device_),
+                                        host_buffers(host_buffers_),
+                                        unique_name(unique_name_){
+
+    auto known_commands = hsaCommandFactoryRegistry::get_registered_commands();
+//    for (auto it = known_commands.begin(); it != known_commands.end(); ++it){
+    for (auto &command : known_commands){
+        INFO("Registered HSA Command: %s",command.first.c_str());
+    }
 
     vector<json> commands = config.get_json_array(unique_name, "commands");
 
     for (uint32_t i = 0; i < commands.size(); i++){
-
-        if (commands[i]["name"] == "hsa_correlator_kernel") {
-            list_commands.push_back(new hsaCorrelatorKernel("CHIME_X",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_barrier") {
-            list_commands.push_back(new hsaBarrier("hsa_barrier",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_preseed_kernel") {
-            list_commands.push_back(new hsaPreseedKernel("CHIME_presum",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_input_data") {
-            list_commands.push_back(new hsaInputData("hsa_input_data",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_presum_zero") {
-            list_commands.push_back(new hsaPresumZero("hsa_presum_zero",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_output_data") {
-            list_commands.push_back(new hsaOutputData("hsa_output_data",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_output_data_zero") {
-            list_commands.push_back(new hsaOutputDataZero("hsa_output_data_zero",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_reorder") {
-            list_commands.push_back(new hsaBeamformReorder("reorder",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_pulsar") {
-            list_commands.push_back(new hsaBeamformPulsar("pulsarbf",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_pulsar_one_feed") {
-            list_commands.push_back(new hsaBeamformPulsarOneFeed("pulsarbf",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_pulsar_update_phase") {
-            list_commands.push_back(new hsaPulsarUpdatePhase("hsa_pulsar_update_phase",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_kernel") {
-            list_commands.push_back(new hsaBeamformKernel("zero_padded_FFT512",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_transpose") {
-            list_commands.push_back(new hsaBeamformTranspose("transpose",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_upchan") {
-            list_commands.push_back(new hsaBeamformUpchan("upchannelize",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_output") {
-            list_commands.push_back(new hsaBeamformOutputData("hsa_beamform_output",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_beamform_output_solo") {
-            list_commands.push_back(new hsaBeamformOutputDataSolo("hsa_beamform_output_solo",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_rfi_vdif") {
-            list_commands.push_back(new hsaRfiVdif("rfi_vdif",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_rfi") {
-            list_commands.push_back(new hsaRfi("rfi_chime",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else if (commands[i]["name"] == "hsa_rfi_output") {
-            list_commands.push_back(new hsaRfiOutput("hsa_rfi_output",
-                    commands[i]["kernel"].get<string>(),
-                    device, config, host_buffers, unique_name));
-        } else {
-            ERROR("Command %s not found!", commands[i]["name"].get<string>().c_str());
-        }
-        if (list_commands[list_commands.size() - 1]->get_command_type() ==
-                CommandType::NOT_SET) {
-            throw std::runtime_error("The command " + commands[i]["name"].get<string>() +
-                    ", did not set a command type.");
-        }
+        auto cmd = create(commands[i]["name"], config, unique_name, host_buffers, device);
+        list_commands.push_back(cmd);
     }
 }
 
 hsaCommandFactory::~hsaCommandFactory() {
-    // Does this work?
     for (auto command : list_commands) {
         delete command;
     }
@@ -137,4 +40,50 @@ hsaCommandFactory::~hsaCommandFactory() {
 
 vector<hsaCommand*>& hsaCommandFactory::get_commands() {
     return list_commands;
+}
+
+hsaCommand* hsaCommandFactory::create(const string &name,
+                                      Config& config,
+                                      const string &unique_name,
+                                      bufferContainer &host_buffers,
+                                      hsaDeviceInterface& device) const
+{
+    auto known_commands = hsaCommandFactoryRegistry::get_registered_commands();
+    auto i = known_commands.find(name);
+    if (i == known_commands.end())
+    {
+        ERROR("Unrecognized HSA command! (%s)", name.c_str());
+        throw std::runtime_error("Unrecognized hsaCommand!");
+    }
+    hsaCommandMaker* maker = i->second;
+    return maker->create(config,unique_name,host_buffers,device);
+}
+
+
+
+void hsaCommandFactoryRegistry::hsa_register_command(const std::string& key, hsaCommandMaker* cmd)
+{
+    hsaCommandFactoryRegistry::instance().hsa_reg(key,cmd);
+}
+
+std::map<std::string, hsaCommandMaker*> hsaCommandFactoryRegistry::get_registered_commands(){
+    return hsaCommandFactoryRegistry::instance()._hsa_commands;
+}
+
+
+hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::instance() {
+    static hsaCommandFactoryRegistry factory;
+    return factory;
+}
+
+hsaCommandFactoryRegistry::hsaCommandFactoryRegistry(){}
+
+void hsaCommandFactoryRegistry::hsa_reg(const std::string& key, hsaCommandMaker* cmd)
+{
+    if (_hsa_commands.find(key) != _hsa_commands.end())
+    {
+        ERROR("Multiple HSA Commands registered as '%s'!",key.c_str());
+        throw std::runtime_error("An hsaCommand was registered twice!");
+    }
+    _hsa_commands[key] = cmd;
 }

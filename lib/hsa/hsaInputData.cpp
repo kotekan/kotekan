@@ -1,14 +1,20 @@
 #include "hsaInputData.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "hsaBase.h"
 
-hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers, const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name){
+REGISTER_HSA_COMMAND(hsaInputData);
+
+hsaInputData::hsaInputData( Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("", "", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_IN;
-    apply_config(0);
+
+    int header_size = 0;
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    if(_num_elements <= 2) //TODO FIND BETTER WORK AROUND FOR DISTINGUISHING VDIF/CHIME INPUT LENGTH
+                header_size = 32;
+    input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;
+
     network_buf = host_buffers.get_buffer("network_buf");
     network_buffer_id = 0;
     network_buffer_precondition_id = 0;
@@ -18,18 +24,6 @@ hsaInputData::hsaInputData(const string& kernel_name, const string& kernel_file_
 
 hsaInputData::~hsaInputData() {
 
-}
-
-void hsaInputData::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-    int header_size = 0;
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    if(_num_elements <= 2){ //TODO FIND BETTER WORK AROUND FOR DISTINGUISHING VDIF/CHIME INPUT LENGTH
-	header_size = 32;
-    }
-    input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;
 }
 
 int hsaInputData::wait_on_precondition(int gpu_frame_id)
@@ -71,9 +65,4 @@ void hsaInputData::finalize_frame(int frame_id)
     //mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
     //network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
 }
-
-
-
-
-
 

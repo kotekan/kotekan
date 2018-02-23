@@ -10,30 +10,46 @@ include_directories ( /opt/rocm/hsa/include/ )
 add_library ( kotekan_hsa
               signalContainer.cpp
               hsaBase.c
-              hsaBarrier.cpp
-              hsaCorrelatorKernel.cpp
-              hsaInputData.cpp
-              hsaOutputData.cpp
-              hsaOutputDataZero.cpp
-              hsaPreseedKernel.cpp
-              hsaPresumZero.cpp
-              hsaBeamformKernel.cpp
-              hsaBeamformPulsar.cpp
-	      hsaBeamformPulsarOneFeed.cpp
-	      hsaPulsarUpdatePhase.cpp
-              hsaBeamformReorder.cpp
-              hsaBeamformTranspose.cpp
-              hsaBeamformUpchan.cpp
-              hsaBeamformOutput.cpp
-              hsaBeamformOutputSolo.cpp
               hsaCommand.cpp
               hsaCommandFactory.cpp
               hsaDeviceInterface.cpp
               hsaProcess.cpp
+
+# Copy-in & general-purpose:
+              hsaInputData.cpp
+              hsaBarrier.cpp
+
+# RFI Kernels:
               hsaRfiVdif.cpp
               hsaRfi.cpp
               hsaRfiOutput.cpp
+
+# CHIME N2 Kernels & copy-out:
+              hsaOutputDataZero.cpp
+              hsaPresumZero.cpp
+              hsaPresumKernel.cpp
+              hsaCorrelatorKernel.cpp
+              hsaOutputData.cpp
+
+# CHIME/FRB Kernels & copy-out:
+              hsaBeamformReorder.cpp
+              hsaBeamformKernel.cpp
+              hsaBeamformTranspose.cpp
+              hsaBeamformUpchan.cpp
+              hsaBeamformOutput.cpp
+              hsaBeamformOutputSolo.cpp
+
+# CHIME/Pulsar Kernels & copy-out:
+              hsaBeamformPulsar.cpp
+              hsaBeamformPulsarOneFeed.cpp
+              hsaPulsarUpdatePhase.cpp
               )
+
+target_link_libraries( kotekan_hsa kotekan_utils )
 
 add_subdirectory(kernels)
 add_dependencies( kotekan_hsa makeHSACOKernels )
+
+
+
+

@@ -36,7 +36,6 @@ void testDataGenQuad::main_thread() {
     int frame_id = 0;
     uint8_t * frame[4] = {NULL,NULL,NULL,NULL};
     uint64_t seq_num = 0;
-    bool finished_seeding_consant = false;
     static struct timeval now;
 
     //pre-seed everything!
@@ -93,7 +92,6 @@ void testDataGenQuad::main_thread() {
 
         frame_id = (frame_id + 1) % buf[0]->num_frames;
         seq_num += 32768;
-        if (frame_id == 0) finished_seeding_consant = true;
     }
 }
 

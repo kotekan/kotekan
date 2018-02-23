@@ -20,6 +20,8 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(frbPostProcess);
+
 frbPostProcess::frbPostProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :

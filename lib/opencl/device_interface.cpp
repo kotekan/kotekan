@@ -1,3 +1,5 @@
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+
 #include "device_interface.h"
 #include "gpu_command.h"
 #include "callbackdata.h"
