@@ -7,6 +7,7 @@
 #include "chimeMetadata.h"
 #include "gpuPostProcess.hpp"
 #include "errors.h"
+#include "baselineSubset.hpp"
 #include <time.h>
 #include <unistd.h>
 #include <iomanip>
@@ -187,6 +188,20 @@ visWriter::visWriter(Config& config,
     // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
+    // If this writer takes a baseline subset as input, generate subset products
+    // as specified in config.
+    xmax = config.get_int_default(unique_name, "max_ew_baseline", 0);
+    ymax = config.get_int_default(unique_name, "max_ns_baseline", 0);
+    all_prods = ! (xmax + ymax);
+    for(uint16_t i=0; i < inputs.size(); i++) {
+        for(uint16_t j = i; j < inputs.size(); j++) {
+            // restrict products to those within max baseline length
+            if (all_prods || max_bl_condition({i, j}, xmax, ymax)) {
+                prods.push_back({i, j});
+            }
+        }
+    }
+
     if(node_mode) {
 
         // Set the instrument_name from the hostname
@@ -288,7 +303,7 @@ void visWriter::init_acq() {
     std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
          new visFileBundle(
-             root_path, chunk_id, instrument_name, notes, freqs, inputs
+             root_path, chunk_id, instrument_name, notes, freqs, inputs, prods
          )
     );
 }

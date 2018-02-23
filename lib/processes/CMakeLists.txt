@@ -33,6 +33,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               freqSlicer.cpp
               stripXProd.cpp
               frbPostProcess_in.cpp
+              baselineSubset.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
