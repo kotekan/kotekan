@@ -141,6 +141,9 @@ public:
     /// Return a summary of the visibility buffer contents
     std::string summary() const;
 
+    /// Copy the non-const parts of the metadata
+    void copy_nonconst_metadata(visFrameView frame_to_copy);
+
 private:
 
     // References to the buffer and metadata we are viewing

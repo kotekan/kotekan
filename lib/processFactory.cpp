@@ -41,6 +41,7 @@
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
 #include "freqSlicer.hpp"
+#include "stripXProd.hpp"
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
@@ -302,6 +303,11 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     // Generate fake visbilities
     if (name == "fakeVis") {
         return (KotekanProcess *) new fakeVis(config, location, buffer_container);
+    }
+
+    // Strip buffer of cross products
+    if (name == "stripXProd") {
+        return (KotekanProcess *) new stripXProd(config, location, buffer_container);
     }
 
     // Split frequencies
