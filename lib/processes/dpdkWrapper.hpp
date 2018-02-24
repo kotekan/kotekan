@@ -30,6 +30,7 @@ private:
     int32_t _timesamples_per_packet;
     int32_t _num_gpu_frames;
     int32_t _num_lcores;
+    int32_t _num_gpus;
     string _mode;
     vector<int32_t> _link_map;
 };

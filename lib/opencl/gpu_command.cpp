@@ -6,21 +6,21 @@
 using std::string;
 using std::to_string;
 
-gpu_command::gpu_command(const char* param_name, Config &param_config) :
-    config(param_config), gpuCommandState(0) , gpuKernel(NULL)
+gpu_command::gpu_command(const char* param_name, Config &param_config, const string &unique_name_) :
+    config(param_config), gpuCommandState(0) , gpuKernel(NULL), unique_name(unique_name_)
 {
     name = strdup(param_name);
-    INFO("Name: %s, %s", param_name, name);
+//    INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config) :
-    config(param_config), gpuCommandState(0), gpuKernel(NULL)
+gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name_) :
+    config(param_config), gpuCommandState(0), gpuKernel(NULL), unique_name(unique_name_)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
     strcpy(gpuKernel, param_gpuKernel);
     gpuCommandState=1;
     name = strdup(param_name);
-    INFO("Name: %s, %s", param_name, name);
+//    INFO("Name: %s, %s", param_name, name);
 }
 
 gpu_command::~gpu_command()
@@ -38,15 +38,15 @@ char* gpu_command::get_name()
 
 void gpu_command::apply_config(const uint64_t& fpga_seq) {
     (void)fpga_seq;
-    _num_adjusted_elements = config.get_int("/processing", "num_adjusted_elements");
-    _num_elements = config.get_int("/processing", "num_elements");
-    _num_local_freq = config.get_int("/processing", "num_local_freq");
-    _samples_per_data_set = config.get_int("/processing", "samples_per_data_set");
-    _num_data_sets = config.get_int("/processing", "num_data_sets");
-    _num_adjusted_local_freq = config.get_int("/processing", "num_adjusted_local_freq");
-    _block_size = config.get_int("/gpu", "block_size");
-    _num_blocks = config.get_int("/gpu", "num_blocks");
-    _buffer_depth = config.get_int("/processing", "buffer_depth");
+    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_data_sets = config.get_int(unique_name, "num_data_sets");
+    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
+    _block_size = config.get_int(unique_name, "block_size");
+    _num_blocks = config.get_int(unique_name, "num_blocks");
+    _buffer_depth = config.get_int(unique_name, "buffer_depth");
 }
 
 void gpu_command::build(class device_interface &param_Device)
@@ -75,7 +75,7 @@ void gpu_command::build(class device_interface &param_Device)
         program_buffer = (char*)malloc(program_size+1);
         program_buffer[program_size] = '\0';
         int sizeRead = fread(program_buffer, sizeof(char), program_size, fp);
-        if (sizeRead < program_size)
+        if (sizeRead < (int32_t)program_size)
             ERROR("Error reading the file: %s", gpuKernel);
         fclose(fp);
         program = clCreateProgramWithSource(param_Device.getContext(),
@@ -119,8 +119,8 @@ string gpu_command::get_cl_options()
     cl_options += " -D NUM_BLOCKS=" + to_string(_num_blocks);
     cl_options += " -D NUM_TIMESAMPLES=" + to_string(_samples_per_data_set);
     cl_options += " -D NUM_BUFFERS=" + to_string(_buffer_depth);
-
-    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
+//ikt - commented out to test performance without DEBUG calls.
+//    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
 
     return cl_options;
 }

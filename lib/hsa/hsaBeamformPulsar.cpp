@@ -1,14 +1,19 @@
 #include "hsaBeamformPulsar.hpp"
-#include "hsaBase.h"
 
-hsaBeamformPulsar::hsaBeamformPulsar(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+REGISTER_HSA_COMMAND(hsaBeamformPulsar);
+
+hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand("pulsarbf", "pulsar_beamformer.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    apply_config(0);
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_pulsar = config.get_int(unique_name, "num_pulsar");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_pol = config.get_int(unique_name, "num_pol");
+
+    input_frame_len = _num_elements * _samples_per_data_set;
+    output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol *  sizeof(uint8_t);
 
     phase_len = _num_elements*_num_pulsar*2*sizeof(float);
     host_phase = (float *)hsa_host_malloc(phase_len);
@@ -27,18 +32,6 @@ hsaBeamformPulsar::hsaBeamformPulsar(const string& kernel_name, const string& ke
 
 hsaBeamformPulsar::~hsaBeamformPulsar() {
     hsa_host_free(host_phase);
-}
-
-void hsaBeamformPulsar::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_pol = config.get_int(unique_name, "num_pol");
-
-    input_frame_len = _num_elements * _samples_per_data_set;
-    output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol *  sizeof(uint8_t);
 }
 
 hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

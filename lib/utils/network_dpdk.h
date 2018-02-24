@@ -13,11 +13,17 @@
     // A better name might be SHUFFLE_SIZE?
     #define NUM_FREQ (1)
 #else
-    #define NUM_LINKS (4)
+    #ifdef WITH_OPENCL
+        // Pathfinder mode
+        #define NUM_LINKS (8)
+        #define NUM_FREQ (1)
+    #else
+        // CHIME Mode
+        #define NUM_LINKS (4)
+        #define NUM_FREQ (4)
+    #endif
+
     #define NUM_LCORES (4)
-    // This shouldn't go above 4, since it's for the shuffle.
-    // A better name might be SHUFFLE_SIZE?
-    #define NUM_FREQ (4)
 #endif
 
 #ifdef __cplusplus
@@ -62,6 +68,12 @@ struct networkDPDKArg {
 
     // The producer names
     char producer_names[NUM_LINKS][MAX_PROCESS_NAME_LEN];
+
+    // ** Shared information with wrapper **
+    uint64_t rx_packets_total[NUM_LINKS];
+    uint64_t rx_bytes_total[NUM_LINKS];
+    uint64_t lost_packets_total[NUM_LINKS];
+    uint64_t rx_errors_total[NUM_LINKS];
 };
 
 struct LinkData {

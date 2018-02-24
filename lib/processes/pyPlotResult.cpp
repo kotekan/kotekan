@@ -15,6 +15,8 @@
 
 using json = nlohmann::json;
 
+REGISTER_KOTEKAN_PROCESS(pyPlotResult);
+
 pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
                            bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
@@ -87,7 +89,7 @@ void pyPlotResult::main_thread() {
                 };
                 std::string s = header.dump()+"\n";
                 fwrite(s.c_str(),1,s.length(),python_script);
-                for (int i=0; i<num_blocks; i++) {
+                for (uint32_t i=0; i<num_blocks; i++) {
                     fwrite(in_local +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
                     fflush(python_script);
                 }

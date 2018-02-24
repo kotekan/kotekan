@@ -20,18 +20,33 @@ struct loopCounter {
     pthread_cond_t cond;
 };
 struct buffer_id_lock {
-    buffer_id_lock() : in_process(0) {
+   buffer_id_lock(){
         CHECK_ERROR( pthread_mutex_init(&lock, NULL) );
-        CHECK_ERROR( pthread_cond_init(&cond, NULL) );
+        CHECK_ERROR( pthread_cond_init(&mem_cond, NULL) );
+        CHECK_ERROR( pthread_cond_init(&clean_cond, NULL) );
     }
     ~buffer_id_lock() {
         CHECK_ERROR( pthread_mutex_destroy(&lock) );
-        CHECK_ERROR( pthread_cond_destroy(&cond) );
+        CHECK_ERROR( pthread_cond_destroy(&mem_cond) );
+        CHECK_ERROR( pthread_cond_destroy(&clean_cond) );
     }
-    int in_process;
+    int clean = 0;
+    int mem_in_use = 0;
 
     pthread_mutex_t lock;  // Lock for the is_ready function.
-    pthread_cond_t cond;
+    pthread_cond_t mem_cond;
+    pthread_cond_t clean_cond;
+};
+struct kill_thread {
+    kill_thread() {
+        CHECK_ERROR( pthread_mutex_init(&lock, NULL) );
+    }
+    ~kill_thread() {
+        CHECK_ERROR( pthread_mutex_destroy(&lock) );
+    }
+    int kill_switch = 0;
+
+    pthread_mutex_t lock;  // Lock for the is_ready function.
 };
 class callBackData {
 public:
@@ -43,6 +58,7 @@ public:
     int numCommands;
     int use_beamforming;
     double start_time;
+    string unique_name;
 
     gpu_command ** listCommands;
 
@@ -50,9 +66,10 @@ public:
     struct Buffer * in_buf;
     struct Buffer * out_buf;
     struct Buffer * beamforming_out_buf;
-
+    struct Buffer * rfi_out_buf;
     struct loopCounter * cnt;
     struct buffer_id_lock * buff_id_lock;
+    struct kill_thread * kill;
 };
 
 #endif // CALLBACKDATA_H

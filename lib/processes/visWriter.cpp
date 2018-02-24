@@ -15,6 +15,7 @@
 #include <iostream>
 #include <fstream>
 
+REGISTER_KOTEKAN_PROCESS(visTransform);
 
 visTransform::visTransform(Config& config,
                            const string& unique_name,

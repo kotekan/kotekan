@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
 set (KOTEKAN_PROCESS_LIB_SOURCES
               beamformingPostProcess.cpp
@@ -10,7 +10,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fullPacketDump.cpp
               gpuPostProcess.cpp
               frbPostProcess.cpp
-	          pulsarPostProcess.cpp
+              pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
@@ -62,6 +62,4 @@ if (${USE_HDF5})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
 
-# This seems like a circular reference, seems like there should be a
-# way to avoid this.
-target_link_libraries( kotekan_processes kotekan_libs )
+target_link_libraries( kotekan_processes kotekan_utils kotekan_core )
