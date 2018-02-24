@@ -108,6 +108,7 @@ gpu:
     samples_per_second: 390625
     frame_arrival_period: samples_per_data_set / samples_per_second
     device_interface_log_level: warn
+    enable_delay: true
     gpu_0:
         kotekan_process: hsaProcess
         gpu_id: 0
