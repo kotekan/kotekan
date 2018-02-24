@@ -23,7 +23,7 @@ fakeVis::fakeVis(Config &config,
 
     // Get frequency IDs from config
     for (auto f : config.get_int_array(unique_name, "freq")) {
-        freq.push_back((uint16_t) f);
+        freq.push_back((uint32_t) f);
     }
 
     // Get cadence
@@ -48,7 +48,7 @@ void fakeVis::main_thread() {
 
     while (!stop_thread) {
 
-        for (uint16_t f : freq) {
+        for (auto f : freq) {
             // Wait for the buffer frame to be free
             wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id);
 

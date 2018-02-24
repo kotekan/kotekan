@@ -32,10 +32,10 @@ struct visMetadata {
     timespec ctime;
 
     /// ID of the frequency bin
-    uint16_t freq_id;
+    uint32_t freq_id;
 
     /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
-    uint16_t dataset_id;
+    uint32_t dataset_id;
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
@@ -43,7 +43,7 @@ struct visMetadata {
     uint32_t num_prod;
 
     /// Number of eigenvectors and values calculated
-    uint16_t num_eigenvectors;
+    uint32_t num_eigenvectors;
 
 };
 
@@ -95,7 +95,7 @@ public:
      * @warning The metadata object must already have been allocated.
      */
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                 uint16_t num_eigenvectors);
+                 uint32_t num_eigenvectors);
 
     /**
      * @brief Create view and set structure metadata.
@@ -112,7 +112,7 @@ public:
      * @warning The metadata object must already have been allocated.
      */
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                 uint32_t num_prod, uint16_t num_eigenvectors);
+                 uint32_t num_prod, uint32_t num_eigenvectors);
 
     /**
      * @brief Copy frame to a new buffer and create view of copied frame
@@ -186,9 +186,9 @@ public:
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
     /// A reference to the frequency ID.
-    uint16_t& freq_id;
+    uint32_t& freq_id;
     /// A reference to the dataset ID.
-    uint16_t& dataset_id;
+    uint32_t& dataset_id;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;

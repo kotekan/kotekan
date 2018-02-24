@@ -94,7 +94,7 @@ freqSubset::freqSubset(Config& config,
 
     // Get list of frequencies to subset from config
     for (auto ff : config.get_int_array(unique_name, "subset_list")) {
-        subset_list.push_back((uint16_t) ff);
+        subset_list.push_back((uint32_t) ff);
     }
 
     // Setup the input buffer
