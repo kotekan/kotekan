@@ -1,13 +1,13 @@
-#include "stripXProd.hpp"
+#include "selectAutos.hpp"
 #include "visBuffer.hpp"
 #include "errors.h"
 #include <algorithm>
 
-stripXProd::stripXProd(Config& config,
+selectAutos::selectAutos(Config& config,
                        const string& unique_name,
                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&stripXProd::main_thread, this)) {
+                   std::bind(&selectAutos::main_thread, this)) {
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
@@ -19,11 +19,11 @@ stripXProd::stripXProd(Config& config,
 
 }
 
-void stripXProd::apply_config(uint64_t fpga_seq) {
+void selectAutos::apply_config(uint64_t fpga_seq) {
 
 }
 
-void stripXProd::main_thread() {
+void selectAutos::main_thread() {
 
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;

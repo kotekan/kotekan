@@ -1,17 +1,17 @@
 /*****************************************
 @file
 @brief Remove the cross-correlations from a buffer.
-- stripXProd : public KotekanProcess
+- selectAutos : public KotekanProcess
 *****************************************/
-#ifndef STRIP_XPROD_HPP
-#define STRIP_XPROD_HPP
+#ifndef SELECT_AUTOS_HPP
+#define SELECT_AUTOS_HPP
 
 #include <unistd.h>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 
 /**
- * @class stripXProd
+ * @class selectAutos
  * @brief ``KotekanProcess`` that consumes a full set of visibilities from a ``visBuffer``
  *        and passes on only auto-correlations to an output ``visBuffer``.
  *
@@ -29,12 +29,12 @@
  * @author Mateus Fandino
  */
 
-class stripXProd : public KotekanProcess {
+class selectAutos : public KotekanProcess {
 
 public:
 
     /// Default constructor
-    stripXProd(Config &config,
+    selectAutos(Config &config,
                const string& unique_name,
                bufferContainer &buffer_container);
 

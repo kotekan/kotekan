@@ -41,7 +41,7 @@
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
 #include "freqSlicer.hpp"
-#include "stripXProd.hpp"
+#include "selectAutos.hpp"
 #include "baselineSubset.hpp"
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
@@ -307,8 +307,8 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
 
     // Strip buffer of cross products
-    if (name == "stripXProd") {
-        return (KotekanProcess *) new stripXProd(config, location, buffer_container);
+    if (name == "selectAutos") {
+        return (KotekanProcess *) new selectAutos(config, location, buffer_container);
     }
 
     // Split frequencies

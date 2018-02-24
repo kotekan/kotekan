@@ -45,8 +45,8 @@ vis_debug_out:
   kotekan_process: visDebug
   in_buf: vis_buffer_out
 
-strip_xprod:
-  kotekan_process: stripXProd
+select_autos:
+  kotekan_process: selectAutos
   in_buf: vis_buffer_in
   out_buf: vis_buffer_out
   subset_list: [256,512,602,603]

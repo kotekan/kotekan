@@ -31,7 +31,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               simpleAutocorr.cpp
               fakeVis.cpp
               freqSlicer.cpp
-              stripXProd.cpp
+              selectAutos.cpp
               frbPostProcess_in.cpp
               baselineSubset.cpp
               )
