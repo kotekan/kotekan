@@ -37,13 +37,13 @@ fake_vis:
   freq: [250,256,512,768]
   cadence: 10.
 
-#vis_debug_in:
-#  kotekan_process: visDebug
-#  in_buf: vis_buffer_in
-#
-#vis_debug_out:
-#  kotekan_process: visDebug
-#  in_buf: vis_buffer_out
+vis_debug_in:
+  kotekan_process: visDebug
+  in_buf: vis_buffer_in
+
+vis_debug_out:
+  kotekan_process: visDebug
+  in_buf: vis_buffer_out
 
 strip_xprod:
   kotekan_process: stripXProd
@@ -58,8 +58,7 @@ hdf5_writer_strip:
   freq_ids: [250,256,512,768]
   node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/strip'
-  max_ew_baseline: 0
-  max_ns_baseline: 0
+  autos_only: true
 
 hdf5_writer_full:
   kotekan_process: visWriter
@@ -67,8 +66,6 @@ hdf5_writer_full:
   freq_ids: [250,256,512,768]
   node_mode: false
   root_path: '/home/fandino/chime/kotekan_dev/test_data/stripfull'
-#  max_ew_baseline: 0
-#  max_ns_baseline: 0
 
 
 # Information for input reordering, packed as

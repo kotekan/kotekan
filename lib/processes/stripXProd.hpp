@@ -1,3 +1,8 @@
+/*****************************************
+@file
+@brief Remove the cross-correlations from a buffer.
+- stripXProd : public KotekanProcess
+*****************************************/
 #ifndef STRIP_XPROD_HPP
 #define STRIP_XPROD_HPP
 
@@ -5,6 +10,24 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 
+/**
+ * @class stripXProd
+ * @brief ``KotekanProcess`` that consumes a full set of visibilities from a ``visBuffer``
+ *        and passes on only auto-correlations to an output ``visBuffer``.
+ *
+ * @par Buffers
+ * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
+ *     @buffer_format visBuffer structured
++*     @buffer_metadata visMetadata
+ * @buffer out_buf The kotekan buffer which will be fed the auto-correlations-only visibilities.
+ *     @buffer_format visBuffer structured
++*     @buffer_metadata visMetadata
+ *
+ * @conf  out_buf           string. Name of buffer to output auto-correlations to.
+ * @conf  in_buf            string. Name of buffer to read from.
+ *
+ * @author Mateus Fandino
+ */
 
 class stripXProd : public KotekanProcess {
 
@@ -21,9 +44,6 @@ public:
     void main_thread();
 
 private:
-// TODO: delete
-//    // List of frequencies for the subset
-//    std::vector<uint32_t> subset_list;
 
     /// Output buffer with subset of frequencies
     Buffer * out_buf;

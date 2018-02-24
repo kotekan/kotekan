@@ -9,12 +9,6 @@ stripXProd::stripXProd(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&stripXProd::main_thread, this)) {
 
-// TODO: delete
-//    // Get list of frequencies to subset from config
-//    for (auto ff : config.get_int_array(unique_name, "subset_list")) {
-//        subset_list.push_back((uint32_t) ff);
-//    }
-
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -34,9 +28,6 @@ void stripXProd::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
 
-// TODO: delete
-//    unsigned int freq;
-
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
@@ -47,10 +38,6 @@ void stripXProd::main_thread() {
 
         // Create view to input frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
-
-// TODO: delete
-//        // frequency index of this frame
-//        freq = input_frame.freq_id;
 
         // Wait for the output buffer to be empty of data
         if(wait_for_empty_frame(out_buf, unique_name.c_str(),
@@ -78,8 +65,6 @@ void stripXProd::main_thread() {
             }
         }
 
-        std::cout << "Copied autocorrelations" << std::endl;
-
         // Copy the remaining parts of the buffer:
         std::copy(input_frame.eigenvalues.begin(), input_frame.eigenvalues.end(), 
                   output_frame.eigenvalues.begin());
@@ -89,12 +74,8 @@ void stripXProd::main_thread() {
                   output_frame.weight.begin());
         output_frame.rms = input_frame.rms;
 
-        std::cout << "Copied buffer" << std::endl;
-
         // Copy metadata
         output_frame.copy_nonconst_metadata(input_frame);
-
-        std::cout << "Copied metadata" << std::endl;
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
@@ -103,8 +84,6 @@ void stripXProd::main_thread() {
         // Advance the current frame ids
         output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-
-        std::cout << "Marked and advanced" << std::endl;
 
     }
 }

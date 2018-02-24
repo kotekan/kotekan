@@ -189,6 +189,9 @@ private:
     /// Upper limits for baseline lengths that will be included in products
     uint16_t xmax, ymax;
 
+    /// If True, write only autos. Default is false.
+    bool autos_only;
+
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;

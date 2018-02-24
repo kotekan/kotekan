@@ -188,16 +188,24 @@ visWriter::visWriter(Config& config,
     // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
-    // If this writer takes a baseline subset as input, generate subset products
-    // as specified in config.
-    xmax = config.get_int_default(unique_name, "max_ew_baseline", -1);
-    ymax = config.get_int_default(unique_name, "max_ns_baseline", -1);
-    all_prods = ((xmax + ymax)==-2);
-    for(uint16_t i=0; i < inputs.size(); i++) {
-        for(uint16_t j = i; j < inputs.size(); j++) {
-            // restrict products to those within max baseline length
-            if (all_prods || max_bl_condition({i, j}, xmax, ymax)) {
-                prods.push_back({i, j});
+    // If this writter is auto-correlations only:
+    autos_only = config.get_bool_default(unique_name, "autos_only", false);
+    if (autos_only) {
+        for (uint16_t ii=0; ii < inputs.size(); ii++) {
+            prods.push_back({ii,ii});
+        }
+    } else {
+        // If this writer takes a baseline subset as input, generate subset products
+        // as specified in config.
+        xmax = config.get_int_default(unique_name, "max_ew_baseline", -1);
+        ymax = config.get_int_default(unique_name, "max_ns_baseline", -1);
+        all_prods = ((xmax + ymax)==-2);
+        for(uint16_t i=0; i < inputs.size(); i++) {
+            for(uint16_t j = i; j < inputs.size(); j++) {
+                // restrict products to those within max baseline length
+                if (all_prods || max_bl_condition({i, j}, xmax, ymax)) {
+                    prods.push_back({i, j});
+                }
             }
         }
     }
