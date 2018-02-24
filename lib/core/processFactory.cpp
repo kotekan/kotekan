@@ -6,6 +6,10 @@ processFactory::processFactory(Config& config,
     config(config),
     buffer_container(buffer_container) {
 
+    auto known_processes = processFactoryRegistry::get_registered_processes();
+    for (auto &process : known_processes){
+        INFO("Registered Kotekan Process: %s",process.first.c_str());
+    }
 }
 
 processFactory::~processFactory() {
@@ -50,9 +54,9 @@ KotekanProcess* processFactory::create(const string &name,
                                       const string &unique_name,
                                       bufferContainer &host_buffers) const
 {
-    processFactoryRegistry reg = processFactoryRegistry::Instance();
-    auto i = reg._kotekan_processes.find(name);
-    if (i == reg._kotekan_processes.end())
+    auto known_processes = processFactoryRegistry::get_registered_processes();
+    auto i = known_processes.find(name);
+    if (i == known_processes.end())
     {
         ERROR("Unrecognized KotekanProcess! (%s)", name.c_str());
         throw std::runtime_error("Tried to instantiate a process we don't know about!");
@@ -63,21 +67,29 @@ KotekanProcess* processFactory::create(const string &name,
 
 
 
+void processFactoryRegistry::kotekan_register_process(const std::string& key, kotekanProcessMaker* proc)
+{
+    processFactoryRegistry::instance().kotekan_reg(key,proc);
+}
 
-processFactoryRegistry::processFactoryRegistry(){}
+std::map<std::string, kotekanProcessMaker*> processFactoryRegistry::get_registered_processes(){
+    return processFactoryRegistry::instance()._kotekan_processes;
+}
 
-processFactoryRegistry& processFactoryRegistry::Instance() {
+
+processFactoryRegistry& processFactoryRegistry::instance() {
     static processFactoryRegistry factory;
     return factory;
 }
 
-void processFactoryRegistry::kotekanRegisterProcess(const std::string& key, kotekanProcessMaker* cmd)
+processFactoryRegistry::processFactoryRegistry(){}
+
+void processFactoryRegistry::kotekan_reg(const std::string& key, kotekanProcessMaker* proc)
 {
     if (_kotekan_processes.find(key) != _kotekan_processes.end())
     {
         ERROR("Multiple KotekanProcess-es registered as '%s'!",key.c_str());
-        exit(-1);
+        throw std::runtime_error("A kotekanProcess was registered twice!");
     }
-    _kotekan_processes[key] = cmd;
+    _kotekan_processes[key] = proc;
 }
-

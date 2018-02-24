@@ -15,6 +15,7 @@ set (KOTEKAN_CORE_SOURCES
               metadata.c
               metadataFactory.cpp
               processFactory.cpp
+              prometheusMetrics.cpp
               restServer.cpp
        )
 

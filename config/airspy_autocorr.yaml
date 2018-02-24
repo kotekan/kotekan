@@ -1,3 +1,14 @@
+##########################################
+#
+# airspy_autocorr.yaml
+#
+# A quick-and-dirty config to demonstrate the use of the AirSpy
+# producer. It gathers data around 1420MHz, channelizes and
+# autocorrelates it, then streams to a local listener.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:

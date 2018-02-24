@@ -18,7 +18,7 @@ hsaCommand::hsaCommand(
         host_buffers(host_buffers_),
         device(device_)
 {
-    _gpu_buffer_depth = config.get_int("/gpu", "buffer_depth");
+    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
 
     // Set the local log level.
     string s_log_level = config.get_string(unique_name, "log_level");
@@ -189,7 +189,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
 }
 
 void hsaCommand::packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest) {
-    __atomic_store_n(packet, header | (((uint32_t)rest) << 16),   __ATOMIC_RELEASE);
+    __atomic_store_n(packet, ((uint32_t)header) | (((uint32_t)rest) << 16),   __ATOMIC_RELEASE);
 }
 
 uint16_t hsaCommand::header(hsa_packet_type_t type) {
@@ -216,7 +216,8 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
             (hsa_kernel_dispatch_packet_t*) device.get_queue()->base_address
             + (packet_id % device.get_queue()->size);
 
-    packet->header = HSA_PACKET_TYPE_INVALID;
+//    packet->header = HSA_PACKET_TYPE_INVALID;
+    packet_store_release((uint32_t*)packet, header(HSA_PACKET_TYPE_INVALID), 0);
     // Zero the packet (see HSA docs)
     memset(((uint8_t*) packet) + 4, 0, sizeof(hsa_kernel_dispatch_packet_t) - 4);
 

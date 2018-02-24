@@ -9,7 +9,7 @@ num_local_freq: 1
 udp_packet_size: 4928
 num_data_sets: 1
 samples_per_data_set: 32768
-buffer_depth: 8
+buffer_depth: 10
 num_links: 4
 block_size: 32
 timesamples_per_packet: 2
@@ -90,23 +90,17 @@ dpdk:
 
 gpu:
     commands:
-    - name: hsa_input_data
-      kernel: ''
-    - name: hsa_presum_zero
-      kernel: ''
-    - name: hsa_output_data_zero
-      kernel: ''
-    - name: hsa_barrier
-      kernel: ''
-    - name: hsa_preseed_kernel
-      kernel: "../lib/hsa/kernels/presum.hsaco"
-    - name: hsa_correlator_kernel
-      kernel: "../lib/hsa/kernels/N2.hsaco"
-    - name: hsa_output_data
-      kernel: ''
+    - name: hsaInputData
+    - name: hsaPresumZero
+    - name: hsaOutputDataZero
+    - name: hsaBarrier
+    - name: hsaPresumKernel
+    - name: hsaCorrelatorKernel
+    - name: hsaOutputData
+    kernel_path: "../lib/hsa/kernels/"
     link_map: [0,1,2,3]
     num_gpus: 4
-    buffer_depth: 4
+    buffer_depth: 5
     # Internal N^2 kernel parameter, only needed for N2.hsaco
     # Will be moved into the kernel part of the config once the framework
     # is updated to support args in the command section
@@ -114,6 +108,7 @@ gpu:
     samples_per_second: 390625
     frame_arrival_period: samples_per_data_set / samples_per_second
     device_interface_log_level: warn
+    enable_delay: true
     gpu_0:
         kotekan_process: hsaProcess
         gpu_id: 0
@@ -217,13 +212,17 @@ accumulate:
 
 metadata_dump_0:
   kotekan_process: chimeMetadataDump
-  buf: file_output_buffer_0
+  in_buf: file_output_buffer_0
 metadata_dump_1:
   kotekan_process: chimeMetadataDump
-  buf: file_output_buffer_1
+  in_buf: file_output_buffer_1
 metadata_dump_2:
   kotekan_process: chimeMetadataDump
-  buf: file_output_buffer_2
+  in_buf: file_output_buffer_2
 metadata_dump_3:
   kotekan_process: chimeMetadataDump
-  buf: file_output_buffer_3
+  in_buf: file_output_buffer_3
+
+buffer_status:
+  kotekan_process: bufferStatus
+  time_delay: 100000

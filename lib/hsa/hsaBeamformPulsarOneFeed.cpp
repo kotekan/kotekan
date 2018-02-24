@@ -23,7 +23,7 @@ hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(Config& config, const string 
     INFO("+++++ Pulsar beamforming with one feed (%d %d)", _one_feed_p0, _one_feed_p1);
     for (int b=0; b < _num_pulsar; b++){
         for (int n=0; n<_num_elements; n++){
-          if ((n == _one_feed_p0) or (n == _one_feed_p1)) {
+          if ((n == _one_feed_p0) || (n == _one_feed_p1)) {
                 host_phase[index++] = 1;
                 host_phase[index++] = 1;
             }

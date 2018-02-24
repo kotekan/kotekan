@@ -17,8 +17,13 @@ hsaCommandFactory::hsaCommandFactory(Config& config_,
                                         device(device_),
                                         host_buffers(host_buffers_),
                                         unique_name(unique_name_){
-    //Dummy constructor to deal with singleton instance for initialization
-    if (unique_name == "") return;
+
+    auto known_commands = hsaCommandFactoryRegistry::get_registered_commands();
+//    for (auto it = known_commands.begin(); it != known_commands.end(); ++it){
+    for (auto &command : known_commands){
+        INFO("Registered HSA Command: %s",command.first.c_str());
+    }
+
     vector<json> commands = config.get_json_array(unique_name, "commands");
 
     for (uint32_t i = 0; i < commands.size(); i++){
@@ -43,11 +48,12 @@ hsaCommand* hsaCommandFactory::create(const string &name,
                                       bufferContainer &host_buffers,
                                       hsaDeviceInterface& device) const
 {
-    auto fac = hsaCommandFactoryRegistry::Instance();
-    auto i = fac._hsa_commands.find(name);
-    if (i == fac._hsa_commands.end())
+    auto known_commands = hsaCommandFactoryRegistry::get_registered_commands();
+    auto i = known_commands.find(name);
+    if (i == known_commands.end())
     {
         ERROR("Unrecognized HSA command! (%s)", name.c_str());
+        throw std::runtime_error("Unrecognized hsaCommand!");
     }
     hsaCommandMaker* maker = i->second;
     return maker->create(config,unique_name,host_buffers,device);
@@ -55,18 +61,29 @@ hsaCommand* hsaCommandFactory::create(const string &name,
 
 
 
-hsaCommandFactoryRegistry::hsaCommandFactoryRegistry(){}
+void hsaCommandFactoryRegistry::hsa_register_command(const std::string& key, hsaCommandMaker* cmd)
+{
+    hsaCommandFactoryRegistry::instance().hsa_reg(key,cmd);
+}
 
-hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::Instance() {
+std::map<std::string, hsaCommandMaker*> hsaCommandFactoryRegistry::get_registered_commands(){
+    return hsaCommandFactoryRegistry::instance()._hsa_commands;
+}
+
+
+hsaCommandFactoryRegistry& hsaCommandFactoryRegistry::instance() {
     static hsaCommandFactoryRegistry factory;
     return factory;
 }
 
-void hsaCommandFactoryRegistry::hsaRegisterCommand(const std::string& key, hsaCommandMaker* cmd)
+hsaCommandFactoryRegistry::hsaCommandFactoryRegistry(){}
+
+void hsaCommandFactoryRegistry::hsa_reg(const std::string& key, hsaCommandMaker* cmd)
 {
     if (_hsa_commands.find(key) != _hsa_commands.end())
     {
         ERROR("Multiple HSA Commands registered as '%s'!",key.c_str());
+        throw std::runtime_error("An hsaCommand was registered twice!");
     }
     _hsa_commands[key] = cmd;
 }

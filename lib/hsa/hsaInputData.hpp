@@ -31,6 +31,13 @@ class hsaInputData: public hsaCommand
         int32_t _num_elements;
         int32_t _samples_per_data_set;
 
+        // Random delay in seconds
+        double _random_delay;
+
+        // Apply a random delay to spread out the power load if set to true.
+        bool _enable_delay;
+
+        const double _sample_arrival_rate = 390625.0;
 };
 
 #endif

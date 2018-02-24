@@ -68,6 +68,12 @@ struct networkDPDKArg {
 
     // The producer names
     char producer_names[NUM_LINKS][MAX_PROCESS_NAME_LEN];
+
+    // ** Shared information with wrapper **
+    uint64_t rx_packets_total[NUM_LINKS];
+    uint64_t rx_bytes_total[NUM_LINKS];
+    uint64_t lost_packets_total[NUM_LINKS];
+    uint64_t rx_errors_total[NUM_LINKS];
 };
 
 struct LinkData {
