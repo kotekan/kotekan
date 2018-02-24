@@ -19,10 +19,10 @@ private:
     void fill_headers(unsigned char * out_buf,
                   struct FRBHeader * frb_header,
                   const uint64_t fpga_seq_num,
-		  const uint16_t num_L1_streams,
-		  uint16_t * frb_header_coarse_freq_ids,
-		  float * frb_header_scale,
-		  float * frb_header_offset);
+          const uint16_t num_L1_streams,
+          uint16_t * frb_header_coarse_freq_ids,
+          float * frb_header_scale,
+          float * frb_header_offset);
 
     struct Buffer **in_buf;
     struct Buffer *frb_buf;

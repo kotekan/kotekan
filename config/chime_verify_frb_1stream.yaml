@@ -65,17 +65,7 @@ cpu_output_buffers:
     cpu_output_buffer_0:
         kotekan_buffer: standard
 
-#dpdk:
-#  kotekan_process: dpdkWrapper
-#  mode: shuffle4
-#  num_lcores: 4
-#  link_map: [0,1,2,3]
-#  network_out_buf_0: gpu_input_buffer_0
-#  network_out_buf_1: gpu_input_buffer_1
-#  network_out_buf_2: gpu_input_buffer_2
-#  network_out_buf_3: gpu_input_buffer_3
-
-frb_scaling: 1./4000.
+frb_scaling: 0.015811 #4000.^-.5
 frb_zero_missing_gains: false
 
 gpu:
