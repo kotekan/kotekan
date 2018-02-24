@@ -2,6 +2,7 @@
 #include "errors.h"
 #include <time.h>
 #include <sys/time.h>
+#include <csignal>
 #include <unistd.h>
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
@@ -26,6 +27,7 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     }
     block_size = config.get_int(unique_name, "block_size");
     num_elements = config.get_int(unique_name, "num_elements");
+    num_frames = config.get_int_default(unique_name, "num_frames", -1);
 
     wait = config.get_bool_default(unique_name, "wait", true);
 
@@ -108,8 +110,16 @@ void fakeGpuBuffer::main_thread() {
         ts.tv_sec += ((ts.tv_nsec + delta_ns) / 1000000000);
         ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
 
-        // TODO: sleep for an appropriate amount of time
+        // TODO: only sleep for the extra time required, i.e. account for the
+        // elapsed time each loop
         if(this->wait) nanosleep(&delta_ts, nullptr);
+
+        // Cause kotekan to exit if we've hit the maximum number of frames
+        if(num_frames > 0 && frame_count > num_frames) {
+            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
+            std::raise(SIGINT);
+            return;
+        }
     }
 }
 

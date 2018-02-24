@@ -38,6 +38,9 @@
  *                              methods below.
  * @conf  wait                  Bool. Sleep to try and output data at roughly
  *                              the correct cadence.
+ * @conf  num_frames            Exit after num_frames have been produced. If
+ *                              less than zero, no limit is applied. Default
+ *                              is `-1`.
  *
  * @warning The `stream_id_t` in the metadata is likely to be invalid as it is
  *          generated only such that it is decoded back to the input frequency
@@ -88,6 +91,7 @@ private:
     int32_t samples_per_data_set;
     bool pre_accumulate;
     bool wait;
+    int32_t num_frames;
 
     // Function pointer for fill patterns
     typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int);
