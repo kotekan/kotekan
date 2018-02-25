@@ -80,7 +80,7 @@ void eigenVis::main_thread() {
         // Conditionally initialize eigenvector storage space.
         if (last_evs.find(freq_id) == last_evs.end()) {
             last_evs.emplace(std::piecewise_construct,
-                             std::forward_as_tuple(input_frame.freq_id),
+                             std::forward_as_tuple(freq_id),
                              std::forward_as_tuple(num_elements * num_eigenvectors, 0)
                              );
         }
@@ -132,8 +132,6 @@ void eigenVis::main_thread() {
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (auto const& value: evals) str_evals += " " + std::to_string(value);
-        std::cout << str_evals << std::endl;
-        std::cout << str_evals.c_str() << std::endl;
         INFO("Found eigenvalues:%s", str_evals.c_str());
 
         // Copy in eigenvectors and eigenvalues.
