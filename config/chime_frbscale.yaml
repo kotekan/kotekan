@@ -1,9 +1,8 @@
 ##########################################
 #
-# chime_frbincoh.yaml
+# chime_frbscale.yaml
 #
-# CHIME config to exercise full GPU functionality (N2 + FRB),
-# and output an FRB incoherent beam.
+# CHIME config to exercise full GPU functionality (N2 + FRB).
 #
 # Author: Keith Vanderlinde
 #

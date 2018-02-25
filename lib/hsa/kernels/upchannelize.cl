@@ -14,7 +14,7 @@
 //LWS = {     64 ,  1  }
 //GWS = {nsamp/6*, 1024}
 
-__kernel void upchannelize(__global float2 *data, __global unsigned char *results_array){
+__kernel void upchannelize(__global float2 *data, __global float *results_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
@@ -273,8 +273,7 @@ __kernel void upchannelize(__global float2 *data, __global unsigned char *result
       }
       barrier(CLK_LOCAL_MEM_FENCE);
       if (p == 1) {
-        unsigned char outtmp_int = convert_uchar_sat_rte(outtmp/48.);
-        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp_int;
+        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp;
       }
     }
   } //end loop of 2 pol

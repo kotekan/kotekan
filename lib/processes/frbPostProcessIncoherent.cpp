@@ -63,27 +63,27 @@ void frbPostProcessIncoherent::fill_headers(unsigned char * out_buf,
           float * frb_header_scale,
           float * frb_header_offset){
     // Populate the headers
-    //assert(sizeof(struct FRBHeader) == _udp_header_size);
+    //assert(sizeof(struct FRBHeader) == udp_header_size);
     INFO("frequency value %d %d %d %d",frb_header_coarse_freq_ids[0],frb_header_coarse_freq_ids[1],frb_header_coarse_freq_ids[2],frb_header_coarse_freq_ids[3]);
     for (int j=0;j<num_L1_streams; ++j) { //256 streams
         for (int k=0;k<_nbeams;++k) { //the 4 beams are supposed to be consecutive
-        frb_header_beam_ids[k] = j*_nbeams+k;
-    }
-    for (int i = 0; i < 8; ++i) {  //8 frames in a stream
-        frb_header->fpga_count = fpga_seq_num + 16*_fpga_counts_per_sample * i;
-        memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size], frb_header, sizeof(struct FRBHeader));
+            frb_header_beam_ids[k] = j*_nbeams+k;
+        }
+        for (int i = 0; i < 8; ++i) {  //8 frames in a stream
+            frb_header->fpga_count = fpga_seq_num + 16*fpga_counts_per_sample * i;
+            memcpy(&out_buf[j*8*udp_packet_size + i*udp_packet_size], frb_header, sizeof(struct FRBHeader));
 
-        int static_header_size = 24;
-        //copy in the dynamic header
-        memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size],
-           frb_header_beam_ids, sizeof(uint16_t)*_nbeams);
-        memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams],
-           frb_header_coarse_freq_ids, sizeof(uint16_t)*_nfreq_coarse);
-        memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse],
-           frb_header_scale, sizeof(float)*_nbeams*_nfreq_coarse);
-        memcpy(&out_buf[j*8*_udp_packet_size + i*_udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse + 4*_nbeams*_nfreq_coarse],
-           frb_header_offset, sizeof(float)*_nbeams*_nfreq_coarse);
-    }
+            int static_header_size = 24;
+            //copy in the dynamic header
+            memcpy(&out_buf[j*8*udp_packet_size + i*udp_packet_size + static_header_size],
+               frb_header_beam_ids, sizeof(uint16_t)*_nbeams);
+            memcpy(&out_buf[j*8*udp_packet_size + i*udp_packet_size + static_header_size + 2*_nbeams],
+               frb_header_coarse_freq_ids, sizeof(uint16_t)*_nfreq_coarse);
+            memcpy(&out_buf[j*8*udp_packet_size + i*udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse],
+               frb_header_scale, sizeof(float)*_nbeams*_nfreq_coarse);
+            memcpy(&out_buf[j*8*udp_packet_size + i*udp_packet_size + static_header_size + 2*_nbeams + 2*_nfreq_coarse + 4*_nbeams*_nfreq_coarse],
+               frb_header_offset, sizeof(float)*_nbeams*_nfreq_coarse);
+        }
     }
 }
 
@@ -99,12 +99,16 @@ void frbPostProcessIncoherent::apply_config(uint64_t fpga_seq) {
     _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
     _nbeams = config.get_int(unique_name, "num_beams");
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
-    _udp_packet_size = config.get_int(unique_name, "udp_frb_packet_size");
-    _udp_header_size = config.get_int(unique_name, "udp_frb_header_size");
-    //_freq_array = config.get_int_array(unique_name, "freq_array");
 
-    _fpga_counts_per_sample = _downsample_time * _factor_upchan;
-      
+    fpga_counts_per_sample = _downsample_time * _factor_upchan;
+    printf("Size: %i\n",sizeof(struct FRBHeader));
+    udp_header_size = sizeof(struct FRBHeader)
+                    + sizeof(uint16_t)*_nbeams //beam ids
+                    + sizeof(uint16_t)*_nfreq_coarse //freq band ids
+                    + sizeof(float)*_nbeams*_nfreq_coarse //scales
+                    + sizeof(float)*_nbeams*_nfreq_coarse //offsets
+                    ;
+    udp_packet_size = _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 }
 
 void frbPostProcessIncoherent::main_thread() {
@@ -117,12 +121,11 @@ void frbPostProcessIncoherent::main_thread() {
     for (int i = 0; i < _num_gpus; ++i) in_buffer_ID[i] = 0;
 
     const uint32_t num_samples = _samples_per_data_set / _downsample_time / _factor_upchan ; //It is 100 for now, but should be 128.
-    uint32_t current_input_location = 0; //goes from 0 to num_samples
 
     struct FRBHeader frb_header;
     frb_header.protocol_version = 1;     
-    frb_header.data_nbytes =  _udp_packet_size - _udp_header_size;
-    frb_header.fpga_counts_per_sample =  _fpga_counts_per_sample;
+    frb_header.data_nbytes =  udp_packet_size - udp_header_size;
+    frb_header.fpga_counts_per_sample =  fpga_counts_per_sample;
     frb_header.fpga_count = 0 ;  //to be updated in fill_header
     frb_header.nbeams = _nbeams;  //4
     frb_header.nfreq_coarse = _nfreq_coarse; //4
@@ -137,7 +140,7 @@ void frbPostProcessIncoherent::main_thread() {
     }
     for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
         frb_header_scale[ii] = 1.; 
-    frb_header_offset[ii] = 0;
+        frb_header_offset[ii] = 0;
     }
 
     int frame = 0;
@@ -174,7 +177,6 @@ void frbPostProcessIncoherent::main_thread() {
       if (unlikely(startup == 1)) {
         // testing sync code
         startup = 0;
-        current_input_location = 0;
         // Fill the first output buffer headers
         fpga_seq_num = first_seq_number;
         fill_headers((unsigned char*)out_frame,
@@ -186,7 +188,7 @@ void frbPostProcessIncoherent::main_thread() {
            (float*)frb_header_offset);
       }
 
-      for (uint i = current_input_location; i < num_samples; ++i) {
+      for (uint i = 0; i < num_samples; ++i) {
         if (in_frame_location == 16) { //last sample
           in_frame_location = 0;
           frame++;
@@ -227,20 +229,20 @@ void frbPostProcessIncoherent::main_thread() {
                 for(int sample_i=0; sample_i<256; sample_i++) {
                    temp_avg = 128+(((avg_beam[stream_i*1024+freq_i*256+sample_i]-mean[freq_i]))*(1.0/scale[freq_i]));
                   if(temp_avg >0 && temp_avg<256)
-                    out_frame[stream_i*_udp_packet_size+_udp_header_size+freq_i*256+sample_i] = (uint8_t)(int)temp_avg;
+                    out_frame[stream_i*udp_packet_size+udp_header_size+freq_i*256+sample_i] = (uint8_t)(int)temp_avg;
                   else if(temp_avg<0)
-                    out_frame[stream_i*_udp_packet_size+_udp_header_size+freq_i*256+sample_i] = 0;
+                    out_frame[stream_i*udp_packet_size+udp_header_size+freq_i*256+sample_i] = 0;
                   else if(temp_avg>255)
                   {
                     //INFO("avg__data %f %f %f %f",temp_avg,sqr[0],mean[0],scale[0]);
                     //exit(0);
-                    out_frame[stream_i*_udp_packet_size+_udp_header_size+freq_i*256+sample_i] = 255;
+                    out_frame[stream_i*udp_packet_size+udp_header_size+freq_i*256+sample_i] = 255;
                   }
                   //INFO("avg__data %f %f %f %f %d",temp_avg,sqr[freq_i],mean[freq_i],scale[freq_i],freq_i,sample_i);
                 }
               }
-              memcpy(&out_frame[stream_i*_udp_packet_size+40],scale,sizeof(float)*4);
-              memcpy(&out_frame[stream_i*_udp_packet_size+104],mean,sizeof(float)*4);
+              memcpy(&out_frame[stream_i*udp_packet_size+40],scale,sizeof(float)*4);
+              memcpy(&out_frame[stream_i*udp_packet_size+104],mean,sizeof(float)*4);
             }
             INFO("avg__data %f %f %f %f",temp_avg,avg_beam[23],mean[2],scale[2]);
             for(int e_i=0;e_i<8*1024;e_i++) avg_beam[e_i]=0.0;
@@ -252,7 +254,7 @@ void frbPostProcessIncoherent::main_thread() {
             out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
             if (out_frame == NULL) return; //goto end_loop;
             // Fill the headers of the new buffer
-            fpga_seq_num += 16*8*_fpga_counts_per_sample;
+            fpga_seq_num += 16*8*fpga_counts_per_sample;
             fill_headers((unsigned char*)out_frame,
                   &frb_header,
                   fpga_seq_num,
@@ -269,13 +271,13 @@ void frbPostProcessIncoherent::main_thread() {
           for (int stream = 0; stream<num_L1_streams; ++stream) { //loop the output buffer  256 streams
             for (int beam = 0; beam<_nbeams; ++beam){   //4 beams
               for (int freq = 0; freq < _factor_upchan_out; ++freq) { //loop 16
-                uint32_t out_index = stream*_udp_packet_size*8
-                                       + frame * _udp_packet_size
+                uint32_t out_index = stream*udp_packet_size*8
+                                       + frame * udp_packet_size
                                        + beam*_num_gpus*16*16
                                        + thread_id*16*16
                                        + freq*16
                                        + in_frame_location
-                                       + _udp_header_size;
+                                       + udp_header_size;
                 out_buf[out_index] = in_buf_data[ (stream*_nbeams+beam)*num_samples*16 + i*16 + freq];
                 avg_beam[1024*frame+thread_id*16*16+freq*16+in_frame_location] += (float)(int)out_buf[out_index];
               } //end loop freq
@@ -284,7 +286,6 @@ void frbPostProcessIncoherent::main_thread() {
         } //end loop 4 GPUs
         in_frame_location++;
       } //end looping 100 time samples
-      current_input_location = 0;
 
       // Release the input buffers
       for (int i = 0; i < _num_gpus; ++i) {

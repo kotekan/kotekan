@@ -42,14 +42,12 @@ private:
     int32_t _factor_upchan_out;
     int32_t _nbeams;
     int32_t _timesamples_per_frb_packet;
-    int32_t _udp_packet_size;
-    int32_t _udp_header_size;
-    int16_t _fpga_counts_per_sample;
     vector<int32_t> _freq_array;
 
-  //uint16_t encode_stream_id(const stream_id_t s_stream_id);
-  // stream_id_t extract_stream_id(const uint16_t encoded_stream_id);
-
+    //Derived Values
+    int32_t udp_packet_size;
+    int32_t udp_header_size;
+    int16_t fpga_counts_per_sample;
 
 };
 
