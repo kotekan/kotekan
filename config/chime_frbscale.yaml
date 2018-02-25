@@ -199,6 +199,7 @@ frb:
     log_level: warn
     cpu_affinity: [9]
     kotekan_process: frbPostProcess
+    incoherent_beam: true
     network_input_buffer_0: beamform_output_buffer_0
     network_input_buffer_1: beamform_output_buffer_1
     network_input_buffer_2: beamform_output_buffer_2

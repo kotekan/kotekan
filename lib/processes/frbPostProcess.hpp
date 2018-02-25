@@ -40,6 +40,7 @@ private:
     int32_t _factor_upchan_out;
     int32_t _nbeams;
     int32_t _timesamples_per_frb_packet;
+    bool    _incoherent_beam;
 
     // Derived useful things
     int32_t num_L1_streams;

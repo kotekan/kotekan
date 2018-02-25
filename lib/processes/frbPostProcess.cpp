@@ -67,6 +67,7 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
     _nbeams = config.get_int(unique_name, "num_beams");
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
+    _incoherent_beam = config.get_bool_default(unique_name, "incoherent_beam",false);
 
     num_L1_streams = 1024/_nbeams;
     num_samples = _samples_per_data_set / _downsample_time / _factor_upchan;
@@ -129,11 +130,29 @@ void frbPostProcess::main_thread() {
             frb_header_coarse_freq_ids[i] = bin_number_chime(&stream_id);
         }
 
+        //Sum all the beams together into beam[0] location.
+        if (_incoherent_beam){
+            int fti = _factor_upchan_out * num_samples / (sizeof(__m256)/sizeof(float));
+            for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
+                float* in_data = (float *)in_frame[thread_id];
+                for (int b = 0; b<num_L1_streams*_nbeams; b++) { //loop 1024 beams
+                    for (int ft=0; ft < fti; ft++){ //loop over time/freq
+                        int idx = ft * (sizeof(__m256)/sizeof(float));
+                        int idx_next = b * num_samples * _factor_upchan_out;
+                        __m256 _a = _mm256_load_ps(in_data+idx);
+                        __m256 _b = _mm256_load_ps(in_data+idx+idx_next);
+                        __m256 _c = _mm256_add_ps(_a,_b);
+                        _mm256_store_ps(in_data+idx,_c);
+                    }
+                }
+            }
+        }
+
 //        in_buf = [stream=256, nbeams=4, nsamples=128, freq=16]
 //        out_buf = [stream=256,frames=8,[packet_size]]
 //        [packet_size] = [nbeams=4,gpu=4,freq=16,time=16]+header
         float ofs=0,scl=1;
-        for (uint i = 0; i < num_samples; i+=_timesamples_per_frb_packet) {
+        for (uint i = 0; i < num_samples; i+=_timesamples_per_frb_packet) { //loop 128 time samples
             for (int stream = 0; stream<num_L1_streams; stream++) { //loop 256 streams (output)
                 for (int b=0; b<_nbeams;b++){ //loop 4 beams / stream
                     for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
