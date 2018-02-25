@@ -101,7 +101,6 @@ void frbPostProcessIncoherent::apply_config(uint64_t fpga_seq) {
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
 
     fpga_counts_per_sample = _downsample_time * _factor_upchan;
-    printf("Size: %i\n",sizeof(struct FRBHeader));
     udp_header_size = sizeof(struct FRBHeader)
                     + sizeof(uint16_t)*_nbeams //beam ids
                     + sizeof(uint16_t)*_nfreq_coarse //freq band ids
