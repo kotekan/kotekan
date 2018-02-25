@@ -121,6 +121,32 @@ void eigenVis::main_thread() {
             }
         }
 
+        // Calculate RMS residuals to eigenvalue approximation to the visibilities.
+        prod_ind = 0;
+        double sum_sq = 0;
+        int nprod_sum = 0;
+        for(int i = 0; i < num_elements; i++) {
+            for(int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
+                prod_ind++;
+            }
+            for(int j = i + num_diagonals_filled; j < num_elements; j++) {
+                cfloat residual = input_frame.vis[prod_ind];
+                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                    residual -= (std::conj(last_evs[freq_id][ev_ind * num_elements + i])
+                                 * last_evs[freq_id][ev_ind * num_elements + j]);
+                }
+                sum_sq += std::norm(residual);
+                nprod_sum++;
+                prod_ind++;
+            }
+        }
+        double rms = sum_sq / nprod_sum;
+
+        // Report all eigenvalues to stdout.
+        std::string str_evals = "";
+        for (auto const& value: evals) str_evals += " " + std::to_string(value);
+        INFO("Found eigenvalues:%s, with RMS residuals: %e.", str_evals.c_str(), rms);
+
         // Get output buffer for visibilities. Essentially identical to input buffers.
         if (wait_for_empty_frame(output_buffer, unique_name.c_str(),
                                  output_frame_id) == nullptr) {
@@ -129,16 +155,12 @@ void eigenVis::main_thread() {
         allocate_new_metadata_object(output_buffer, output_frame_id);
         auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
 
-        // Report all eigenvalues to stdout.
-        std::string str_evals = "";
-        for (auto const& value: evals) str_evals += " " + std::to_string(value);
-        INFO("Found eigenvalues:%s", str_evals.c_str());
-
         // Copy in eigenvectors and eigenvalues.
         gsl::span<cfloat> evecs_s{evecs};
         gsl::span<float> evals_s{evals};
         copy(evecs_s, output_frame.eigenvectors);
         copy(evals_s.subspan(0, num_eigenvectors), output_frame.eigenvalues);
+        output_frame.rms = rms;
 
         // Finish up interation.
         mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id);
