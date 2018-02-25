@@ -72,7 +72,10 @@ public:
      * Fill with a pattern for debugging the accumulation.
      *
      * Fill each element with its full correlation index (real = row; column =
-     * imag), and a constant offset of 1 to every other frame.
+     * imag), with real and imaginary parts being shifted every 4th frame.
+     * 
+     * Overall this pattern should average to (row + column * J) and the
+     * inverse variance should be num_gpu_frames / 8.
      *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.

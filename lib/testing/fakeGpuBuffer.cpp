@@ -56,8 +56,9 @@ void fakeGpuBuffer::main_thread() {
     uint64_t fpga_seq = 0;
 
     // This encoding of the stream id should ensure that bin_number_chime gives
-    // back the original frequency ID when it is called later
-    stream_id_t s = {0, (uint8_t)(freq % 256), 0, (uint8_t)(freq / 256)};
+    // back the original frequency ID when it is called later.
+    // NOTE: all elements must have values < 16 for this encoding to work out.
+    stream_id_t s = {0, (uint8_t)(freq % 16), (uint8_t)(freq / 16), (uint8_t)(freq / 256)};
 
     // Set the start time
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -149,8 +150,15 @@ void fakeGpuBuffer::fill_pattern_accumulate(int32_t* data, int frame_number) {
         for(int j = i; j < num_elements; j++) {
             uint32_t bi = prod_index(i, j, block_size, num_elements);
 
-            data[2 * bi    ] = (j + (frame_number % 2)) * samples_per_data_set;  // Imag
-            data[2 * bi + 1] = (i + (frame_number % 2)) * samples_per_data_set;  // Real
+            // Every 4th sample the imaginary part is boosted by 4 * samples,
+            // but we subtract off a constant to make it average the to be the
+            // column index.
+            data[2 * bi    ] = (j + 4 * (frame_number % 4 == 0) - 1) * samples_per_data_set;  // Imag
+
+            // ... similar for the real part, except we subtract every 4th
+            // frame, and boost by a constant to ensure the average value is the
+            // row.
+            data[2 * bi + 1] = (i - 4 * ((frame_number + 1) % 4 == 0) + 1) * samples_per_data_set; // Real
         }
     }
 }
