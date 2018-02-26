@@ -65,7 +65,7 @@ hsaBeamformKernel::hsaBeamformKernel(const string& kernel_name, const string& ke
 
 
     for (int i=0;i<2048;i++){
-        host_gain[i*2] = 1.0;
+        host_gain[i*2] = 0.0;
 	host_gain[i*2+1] = 0.0;
     }
 }
