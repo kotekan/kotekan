@@ -16,17 +16,17 @@ frbPostProcess::frbPostProcess(Config& config_,
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("network_input_buffer_" + std::to_string(i));
+        in_buf[i] = get_buffer("in_buf_" + std::to_string(i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
-    frb_buf = get_buffer("frb_out_buf");
+    frb_buf = get_buffer("out_buf");
     register_producer(frb_buf, unique_name.c_str());
 
     //Dynamic header
     frb_header_beam_ids = new uint16_t[_nbeams];
-    frb_header_coarse_freq_ids = new uint16_t[_nfreq_coarse];
-    frb_header_scale = new float[_nbeams * _nfreq_coarse];
-    frb_header_offset = new float[_nbeams * _nfreq_coarse];
+    frb_header_coarse_freq_ids = new uint16_t[_num_gpus];
+    frb_header_scale = new float[_nbeams * _num_gpus];
+    frb_header_offset = new float[_nbeams * _num_gpus];
 
 }
 
@@ -45,13 +45,13 @@ void frbPostProcess::write_header(unsigned char * dest){
     memcpy(dest, frb_header_beam_ids, sizeof(uint16_t)*_nbeams);
     dest += sizeof(uint16_t)*_nbeams;
 
-    memcpy(dest, frb_header_coarse_freq_ids, sizeof(uint16_t)*_nfreq_coarse);
-    dest += sizeof(uint16_t)*_nfreq_coarse;
+    memcpy(dest, frb_header_coarse_freq_ids, sizeof(uint16_t)*_num_gpus);
+    dest += sizeof(uint16_t)*_num_gpus;
 
-    memcpy(dest, frb_header_scale, sizeof(float)*_nbeams*_nfreq_coarse);
-    dest += sizeof(float)*_nbeams*_nfreq_coarse;
+    memcpy(dest, frb_header_scale, sizeof(float)*_nbeams*_num_gpus);
+    dest += sizeof(float)*_nbeams*_num_gpus;
 
-    memcpy(dest, frb_header_offset, sizeof(float)*_nbeams*_nfreq_coarse);
+    memcpy(dest, frb_header_offset, sizeof(float)*_nbeams*_num_gpus);
 
 }
 
@@ -61,7 +61,6 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
 
     _num_gpus = config.get_int(unique_name, "num_gpus");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
     _downsample_time = config.get_int(unique_name, "downsample_time");
     _factor_upchan = config.get_int(unique_name, "factor_upchan");
     _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
@@ -75,9 +74,9 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     fpga_counts_per_sample = _downsample_time * _factor_upchan;
     udp_header_size = sizeof(struct FRBHeader)
                     + sizeof(uint16_t)*_nbeams //beam ids
-                    + sizeof(uint16_t)*_nfreq_coarse //freq band ids
-                    + sizeof(float)*_nbeams*_nfreq_coarse //scales
-                    + sizeof(float)*_nbeams*_nfreq_coarse //offsets
+                    + sizeof(uint16_t)*_num_gpus //freq band ids
+                    + sizeof(float)*_nbeams*_num_gpus //scales
+                    + sizeof(float)*_nbeams*_num_gpus //offsets
                     ;
     udp_packet_size = _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 }
@@ -97,17 +96,17 @@ void frbPostProcess::main_thread() {
     frb_header.fpga_counts_per_sample =  fpga_counts_per_sample;
     frb_header.fpga_count = 0 ;  //to be updated in fill_header
     frb_header.nbeams = _nbeams;  //4
-    frb_header.nfreq_coarse = _nfreq_coarse; //4
+    frb_header.nfreq_coarse = _num_gpus; //4
     frb_header.nupfreq = _factor_upchan_out;
     frb_header.ntsamp = _timesamples_per_frb_packet;
 
     for (int ii=0;ii<_nbeams;++ii){
         frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
     }
-    for (int ii=0;ii<_nfreq_coarse;++ii){
+    for (int ii=0;ii<_num_gpus;++ii){
         frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
     }
-    for (int ii =0; ii<_nbeams * _nfreq_coarse;++ii){
+    for (int ii =0; ii<_nbeams * _num_gpus;++ii){
         frb_header_scale[ii] = 1.; 
         frb_header_offset[ii] = 0;
     }

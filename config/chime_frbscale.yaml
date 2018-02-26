@@ -200,11 +200,11 @@ frb:
     cpu_affinity: [9]
     kotekan_process: frbPostProcess
     incoherent_beam: true
-    network_input_buffer_0: beamform_output_buffer_0
-    network_input_buffer_1: beamform_output_buffer_1
-    network_input_buffer_2: beamform_output_buffer_2
-    network_input_buffer_3: beamform_output_buffer_3
-    frb_out_buf: frb_output_buffer
+    in_buf_0: beamform_output_buffer_0
+    in_buf_1: beamform_output_buffer_1
+    in_buf_2: beamform_output_buffer_2
+    in_buf_3: beamform_output_buffer_3
+    out_buf: frb_output_buffer
   buffer_read:
     cpu_affinity: [11]
     kotekan_process: frbNetworkProcess
