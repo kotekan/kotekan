@@ -39,7 +39,7 @@ void eigenVis::main_thread() {
     // Memory for LAPACK interface.
     std::vector<cfloat> vis_square;
     std::vector<cfloat> evecs;
-    std::vector<float> evals(num_eigenvectors, 0);
+    std::vector<float> evals;
 
     int info, ev_found, nside, nev;
 
@@ -68,6 +68,7 @@ void eigenVis::main_thread() {
 
             vis_square.resize(num_elements * num_elements, 0);
             evecs.resize(num_elements * num_eigenvectors, 0);
+            evals.resize(num_elements, 0);
 
             initialized = true;
         }
@@ -144,7 +145,9 @@ void eigenVis::main_thread() {
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
-        for (auto const& value: evals) str_evals += " " + std::to_string(value);
+        for (int i = 0; i < num_eigenvectors; i++) {
+            str_evals += " " + std::to_string(evals[i]);
+        }
         INFO("Found eigenvalues:%s, with RMS residuals: %e.", str_evals.c_str(), rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
