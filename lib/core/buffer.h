@@ -40,6 +40,7 @@ extern "C" {
 #endif
 
 #include "metadata.h"
+#include "movingStats.h"
 
 /// The system page size, this might become more dynamic someday
 #define PAGESIZE_MEM 4096
@@ -52,12 +53,14 @@ extern "C" {
 /// The maximum number of producers that can register on a buffer
 #define MAX_PRODUCERS 10
 
+/// The number of values to average.
+#define BUF_SAMPLE_WINDOW 100
+
 /**
  * @struct ProcessInfo
  * @brief Internal structure for tracking consumer and producer names.
  */
 struct ProcessInfo {
-
     /// Set to 1 if the process is active
     int in_use;
 
@@ -179,6 +182,12 @@ struct Buffer {
      * A 0 at index I means the frame at index I is not full, one means it is full.
      */
     int * is_full;
+
+    /// The last time a frame was marked as full (used for arrival rate)
+    double last_arrival_time;
+
+    /// Track the average arrival rate, normally this is fixed by a clock.
+    struct movingStats * arrival_rate;
 
     /// Array of buffer info objects, for tracking information about each buffer.
     struct metadataContainer ** metadata;

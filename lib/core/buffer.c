@@ -2,6 +2,7 @@
 #include "metadata.h"
 #include "errors.h"
 #include "nt_memset.h"
+#include "util.h"
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
@@ -136,6 +137,9 @@ struct Buffer* create_buffer(int num_frames, int len,
     // By default don't zero buffers at the end of their use.
     buf->zero_frames = 0;
 
+    buf->last_arrival_time = 0;
+    buf->arrival_rate = create_moving_stats(BUF_SAMPLE_WINDOW);
+
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
 
@@ -209,6 +213,14 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     if (private_producers_done(buf, ID) == 1) {
         private_reset_producers(buf, ID);
         buf->is_full[ID] = 1;
+        if (buf->last_arrival_time != 0) {
+            double cur_time = e_time();
+            double diff = cur_time - buf->last_arrival_time;
+            add_sample(buf->arrival_rate, diff);
+            buf->last_arrival_time = cur_time;
+        } else {
+            buf->last_arrival_time = e_time();
+        }
         set_full = 1;
     }
 
@@ -564,7 +576,9 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-    DEBUG("Buffer %s status: %s", buf->buffer_name, status_string);
+    double arrival_rate = get_average(buf->arrival_rate);
+    DEBUG("Buffer %s, Arrival rate: %f, status: %s", buf->buffer_name,
+          arrival_rate, status_string);
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
