@@ -10,7 +10,7 @@
 #include <iostream>
 #include <fstream>
 
-REGISTER_KOTEKAN_PROCESS(visTransform);
+REGISTER_KOTEKAN_PROCESS(visWriter);
 
 visWriter::visWriter(Config& config,
                        const string& unique_name,

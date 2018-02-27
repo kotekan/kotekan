@@ -9,6 +9,12 @@
 #include <stdexcept>
 
 
+REGISTER_KOTEKAN_PROCESS(visTransform);
+REGISTER_KOTEKAN_PROCESS(visDebug);
+REGISTER_KOTEKAN_PROCESS(visAccumulate);
+REGISTER_KOTEKAN_PROCESS(visMerge);
+
+
 visTransform::visTransform(Config& config,
                            const string& unique_name,
                            bufferContainer &buffer_container) :

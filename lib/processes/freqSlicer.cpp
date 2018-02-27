@@ -4,6 +4,10 @@
 #include <algorithm>
 
 
+REGISTER_KOTEKAN_PROCESS(freqSplit);
+REGISTER_KOTEKAN_PROCESS(freqSubset);
+
+
 freqSplit::freqSplit(Config& config,
                      const string& unique_name,
                      bufferContainer &buffer_container) :
