@@ -2,9 +2,12 @@
 #define VIS_FILE_HPP
 
 #include <iostream>
+#include <cstdint>
 #include <map>
+
 #include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
+
 #include "visUtil.hpp"
 #include "errors.h"
 
@@ -44,7 +47,7 @@ public:
     /// \return The number of entries in the time axis
     size_t addSample(time_ctype new_time, uint32_t freq_ind,
                      std::vector<cfloat> new_vis,
-                     std::vector<uint8_t> new_weight,
+                     std::vector<float> new_weight,
                      std::vector<cfloat> new_gcoeff,
                      std::vector<int32_t> new_gexp);
 
@@ -53,7 +56,7 @@ public:
 
     void writeSample(uint32_t time_ind, uint32_t freq_ind,
                      std::vector<cfloat> new_vis,
-                     std::vector<uint8_t> new_weight,
+                     std::vector<float> new_weight,
                      std::vector<cfloat> new_gcoeff,
                      std::vector<int32_t> new_gexp);
 
@@ -122,7 +125,7 @@ public:
     /// \return The number of entries in the time axis
     void addSample(time_ctype new_time, uint32_t freq_ind,
                    std::vector<cfloat> new_vis,
-                   std::vector<uint8_t> new_weight,
+                   std::vector<float> new_weight,
                    std::vector<cfloat> new_gcoeff,
                    std::vector<int32_t> new_gexp);
 

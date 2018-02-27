@@ -32,6 +32,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fakeVis.cpp
               freqSlicer.cpp
               frbPostProcess_in.cpp
+              visProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

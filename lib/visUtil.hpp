@@ -2,7 +2,7 @@
 #define VIS_UTIL_HPP
 
 #include <complex>
-#include <stdint.h>
+#include <cstdint>
 #include <time.h>
 #include <sys/time.h>
 #include <string>

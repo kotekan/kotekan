@@ -1,4 +1,6 @@
 #include "visBuffer.hpp"
+#include "gpsTime.h"
+
 
 template<typename T>
 gsl::span<T> bind_span(uint8_t * start, std::pair<size_t, size_t> range) {
@@ -41,7 +43,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params
-    buffer_layout(bufferLayout(n_elements, n_prod, n_eigenvectors)),
+    buffer_layout(calculate_buffer_layout(n_elements, n_prod, n_eigenvectors)),
 
     // Set the const refs to the structural metadata
     num_elements(metadata->num_elements),
@@ -91,7 +93,8 @@ visFrameView::visFrameView(Buffer * buf, int frame_id,
 
     // Copy the frame data here:
     // NOTE: this copies the full buffer memory, not only the individual components
-    std::memcpy(buffer->frames[id], frame_to_copy.buffer->frames[id],
+    std::memcpy(buffer->frames[id],
+                frame_to_copy.buffer->frames[frame_to_copy.id],
                 frame_to_copy.buffer->frame_size);
 }
 
@@ -112,9 +115,9 @@ std::string visFrameView::summary() const {
 }
 
 
-struct_layout visFrameView::bufferLayout(uint32_t num_elements,
-                                         uint32_t num_prod,
-                                         uint32_t num_eigenvectors)
+struct_layout visFrameView::calculate_buffer_layout(
+    uint32_t num_elements, uint32_t num_prod, uint16_t num_eigenvectors
+)
 {
     // TODO: get the types of each element using a template on the member
     // definition
@@ -127,4 +130,30 @@ struct_layout visFrameView::bufferLayout(uint32_t num_elements,
     };
 
     return struct_alignment(buffer_members);
+}
+
+
+void visFrameView::fill_chime_metadata(const chimeMetadata * chime_metadata) {
+
+    // Set to zero as there's no information in chimeMetadata about it.
+    dataset_id = 0;
+
+    // Set the frequency index from the stream id of the metadata
+    stream_id_t stream_id = extract_stream_id(chime_metadata->stream_ID);
+    freq_id = bin_number_chime(&stream_id);
+
+    // Set the time
+    // TODO: get the GPS time instead
+    uint64_t fpga_seq = chime_metadata->fpga_seq_num;
+
+    timespec ts;
+
+    // Use the GPS time if appropriate.
+    if(is_gps_global_time_set()) {
+        ts = chime_metadata->gps_time;
+    } else{
+        TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);
+    }
+
+    time = std::make_tuple(fpga_seq, ts);
 }

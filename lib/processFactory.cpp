@@ -49,6 +49,7 @@
 #include "pulsarNetworkProcess.hpp"
 #endif
 #include "frbPostProcess_in.hpp"
+#include "visProcess.hpp"
 
 #ifdef WITH_HDF5
     #include "visWriter.hpp"
@@ -297,6 +298,12 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
     }
     if (name == "visDebug") {
         return (KotekanProcess *) new visDebug(config, location, buffer_container);
+    }
+    if (name == "visAccumulate") {
+        return (KotekanProcess *) new visAccumulate(config, location, buffer_container);
+    }
+    if (name == "visMerge") {
+        return (KotekanProcess *) new visMerge(config, location, buffer_container);
     }
 
     // Generate fake visbilities

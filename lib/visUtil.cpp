@@ -9,7 +9,6 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
     serial.copy(correlator_input, 32);
 }
 
-
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 void copy_vis_triangle(
