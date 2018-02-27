@@ -130,6 +130,8 @@ void frbPostProcess::main_thread() {
         }
 
         //Sum all the beams together into beam[0] location.
+        // WARNING: THIS MODIFIES THE INPUT BUFFER!!!!!
+        // POTENTIAL RACE CLOBBER WITH PEER PROCESSES!!
         if (_incoherent_beam){
             int fti = _factor_upchan_out * num_samples / (sizeof(__m256)/sizeof(float));
             for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
@@ -150,8 +152,8 @@ void frbPostProcess::main_thread() {
 //        in_buf = [stream=256, nbeams=4, nsamples=128, freq=16]
 //        out_buf = [stream=256,frames=8,[packet_size]]
 //        [packet_size] = [nbeams=4,gpu=4,freq=16,time=16]+header
-        float ofs=0,scl=1;
-        for (uint i = 0; i < num_samples; i+=_timesamples_per_frb_packet) { //loop 128 time samples
+        float ofs,scl;
+        for (uint i = 0; i < num_samples; i+=_timesamples_per_frb_packet) { //loop 128 time samples, in 8 steps
             for (int stream = 0; stream<num_L1_streams; stream++) { //loop 256 streams (output)
                 for (int b=0; b<_nbeams;b++){ //loop 4 beams / stream
                     for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
@@ -189,30 +191,62 @@ void frbPostProcess::main_thread() {
                             frb_header_scale[b*_num_gpus + thread_id] = scl;
                             frb_header_offset[b*_num_gpus + thread_id] = ofs;
                         }
+                        //scale and offset, dump directly into the output buffer
                         __m256 _scl = _mm256_broadcast_ss(&scl);
                         float off=-ofs*scl;
                         __m256 _ofs = _mm256_broadcast_ss(&off);
+                        /*
+                        int t_per_m = sizeof(__m256) / sizeof(float);
+                        for (int t=0; t<_timesamples_per_frb_packet; t+=t_per_m){
+                            for (int f=0; f<_factor_upchan_out; f++){
+                                uint32_t in_index  = (stream * _nbeams + b) * num_samples * 16 
+                                                       + (i + t) * _factor_upchan_out
+                                                       + f;
+                                __m256 _in = _mm256_set_ps(in_data[in_index+_factor_upchan_out*0],
+                                                           in_data[in_index+_factor_upchan_out*1],
+                                                           in_data[in_index+_factor_upchan_out*2],
+                                                           in_data[in_index+_factor_upchan_out*3],
+                                                           in_data[in_index+_factor_upchan_out*4],
+                                                           in_data[in_index+_factor_upchan_out*5],
+                                                           in_data[in_index+_factor_upchan_out*6],
+                                                           in_data[in_index+_factor_upchan_out*7]);
+                                __m256 _out = _mm256_fmadd_ps(_in,_scl,_ofs); //now [0-255]
+                                __m256i _y = _mm256_cvtps_epi32(_out); // Convert them to 32-bit ints
+                                _y = _mm256_packus_epi32(_y, _y);      // Pack down to 16 bits
+                                _y = _mm256_packus_epi16(_y, _y);      // Pack down to 8 bits
+                                uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
+                                                       + (i/_timesamples_per_frb_packet) * udp_packet_size
+                                                       + b * _num_gpus* 16*16
+                                                       + thread_id * 16*16
+                                                       + (f * 16 + t)
+                                                       + udp_header_size;
+                                *(int*)(out_frame+out_index  ) = _mm256_extract_epi32(_y, 0);
+                                *(int*)(out_frame+out_index+4) = _mm256_extract_epi32(_y, 4);
+                            }
+                        }*/
                         int f_per_m = sizeof(__m256) / sizeof(float);
+                        char utr[256], tr[256]; 
                         for (int t=0; t<_timesamples_per_frb_packet; t++){
                             for (int f=0; f<_factor_upchan_out; f+=f_per_m){
-                                uint32_t in_index  = (stream * _nbeams + b) * num_samples * 16 
+                                uint32_t in_index  = (stream * _nbeams + b) * num_samples * 16
                                                        + (i + t) * _factor_upchan_out
                                                        + f;
                                 __m256 _in = _mm256_load_ps(in_data+in_index);
                                 __m256 _out = _mm256_fmadd_ps(_in,_scl,_ofs); //now [0-255]
                                 __m256i _y = _mm256_cvtps_epi32(_out); // Convert them to 32-bit ints
-                                _y = _mm256_packus_epi32(_y, _y);        // Pack down to 16 bits
-                                _y = _mm256_packus_epi16(_y, _y);        // Pack down to 8 bits
-                                uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
-                                                       + (i/_timesamples_per_frb_packet) * udp_packet_size 
-                                                       + b * _num_gpus*16*16 
-                                                       + thread_id * 16*16 
-                                                       + (t * 16 + f)
-                                                       + udp_header_size;
-                                *(int*)(out_frame+out_index  ) = _mm256_extract_epi32(_y, 0);
-                                *(int*)(out_frame+out_index+4) = _mm256_extract_epi32(_y, 4);
+                                _y = _mm256_packus_epi32(_y, _y);      // Pack down to 16 bits
+                                _y = _mm256_packus_epi16(_y, _y);      // Pack down to 8 bits
+                                ((uint32_t*)utr)[t*16+f+0] = _mm256_extract_epi32(_y, 0);
+                                ((uint32_t*)utr)[t*16+f+1] = _mm256_extract_epi32(_y, 4);
                             }
                         }
+                        for (int t=0; t<16; t++) for (int f=0; f<16; f++) tr[f*16+t] = utr[t*16+f];
+                        uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
+                                               + (i/_timesamples_per_frb_packet) * udp_packet_size
+                                               + b * _num_gpus* 16*16
+                                               + thread_id * 16*16
+                                               + udp_header_size;
+                        memcpy(out_frame+out_index,tr,16*16);
                         frb_header.fpga_count += fpga_counts_per_sample * _timesamples_per_frb_packet;
                     } //end 4 GPUs
                 } // end 4 nbeam
