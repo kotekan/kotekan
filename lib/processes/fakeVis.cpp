@@ -26,11 +26,13 @@ fakeVis::fakeVis(Config &config,
         freq.push_back((uint32_t) f);
     }
 
-    // Get cadence
-    cadence = config.get_float(unique_name, "cadence");
-
     // Get fill type
     fill_ij = config.get_bool_default(unique_name, "fill_ij", false);
+
+    // Get timing and frame params
+    cadence = config.get_float(unique_name, "cadence");
+    num_frames = config.get_int_default(unique_name, "num_frames", -1);
+    wait = config.get_bool_default(unique_name, "wait", true);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {

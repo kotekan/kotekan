@@ -10,7 +10,7 @@ class time_spec(ctypes.Structure):
     """Struct repr of a timespec type."""
     _fields_ = [
         ('tv', ctypes.c_int64),
-        ('tv_usec', ctypes.c_uint64)
+        ('tv_nsec', ctypes.c_uint64)
     ]
 
 

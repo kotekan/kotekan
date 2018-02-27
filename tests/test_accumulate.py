@@ -1,103 +1,70 @@
-import subprocess
-import os
 import pytest
 import numpy as np
 
-import visbuffer
+import kotekan_runner
 
 
 accumulate_params = {
     'num_elements': 4,
-    'num_eigenvectors': 2,
+    'num_eigenvectors': 4,
     'samples': 32768,
     'int_frames': 64,
-    'total_frames': 257,  # Go for one extra sample to ensure we actually get 256
+    'total_frames': 257,  # One extra sample to ensure we actually get 256
     'block_size': 2,
     'freq': 777
 }
 
+gaussian_params = accumulate_params.copy()
+gaussian_params.update({
+    'samples_per_data_set': 10000,
+    'num_gpu_frames': 100,
+    'total_frames': 200000
+})
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
-    config = """
----
-type: config
-log_level: info
-num_elements: %(num_elements)i
-num_local_freq: 1
-samples_per_data_set: %(samples)i
-buffer_depth: 4
-num_gpu_frames: %(int_frames)i
-block_size: %(block_size)i
-cpu_affinity: []
+    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
-# Metadata pool
-main_pool:
-    kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 5 * buffer_depth
+    test = kotekan_runner.KotekanProcessTester(
+        'visAccumulate', {'num_eigenvectors': 4},
+        kotekan_runner.FakeGPUBuffer(
+            pattern='accumulate',
+            freq=accumulate_params['freq'],
+            num_frames=accumulate_params['total_frames']
+        ),
+        dump_buffer,
+        accumulate_params
+    )
 
-vis_pool:
-    kotekan_metadata_pool: visMetadata
-    num_metadata_objects: 5 * buffer_depth
+    test.run()
 
-# Buffers
-gpu_buf0:
-    metadata_pool: main_pool
-    num_frames: buffer_depth
-    sizeof_int: 4
-    frame_size: sizeof_int * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
-    kotekan_buffer: standard
+    yield dump_buffer.load()
 
-vis_buf0:
-    metadata_pool: vis_pool
-    num_frames: buffer_depth
-    sizeof_int: 4
-    frame_size: 10 * sizeof_int * num_local_freq * num_elements * num_elements
-    kotekan_buffer: standard
 
-# Define the minimal processes to run the test
-fakegpu0:
-    pattern: accumulate
-    num_frames: %(total_frames)i
-    pre_accumulate: true
-    kotekan_process: fakeGpuBuffer
-    freq: %(freq)i
-    wait: false
-    out_buf: gpu_buf0
+@pytest.fixture(scope="module")
+def gaussian_data(tmpdir_factory):
 
-acc0:
-    kotekan_process: visAccumulate
-    in_buf: gpu_buf0
-    out_buf: vis_buf0
-    num_eigenvectors: %(num_eigenvectors)i
+    tmpdir = tmpdir_factory.mktemp("gaussian")
 
-dump:
-    kotekan_process: rawFileWrite
-    base_dir: %(path)s
-    file_name: vis
-    file_ext: dump
-    in_buf: vis_buf0
-"""
+    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
-    config = config % dict(accumulate_params, path=str(tmpdir))
+    test = kotekan_runner.KotekanProcessTester(
+        'visAccumulate', {'num_eigenvectors': 4},
+        kotekan_runner.FakeGPUBuffer(
+            pattern='gaussian',
+            freq=gaussian_params['freq'],
+            num_frames=gaussian_params['total_frames']
+        ),
+        dump_buffer,
+        gaussian_params
+    )
 
-    config_file = tmpdir.join("config.yaml")
-    config_file.write(config)
+    test.run()
 
-    kotekan_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
-                                                "..", "build", "kotekan"))
-
-    print kotekan_dir
-
-    subprocess.check_call(["./kotekan", "-c", str(config_file)],
-                          stdout=subprocess.PIPE, cwd=kotekan_dir)
-
-    dump_data = visbuffer.VisBuffer.load_files(str(tmpdir) + '/*vis*.dump')
-
-    yield dump_data
+    yield dump_buffer.load()
 
 
 def test_structure(accumulate_data):
@@ -124,10 +91,17 @@ def test_metadata(accumulate_data):
 
 def test_time(accumulate_data):
 
+    def timespec_to_float(ts):
+        return ts.tv + ts.tv_nsec * 1e-9
+
+    t0 = timespec_to_float(accumulate_data[0].metadata.ctime)
+
     delta_samp = accumulate_params['samples'] * accumulate_params['int_frames']
 
     for ii, dump in enumerate(accumulate_data):
         assert dump.metadata.fpga_seq == ii * delta_samp
+        assert ((timespec_to_float(dump.metadata.ctime) - t0) ==
+                pytest.approx(ii * delta_samp * 2.56e-6, abs=1e-5, rel=0))
 
 
 def test_accumulate(accumulate_data):
@@ -140,3 +114,15 @@ def test_accumulate(accumulate_data):
 
         assert (dump.vis == pat).all()
         assert (dump.weight == 8.0).all()
+
+
+# Test the the statistics are being calculated correctly
+def test_gaussian(gaussian_data):
+
+    vis_set = np.array([dump.vis for dump in gaussian_data])
+    weight_set = np.array([dump.weight for dump in gaussian_data])
+
+    assert np.allclose(vis_set.var(axis=0), 1e-6, rtol=1e-1, atol=0)
+    assert np.allclose((1.0 / weight_set).mean(axis=0), 1e-6, rtol=1e-1, atol=0)
+    assert np.allclose(vis_set.mean(axis=0), np.identity(4)[np.triu_indices(4)],
+                       atol=1e-4, rtol=0)
