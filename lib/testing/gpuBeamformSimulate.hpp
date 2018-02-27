@@ -45,8 +45,11 @@ private:
     int transposed_len;
     int output_len;
 
+    float scaling;
+    bool zero_missing_gains;
+
     void reorder(unsigned char *data, int *map);
-    void cpu_beamform_ns(double *data, unsigned long transform_length, int stop_level);
+    void cpu_beamform_ns(double *data, uint64_t transform_length, int stop_level);
     void cpu_beamform_ew(double *input, double *output, float *Coeff, int nbeamsNS, int nbeamsEW, int npol, int nsamp_in);
     void clamping(double *input, double *output, float freq, int nbeamsNS, int nbeamsEW, int nsamp_in, int npol);
     void transpose(double *input, double *output, int nbeams, int nsamp_in);

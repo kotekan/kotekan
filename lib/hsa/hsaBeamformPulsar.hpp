@@ -42,6 +42,8 @@
  * @conf   num_pulsar           Int (default 10). Number of pulsar beams to be formed
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   num_pol              Int (default 2). Number of polarizations
+ * @conf   command              String (defualt: "pulsarbf"). Kernel command.
+ * @conf   kernel               String (default: "pulsar_beamformer.hsaco"). Kernel filename.
  *
  * 
  * @todo   Currently the phases are intialized to some dummy values (beam_id/10) in 
@@ -60,16 +62,11 @@ class hsaBeamformPulsar: public hsaCommand
 {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of phases.
-    hsaBeamformPulsar(const string &kernel_name, const string &kernel_file_name,
-                        hsaDeviceInterface &device, Config &config,
-                        bufferContainer &host_buffers,
-                        const string &unique_name);
+    hsaBeamformPulsar(Config &config, const string &unique_name,
+                        bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformPulsar();
-
-    /// Parse config
-    void apply_config(const uint64_t& fpga_seq) override;
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,

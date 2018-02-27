@@ -10,6 +10,8 @@
 #include "visUtil.hpp"
 
 
+REGISTER_KOTEKAN_PROCESS(fakeGpuBuffer);
+
 fakeGpuBuffer::fakeGpuBuffer(Config& config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :

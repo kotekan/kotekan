@@ -2,6 +2,8 @@
 #include "util.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(bufferSend);
+
 bufferSend::bufferSend(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :
