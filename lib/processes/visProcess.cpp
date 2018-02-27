@@ -356,11 +356,16 @@ void visMerge::main_thread() {
                 break;
             }
 
+            DEBUG("Merging buffer %s[%i] into %s[%i]",
+                  buf->buffer_name, frame_id,
+                  out_buf->buffer_name, output_frame_id);
+        
             // Transfer metadata
             pass_metadata(buf, frame_id, out_buf, output_frame_id);
 
             // Copy the frame data here:
-            std::memcpy(buf->frames[frame_id], out_buf->frames[output_frame_id],
+            std::memcpy(out_buf->frames[output_frame_id],
+                        buf->frames[frame_id], 
                         buf->frame_size);
 
             // Mark the buffers and move on

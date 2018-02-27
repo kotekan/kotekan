@@ -4,6 +4,7 @@
 #include <sys/time.h>
 #include <csignal>
 #include <unistd.h>
+#include <random>
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "visUtil.hpp"
@@ -34,6 +35,7 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     // Fill out the map with the fill patterns
     fill_map["block"] = &fakeGpuBuffer::fill_pattern_block;
     fill_map["accumulate"] = &fakeGpuBuffer::fill_pattern_accumulate;
+    fill_map["gaussian"] = &fakeGpuBuffer::fill_pattern_gaussian;
 
     // Fetch the correct fill function
     std::string pattern = config.get_string(unique_name, "pattern");
@@ -68,7 +70,7 @@ void fakeGpuBuffer::main_thread() {
         delta_seq = samples_per_data_set;
         delta_ns = samples_per_data_set * 2560;
     } else {
-        delta_seq = 1.0;
+        delta_seq = 1;
         delta_ns = (uint64_t)(cadence * 1000000000);
     }
 
@@ -111,16 +113,16 @@ void fakeGpuBuffer::main_thread() {
         ts.tv_sec += ((ts.tv_nsec + delta_ns) / 1000000000);
         ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
 
-        // TODO: only sleep for the extra time required, i.e. account for the
-        // elapsed time each loop
-        if(this->wait) nanosleep(&delta_ts, nullptr);
-
         // Cause kotekan to exit if we've hit the maximum number of frames
         if(num_frames > 0 && frame_count > num_frames) {
             INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
             std::raise(SIGINT);
             return;
         }
+        
+        // TODO: only sleep for the extra time required, i.e. account for the
+        // elapsed time each loop
+        if(this->wait) nanosleep(&delta_ts, nullptr);
     }
 }
 
@@ -159,6 +161,30 @@ void fakeGpuBuffer::fill_pattern_accumulate(int32_t* data, int frame_number) {
             // frame, and boost by a constant to ensure the average value is the
             // row.
             data[2 * bi + 1] = (i - 4 * ((frame_number + 1) % 4 == 0) + 1) * samples_per_data_set; // Real
+        }
+    }
+}
+
+void fakeGpuBuffer::fill_pattern_gaussian(int32_t* data, int frame_number) {
+
+    std::random_device rd{};
+    std::mt19937 gen{rd()};
+    std::normal_distribution<float> gaussian{0,1};
+
+    float f_auto = pow(samples_per_data_set, 0.5);
+    float f_cross = pow(samples_per_data_set / 2, 0.5);
+
+    for(int i = 0; i < num_elements; i++) {
+        for(int j = i; j < num_elements; j++) {
+            uint32_t bi = prod_index(i, j, block_size, num_elements);
+
+            if(i == j) {
+                data[2 * bi + 1] = samples_per_data_set + (int32_t)(f_auto * gaussian(gen));
+                data[2 * bi    ] = 0;
+            } else {
+                data[2 * bi + 1] = (int32_t)(f_cross * gaussian(gen));
+                data[2 * bi    ] = (int32_t)(f_cross * gaussian(gen));
+            }
         }
     }
 }

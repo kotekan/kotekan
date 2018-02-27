@@ -82,6 +82,15 @@ public:
      */
     void fill_pattern_accumulate(int32_t* data, int frame_num);
 
+    /**
+     * Fill with a pattern with Gaussian noise with radiometer variance.
+     *
+     * The underlying inputs are uncorrelated with variance of 1.
+     * 
+     * @param data      The output frame data to fill.
+     * @param frame_num Number of the frame to fill.
+     */
+    void fill_pattern_gaussian(int32_t* data, int frame_num);
 private:
 
     Buffer* out_buf;

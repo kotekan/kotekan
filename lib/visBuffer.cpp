@@ -93,7 +93,8 @@ visFrameView::visFrameView(Buffer * buf, int frame_id,
 
     // Copy the frame data here:
     // NOTE: this copies the full buffer memory, not only the individual components
-    std::memcpy(buffer->frames[id], frame_to_copy.buffer->frames[id],
+    std::memcpy(buffer->frames[id],
+                frame_to_copy.buffer->frames[frame_to_copy.id],
                 frame_to_copy.buffer->frame_size);
 }
 

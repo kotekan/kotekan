@@ -50,21 +50,6 @@ class KotekanRunner(object):
             subprocess.check_call(["./kotekan", "-c", fh.name],
                                   cwd=kotekan_dir)
 
-        # import requests
-        # import json
-        # json_string = json.dumps(config_dict)
-        
-        # kotekan_path = os.path.abspath(os.path.normpath(os.path.join(
-        #     os.path.dirname(__file__), "..", "build", "kotekan", "kotekan"
-        # )))
-
-        # kotekan = subprocess.Popen([kotekan_path], cwd=workdir)
-        # time.sleep(0.5)  # Wait for kotekan to start
-
-        # requests.post("http://127.0.0.1:12048/start", json_string)
-
-        # kotekan.wait()
-
 
 class InputBuffer(object):
     """Base class for an input buffer generator."""
@@ -78,7 +63,7 @@ class OutputBuffer(object):
 
 class FakeGPUBuffer(InputBuffer):
     """Create an input GPU format buffer and fill it using `fakeGPUBuffer`.
-    
+
     Parameters
     ----------
     **kwargs : dict
@@ -89,7 +74,7 @@ class FakeGPUBuffer(InputBuffer):
 
     def __init__(self, **kwargs):
 
-        self.name = 'gpu_buf%i' % self._buf_ind
+        self.name = 'fakegpu_buf%i' % self._buf_ind
         process_name = 'fakegpu%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
@@ -116,9 +101,47 @@ class FakeGPUBuffer(InputBuffer):
         self.process_block = {process_name: process_config}
 
 
+class FakeVisBuffer(InputBuffer):
+    """Create an input visBuffer format buffer and fill it using `fakeVis`.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        Parameters fed straight into the process config.
+    """
+    _buf_ind = 0
+
+    def __init__(self, **kwargs):
+
+        self.name = 'fakevis_buf%i' % self._buf_ind
+        process_name = 'fakevis%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'standard',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+                'sizeof_int': 4,
+                'frame_size': ('10 * sizeof_int * num_local_freq *'
+                               'num_elements * num_elements')
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'fakeVis',
+            'out_buf': self.name,
+            'freq': [0],
+            'wait': False
+        }
+        process_config.update(kwargs)
+
+        self.process_block = {process_name: process_config}
+
+
 class DumpVisBuffer(OutputBuffer):
     """Consume a visBuffer and provide its contents at `VisBuffer` objects.
-    
+
     Parameters
     ----------
     output_dir : string
@@ -131,14 +154,14 @@ class DumpVisBuffer(OutputBuffer):
 
     def __init__(self, output_dir):
 
-        self.name = 'vis_buf%i' % self._buf_ind
+        self.name = 'dumpvis_buf%i' % self._buf_ind
         process_name = 'dump%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.output_dir = output_dir
 
         self.buffer_block = {
-            self.name : {
+            self.name: {
                 'kotekan_buffer': 'standard',
                 'metadata_pool': 'vis_pool',
                 'num_frames': 'buffer_depth',
@@ -160,14 +183,14 @@ class DumpVisBuffer(OutputBuffer):
 
     def load(self):
         """Load the output data from the buffer.
-        
+
         Returns
         -------
         dumps : list of VisBuffer
             The buffer output.
         """
         return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
-                                              (self.output_dir, self.name)) 
+                                              (self.output_dir, self.name))
 
 
 class KotekanProcessTester(KotekanRunner):
@@ -211,7 +234,7 @@ class KotekanProcessTester(KotekanRunner):
 
         config['kotekan_process'] = process_type
 
-        process_block = { (process_type + "_test"): config}
+        process_block = {(process_type + "_test"): config}
         buffer_block = {}
 
         for buf in itertools.chain(buffers_in, buffers_out):
@@ -237,9 +260,9 @@ cpu_affinity: []
 # Metadata pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 5 * buffer_depth
+    num_metadata_objects: 30 * buffer_depth
 
 vis_pool:
     kotekan_metadata_pool: visMetadata
-    num_metadata_objects: 5 * buffer_depth
+    num_metadata_objects: 30 * buffer_depth
 """

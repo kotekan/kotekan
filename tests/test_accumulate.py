@@ -7,7 +7,7 @@ import kotekan_runner
 accumulate_params = {
     'num_elements': 4,
     'num_eigenvectors': 4,
-    'samples': 32768,
+    'samples_per_data_set': 32768,
     'int_frames': 64,
     'total_frames': 257,  # One extra sample to ensure we actually get 256
     'block_size': 2,
@@ -20,6 +20,10 @@ gaussian_params.update({
     'num_gpu_frames': 100,
     'total_frames': 200000
 })
+
+time_params = accumulate_params.copy()
+time_params.update({'integration_time': 5.0})
+
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
@@ -67,6 +71,29 @@ def gaussian_data(tmpdir_factory):
     yield dump_buffer.load()
 
 
+@pytest.fixture(scope="module")
+def time_data(tmpdir_factory):
+
+    tmpdir = tmpdir_factory.mktemp("time")
+
+    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+
+    test = kotekan_runner.KotekanProcessTester(
+        'visAccumulate', {'num_eigenvectors': 4},
+        kotekan_runner.FakeGPUBuffer(
+            pattern='accumulate',
+            freq=time_params['freq'],
+            num_frames=time_params['total_frames']
+        ),
+        dump_buffer,
+        time_params
+    )
+
+    test.run()
+
+    yield dump_buffer.load()
+
+
 def test_structure(accumulate_data):
 
     n = accumulate_params['num_elements']
@@ -75,7 +102,8 @@ def test_structure(accumulate_data):
     for dump in accumulate_data:
         assert dump.metadata.num_elements == n
         assert dump.metadata.num_prod == (n * (n + 1) / 2)
-        assert dump.metadata.num_eigenvectors == accumulate_params['num_eigenvectors']
+        assert (dump.metadata.num_eigenvectors ==
+                accumulate_params['num_eigenvectors'])
 
     # Check that we have the expected number of samples
     nsamp = accumulate_params['total_frames'] / accumulate_params['int_frames']
@@ -96,7 +124,8 @@ def test_time(accumulate_data):
 
     t0 = timespec_to_float(accumulate_data[0].metadata.ctime)
 
-    delta_samp = accumulate_params['samples'] * accumulate_params['int_frames']
+    delta_samp = (accumulate_params['samples_per_data_set'] *
+                  accumulate_params['int_frames'])
 
     for ii, dump in enumerate(accumulate_data):
         assert dump.metadata.fpga_seq == ii * delta_samp
@@ -123,6 +152,21 @@ def test_gaussian(gaussian_data):
     weight_set = np.array([dump.weight for dump in gaussian_data])
 
     assert np.allclose(vis_set.var(axis=0), 1e-6, rtol=1e-1, atol=0)
-    assert np.allclose((1.0 / weight_set).mean(axis=0), 1e-6, rtol=1e-1, atol=0)
-    assert np.allclose(vis_set.mean(axis=0), np.identity(4)[np.triu_indices(4)],
+    assert np.allclose((1.0 / weight_set).mean(axis=0),
+                       1e-6, rtol=1e-1, atol=0)
+    assert np.allclose(vis_set.mean(axis=0),
+                       np.identity(4)[np.triu_indices(4)],
                        atol=1e-4, rtol=0)
+
+
+def test_int_time(time_data):
+
+    time_per_frame = 2.56e-6 * time_params['samples_per_data_set']
+    frames_per_int = (int(time_params['integration_time'] /
+                          time_per_frame) / 2) * 2
+
+    fpga0 = time_data[0].metadata.fpga_seq
+
+    for ii, dump in enumerate(time_data):
+        assert (dump.metadata.fpga_seq - fpga0 ==
+                ii * time_params['samples_per_data_set'] * frames_per_int)
