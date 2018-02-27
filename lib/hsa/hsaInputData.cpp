@@ -1,4 +1,7 @@
+#include <random>
+
 #include "hsaInputData.hpp"
+#include "utils/util.h"
 
 REGISTER_HSA_COMMAND(hsaInputData);
 
@@ -11,9 +14,22 @@ hsaInputData::hsaInputData( Config& config, const string &unique_name,
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _enable_delay = config.get_bool_default(unique_name, "enable_delay", false);
     if(_num_elements <= 2) //TODO FIND BETTER WORK AROUND FOR DISTINGUISHING VDIF/CHIME INPUT LENGTH
                 header_size = 32;
     input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;
+
+    // Generate a constant random delay for each frame after
+    // getting it from the network buffer.
+    // This is used to help balance out the power usage.
+    if (_enable_delay) {
+        std::random_device rd;  // Seed
+        std::mt19937 gen(rd());
+        double max_delay = (double)_samples_per_data_set/_sample_arrival_rate;
+        std::uniform_real_distribution<> dis(0.0, max_delay*0.75);
+        _random_delay = dis(gen);
+        INFO("Setting fixed delay to: %f", _random_delay);
+    }
 
     network_buf = host_buffers.get_buffer("network_buf");
     network_buffer_id = 0;
@@ -34,6 +50,21 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id)
     if (frame == NULL) return -1;
     //INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,
     //        device.get_gpu_id(), gpu_frame_id);
+
+    if (_enable_delay) {
+        timeval recv_time = get_first_packet_recv_time(network_buf, network_buffer_precondition_id);
+        double d_recv_time = (double)recv_time.tv_sec + (double)recv_time.tv_usec / 1000000.0;
+        double expected_delay = (double)_samples_per_data_set / _sample_arrival_rate;
+        double current_time = e_time();
+        // This adjusts the delay to make sure we don't exceed the frame arrive period,
+        // in the event we reach this point after the expected time.
+        double delay = _random_delay - (current_time - (d_recv_time + expected_delay));
+        DEBUG2("frame_time: %f, expected_delay: %f, current_time: %f, random_delay: %f, actual delay: %f",
+                d_recv_time, expected_delay, current_time, _random_delay, delay);
+        if (delay > 0)
+            usleep((int)(delay*1000000));
+    }
+
     network_buffer_precondition_id = (network_buffer_precondition_id + 1) % network_buf->num_frames;
     return 0;
 }
