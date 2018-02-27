@@ -298,7 +298,29 @@ void frbNetworkProcess::main_thread()
         if(e_stream>255) e_stream -= 256;
         
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
-         
+        
+         //if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
+         //{
+         //  int i = link%2;
+         //  sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
+         //          udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
+         //
+         //  link++;
+         //  if(link==number_of_l1_links) link=0;
+         //}
+         for(int link=0;link<number_of_l1_links;link++)
+         {
+           //Block Mode
+           //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //RA Mode
+           if (e_stream==beam_offset/4+link)
+           {
+             int i = link%2;
+             sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
+                    udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link])); 
+           }
+         }
+
          for(int link=0;link<number_of_l1_links;link++)
          {    
            //if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 

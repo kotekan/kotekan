@@ -314,7 +314,7 @@ void gpuBeamformSimulate::main_thread() {
             ERROR("CPU verification code: Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
                 cpu_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                cpu_gain[i*2+1] = 0.0;
+                cpu_gain[i*2+1] = 1.0;
             }
         }
         else {
@@ -323,8 +323,8 @@ void gpuBeamformSimulate::main_thread() {
                 ERROR("Couldn't read gain file...");
             }
             for (uint32_t i=0; i<2048; i++){
-                cpu_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                cpu_gain[i*2+1] = 0.0;
+                cpu_gain[i*2]   = cpu_gain[i*2  ] * scaling;
+                cpu_gain[i*2+1] = cpu_gain[i*2  ] * scaling;
             }
             fclose(ptr_myfile);
         }
@@ -350,11 +350,11 @@ void gpuBeamformSimulate::main_thread() {
                             //Real
                             input_unpacked_padded[index++] =
                               input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
-                              -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+                              +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
                             //Imag
                             input_unpacked_padded[index++] =
                               input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
-                              +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+                              -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
                         } else{
                             input_unpacked_padded[index++] = 0;
                             input_unpacked_padded[index++] = 0;

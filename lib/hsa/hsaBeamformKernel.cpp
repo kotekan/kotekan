@@ -100,7 +100,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
             ERROR("GPU Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
                 host_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                host_gain[i*2+1] = 0.0;
+                host_gain[i*2+1] = 1.0;
             }
         }
         else {
