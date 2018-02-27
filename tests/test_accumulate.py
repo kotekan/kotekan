@@ -99,10 +99,10 @@ def test_structure(accumulate_data):
     n = accumulate_params['num_elements']
 
     # Check that each samples is the expected shape
-    for dump in accumulate_data:
-        assert dump.metadata.num_elements == n
-        assert dump.metadata.num_prod == (n * (n + 1) / 2)
-        assert (dump.metadata.num_eigenvectors ==
+    for frame in accumulate_data:
+        assert frame.metadata.num_elements == n
+        assert frame.metadata.num_prod == (n * (n + 1) / 2)
+        assert (frame.metadata.num_eigenvectors ==
                 accumulate_params['num_eigenvectors'])
 
     # Check that we have the expected number of samples
@@ -112,9 +112,9 @@ def test_structure(accumulate_data):
 
 def test_metadata(accumulate_data):
 
-    for dump in accumulate_data:
-        assert dump.metadata.freq_id == accumulate_params['freq']
-        assert dump.metadata.dataset_id == 0
+    for frame in accumulate_data:
+        assert frame.metadata.freq_id == accumulate_params['freq']
+        assert frame.metadata.dataset_id == 0
 
 
 def test_time(accumulate_data):
@@ -127,9 +127,9 @@ def test_time(accumulate_data):
     delta_samp = (accumulate_params['samples_per_data_set'] *
                   accumulate_params['int_frames'])
 
-    for ii, dump in enumerate(accumulate_data):
-        assert dump.metadata.fpga_seq == ii * delta_samp
-        assert ((timespec_to_float(dump.metadata.ctime) - t0) ==
+    for ii, frame in enumerate(accumulate_data):
+        assert frame.metadata.fpga_seq == ii * delta_samp
+        assert ((timespec_to_float(frame.metadata.ctime) - t0) ==
                 pytest.approx(ii * delta_samp * 2.56e-6, abs=1e-5, rel=0))
 
 
@@ -139,17 +139,17 @@ def test_accumulate(accumulate_data):
 
     pat = (row + 1.0J * col).astype(np.complex64)
 
-    for dump in accumulate_data:
+    for frame in accumulate_data:
 
-        assert (dump.vis == pat).all()
-        assert (dump.weight == 8.0).all()
+        assert (frame.vis == pat).all()
+        assert (frame.weight == 8.0).all()
 
 
 # Test the the statistics are being calculated correctly
 def test_gaussian(gaussian_data):
 
-    vis_set = np.array([dump.vis for dump in gaussian_data])
-    weight_set = np.array([dump.weight for dump in gaussian_data])
+    vis_set = np.array([frame.vis for frame in gaussian_data])
+    weight_set = np.array([frame.weight for frame in gaussian_data])
 
     assert np.allclose(vis_set.var(axis=0), 1e-6, rtol=1e-1, atol=0)
     assert np.allclose((1.0 / weight_set).mean(axis=0),
@@ -167,6 +167,6 @@ def test_int_time(time_data):
 
     fpga0 = time_data[0].metadata.fpga_seq
 
-    for ii, dump in enumerate(time_data):
-        assert (dump.metadata.fpga_seq - fpga0 ==
+    for ii, frame in enumerate(time_data):
+        assert (frame.metadata.fpga_seq - fpga0 ==
                 ii * time_params['samples_per_data_set'] * frames_per_int)

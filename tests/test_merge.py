@@ -44,8 +44,8 @@ def merge_data(tmpdir_factory):
 
 def test_metadata(merge_data):
 
-    freqs = [dump.metadata.freq_id for dump in merge_data]
-    fpga_seq = [dump.metadata.fpga_seq for dump in merge_data]
+    freqs = [frame.metadata.freq_id for frame in merge_data]
+    fpga_seq = [frame.metadata.fpga_seq for frame in merge_data]
 
     # Assert that all the frquencies appeared
     assert (np.bincount(freqs) == merge_params['total_frames']).all()
@@ -63,5 +63,5 @@ def test_data(merge_data):
 
     test_pattern = (rows + 1.0J * cols).astype(np.complex64)
 
-    for dump in merge_data:
-        assert (dump.vis == test_pattern).all()
+    for frame in merge_data:
+        assert (frame.vis == test_pattern).all()
