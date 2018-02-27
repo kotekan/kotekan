@@ -160,7 +160,6 @@ void frbPostProcess::main_thread() {
                         float* in_data = (float *)in_frame[thread_id];
                         //Calc scale and offset
                         {
-                            //KV version
                             float min, max;
                             int idx = ((stream * _nbeams     + b)
                                                * num_samples + i)
@@ -195,37 +194,8 @@ void frbPostProcess::main_thread() {
                         __m256 _scl = _mm256_broadcast_ss(&scl);
                         float off=-ofs*scl;
                         __m256 _ofs = _mm256_broadcast_ss(&off);
-                        /*
-                        int t_per_m = sizeof(__m256) / sizeof(float);
-                        for (int t=0; t<_timesamples_per_frb_packet; t+=t_per_m){
-                            for (int f=0; f<_factor_upchan_out; f++){
-                                uint32_t in_index  = (stream * _nbeams + b) * num_samples * 16 
-                                                       + (i + t) * _factor_upchan_out
-                                                       + f;
-                                __m256 _in = _mm256_set_ps(in_data[in_index+_factor_upchan_out*0],
-                                                           in_data[in_index+_factor_upchan_out*1],
-                                                           in_data[in_index+_factor_upchan_out*2],
-                                                           in_data[in_index+_factor_upchan_out*3],
-                                                           in_data[in_index+_factor_upchan_out*4],
-                                                           in_data[in_index+_factor_upchan_out*5],
-                                                           in_data[in_index+_factor_upchan_out*6],
-                                                           in_data[in_index+_factor_upchan_out*7]);
-                                __m256 _out = _mm256_fmadd_ps(_in,_scl,_ofs); //now [0-255]
-                                __m256i _y = _mm256_cvtps_epi32(_out); // Convert them to 32-bit ints
-                                _y = _mm256_packus_epi32(_y, _y);      // Pack down to 16 bits
-                                _y = _mm256_packus_epi16(_y, _y);      // Pack down to 8 bits
-                                uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
-                                                       + (i/_timesamples_per_frb_packet) * udp_packet_size
-                                                       + b * _num_gpus* 16*16
-                                                       + thread_id * 16*16
-                                                       + (f * 16 + t)
-                                                       + udp_header_size;
-                                *(int*)(out_frame+out_index  ) = _mm256_extract_epi32(_y, 0);
-                                *(int*)(out_frame+out_index+4) = _mm256_extract_epi32(_y, 4);
-                            }
-                        }*/
                         int f_per_m = sizeof(__m256) / sizeof(float);
-                        char utr[256], tr[256]; 
+                        char utr[256], tr[256];
                         for (int t=0; t<_timesamples_per_frb_packet; t++){
                             for (int f=0; f<_factor_upchan_out; f+=f_per_m){
                                 uint32_t in_index  = (stream * _nbeams + b) * num_samples * 16
@@ -240,7 +210,9 @@ void frbPostProcess::main_thread() {
                                 ((uint32_t*)utr)[t*16+f+1] = _mm256_extract_epi32(_y, 4);
                             }
                         }
+                        // transpose -- do we want this? takes ~2% of CPU
                         for (int t=0; t<16; t++) for (int f=0; f<16; f++) tr[f*16+t] = utr[t*16+f];
+                        // copy all the data out
                         uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
                                                + (i/_timesamples_per_frb_packet) * udp_packet_size
                                                + b * _num_gpus* 16*16
