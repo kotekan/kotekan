@@ -53,6 +53,8 @@ void add_sample(struct movingStats * stats, double sample);
 
 double get_average(struct movingStats * stats);
 
+double get_last_sample(struct movingStats * stats);
+
 #ifdef __cplusplus
 }
 #endif

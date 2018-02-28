@@ -47,3 +47,10 @@ void add_sample(struct movingStats * stats, double sample) {
 double get_average(struct movingStats * stats) {
     return stats->average;
 }
+
+double get_last_sample(struct movingStats * stats) {
+    CHECK_ERROR( pthread_mutex_lock(&stats->lock) );
+    int32_t last_index = (stats->head_idx + stats->num_samples - 1) % stats->num_samples;
+    return stats->samples[last_index];
+    CHECK_ERROR( pthread_mutex_unlock(&stats->lock) );
+}
