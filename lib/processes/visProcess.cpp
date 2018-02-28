@@ -155,11 +155,8 @@ void visDebug::main_thread() {
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
-
     }
-
 }
-
 
 
 visAccumulate::visAccumulate(Config& config,
