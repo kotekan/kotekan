@@ -1,6 +1,7 @@
 #include "bufferRecv.hpp"
 #include "util.h"
 #include "bufferSend.hpp"
+#include "prometheusMetrics.hpp"
 
 #include <exception>
 #include <errno.h>
@@ -120,6 +121,12 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
             if (frame_id == -1) {
                 WARN("No free buffer frames, dropping data from %s",
                         instance->client_ip.c_str());
+                
+                // Update dropped frame count in prometheus
+                dropped_frame_count++;
+                prometheusMetrics::instance().add_process_metric(
+                    "dropped_frame_count", unique_name, dropped_frame_count
+                );
             } else {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()

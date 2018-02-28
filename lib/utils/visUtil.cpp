@@ -143,6 +143,7 @@ struct_layout struct_alignment(
 
 
 movingAverage::movingAverage(double length) {
+    // Calculate the coefficient for the moving average as a halving of the weight
     alpha = 1.0 - pow(2, -1.0 / length);
 }
 

@@ -61,8 +61,6 @@ void visWriter::main_thread() {
 
     unsigned int frame_id = 0;
 
-    prometheusMetrics& prometheus = prometheusMetrics::instance();
-
     // Look over the current buffers for information to setup the acquisition
     init_acq();
 
@@ -107,9 +105,11 @@ void visWriter::main_thread() {
 
             DEBUG("Write time %.5f s", elapsed);
 
+            // Update average write time in prometheus
             write_time.add_sample(elapsed);
-            prometheus.add_process_metric("write_time", unique_name, write_time.average());
-
+            prometheusMetrics::instance().add_process_metric(
+                "write_time", unique_name, write_time.average()
+            );
         }
 
         // Mark the buffer and move on
