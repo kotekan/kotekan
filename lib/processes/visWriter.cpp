@@ -1,14 +1,15 @@
 #include "visWriter.hpp"
-#include "visFile.hpp"
 #include "visBuffer.hpp"
-#include "visUtil.hpp"
 #include "util.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
+#include "prometheusMetrics.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
+#include <time.h>
+
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 
@@ -58,9 +59,9 @@ void visWriter::apply_config(uint64_t fpga_seq) {
 
 void visWriter::main_thread() {
 
-
     unsigned int frame_id = 0;
 
+    prometheusMetrics& prometheus = prometheusMetrics::instance();
 
     // Look over the current buffers for information to setup the acquisition
     init_acq();
@@ -99,8 +100,16 @@ void visWriter::main_thread() {
             std::vector<int32_t> gain_exp(inputs.size(), 0);
 
             // Add all the new information to the file.
+            double start = current_time();
             file_bundle->addSample(t, freq_ind, vis, vis_weight,
                                    gain_coeff, gain_exp);
+            double elapsed = current_time() - start;
+
+            DEBUG("Write time %.5f s", elapsed);
+
+            write_time.add_sample(elapsed);
+            prometheus.add_process_metric("write_time", unique_name, write_time.average());
+
         }
 
         // Mark the buffer and move on

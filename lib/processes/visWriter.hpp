@@ -90,6 +90,9 @@ private:
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;
+
+    /// Keep track of the average write time
+    movingAverage write_time;
 };
 
 #endif

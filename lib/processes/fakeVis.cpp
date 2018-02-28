@@ -48,7 +48,7 @@ void fakeVis::main_thread() {
     unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
 
-    timespec ts, ts_real;
+    timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
 
     // Calculate the time increments in seq and ctime
@@ -58,8 +58,7 @@ void fakeVis::main_thread() {
 
     while (!stop_thread) {
 
-        clock_gettime(CLOCK_REALTIME, &ts_real);
-        double start = ts_to_double(ts_real); 
+        double start = current_time();
 
         for (auto f : freq) {
 
@@ -140,9 +139,8 @@ void fakeVis::main_thread() {
         // If requested sleep for the extra time required to produce a fake vis
         // at the correct cadence
         if(this->wait) {
-            clock_gettime(CLOCK_REALTIME, &ts_real);
-            double diff = cadence - (ts_to_double(ts_real) - start);
-            timespec ts_diff {(int64_t)diff, (int64_t)(fmod(diff, 1.0) * 1e9)};
+            double diff = cadence - (current_time() - start);
+            timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
         }
     }
