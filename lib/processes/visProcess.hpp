@@ -84,6 +84,10 @@ private:
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @par Metrics
+ * @metric kotekan_visdebug_frame_total
+ *         The total frames seen per frequency and dataset (given as labelled).
+ *
  * @author Richard Shaw
  */
 class visDebug : public KotekanProcess {

@@ -125,7 +125,7 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
                 // Update dropped frame count in prometheus
                 dropped_frame_count++;
                 prometheusMetrics::instance().add_process_metric(
-                    "dropped_frame_count", unique_name, dropped_frame_count
+                    "kotekan_buffer_recv_dropped_frame_total", unique_name, dropped_frame_count
                 );
             } else {
                 // This call cannot be blocking because we checked that

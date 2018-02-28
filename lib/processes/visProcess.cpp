@@ -144,10 +144,10 @@ void visDebug::main_thread() {
         fd_pair key {frame.freq_id, frame.dataset_id};
         frame_counts[key]++;  // Relies on the fact that insertion zero intialises
         std::ostringstream labels;
-        labels << "freq_id='" << frame.freq_id 
-               << "',dataset_id='" << frame.dataset_id << "'";
+        labels << "freq_id=\"" << frame.freq_id
+               << "\",dataset_id=\"" << frame.dataset_id << "\"";
         prometheusMetrics::instance().add_process_metric(
-            "frame_count", unique_name, frame_counts[key], labels.str()
+            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels.str()
         );
 
         // Mark the buffers and move on

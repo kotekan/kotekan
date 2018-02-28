@@ -108,7 +108,8 @@ void visWriter::main_thread() {
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
             prometheusMetrics::instance().add_process_metric(
-                "write_time", unique_name, write_time.average()
+                "kotekan_viswriter_write_time_seconds",
+                unique_name, write_time.average()
             );
         }
 
