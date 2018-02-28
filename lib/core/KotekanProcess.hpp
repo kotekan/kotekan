@@ -43,8 +43,21 @@ protected:
     // Applies the cpu_list to the thread affinity of the main thread.
     void apply_cpu_affinity();
 
-    // Helper function
+    /**
+     * @brief Get a buffer pointer by config tag.
+     *
+     * @param name The config tag with the buffer name
+     * @return A pointer to the buffer
+     */
     struct Buffer * get_buffer(const std::string &name);
+
+    /**
+     * @brief Gets an array of buffer pointers linked to the @c name in the config.
+     *
+     * @param name The name of the array in the config.
+     * @return A vector of pointers to the buffers requested
+     */
+    std::vector<struct Buffer *> get_buffer_array(const std::string &name);
 
 private:
     std::function<void(const KotekanProcess&)> main_thread_fn;
@@ -61,5 +74,7 @@ private:
     bufferContainer &buffer_container;
 
 };
+
+#define PROCESS_CONSTRUCTOR(T) T::T(Config& config, const string& unique_name, bufferContainer &buffer_container) : KotekanProcess(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
 
 #endif /* KOTEKANPROCESS_H */

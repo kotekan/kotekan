@@ -66,6 +66,9 @@ struct ProcessInfo {
 
     /// The name of the process (consumer or producer)
     char name[MAX_PROCESS_NAME_LEN];
+
+    /// The service time stats
+    struct movingStats * service_time_stats;
 };
 
 /**
@@ -164,6 +167,12 @@ struct Buffer {
      * zero means not done, 1 means done (marked as empty)
      */
     int ** consumers_done;
+
+    /**
+     * @brief The time at which a frame was acquired by a consumer
+     * Format is [frame_id][consumer];
+     */
+    double ** consumer_acquire_time;
 
     /// The list of consumer names registered to this buffer
     struct ProcessInfo consumers[MAX_CONSUMERS];
@@ -330,11 +339,20 @@ int is_frame_empty(struct Buffer * buf, const int frame_id);
 int get_num_full_frames(struct Buffer * buf);
 
 /**
+ * @brief Returns the last time a frame was marked as full
+ * @param buf The buffer to get the last arrival time for.
+ * @return A double (with units: seconds) containing the unix time of the last frame arrival
+ */
+double get_last_arrival_time(struct Buffer * buf);
+
+/**
  * @brief Prints a picture of the frames which are currently full.
  *
  * @param[in] buf The buffer object
  */
 void print_buffer_status(struct Buffer * buf);
+
+void print_consumer_stats(struct Buffer * buf);
 
 /**
  * @brief Allocates a new metadata object from the associated pool

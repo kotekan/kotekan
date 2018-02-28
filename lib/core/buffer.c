@@ -115,6 +115,7 @@ struct Buffer* create_buffer(int num_frames, int len,
     }
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         buf->consumers[i].in_use = 0;
+        buf->consumers[i].service_time_stats = create_moving_stats(BUF_SAMPLE_WINDOW);
     }
 
     // Create the arrays for marking consumers and producers as done.
@@ -123,15 +124,21 @@ struct Buffer* create_buffer(int num_frames, int len,
     buf->consumers_done = malloc(num_frames*sizeof(int *));
     CHECK_MEM(buf->consumers_done);
 
+    buf->consumer_acquire_time = malloc(num_frames*sizeof(double *));
+    CHECK_MEM(buf->consumer_acquire_time);
+
     for (int i = 0; i < num_frames; ++i) {
         buf->producers_done[i] = malloc(MAX_PRODUCERS*sizeof(int));
         buf->consumers_done[i] = malloc(MAX_CONSUMERS*sizeof(int));
+        buf->consumer_acquire_time[i] = malloc(MAX_CONSUMERS*sizeof(double));
 
         CHECK_MEM(buf->producers_done[i]);
         CHECK_MEM(buf->consumers_done[i]);
+        CHECK_MEM(buf->consumer_acquire_time[i]);
 
         private_reset_producers(buf, i);
         private_reset_consumers(buf, i);
+        memset(buf->consumer_acquire_time[i], 0, MAX_CONSUMERS*sizeof(double));
     }
 
     // By default don't zero buffers at the end of their use.
@@ -184,6 +191,15 @@ void delete_buffer(struct Buffer* buf)
         #endif
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
+        free(buf->consumer_acquire_time[i]);
+    }
+
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        delete_stats(buf->consumers[i].service_time_stats);
+    }
+
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
+        delete_stats(buf->producers[i].service_time_stats);
     }
 
     free(buf->frames);
@@ -191,6 +207,9 @@ void delete_buffer(struct Buffer* buf)
     free(buf->metadata);
     free(buf->producers_done);
     free(buf->consumers_done);
+    free(buf->consumer_acquire_time);
+
+    delete_stats(buf->arrival_rate);
 
     // Free locks and cond vars
     CHECK_ERROR( pthread_mutex_destroy(&buf->lock) );
@@ -300,6 +319,13 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
         private_mark_consumer_done(buf, consumer_name, ID);
+
+        int consumer_id = private_get_consumer_id(buf, consumer_name);
+        // Mark the time used by consumer with this frame
+        double release_time = e_time();
+        double service_time = release_time - buf->consumer_acquire_time[ID][consumer_id];
+        add_sample(buf->consumers[consumer_id].service_time_stats, service_time);
+
         if (private_consumers_done(buf, ID) == 1) {
 
             if (buf->zero_frames == 1) {
@@ -531,6 +557,9 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int I
         pthread_cond_wait(&buf->full_cond, &buf->lock);
     }
 
+    // Set the time the consumer acquired the frame.
+    buf->consumer_acquire_time[ID][consumer_id] = e_time();
+
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     if (buf->shutdown_signal == 1)
@@ -579,6 +608,15 @@ void print_buffer_status(struct Buffer* buf)
     double arrival_rate = get_average(buf->arrival_rate);
     DEBUG("Buffer %s, Arrival rate: %f, status: %s", buf->buffer_name,
           arrival_rate, status_string);
+}
+
+void print_consumer_stats(struct Buffer * buf) {
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf->consumers[i].in_use == 1) {
+            INFO("Buffer: %s, consumer: %s, average service time: %f",
+                 buf->buffer_name, buf->consumers[i].name, get_average(buf->consumers[i].service_time_stats));
+        }
+    }
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
@@ -638,6 +676,10 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID) {
     assert(ID < buf->num_frames);
 
     return buf->metadata[ID];
+}
+
+double get_last_arrival_time(struct Buffer * buf) {
+    return buf->last_arrival_time;
 }
 
 void send_shutdown_signal(struct Buffer* buf) {

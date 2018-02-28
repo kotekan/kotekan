@@ -18,9 +18,11 @@ struct movingStats * create_moving_stats(uint32_t max_samples) {
 }
 
 void delete_stats(struct movingStats * stats) {
-    free(stats->samples);
-    CHECK_ERROR( pthread_mutex_destroy(&stats->lock) );
-    free(stats);
+    if (stats != NULL) {
+        free(stats->samples);
+        CHECK_ERROR( pthread_mutex_destroy(&stats->lock) );
+        free(stats);
+    }
 }
 
 void add_sample(struct movingStats * stats, double sample) {

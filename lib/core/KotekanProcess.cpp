@@ -29,6 +29,17 @@ struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
     return buffer_container.get_buffer(buf_name);
 }
 
+std::vector<struct Buffer *> KotekanProcess::get_buffer_array(const std::string & name) {
+    std::vector<struct Buffer *> bufs;
+
+    std::vector<std::string> buf_names = config.get_string_array(unique_name, name);
+    for (auto &buf_name : buf_names) {
+        bufs.push_back(buffer_container.get_buffer(buf_name));
+    }
+
+    return bufs;
+}
+
 void KotekanProcess::apply_cpu_affinity() {
     int err = 0;
 

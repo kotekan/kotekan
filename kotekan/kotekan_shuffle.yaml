@@ -108,7 +108,7 @@ gpu:
     samples_per_second: 390625
     frame_arrival_period: samples_per_data_set / samples_per_second
     device_interface_log_level: warn
-    enable_delay: true
+    enable_delay: false
     gpu_0:
         kotekan_process: hsaProcess
         gpu_id: 0
@@ -155,6 +155,15 @@ accumulate:
         kotekan_process: accumulate
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
+
+monitorBuffer:
+    kotekan_process: monitorBuffer
+    bufs:
+     - file_output_buffer_0
+     - file_output_buffer_1
+     - file_output_buffer_2
+     - file_output_buffer_3
+    timeout: 60
 
 #python_plot:
 #  plot_0:
@@ -225,4 +234,4 @@ metadata_dump_3:
 
 buffer_status:
   kotekan_process: bufferStatus
-  time_delay: 100000
+  time_delay: 1000000

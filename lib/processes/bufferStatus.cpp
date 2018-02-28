@@ -12,13 +12,9 @@
 
 REGISTER_KOTEKAN_PROCESS(bufferStatus);
 
-bufferStatus::bufferStatus(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&bufferStatus::main_thread, this)){
+PROCESS_CONSTRUCTOR(bufferStatus) {
     buffers = buffer_container.get_buffer_map();
-    //buf = get_buffer("in_buf");
-    //register_consumer(buf, unique_name.c_str());
+    time_delay = config.get_int_default(unique_name,"time_delay",100000);
 }
 
 bufferStatus::~bufferStatus() {
@@ -26,7 +22,6 @@ bufferStatus::~bufferStatus() {
 
 void bufferStatus::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    time_delay = config.get_int(unique_name,"time_delay");
 }
 
 void bufferStatus::main_thread() {
@@ -34,13 +29,12 @@ void bufferStatus::main_thread() {
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
-	usleep(time_delay);
-	map<string, Buffer*>::iterator it;
-	INFO("BUFFER_STATUS");
-	for ( it = buffers.begin(); it != buffers.end(); it++ )
-	{
-		print_buffer_status(it->second);
-	}
+        usleep(time_delay);
+        DEBUG("BUFFER_STATUS");
+        for (auto &buf : buffers)
+        {
+            print_buffer_status(buf.second);
+        }
     }
-    INFO("Closing Buffer Status thread");
+    DEBUG("Closing Buffer Status thread");
 }
