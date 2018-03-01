@@ -14,6 +14,8 @@
 #include "util.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(rfiBroadcastVDIF);
+
 rfiBroadcastVDIF::rfiBroadcastVDIF(Config& config,
                                        const string& unique_name,
                                        bufferContainer &buffer_container) :

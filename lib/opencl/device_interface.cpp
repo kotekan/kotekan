@@ -1,3 +1,5 @@
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+
 #include "device_interface.h"
 #include "gpu_command.h"
 #include "callbackdata.h"
@@ -5,27 +7,30 @@
 #include <errno.h>
 
 device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config & param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_beamforming_out_incoh_buf) :
+, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_Rfi_Buf, const string &unique_name) :
 config(param_Config)
 {
     cl_int err;
 
     in_buf = param_In_Buf;
     out_buf = param_Out_Buf;
+    rfi_buf = param_Rfi_Buf;
     gpu_id = param_GPU_ID;
     beamforming_out_buf = param_beamforming_out_buf;
-    beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
+    //beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
+    num_links_per_gpu = param_Config.num_links_per_gpu(gpu_id);
 
     // Config variables
-    enable_beamforming = config.get_bool("/gpu", "enable_beamforming");
-    num_adjusted_elements = config.get_int("/processing", "num_adjusted_elements");
-    num_adjusted_local_freq = config.get_int("/processing", "num_adjusted_local_freq");
-    num_local_freq = config.get_int("/processing", "num_local_freq");
-    block_size = config.get_int("/gpu", "block_size");
-    num_data_sets = config.get_int("/processing", "num_data_sets");
-    num_elements = config.get_int("/processing", "num_elements");
-    num_blocks = config.get_int("/gpu", "num_blocks");
-
+    enable_beamforming = config.get_bool(unique_name, "enable_beamforming");
+    num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
+    num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
+    num_local_freq = config.get_int(unique_name, "num_local_freq");
+    block_size = config.get_int(unique_name, "block_size");
+    num_data_sets = config.get_int(unique_name, "num_data_sets");
+    num_elements = config.get_int(unique_name, "num_elements");
+    num_blocks = config.get_int(unique_name, "num_blocks");
+//    sk_step = config.get_int(unique_name, "sk_step");
+    samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");    
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));
@@ -33,12 +38,22 @@ config(param_Config)
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-
+    INFO("MAX_GPUS %d\n",MAX_GPUS);
     // Find a GPU device..
     CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
 
     context = clCreateContext( NULL, 1, &device_id[gpu_id], NULL, NULL, &err);
     CHECK_CL_ERROR(err);
+}
+
+size_t device_interface::get_opencl_resolution()
+{
+    //one tick per nanosecond of timing
+    size_t time_res;
+
+    CHECK_CL_ERROR(clGetDeviceInfo(device_id[gpu_id], CL_DEVICE_PROFILING_TIMER_RESOLUTION, sizeof(time_res), &time_res, NULL));
+
+    return time_res;
 }
 
 int device_interface::getNumBlocks()
@@ -61,15 +76,20 @@ Buffer* device_interface::getOutBuf()
     return out_buf;
 }
 
+Buffer* device_interface::getRfiBuf()
+{
+    return rfi_buf;
+}
+
 Buffer* device_interface::get_beamforming_out_buf()
 {
     return beamforming_out_buf;
 }
 
-Buffer* device_interface::get_beamforming_out_incoh_buf()
-{
-    return beamforming_out_incoh_buf;
-}
+//Buffer* device_interface::get_beamforming_out_incoh_buf()
+//{
+//    return beamforming_out_incoh_buf;
+//}
 
 cl_context device_interface::getContext()
 {
@@ -91,14 +111,20 @@ int device_interface::getAlignedAccumulateLen() const
     return aligned_accumulate_len;
 }
 
-void device_interface::prepareCommandQueue()
+void device_interface::prepareCommandQueue(bool enable_profiling)
 {
     cl_int err;
 
     // Create command queues
     for (int i = 0; i < NUM_QUEUES; ++i) {
-        queue[i] = clCreateCommandQueue( context, device_id[gpu_id], 0, &err );
-        CHECK_CL_ERROR(err);
+        if (enable_profiling == true){
+            queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_PROFILING_ENABLE, &err );
+            CHECK_CL_ERROR(err);
+        } else{
+            queue[i] = clCreateCommandQueue( context, device_id[gpu_id], 0, &err );
+            CHECK_CL_ERROR(err);
+        }
+
     }
 }
 
@@ -152,6 +178,14 @@ void device_interface::allocateMemory()
         CHECK_CL_ERROR(err);
     }
 
+    // Setup RFI buffers
+    //device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
+    //CHECK_MEM(device_rfi_count_buffer);
+//    for (int i = 0; i < in_buf->num_frames; ++i) {
+//	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
+//	CHECK_CL_ERROR(err);
+//    }
+
     // Setup beamforming output buffers.
     if (enable_beamforming) {
         device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_frames * sizeof(cl_mem));
@@ -192,10 +226,13 @@ cl_mem device_interface::getOutputBuffer(int param_BufferID)
 {
     return device_output_buffer[param_BufferID];
 }
-
+cl_mem device_interface::getRfiCountBuffer(int param_BufferID)
+{
+    return device_rfi_count_buffer[param_BufferID];
+}
 cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 {
-  return device_accumulate_buffer[param_BufferID];
+    return device_accumulate_buffer[param_BufferID];
 }
 
 cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
@@ -203,10 +240,10 @@ cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
     return device_beamform_output_buffer[param_BufferID];
 }
 
-cl_mem device_interface::get_device_beamform_output_incoh_buffer(int param_BufferID)
-{
-    return device_beamform_output_incoh_buffer[param_BufferID];
-}
+//cl_mem device_interface::get_device_beamform_output_incoh_buffer(int param_BufferID)
+//{
+//    return device_beamform_output_incoh_buffer[param_BufferID];
+//}
 
 cl_mem device_interface::get_device_phases(int param_bankID)
 {
@@ -258,6 +295,12 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
+//    for (int i = 0; i < out_buf->num_frames; ++i) {
+//        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
+//    }
+    //free(device_rfi_count_buffer);
+
+
     if (enable_beamforming) {
 
         for (int i = 0; i < 2; ++i) {
@@ -269,10 +312,10 @@ void device_interface::deallocateResources()
         }
         free(device_beamform_output_buffer);
 
-        for (int i = 0; i < beamforming_out_incoh_buf->num_frames; ++i) {
-            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
-        }
-        free(device_beamform_output_incoh_buffer);
+//        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
+//            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
+//        }
+//        free(device_beamform_output_incoh_buffer);
 
         for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
             CHECK_CL_ERROR( clReleaseMemObject(it->second) );

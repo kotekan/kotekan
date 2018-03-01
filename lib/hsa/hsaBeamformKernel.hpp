@@ -9,21 +9,18 @@
 #define LIGHT_SPEED 3.e8
 #define FEED_SEP 0.3048
 #define PI 3.14159265
-#define FREQ1 450.0
 
 class hsaBeamformKernel: public hsaCommand
 {
 public:
-    hsaBeamformKernel(const string &kernel_name, const string &kernel_file_name,
-                        hsaDeviceInterface &device, Config &config,
-                        bufferContainer &host_buffers,
-                        const string &unique_name);
+    hsaBeamformKernel(Config &config, const string &unique_name, 
+                        bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaBeamformKernel();
 
-    void apply_config(const uint64_t& fpga_seq) override;
-
     int wait_on_precondition(int gpu_frame_id) override;
+
+    void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff);
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -45,9 +42,13 @@ private:
     float * host_coeff;
     float * host_gain;
 
+    float scaling;
+    bool zero_missing_gains;
+
     int32_t _num_elements;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
+    bool first_pass; //so gains only load at the start!
 };
 
 #endif

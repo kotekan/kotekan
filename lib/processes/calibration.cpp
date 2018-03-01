@@ -11,6 +11,10 @@
 
 using namespace HighFive;
 
+
+REGISTER_KOTEKAN_PROCESS(eigenWriter);
+
+
 eigenWriter::eigenWriter(Config &config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :

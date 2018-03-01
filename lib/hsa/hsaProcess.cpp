@@ -8,7 +8,7 @@
 #include <iostream>
 #include <sys/time.h>
 
-using namespace std;
+REGISTER_KOTEKAN_PROCESS(hsaProcess);
 
 hsaProcess::hsaProcess(Config& config, const string& unique_name,
                      bufferContainer &buffer_container):
@@ -37,14 +37,16 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
     }
 
+    log_profiling = config.get_bool_default(unique_name, "log_profiling", false);
+
     device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
 
     string g_log_level = config.get_string(unique_name, "log_level");
     string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
     device->set_log_level(s_log_level);
-    device->set_log_prefix("GPU[" + to_string(gpu_id) + "] device interface");
+    device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
-    factory = new hsaCommandFactory(config, *device, local_buffer_container, unique_name);
+    factory = new hsaCommandFactory(config, unique_name, local_buffer_container, *device);
 }
 
 void hsaProcess::apply_config(uint64_t fpga_seq) {
@@ -116,11 +118,11 @@ void hsaProcess::main_thread()
 {
     vector<hsaCommand *> &commands = factory->get_commands();
 
-    using namespace std::placeholders;
+//    using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
     string endpoint = "/gpu_profile/" + std::to_string(gpu_id);
     rest_server->register_json_callback(endpoint,
-            std::bind(&hsaProcess::profile_callback, this, _1, _2));
+            std::bind(&hsaProcess::profile_callback, this, std::placeholders::_1, std::placeholders::_2));
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
@@ -133,8 +135,10 @@ void hsaProcess::main_thread()
         // and for there to be free space in the output buffers.
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (uint32_t i = 0; i < commands.size(); ++i) {
-            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0)
+            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0){
+                INFO("Received exit in HSA command precondition! (Command %i, '%s')",i,commands[i]->get_name().c_str());
                 break;
+            }
         }
 
         //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
@@ -185,18 +189,29 @@ void hsaProcess::results_thread() {
     while (true) {
 
         // Wait for a signal to be completed
-        //INFO("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        DEBUG2("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
         if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
         }
-        //INFO("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        DEBUG2("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (uint32_t i = 0; i < commands.size(); ++i) {
             commands[i]->finalize_frame(gpu_frame_id);
         }
-        //INFO("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+        DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+
+        if (log_profiling) {
+            string output = "";
+            for (uint32_t i = 0; i < commands.size(); ++i) {
+                if (commands[i]->get_command_type() == CommandType::KERNEL) {
+                    output += "kernel: " + commands[i]->get_name() +
+                              " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; ";
+                }
+            }
+            INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
+        }
 
         final_signals[gpu_frame_id].reset();
 

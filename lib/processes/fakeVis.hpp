@@ -39,6 +39,10 @@
  * @conf  fill_ij           Bool (default false). Fill the real part with the index
  *                          of feed i and the imaginary part with the index of j
  *                          instead of the structure described above.
+ * @conf  wait              Bool. Sleep to try and output data at roughly
+ *                          the correct cadence.
+ * @conf  num_frames        Exit after num_frames have been produced. If
+ *                          less than zero, no limit is applied. Default is `-1`.
  *
  * @todo  It might be useful eventually to produce realistic looking mock visibilities.
  *
@@ -75,9 +79,8 @@ private:
     // Fill with feed indices
     bool fill_ij;
 
-    // Fill with rank 1 matrix with phase = i - j.
-    // Ignored if fill_ij = true.
-    bool phase_ij;
+    bool wait;
+    int32_t num_frames;
 };
 
 #endif

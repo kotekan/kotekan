@@ -13,6 +13,8 @@
 #include "util.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(nDiskFileWrite);
+
 nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                                 bufferContainer &buffer_containter) :
         KotekanProcess(config, unique_name, buffer_containter,

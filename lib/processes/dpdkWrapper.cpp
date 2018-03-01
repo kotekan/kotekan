@@ -2,20 +2,27 @@
 #include "errors.h"
 #include "network_dpdk.h"
 #include "util.h"
+#include "prometheusMetrics.hpp"
 
 #include <unistd.h>
+
+REGISTER_KOTEKAN_PROCESS(dpdkWrapper);
 
 dpdkWrapper::dpdkWrapper(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&dpdkWrapper::main_thread, this)) {
 
+    _mode = config.get_string(unique_name, "mode");
     apply_config(0);
 
-    _mode = config.get_string(unique_name, "mode");
     network_input_buffer = (struct Buffer **)malloc(_num_fpga_links * sizeof (struct Buffer *));
     if (_mode == "vdif") {
         network_input_buffer[0] = get_buffer("vdif_buf");
+    } else if (_mode == "no_shuffle") {
+        for (int i = 0; i < _num_gpus; ++i) {
+            network_input_buffer[i] = get_buffer("network_out_buf_" + std::to_string(i));
+        }
     } else {
         for (int i = 0; i < _num_fpga_links; ++i) {
             network_input_buffer[i] = get_buffer("network_out_buf_" + std::to_string(i));
@@ -49,6 +56,7 @@ void dpdkWrapper::apply_config(uint64_t fpga_seq) {
     _num_lcores = config.get_int(unique_name, "num_lcores");
     if (_mode == "no_shuffle" ) {
         _link_map = config.get_int_array(unique_name, "link_map");
+        _num_gpus = config.get_int(unique_name, "num_gpus");
     }
 }
 
@@ -61,6 +69,13 @@ void dpdkWrapper::main_thread() {
     tmp_buffer = (struct Buffer ***)malloc(_num_fpga_links * sizeof(struct Buffer *));
     for (int port = 0; port < _num_fpga_links; ++port) {
         tmp_buffer[port] = (struct Buffer **)malloc(NUM_FREQ * sizeof(struct Buffer *));
+    }
+
+    for (int i = 0; i < _num_fpga_links; ++i) {
+        network_dpdk_args->rx_packets_total[i] = 0;
+        network_dpdk_args->rx_bytes_total[i] = 0;
+        network_dpdk_args->lost_packets_total[i] = 0;
+        network_dpdk_args->rx_errors_total[i] = 0;
     }
 
     // Populate the temp buffer which contains the pointers to the buffers to use.
@@ -113,14 +128,20 @@ void dpdkWrapper::main_thread() {
             link_ids[i] = current_link_id++;
             INFO("link_ids[%d] = %d", i, link_ids[i]);
         }
-
         for (int i = 0; i < _num_fpga_links; ++i) {
             tmp_buffer[i][0] = network_input_buffer[_link_map[i]];
-            network_dpdk_args->num_links_in_group[i] = config.num_links_per_gpu(i);
+            network_dpdk_args->num_links_in_group[i] = config.num_links_per_gpu(_link_map[i]);
             network_dpdk_args->link_id[i] = link_ids[i];
             strncpy(network_dpdk_args->producer_names[i],
-                    (unique_name + "_" + std::to_string(i)).c_str(), 128);
-            register_producer(tmp_buffer[i][0], network_dpdk_args->producer_names[i]);
+                    (unique_name + "_" + std::to_string(_link_map[i])).c_str(), 128);
+        }
+        // Only register one producer per GPU
+        current_gpu_id = -1;
+        for (int i = 0; i < _num_fpga_links; ++i) {
+            if (current_gpu_id != _link_map[i]) {
+                current_gpu_id = _link_map[i];
+                register_producer(tmp_buffer[i][0], network_dpdk_args->producer_names[i]);
+            }
         }
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
@@ -170,8 +191,41 @@ void dpdkWrapper::main_thread() {
         CPU_SET(j, &cpuset);
     CHECK_ERROR( pthread_setaffinity_np(network_dpdk_t, sizeof(cpu_set_t), &cpuset) );
 
+    prometheusMetrics &metrics = prometheusMetrics::instance();
+
     while(!stop_thread) {
-        sleep(1);
+        usleep(200000);
+        for (int i = 0; i < _num_fpga_links; ++i) {
+            // Add packet metrics
+            metrics.add_process_metric("rx_packets_total",
+                                        unique_name,
+                                        network_dpdk_args->rx_packets_total[i],
+                                        "port='" + std::to_string(i) + "'");
+            metrics.add_process_metric("lost_packets_total",
+                                        unique_name,
+                                        network_dpdk_args->lost_packets_total[i],
+                                        "port='" + std::to_string(i) + "'");
+            // Give these metrics in terms of frames as well
+            metrics.add_process_metric("rx_frames_total",
+                                        unique_name,
+                                        network_dpdk_args->rx_packets_total[i] * _timesamples_per_packet,
+                                        "port='" + std::to_string(i) + "'");
+            metrics.add_process_metric("lost_frames_total",
+                                        unique_name,
+                                        network_dpdk_args->lost_packets_total[i] * _timesamples_per_packet,
+                                        "port='" + std::to_string(i) + "'");
+
+            // Add total rx bytes
+            metrics.add_process_metric("rx_bytes_total",
+                                        unique_name,
+                                        network_dpdk_args->rx_bytes_total[i],
+                                        "port='" + std::to_string(i) + "'");
+
+            metrics.add_process_metric("rx_errors_total",
+                                        unique_name,
+                                        network_dpdk_args->rx_errors_total[i],
+                                        "port='" + std::to_string(i) + "'");
+        }
     }
 
     // Start exit

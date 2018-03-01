@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
-include_directories (${CHIME_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 
 set (KOTEKAN_PROCESS_LIB_SOURCES
               beamformingPostProcess.cpp
@@ -32,6 +32,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fakeVis.cpp
               freqSlicer.cpp
               frbPostProcess_in.cpp
+              visProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -74,7 +75,4 @@ if (${USE_LAPACK})
   target_link_libraries ( kotekan_processes  ${OpenBLAS_LIBRARIES} )
 endif ()
 
-
-# This seems like a circular reference, seems like there should be a
-# way to avoid this.
-target_link_libraries( kotekan_processes kotekan_libs )
+target_link_libraries( kotekan_processes kotekan_utils kotekan_core )

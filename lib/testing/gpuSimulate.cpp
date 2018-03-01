@@ -1,6 +1,8 @@
 #include "gpuSimulate.hpp"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(gpuSimulate);
+
 gpuSimulate::gpuSimulate(Config& config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :

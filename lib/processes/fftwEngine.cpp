@@ -1,5 +1,7 @@
 #include "fftwEngine.hpp"
 
+REGISTER_KOTEKAN_PROCESS(fftwEngine);
+
 fftwEngine::fftwEngine(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
