@@ -7,6 +7,7 @@
 #include <cblas.h>
 #include <lapacke.h>
 
+REGISTER_KOTEKAN_PROCESS(eigenVis);
 
 eigenVis::eigenVis(Config& config,
                        const string& unique_name,
