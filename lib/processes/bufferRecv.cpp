@@ -8,6 +8,8 @@
 
 using namespace std::placeholders;
 
+REGISTER_KOTEKAN_PROCESS(bufferRecv);
+
 bufferRecv::bufferRecv(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :
@@ -213,7 +215,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
                                 accept_args->buf->metadata_pool->metadata_object_size +
                                 accept_args->buf->frame_size;
         bufferevent_setwatermark(bev, EV_READ, expected_size, 0);
-        const int timeout_sec = 30;
+        const int timeout_sec = 60;
         struct timeval read_timeout = {timeout_sec, 0};
         struct timeval write_timeout = {timeout_sec, 0};
         bufferevent_set_timeouts(bev, &read_timeout, &write_timeout);

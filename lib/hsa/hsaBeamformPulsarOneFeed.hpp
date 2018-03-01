@@ -39,6 +39,8 @@ File Contents:
  * @conf   _num_pol              Int (default 2). Number of polarizations
  * @conf   _one_feed_p0          Int. The index of the desired feed (pol 0)
  * @conf   _one_feed_p1          Int. The index of the desired feed (pol 1)
+ * @conf   command               String (defualt: ""). Kernel command.
+ * @conf   kernel                String (default: ""). Kernel filename.
  *
  * @remark The two indices of feed_p0 and feed_p1 could in principle come from 
  *         two different feeds. But since we can't calibrate at the moment, it  
@@ -53,16 +55,11 @@ class hsaBeamformPulsarOneFeed: public hsaCommand
 {
 public:
     /// Constructor, also initializes internal variables from config and generate the array of phases.
-    hsaBeamformPulsarOneFeed(const string &kernel_name, const string &kernel_file_name,
-                        hsaDeviceInterface &device, Config &config,
-                        bufferContainer &host_buffers,
-                        const string &unique_name);
+    hsaBeamformPulsarOneFeed(Config &config, const string &unique_name,
+                        bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformPulsarOneFeed();
-
-    /// Parse config
-    void apply_config(const uint64_t& fpga_seq) override;
 
     /// Allocate kernetl argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,

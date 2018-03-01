@@ -4,6 +4,10 @@
 #include <algorithm>
 
 
+REGISTER_KOTEKAN_PROCESS(freqSplit);
+REGISTER_KOTEKAN_PROCESS(freqSubset);
+
+
 freqSplit::freqSplit(Config& config,
                      const string& unique_name,
                      bufferContainer &buffer_container) :
@@ -94,7 +98,7 @@ freqSubset::freqSubset(Config& config,
 
     // Get list of frequencies to subset from config
     for (auto ff : config.get_int_array(unique_name, "subset_list")) {
-        subset_list.push_back((uint16_t) ff);
+        subset_list.push_back((uint32_t) ff);
     }
 
     // Setup the input buffer
