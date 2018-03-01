@@ -23,7 +23,7 @@ def merge_data(tmpdir_factory):
 
     fakevis_buffers = [
         kotekan_runner.FakeVisBuffer(
-            freq=[f],
+            freq_ids=[f],
             num_frames=merge_params['total_frames']
         ) for f in merge_params['freq']
     ]
