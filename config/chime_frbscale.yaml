@@ -231,7 +231,7 @@ frb:
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
-    log_level: debug2
+    log_level: debug
     cpu_affinity: [9]
     kotekan_process: frbPostProcess #Incoherent
     incoherent_beam: true

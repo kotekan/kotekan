@@ -126,6 +126,8 @@ void frbPostProcess::main_thread() {
             float ce=_incoherent_truncation/norm;
             __m256 _norm = _mm256_broadcast_ss(&norm);
             __m256 _ce = _mm256_broadcast_ss(&ce);
+            //to reproduce effect of input truncation
+            //__m256i _cmask = _mm256_set_epi32(0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff);
             memset(ib,0,_num_gpus * num_samples * _factor_upchan_out*sizeof(float));
             for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
                 float* in_data = (float *)in_frame[thread_id];
@@ -136,6 +138,11 @@ void frbPostProcess::main_thread() {
                         int idx_next = b * num_samples * _factor_upchan_out;
                         __m256 _a = _mm256_load_ps(ib + thread_id*num_samples*_factor_upchan_out + idx);
                         __m256 _b = _mm256_load_ps(in_data+idx+idx_next);
+                        //to reproduce effect of input truncation
+                        //__m256i _trunc = _mm256_cvtps_epi32(_b);
+                        //_trunc = _mm256_and_si256(_trunc,_cmask);
+                        //_b = _mm256_cvtepi32_ps(_trunc);
+                        //limit the max value in e.g. the coherent beam
                         _b = _mm256_min_ps(_b,_ce);
                         __m256 _c = _mm256_fmadd_ps(_b,_norm,_a);
                         _mm256_store_ps(ib + thread_id*num_samples*_factor_upchan_out + idx, _c);
@@ -200,13 +207,12 @@ void frbPostProcess::main_thread() {
                                                        + f;
                                 __m256 _in = _mm256_load_ps(in_data+in_index);
                                 __m256 _out = _mm256_fmadd_ps(_in,_scl,_ofs); //now [0-255]
+                                //extract -- probably a better way to do this...
                                 __m256i _y = _mm256_cvtps_epi32(_out); // Convert them to 32-bit ints
                                 _y = _mm256_packus_epi32(_y, _y);      // Pack down to 16 bits
                                 _y = _mm256_packus_epi16(_y, _y);      // Pack down to 8 bits
                                 *(int32_t*)(utr+t*16+f  ) = _mm256_extract_epi32(_y, 0);
                                 *(int32_t*)(utr+t*16+f+4) = _mm256_extract_epi32(_y, 4);
-//                                memcpy(&utr[t*16+f  ],((char*)&_y)   ,4);
-//                                memcpy(&utr[t*16+f+4],((char*)&_y)+32,4);
                             }
                         }
                         // transpose
