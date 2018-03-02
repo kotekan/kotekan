@@ -79,7 +79,7 @@ vis_gen:
   out_buf: vis_buffer
   num_eigenvectors: 4
   cadence: 5.0
-  mode: default
+  fill_ij: false
 
 vis_debug:
   kotekan_process: visDebug
