@@ -1,9 +1,9 @@
 ##########################################
 #
-# chime_no_output.yaml
+# chime_delay.yaml
 #
 # CHIME config to exercise full GPU functionality (N2 + FRB),
-# without generating any output.
+# lagged for each stream, without generating any output.
 # Easily adapted to provide validation on N2 data.
 #
 # Author: Keith Vanderlinde
