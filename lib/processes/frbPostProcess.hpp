@@ -88,6 +88,7 @@ private:
     struct Buffer *frb_buf;
 
     struct FRBHeader frb_header;
+    float *ib;
 
     //Dynamic header
     uint16_t * frb_header_beam_ids;
@@ -104,6 +105,7 @@ private:
     int32_t _nbeams;
     int32_t _timesamples_per_frb_packet;
     bool    _incoherent_beam;
+    float   _incoherent_truncation;
 
     // Derived useful things
     int32_t num_L1_streams;

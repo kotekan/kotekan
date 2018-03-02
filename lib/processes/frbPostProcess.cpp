@@ -28,6 +28,7 @@ frbPostProcess::frbPostProcess(Config& config_,
     frb_header_scale = new float[_nbeams * _num_gpus];
     frb_header_offset = new float[_nbeams * _num_gpus];
 
+    ib = (float*)aligned_alloc(32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float));
 }
 
 frbPostProcess::~frbPostProcess() {
@@ -36,6 +37,7 @@ frbPostProcess::~frbPostProcess() {
     free(frb_header_coarse_freq_ids);
     free(frb_header_scale);
     free(frb_header_offset);
+    free(ib);
 }
 
 void frbPostProcess::write_header(unsigned char * dest){  
@@ -66,7 +68,9 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
     _nbeams = config.get_int(unique_name, "num_beams");
     _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
+
     _incoherent_beam = config.get_bool_default(unique_name, "incoherent_beam",false);
+    _incoherent_truncation = config.get_float_default(unique_name, "incoherent_truncation",1e10);
 
     num_L1_streams = 1024/_nbeams;
     num_samples = _samples_per_data_set / _downsample_time / _factor_upchan;
@@ -87,9 +91,7 @@ void frbPostProcess::main_thread() {
     uint8_t * in_frame[_num_gpus];
     int out_buffer_ID = 0;  
 
-    for (int i = 0; i < _num_gpus; ++i) {
-        in_buffer_ID[i] = 0;
-    }
+    for (int i = 0; i < _num_gpus; ++i) in_buffer_ID[i] = 0;
 
     frb_header.protocol_version = 1;
     frb_header.data_nbytes =  udp_packet_size - udp_header_size;
@@ -99,17 +101,6 @@ void frbPostProcess::main_thread() {
     frb_header.nfreq_coarse = _num_gpus; //4
     frb_header.nupfreq = _factor_upchan_out;
     frb_header.ntsamp = _timesamples_per_frb_packet;
-
-    for (int ii=0;ii<_nbeams;++ii){
-        frb_header_beam_ids[ii] = 7; //To be overwritten in fill_header
-    }
-    for (int ii=0;ii<_num_gpus;++ii){
-        frb_header_coarse_freq_ids[ii] = 0;;//_freq_array[ii] 
-    }
-    for (int ii =0; ii<_nbeams * _num_gpus;++ii){
-        frb_header_scale[ii] = 1.; 
-        frb_header_offset[ii] = 0;
-    }
 
     while(!stop_thread) {
         // Get the next output buffer, id = 0 to start.
@@ -129,21 +120,25 @@ void frbPostProcess::main_thread() {
             frb_header_coarse_freq_ids[i] = bin_number_chime(&stream_id);
         }
 
-        //Sum all the beams together into beam[0] location.
-        // WARNING: THIS MODIFIES THE INPUT BUFFER!!!!!
-        // POTENTIAL RACE CLOBBER WITH PEER PROCESSES!!
+        //Sum all the beams together into ib array.
         if (_incoherent_beam){
-            int fti = _factor_upchan_out * num_samples / (sizeof(__m256)/sizeof(float));
+            float norm=1./_nbeams/num_L1_streams;
+            float ce=_incoherent_truncation/norm;
+            __m256 _norm = _mm256_broadcast_ss(&norm);
+            __m256 _ce = _mm256_broadcast_ss(&ce);
+            memset(ib,0,_num_gpus * num_samples * _factor_upchan_out*sizeof(float));
             for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
                 float* in_data = (float *)in_frame[thread_id];
                 for (int b = 0; b<num_L1_streams*_nbeams; b++) { //loop 1024 beams
-                    for (int ft=0; ft < fti; ft++){ //loop over time/freq
-                        int idx = ft * (sizeof(__m256)/sizeof(float));
+                    for (uint32_t ft=0; ft < num_samples * _factor_upchan_out;
+                                        ft+= (sizeof(__m256)/sizeof(float))){ //loop over time/freq
+                        int idx = ft;
                         int idx_next = b * num_samples * _factor_upchan_out;
-                        __m256 _a = _mm256_load_ps(in_data+idx);
+                        __m256 _a = _mm256_load_ps(ib + thread_id*num_samples*_factor_upchan_out + idx);
                         __m256 _b = _mm256_load_ps(in_data+idx+idx_next);
-                        __m256 _c = _mm256_add_ps(_a,_b);
-                        _mm256_store_ps(in_data+idx,_c);
+                        _b = _mm256_min_ps(_b,_ce);
+                        __m256 _c = _mm256_fmadd_ps(_b,_norm,_a);
+                        _mm256_store_ps(ib + thread_id*num_samples*_factor_upchan_out + idx, _c);
                     }
                 }
             }
@@ -153,80 +148,107 @@ void frbPostProcess::main_thread() {
 //        out_buf = [stream=256,frames=8,[packet_size]]
 //        [packet_size] = [nbeams=4,gpu=4,freq=16,time=16]+header
         float ofs,scl;
-        for (uint i = 0; i < num_samples; i+=_timesamples_per_frb_packet) { //loop 128 time samples, in 8 steps
+        for (uint T = 0; T < num_samples; T+=_timesamples_per_frb_packet) { //loop 128 time samples, in 8 
             for (int stream = 0; stream<num_L1_streams; stream++) { //loop 256 streams (output)
                 for (int b=0; b<_nbeams;b++){ //loop 4 beams / stream
                     for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
-                        float* in_data = (float *)in_frame[thread_id];
+                        float* in_data = ((float *)in_frame[thread_id]);
+                        if (_incoherent_beam and b==0 and stream==0)
+                            in_data = ib + thread_id * num_samples * _factor_upchan_out;
                         //Calc scale and offset
-                        {
-                            float min, max;
-                            int idx = ((stream * _nbeams     + b)
-                                               * num_samples + i)
-                                               * _factor_upchan_out;
-                            // AVX2 option, fastest of a few I tried
-                            __m256 _cA = _mm256_load_ps(in_data+idx  );
-                            __m256 _cB = _mm256_load_ps(in_data+idx+8);
-                            __m256 _mx = _mm256_max_ps(_cA,_cB);
-                            __m256 _mn = _mm256_min_ps(_cA,_cB);
-                            for (int t=1;t<16;t++){
-                                idx += 16;
-                                _cA = _mm256_load_ps(in_data+idx  );
-                                _cB = _mm256_load_ps(in_data+idx+8);
-                                _mx = _mm256_max_ps(_mx,_mm256_max_ps(_cA,_cB));
-                                _mn = _mm256_min_ps(_mn,_mm256_min_ps(_cA,_cB));
-                            }
-                            __m128 mx = _mm_max_ps(_mm256_extractf128_ps(_mx,0),_mm256_extractf128_ps(_mx,1));
-                            __m128 mn = _mm_min_ps(_mm256_extractf128_ps(_mn,0),_mm256_extractf128_ps(_mn,1));
-                            for (int u = 0; u < 3; u++){
-                                mx = _mm_max_ps(mx, _mm_shuffle_ps(mx, mx, 0x93));
-                                mn = _mm_min_ps(mn, _mm_shuffle_ps(mn, mn, 0x93));
-                            }
-                            _mm_store_ss(&max,mx);
-                            _mm_store_ss(&min,mn);
-
-                            scl = 255. / (max-min);
-                            ofs = min;
-                            frb_header_scale[b*_num_gpus + thread_id] = scl;
-                            frb_header_offset[b*_num_gpus + thread_id] = ofs;
+                        float min, max;
+                        int idx = ((stream * _nbeams     + b)
+                                           * num_samples + T)
+                                           * _factor_upchan_out;
+                        // AVX2 option, fastest of a few I tried
+                        __m256 _cA = _mm256_load_ps(in_data+idx  );
+                        __m256 _cB = _mm256_load_ps(in_data+idx+8);
+                        __m256 _mx = _mm256_max_ps(_cA,_cB);
+                        __m256 _mn = _mm256_min_ps(_cA,_cB);
+                        for (int t=1;t<16;t++){
+                            idx += 16;
+                            _cA = _mm256_load_ps(in_data+idx  );
+                            _cB = _mm256_load_ps(in_data+idx+8);
+                            _mx = _mm256_max_ps(_mx,_mm256_max_ps(_cA,_cB));
+                            _mn = _mm256_min_ps(_mn,_mm256_min_ps(_cA,_cB));
                         }
-                        //scale and offset, dump directly into the output buffer
-                        __m256 _scl = _mm256_broadcast_ss(&scl);
+                        __m128 mx = _mm_max_ps(_mm256_extractf128_ps(_mx,0),_mm256_extractf128_ps(_mx,1));
+                        __m128 mn = _mm_min_ps(_mm256_extractf128_ps(_mn,0),_mm256_extractf128_ps(_mn,1));
+                        for (int u = 0; u < 3; u++){
+                            mx = _mm_max_ps(mx, _mm_shuffle_ps(mx, mx, 0b10010011));//2,1,0,3 = 0x93
+                            mn = _mm_min_ps(mn, _mm_shuffle_ps(mn, mn, 0b10010011));//2,1,0,3 = 0x93
+                        }
+                        _mm_store_ss(&max,mx);
+                        _mm_store_ss(&min,mn);
+                        //scale to 1-254 (0 and 255 are both error codes)
+                        scl = (253.) / (max-min);
+                        ofs = min - 1/scl; //offset by 1, so 1-254
+                        frb_header_scale[b*_num_gpus + thread_id] = 1./scl;
+                        frb_header_offset[b*_num_gpus + thread_id] = ofs;
+                        //Apply scale and offset
                         float off=-ofs*scl;
+                        __m256 _scl = _mm256_broadcast_ss(&scl);
                         __m256 _ofs = _mm256_broadcast_ss(&off);
                         int f_per_m = sizeof(__m256) / sizeof(float);
-                        char utr[256], tr[256];
+                        unsigned char utr[256], tr[256];
                         for (int t=0; t<_timesamples_per_frb_packet; t++){
                             for (int f=0; f<_factor_upchan_out; f+=f_per_m){
-                                uint32_t in_index  = (stream * _nbeams + b) * num_samples * 16
-                                                       + (i + t) * _factor_upchan_out
+                                uint32_t in_index  = (stream * _nbeams + b)
+                                                             * num_samples
+                                                             * _factor_upchan_out
+                                                       + (T + t) * _factor_upchan_out
                                                        + f;
                                 __m256 _in = _mm256_load_ps(in_data+in_index);
                                 __m256 _out = _mm256_fmadd_ps(_in,_scl,_ofs); //now [0-255]
                                 __m256i _y = _mm256_cvtps_epi32(_out); // Convert them to 32-bit ints
                                 _y = _mm256_packus_epi32(_y, _y);      // Pack down to 16 bits
                                 _y = _mm256_packus_epi16(_y, _y);      // Pack down to 8 bits
-                                ((uint32_t*)utr)[t*16+f+0] = _mm256_extract_epi32(_y, 0);
-                                ((uint32_t*)utr)[t*16+f+1] = _mm256_extract_epi32(_y, 4);
+                                *(int32_t*)(utr+t*16+f  ) = _mm256_extract_epi32(_y, 0);
+                                *(int32_t*)(utr+t*16+f+4) = _mm256_extract_epi32(_y, 4);
+//                                memcpy(&utr[t*16+f  ],((char*)&_y)   ,4);
+//                                memcpy(&utr[t*16+f+4],((char*)&_y)+32,4);
                             }
                         }
-                        // transpose -- do we want this? takes ~2% of CPU
+                        // transpose
                         for (int t=0; t<16; t++) for (int f=0; f<16; f++) tr[f*16+t] = utr[t*16+f];
                         // copy all the data out
                         uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
-                                               + (i/_timesamples_per_frb_packet) * udp_packet_size
+                                               + (T/_timesamples_per_frb_packet) * udp_packet_size
                                                + b * _num_gpus* 16*16
                                                + thread_id * 16*16
                                                + udp_header_size;
                         memcpy(out_frame+out_index,tr,16*16);
-                        frb_header.fpga_count += fpga_counts_per_sample * _timesamples_per_frb_packet;
                     } //end 4 GPUs
+                    frb_header_beam_ids[b] = stream*_nbeams+b;
                 } // end 4 nbeam
                 // Fill the headers of the packet
                 uint32_t out_index = stream* udp_packet_size*num_samples/_timesamples_per_frb_packet
-                                   + (i/_timesamples_per_frb_packet) * udp_packet_size;
+                                   + (T/_timesamples_per_frb_packet) * udp_packet_size;
                 write_header(&out_frame[out_index]);
+                if (stream ==0) {
+                    DEBUG2("time: %i, memloc %li",T,out_index+udp_header_size);
+                    DEBUG2("scl/off in %i stream: %8.6f %8.6f",stream,frb_header_scale[0],frb_header_offset[0]);
+                    for (int c=0; c<256; c+=16)
+                        DEBUG2("%2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x",
+                            out_frame[out_index+udp_header_size+c+0],
+                            out_frame[out_index+udp_header_size+c+1],
+                            out_frame[out_index+udp_header_size+c+2],
+                            out_frame[out_index+udp_header_size+c+3],
+                            out_frame[out_index+udp_header_size+c+4],
+                            out_frame[out_index+udp_header_size+c+5],
+                            out_frame[out_index+udp_header_size+c+6],
+                            out_frame[out_index+udp_header_size+c+7],
+                            out_frame[out_index+udp_header_size+c+8],
+                            out_frame[out_index+udp_header_size+c+9],
+                            out_frame[out_index+udp_header_size+c+10],
+                            out_frame[out_index+udp_header_size+c+11],
+                            out_frame[out_index+udp_header_size+c+12],
+                            out_frame[out_index+udp_header_size+c+13],
+                            out_frame[out_index+udp_header_size+c+14],
+                            out_frame[out_index+udp_header_size+c+15]);
+                };
             } // end 256 streams
+            frb_header.fpga_count += fpga_counts_per_sample * _timesamples_per_frb_packet;
         } //end looping 128 time samples 
         mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
         out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;

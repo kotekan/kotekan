@@ -112,7 +112,7 @@ void frbPostProcessIncoherent::apply_config(uint64_t fpga_seq) {
 
 void frbPostProcessIncoherent::main_thread() {
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
-    uint8_t * in_frame[_num_gpus];
+    float * in_frame[_num_gpus];
     int out_buffer_ID = 0;  
     int startup = 1; //related to the likely & unlikely
     float *avg_beam = new float[1024*8];
@@ -155,7 +155,7 @@ void frbPostProcessIncoherent::main_thread() {
     while(!stop_thread) {
         // Get an input buffer, This call is blocking!
       for (int i = 0; i < _num_gpus; ++i) {
-        in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+        in_frame[i] = (float*)wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
         if (in_frame[i] == NULL) return; //goto end_loop;
         //INFO("GPU Post process got full buffer ID %d for GPU %d", in_buffer_ID[i],i);
       }
@@ -242,10 +242,32 @@ void frbPostProcessIncoherent::main_thread() {
               }
               memcpy(&out_frame[stream_i*udp_packet_size+40],scale,sizeof(float)*4);
               memcpy(&out_frame[stream_i*udp_packet_size+104],mean,sizeof(float)*4);
+
+              if (stream_i == 0){
+                    DEBUG2("scl/off in %i stream: %8.6f %8.6f",stream_i,scale[0],mean[0]);
+                    uint32_t out_index = stream_i * udp_packet_size*num_samples/_timesamples_per_frb_packet;
+                    for (int c=0; c<256; c+=16)
+                        DEBUG2("%2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x",
+                            out_frame[out_index+udp_header_size+c+ 0],
+                            out_frame[out_index+udp_header_size+c+ 1],
+                            out_frame[out_index+udp_header_size+c+ 2],
+                            out_frame[out_index+udp_header_size+c+ 3],
+                            out_frame[out_index+udp_header_size+c+ 4],
+                            out_frame[out_index+udp_header_size+c+ 5],
+                            out_frame[out_index+udp_header_size+c+ 6],
+                            out_frame[out_index+udp_header_size+c+ 7],
+                            out_frame[out_index+udp_header_size+c+ 8],
+                            out_frame[out_index+udp_header_size+c+ 9],
+                            out_frame[out_index+udp_header_size+c+10],
+                            out_frame[out_index+udp_header_size+c+11],
+                            out_frame[out_index+udp_header_size+c+12],
+                            out_frame[out_index+udp_header_size+c+13],
+                            out_frame[out_index+udp_header_size+c+14],
+                            out_frame[out_index+udp_header_size+c+15]);
+              }
             }
             INFO("avg__data %f %f %f %f",temp_avg,avg_beam[23],mean[2],scale[2]);
             for(int e_i=0;e_i<8*1024;e_i++) avg_beam[e_i]=0.0;
-
             mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
 
             // Get a new output buffer
@@ -266,7 +288,7 @@ void frbPostProcessIncoherent::main_thread() {
 
         unsigned char * out_buf = (unsigned char*)out_frame;
         for (int thread_id = 0; thread_id < _num_gpus; ++thread_id) { //loop the 4 GPUs (input)
-          unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
+          float * in_buf_data = (float *)in_frame[thread_id];
           for (int stream = 0; stream<num_L1_streams; ++stream) { //loop the output buffer  256 streams
             for (int beam = 0; beam<_nbeams; ++beam){   //4 beams
               for (int freq = 0; freq < _factor_upchan_out; ++freq) { //loop 16

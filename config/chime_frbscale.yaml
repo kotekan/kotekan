@@ -38,7 +38,7 @@ factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
 frb_zero_missing_gains: false
-frb_scaling: 0.05
+frb_scaling: 0.05 #1.0
 
 # Pool
 main_pool:
@@ -97,6 +97,22 @@ file_output_buffers:
         kotekan_buffer: standard
     file_output_buffer_3:
         kotekan_buffer: standard
+
+#gen_data:
+#  type: const
+#  value: 153
+#  test_data_gen_0:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_0
+#  test_data_gen_1:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_1
+#  test_data_gen_2:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_2
+#  test_data_gen_3:
+#    kotekan_process: testDataGen
+#    network_out_buf: gpu_input_buffer_3
 
 dpdk:
   udp_packet_size: 4928
@@ -183,6 +199,25 @@ accumulate:
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
 
+#gen_data:
+#  type: ramp
+#  test_data_gen_0:
+#    value: 1.
+#    kotekan_process: testDataGen
+#    network_out_buf: beamform_output_buffer_0
+#  test_data_gen_1:
+#    value: 2.
+#    kotekan_process: testDataGen
+#    network_out_buf: beamform_output_buffer_1
+#  test_data_gen_2:
+#    value: 3.
+#    kotekan_process: testDataGen
+#    network_out_buf: beamform_output_buffer_2
+#  test_data_gen_3:
+#    value: 4.
+#    kotekan_process: testDataGen
+#    network_out_buf: beamform_output_buffer_3
+
 frb:
   factor_upchan_out: 16
   num_beams: 4
@@ -196,10 +231,16 @@ frb:
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
-    log_level: warn
+    log_level: debug2
     cpu_affinity: [9]
-    kotekan_process: frbPostProcess
+    kotekan_process: frbPostProcess #Incoherent
     incoherent_beam: true
+    incoherent_truncation: 25.
+    network_input_buffer_0: beamform_output_buffer_0
+    network_input_buffer_1: beamform_output_buffer_1
+    network_input_buffer_2: beamform_output_buffer_2
+    network_input_buffer_3: beamform_output_buffer_3
+    frb_out_buf: frb_output_buffer
     in_buf_0: beamform_output_buffer_0
     in_buf_1: beamform_output_buffer_1
     in_buf_2: beamform_output_buffer_2

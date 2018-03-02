@@ -308,6 +308,7 @@ void frbNetworkProcess::main_thread()
          //  link++;
          //  if(link==number_of_l1_links) link=0;
          //}
+/*
          for(int link=0;link<number_of_l1_links;link++)
          {
            //Block Mode
@@ -320,7 +321,7 @@ void frbNetworkProcess::main_thread()
                     udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link])); 
            }
          }
-
+*/
          for(int link=0;link<number_of_l1_links;link++)
          {    
            //if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
