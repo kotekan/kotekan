@@ -1,16 +1,16 @@
-#ifndef TEST_DATA_GEN_H
-#define TEST_DATA_GEN_H
+#ifndef TEST_DATA_GEN_FLOAT_H
+#define TEST_DATA_GEN_FLOAT_H
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 
 // Type: one of "random", "const"
 // Value: the value of the constant
-class testDataGen : public KotekanProcess {
+class testDataGenFloat : public KotekanProcess {
 public:
-    testDataGen(Config& config, const string& unique_name,
+    testDataGenFloat(Config& config, const string& unique_name,
                 bufferContainer &buffer_container);
-    ~testDataGen();
+    ~testDataGenFloat();
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
