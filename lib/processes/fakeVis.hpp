@@ -34,7 +34,7 @@
  *                          correlator data,
  * @conf  block_size        Int. The block size of the packed data.
  * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
- * @conf  freq              List of int. The frequency IDs to generate frames for.
+ * @conf  freq_ids          List of int. The frequency IDs to generate frames for.
  * @conf  cadence           Float. The interval of time (in seconds) between frames.
  * @conf  fill_ij           Bool (default false). Fill the real part with the index
  *                          of feed i and the imaginary part with the index of j
