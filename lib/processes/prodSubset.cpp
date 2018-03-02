@@ -1,6 +1,8 @@
 #include "prodSubset.hpp"
 #include "visBuffer.hpp"
 
+REGISTER_KOTEKAN_PROCESS(prodSubset);
+
 prodSubset::prodSubset(Config &config,
                                const string& unique_name,
                                bufferContainer &buffer_container) :
