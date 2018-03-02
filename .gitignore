@@ -5,5 +5,4 @@
 .kdev_include_paths
 *.c~
 *.h~
-*.swp
 /nbproject/

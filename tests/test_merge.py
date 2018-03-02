@@ -10,7 +10,7 @@ merge_params = {
     'num_eigenvectors': 0,
     'total_frames': 16,
     'cadence': 5.0,
-    'mode': 'fill_ij',
+    'fill_ij': True,
     'freq': list(range(3)),
     'buffer_depth': 5
 }
@@ -23,7 +23,7 @@ def merge_data(tmpdir_factory):
 
     fakevis_buffers = [
         kotekan_runner.FakeVisBuffer(
-            freq_ids=[f],
+            freq=[f],
             num_frames=merge_params['total_frames']
         ) for f in merge_params['freq']
     ]
