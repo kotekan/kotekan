@@ -55,7 +55,6 @@ endif ()
 # HDF5 stuff
 if (${USE_HDF5})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration.cpp)
 endif ()
 
 if (${USE_LAPACK})
