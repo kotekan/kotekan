@@ -8,6 +8,7 @@
 #define FAKE_VIS
 
 #include <unistd.h>
+#include <string>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "errors.h"
@@ -19,9 +20,7 @@
  *
  * This process produces fake visibility data that can be used to feed downstream
  * kotekan processes for testing. It fills its buffer with frames in the ``visFrameView``
- * format. The visibility array is populated with integers increasing from zero on the
- * diagonal and FPGA sequence number, timestamp, frequency, and frame ID in the first
- * elements. The remaining elements are zero. Frames are generated for a set of frequencies
+ * format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
  * @par Buffers
@@ -36,9 +35,13 @@
  * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
  * @conf  freq_ids          List of int. The frequency IDs to generate frames for.
  * @conf  cadence           Float. The interval of time (in seconds) between frames.
- * @conf  fill_ij           Bool (default false). Fill the real part with the index
- *                          of feed i and the imaginary part with the index of j
- *                          instead of the structure described above.
+ * @conf  mode              String. How to fill the visibility array. Options are:
+ *                            - default: the visibility array is populated with integers
+ *                              increasing from zero on the diagonal and FPGA sequence
+ *                              number, timestamp, frequency, and frame ID in the first
+ *                              elements. The remaining elements are zero.
+ *                            - fill_ij: Fill the real part with the index
+ *                              of feed i and the imaginary part with the index of j.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If
@@ -76,8 +79,8 @@ private:
     /// Cadence to simulate (in seconds)
     float cadence;
 
-    // Fill with feed indices
-    bool fill_ij;
+    // Visibility filling mode
+    std::string mode;
 
     bool wait;
     int32_t num_frames;
