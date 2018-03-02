@@ -314,7 +314,7 @@ void gpuBeamformSimulate::main_thread() {
             ERROR("CPU verification code: Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
                 cpu_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                cpu_gain[i*2+1] = 1.0;
+                cpu_gain[i*2+1] = 0.0;
             }
         }
         else {

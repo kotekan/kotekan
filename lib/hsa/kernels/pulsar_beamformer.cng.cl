@@ -25,7 +25,7 @@ __kernel void pulsarbf( __global uint *data, __global float2 *phase,  __global u
       - ph3.IMAG*((float)((data_temp & 0x0f000000)>>24u)-8);
 
     sum[get_local_id(0)].IMAG = ph0.IMAG*((float)((data_temp&0x000000f0)>>4u)-8) 
-      + ph0.REAL*((float)((data_temp & 0x0000000f)>> 0u)-8)
+      + ph0.REAL*((float)((data_temp & 0x0000000f)>>0 u)-8)
       + ph1.IMAG*((float)((data_temp & 0x0000f000)>>12u)-8)
       + ph1.REAL*((float)((data_temp & 0x00000f00)>> 8u)-8)
       + ph2.IMAG*((float)((data_temp & 0x00f00000)>>20u)-8)
