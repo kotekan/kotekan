@@ -13,6 +13,8 @@
 #include "util.h"
 #include "errors.h"
 
+REGISTER_KOTEKAN_PROCESS(networkPowerStream);
+
 networkPowerStream::networkPowerStream(Config& config,
                                        const string& unique_name,
                                        bufferContainer &buffer_container) :
@@ -100,7 +102,7 @@ void networkPowerStream::main_thread() {
                             frame+(t*elems+p)*(freqs+1)*sizeof(uint),
                             freqs*sizeof(uint));
                     // Send data to remote server.
-                    int bytes_sent = sendto(socket_fd,
+                    uint32_t bytes_sent = sendto(socket_fd,
                                                 packet_buffer,
                                                 packet_length, 0,
                                      (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
@@ -134,7 +136,7 @@ void networkPowerStream::main_thread() {
                         memcpy(local_data,
                                 frame+(t*elems+p)*(freqs+1)*sizeof(uint),
                                 freqs*sizeof(uint));
-                        int bytes_sent = send(socket_fd,
+                        uint32_t bytes_sent = send(socket_fd,
                                                 packet_buffer,
                                                 packet_length,
                                                 0);

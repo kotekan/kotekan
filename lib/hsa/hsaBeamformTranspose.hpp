@@ -7,14 +7,10 @@
 class hsaBeamformTranspose: public hsaCommand
 {
 public:
-    hsaBeamformTranspose(const string &kernel_name, const string &kernel_file_name,
-                         hsaDeviceInterface &device, Config &config,
-			 bufferContainer &host_buffers,
-			 const string &unique_name);
+    hsaBeamformTranspose(Config &config, const string &unique_name,
+                         bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaBeamformTranspose();
-
-    void apply_config(const uint64_t& fpga_seq) override;
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;

@@ -14,17 +14,26 @@ Notes:
 **********************************************************************************/
 
 #include "hsaRfiVdif.hpp"
-#include "hsaBase.h"
-#include "vdif_functions.h"
-#include <math.h>
 
-hsaRfiVdif::hsaRfiVdif(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+REGISTER_HSA_COMMAND(hsaRfiVdif);
+
+hsaRfiVdif::hsaRfiVdif(Config& config,const string &unique_name,
+                        bufferContainer& host_buffers,
+                        hsaDeviceInterface& device) :
+    hsaCommand("rfi_vdif", "rfi_vdif.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
-    apply_config(0); //Grab values from config and calculates buffer size
+
+    //Grab values from config and calculates buffer size
+    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+
+    _sk_step = config.get_int(unique_name, "sk_step"); //RFI parameters
+    rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
+
+    input_frame_len = (_num_elements*_num_local_freq  + 64) * _samples_per_data_set; //Buffer sizes
+    output_len =(_num_elements*_num_local_freq * _samples_per_data_set/_sk_step)*sizeof(float);
+    mean_len = _num_elements*_num_local_freq*sizeof(float);
 
     Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocates memory for Mean Array
 
@@ -39,21 +48,6 @@ hsaRfiVdif::hsaRfiVdif(const string& kernel_name, const string& kernel_file_name
 
 hsaRfiVdif::~hsaRfiVdif() {
     // TODO Free device memory allocations.
-}
-
-void hsaRfiVdif::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
-    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-
-    _sk_step = config.get_int(unique_name, "sk_step"); //RFI parameters
-    rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
-
-    input_frame_len = (_num_elements*_num_local_freq  + 64) * _samples_per_data_set; //Buffer sizes
-    output_len =(_num_elements*_num_local_freq * _samples_per_data_set/_sk_step)*sizeof(float);
-    mean_len = _num_elements*_num_local_freq*sizeof(float);
 }
 
 hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

@@ -1,7 +1,11 @@
 #include "fakeVis.hpp"
 #include "visBuffer.hpp"
+#include "visUtil.hpp"
 #include "chimeMetadata.h"
+#include <csignal>
 #include <time.h>
+
+REGISTER_KOTEKAN_PROCESS(fakeVis);
 
 fakeVis::fakeVis(Config &config,
                  const string& unique_name,
@@ -22,15 +26,17 @@ fakeVis::fakeVis(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Get frequency IDs from config
-    for (auto f : config.get_int_array(unique_name, "freq")) {
+    for (auto f : config.get_int_array(unique_name, "freq_ids")) {
         freq.push_back((uint32_t) f);
     }
 
-    // Get cadence
-    cadence = config.get_float(unique_name, "cadence");
-
     // Get fill type
     fill_ij = config.get_bool_default(unique_name, "fill_ij", false);
+
+    // Get timing and frame params
+    cadence = config.get_float(unique_name, "cadence");
+    num_frames = config.get_int_default(unique_name, "num_frames", -1);
+    wait = config.get_bool_default(unique_name, "wait", true);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -39,18 +45,31 @@ void fakeVis::apply_config(uint64_t fpga_seq) {
 
 void fakeVis::main_thread() {
 
-    unsigned int output_frame_id = 0;
+    unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
-    unsigned int fpga_seq_i = 800e6 / 2048 * cadence;
-    timespec ts;
-    timespec now;
+
+    timespec ts, ts_real;
     clock_gettime(CLOCK_REALTIME, &ts);
+
+    // Calculate the time increments in seq and ctime
+    uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
+
 
     while (!stop_thread) {
 
+        clock_gettime(CLOCK_REALTIME, &ts_real);
+        double start = ts_to_double(ts_real); 
+
         for (auto f : freq) {
+
+            DEBUG("Making fake visBuffer for freq=%i, fpga_seq=%i", f, fpga_seq);
+
             // Wait for the buffer frame to be free
-            wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id);
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), 
+                                     output_frame_id) == nullptr) {
+                break;
+            }
 
             // Below adapted from visWriter
 
@@ -73,21 +92,21 @@ void fakeVis::main_thread() {
 
             if(fill_ij) {
                 int ind = 0;
-                for(int i = 0; i < num_elements; i++) {
-                    for(int j = i; j < num_elements; j++) {
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
                         out_vis[ind] = {(float)i, (float)j};
                         ind++;
                     }
                 }
             } else {
                 // Set diagonal elements to (0, row)
-                for (int i = 0; i < num_elements; i++) {
+                for (uint32_t i = 0; i < num_elements; i++) {
                     uint32_t pi = cmap(i, i, num_elements);
                     out_vis[pi] = {0., (float) i};
                 }
                 // Save metadata in first few cells
                 if ( sizeof(out_vis) < 4 ) {
-                    INFO("Number of elements (%d) is too small to encode \
+                    WARN("Number of elements (%d) is too small to encode \
                           debugging values in fake visibilities", num_elements);
                 } else {
                     // For simplicity overwrite diagonal if needed
@@ -98,6 +117,16 @@ void fakeVis::main_thread() {
                 }
             }
 
+            // Insert values into eigenvectors, eigenvalues and rms
+            for (int i = 0; i < num_eigenvectors; i++) {
+                for (int j = 0; j < num_elements; j++) {
+                    int k = i * num_elements + j;
+                    output_frame.eigenvectors[k] = k;
+                }
+                output_frame.eigenvalues[i] = i;
+            }
+            output_frame.rms = 1.;
+
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);
@@ -106,13 +135,28 @@ void fakeVis::main_thread() {
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
         }
 
-        // Get current time, delaying to satisfy cadence
-        clock_gettime(CLOCK_REALTIME, &now);
-        if (float delay = now.tv_sec - ts.tv_sec + 1e-9 * (now.tv_nsec - ts.tv_nsec) < cadence) {
-            sleep(cadence - delay + 1);  // delay always > 0
-        }
-        clock_gettime(CLOCK_REALTIME, &ts);
+        // Increment time
+        fpga_seq += delta_seq;
+        frame_count++;  // NOTE: frame count increase once for all freq
 
-        fpga_seq += fpga_seq_i;
+        // Increment the timespec
+        ts.tv_sec += ((ts.tv_nsec + delta_ns) / 1000000000);
+        ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
+
+        // Cause kotekan to exit if we've hit the maximum number of frames
+        if(num_frames > 0 && frame_count >= num_frames) {
+            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
+            std::raise(SIGINT);
+            return;
+        }
+
+        // If requested sleep for the extra time required to produce a fake vis
+        // at the correct cadence
+        if(this->wait) {
+            clock_gettime(CLOCK_REALTIME, &ts_real);
+            double diff = cadence - (ts_to_double(ts_real) - start);
+            timespec ts_diff {(int64_t)diff, (int64_t)(fmod(diff, 1.0) * 1e9)};
+            nanosleep(&ts_diff, nullptr);
+        }
     }
 }

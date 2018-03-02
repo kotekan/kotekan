@@ -3,6 +3,8 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(accumulate);
+
 accumulate::accumulate(Config& config,
                        const string& unique_name,
                        bufferContainer &buffer_container) :
@@ -30,15 +32,15 @@ void accumulate::main_thread() {
     int out_frame_id = 0;
     int64_t frame_id = 0;
     int32_t * input;
-    int32_t * output;
-    uint64_t seq_num;
+    int32_t * output=NULL;
+//    uint64_t seq_num;
 
     while (!stop_thread) {
         uint8_t * in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
         if (in_frame == NULL) break;
         input = (int32_t *)in_frame;
 
-        seq_num = get_fpga_seq_num(in_buf, in_frame_id);
+//        seq_num = get_fpga_seq_num(in_buf, in_frame_id);
 
         if (frame_id % _num_gpu_frames == 0) {
             uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
@@ -63,7 +65,7 @@ void accumulate::main_thread() {
             uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
             atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 
-            for (int i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
+            for (uint32_t i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
                 output[i] = input[i];
             }
 
@@ -72,7 +74,7 @@ void accumulate::main_thread() {
             uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
             atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 
-            for (int i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
+            for (uint32_t i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
                 output[i] += input[i];
             }
         }

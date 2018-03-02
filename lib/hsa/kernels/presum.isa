@@ -3,11 +3,11 @@
 	.hsa_code_object_isa 8,0,3,"AMD","AMDGPU"
 	.section	.AMDGPU.config
 	.text
-	.globl	ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+	.globl	CHIME_presum
 	.p2align	8
-	.type	ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii,@function
-	.amdgpu_hsa_kernel ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
-ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii: ; @ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+	.type	CHIME_presum,@function
+	.amdgpu_hsa_kernel CHIME_presum
+CHIME_presum: ; @CHIME_presum
 	.amd_kernel_code_t
 		kernel_code_version_major = 1
 		kernel_code_version_minor = 0
@@ -281,7 +281,7 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	flat_atomic_add v[2:3], v0
 	s_endpgm
 .Lfunc_end0:
-	.size	ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii, .Lfunc_end0-ZZ4mainEN3_EC__019__cxxamp_trampolineEPjiiiiPiiiii
+	.size	CHIME_presum, .Lfunc_end0-CHIME_presum
 
 	.section	.AMDGPU.csdata
 ; Kernel info:

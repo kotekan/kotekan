@@ -34,11 +34,15 @@
  *                          correlator data,
  * @conf  block_size        Int. The block size of the packed data.
  * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
- * @conf  freq              List of int. The frequency IDs to generate frames for.
+ * @conf  freq_ids          List of int. The frequency IDs to generate frames for.
  * @conf  cadence           Float. The interval of time (in seconds) between frames.
  * @conf  fill_ij           Bool (default false). Fill the real part with the index
  *                          of feed i and the imaginary part with the index of j
  *                          instead of the structure described above.
+ * @conf  wait              Bool. Sleep to try and output data at roughly
+ *                          the correct cadence.
+ * @conf  num_frames        Exit after num_frames have been produced. If
+ *                          less than zero, no limit is applied. Default is `-1`.
  *
  * @todo  It might be useful eventually to produce realistic looking mock visibilities.
  *
@@ -74,6 +78,9 @@ private:
 
     // Fill with feed indices
     bool fill_ij;
+
+    bool wait;
+    int32_t num_frames;
 };
 
 #endif
