@@ -32,6 +32,7 @@ public:
             const std::string& root_path,
             const std::string& inst_name,
             const std::string& notes,
+            const std::string& weights_type,
             const std::vector<freq_ctype>& freqs,
             const std::vector<input_ctype>& inputs);
     ~visFile();
@@ -70,7 +71,8 @@ private:
                      const std::vector<input_ctype>& inputs);
 
     // Create the main visibility holding datasets
-    void createDatasets(size_t nfreq, size_t ninput, size_t nprod);
+    void createDatasets(size_t nfreq, size_t ninput, size_t nprod,
+                        std::string weights_type);
 
     // Get datasets
     HighFive::DataSet vis();
@@ -109,6 +111,7 @@ public:
                   int freq_chunk,
                   const std::string instrument_name,
                   const std::string notes,
+                  const std::string weights_type,
                   const std::vector<freq_ctype>& freqs,
                   const std::vector<input_ctype>& inputs,
                   size_t rollover=1024, size_t window_size=10);
@@ -138,6 +141,7 @@ private:
 
     const std::string instrument_name;
     const std::string notes;
+    const std::string weights_type;
 
     const std::vector<freq_ctype>& freqs;
     const std::vector<input_ctype>& inputs;

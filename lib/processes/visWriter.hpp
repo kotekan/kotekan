@@ -69,6 +69,7 @@ private:
     size_t num_freq;
     std::string root_path;
     std::string instrument_name;
+    std::string weights_type;
 
     // The current file of visibilities that we are writing
     std::unique_ptr<visFileBundle> file_bundle;
