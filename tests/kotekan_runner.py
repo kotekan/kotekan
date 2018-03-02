@@ -131,7 +131,7 @@ class FakeVisBuffer(InputBuffer):
         process_config = {
             'kotekan_process': 'fakeVis',
             'out_buf': self.name,
-            'freq': [0],
+            'freq_ids': [0],
             'wait': False
         }
         process_config.update(kwargs)
