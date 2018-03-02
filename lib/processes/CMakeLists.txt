@@ -31,9 +31,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               simpleAutocorr.cpp
               fakeVis.cpp
               freqSlicer.cpp
-              selectAutos.cpp
               frbPostProcess_in.cpp
-              baselineSubset.cpp
+              prodSubset.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

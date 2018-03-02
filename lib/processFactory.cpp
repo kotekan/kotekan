@@ -41,8 +41,7 @@
 #include "simpleAutocorr.hpp"
 #include "fakeVis.hpp"
 #include "freqSlicer.hpp"
-#include "selectAutos.hpp"
-#include "baselineSubset.hpp"
+#include "prodSubset.hpp"
 #include "fakeGpuBuffer.hpp"
 #include "rfiVDIF.hpp"
 #include "rfiBroadcastVDIF.hpp"
@@ -306,11 +305,6 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new fakeVis(config, location, buffer_container);
     }
 
-    // Strip buffer of cross products
-    if (name == "selectAutos") {
-        return (KotekanProcess *) new selectAutos(config, location, buffer_container);
-    }
-
     // Split frequencies
     if (name == "freqSplit") {
         return (KotekanProcess *) new freqSplit(config, location, buffer_container);
@@ -321,8 +315,8 @@ KotekanProcess* processFactory::new_process(const string& name, const string& lo
         return (KotekanProcess *) new freqSubset(config, location, buffer_container);
     }
 
-    if (name == "baselineSubset") {
-        return (KotekanProcess *) new baselineSubset(config, location, buffer_container);
+    if (name == "prodSubset") {
+        return (KotekanProcess *) new prodSubset(config, location, buffer_container);
     }
 
     // Generate fake visbilities in GPU buffer format

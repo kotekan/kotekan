@@ -7,7 +7,7 @@
 #include "chimeMetadata.h"
 #include "gpuPostProcess.hpp"
 #include "errors.h"
-#include "baselineSubset.hpp"
+#include "prodSubset.hpp"
 #include <time.h>
 #include <unistd.h>
 #include <iomanip>

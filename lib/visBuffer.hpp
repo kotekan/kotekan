@@ -144,6 +144,9 @@ public:
     /// Copy the non-const parts of the metadata
     void copy_nonconst_metadata(visFrameView frame_to_copy);
 
+    // Copy the non-visibility parts of the buffer
+    void copy_nonvis_buffer(visFrameView frame_to_copy);
+
 private:
 
     // References to the buffer and metadata we are viewing

@@ -121,7 +121,19 @@ void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
     metadata->dataset_id = frame_to_copy.metadata->dataset_id;
 }
 
-
+// Copy the non-visibility parts of the buffer
+void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
+    std::copy(frame_to_copy.eigenvalues.begin(), 
+              frame_to_copy.eigenvalues.end(), 
+              eigenvalues.begin());
+    std::copy(frame_to_copy.eigenvectors.begin(),
+              frame_to_copy.eigenvectors.end(), 
+              eigenvectors.begin());
+    std::copy(frame_to_copy.weight.begin(),
+              frame_to_copy.weight.end(), 
+              weight.begin());
+    rms = frame_to_copy.rms;
+}
 
 struct_layout visFrameView::bufferLayout(uint32_t num_elements,
                                          uint32_t num_prod,

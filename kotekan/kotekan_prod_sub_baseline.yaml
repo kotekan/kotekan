@@ -56,7 +56,7 @@ write_buffer:
 
 fake_vis:
   kotekan_process: fakeVis
-  output_buffer: vis_buffer
+  out_buf: vis_buffer
   num_eigenvectors: 4
   freq: [250]
   cadence: 5.
@@ -72,26 +72,29 @@ max_baselines: &max_baselines
   max_ns_baseline: 63
 
 vis_subset:
-  kotekan_process: baselineSubset
+  kotekan_process: prodSubset
   in_buf: vis_buffer
   out_buf: write_buffer
+  type: baseline
   <<: *max_baselines
 
 hdf5_writer:
   kotekan_process: visWriter
-  buffer: write_buffer
+  in_buf: write_buffer
   num_freq: 4
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
   <<: *max_baselines
+  root_path: '/home/fandino/chime/kotekan_dev/test_data/prodsub'
 
 hdf5_writer_full:
   kotekan_process: visWriter
-  buffer: vis_buffer
+  in_buf: vis_buffer
   num_freq: 4
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
-  root_path: ../
+  root_path: '/home/fandino/chime/kotekan_dev/test_data/prodsubfull'
+#  root_path: ../
 
 
 # Information for input reordering, packed as

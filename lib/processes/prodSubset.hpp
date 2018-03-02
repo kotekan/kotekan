@@ -1,10 +1,10 @@
 /*****************************************
 @file
-@brief Extract a subset of baselines from a visBuffer.
-- baselineSubset : public KotekanProcess
+@brief Extract a subset of products from a visBuffer.
+- prodSubset : public KotekanProcess
 *****************************************/
-#ifndef BASELINE_SUB
-#define BASELINE_SUB
+#ifndef PROD_SUB
+#define PROD_SUB
 
 #include <unistd.h>
 #include "buffer.h"
@@ -14,11 +14,12 @@
 #include "visUtil.hpp"
 
 /**
- * @class baselineSubset
+ * @class prodSubset
  * @brief ``KotekanProcess`` that consumes a full set of visibilities from a ``visBuffer``
- *        and passes on a subset of these to an output ``visBuffer``.
- *
- * This process selects a subset of Pathfinder-scale baselines from the full visibility
+ *        and passes on a subset of products to an output ``visBuffer``.
+ * The subset extracted depends on the parameter 'type'. 
+ * For type==autos the subset are all the auto-correlations.
+ * For type==baseline this process selects a subset of Pathfinder-scale baselines from the full visibility
  * array and passes those on to an output buffer. The conditions that define the subset
  * are specified in the config as maximum baseline lengths in the EW and NS directions.
  *
@@ -32,10 +33,12 @@
  *
  * @conf  out_buf           string. Name of buffer to output subset to.
  * @conf  in_buf            string. Name of buffer to read from.
+ * @conf  type              string. Type of product subset to perform.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
 +*                               correlator data (read from "/")
 +* @conf  block_size        int. The block size of the packed data (read from "/")
  * @conf  num_prod          int. The number of products in the correlator data
+ * @conf  subset_num_prod   int. The number of products in the subset data
  *                               (before subsetting) (read from "/")
 +* @conf  num_eigenvectors  int. The number of eigenvectors to be stored
  * @conf  max_ew_baseline   int. The maximum baseline length along the EW direction to
@@ -43,14 +46,14 @@
  * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to
  *                               include in subset (in units of the shortest NS baseline)
  *
- * @author  Tristan Pinsonneault-Marotte
+ * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
  *
  */
-class baselineSubset : public KotekanProcess {
+class prodSubset : public KotekanProcess {
 
 public:
     /// Constructor. Loads config options. Defines subset of products.
-    baselineSubset(Config &config,
+    prodSubset(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_container);
 
@@ -64,6 +67,9 @@ private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors, num_prod;
 
+    /// Number of products in subset
+    size_t subset_num_prod;
+
     /// Input buffer
     Buffer * in_buf;
 
@@ -72,6 +78,9 @@ private:
 
     /// Upper limits for baseline lengths in subset
     uint16_t xmax, ymax;
+
+    /// Type of product subset to make
+    std::string type;
 
     /// Vector of indices for subset of products
     std::vector<size_t> prod_ind;
@@ -123,3 +132,4 @@ inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
 }
 
 #endif
+
