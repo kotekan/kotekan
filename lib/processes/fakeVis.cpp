@@ -4,7 +4,6 @@
 #include "chimeMetadata.h"
 #include <csignal>
 #include <time.h>
-#include <math.h>
 
 REGISTER_KOTEKAN_PROCESS(fakeVis);
 
@@ -32,7 +31,7 @@ fakeVis::fakeVis(Config &config,
     }
 
     // Get fill type
-    mode = config.get_string_default(unique_name, "mode", "default");
+    fill_ij = config.get_bool_default(unique_name, "fill_ij", false);
 
     // Get timing and frame params
     cadence = config.get_float(unique_name, "cadence");
@@ -91,7 +90,15 @@ void fakeVis::main_thread() {
             // Insert values into vis array to help with debugging
             auto out_vis = output_frame.vis;
 
-            if (mode == "default") {
+            if(fill_ij) {
+                int ind = 0;
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_vis[ind] = {(float)i, (float)j};
+                        ind++;
+                    }
+                }
+            } else {
                 // Set diagonal elements to (0, row)
                 for (uint32_t i = 0; i < num_elements; i++) {
                     uint32_t pi = cmap(i, i, num_elements);
@@ -108,24 +115,6 @@ void fakeVis::main_thread() {
                     out_vis[2] = {(float) f, 0.};
                     out_vis[3] = {(float) output_frame_id, 0.};
                 }
-            } else if(mode == "fill_ij") {
-                int ind = 0;
-                for(uint32_t i = 0; i < num_elements; i++) {
-                    for(uint32_t j = i; j < num_elements; j++) {
-                        out_vis[ind] = {(float)i, (float)j};
-                        ind++;
-                    }
-                }
-            //} else if(mode == "phase_ij") {
-            //    int ind = 0;
-            //    for(uint32_t i = 0; i < num_elements; i++) {
-            //        for(uint32_t j = i; j < num_elements; j++) {
-            //            out_vis[ind] = {cos(phase), sin(phase)};
-            //            ind++;
-            //        }
-            //    }
-            } else {
-                ERROR("Invalid visibility filling mode: %s.", mode.c_str());
             }
 
             // Insert values into eigenvectors, eigenvalues and rms
