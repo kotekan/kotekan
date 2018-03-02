@@ -54,12 +54,11 @@ using std::vector;
  *                                   also number of freqs that will go into each output packet
  * @conf   num_beams            Int. Number of FRB beam in each output stream. (?) Should be 4?
  * @conf   timesamples_per_frb_packet    Int. Number of times that will go into each packet.
- * @conf   incoherent_beam      Bool (default=false). 
- *
- * @warning The FRB packet format was reverse-engineered from reading the old code!
- *          Worth making sure I got that right...
- * @warning The incoherent-beam generator in-place modifies the input buffer.
- *          Could easily race with peer-level consumer consumer processes!
+ * @conf   incoherent_beam      Bool (default=false). Form the incoherent beam or not.
+ *                                   If true, will stuff incoherent beam in position 0.
+ * @conf   incoherent_truncate  Float (default=1e10). To deal with inputs / times /freqs with
+ *                              anomalously high values, this limits values used prior to summing
+ *                              into the incoherent beam.
  *
  * @author Keith Vanderlinde
  *
