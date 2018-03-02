@@ -19,7 +19,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     if (type == "const")
         value = config.get_int(unique_name, "value");
     if (type=="ramp")
-        value = config.get_float(unique_name, "value");
+        value = config.get_int(unique_name, "value");
     _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
 }
 
@@ -34,7 +34,7 @@ void testDataGen::apply_config(uint64_t fpga_seq) {
 void testDataGen::main_thread() {
 
     int frame_id = 0;
-    float * frame = NULL;
+    uint8_t * frame = NULL;
     uint64_t seq_num = 0;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -42,7 +42,7 @@ void testDataGen::main_thread() {
     int link_id = 0;
 
     while (!stop_thread) {
-        frame = (float*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
         allocate_new_metadata_object(buf, frame_id);

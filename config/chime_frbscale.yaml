@@ -37,7 +37,7 @@ downsample_freq: 8
 factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
-frb_zero_missing_gains: false
+frb_missing_gains: [1.0,1.0]
 frb_scaling: 0.05 #1.0
 
 # Pool

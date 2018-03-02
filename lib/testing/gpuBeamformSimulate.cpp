@@ -86,9 +86,10 @@ void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
     _downsample_freq = config.get_int(unique_name, "downsample_freq");
     _reorder_map = config.get_int_array(unique_name, "reorder_map");
     _gain_dir = config.get_string(unique_name, "gain_dir");
+    vector<float> dg = {0.0,0.0}; //re,im
+    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 
     scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
-    zero_missing_gains = config.get_bool_default(unique_name,"frb_zero_missing_gains", true);
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
@@ -313,8 +314,8 @@ void gpuBeamformSimulate::main_thread() {
         if (ptr_myfile == NULL){
             ERROR("CPU verification code: Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                cpu_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                cpu_gain[i*2+1] = 0.0;
+                cpu_gain[i*2]   = default_gains[0] * scaling;
+                cpu_gain[i*2+1] = default_gains[1] * scaling;
             }
         }
         else {

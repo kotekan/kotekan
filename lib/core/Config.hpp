@@ -55,6 +55,7 @@ public:
 
     vector<int32_t> get_int_array(const string& base_path, const string& name);
     vector<float> get_float_array(const string& base_path, const string& name);
+    vector<float> get_float_array_default(const string& base_path, const string& name, vector<float> default_value);
     vector<double> get_double_array(const string& base_path, const string& name);
     vector<string> get_string_array(const string& base_path, const string& name);
     vector<json> get_json_array(const string& base_path, const string& name);
