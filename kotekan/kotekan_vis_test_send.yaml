@@ -27,7 +27,7 @@ vis_buffer:
 # Kotekan processes
 vis_gen:
   kotekan_process: fakeVis
-  freq_ids: [0] #, 256, 512, 768]
+  freq: [0] #, 256, 512, 768]
   out_buf: vis_buffer
   num_eigenvectors: 4
   cadence: 5.0
