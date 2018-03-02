@@ -21,7 +21,8 @@ eigenVis::eigenVis(Config& config,
     output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
-    num_diagonals_filled =  config.get_int(unique_name, "num_diagonals_filled");
+    num_diagonals_filled =  config.get_int_default(unique_name,
+                                                   "num_diagonals_filled", 0);
 }
 
 eigenVis::~eigenVis() {
