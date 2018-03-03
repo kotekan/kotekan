@@ -13,7 +13,6 @@ add_library ( kotekan_testing
               simVdifData.cpp
               testDataCheck.cpp
               testDataGen.cpp
-              testDataGenQuad.cpp
               test_data_generation.c
+              pulsarSimProcess.cpp
               )
-add_definitions(/D__STDC_FORMAT_MACROS)
