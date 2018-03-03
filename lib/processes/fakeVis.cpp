@@ -127,6 +127,17 @@ void fakeVis::main_thread() {
             }
             output_frame.rms = 1.;
 
+            // Set the weights to 1.
+            auto out_wei = output_frame.weight;
+            int ind = 0;
+            for(uint32_t i = 0; i < num_elements; i++) {
+                for(uint32_t j = i; j < num_elements; j++) {
+                    out_wei[ind] = 1.;
+                    ind++;
+                }
+            }
+
+
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);

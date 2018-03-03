@@ -42,6 +42,9 @@
  *                          are used and are expected to be @c channel_id and
  *                          @c channel_serial (the first contains the @c adc_id
  *                          used for reordering om ``visTransform``)
+ * @conf   weights_type     Indicate what the visibility weights represent, e.g,
+ *                          'inverse_var'. Will saved as an attribute in the saved
+ *                          file. (default 'unknown')
  *
  * @author Richard Shaw
  */

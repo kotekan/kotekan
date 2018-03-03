@@ -25,6 +25,7 @@ public:
     /// \param root_path Base directory to write the acquisition into
     /// \param inst_name Instrument name (e.g. chime)
     /// \param notes Note about the acquisition
+    /// \param weights_type What the visibility weights represent (e.g. 'inverse_var')
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     visFile(const std::string& name,
@@ -105,6 +106,7 @@ public:
     /// \param freq_chunk ID of the frequency chunk being written
     /// \param inst_name Instrument name (e.g. chime)
     /// \param notes Note about the acquisition
+    /// \param weights_type What the visibility weights represent (e.g. 'inverse_var')
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     visFileBundle(const std::string acq_name,
