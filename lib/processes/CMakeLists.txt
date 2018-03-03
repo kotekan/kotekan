@@ -52,9 +52,11 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
+# This is temporarily disabled because it requires a newer version of hdf5
+# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp calibration_io.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)# calibration_io.cpp)
 endif ()
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})

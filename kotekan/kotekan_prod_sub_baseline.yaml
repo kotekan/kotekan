@@ -58,7 +58,7 @@ fake_vis:
   kotekan_process: fakeVis
   out_buf: vis_buffer
   num_eigenvectors: 4
-  freq: [250]
+  freq_ids: [250]
   cadence: 5.
 
 #vis_debug:
