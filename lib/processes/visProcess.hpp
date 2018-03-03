@@ -11,7 +11,6 @@
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
-#include "visFile.hpp"
 #include "visUtil.hpp"
 
 

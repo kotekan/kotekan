@@ -29,7 +29,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
-              calibration_io.cpp
               freqSlicer.cpp
               frbPostProcess_in.cpp
               visProcess.cpp
@@ -53,7 +52,7 @@ endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp calibration_io.cpp)
 endif ()
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
