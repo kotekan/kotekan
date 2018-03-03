@@ -29,7 +29,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
-              fakeVis.cpp
               freqSlicer.cpp
               frbPostProcess_in.cpp
               prodSubset.cpp

@@ -35,7 +35,7 @@ def accumulate_data(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'visAccumulate', {'num_eigenvectors': 4},
         kotekan_runner.FakeGPUBuffer(
-            pattern='accumulate',
+            mode='accumulate',
             freq=accumulate_params['freq'],
             num_frames=accumulate_params['total_frames']
         ),
@@ -58,7 +58,7 @@ def gaussian_data(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'visAccumulate', {'num_eigenvectors': 4},
         kotekan_runner.FakeGPUBuffer(
-            pattern='gaussian',
+            mode='gaussian',
             freq=gaussian_params['freq'],
             num_frames=gaussian_params['total_frames']
         ),
@@ -81,7 +81,7 @@ def time_data(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'visAccumulate', {'num_eigenvectors': 4},
         kotekan_runner.FakeGPUBuffer(
-            pattern='accumulate',
+            mode='accumulate',
             freq=time_params['freq'],
             num_frames=time_params['total_frames']
         ),
