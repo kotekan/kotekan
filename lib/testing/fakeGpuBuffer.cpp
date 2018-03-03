@@ -34,14 +34,14 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
 
     wait = config.get_bool_default(unique_name, "wait", true);
 
-    // Fill out the map with the fill patterns
-    fill_map["block"] = &fakeGpuBuffer::fill_pattern_block;
-    fill_map["accumulate"] = &fakeGpuBuffer::fill_pattern_accumulate;
-    fill_map["gaussian"] = &fakeGpuBuffer::fill_pattern_gaussian;
+    // Fill out the map with the fill modes
+    fill_map["block"] = &fakeGpuBuffer::fill_mode_block;
+    fill_map["accumulate"] = &fakeGpuBuffer::fill_mode_accumulate;
+    fill_map["gaussian"] = &fakeGpuBuffer::fill_mode_gaussian;
 
     // Fetch the correct fill function
-    std::string pattern = config.get_string(unique_name, "pattern");
-    fill = fill_map[pattern];
+    std::string mode = config.get_string(unique_name, "mode");
+    fill = fill_map[mode];
 }
 
 fakeGpuBuffer::~fakeGpuBuffer() {
@@ -90,7 +90,7 @@ void fakeGpuBuffer::main_thread() {
         DEBUG("Simulating GPU buffer in %s[%d]",
               out_buf->buffer_name, frame_id);
 
-        // Fill the buffer with the specified pattern
+        // Fill the buffer with the specified mode
         (this->*fill)(output, frame_count);
 
         allocate_new_metadata_object(out_buf, frame_id);
@@ -121,7 +121,7 @@ void fakeGpuBuffer::main_thread() {
             std::raise(SIGINT);
             return;
         }
-        
+
         // TODO: only sleep for the extra time required, i.e. account for the
         // elapsed time each loop
         if(this->wait) nanosleep(&delta_ts, nullptr);
@@ -129,7 +129,7 @@ void fakeGpuBuffer::main_thread() {
 }
 
 
-void fakeGpuBuffer::fill_pattern_block(int32_t* data, int frame_number) {
+void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number) {
 
     int nb1 = num_elements / block_size;
     int num_blocks = nb1 * (nb1 + 1) / 2;
@@ -148,7 +148,7 @@ void fakeGpuBuffer::fill_pattern_block(int32_t* data, int frame_number) {
 }
 
 
-void fakeGpuBuffer::fill_pattern_accumulate(int32_t* data, int frame_number) {
+void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number) {
 
     for(int i = 0; i < num_elements; i++) {
         for(int j = i; j < num_elements; j++) {
@@ -167,7 +167,7 @@ void fakeGpuBuffer::fill_pattern_accumulate(int32_t* data, int frame_number) {
     }
 }
 
-void fakeGpuBuffer::fill_pattern_gaussian(int32_t* data, int frame_number) {
+void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number) {
 
     std::random_device rd{};
     std::mt19937 gen{rd()};
