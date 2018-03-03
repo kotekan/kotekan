@@ -11,7 +11,7 @@ replace_params = {
     'num_eigenvectors': 2,
     'total_frames': 128,
     'cadence': 5.0,
-    'fill_ij': True,
+    'mode':'fill_ij',
     'freq_ids': [250],
     'buffer_depth': 5
 }
@@ -47,15 +47,16 @@ def test_replace(replace_data):
 
     for frame in replace_data:
         print frame.metadata.freq_id, frame.metadata.fpga_seq
-        print frame.vis
-        print frame.evals
+        print
 
     for frame in replace_data:
         # With fill_ij, vis_ij = i+j*(1j)
         assert (frame.vis.real == frame.vis.imag).all()    
-        
+        assert (frame.evals == np.arange(
+                replace_params['num_eigenvectors'])).all()
+        evecs = (np.arange(replace_params['num_eigenvectors'],
+                    dtype=complex)[:,None]*replace_params['num_elements']
+            +np.arange(replace_params['num_elements'])[None,:]).flatten()
+        assert (frame.evecs == evecs).all()
+        assert (frame.rms == 1.)
 
-
-#assert (frame.vis.real[1::2] ==
-        #       np.array(frame.metadata.fpga_seq).astype(np.float32)).all()
-#        assert (frame.vis.imag == np.arange(frame.metadata.num_prod)).all()

@@ -83,6 +83,7 @@ void prodSubset::main_thread() {
                     //
                     if (jj==ii) {
                         output_frame.vis[ii] = input_frame.vis[idx];
+                        output_frame.weight[ii] = input_frame.weight[idx];
                     }
                     idx++;
                 }
@@ -91,6 +92,7 @@ void prodSubset::main_thread() {
             // Copy over subset of visibilities
             for (size_t i = 0; i < subset_num_prod; i++) {
                 output_frame.vis[i] = input_frame.vis[prod_ind[i]];
+                output_frame.weight[i] = input_frame.weight[prod_ind[i]];
             }
         }
 

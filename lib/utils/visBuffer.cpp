@@ -131,9 +131,6 @@ void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
     std::copy(frame_to_copy.eigenvectors.begin(),
               frame_to_copy.eigenvectors.end(), 
               eigenvectors.begin());
-    std::copy(frame_to_copy.weight.begin(),
-              frame_to_copy.weight.end(), 
-              weight.begin());
     rms = frame_to_copy.rms;
 }
 
