@@ -25,10 +25,11 @@
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  num_eigenvectors      Int. The number of eigenvectors to be calculated as
  *                              an approximation to the visibilities.
- * @conf  num_diagonals_filled  Int. Number of diagonals to fill with the previouse
- *                              time step's solution prior to factorization. For
- *                              example, setting to 1 will replace the main diagonal
- *                              only. Filled with zero on the first time step.
+ * @conf  num_diagonals_filled  Int, default 0. Number of diagonals to fill with
+ *                              the previous time step's solution prior to
+ *                              factorization. For example, setting to 1 will replace
+ *                              the main diagonal only. Filled with zero on the first
+ *                              time step.
  *
  * @author Kiyoshi Masui
  */
