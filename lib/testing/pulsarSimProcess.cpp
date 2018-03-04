@@ -34,6 +34,7 @@ using std::string;
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
+REGISTER_KOTEKAN_PROCESS(pulsarSimProcess);
 pulsarSimProcess::pulsarSimProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :
@@ -48,7 +49,7 @@ pulsarSimProcess::pulsarSimProcess(Config& config_,
 }
 
 pulsarSimProcess::~pulsarSimProcess() {
-    free(in_buf);
+    //free(in_buf);
 }
 
 
@@ -173,11 +174,9 @@ void pulsarSimProcess::apply_config(uint64_t fpga_seq) {
         return;
 
     _num_gpus = config.get_int(unique_name, "num_gpus");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
     _num_pulsar = config.get_int(unique_name, "num_pulsar");
     _num_pol = config.get_int(unique_name, "num_pol");
-    _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_pulsar_header_size");
       
