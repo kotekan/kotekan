@@ -151,9 +151,6 @@ void frbPostProcess::main_thread() {
             }
         }
 
-//        in_buf = [stream=256, nbeams=4, nsamples=128, freq=16]
-//        out_buf = [stream=256,frames=8,[packet_size]]
-//        [packet_size] = [nbeams=4,gpu=4,freq=16,time=16]+header
         float ofs,scl;
         for (uint T = 0; T < num_samples; T+=_timesamples_per_frb_packet) { //loop 128 time samples, in 8 
             for (int stream = 0; stream<num_L1_streams; stream++) { //loop 256 streams (output)
@@ -256,6 +253,7 @@ void frbPostProcess::main_thread() {
             } // end 256 streams
             frb_header.fpga_count += fpga_counts_per_sample * _timesamples_per_frb_packet;
         } //end looping 128 time samples 
+
         mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
         out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;
 

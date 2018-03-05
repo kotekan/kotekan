@@ -16,5 +16,5 @@ add_library ( kotekan_testing
               testDataGenQuad.cpp
               testDataGenFloat.cpp
               test_data_generation.c
+              pulsarSimProcess.cpp
               )
-add_definitions(/D__STDC_FORMAT_MACROS)
