@@ -116,7 +116,7 @@ std::string visFrameView::summary() const {
 
 
 struct_layout visFrameView::calculate_buffer_layout(
-    uint32_t num_elements, uint32_t num_prod, uint16_t num_eigenvectors
+    uint32_t num_elements, uint32_t num_prod, uint32_t num_eigenvectors
 )
 {
     // TODO: get the types of each element using a template on the member

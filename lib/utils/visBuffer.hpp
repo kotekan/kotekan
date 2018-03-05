@@ -140,7 +140,7 @@ public:
      */
     static struct_layout calculate_buffer_layout(uint32_t num_elements,
                                                  uint32_t num_prod,
-                                                 uint16_t num_eigenvectors);
+                                                 uint32_t num_eigenvectors);
 
     /// Return a summary of the visibility buffer contents
     std::string summary() const;
@@ -181,7 +181,7 @@ public:
     /// The number of products in the data (read only).
     const uint32_t& num_prod;
     /// The number of eigenvectors/values in the data (read only).
-    const uint16_t& num_eigenvectors;
+    const uint32_t& num_eigenvectors;
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
