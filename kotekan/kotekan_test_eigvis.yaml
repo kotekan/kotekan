@@ -58,7 +58,7 @@ fake_vis:
   num_eigenvectors: 4
   freq_ids: [250,256,512,768]
   cadence: 10.
-  phase_ij: true
+  mode: phase_ij
 
 eig_vis:
   kotekan_process: eigenVis

@@ -3,7 +3,7 @@ import numpy as np
 
 import kotekan_runner
 
-merge_params = {
+params = {
     'num_elements': 4,
     'num_eigenvectors': 1,
     'total_frames': 16,
@@ -14,42 +14,39 @@ merge_params = {
     'num_diagonals_filled': 0
      }
 
+
 @pytest.fixture(scope="module")
-def merge_data(tmpdir_factory):
+def eigen_data(tmpdir_factory):
 
-    tmpdir = tmpdir_factory.mktemp("merge")
+    tmpdir = tmpdir_factory.mktemp("eigenvis")
 
-    fakevis_buffers = [
-        kotekan_runner.FakeVisBuffer(
-            freq_ids=[f],
-            num_frames=merge_params['total_frames']
-	    #mode = merge_params['mode']
-        ) for f in merge_params['freq']
-    ]
+    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+            freq_ids=params['freq'],
+            num_frames=params['total_frames'],
+            mode=params['mode'],
+            )
 
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
         'eigenVis', {},
-        fakevis_buffers[0],
+        fakevis_buffer,
         dump_buffer,
-        merge_params
+        params
     )
-
 
     test.run()
     yield dump_buffer.load()
 
-def test_data(merge_data):
 
-    rows, cols = np.triu_indices(merge_params['num_elements'])
+def test_data(eigen_data):
 
-    test_pattern = (rows + 1.0J * cols).astype(np.complex64)
+    rows, cols = np.triu_indices(params['num_elements'])
 
-    for frame in merge_data:
+    # test_pattern = (rows + 1.0J * cols).astype(np.complex64)
+
+    for frame in eigen_data:
         print(frame.evals)
         print(frame.evecs)
-	print(frame.vis)
-	#assert (frame.vis == test_pattern).all()
-
-
+        print(frame.vis)
+        # assert (frame.vis == test_pattern).all()
