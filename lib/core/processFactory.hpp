@@ -1,3 +1,12 @@
+/**
+ * @file
+ * @brief Contains processFactory and associated helper classes / templates.
+ *  - kotekanProcessMaker
+ *  - processFactory
+ *  - processFactoryRegistry
+ *  - kotekanProcessMakerTemplate<T>
+ */
+
 #ifndef PROCESS_FACTORY_HPP
 #define PROCESS_FACTORY_HPP
 
@@ -7,13 +16,11 @@
 #include "json.hpp"
 #include "Config.hpp"
 #include "bufferContainer.hpp"
-//#include "KotekanProcess.hpp"
 
 // Name space includes.
 using json = nlohmann::json;
 using std::string;
 using std::map;
-
 
 class KotekanProcess;
 
