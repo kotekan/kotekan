@@ -33,8 +33,8 @@
  *                              accumulation. This ignores any cadence setting.
  * @conf  samples_per_data_set  Int. FPGA seq ticks per frame. Only use for
  *                              `pre_accumulate`.
- * @conf  pattern               String. Name of the pattern to fill with.
- *                              Descriptions are with the `fill_pattern_X`
+ * @conf  mode                  String. Name of the pattern to fill with.
+ *                              Descriptions are with the `fill_mode_X`
  *                              methods below.
  * @conf  wait                  Bool. Sleep to try and output data at roughly
  *                              the correct cadence.
@@ -66,7 +66,7 @@ public:
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
      */
-    void fill_pattern_block(int32_t* data, int frame_num);
+    void fill_mode_block(int32_t* data, int frame_num);
 
     /**
      * Fill with a pattern for debugging the accumulation.
@@ -74,13 +74,13 @@ public:
      * Fill each element with its full correlation index (real = row; column =
      * imag), with real and imaginary parts being shifted every 4th frame.
      * 
-     * Overall this pattern should average to (row + column * J) and the
+     * Overall this mode should average to (row + column * J) and the
      * inverse variance should be num_gpu_frames / 8.
      *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
      */
-    void fill_pattern_accumulate(int32_t* data, int frame_num);
+    void fill_mode_accumulate(int32_t* data, int frame_num);
 
     /**
      * Fill with a pattern with Gaussian noise with radiometer variance.
@@ -90,7 +90,7 @@ public:
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
      */
-    void fill_pattern_gaussian(int32_t* data, int frame_num);
+    void fill_mode_gaussian(int32_t* data, int frame_num);
 private:
 
     Buffer* out_buf;
@@ -105,10 +105,10 @@ private:
     bool wait;
     int32_t num_frames;
 
-    // Function pointer for fill patterns
+    // Function pointer for fill modes
     typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int);
 
-    // A map to look up the patterns by name at run time
+    // A map to look up the modes by name at run time
     std::map<std::string, fill_func> fill_map;
 
     // The fill function to actually use
