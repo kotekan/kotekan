@@ -116,6 +116,8 @@ void eigenVis::main_thread() {
                               (lapack_complex_float *) evecs.data(),
                               nside, NULL);
 
+        INFO("LAPACK exit status: %d", info);
+
         // Update the stored eigenvectors for the next iteration.
         for(int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
             for(int i = 0; i < num_elements; i++) {
