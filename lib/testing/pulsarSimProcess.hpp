@@ -1,8 +1,3 @@
-/*****************************************
-File Contents:
-- pulsarSimProcess : public KotekanProcess
-*****************************************/
-
 /**
  * @file pulsarSimProcess.hpp
  * @brief Packet simulator for pulsar transmission testing
@@ -16,7 +11,6 @@ File Contents:
 #include <vector>
 
 using std::vector;
-
 
 /**
  * @class pulsarSimProcess
@@ -45,35 +39,30 @@ using std::vector;
  *
 **/
 
-
-
 class pulsarSimProcess : public KotekanProcess {
 public:
     /// constructor 
     pulsarSimProcess(Config& config_,
                   const string& unique_name,
                   bufferContainer &buffer_container);
-    
+
     /// distructor
     virtual ~pulsarSimProcess();
-    
 
-    void main_thread();
-    
+    void main_thread() override;
 
-    virtual void apply_config(uint64_t fpga_seq);
-    
+    virtual void apply_config(uint64_t fpga_seq) override;
+
     /// parses the hostname to get the unique node_id used for freqency_id
     void parse_host_name();
 private:
     void fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
-		  struct timeval * time_now,
-		  struct psrCoord * psr_coord,
-		  uint16_t * freq_ids);
-  
-    
+                  struct timeval * time_now,
+                  struct psrCoord * psr_coord,
+                  uint16_t * freq_ids);
+
     struct Buffer *pulsar_buf;
 
     /// number of GPUs same as number of frequencies per node. c
@@ -108,10 +97,10 @@ private:
 
     /// host name from the gethosename()
     char *my_host_name = new char[20];   
-    
+
    // number of subnets
    int number_of_subnets;
-   
+
    /// node ip addresses
    std::string my_ip_address[2]; 
 };
