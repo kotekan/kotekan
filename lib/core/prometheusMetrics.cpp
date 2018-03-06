@@ -3,9 +3,6 @@
 #include "metadata.h"
 
 prometheusMetrics::prometheusMetrics() {
-    char local_host_name[128];
-    gethostname(local_host_name, sizeof(local_host_name));
-    hostname = string(local_host_name);
 }
 
 prometheusMetrics &prometheusMetrics::instance() {
@@ -48,8 +45,7 @@ void prometheusMetrics::metrics_callback(connectionInstance& conn) {
             string process_name = std::get<1>(element.first);
             string extra_labels = std::get<2>(element.first);
 
-            output += metric_name + "{instance='" + hostname + "',process_name='" + process_name
-                      + "'";
+            output += metric_name + "{process_name=\"" + process_name + "\"";
             if (extra_labels != "")
                 output += "," + extra_labels;
             output += "} " + element.second->to_string() + " "
