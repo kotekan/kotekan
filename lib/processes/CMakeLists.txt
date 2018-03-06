@@ -30,7 +30,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               fakeVis.cpp
-              frbPostProcessIncoherent.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
