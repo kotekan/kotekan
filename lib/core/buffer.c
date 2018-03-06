@@ -527,6 +527,33 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int I
     return buf->frames[ID];
 }
 
+int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
+                                const int ID, const struct timespec timeout)
+{
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    int consumer_id = private_get_consumer_id(buf, name);
+    int err = 0;
+
+    // This loop exists when is_full == 1 (i.e. a full buffer) AND
+    // when this producer hasn't already marked this buffer as
+    while ( (buf->is_full[ID] == 0 ||
+            buf->consumers_done[ID][consumer_id] == 1) && 
+            buf->shutdown_signal == 0 && err == 0) {
+        err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
+    }
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    if (buf->shutdown_signal == 1)
+        return -1;
+    
+    if (err == ETIMEDOUT)
+        return 1;
+
+    return 0;
+}
+
 int get_num_full_frames(struct Buffer* buf)
 {
     int numFull = 0;
