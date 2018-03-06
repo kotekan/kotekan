@@ -79,7 +79,7 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
     }
 
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
-        float anglefrac = sin(0.1*angle_iter*PI/180.);   //say 0, 0.1, 0.2, 0.3
+        float anglefrac = sin(0.5*angle_iter*PI/180.);   //EW beam separation 0.5 deg
         for (int cylinder=0; cylinder < 4; cylinder++) {
             host_coeff[angle_iter*4*2 + cylinder*2] = cos(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
             host_coeff[angle_iter*4*2 + cylinder*2 + 1] = sin(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
