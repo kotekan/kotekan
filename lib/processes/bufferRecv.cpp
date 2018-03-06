@@ -40,7 +40,7 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
     struct evbuffer *input;
     input = bufferevent_get_input(bev);
     connInstance * instance = (connInstance *) ctx;
-    size_t n = 0;
+    int64_t n = 0;
 
     while (evbuffer_get_length(input) && !instance->buffer_recv->stop_thread) {
         switch (instance->state) {
