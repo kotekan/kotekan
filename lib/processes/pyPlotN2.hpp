@@ -14,6 +14,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstdio>
+#include "buffer.h"
+#include "errors.h"
+#include "chimeMetadata.h"
+#include "accumulate.hpp"
+#include "fpga_header_functions.h"
 
 /**
  * @class pyPlotN2
@@ -67,11 +72,16 @@ public:
      */
     void request_plot_callback(connectionInstance& conn, json& json_request);
 private:
+    void make_plot(void);
+
     ///The kotekan buffer object the processes is producing for
     struct Buffer *buf;
+    unsigned char *in_local;
 
     int gpu_id=-1;
     bool dump_plot=false;
+    bool busy=false;
+    stream_id_t stream_id;
 };
 
 #endif

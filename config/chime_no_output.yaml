@@ -133,7 +133,7 @@ dpdk:
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
-  gain_dir: "../../kotekan/"
+  gain_dir: "/etc/kotekan/"
   commands:
   - name: hsaInputData
   - name: hsaPresumZero
@@ -226,4 +226,24 @@ accumulate:
         kotekan_process: accumulate
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
+
+debug_plots:
+    plot_0:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_0
+        gpu_id: 0
+    plot_1:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_1
+        gpu_id: 1
+    plot_2:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_2
+        gpu_id: 2
+    plot_3:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_3
+        gpu_id: 3
+
+
 

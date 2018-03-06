@@ -7,11 +7,6 @@
 #include <functional>
 
 #include "pyPlotN2.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "chimeMetadata.h"
-#include "accumulate.hpp"
-#include "fpga_header_functions.h"
 
 using json = nlohmann::json;
 
@@ -26,9 +21,11 @@ pyPlotN2::pyPlotN2(Config& config, const string& unique_name,
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
     gpu_id = config.get_int(unique_name, "gpu_id");
+    in_local = (unsigned char*)malloc(buf->frame_size);
 }
 
 pyPlotN2::~pyPlotN2() {
+    free(in_local);
 }
 
 void pyPlotN2::request_plot_callback(connectionInstance& conn, json& json_request) {
@@ -49,7 +46,6 @@ void pyPlotN2::main_thread() {
 
     int frame_id = 0;
     uint8_t * frame = NULL;
-    unsigned char *in_local = (unsigned char*)malloc(buf->frame_size);
 
     while (!stop_thread) {
 
@@ -59,46 +55,55 @@ void pyPlotN2::main_thread() {
 
         //INFO("Got buffer, id: %d", bufferID);
 
-        if (dump_plot)
+        if ((!busy) && (dump_plot))
         {
             dump_plot=false;
+            busy=true;
             //make a local copy so the rest of kotekan can carry along happily.
             memcpy(in_local, frame, buf->frame_size);
+            stream_id = get_stream_id_t(buf, frame_id);
+
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
             frame_id = ( frame_id + 1 ) % buf->num_frames;
 
-            FILE *python_script;
-            python_script = popen("python -u pyPlotN2.py","w");
-
-            { // N^2
-                uint num_elements = config.get_int(unique_name, "num_elements");
-                uint block_dim = 32;
-                uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
-                uint block_size = block_dim*block_dim*2; //real, complex
-
-                usleep(10000);
-
-                stream_id_t stream_id = get_stream_id_t(buf, frame_id);
-
-                json header = {
-                    {"data_length",num_blocks*block_size},
-                    {"type","CORR_MATRIX"},
-                    {"num_elements",num_elements},
-                    {"block_dim",{block_dim,block_dim,2}},
-                    {"stream_id", {stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused}}
-                };
-                std::string s = header.dump()+"\n";
-                fwrite(s.c_str(),1,s.length(),python_script);
-                for (uint32_t i=0; i<num_blocks; i++) {
-                    fwrite(in_local +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
-                    fflush(python_script);
-                }
-            }
+            std::thread thr = std::thread(&pyPlotN2::make_plot, this);
+            thr.detach();
         }
         else{
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
             frame_id = ( frame_id + 1 ) % buf->num_frames;
         }
     }
-    free(in_local);
 }
+
+
+void pyPlotN2::make_plot(void)
+{
+    FILE *python_script;
+    python_script = popen("python -u /usr/sbin/pyPlotN2.py","w");
+    { // N^2
+        uint num_elements = config.get_int(unique_name, "num_elements");
+        uint block_dim = 32;
+        uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
+        uint block_size = block_dim*block_dim*2; //real, complex
+
+        usleep(10000);
+
+        json header = {
+            {"data_length",num_blocks*block_size},
+            {"type","CORR_MATRIX"},
+            {"num_elements",num_elements},
+            {"block_dim",{block_dim,block_dim,2}},
+            {"stream_id", {stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused}}
+        };
+        std::string s = header.dump()+"\n";
+        fwrite(s.c_str(),1,s.length(),python_script);
+        for (uint32_t i=0; i<num_blocks; i++) {
+            fwrite(in_local +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
+            fflush(python_script);
+        }
+    }
+    busy = false;
+}
+
+
