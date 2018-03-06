@@ -64,8 +64,7 @@ void pulsarSimProcess::parse_host_name()
         INFO("Not a valid name \n");
         exit(0);
     } 
-        
-        
+
     if(my_host_name[1] == 'n') 
     {
         nos =0;
@@ -76,12 +75,12 @@ void pulsarSimProcess::parse_host_name()
         nos =100;
         my_node_id    = 128;
     }
-    else 
+    else
     {
         INFO("Not a valid name \n");
         exit(0);
     }
-                    
+
     switch(my_host_name[2])
     {
         case '0': rack=0; break;
@@ -116,14 +115,14 @@ void pulsarSimProcess::parse_host_name()
         default: INFO("Not a valid name \n"); exit(0);
 
     }
-    
+
     for(int i=0;i<number_of_subnets;i++) 
     {
         temp_ip[i]<<"10."<<i+15<<"."<<nos+rack<<".1"<<node;
         my_ip_address[i] = temp_ip[i].str();
         INFO("%s ",my_ip_address[i].c_str());
     }
-    
+
     if(rack<7)my_node_id += rack*10+(9-node); //fix for the arrangment of nodes in the racks
     if(rack>7) my_node_id += (rack-1)*10+(9-node);
 }
@@ -142,8 +141,8 @@ void pulsarSimProcess::fill_headers(unsigned char * out_buf,
     //        assert(sizeof(struct VDIFHeader) == _udp_header_size);
     for (int i = 0; i < num_packet; ++i) {    //16 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
-        vdif_header->eud2 = (fpga_now & (0xFFFFFFFF<<32))>>32 ;
-        vdif_header->eud3 = (fpga_now & 0xFFFFFFFF)>>0;
+        vdif_header->eud2 = (fpga_now & ((0xFFFFFFFFl)<<32))>>32 ;
+        vdif_header->eud3 = (fpga_now & ((0xFFFFFFFFl)>> 0));
         vdif_header->seconds = time_now->tv_sec;
         vdif_header->data_frame =    (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
         
@@ -181,14 +180,12 @@ void pulsarSimProcess::apply_config(uint64_t fpga_seq) {
 
 void pulsarSimProcess::main_thread() {
     number_of_subnets=2;
-    int out_buffer_ID = 0;    
-    int startup = 1; //related to the likely & unlikely
-    
+    int out_buffer_ID = 0;
+
     parse_host_name();
     uint16_t freq_ids[_num_gpus] ;
 
-    struct timeval time_now; 
-    
+    struct timeval time_now;
 
     struct VDIFHeader vdif_header;
     vdif_header.seconds = 0;    //UD
@@ -200,7 +197,8 @@ void pulsarSimProcess::main_thread() {
     vdif_header.frame_len = 5000;
     vdif_header.log_num_chan = 0; //Check ln4=2 or ln1=0 ? 
     vdif_header.vdif_version = 1;
-    vdif_header.station_id = 'CH'; //Need to fomrally ask the Vdif community
+    char si[2]={'C','H'};
+    vdif_header.station_id =  (si[0]<<8) + si[1]; //Need to fomrally ask the Vdif community
     vdif_header.thread_id = 0; //UD     freq
     vdif_header.bits_depth = 8 ; //4+4 
     vdif_header.data_type = 1; // Complex
@@ -211,13 +209,12 @@ void pulsarSimProcess::main_thread() {
     vdif_header.eud4 = 0;    // Ra_int + Ra_dec + Dec_int + Dec_dec ? Source name ? Obs ID?
 
     uint64_t fpga_seq_num = 0;
-    
 
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t * out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == NULL) return;
-    
+
     for(int i=0;i<_num_gpus;i++) freq_ids[i] = my_node_id; 
 
     while(!stop_thread) {
