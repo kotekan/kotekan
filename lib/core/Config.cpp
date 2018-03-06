@@ -184,6 +184,15 @@ vector<float> Config::get_float_array(const string& base_path, const string& nam
     return value.get< vector<float> >();
 }
 
+vector<float> Config::get_float_array_default(const string& base_path, const string& name, vector<float> default_value) {
+    try {
+        vector<float> value = get_float_array(base_path, name);
+        return value;
+    }  catch (std::exception const & ex) {
+        return default_value;
+    }
+}
+
 vector<string> Config::get_string_array(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 

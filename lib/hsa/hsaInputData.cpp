@@ -15,6 +15,7 @@ hsaInputData::hsaInputData( Config& config, const string &unique_name,
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _enable_delay = config.get_bool_default(unique_name, "enable_delay", false);
+    _delay_max_fraction = config.get_float_default(unique_name, "delay_max_fraction", 0.5);
     if(_num_elements <= 2) //TODO FIND BETTER WORK AROUND FOR DISTINGUISHING VDIF/CHIME INPUT LENGTH
                 header_size = 32;
     input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;
@@ -26,7 +27,7 @@ hsaInputData::hsaInputData( Config& config, const string &unique_name,
         std::random_device rd;  // Seed
         std::mt19937 gen(rd());
         double max_delay = (double)_samples_per_data_set/_sample_arrival_rate;
-        std::uniform_real_distribution<> dis(0.0, max_delay*0.75);
+        std::uniform_real_distribution<> dis(0.0, max_delay*_delay_max_fraction);
         _random_delay = dis(gen);
         INFO("Setting fixed delay to: %f", _random_delay);
     }

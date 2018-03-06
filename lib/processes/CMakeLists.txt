@@ -16,7 +16,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               networkPowerStream.cpp
               integratePowerStream.cpp
               networkInputPowerStream.cpp
-              pyPlotResult.cpp
+              pyPlotN2.cpp
               rawFileRead.cpp
               rawFileWrite.cpp
               vdifStream.cpp
@@ -30,7 +30,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               fakeVis.cpp
-              frbPostProcess_in.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

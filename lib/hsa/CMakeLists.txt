@@ -41,6 +41,7 @@ add_library ( kotekan_hsa
 
 # CHIME/Pulsar Kernels & copy-out:
               hsaBeamformPulsar.cpp
+              hsaBeamformPulsarOutput.cpp
               hsaBeamformPulsarOneFeed.cpp
               hsaPulsarUpdatePhase.cpp
               )
