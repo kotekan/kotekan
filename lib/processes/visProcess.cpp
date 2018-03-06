@@ -77,6 +77,8 @@ void visTransform::main_thread() {
 
             INFO("Got full buffer %s with frame_id=%i", buf->buffer_name, frame_id);
 
+            frame = buf->frames[frame_id];
+
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),
                                     output_frame_id) == nullptr) {
