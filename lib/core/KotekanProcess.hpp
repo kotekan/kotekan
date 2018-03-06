@@ -59,6 +59,8 @@ protected:
      */
     std::vector<struct Buffer *> get_buffer_array(const std::string &name);
 
+    bufferContainer &buffer_container;
+
 private:
     std::function<void(const KotekanProcess&)> main_thread_fn;
 
@@ -68,11 +70,6 @@ private:
 
     // Lock for changing or using the cpu_affinity variable.
     std::mutex cpu_affinity_lock;
-
-    // Should we allow direct access?
-    // Currently we use the get_buffer helper function for getting a buffer.
-    bufferContainer &buffer_container;
-
 };
 
 #define PROCESS_CONSTRUCTOR(T) T::T(Config& config, const string& unique_name, bufferContainer &buffer_container) : KotekanProcess(config, unique_name, buffer_container, std::bind(&T::main_thread, this))

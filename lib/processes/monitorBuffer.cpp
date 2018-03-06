@@ -34,8 +34,10 @@ void monitorBuffer::main_thread() {
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 ERROR("The buffer %s hasn't received a frame for %f seconds.",
                       buf->buffer_name, (cur_time - last_arrival));
-                // TODO Dump buffer status.
                 ERROR("Closing kotekan because of system timeout.");
+                for (auto &buf : buffer_container.get_buffer_map()) {
+                    print_all_buffer_info(buf.second);
+                }
                 usleep(50000);
                 raise(SIGINT);
                 goto end_loop;

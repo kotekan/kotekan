@@ -354,6 +354,8 @@ void print_buffer_status(struct Buffer * buf);
 
 void print_consumer_stats(struct Buffer * buf);
 
+void print_all_buffer_info(struct Buffer * buf);
+
 /**
  * @brief Allocates a new metadata object from the associated pool
  *

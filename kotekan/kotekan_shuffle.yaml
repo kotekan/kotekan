@@ -163,7 +163,7 @@ monitorBuffer:
      - file_output_buffer_1
      - file_output_buffer_2
      - file_output_buffer_3
-    timeout: 60
+    timeout: 5
 
 #python_plot:
 #  plot_0:

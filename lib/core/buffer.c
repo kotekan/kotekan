@@ -613,10 +613,76 @@ void print_buffer_status(struct Buffer* buf)
 void print_consumer_stats(struct Buffer * buf) {
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 1) {
-            INFO("Buffer: %s, consumer: %s, average service time: %f",
+            DEBUG("Buffer: %s, consumer: %s, average service time: %f",
                  buf->buffer_name, buf->consumers[i].name, get_average(buf->consumers[i].service_time_stats));
         }
     }
+}
+
+void print_all_buffer_info(struct Buffer * buf) {
+
+CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    DEBUG("Buffer \"%s\" full info:", buf->buffer_name);
+    /*
+    DEBUG("Producers:");
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
+        if (buf->producers[i].in_use == 1) {
+            DEBUG("Producers: %s", buf->producers[i].name);
+        }
+    }
+    DEBUG("Consumers:");
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf->consumers[i].in_use == 1) {
+            DEBUG("Consumer: %s", buf->consumers[i].name);
+        }
+    }
+    */
+
+    char status_string[buf->num_frames + 1];
+    status_string[buf->num_frames] = '\0';
+
+    DEBUG("Producer status:");
+    for (int producer = 0; producer < MAX_PRODUCERS; ++producer) {
+        if (buf->producers[producer].in_use != 1)
+            continue;
+        for (int frame = 0; frame < buf->num_frames; ++frame) {
+            if (buf->is_full[frame] == 0) {
+                if (buf->producers_done[frame][producer] == 1) {
+                    status_string[frame] = 'Y';
+                } else {
+                    status_string[frame] = 'N';
+                }
+            } else {
+                // If the buffer is full, then the producer data should be reset.
+                assert(buf->producers_done[frame][producer] == 0);
+                status_string[frame] = 'X';
+            }
+        }
+        DEBUG("Producer %s, done: %s", buf->producers[producer].name, status_string);
+    }
+
+    DEBUG("Consumer status:");
+    for (int consumer = 0; consumer < MAX_CONSUMERS; ++consumer) {
+        if (buf->consumers[consumer].in_use != 1)
+            continue;
+        for (int frame = 0; frame < buf->num_frames; ++frame) {
+            if (buf->is_full[frame] == 1) {
+                if (buf->consumers_done[frame][consumer] == 1) {
+                    status_string[frame] = 'Y';
+                } else {
+                    status_string[frame] = 'N';
+                }
+            } else {
+                // If the buffer is empty, then the consumer data should be reset.
+                assert(buf->consumers_done[frame][consumer] == 0);
+                status_string[frame] = '_';
+            }
+        }
+        DEBUG("Consumer %s, done: %s", buf->consumers[consumer].name, status_string);
+    }
+
+CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
