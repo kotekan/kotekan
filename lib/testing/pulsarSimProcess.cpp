@@ -50,7 +50,6 @@ pulsarSimProcess::pulsarSimProcess(Config& config_,
 pulsarSimProcess::~pulsarSimProcess() {
 }
 
-
 void pulsarSimProcess::parse_host_name()
 {
     int rack=0,node=0,nos=0;
@@ -126,11 +125,6 @@ void pulsarSimProcess::parse_host_name()
     if(rack<7)my_node_id += rack*10+(9-node); //fix for the arrangment of nodes in the racks
     if(rack>7) my_node_id += (rack-1)*10+(9-node);
 }
-
-
-
-
-
 
 void pulsarSimProcess::fill_headers(unsigned char * out_buf,
                                     struct VDIFHeader * vdif_header,
