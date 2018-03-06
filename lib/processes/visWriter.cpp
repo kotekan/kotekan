@@ -10,7 +10,6 @@
 #include <fstream>
 #include <time.h>
 
-
 REGISTER_KOTEKAN_PROCESS(visWriter);
 
 visWriter::visWriter(Config& config,
@@ -29,6 +28,9 @@ visWriter::visWriter(Config& config,
 
     // Get the input labels
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
+
+    // If specified, get the weights type to write to attributes
+    weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
@@ -145,7 +147,7 @@ void visWriter::init_acq() {
     std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
          new visFileBundle(
-             root_path, chunk_id, instrument_name, notes, freqs, inputs
+             root_path, chunk_id, instrument_name, notes, weights_type, freqs, inputs
          )
     );
 }
