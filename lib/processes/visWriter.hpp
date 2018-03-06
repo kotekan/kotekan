@@ -30,6 +30,11 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @par Metrics
+ * @metric kotekan_viswriter_write_time_seconds
+ *         The write time of the HDF5 writer. An exponential moving average over ~10
+ *         samples.
+ *
  * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
  * @conf   root_path        String. Location in filesystem to write to.
  * @conf   instrument_name  String (default: chime). Name of the instrument
@@ -94,6 +99,9 @@ private:
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;
+
+    /// Keep track of the average write time
+    movingAverage write_time;
 };
 
 #endif

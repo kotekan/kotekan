@@ -6,7 +6,10 @@
 #include <time.h>
 #include <math.h>
 
+
 REGISTER_KOTEKAN_PROCESS(fakeVis);
+REGISTER_KOTEKAN_PROCESS(replaceVis);
+
 
 fakeVis::fakeVis(Config &config,
                  const string& unique_name,
@@ -49,7 +52,7 @@ void fakeVis::main_thread() {
     unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
 
-    timespec ts, ts_real;
+    timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
 
     // Calculate the time increments in seq and ctime
@@ -59,8 +62,7 @@ void fakeVis::main_thread() {
 
     while (!stop_thread) {
 
-        clock_gettime(CLOCK_REALTIME, &ts_real);
-        double start = ts_to_double(ts_real); 
+        double start = current_time();
 
         for (auto f : freq) {
 
@@ -175,10 +177,76 @@ void fakeVis::main_thread() {
         // If requested sleep for the extra time required to produce a fake vis
         // at the correct cadence
         if(this->wait) {
-            clock_gettime(CLOCK_REALTIME, &ts_real);
-            double diff = cadence - (ts_to_double(ts_real) - start);
-            timespec ts_diff {(int64_t)diff, (int64_t)(fmod(diff, 1.0) * 1e9)};
+            double diff = cadence - (current_time() - start);
+            timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
         }
+    }
+}
+
+
+replaceVis::replaceVis(Config& config,
+                       const string& unique_name,
+                       bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&replaceVis::main_thread, this)) {
+
+    // Setup the input buffer
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+
+    // Setup the output buffer
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
+}
+
+void replaceVis::apply_config(uint64_t fpga_seq) {
+}
+
+void replaceVis::main_thread() {
+
+    unsigned int output_frame_id = 0;
+    unsigned int input_frame_id = 0;
+
+    while (!stop_thread) {
+
+        // Wait for the input buffer to be filled with data
+        if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                               input_frame_id) == nullptr) {
+            break;
+        }
+
+        // Wait for the output buffer to be empty of data
+        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                output_frame_id) == nullptr) {
+            break;
+        }
+        // Create view to input frame
+        auto input_frame = visFrameView(in_buf, input_frame_id);
+
+        // Copy input frame to output frame and create view
+        allocate_new_metadata_object(out_buf, output_frame_id);
+        auto output_frame = visFrameView(out_buf,
+                                         output_frame_id, input_frame);
+
+        for(int i = 0; i < output_frame.num_prod; i++) {
+            float real = (i % 2 == 0 ?
+                          output_frame.freq_id :
+                          std::get<0>(output_frame.time));
+            float imag = i;
+
+            output_frame.vis[i] = {real, imag};
+        }
+
+
+        // Mark the output buffer and move on
+        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+
+        // Mark the input buffer and move on
+        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+
+        // Advance the current frame ids
+        output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
+        input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
     }
 }
