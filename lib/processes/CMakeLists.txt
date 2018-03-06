@@ -16,7 +16,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               networkPowerStream.cpp
               integratePowerStream.cpp
               networkInputPowerStream.cpp
-              pyPlotResult.cpp
+              pyPlotN2.cpp
               rawFileRead.cpp
               rawFileWrite.cpp
               vdifStream.cpp

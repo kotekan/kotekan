@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <functional>
 
-#include "pyPlotResult.hpp"
+#include "pyPlotN2.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "chimeMetadata.h"
@@ -15,12 +15,12 @@
 
 using json = nlohmann::json;
 
-REGISTER_KOTEKAN_PROCESS(pyPlotResult);
+REGISTER_KOTEKAN_PROCESS(pyPlotN2);
 
-pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
+pyPlotN2::pyPlotN2(Config& config, const string& unique_name,
                            bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
-                       std::bind(&pyPlotResult::main_thread, this))
+                       std::bind(&pyPlotN2::main_thread, this))
 
 {
     buf = get_buffer("in_buf");
@@ -28,24 +28,24 @@ pyPlotResult::pyPlotResult(Config& config, const string& unique_name,
     gpu_id = config.get_int(unique_name, "gpu_id");
 }
 
-pyPlotResult::~pyPlotResult() {
+pyPlotN2::~pyPlotN2() {
 }
 
-void pyPlotResult::request_plot_callback(connectionInstance& conn, json& json_request) {
+void pyPlotN2::request_plot_callback(connectionInstance& conn, json& json_request) {
 //    std::lock_guard<std::mutex> lock(_packet_frame_lock);
     dump_plot=true;
     conn.send_empty_reply(STATUS_OK);
 }
 
-void pyPlotResult::apply_config(uint64_t fpga_seq) {
+void pyPlotN2::apply_config(uint64_t fpga_seq) {
 }
 
-void pyPlotResult::main_thread() {
+void pyPlotN2::main_thread() {
     using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
     string endpoint = "/plot_corr_matrix/" + std::to_string(gpu_id);
     rest_server->register_json_callback(endpoint,
-            std::bind(&pyPlotResult::request_plot_callback, this, _1, _2));
+            std::bind(&pyPlotN2::request_plot_callback, this, _1, _2));
 
     int frame_id = 0;
     uint8_t * frame = NULL;
@@ -68,7 +68,7 @@ void pyPlotResult::main_thread() {
             frame_id = ( frame_id + 1 ) % buf->num_frames;
 
             FILE *python_script;
-            python_script = popen("python -u pyPlotResult.py","w");
+            python_script = popen("python -u pyPlotN2.py","w");
 
             { // N^2
                 uint num_elements = config.get_int(unique_name, "num_elements");
