@@ -10,6 +10,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
+#include <chrono>
 
  /**
  * @class frbNetworkProcess
@@ -93,7 +94,7 @@ private:
   int beam_offset;
 
   // time per buffer frame in ns
-  unsigned long time_interval;
+  std::chrono::nanoseconds time_interval;
 
   //Beam Configuration Mode
   bool column_mode;

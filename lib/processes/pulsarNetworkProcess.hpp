@@ -66,9 +66,6 @@ public:
   /// parse hostname to derive the ip_address using gethosname()
   void parse_host_name();
 
-  /// function to add nano seconds to timespec useful for flow control purpose
-  void add_nsec(struct timespec &temp, long nsec);
-
   /// main thread
   void main_thread();
 private:

@@ -132,25 +132,6 @@ void pulsarNetworkProcess::parse_host_name()
   if(rack>7) my_node_id += (rack-1)*10+(9-node);
 }
 
-void pulsarNetworkProcess::add_nsec(struct timespec &temp, long nsec)
-{
-  temp.tv_nsec += nsec;
-  if(temp.tv_nsec>=1000000000)
-  {
-    long sec = temp.tv_nsec/1000000000;
-    
-    temp.tv_sec += sec;
-    temp.tv_nsec -= sec*1000000000;
-  }
-  else if(temp.tv_nsec<0)
-  {
-    long sec = temp.tv_nsec/1000000000;
-    sec -= 1;
-    temp.tv_nsec -= sec*1000000000;
-    temp.tv_sec += sec;
-  }
-}
-
 void pulsarNetworkProcess::main_thread() 
 {
   //parsing the host name
@@ -217,11 +198,7 @@ void pulsarNetworkProcess::main_thread()
     }
   }
 
-  struct timespec t0,t1,temp;
-  t0.tv_sec = 0;
-  t0.tv_nsec = 0; /*  nanoseconds */
-  
-  unsigned long time_interval = 128000000; //time per buffer frame in ns
+  const auto time_interval = std::chrono::nanoseconds(128000000); //time per buffer frame in ns
 
    
   long count=0;
@@ -249,37 +226,36 @@ void pulsarNetworkProcess::main_thread()
   {
     
     long lock_miss=0; 
-    clock_gettime(CLOCK_MONOTONIC, &t0);
+    auto t0 = std::chrono::steady_clock::now();
 
-    unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
-    unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_sequence_id*750; // analytically it must be 781.25
+    auto reminder = t0.time_since_epoch() % time_interval;
+    auto wait_ns = time_interval - reminder +
+      std::chrono::nanoseconds(my_sequence_id * 750); // analytically it must be 781.25
  
     
-    add_nsec(t0,wait_ns); 
+    t0 += wait_ns;
         
     // Checking with the NTP server    
+    std::chrono::time_point<std::chrono::steady_clock> temp;
     if(count==0)
     {
-      temp.tv_sec = t0.tv_sec;
-      temp.tv_nsec = t0.tv_nsec;
+      temp = t0;
     }
     else
     {
-      add_nsec(temp,time_interval);
-            
-      long sec = (long)temp.tv_sec - (long)t0.tv_sec;
-      long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
-      nsec = sec*1e9+nsec;
+      temp += time_interval;
 
-      if (abs(nsec)%time_interval==0 && abs(nsec)!=0)
+      auto nsec = temp - t0;
+
+      
+      if (nsec == time_interval)
       {
-        INFO("Buffers are too slow %d \n\n\n\n\n\n\n\n",abs(nsec));
-        add_nsec(t0,-1*nsec);
+        INFO("Buffers are too slow %d \n\n\n\n\n\n\n\n", nsec.count());
+        t0 -= nsec;
         temp=t0;
         lock_miss++;
       }
-      else if(abs(nsec)!=0)
+      else if (nsec != nsec.zero())
       {
         //INFO("Not locked with NTP %d\n",abs(nsec));
         //exit(0);
@@ -290,8 +266,7 @@ void pulsarNetworkProcess::main_thread()
     //INFO("Host name %s ip: %s node: %d",my_host_name,my_ip_address.c_str(),my_node_id);
 
 
-    t1.tv_sec = t0.tv_sec;
-    t1.tv_nsec = t0.tv_nsec;
+    auto t1 = t0;
    
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
     if(packet_buffer==NULL)
@@ -309,7 +284,7 @@ void pulsarNetworkProcess::main_thread()
           int e_beam = my_sequence_id + beam;
           e_beam =  e_beam%10;
         
-          clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
+          std::this_thread::sleep_until(t1);
 
            if(e_beam<number_of_pulsar_links)
            {
@@ -319,13 +294,11 @@ void pulsarNetworkProcess::main_thread()
              
            }
          
-           long wait_per_packet = (long)(192000); 
-         
            //61521.25 is the theoritical seperation of packets in ns 
            // I have used 61440 for convinence and also hope this will take care for
            // any clock glitches.
-
-           add_nsec(t1,wait_per_packet);
+           const auto wait_per_packet = std::chrono::nanoseconds(192000L);
+           t1 += wait_per_packet;
         }    
          
       }

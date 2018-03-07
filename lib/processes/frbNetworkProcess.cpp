@@ -9,7 +9,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
-#include <chrono>
 #include <fstream>
 #include<arpa/inet.h>
 #include<sys/socket.h>
@@ -54,7 +53,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   number_of_subnets = config.get_int_default(unique_name, "number_of_subnets",4);
   packets_per_stream = config.get_int_default(unique_name, "packets_per_stream",8);
   beam_offset = config.get_int_default(unique_name, "beam_offset",0);
-  time_interval = config.get_uint64_default(unique_name, "time_interval",125829120);
+  time_interval = std::chrono::nanoseconds(config.get_uint64_default(unique_name, "time_interval",125829120));
   column_mode = config.get_bool_default(unique_name, "column_mode", false);
 }
 
@@ -197,10 +196,6 @@ void frbNetworkProcess::main_thread()
     }
   }
 
-  struct timespec t0,t1,temp;
-  t0.tv_sec = 0;
-  t0.tv_nsec = 0; /*  nanoseconds */
-
   //unsigned long time_interval = 125829120; //time per buffer frame in ns
 
   long count=0;
@@ -211,77 +206,49 @@ void frbNetworkProcess::main_thread()
   mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
   frame_id = ( frame_id + 1 ) % in_buf->num_frames;
 
-  clock_gettime(CLOCK_MONOTONIC, &t0);
+  auto t0 = std::chrono::steady_clock::now();
 
-  t0.tv_nsec += 2*time_interval;
-  if(t0.tv_nsec>=1000000000)
-  {
-    t0.tv_sec += 1;
-    t0.tv_nsec -= 1000000000;
-  }
-  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t0, NULL);
+  t0 += 2 * time_interval;
+  std::this_thread::sleep_until(t0);
 
   while(!stop_thread)
   {
     long lock_miss=0; 
-    clock_gettime(CLOCK_MONOTONIC, &t0);
+    t0 = std::chrono::steady_clock::now();
 
-    unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
-    unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_sequence_id*230; // analytically it must be 240.3173828125
+    auto reminder = t0.time_since_epoch() % time_interval;
+    auto wait_ns = time_interval - reminder +
+      std::chrono::nanoseconds(my_sequence_id * 230); // analytically it must be 240.3173828125
 
-    t0.tv_nsec += wait_ns;
-    if(t0.tv_nsec>=1000000000)
-    {
-      t0.tv_sec += 1;
-      t0.tv_nsec -= 1000000000;
-    }
+    t0 += wait_ns;
 
     // Checking with the NTP server    
+    std::chrono::time_point<std::chrono::steady_clock> temp;
     if(count==0)
     {
-      temp.tv_sec = t0.tv_sec;
-      temp.tv_nsec = t0.tv_nsec;
+      temp = t0;
     }
     else
     {
-      temp.tv_nsec += time_interval;
-      if(temp.tv_nsec>=1000000000)
-      {
-        temp.tv_sec += 1;
-        temp.tv_nsec -= 1000000000;
-      }
+      temp += time_interval;
       
-      long sec = (long)temp.tv_sec - (long)t0.tv_sec;
-      long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
-      nsec = sec*1e9+nsec;
+      auto nsec = temp - t0;
 
-      if (abs(nsec)==time_interval && abs(nsec)!=0)
+      if (nsec == time_interval)
       {
-        WARN("Buffers are too slow %d \n\n\n\n\n\n\n\n",abs(nsec));
-        t0.tv_nsec -= nsec;
-        if(t0.tv_nsec>=1000000000)
-        {
-         t0.tv_sec += 1;
-         t0.tv_nsec -= 1000000000;
-        }
-        else if(t0.tv_nsec<0)
-        {
-          t0.tv_sec -= 1;
-          t0.tv_nsec += 1000000000;
-        }
-        temp=t0;
+        WARN("Buffers are too slow %d \n\n\n\n\n\n\n\n", nsec.count());
+        t0 -= nsec;
+        temp = t0;
         lock_miss++;
       }
-      else if(abs(nsec)!=0)
+      else if (nsec != nsec.zero())
       {
         lock_miss++;
-        temp=t0;  
+        temp = t0;
       }
     }
 
-    t1.tv_sec = t0.tv_sec;
-    t1.tv_nsec = t0.tv_nsec;
+    auto t1 = t0;
    
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
     if(packet_buffer==NULL)
@@ -297,7 +264,7 @@ void frbNetworkProcess::main_thread()
         int e_stream = my_sequence_id + stream;
         if(e_stream>255) e_stream -= 256;
         
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
+        std::this_thread::sleep_until(t1);
          
          for(int link=0;link<number_of_l1_links;link++)
          {    
@@ -317,18 +284,12 @@ void frbNetworkProcess::main_thread()
              //if(link==number_of_l1_links) link=0;
            }
          }
-         long wait_per_packet = (long)(58880); 
          
          //61521.25 is the theoretical seperation of packets in ns 
          // I have used 58880 for convinence and also hope this will take care for
          // any clock glitches.
-
-         t1.tv_nsec = t1.tv_nsec+wait_per_packet;
-         if(t1.tv_nsec>=1000000000)
-         {
-           t1.tv_sec = t1.tv_sec + 1;
-           t1.tv_nsec = t1.tv_nsec -1000000000;
-         }
+         const auto wait_per_packet = std::chrono::nanoseconds(58880L);
+         t1 += wait_per_packet;
       }
     }
 
