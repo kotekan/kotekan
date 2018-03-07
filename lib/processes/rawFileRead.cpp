@@ -67,7 +67,10 @@ void rawFileRead::main_thread() {
         if (metadata_size != 0) {
             allocate_new_metadata_object(buf, frame_id);
             struct metadataContainer * mc = get_metadata_container(buf, frame_id);
-            assert(metadata_size == mc->metadata_size);
+            // assert(metadata_size <= mc->metadata_size);
+            assert(metadata_size <= mc->metadata_size);
+            memset(mc + metadata_size, 0, mc->metadata_size - metadata_size);
+
             if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
                 ERROR("rawFileRead: Failed to read file %s metadata,", full_path);
                 break;
@@ -81,6 +84,7 @@ void rawFileRead::main_thread() {
             ERROR("rawFileRead: Failed to read file %s!", full_path);
             break;
         }
+
 
         INFO("rawFileRead: Read frame data from %s into %s[%i]", full_path, buf->buffer_name, frame_id);
         mark_frame_full(buf, unique_name.c_str(), frame_id);

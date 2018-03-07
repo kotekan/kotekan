@@ -24,6 +24,7 @@ struct chimeMetadata {
     int32_t lost_timesamples;
     uint16_t stream_ID;
     struct psrCoord psr_coord;
+    bool is_last_pulsar_frame;
 };
 
 // Helper functions to save lots of pointer work
@@ -68,6 +69,12 @@ inline struct timespec get_gps_time(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->gps_time;
+}
+
+inline bool get_is_last_pulsar_frame(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->is_last_pulsar_frame;
 }
 
 inline void atomic_add_lost_timesamples(struct Buffer * buf, int ID,
@@ -115,6 +122,12 @@ inline void set_gps_time(struct Buffer * buf, int ID, struct timespec time) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     chime_metadata->gps_time = time;
+}
+
+inline void set_is_last_pulsar_frame(struct Buffer * buf, int ID, bool is_last_frame) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->is_last_pulsar_frame = is_last_frame;
 }
 
 #ifdef __cplusplus

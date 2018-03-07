@@ -160,6 +160,7 @@ private:
 
     // Buffers to read/write
     Buffer* in_buf;
+    Buffer* pulsar_buf;
     Buffer* out_buf;
 
     // Parameters saved from the config files

@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <complex.h>
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -172,6 +173,14 @@ visAccumulate::visAccumulate(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
+    // NOTE: requires null check
+    if (config.exists(unique_name, "pulsar_buf")) {
+        pulsar_buf = get_buffer("pulsar_buf");
+        register_consumer(pulsar_buf, unique_name.c_str());
+    } else {
+        pulsar_buf = nullptr;
+    }
+
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
@@ -213,12 +222,14 @@ void visAccumulate::apply_config(uint64_t fpga_seq) {
 void visAccumulate::main_thread() {
 
     int in_frame_id = 0;
+    int pulsar_frame_id = 0;
     int out_frame_id = 0;
 
     uint last_frame_count = 0;
     uint frames_in_this_cycle = 0;
 
     size_t nb = num_elements / block_size;
+    // nprod_gpu is the size of the correlation triangle
     size_t nprod_gpu = nb * (nb + 1) * block_size * block_size / 2;
 
     // Temporary arrays for storing intermediates
@@ -229,15 +240,21 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
+    // Temporary holding thing for pulsar vis
+    int32_t* vis_pulsar_even = new int32_t[2 * nprod_gpu];
+    cfloat* vis_pulsar = new cfloat[nprod_gpu];
+    float* vis_pulsar2 = new float[nprod_gpu];
+
     while (!stop_thread) {
 
-        // Fetch a new frame and get its sequence id
+        // fetch a new frame and get its sequence id
         uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
                                                 in_frame_id);
         if(in_frame == nullptr) break;
 
         int32_t* input = (int32_t *)in_frame;
         uint frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
+        INFO("acc: frame_count = %d", frame_count);
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
@@ -250,21 +267,86 @@ void visAccumulate::main_thread() {
             // Unpack the main visibilities
             float w1 = 1.0 / (num_gpu_frames * samples_per_data_set);
 
-            map_vis_triangle(input_remap, block_size, num_elements,
-                [&](int32_t pi, int32_t bi, bool conj) {
-                    cfloat t = !conj ? vis1[bi] : std::conj(vis1[bi]);
-                    output_frame.vis[pi] = w1 * t;
-                }
-            );
+            if (pulsar_buf != nullptr) {
+                uint8_t* pulsar_frame;
+                // Fetch a new pulsar frame
+                pulsar_frame = wait_for_full_frame(pulsar_buf, unique_name.c_str(),
+                                                   pulsar_frame_id);
 
-            // Unpack and invert the weights
-            map_vis_triangle(input_remap, block_size, num_elements,
-                [&](int32_t pi, int32_t bi, bool conj) {
-                    float t = vis2[bi];
-                    //std::cout << t << std::endl;
-                    output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
+                // Zero out the accumulation arrays
+                std::fill(vis_pulsar, vis_pulsar + nprod_gpu, 0);
+                std::fill(vis_pulsar2, vis_pulsar2 + nprod_gpu, 0);
+
+                int pframe_count = 0;
+                uint64_t pulsar_samples = 0;
+
+                // TODO: Find a better way to avoid the first pulsar frame being null
+                if (pulsar_frame != nullptr) {
+                    int32_t* pulsar = (int32_t *)pulsar_frame;
+
+                    while (pulsar_frame != nullptr && pframe_count < num_gpu_frames/2) {
+                        // Storing the sample num to compute weights
+                        uint64_t lost_samples = get_lost_timesamples(pulsar_buf, pulsar_frame_id);
+                        pulsar_samples += samples_per_data_set - lost_samples;
+
+                        // Accumulate pulsar vis like normal vis
+                        for(size_t i = 0; i < nprod_gpu; i++) {
+                            cfloat t = {(float)pulsar[2*i+1], (float)pulsar[2*i]};
+                            vis_pulsar[i] += t;
+                        }
+
+                        if (get_is_last_pulsar_frame(pulsar_buf, pulsar_frame_id)) break;
+
+                        // Fetch the next pulsar frame
+                        mark_frame_empty(pulsar_buf, unique_name.c_str(), pulsar_frame_id);
+                        pulsar_frame_id = (pulsar_frame_id + 1) % pulsar_buf->num_frames;
+                        pulsar_frame = wait_for_full_frame(pulsar_buf, unique_name.c_str(),
+                                                           pulsar_frame_id);
+                        pframe_count++;
+                    }
                 }
-            );
+
+                float N = num_gpu_frames * samples_per_data_set;
+                float P = (float) pulsar_samples;
+                double alpha = sqrt(P / (N + P));
+
+                map_vis_triangle(input_remap, block_size, num_elements,
+                    [&](int32_t pi, int32_t bi, bool conj) {
+                        cfloat t1 = !conj ? vis1[bi] : std::conj(vis1[bi]);
+                        cfloat tp = !conj ? vis_pulsar[bi] : std::conj(vis_pulsar[bi]);
+                        output_frame.vis[pi] = (float) alpha * ((float)(1./P) * tp - (float)(1./N) * t1);
+                    }
+                );
+
+                // Unpack and invert the weights
+                map_vis_triangle(input_remap, block_size, num_elements,
+                    [&](int32_t pi, int32_t bi, bool conj) {
+                        float t = vis2[bi];
+                        output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
+                    }
+                );
+            } else {
+                INFO("\n\n\n raw visibilities");
+                for (int k = 0; k < 5; k++) {
+                     INFO("vis1[%d]: ", k);
+                     std::cout << vis1[k] << std::endl;
+                }
+
+                map_vis_triangle(input_remap, block_size, num_elements,
+                    [&](int32_t pi, int32_t bi, bool conj) {
+                        cfloat t = !conj ? vis1[bi] : std::conj(vis1[bi]);
+                        output_frame.vis[pi] = w1 * t;
+                    }
+                );
+
+                // Unpack and invert the weights
+                map_vis_triangle(input_remap, block_size, num_elements,
+                    [&](int32_t pi, int32_t bi, bool conj) {
+                        float t = vis2[bi];
+                        output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
+                    }
+                );
+            }
 
             // Set the actual amount of time we accumulated for 
             output_frame.fpga_seq_total = frames_in_this_cycle * samples_per_data_set;
@@ -332,7 +414,7 @@ void visAccumulate::main_thread() {
 
         // TODO: gating should go in here. Gates much be created such that the
         // squared sum of the weights is equal to 1.
-
+        get_fpga_seq_num(in_buf, in_frame_id);
         // Move the input buffer on one step
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
@@ -344,6 +426,9 @@ void visAccumulate::main_thread() {
     delete[] vis_even;
     delete[] vis1;
     delete[] vis2;
+    delete[] vis_pulsar_even;
+    delete[] vis_pulsar;
+    delete[] vis_pulsar2;
 }
 
 
