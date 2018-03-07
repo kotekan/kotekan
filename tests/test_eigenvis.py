@@ -1,24 +1,27 @@
-import pytest
+# import pytest
 import numpy as np
 
 import kotekan_runner
 
-params = {
-    'num_elements': 4,
-    'num_eigenvectors': 1,
+default_params = {
+    'num_elements': 200,
+    'num_eigenvectors': 4,
     'total_frames': 16,
-    'cadence': 5.0,
+    'cadence': 10.0,
     'mode': 'phase_ij',
+    # 'mode': 'fill_ij',
     'freq': [0],
     'buffer_depth': 5,
     'num_diagonals_filled': 0
      }
 
 
-@pytest.fixture(scope="module")
-def eigen_data(tmpdir_factory):
+def run_eigenvis(tdir_factory, params=None):
 
-    tmpdir = tmpdir_factory.mktemp("eigenvis")
+    if not params:
+        params = default_params
+
+    tmpdir = tdir_factory.mktemp("eigenvis")
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
             freq_ids=params['freq'],
@@ -36,17 +39,22 @@ def eigen_data(tmpdir_factory):
     )
 
     test.run()
-    yield dump_buffer.load()
+    return dump_buffer.load()
 
 
-def test_data(eigen_data):
+def test_basic(tmpdir_factory):
 
-    rows, cols = np.triu_indices(params['num_elements'])
-
-    # test_pattern = (rows + 1.0J * cols).astype(np.complex64)
+    eigen_data = run_eigenvis(tmpdir_factory)
+    params = default_params
+    num_elements = params['num_elements']
+    expected_evec_phase = np.exp(1j * np.arange(num_elements))
 
     for frame in eigen_data:
-        print(frame.evals)
-        print(frame.evecs)
-        print(frame.vis)
-        # assert (frame.vis == test_pattern).all()
+        largeset_eval = frame.evals[-1]
+        largeset_evec = frame.evecs[-num_elements:]
+        assert abs(largeset_eval - num_elements) / num_elements < 1e-6
+        assert np.allclose(largeset_evec / largeset_evec[0],
+                           expected_evec_phase)
+        assert np.allclose(abs(largeset_evec), 1 / np.sqrt(num_elements))
+        zero_eval = frame.evals[-2]
+        assert zero_eval / num_elements < 1e-6

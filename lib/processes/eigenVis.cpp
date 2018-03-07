@@ -102,7 +102,7 @@ void eigenVis::main_thread() {
                 prod_ind++;
             }
             for(int j = i + num_diagonals_filled; j < num_elements; j++) {
-                vis_square[i * num_elements + j] = input_frame.vis[prod_ind];
+                vis_square[i * num_elements + j] = std::conj(input_frame.vis[prod_ind]);
                 prod_ind++;
             }
         }
@@ -116,7 +116,11 @@ void eigenVis::main_thread() {
                               (lapack_complex_float *) evecs.data(),
                               nside, NULL);
 
-        INFO("LAPACK exit status: %d", info);
+        DEBUG("LAPACK exit status: %d", info);
+        if (info) {
+            ERROR("LAPACK failed with exit code %d", info);
+            break;
+        }
 
         // Update the stored eigenvectors for the next iteration.
         for(int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
