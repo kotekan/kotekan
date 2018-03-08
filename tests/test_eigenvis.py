@@ -58,3 +58,27 @@ def test_basic(tmpdir_factory):
         assert np.allclose(abs(largeset_evec), 1 / np.sqrt(num_elements))
         zero_eval = frame.evals[-2]
         assert zero_eval / num_elements < 1e-6
+        assert frame.rms < 1e-6
+
+
+def test_filled(tmpdir_factory):
+
+    params = dict(default_params)
+    params['num_diagonals_filled'] = 10
+    eigen_data = run_eigenvis(tmpdir_factory, params)
+    num_elements = params['num_elements']
+    expected_evec_phase = np.exp(1j * np.arange(num_elements))
+
+    for frame in eigen_data[8:]:
+        largeset_eval = frame.evals[-1]
+        largeset_evec = frame.evecs[-num_elements:]
+        assert abs(largeset_eval - num_elements) / num_elements < 1e-4
+        assert np.allclose(largeset_evec / largeset_evec[0],
+                           expected_evec_phase, rtol=1e-3)
+        assert np.allclose(abs(largeset_evec),
+                           1 / np.sqrt(num_elements), rtol=1e-3)
+        assert frame.rms < 1e-6
+
+
+
+# Need to test input zeroing.

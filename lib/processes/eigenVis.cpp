@@ -102,6 +102,7 @@ void eigenVis::main_thread() {
                 prod_ind++;
             }
             for(int j = i + num_diagonals_filled; j < num_elements; j++) {
+                // Conjugate because Fortran interprets as lower triangle.
                 vis_square[i * num_elements + j] = std::conj(input_frame.vis[prod_ind]);
                 prod_ind++;
             }
@@ -141,8 +142,8 @@ void eigenVis::main_thread() {
             for(int j = i + num_diagonals_filled; j < num_elements; j++) {
                 cfloat residual = input_frame.vis[prod_ind];
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-                    residual -= (std::conj(last_evs[freq_id][ev_ind * num_elements + i])
-                                 * last_evs[freq_id][ev_ind * num_elements + j]);
+                    residual -= (last_evs[freq_id][ev_ind * num_elements + i]
+                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + j]));
                 }
                 sum_sq += std::norm(residual);
                 nprod_sum++;
