@@ -100,6 +100,10 @@ void dpdkWrapper::main_thread() {
         network_dpdk_args->enable_shuffle = 1;
         network_dpdk_args->dump_full_packets = 0;
         network_dpdk_args->fake_stream_ids = 0;
+        network_dpdk_args->lcore_port_mapping[0] = 0;
+        network_dpdk_args->lcore_port_mapping[1] = 1;
+        network_dpdk_args->lcore_port_mapping[6] = 2;
+        network_dpdk_args->lcore_port_mapping[7] = 3;
 
     } else if (_mode == "packet_cap") {
         INFO("DPDK mode: packet_cap");
@@ -115,6 +119,10 @@ void dpdkWrapper::main_thread() {
         }
         network_dpdk_args->enable_shuffle = 1;
         network_dpdk_args->dump_full_packets = 1;
+        network_dpdk_args->lcore_port_mapping[0] = 0;
+        network_dpdk_args->lcore_port_mapping[1] = 1;
+        network_dpdk_args->lcore_port_mapping[6] = 2;
+        network_dpdk_args->lcore_port_mapping[7] = 3;
     } else if (_mode == "no_shuffle") {
         INFO("DPDK mode: no_shuffle");
         int current_gpu_id = 0;
@@ -145,6 +153,10 @@ void dpdkWrapper::main_thread() {
         }
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
+        network_dpdk_args->lcore_port_mapping[0] = 0;
+        network_dpdk_args->lcore_port_mapping[1] = 1;
+        network_dpdk_args->lcore_port_mapping[4] = 2;
+        network_dpdk_args->lcore_port_mapping[5] = 3;
     } else if (_mode == "vdif") {
         INFO("DPDK mode: vdif");
         for (int i = 0; i < _num_fpga_links; ++i) {
@@ -156,6 +168,10 @@ void dpdkWrapper::main_thread() {
         }
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
+        network_dpdk_args->lcore_port_mapping[0] = 0;
+        network_dpdk_args->lcore_port_mapping[1] = 1;
+        network_dpdk_args->lcore_port_mapping[4] = 2;
+        network_dpdk_args->lcore_port_mapping[5] = 3;
     } else {
         ERROR("DPDK Mode %s not supported!", _mode.c_str());
         return;

@@ -897,8 +897,13 @@ int lcore_recv_pkt(void *args)
     INFO("lcore ID: %d", lcore);
     // Because of the way that we launch the network thread we run the master cores out
     // side of the DPDK RTE framework, so the lcore id of the master core becomes -1.
-    if (lcore == -1)
+    if (lcore == -1) {
         lcore = 0;
+    } else {
+        assert(lcore < MAX_CORES);
+        lcore = dpdk_net->args->lcore_port_mapping[lcore];
+    }
+
 
     const int port_offset = dpdk_net->args->port_offset[lcore];
     for (port = port_offset;
