@@ -20,6 +20,7 @@ visFile::visFile(const std::string& name,
                  const std::string& root_path,
                  const std::string& inst_name,
                  const std::string& notes,
+                 const std::string& weights_type,
                  const std::vector<freq_ctype>& freqs,
                  const std::vector<input_ctype>& inputs) {
 
@@ -41,7 +42,7 @@ visFile::visFile(const std::string& name,
     );
 
     createIndex(freqs, inputs);
-    createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2);
+    createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2, weights_type);
 
     // === Set the required attributes for a valid file ===
     std::string version = "NT_3.1.0";
@@ -111,7 +112,8 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
 
 }
 
-void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
+void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod,
+                             std::string weights_type) {
 
     // Create extensible spaces for the different types of spaces we have
     DataSpace vis_space = DataSpace({0, nfreq, nprod},
@@ -143,6 +145,8 @@ void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod) {
     );
     vis_weight.createAttribute<std::string>(
         "axis", DataSpace::From(vis_axes)).write(vis_axes);
+    vis_weight.createAttribute<std::string>(
+        "type", DataSpace::From(weights_type)).write(weights_type);
 
 
     DataSet gain_coeff = file->createDataSet(
@@ -276,6 +280,7 @@ visFileBundle::visFileBundle(const std::string root_path,
                              int freq_chunk,
                              const std::string instrument_name,
                              const std::string notes,
+                             const std::string weights_type,
                              const std::vector<freq_ctype>& freqs,
                              const std::vector<input_ctype>& inputs,
                              size_t rollover, size_t window_size) :
@@ -284,6 +289,7 @@ visFileBundle::visFileBundle(const std::string root_path,
     freq_chunk(freq_chunk),
     instrument_name(instrument_name),
     notes(notes),
+    weights_type(weights_type),
     freqs(freqs),
     inputs(inputs),
     rollover(rollover),
@@ -390,7 +396,7 @@ void visFileBundle::addFile(time_ctype first_time) {
 
     // Create the file, create room for the first sample and add into the file map
     auto file = std::make_shared<visFile>(
-        file_name, acq_name, root_path, instrument_name, "", freqs, inputs
+        file_name, acq_name, root_path, instrument_name, "", weights_type, freqs, inputs
     );
     auto ind = file->extendTime(first_time);
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);

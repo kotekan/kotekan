@@ -53,6 +53,8 @@ private:
     struct event_base *base;
     void base_thread();
 
+    size_t dropped_frame_count = 0;
+
 };
 
 enum class connState {

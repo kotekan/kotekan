@@ -30,6 +30,11 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @par Metrics
+ * @metric kotekan_viswriter_write_time_seconds
+ *         The write time of the HDF5 writer. An exponential moving average over ~10
+ *         samples.
+ *
  * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
  * @conf   root_path        String. Location in filesystem to write to.
  * @conf   instrument_name  String (default: chime). Name of the instrument
@@ -42,6 +47,9 @@
  *                          are used and are expected to be @c channel_id and
  *                          @c channel_serial (the first contains the @c adc_id
  *                          used for reordering om ``visTransform``)
+ * @conf   weights_type     Indicate what the visibility weights represent, e.g,
+ *                          'inverse_var'. Will saved as an attribute in the saved
+ *                          file. (default 'unknown')
  *
  * @author Richard Shaw
  */
@@ -69,6 +77,7 @@ private:
     size_t num_freq;
     std::string root_path;
     std::string instrument_name;
+    std::string weights_type;
 
     // The current file of visibilities that we are writing
     std::unique_ptr<visFileBundle> file_bundle;
@@ -90,6 +99,9 @@ private:
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;
+
+    /// Keep track of the average write time
+    movingAverage write_time;
 };
 
 #endif

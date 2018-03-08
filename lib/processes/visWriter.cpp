@@ -1,14 +1,14 @@
 #include "visWriter.hpp"
-#include "visFile.hpp"
 #include "visBuffer.hpp"
-#include "visUtil.hpp"
 #include "util.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
+#include "prometheusMetrics.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
+#include <time.h>
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 
@@ -28,6 +28,9 @@ visWriter::visWriter(Config& config,
 
     // Get the input labels
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
+
+    // If specified, get the weights type to write to attributes
+    weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
@@ -58,9 +61,7 @@ void visWriter::apply_config(uint64_t fpga_seq) {
 
 void visWriter::main_thread() {
 
-
     unsigned int frame_id = 0;
-
 
     // Look over the current buffers for information to setup the acquisition
     init_acq();
@@ -99,8 +100,19 @@ void visWriter::main_thread() {
             std::vector<int32_t> gain_exp(inputs.size(), 0);
 
             // Add all the new information to the file.
+            double start = current_time();
             file_bundle->addSample(t, freq_ind, vis, vis_weight,
                                    gain_coeff, gain_exp);
+            double elapsed = current_time() - start;
+
+            DEBUG("Write time %.5f s", elapsed);
+
+            // Update average write time in prometheus
+            write_time.add_sample(elapsed);
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_viswriter_write_time_seconds",
+                unique_name, write_time.average()
+            );
         }
 
         // Mark the buffer and move on
@@ -135,7 +147,7 @@ void visWriter::init_acq() {
     std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
          new visFileBundle(
-             root_path, chunk_id, instrument_name, notes, freqs, inputs
+             root_path, chunk_id, instrument_name, notes, weights_type, freqs, inputs
          )
     );
 }

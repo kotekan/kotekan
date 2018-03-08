@@ -71,10 +71,18 @@ public:
      * Note the time this function was last called is also stored with the value
      * so even if the value might not update, it can still be useful in some cases
      * to call this function to update the time stamp associated with the metric.
-     *
+     * 
      * Note metrics should follow the prometheus metric name and label
      * conventions which can be found here: https://prometheus.io/docs/practices/naming/
      *
+     * In particular, metrics must be named to follow certain conventions. They
+     * should be prefixed by `kotekan_<processtype>_` where `<process_type>` is
+     * the class name of the process in lower case, followed by the rest of the
+     * metric name, which should satisfy the standard prometheus guidelines.
+     * For example `kotekan_viswriter_write_time_seconds`.
+     *
+     * Also note that label values must be surrounded by double quotes.
+     * 
      * @param name The name of the metric.
      * @param process_name The unique process name, normally @c unique_name.
      * @param value The value associated with this metric.
@@ -129,7 +137,8 @@ private:
      * @brief A template class for storing a numeric value which can be converted
      *        to a string with @c std::to_string()
      */
-    template <class T>
+    template <typename T,
+              typename = std::enable_if<std::is_arithmetic<T>::value>>
     struct processMetric : public metric {
         /// The actual value to be returned
         T value;
@@ -155,9 +164,6 @@ private:
 
     /// Metric updating lock
     std::mutex metrics_lock;
-
-    /// The system hostname, used to set the "instance" label automatically.
-    string hostname;
 };
 
 #endif /* PROMETHEUS_METRICS_HPP */
