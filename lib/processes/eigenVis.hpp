@@ -3,6 +3,7 @@
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "visUtil.hpp"
 
 /**
  * @class eigenVis
@@ -19,6 +20,11 @@
  * @buffer out_buf The merged and transformed buffer
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
+ *
+ * @par Metrics
+ * @metric kotekan_eigenvis_comp_time_seconds
+ *         Time required to find eigenvectors. An exponential moving average over
+ *         ~10 samples.
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
@@ -50,6 +56,9 @@ private:
     int32_t num_diagonals_filled;
     /// List of input indeces to zero prior to decomposition.
     std::vector<int32_t> exclude_inputs;
+
+    /// Keep track of the average write time
+    movingAverage calc_time;
 
 };
 

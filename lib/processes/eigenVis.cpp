@@ -3,9 +3,11 @@
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
+#include "prometheusMetrics.hpp"
 
 #include <cblas.h>
 #include <lapacke.h>
+#include <time.h>
 
 REGISTER_KOTEKAN_PROCESS(eigenVis);
 
@@ -69,6 +71,9 @@ void eigenVis::main_thread() {
             break;
         }
         auto input_frame = visFrameView(input_buffer, input_frame_id);
+
+        // Start the calculation clock.
+        double start_time = current_time();
 
         if (!initialized) {
             num_elements = input_frame.num_elements;
@@ -171,12 +176,24 @@ void eigenVis::main_thread() {
         }
         double rms = sum_sq / nprod_sum;
 
+        // Stop the calculation clock. This doesn't include time to copy stuff into
+        // the buffers, but that has to wait for one to be available.
+        double elapsed_time = current_time() - start_time;
+
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (int i = 0; i < num_eigenvectors; i++) {
             str_evals += " " + std::to_string(evals[i]);
         }
-        INFO("Found eigenvalues:%s, with RMS residuals: %e.", str_evals.c_str(), rms);
+        INFO("Found eigenvalues:%s, with RMS residuals: %e, in %3.1f s.",
+             str_evals.c_str(), rms,elapsed_time);
+
+        // Update average write time in prometheus
+        calc_time.add_sample(elapsed_time);
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_eigenvis_comp_time_seconds",
+            unique_name, calc_time.average()
+        );
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
         if (wait_for_empty_frame(output_buffer, unique_name.c_str(),
