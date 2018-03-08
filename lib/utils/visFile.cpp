@@ -248,34 +248,6 @@ void visFile::writeSample(
 }
 
 
-size_t visFile::addSample(
-    time_ctype new_time, uint32_t freq_ind, std::vector<cfloat> new_vis,
-    std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
-    std::vector<int32_t> new_gexp
-) {
-
-    size_t ntime = num_time();
-    uint32_t time_ind = ntime - 1;
-
-    // Get the latest time in the file
-    time_ctype last_time;
-
-    if(ntime > 0) {
-        time().select({time_ind}, {1}).read(&last_time);
-    }
-
-    // If we haven't seen the new time add it to the time axis and extend the time
-    // dependent datasets
-    if(ntime == 0 || new_time.fpga_count > last_time.fpga_count) {
-        time_ind = extendTime(new_time);
-        ntime++;
-    }
-
-    writeSample(time_ind, freq_ind, new_vis, new_weight, new_gcoeff, new_gexp);
-    return ntime;
-}
-
-
 visFileBundle::visFileBundle(const std::string root_path,
                              int freq_chunk,
                              const std::string instrument_name,
@@ -301,14 +273,7 @@ visFileBundle::visFileBundle(const std::string root_path,
 }
 
 
-void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
-                              std::vector<cfloat> new_vis,
-                              std::vector<float> new_weight,
-                              std::vector<cfloat> new_gcoeff,
-                              std::vector<int32_t> new_gexp) {
-
-    std::shared_ptr<visFile> file;
-    uint32_t ind;
+bool visFileBundle::resolveSample(time_ctype new_time) {
 
     uint64_t count = new_time.fpga_count;
 
@@ -326,13 +291,15 @@ void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
             INFO("Dropping integration as buffer (FPGA count: %" PRIu64
                  ") arrived too late (minimum in pool %" PRIu64 ")",
                  new_time.fpga_count, min_fpga);
-            return;
+            return false;
         }
 
         if(count > max_fpga) {
             // We've got a later time and so we need to add a new time sample,
             // if the current file does not need to rollover register the new
             // sample as being in the last file, otherwise create a new file
+            std::shared_ptr<visFile> file;
+            uint32_t ind;
             std::tie(file, ind) = vis_file_map.rbegin()->second;  // Unpack the last entry
 
             if(file->num_time() < rollover) {
@@ -357,14 +324,25 @@ void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
         // axis be out of order, so we just skip it for now.
         INFO("Skipping integration (FPGA count %" PRIu64
              ") as it would be written out of order.", count);
-        return;
+        return false;
     }
 
-    // We can now safely add the sample into the file
-    std::tie(file, ind) = vis_file_map[count];
-    file->writeSample(ind, freq_ind, new_vis, new_weight,
-                      new_gcoeff, new_gexp);
+    return true;
+}
 
+void visFileBundle::addSample(time_ctype new_time, uint32_t freq_ind,
+                              std::vector<cfloat> new_vis,
+                              std::vector<float> new_weight,
+                              std::vector<cfloat> new_gcoeff,
+                              std::vector<int32_t> new_gexp) {
+    if(resolveSample(new_time)) {
+        std::shared_ptr<visFile> file;
+        uint32_t ind;
+        // We can now safely add the sample into the file
+        std::tie(file, ind) = vis_file_map[new_time.fpga_count];
+        file->writeSample(ind, freq_ind, new_vis, new_weight,
+                        new_gcoeff, new_gexp);
+    }
 }
 
 void visFileBundle::addFile(time_ctype first_time) {

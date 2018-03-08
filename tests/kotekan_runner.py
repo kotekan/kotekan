@@ -220,13 +220,17 @@ class KotekanProcessTester(KotekanRunner):
 
         config = process_config.copy()
 
-        if isinstance(buffers_in, (list, tuple)):
+        if buffers_in is None:
+            buffers_in = []
+        elif isinstance(buffers_in, (list, tuple)):
             config['in_bufs'] = [buf.name for buf in buffers_in]
         else:
             config['in_buf'] = buffers_in.name
             buffers_in = [buffers_in]
 
-        if isinstance(buffers_out, (list, tuple)):
+        if buffers_out is None:
+            buffers_out = []
+        elif isinstance(buffers_out, (list, tuple)):
             config['out_bufs'] = [buf.name for buf in buffers_out]
         else:
             config['out_buf'] = buffers_out.name
