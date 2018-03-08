@@ -105,9 +105,8 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
             }
         }
         else {
-            uint32_t file_length = sizeof(float)*2*2048;
-            if (file_length != fread(host_gain,file_length,1,ptr_myfile)){
-                ERROR("Gain file wasn't long enough! Something went wrong, breaking...");
+            if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
+                ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
             }
             fclose(ptr_myfile);
             for (uint32_t i=0; i<2048; i++){

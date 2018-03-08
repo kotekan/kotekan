@@ -184,6 +184,16 @@ vector<float> Config::get_float_array(const string& base_path, const string& nam
     return value.get< vector<float> >();
 }
 
+vector<int32_t> Config::get_int_array_default(const string& base_path, const string& name, vector<int32_t> default_value) {
+    try {
+        vector<int32_t> value = get_int_array(base_path, name);
+        return value;
+    }  catch (std::exception const & ex) {
+        return default_value;
+    }
+
+}
+
 vector<float> Config::get_float_array_default(const string& base_path, const string& name, vector<float> default_value) {
     try {
         vector<float> value = get_float_array(base_path, name);
