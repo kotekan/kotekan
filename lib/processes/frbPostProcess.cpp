@@ -135,12 +135,12 @@ void frbPostProcess::main_thread() {
                                         ft+= (sizeof(__m256)/sizeof(float))){ //loop over time/freq
                         int idx = ft;
                         int idx_next = b * num_samples * _factor_upchan_out;
-                        __m256 _a = _mm256_loadu_ps(ib + thread_id*num_samples*_factor_upchan_out + idx);
-                        __m256 _b = _mm256_loadu_ps(in_data+idx+idx_next);
+                        __m256 _a = _mm256_load_ps(ib + thread_id*num_samples*_factor_upchan_out + idx);
+                        __m256 _b = _mm256_load_ps(in_data+idx+idx_next);
                         //limit the max value in e.g. the coherent beam
                         _b = _mm256_min_ps(_b,_ce);
                         __m256 _c = _mm256_fmadd_ps(_b,_norm,_a);
-                        _mm256_storeu_ps(ib + thread_id*num_samples*_factor_upchan_out + idx, _c);
+                        _mm256_store_ps(ib + thread_id*num_samples*_factor_upchan_out + idx, _c);
                     }
                 }
             }
@@ -165,14 +165,14 @@ void frbPostProcess::main_thread() {
                         float min, max;
                         int idx = T*_factor_upchan_out;
                         // AVX2 option, fastest of a few I tried
-                        __m256 _cA = _mm256_loadu_ps(in_data+idx  );
-                        __m256 _cB = _mm256_loadu_ps(in_data+idx+8);
+                        __m256 _cA = _mm256_load_ps(in_data+idx  );
+                        __m256 _cB = _mm256_load_ps(in_data+idx+8);
                         __m256 _mx = _mm256_max_ps(_cA,_cB);
                         __m256 _mn = _mm256_min_ps(_cA,_cB);
                         for (int t=1;t<16;t++){
                             idx += 16;
-                            _cA = _mm256_loadu_ps(in_data+idx  );
-                            _cB = _mm256_loadu_ps(in_data+idx+8);
+                            _cA = _mm256_load_ps(in_data+idx  );
+                            _cB = _mm256_load_ps(in_data+idx+8);
                             _mx = _mm256_max_ps(_mx,_mm256_max_ps(_cA,_cB));
                             _mn = _mm256_min_ps(_mn,_mm256_min_ps(_cA,_cB));
                         }
@@ -198,7 +198,7 @@ void frbPostProcess::main_thread() {
                         for (int t=0; t<_timesamples_per_frb_packet; t++){
                             for (int f=0; f<_factor_upchan_out; f+=f_per_m){
                                 uint32_t in_index  = (T+t) * _factor_upchan_out + f;
-                                __m256 _in = _mm256_loadu_ps(in_data+in_index);
+                                __m256 _in = _mm256_load_ps(in_data+in_index);
                                 __m256 _out = _mm256_fmadd_ps(_in,_scl,_ofs); //now [0-255]
                                 //extract -- probably a better way to do this...
                                 __m256i _y = _mm256_cvtps_epi32(_out); // Convert them to 32-bit ints
