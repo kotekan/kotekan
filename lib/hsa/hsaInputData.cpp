@@ -62,7 +62,10 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id)
         double delay = _random_delay - (current_time - (d_recv_time + expected_delay));
         DEBUG2("frame_time: %f, expected_delay: %f, current_time: %f, random_delay: %f, actual delay: %f",
                 d_recv_time, expected_delay, current_time, _random_delay, delay);
-        if (delay > 0)
+        // The above forumal shouldn't produce a delay less than _random_dela, unless
+        // something is wrong with the time value given, in which case this delay
+        // could cause the system to become unstable, so the second condition guards against this.
+        if (delay > 0 && delay < (_random_delay + 0.01))
             usleep((int)(delay*1000000));
     }
 
