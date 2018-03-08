@@ -11,6 +11,7 @@
 #include "frb_functions.h"
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
+#include <emmintrin.h>
 
 using std::vector;
 
