@@ -26,7 +26,16 @@ prodSubset::prodSubset(Config &config,
     type = config.get_string(unique_name, "type");
 
     if (type == "autos") {
-        subset_num_prod = num_elements;
+        int idx = 0;
+        for (int ii=0; ii<num_elements; ii++) {
+            for (int jj=ii; jj<num_elements; jj++) {
+                // Only add auto-correlations
+                if (jj==ii) {
+                    prod_ind.push_back(idx);
+                }
+                idx++;
+            }
+        }
     } else if (type == "baseline") {
         // Define criteria for baseline selection based on config parameters
         xmax = config.get_int(unique_name, "max_ew_baseline");
@@ -38,8 +47,8 @@ prodSubset::prodSubset(Config &config,
                 prod_ind.push_back(i);
             }
         }
-        subset_num_prod = prod_ind.size();
     }
+    subset_num_prod = prod_ind.size();
 }
 
 void prodSubset::apply_config(uint64_t fpga_seq) {
@@ -75,25 +84,10 @@ void prodSubset::main_thread() {
                                      num_elements, subset_num_prod,
                                      num_eigenvectors);
 
-        if (type == "autos") {
-            // Copy auto correlations:
-            int idx = 0;
-            for (int ii=0; ii<input_frame.num_elements; ii++) {
-                for (int jj=ii; jj<input_frame.num_elements; jj++) {
-                    //
-                    if (jj==ii) {
-                        output_frame.vis[ii] = input_frame.vis[idx];
-                        output_frame.weight[ii] = input_frame.weight[idx];
-                    }
-                    idx++;
-                }
-            }
-        } else if (type == "baseline") {
-            // Copy over subset of visibilities
-            for (size_t i = 0; i < subset_num_prod; i++) {
-                output_frame.vis[i] = input_frame.vis[prod_ind[i]];
-                output_frame.weight[i] = input_frame.weight[prod_ind[i]];
-            }
+        // Copy over subset of visibilities
+        for (size_t i = 0; i < subset_num_prod; i++) {
+            output_frame.vis[i] = input_frame.vis[prod_ind[i]];
+            output_frame.weight[i] = input_frame.weight[prod_ind[i]];
         }
 
         // Copy the non-visibility parts of the buffer

@@ -17,9 +17,12 @@
  * @class prodSubset
  * @brief ``KotekanProcess`` that consumes a full set of visibilities from a ``visBuffer``
  *        and passes on a subset of products to an output ``visBuffer``.
- * The subset extracted depends on the parameter 'type'. 
- * For type==autos the subset are all the auto-correlations.
- * For type==baseline this process selects a subset of Pathfinder-scale baselines from the full visibility
+ * The subset extracted depends on the parameter 'type'. Here is a list of values
+ * 'type' can take and the parameters they support: 
+ * ['autos':
+ *  'baseline': [max_ew_baseline, max_ns_baseline] ]
+ * type==autos: the subset are all the auto-correlations.
+ * type==baseline: this process selects a subset of Pathfinder-scale baselines from the full visibility
  * array and passes those on to an output buffer. The conditions that define the subset
  * are specified in the config as maximum baseline lengths in the EW and NS directions.
  *
@@ -35,11 +38,11 @@
  * @conf  in_buf            string. Name of buffer to read from.
  * @conf  type              string. Type of product subset to perform.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
-+*                               correlator data (read from "/")
++*                               correlator data
 +* @conf  block_size        int. The block size of the packed data (read from "/")
  * @conf  num_prod          int. The number of products in the correlator data
  * @conf  subset_num_prod   int. The number of products in the subset data
- *                               (before subsetting) (read from "/")
+ *                               (before subsetting)
 +* @conf  num_eigenvectors  int. The number of eigenvectors to be stored
  * @conf  max_ew_baseline   int. The maximum baseline length along the EW direction to
  *                               include in subset (in units of the shortest EW baseline)
