@@ -69,8 +69,8 @@ if (${USE_HDF5})
 endif ()
 
 if (${USE_LAPACK})
-  include_directories (${OpenBLAS_INCLUDE_DIRS})
-  target_link_libraries ( kotekan_processes  ${OpenBLAS_LIBRARIES} )
+  include_directories (${OpenBLAS_INCLUDE_DIRS} ${LAPACK_INCLUDE_DIRS})
+  target_link_libraries ( kotekan_processes  ${OpenBLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 endif ()
 
 target_link_libraries( kotekan_processes kotekan_utils kotekan_core )
