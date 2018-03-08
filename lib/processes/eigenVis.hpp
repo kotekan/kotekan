@@ -48,6 +48,9 @@ private:
 
     int32_t num_eigenvectors;
     int32_t num_diagonals_filled;
+    /// List of input indeces to zero prior to decomposition.
+    std::vector<int32_t> exclude_inputs;
+
 };
 
 #endif

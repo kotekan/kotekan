@@ -23,6 +23,15 @@ eigenVis::eigenVis(Config& config,
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
     num_diagonals_filled =  config.get_int_default(unique_name,
                                                    "num_diagonals_filled", 0);
+    // Read a list from the config, but permit it to be absent (implying empty).
+    try {
+        for (auto e : config.get_int_array(unique_name, "exclude_inputs")) {
+            exclude_inputs.push_back((int32_t) e);
+        }
+    } catch (std::runtime_error const & ex) {
+        // Missing, leave empty.
+    }
+
 }
 
 eigenVis::~eigenVis() {
@@ -91,8 +100,8 @@ void eigenVis::main_thread() {
         // Fill the upper half (lower in fortran order!) of the square version
         // of the visibilities.
         int prod_ind = 0;
-        for(int i = 0; i < num_elements; i++) {
-            for(int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
+        for (int i = 0; i < num_elements; i++) {
+            for (int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
                 cfloat value = 0;
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     value += (std::conj(last_evs[freq_id][ev_ind * num_elements + i])
@@ -101,10 +110,20 @@ void eigenVis::main_thread() {
                 vis_square[i * num_elements + j] = value;
                 prod_ind++;
             }
-            for(int j = i + num_diagonals_filled; j < num_elements; j++) {
+            for (int j = i + num_diagonals_filled; j < num_elements; j++) {
                 // Conjugate because Fortran interprets as lower triangle.
                 vis_square[i * num_elements + j] = std::conj(input_frame.vis[prod_ind]);
                 prod_ind++;
+            }
+        }
+
+        // Go through and zero out data in excluded rows and columns.
+        for (auto iexclude : exclude_inputs) {
+            for (int j = 0; j < iexclude; j++) {
+                vis_square[j * num_elements + iexclude] = {0, 0};
+            }
+            for (int j = iexclude; j < num_elements; j++) {
+                vis_square[iexclude * num_elements + j] = {0, 0};
             }
         }
 
@@ -124,8 +143,8 @@ void eigenVis::main_thread() {
         }
 
         // Update the stored eigenvectors for the next iteration.
-        for(int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-            for(int i = 0; i < num_elements; i++) {
+        for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+            for (int i = 0; i < num_elements; i++) {
                 last_evs[freq_id][ev_ind * num_elements + i] =
                     std::sqrt(evals[ev_ind]) * evecs[ev_ind * num_elements + i];
             }
@@ -135,11 +154,11 @@ void eigenVis::main_thread() {
         prod_ind = 0;
         double sum_sq = 0;
         int nprod_sum = 0;
-        for(int i = 0; i < num_elements; i++) {
-            for(int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
+        for (int i = 0; i < num_elements; i++) {
+            for (int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
                 prod_ind++;
             }
-            for(int j = i + num_diagonals_filled; j < num_elements; j++) {
+            for (int j = i + num_diagonals_filled; j < num_elements; j++) {
                 cfloat residual = input_frame.vis[prod_ind];
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     residual -= (last_evs[freq_id][ev_ind * num_elements + i]
