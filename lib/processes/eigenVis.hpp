@@ -36,6 +36,9 @@
  *                              factorization. For example, setting to 1 will replace
  *                              the main diagonal only. Filled with zero on the first
  *                              time step.
+ * @conf  exclude_inputs        List of Ints, optional. Inputs to exclude (rows and
+ *                              columns to set to zero) in visibilities prior to
+ *                              factorization.
  *
  * @author Kiyoshi Masui
  */
