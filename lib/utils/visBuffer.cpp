@@ -115,6 +115,25 @@ std::string visFrameView::summary() const {
 }
 
 
+// Copy the non-const parts of the metadata
+void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
+    metadata->fpga_seq_num = frame_to_copy.metadata->fpga_seq_num;
+    metadata->ctime = frame_to_copy.metadata->ctime;
+    metadata->freq_id = frame_to_copy.metadata->freq_id;
+    metadata->dataset_id = frame_to_copy.metadata->dataset_id;
+}
+
+// Copy the non-visibility parts of the buffer
+void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
+    std::copy(frame_to_copy.eigenvalues.begin(), 
+              frame_to_copy.eigenvalues.end(), 
+              eigenvalues.begin());
+    std::copy(frame_to_copy.eigenvectors.begin(),
+              frame_to_copy.eigenvectors.end(), 
+              eigenvectors.begin());
+    rms = frame_to_copy.rms;
+}
+
 struct_layout visFrameView::calculate_buffer_layout(
     uint32_t num_elements, uint32_t num_prod, uint32_t num_eigenvectors
 )

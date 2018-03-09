@@ -35,7 +35,8 @@ public:
             const std::string& notes,
             const std::string& weights_type,
             const std::vector<freq_ctype>& freqs,
-            const std::vector<input_ctype>& inputs);
+            const std::vector<input_ctype>& inputs,
+            const std::vector<prod_ctype>& prods);
     ~visFile();
 
 
@@ -69,7 +70,8 @@ private:
 
     // Create the index maps from the frequencies and the inputs
     void createIndex(const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs);
+                     const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods);
 
     // Create the main visibility holding datasets
     void createDatasets(size_t nfreq, size_t ninput, size_t nprod,
@@ -109,6 +111,8 @@ public:
     /// \param weights_type What the visibility weights represent (e.g. 'inverse_var')
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
+    //~visFileBundle();
+
     visFileBundle(const std::string acq_name,
                   int freq_chunk,
                   const std::string instrument_name,
@@ -116,9 +120,8 @@ public:
                   const std::string weights_type,
                   const std::vector<freq_ctype>& freqs,
                   const std::vector<input_ctype>& inputs,
+                  const std::vector<prod_ctype>& prods,
                   size_t rollover=1024, size_t window_size=10);
-    //~visFileBundle();
-
 
     /// Write a new time sample into this set of files
     /// \param new_time Time of sample
@@ -147,6 +150,7 @@ private:
 
     const std::vector<freq_ctype>& freqs;
     const std::vector<input_ctype>& inputs;
+    const std::vector<prod_ctype>& prods;
 
     size_t rollover;
     size_t window_size;
