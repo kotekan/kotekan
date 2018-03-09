@@ -1,0 +1,99 @@
+# import pytest
+import numpy as np
+
+import kotekan_runner
+
+default_params = {
+    'num_elements': 200,
+    'num_eigenvectors': 4,
+    'total_frames': 16,
+    'cadence': 10.0,
+    'mode': 'phase_ij',
+    # 'mode': 'fill_ij',
+    'freq': [0],
+    'buffer_depth': 5,
+    'num_diagonals_filled': 0
+     }
+
+
+def run_eigenvis(tdir_factory, params=None):
+
+    if not params:
+        params = default_params
+
+    tmpdir = tdir_factory.mktemp("eigenvis")
+
+    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+            freq_ids=params['freq'],
+            num_frames=params['total_frames'],
+            mode=params['mode'],
+            )
+
+    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+
+    test = kotekan_runner.KotekanProcessTester(
+        'eigenVis', {},
+        fakevis_buffer,
+        dump_buffer,
+        params
+    )
+
+    test.run()
+    return dump_buffer.load()
+
+
+def test_basic(tmpdir_factory):
+
+    params = default_params
+    num_elements = params['num_elements']
+    expected_evec_phase_fact = np.exp(1j * np.arange(num_elements))
+
+    eigen_data = run_eigenvis(tmpdir_factory)
+    for frame in eigen_data:
+        largeset_eval = frame.evals[-1]
+        largeset_evec = frame.evecs[-num_elements:]
+        assert abs(largeset_eval - num_elements) / num_elements < 1e-6
+        assert np.allclose(largeset_evec / largeset_evec[0],
+                           expected_evec_phase_fact)
+        assert np.allclose(abs(largeset_evec), 1 / np.sqrt(num_elements))
+        zero_eval = frame.evals[-2]
+        assert zero_eval / num_elements < 1e-6
+        assert frame.rms < 1e-6
+
+
+def test_filled(tmpdir_factory):
+
+    params = dict(default_params)
+    params['num_diagonals_filled'] = 10
+    num_elements = params['num_elements']
+    expected_evec_phase = np.exp(1j * np.arange(num_elements))
+
+    eigen_data = run_eigenvis(tmpdir_factory, params)
+    for frame in eigen_data[8:]:
+        largeset_eval = frame.evals[-1]
+        largeset_evec = frame.evecs[-num_elements:]
+        assert abs(largeset_eval - num_elements) / num_elements < 1e-4
+        assert np.allclose(largeset_evec / largeset_evec[0],
+                           expected_evec_phase, rtol=1e-3)
+        assert np.allclose(abs(largeset_evec),
+                           1 / np.sqrt(num_elements), rtol=1e-3)
+        assert frame.rms < 1e-6
+
+
+def test_input_excluded(tmpdir_factory):
+
+    params = dict(default_params)
+    params['exclude_inputs'] = [5, 10, 6]
+    nexclude = len(params['exclude_inputs'])
+    num_elements = params['num_elements']
+    expected_eval = num_elements - nexclude
+    expected_evec_phase_fact = np.exp(1j * np.arange(num_elements))
+    expected_evec_phase_fact[params['exclude_inputs']] = 0
+
+    eigen_data = run_eigenvis(tmpdir_factory, params)
+    for frame in eigen_data:
+        largeset_eval = frame.evals[-1]
+        largeset_evec = frame.evecs[-num_elements:]
+        assert abs(largeset_eval - expected_eval) / num_elements < 1e-6
+        assert np.allclose(largeset_evec / largeset_evec[0],
+                           expected_evec_phase_fact)

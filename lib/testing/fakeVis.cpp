@@ -118,16 +118,18 @@ void fakeVis::main_thread() {
                         ind++;
                     }
                 }
-            //} else if(mode == "phase_ij") {
-            //    int ind = 0;
-            //    for(uint32_t i = 0; i < num_elements; i++) {
-            //        for(uint32_t j = i; j < num_elements; j++) {
-            //            out_vis[ind] = {cos(phase), sin(phase)};
-            //            ind++;
-            //        }
-            //    }
+            } else if(mode == "phase_ij") {
+                int ind = 0;
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        float phase = (float) i - (float) j;
+                        out_vis[ind] = {cos(phase), sin(phase)};
+                        ind++;
+                    }
+                }
             } else {
                 ERROR("Invalid visibility filling mode: %s.", mode.c_str());
+                break;
             }
 
             // Insert values into eigenvectors, eigenvalues and rms
