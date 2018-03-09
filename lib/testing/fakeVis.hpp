@@ -42,6 +42,8 @@
  *                              elements. The remaining elements are zero.
  *                            - fill_ij: Fill the real part with the index
  *                              of feed i and the imaginary part with the index of j.
+ *                            - phase_ij: Fill with unit amplitude numbers with phase
+ *                              ``i - j`` radians.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If

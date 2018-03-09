@@ -132,7 +132,6 @@ struct_layout visFrameView::calculate_buffer_layout(
     return struct_alignment(buffer_members);
 }
 
-
 void visFrameView::fill_chime_metadata(const chimeMetadata * chime_metadata) {
 
     // Set to zero as there's no information in chimeMetadata about it.
