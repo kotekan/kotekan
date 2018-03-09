@@ -19,17 +19,14 @@
  *        and passes on a subset of products to an output ``visBuffer``.
  * The subset extracted depends on the parameter 'prod_subset_type'. Here is a list of values
  * 'prod_subset_type' can take and the parameters they support: 
- * ['all': [],
- *  'autos': [],
- *  'baseline': [max_ew_baseline, max_ns_baseline],
- *  'input_list': [input_list] ]
- * prod_subset_type==all: Default. No subsetting.
- * prod_subset_type==autos: the subset are all the auto-correlations.
- * prod_subset_type==baseline: this process selects a subset of Pathfinder-scale baselines from the full visibility
- * array and passes those on to an output buffer. The conditions that define the subset
- * are specified in the config as maximum baseline lengths in the EW and NS directions.
- * prod_subset_type==input_list: the subset are all the correlations 
- * containing at leat one of the inputs in the input_list.
+ * - 'autos': no extra arameters needed
+ *   - The subset are all the auto-correlations.
+ * - 'baseline': max_ew_baseline, max_ns_baseline
+ *   - Selects a subset of products whose baseline length is smaller than the 
+ *   maximum values given by config parameters in the EW and NS directions.
+ * - 'input_list': input_list
+ *   - The subset are all the correlations containing at leat one of the 
+ *   inputs in the input_list.
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
