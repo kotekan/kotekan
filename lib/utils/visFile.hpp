@@ -42,6 +42,7 @@ public:
             const std::string& weights_type,
             const std::vector<freq_ctype>& freqs,
             const std::vector<input_ctype>& inputs,
+            const std::vector<prod_ctype>& prods,
             size_t num_ev);
     ~visFile();
 
@@ -83,6 +84,7 @@ private:
     // Create the index maps from the frequencies and the inputs
     void createIndex(const std::vector<freq_ctype>& freqs,
                      const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods,
                      size_t num_ev);
 
     // Create the main visibility holding datasets
@@ -174,7 +176,6 @@ private:
     const std::string root_path;
     const std::string instrument_name;
     const int freq_chunk;
-    //const std::tuple<InitArgs...> init_args;
 
     size_t rollover;
     size_t window_size;

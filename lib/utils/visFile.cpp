@@ -23,6 +23,7 @@ visFile::visFile(const std::string& name,
                  const std::string& weights_type,
                  const std::vector<freq_ctype>& freqs,
                  const std::vector<input_ctype>& inputs,
+                 const std::vector<prod_ctype>& prods,
                  size_t num_ev) {
 
     std::string data_filename = root_path + "/" + acq_name + "/" + name;
@@ -44,8 +45,8 @@ visFile::visFile(const std::string& name,
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
     );
 
-    createIndex(freqs, inputs, num_ev);
-    createDatasets(freqs.size(), ninput, ninput * (ninput + 1) / 2, num_ev, weights_type);
+    createIndex(freqs, inputs, prods, num_ev);
+    createDatasets(freqs.size(), ninput, prods.size(), num_ev, weights_type);
 
     // === Set the required attributes for a valid file ===
     std::string version = "NT_3.1.0";
@@ -82,8 +83,12 @@ visFile::~visFile() {
     std::remove(lock_filename.c_str());
 }
 
+// TODO: will need to make prods an input to this method for baseline subsetting
+//       should make use of overloading so that previous calls don't break.
+//       this should propagate to Filebundle
 void visFile::createIndex(const std::vector<freq_ctype>& freqs,
                           const std::vector<input_ctype>& inputs,
+                          const std::vector<prod_ctype>& prods,
                           size_t num_ev) {
 
     Group indexmap = file->createGroup("index_map");
@@ -101,16 +106,10 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
     DataSet input_imap = indexmap.createDataSet<input_ctype>("input", DataSpace(inputs.size()));
     input_imap.write(inputs);
 
-    std::vector<prod_ctype> prod_vector;
-    for(uint16_t i=0; i < inputs.size(); i++) {
-        for(uint16_t j = i; j < inputs.size(); j++) {
-            prod_vector.push_back({i, j});
-        }
-    }
     DataSet prod_imap = indexmap.createDataSet<prod_ctype>(
-        "prod", DataSpace(prod_vector.size())
+        "prod", DataSpace(prods.size())
     );
-    prod_imap.write(prod_vector);
+    prod_imap.write(prods);
 
     if(write_ev) {
 

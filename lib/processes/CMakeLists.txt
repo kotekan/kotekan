@@ -31,6 +31,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               simpleAutocorr.cpp
               freqSlicer.cpp
               frbPostProcess_in.cpp
+              prodSubset.cpp
               visProcess.cpp
               )
 
@@ -50,6 +51,8 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
+# This is temporarily disabled because it requires a newer version of hdf5
+# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5
