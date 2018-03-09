@@ -11,6 +11,7 @@
 #include "frb_functions.h"
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
+#include <emmintrin.h>
 
 using std::vector;
 
@@ -103,8 +104,8 @@ private:
     int32_t _factor_upchan_out;
     int32_t _nbeams;
     int32_t _timesamples_per_frb_packet;
-    bool    _incoherent_beam;
-    float   _incoherent_truncation;
+    vector<int32_t> _incoherent_beams;
+    float _incoherent_truncation;
 
     // Derived useful things
     int32_t num_L1_streams;

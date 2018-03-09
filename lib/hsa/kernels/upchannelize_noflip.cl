@@ -8,13 +8,14 @@
 #define IMAG    y
 #define offset 128
 #define n_all 256
+#define scaling 400.
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
 //LWS = {     64 ,  1  }
 //GWS = {nsamp/6*, 1024}
 
-__kernel void upchannelize(__global float2 *data, __global float *results_array){
+__kernel void upchannelize_noflip(__global float2 *data, __global float *results_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
@@ -244,14 +245,14 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     temp.IMAG = sincos_temp.REAL * temp_1.IMAG + sincos_temp.IMAG * temp_1.REAL;
     local_data[index_0] = temp_0+temp;
     local_data[index_1] = temp_0-temp;
-    
+
     temp_2 = local_data[index_2];
     temp_3 = local_data[index_3];
     temp.REAL = sincos_temp.REAL * temp_3.REAL - sincos_temp.IMAG * temp_3.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_3.IMAG + sincos_temp.IMAG * temp_3.REAL;
     local_data[index_2] = temp_2+temp;
     local_data[index_3] = temp_2-temp;
-    
+
     temp_4 = local_data[index_4];
     temp_5 = local_data[index_5];
     temp.REAL = sincos_temp.REAL * temp_5.REAL - sincos_temp.IMAG * temp_5.IMAG;
@@ -259,12 +260,11 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     local_data[index_4] = temp_4+temp;
     local_data[index_5] = temp_4-temp;
 
-
     barrier(CLK_LOCAL_MEM_FENCE);
 
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
     //so write out 16 numbers only
-    
+
     if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       for (int j=0;j<3;j++){
         for (int i=0;i<8;i++){
@@ -273,9 +273,11 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
       }
       barrier(CLK_LOCAL_MEM_FENCE);
       if (p == 1) {
-        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp;
+        outtmp = outtmp/48.;///scaling; //This is float
+        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp;//outtmp_int;
       }
     }
   } //end loop of 2 pol
 }
+
 
