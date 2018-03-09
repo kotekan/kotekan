@@ -34,7 +34,7 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     local_data[local_address + 192] = data[address_in + 192];
     local_data[local_address + 256] = data[address_in + 256];
     local_data[local_address + 320] = data[address_in + 320];
-  
+
     uint index_0 = local_address * 2;
     uint index_1 = index_0 + 1; //these two indices span 128 entries
     index_0 = BIT_REVERSE_7_BITS(index_0);
@@ -43,9 +43,9 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     uint index_3 = index_1 + offset;
     uint index_4 = index_2 + offset; //repeat with offset
     uint index_5 = index_3 + offset;
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 0
     float2 temp, temp_0, temp_1, temp_2, temp_3 ,temp_4, temp_5;
     temp_0 = local_data[index_0]; //load according to bit reversed addresses
@@ -54,16 +54,16 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     temp_3 = local_data[index_3];
     temp_4 = local_data[index_4]; //load according to bit reversed addresses
     temp_5 = local_data[index_5];
-    
+
     local_data[local_address * 2             ] = temp_0+temp_1;
     local_data[local_address * 2 + 1         ] = temp_0-temp_1;
     local_data[local_address * 2 + offset    ] = temp_2+temp_3; 
     local_data[local_address * 2 + offset + 1] = temp_2-temp_3;
     local_data[local_address * 2 + 2*offset    ] = temp_4+temp_5; 
     local_data[local_address * 2 + 2*offset + 1] = temp_4-temp_5;
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 1
     float2 sincos_temp;
     float theta;
@@ -96,7 +96,7 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     local_data[index_5] = temp_4-temp;
 
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 2
     index_0 = (((local_address<<1) & 0x78) + (local_address & 0x3));
     index_1 = index_0 + 4;
@@ -113,23 +113,23 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     temp.IMAG = sincos_temp.REAL * temp_1.IMAG + sincos_temp.IMAG * temp_1.REAL;
     local_data[index_0] = temp_0+temp;
     local_data[index_1] = temp_0-temp;
-    
+
     temp_2 = local_data[index_2];
     temp_3 = local_data[index_3];
     temp.REAL = sincos_temp.REAL * temp_3.REAL - sincos_temp.IMAG * temp_3.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_3.IMAG + sincos_temp.IMAG * temp_3.REAL;
     local_data[index_2] = temp_2+temp;
     local_data[index_3] = temp_2-temp;
-    
+
     temp_4 = local_data[index_4];
     temp_5 = local_data[index_5];
     temp.REAL = sincos_temp.REAL * temp_5.REAL - sincos_temp.IMAG * temp_5.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_5.IMAG + sincos_temp.IMAG * temp_5.REAL;
     local_data[index_4] = temp_4+temp;
     local_data[index_5] = temp_4-temp;
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 3
     index_0 = (((local_address << 1) & 0x70) + (local_address & 0x7));
     index_1 = index_0 + 8;
@@ -146,23 +146,23 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     temp.IMAG = sincos_temp.REAL * temp_1.IMAG + sincos_temp.IMAG * temp_1.REAL;
     local_data[index_0] = temp_0+temp;
     local_data[index_1] = temp_0-temp;
-    
+
     temp_2 = local_data[index_2];
     temp_3 = local_data[index_3];
     temp.REAL = sincos_temp.REAL * temp_3.REAL - sincos_temp.IMAG * temp_3.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_3.IMAG + sincos_temp.IMAG * temp_3.REAL;
     local_data[index_2] = temp_2+temp;
     local_data[index_3] = temp_2-temp;
-    
+
     temp_4 = local_data[index_4];
     temp_5 = local_data[index_5];
     temp.REAL = sincos_temp.REAL * temp_5.REAL - sincos_temp.IMAG * temp_5.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_5.IMAG + sincos_temp.IMAG * temp_5.REAL;
     local_data[index_4] = temp_4+temp;
     local_data[index_5] = temp_4-temp;
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 4
     index_0 = (((local_address << 1) & 0x60) + (local_address & 0xf));
     index_1 = index_0 + 16;
@@ -179,23 +179,23 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     temp.IMAG = sincos_temp.REAL * temp_1.IMAG + sincos_temp.IMAG * temp_1.REAL;
     local_data[index_0] = temp_0+temp;
     local_data[index_1] = temp_0-temp;
-    
+
     temp_2 = local_data[index_2];
     temp_3 = local_data[index_3];
     temp.REAL = sincos_temp.REAL * temp_3.REAL - sincos_temp.IMAG * temp_3.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_3.IMAG + sincos_temp.IMAG * temp_3.REAL;
     local_data[index_2] = temp_2+temp;
     local_data[index_3] = temp_2-temp;
-    
+
     temp_4 = local_data[index_4];
     temp_5 = local_data[index_5];
     temp.REAL = sincos_temp.REAL * temp_5.REAL - sincos_temp.IMAG * temp_5.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_5.IMAG + sincos_temp.IMAG * temp_5.REAL;
     local_data[index_4] = temp_4+temp;
     local_data[index_5] = temp_4-temp;
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 5
     index_0 = (((local_address << 1) & 0x40) + (local_address & 0x1f));
     index_1 = index_0 + 32;
@@ -212,23 +212,23 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     temp.IMAG = sincos_temp.REAL * temp_1.IMAG + sincos_temp.IMAG * temp_1.REAL;
     local_data[index_0] = temp_0+temp;
     local_data[index_1] = temp_0-temp;
-    
+
     temp_2 = local_data[index_2];
     temp_3 = local_data[index_3];
     temp.REAL = sincos_temp.REAL * temp_3.REAL - sincos_temp.IMAG * temp_3.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_3.IMAG + sincos_temp.IMAG * temp_3.REAL;
     local_data[index_2] = temp_2+temp;
     local_data[index_3] = temp_2-temp;
-    
+
     temp_4 = local_data[index_4];
     temp_5 = local_data[index_5];
     temp.REAL = sincos_temp.REAL * temp_5.REAL - sincos_temp.IMAG * temp_5.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_5.IMAG + sincos_temp.IMAG * temp_5.REAL;
     local_data[index_4] = temp_4+temp;
     local_data[index_5] = temp_4-temp;
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 6
     index_0 = (local_address & 0x3f);
     index_1 = index_0 + 64;
@@ -245,48 +245,39 @@ __kernel void upchannelize_noflip(__global float2 *data, __global float *results
     temp.IMAG = sincos_temp.REAL * temp_1.IMAG + sincos_temp.IMAG * temp_1.REAL;
     local_data[index_0] = temp_0+temp;
     local_data[index_1] = temp_0-temp;
-    
+
     temp_2 = local_data[index_2];
     temp_3 = local_data[index_3];
     temp.REAL = sincos_temp.REAL * temp_3.REAL - sincos_temp.IMAG * temp_3.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_3.IMAG + sincos_temp.IMAG * temp_3.REAL;
     local_data[index_2] = temp_2+temp;
     local_data[index_3] = temp_2-temp;
-    
+
     temp_4 = local_data[index_4];
     temp_5 = local_data[index_5];
     temp.REAL = sincos_temp.REAL * temp_5.REAL - sincos_temp.IMAG * temp_5.IMAG;
     temp.IMAG = sincos_temp.REAL * temp_5.IMAG + sincos_temp.IMAG * temp_5.REAL;
     local_data[index_4] = temp_4+temp;
     local_data[index_5] = temp_4-temp;
-    
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-  
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
     //so write out 16 numbers only
-    
+
     if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       for (int j=0;j<3;j++){
-	for (int i=0;i<8;i++){
-	  outtmp += local_data[ get_local_id(0)*8 +j*128 +i].REAL*local_data[ get_local_id(0)*8 +j*128 +i].REAL+local_data[ get_local_id(0)*8 +j*128 +i].IMAG*local_data[ get_local_id(0)*8 +j*128 +i].IMAG;
-	}
+        for (int i=0;i<8;i++){
+          outtmp += local_data[ get_local_id(0)*8 +j*128 +i].REAL*local_data[ get_local_id(0)*8 +j*128 +i].REAL+local_data[ get_local_id(0)*8 +j*128 +i].IMAG*local_data[ get_local_id(0)*8 +j*128 +i].IMAG;
+        }
       }
       barrier(CLK_LOCAL_MEM_FENCE);
       if (p == 1) {
-      //        uchar outtmp_int ;
-    	outtmp = outtmp/48.;///scaling; //This is float
-//    	if (outtmp > 255) {
-  //        outtmp_int = 255;
-    //	}
-      //  else {
-        //  outtmp_int = (uint) (outtmp + 0.5) ;
-       // }
- 	results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp;//outtmp_int;
+        outtmp = outtmp/48.;///scaling; //This is float
+        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+get_local_id(0)] = outtmp;//outtmp_int;
       }
     }
   } //end loop of 2 pol
 }
-  
+
 
