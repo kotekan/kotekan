@@ -5,7 +5,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
                             hsaDeviceInterface& device) :
-    hsaCommand("zero_padded_FFT512","unpack_shift_beamform.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand("zero_padded_FFT512","unpack_shift_beamform_flip.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get_int(unique_name, "num_elements");
@@ -14,7 +14,8 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     _gain_dir = config.get_string(unique_name, "gain_dir");
 
     scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
-    zero_missing_gains = config.get_bool_default(unique_name,"frb_zero_missing_gains", true);
+    vector<float> dg = {0.0,0.0}; //re,im
+    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
@@ -99,14 +100,13 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         if (ptr_myfile == NULL) {
             ERROR("GPU Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                host_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                host_gain[i*2+1] = 0.0;
+                host_gain[i*2]   = default_gains[0] * scaling;
+                host_gain[i*2+1] = default_gains[1] * scaling;
             }
         }
         else {
-            uint32_t file_length = sizeof(float)*2*2048;
-            if (file_length != fread(host_gain,file_length,1,ptr_myfile)){
-                ERROR("Gain file wasn't long enough! Something went wrong, breaking...");
+            if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
+                ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
             }
             fclose(ptr_myfile);
             for (uint32_t i=0; i<2048; i++){

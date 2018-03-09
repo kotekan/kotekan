@@ -1,9 +1,10 @@
 #include <pthread.h>
 #include <sched.h>
-#include "errors.h"
 #include <syslog.h>
 
 #include "KotekanProcess.hpp"
+#include "errors.h"
+#include "util.h"
 
 KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
                 bufferContainer &buffer_container_,
@@ -49,6 +50,7 @@ void KotekanProcess::apply_cpu_affinity() {
     if(!this_thread.joinable())
         return;
 
+// TODO Enable this for MACOS Systems as well.
 #ifndef MAC_OSX
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -56,12 +58,17 @@ void KotekanProcess::apply_cpu_affinity() {
     for (auto &i : cpu_affinity)
         CPU_SET(i, &cpuset);
 
+    // Set affinity
     err = pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
-#endif
-
-    // Need to add thread name
     if (err)
-        ERROR("Failed to set thread affinity for ..., error code %d", err);
+        ERROR("Failed to set thread affinity for %s, error code %d", unique_name.c_str(), err);
+
+    // Set debug name as last 15 chars of the config unique_name
+    std::string short_name = string_tail(unique_name, 15);
+    pthread_setname_np(this_thread.native_handle(), short_name.c_str());
+    if (err)
+        ERROR("Failed to set thread name for %s, error code %d", unique_name.c_str(), err);
+#endif
 }
 
 void KotekanProcess::set_cpu_affinity(const std::vector<int> &cpu_affinity_) {

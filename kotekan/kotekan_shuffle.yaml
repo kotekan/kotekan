@@ -14,7 +14,7 @@ num_links: 4
 block_size: 32
 timesamples_per_packet: 2
 num_gpu_frames: 128
-cpu_affinity: [4,5,6,7,8,9,10,11]
+cpu_affinity: [2,3,4,5,8,9,10,11]
 
 # Pool
 main_pool:
