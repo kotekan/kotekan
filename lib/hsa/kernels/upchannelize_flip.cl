@@ -265,7 +265,7 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
 
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
     //so write out 16 numbers only
-    
+
     if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       for (int j=0;j<3;j++){
         for (int i=0;i<8;i++){
