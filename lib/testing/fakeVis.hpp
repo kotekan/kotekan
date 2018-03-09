@@ -42,6 +42,8 @@
  *                              elements. The remaining elements are zero.
  *                            - fill_ij: Fill the real part with the index
  *                              of feed i and the imaginary part with the index of j.
+ *                            - phase_ij: Fill with unit amplitude numbers with phase
+ *                              ``i - j`` radians.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If
@@ -86,4 +88,40 @@ private:
     int32_t num_frames;
 };
 
+
+/**
+ * @class replaceVis
+ * @brief Copy a buffer and replace its data with test data.
+ *
+ * @par Buffers
+ * @buffer in_buf The kotekan buffer which will be read from.
+ *     @buffer_format visBuffer structured
+ *     @buffer_metadata visMetadata
+ * @buffer out_buf The kotekan buffer to be filled with the replaced data.
+ *     @buffer_format visBuffer structured
+ *     @buffer_metadata visMetadata
+ *
+ * @author Richard Shaw
+ *
+ */
+class replaceVis : public KotekanProcess {
+
+public:
+    /// Constructor. Loads config options.
+    replaceVis(Config& config,
+               const string& unique_name,
+               bufferContainer& buffer_container);
+
+    /// Not yet implemented, should update runtime parameters.
+    void apply_config(uint64_t fpga_seq);
+
+    /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
+    void main_thread();
+
+private:
+    /// Buffers
+    Buffer * in_buf;
+    Buffer * out_buf;
+
+};
 #endif

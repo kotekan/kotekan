@@ -135,7 +135,7 @@ void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
 }
 
 struct_layout visFrameView::calculate_buffer_layout(
-    uint32_t num_elements, uint32_t num_prod, uint16_t num_eigenvectors
+    uint32_t num_elements, uint32_t num_prod, uint32_t num_eigenvectors
 )
 {
     // TODO: get the types of each element using a template on the member
@@ -150,7 +150,6 @@ struct_layout visFrameView::calculate_buffer_layout(
 
     return struct_alignment(buffer_members);
 }
-
 
 void visFrameView::fill_chime_metadata(const chimeMetadata * chime_metadata) {
 

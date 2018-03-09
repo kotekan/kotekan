@@ -25,6 +25,7 @@ public:
     /// \param root_path Base directory to write the acquisition into
     /// \param inst_name Instrument name (e.g. chime)
     /// \param notes Note about the acquisition
+    /// \param weights_type What the visibility weights represent (e.g. 'inverse_var')
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     visFile(const std::string& name,
@@ -32,6 +33,7 @@ public:
             const std::string& root_path,
             const std::string& inst_name,
             const std::string& notes,
+            const std::string& weights_type,
             const std::vector<freq_ctype>& freqs,
             const std::vector<input_ctype>& inputs,
             const std::vector<prod_ctype>& prods);
@@ -72,7 +74,8 @@ private:
                      const std::vector<prod_ctype>& prods);
 
     // Create the main visibility holding datasets
-    void createDatasets(size_t nfreq, size_t ninput, size_t nprod);
+    void createDatasets(size_t nfreq, size_t ninput, size_t nprod,
+                        std::string weights_type);
 
     // Get datasets
     HighFive::DataSet vis();
@@ -105,6 +108,7 @@ public:
     /// \param freq_chunk ID of the frequency chunk being written
     /// \param inst_name Instrument name (e.g. chime)
     /// \param notes Note about the acquisition
+    /// \param weights_type What the visibility weights represent (e.g. 'inverse_var')
     /// \param freqs Frequencies channels that will be in the file
     /// \param inputs Inputs that are in the file
     //~visFileBundle();
@@ -113,6 +117,7 @@ public:
                   int freq_chunk,
                   const std::string instrument_name,
                   const std::string notes,
+                  const std::string weights_type,
                   const std::vector<freq_ctype>& freqs,
                   const std::vector<input_ctype>& inputs,
                   const std::vector<prod_ctype>& prods,
@@ -141,6 +146,7 @@ private:
 
     const std::string instrument_name;
     const std::string notes;
+    const std::string weights_type;
 
     const std::vector<freq_ctype>& freqs;
     const std::vector<input_ctype>& inputs;

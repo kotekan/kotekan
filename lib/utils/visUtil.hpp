@@ -1,3 +1,13 @@
+/*****************************************
+@file
+@brief Miscellaneous utils for the receiver code.
+- Types for index_maps in the HDF5 output
+- Routines for dealing with times as doubles. This is typically more than enough precision.
+- Decoding the GPU buffer, and copying out the data into packed form.
+- Parsing the input_reorder block in the config files.
+- Figuring out struct alignments
+- Calculating moving averages.
+*****************************************/
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
@@ -107,6 +117,7 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
     return block * block * b_ix + (i % block) * block + (j % block);
 }
 
+
 /**
  * @brief Convert timeval type into UNIX time as a double.
  * @param  tv Time as timeval.
@@ -116,6 +127,7 @@ inline double tv_to_double(const timeval & tv) {
     return (tv.tv_sec + 1e-6 * tv.tv_usec);
 }
 
+
 /**
  * @brief Convert timespec type into UNIX time as a double.
  * @param  ts Time as timespec.
@@ -123,6 +135,27 @@ inline double tv_to_double(const timeval & tv) {
  */
 inline double ts_to_double(const timespec & ts) {
     return (ts.tv_sec + 1e-9 * ts.tv_nsec);
+}
+
+
+/**
+ * @brief Convert a UNIX time as double into a timespec.
+ * @param  dtime  Time as double.
+ * @return        Time as timespec.
+ **/
+inline timespec double_to_ts(double dtime) {
+    return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e9)};
+}
+
+
+/**
+ * @brief Get the current UNIX time as a double.
+ * @return  UNIX time as double.
+ **/
+inline double current_time() {
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts_to_double(ts);
 }
 
 
@@ -167,5 +200,48 @@ size_t _member_alignment(size_t offset, size_t size);
 struct_layout struct_alignment(
     std::vector<std::tuple<std::string, size_t, size_t>> members
 );
+
+
+/**
+ * @class movingAverage
+ * @brief Calculate an exponentially weighted moving average of a time series.
+ * 
+ * @author Richard Shaw
+ **/
+class movingAverage {
+
+public:
+
+    /**
+     * @brief Create a moving average calculation.
+     * 
+     * @param  length  The length scale to average over. This is defined as
+     *                 the lag at which all newer samples carry the same weight as all earlier
+     *                 samples. Or equivalently the distance at which the weight per sample has
+     *                 decreased by a factor of two.
+     **/
+    movingAverage(double length=4.0);
+
+    /**
+     * @brief Add a new sample in the time series.
+     * 
+     * @param  value  The sample to add.
+     **/
+    void add_sample(double value);
+
+    /**
+     * @brief Return the moving average of the current set of samples.
+     * 
+     * @returns  The current moving average.
+     **/
+    double average();
+
+private:
+    double current_value;
+    double alpha;
+
+    bool initialised = false;
+};
+
 
 #endif

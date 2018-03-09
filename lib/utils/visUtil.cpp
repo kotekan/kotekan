@@ -140,3 +140,28 @@ struct_layout struct_alignment(
 
     return layout;
 }
+
+
+movingAverage::movingAverage(double length) {
+    // Calculate the coefficient for the moving average as a halving of the weight
+    alpha = 1.0 - pow(2, -1.0 / length);
+}
+
+
+void movingAverage::add_sample(double value) {
+
+    // Special case for the first sample.
+    if(!initialised) {
+        current_value = value;
+        initialised = true;
+    } else {
+        current_value = alpha * value + (1 - alpha) * current_value;
+    }
+}
+
+double movingAverage::average() {
+    if(!initialised) {
+        return NAN;
+    }
+    return current_value;
+}

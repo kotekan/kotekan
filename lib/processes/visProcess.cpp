@@ -3,6 +3,8 @@
 #include "visUtil.hpp"
 #include "chimeMetadata.h"
 #include "errors.h"
+#include "prometheusMetrics.hpp"
+
 #include <time.h>
 #include <iomanip>
 #include <iostream>
@@ -138,16 +140,23 @@ void visDebug::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
         INFO("%s", frame.summary().c_str());
 
+        // Update the frame count for prometheus
+        fd_pair key {frame.freq_id, frame.dataset_id};
+        frame_counts[key]++;  // Relies on the fact that insertion zero intialises
+        std::ostringstream labels;
+        labels << "freq_id=\"" << frame.freq_id
+               << "\",dataset_id=\"" << frame.dataset_id << "\"";
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels.str()
+        );
+
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
-
     }
-
 }
-
 
 
 visAccumulate::visAccumulate(Config& config,
