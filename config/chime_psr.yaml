@@ -148,6 +148,8 @@ gpu:
   - name: hsaBeamformPulsarOutput
   - name: hsaBeamformOutputData
   - name: hsaOutputData
+  enable_delay: true
+  delay_max_fraction: 0.5
   link_map: [0,1,2,3]
   num_gpus: 4
   block_size: 32

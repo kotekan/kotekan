@@ -105,10 +105,12 @@ void dpdk_setup() {
     char  arg1[] = "-n";
     char  arg2[] = "4";
     char  arg3[] = "-c";
-#ifdef DPDK_VDIF_MODE
-    char  arg4[] = "F";//"FF";
+#ifdef WITH_OPENCL
+    char  arg4[] = "0xF";
 #else
-     char  arg4[] = "F";
+    // TODO This is a CHIME specific value with cores 0,1,6,7 active.
+    // This value should be made dynamic
+    char  arg4[] = "0xC3";
 #endif
     char  arg5[] = "-m";
     char  arg6[] = "256";
