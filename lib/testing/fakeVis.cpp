@@ -134,7 +134,7 @@ void fakeVis::main_thread() {
             for (int i = 0; i < num_eigenvectors; i++) {
                 for (int j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
-                    output_frame.eigenvectors[k] = k;
+                    output_frame.eigenvectors[k] = {(float)i, (float)j};
                 }
                 output_frame.eigenvalues[i] = i;
             }

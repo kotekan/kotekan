@@ -50,6 +50,8 @@
  * @conf   weights_type     Indicate what the visibility weights represent, e.g,
  *                          'inverse_var'. Will saved as an attribute in the saved
  *                          file. (default 'unknown')
+ * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
+ * @conf   num_eigenvectors Int. Only needed if `write_ev` is true.
  *
  * @author Richard Shaw
  */
@@ -99,6 +101,9 @@ private:
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;
+
+    // Number of eigenvectors to write out
+    size_t num_ev;
 
     /// Keep track of the average write time
     movingAverage write_time;

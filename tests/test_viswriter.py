@@ -14,12 +14,7 @@ writer_params = {
     'write_freq':[3, 777]
 }
 
-@pytest.fixture(scope="module")
-def written_data(request, tmpdir_factory):
-
-    write_eigen, = request.param
-
-    tmpdir = tmpdir_factory.mktemp("writer")
+def written_data_base(write_ev, outdir):
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
         freq_ids=writer_params['freq'],
@@ -28,11 +23,11 @@ def written_data(request, tmpdir_factory):
     )
 
     params = writer_params.copy()
-    params['root_path'] = str(tmpdir)
+    params['root_path'] = outdir
 
     test = kotekan_runner.KotekanProcessTester(
         'visWriter', {'freq_ids': params['write_freq'], 'node_mode': False,
-        'write_eigen': write_eigen},
+        'write_ev': write_ev},
         fakevis_buffer,
         None,
         params
@@ -42,9 +37,28 @@ def written_data(request, tmpdir_factory):
 
     import glob
 
-    files = sorted(glob.glob(str(tmpdir) + '/20??????T??????Z_*_corr/*.h5'))
+    files = sorted(glob.glob(outdir + '/20??????T??????Z_*_corr/*.h5'))
 
-    fhlist = [h5py.File(fname, 'r') for fname in files]
+    return [h5py.File(fname, 'r') for fname in files]
+
+@pytest.fixture(scope="module")
+def written_data(request, tmpdir_factory):
+
+    tmpdir = tmpdir_factory.mktemp("writer")
+
+    fhlist = written_data_base(False, str(tmpdir))
+
+    yield fhlist
+
+    for fh in fhlist:
+        fh.close()
+
+@pytest.fixture(scope="module")
+def written_data_ev(request, tmpdir_factory):
+
+    tmpdir = tmpdir_factory.mktemp("writer_ev")
+
+    fhlist = written_data_base(True, str(tmpdir))
 
     yield fhlist
 
@@ -52,7 +66,6 @@ def written_data(request, tmpdir_factory):
         fh.close()
 
 
-@pytest.mark.parametrize('written_data', [(False,)], indirect=True)
 def test_vis(written_data):
 
     for fh in written_data:
@@ -76,7 +89,6 @@ def test_vis(written_data):
         assert (vfreq == freq[np.newaxis, :]).all()
 
 
-@pytest.mark.parametrize('written_data', [(False,)], indirect=True)
 def test_metadata(written_data):
 
     for fh in written_data:
@@ -96,7 +108,6 @@ def test_metadata(written_data):
         assert (fh['index_map/prod']['input_b'] == ib).all()
 
 
-@pytest.mark.parametrize('written_data', [(False,)], indirect=True)
 def test_no_eigenvectors(written_data):
 
     for fh in written_data:
@@ -105,15 +116,24 @@ def test_no_eigenvectors(written_data):
         assert 'eigen_rms' not in fh
 
 
-@pytest.mark.parametrize('written_data', [(True,)], indirect=True)
-def test_eigenvectors(written_data):
+def test_eigenvectors(written_data_ev):
     
-    for fh in written_data:
+    for fh in written_data_ev:
         nt = writer_params['total_frames']
         nf = len(writer_params['write_freq'])
         ne = writer_params['num_eigenvectors']
         ni = writer_params['num_elements']
 
-        assert fh['eigenvalues'].shape == (nt, nf, ne)
-        assert fh['eigenvectors'].shape == (nt, nf, ne, ni)
-        assert fh['eigen_rms'].shape == (nt, nf)
+        # Check datasets are present
+        assert fh['eval'].shape == (nt, nf, ne)
+        assert fh['evec'].shape == (nt, nf, ne, ni)
+        assert fh['erms'].shape == (nt, nf)
+
+        # Check that the index map is there correctly
+        assert (fh['index_map/ev'][:] == np.arange(ne)).all()
+
+        # Check that the datasets have the correct values
+        assert (fh['eval'][:] == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
+        assert (fh['evec'][:].real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]).all()
+        assert (fh['evec'][:].imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]).all()
+        assert (fh['erms'][:] == 1.0).all()

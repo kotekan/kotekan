@@ -41,7 +41,8 @@ public:
             const std::string& notes,
             const std::string& weights_type,
             const std::vector<freq_ctype>& freqs,
-            const std::vector<input_ctype>& inputs);
+            const std::vector<input_ctype>& inputs,
+            size_t num_ev);
     ~visFile();
 
     /**
@@ -64,7 +65,10 @@ public:
                      std::vector<cfloat> new_vis,
                      std::vector<float> new_weight,
                      std::vector<cfloat> new_gcoeff,
-                     std::vector<int32_t> new_gexp);
+                     std::vector<int32_t> new_gexp,
+                     std::vector<float> new_eval,
+                     std::vector<cfloat> new_evec,
+                     float new_erms);
 
     /**
      * @brief Return the current number of current time samples.
@@ -78,11 +82,12 @@ private:
 
     // Create the index maps from the frequencies and the inputs
     void createIndex(const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs);
+                     const std::vector<input_ctype>& inputs,
+                     size_t num_ev);
 
     // Create the main visibility holding datasets
     void createDatasets(size_t nfreq, size_t ninput, size_t nprod,
-                        std::string weights_type);
+                        size_t num_ev, std::string weights_type);
 
     // Get datasets
     HighFive::DataSet vis();
@@ -90,11 +95,18 @@ private:
     HighFive::DataSet gain_coeff();
     HighFive::DataSet gain_exp();
     HighFive::DataSet time();
+    HighFive::DataSet eval();
+    HighFive::DataSet evec();
+    HighFive::DataSet erms();
 
     // Get dimensions
     size_t num_prod();
     size_t num_input();
     size_t num_freq();
+    size_t num_ev();
+
+    // Whether to write eigenvalues or not
+    bool write_ev;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;
@@ -129,15 +141,12 @@ public:
      * 
      * @warning The directory will not be created if it doesn't exist.
      **/
+    template<typename... InitArgs>
     visFileBundle(const std::string acq_name,
-                  int freq_chunk,
                   const std::string instrument_name,
-                  const std::string notes,
-                  const std::string weights_type,
-                  const std::vector<freq_ctype>& freqs,
-                  const std::vector<input_ctype>& inputs,
-                  size_t rollover=1024, size_t window_size=10);
-
+                  int freq_chunk,
+                  size_t rollover, size_t window_size,
+                  InitArgs... args);
 
     /** Write a new time sample into this set of files
      *  @param new_time Time of sample
@@ -148,26 +157,24 @@ public:
      *  @param new_gexp Gain exponent data
      *  @return The number of entries in the time axis
      **/
-    void addSample(time_ctype new_time, uint32_t freq_ind,
-                   std::vector<cfloat> new_vis,
-                   std::vector<float> new_weight,
-                   std::vector<cfloat> new_gcoeff,
-                   std::vector<int32_t> new_gexp);
+    template<typename... WriteArgs>
+    void addSample(time_ctype new_time, WriteArgs&&... args);
 
 private:
 
+    // Add a file if we need to 
     void addFile(time_ctype first_time);
+
+    // Thin function to actually create the file
+    std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mkFile;
+
+    // Find/create the slot for data at this time to go into
     bool resolveSample(time_ctype new_time);
 
     const std::string root_path;
-    const int freq_chunk;
-
     const std::string instrument_name;
-    const std::string notes;
-    const std::string weights_type;
-
-    const std::vector<freq_ctype>& freqs;
-    const std::vector<input_ctype>& inputs;
+    const int freq_chunk;
+    //const std::tuple<InitArgs...> init_args;
 
     size_t rollover;
     size_t window_size;
@@ -178,6 +185,41 @@ private:
     std::map<uint64_t, std::tuple<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
 
 };
+
+
+template<typename... InitArgs>
+inline visFileBundle::visFileBundle(const std::string root_path,
+                             const std::string instrument_name,
+                             int freq_chunk,
+                             size_t rollover, size_t window_size,
+                             InitArgs... args) :
+
+    root_path(root_path),
+    instrument_name(instrument_name),
+    freq_chunk(freq_chunk),
+    rollover(rollover),
+    window_size(window_size)
+{
+    mkFile = [instrument_name, args...](std::string file_name,
+                                        std::string acq_name,
+                                        std::string root_path) {
+        return std::make_shared<visFile>(file_name, acq_name, root_path,
+                                         instrument_name, args...);
+    };
+}
+
+
+template<typename... WriteArgs>
+inline void visFileBundle::addSample(time_ctype new_time, WriteArgs&&... args) {
+    
+    if(resolveSample(new_time)) {
+        std::shared_ptr<visFile> file;
+        uint32_t ind;
+        // We can now safely add the sample into the file
+        std::tie(file, ind) = vis_file_map[new_time.fpga_count];
+        file->writeSample(ind, std::forward<WriteArgs>(args)...);
+    }
+}
 
 
 // These templated functions are needed in order to tell HighFive how the
