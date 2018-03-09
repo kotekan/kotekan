@@ -65,18 +65,12 @@ fake_vis:
 #  kotekan_process: visDebug
 #  buffer: vis_buffer
 
-# these parameters are shared between the two
-# following tasks
-max_baselines: &max_baselines
-  max_ew_baseline: 1
-  max_ns_baseline: 63
-
 vis_subset:
   kotekan_process: prodSubset
   in_buf: vis_buffer
   out_buf: write_buffer
-  prod_subset_type: baseline
-  <<: *max_baselines
+  prod_subset_type: input_list
+  input_list: [0,1]
 
 hdf5_writer:
   kotekan_process: visWriter
@@ -84,8 +78,8 @@ hdf5_writer:
   num_freq: 4
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
-  prod_subset_type: baseline
-  <<: *max_baselines
+  prod_subset_type: input_list
+  input_list: [0,1]
   root_path: '/home/fandino/chime/kotekan_dev/test_data/prodsub'
 
 hdf5_writer_full:

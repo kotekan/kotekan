@@ -1,9 +1,8 @@
-
 import pytest
 import numpy as np
 
 import kotekan_runner
-
+import visutil
 
 subset_params = {
     'num_elements': 16,
@@ -17,8 +16,10 @@ subset_params = {
 }
 
 vis_params = {
-    'prod_subset_type' : 'autos'
+    'prod_subset_type' : 'input_list',
+    'input_list' : [1,134], 
 }
+
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
 
@@ -43,6 +44,17 @@ def subset_data(tmpdir_factory):
     yield dump_buffer.load()
 
 
+def input_list_condition(prod, input_list):
+   
+    prod_in_list = False
+    for ipt in input_list :
+        if ((prod.input_a==ipt) or (prod.input_b==ipt)):
+            prod_in_list = True
+            break
+
+    return prod_in_list
+
+
 def test_subset(subset_data):
 
 #    for frame in subset_data:
@@ -50,7 +62,15 @@ def test_subset(subset_data):
 
     for frame in subset_data:
         # With fill_ij, vis_ij = i+j*(1j)
-        assert (frame.vis.real == frame.vis.imag).all()    
+        vis = []
+
+        for ii in range(subset_params['num_prod']):
+            prod = visutil.icmap(ii,subset_params['num_elements'])
+            if input_list_condition(prod,
+                                vis_params['input_list']) :
+                vis.append(prod.input_a+1j*prod.input_b)
+
+        assert (frame.vis == np.array(vis)).all()
         assert (frame.evals == np.arange(
                 subset_params['num_eigenvectors'])).all()
         evecs = (np.arange(subset_params['num_eigenvectors'],

@@ -87,15 +87,17 @@ private:
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
+    /// Type of product subset to write. Default writes all products.
+    std::string prod_subset_type;
+
     // Vector of products if options to restrict them are present
     std::vector<prod_ctype> prods;
-    bool all_prods;
 
     /// Upper limits for baseline lengths that will be included in products
     uint16_t xmax, ymax;
 
-    /// If True, write only autos. Default is false.
-    bool autos_only;
+    /// List of inputs whose correlations will be written
+    std::vector<int> input_list;
 
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;

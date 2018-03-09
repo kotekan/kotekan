@@ -69,7 +69,7 @@ vis_subset:
   kotekan_process: prodSubset
   in_buf: vis_buffer
   out_buf: write_buffer
-  type: autos
+  prod_subset_type: autos
 
 hdf5_writer:
   kotekan_process: visWriter
@@ -78,7 +78,7 @@ hdf5_writer:
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
   root_path: '/home/fandino/chime/kotekan_dev/test_data/prodsub'
-  autos_only: true
+  prod_subset_type: autos
 
 hdf5_writer_full:
   kotekan_process: visWriter

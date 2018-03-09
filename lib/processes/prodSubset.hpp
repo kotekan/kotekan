@@ -17,14 +17,19 @@
  * @class prodSubset
  * @brief ``KotekanProcess`` that consumes a full set of visibilities from a ``visBuffer``
  *        and passes on a subset of products to an output ``visBuffer``.
- * The subset extracted depends on the parameter 'type'. Here is a list of values
- * 'type' can take and the parameters they support: 
- * ['autos':
- *  'baseline': [max_ew_baseline, max_ns_baseline] ]
- * type==autos: the subset are all the auto-correlations.
- * type==baseline: this process selects a subset of Pathfinder-scale baselines from the full visibility
+ * The subset extracted depends on the parameter 'prod_subset_type'. Here is a list of values
+ * 'prod_subset_type' can take and the parameters they support: 
+ * ['all': [],
+ *  'autos': [],
+ *  'baseline': [max_ew_baseline, max_ns_baseline],
+ *  'input_list': [input_list] ]
+ * prod_subset_type==all: Default. No subsetting.
+ * prod_subset_type==autos: the subset are all the auto-correlations.
+ * prod_subset_type==baseline: this process selects a subset of Pathfinder-scale baselines from the full visibility
  * array and passes those on to an output buffer. The conditions that define the subset
  * are specified in the config as maximum baseline lengths in the EW and NS directions.
+ * prod_subset_type==input_list: the subset are all the correlations 
+ * containing at leat one of the inputs in the input_list.
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
@@ -36,7 +41,7 @@
  *
  * @conf  out_buf           string. Name of buffer to output subset to.
  * @conf  in_buf            string. Name of buffer to read from.
- * @conf  type              string. Type of product subset to perform.
+ * @conf  prod_subset_type  string. Type of product subset to perform.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
 +*                               correlator data
 +* @conf  block_size        int. The block size of the packed data (read from "/")
@@ -48,6 +53,7 @@
  *                               include in subset (in units of the shortest EW baseline)
  * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to
  *                               include in subset (in units of the shortest NS baseline)
+ * @conf  input_list        vector of int. The list of inputs to include.
  *
  * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
  *
@@ -83,11 +89,13 @@ private:
     uint16_t xmax, ymax;
 
     /// Type of product subset to make
-    std::string type;
+    std::string prod_subset_type;
 
     /// Vector of indices for subset of products
     std::vector<size_t> prod_ind;
 
+    /// List of inputs whose correlations will be selected
+    std::vector<int> input_list;
 };
 
 
@@ -132,6 +140,52 @@ inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
     prod_ctype prod = icmap(vis_ind, n);
 
     return max_bl_condition(prod, xmax, ymax);
+}
+
+/**
+ * @fn input_list_condition
+ *
+ * Check if a correlation product contains at least one of the inputs
+ * in the input_list parameter.
+ * Assumes the CHIME channel ordering.
+ *
+ * @param  prod        prod_ctype. The product pair to be checked.
+ * @param  input_list  vector of int. The list of inputs to include.
+ *
+ * @return          bool. true if the product satisfies the condition.
+ *
+ */
+inline bool input_list_condition(prod_ctype prod, 
+                                std::vector<int> input_list) {
+   
+    bool prod_in_list = false;
+    for(auto ipt : input_list) {
+        if ((prod.input_a==ipt) || (prod.input_b==ipt)) {
+            prod_in_list = true;
+            break;
+        }
+    }
+
+    return prod_in_list;
+}
+
+/**
+ * @overload input_list_condition
+ *
+ * Accepts a visibility index (in the standard packing scheme) and the number
+ * of elements in place of an explicit product pair.
+ *
+ * @param  vis_ind   int. Index of visibility in the standard UT packing.
+ * @param  n         int. Total number of elements.
+ *
+ */
+inline bool input_list_condition(uint32_t vis_ind, int n, 
+                                std::vector<int> input_list) {
+    
+    // Get product indices
+    prod_ctype prod = icmap(vis_ind, n);
+
+    return input_list_condition(prod, input_list);
 }
 
 #endif

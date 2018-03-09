@@ -17,7 +17,7 @@ subset_params = {
 }
 
 vis_params = {
-    'type' : 'baseline',
+    'prod_subset_type' : 'baseline',
     'max_ew_baseline' : 1, 
     'max_ns_baseline' : 63
 }

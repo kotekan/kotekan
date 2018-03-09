@@ -23,9 +23,9 @@ prodSubset::prodSubset(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Type of product selection based on config parameter
-    type = config.get_string(unique_name, "type");
+    prod_subset_type = config.get_string(unique_name, "prod_subset_type");
 
-    if (type == "autos") {
+    if (prod_subset_type == "autos") {
         int idx = 0;
         for (int ii=0; ii<num_elements; ii++) {
             for (int jj=ii; jj<num_elements; jj++) {
@@ -36,15 +36,22 @@ prodSubset::prodSubset(Config &config,
                 idx++;
             }
         }
-    } else if (type == "baseline") {
+    } else if (prod_subset_type == "baseline") {
         // Define criteria for baseline selection based on config parameters
         xmax = config.get_int(unique_name, "max_ew_baseline");
         ymax = config.get_int(unique_name, "max_ns_baseline");
-    
         // Find the products in the subset
-        for (size_t i = 0; i < num_prod; i++) {
-            if (max_bl_condition(i, num_elements, xmax, ymax)) {
-                prod_ind.push_back(i);
+        for (size_t ii = 0; ii < num_prod; ii++) {
+            if (max_bl_condition(ii, num_elements, xmax, ymax)) {
+                prod_ind.push_back(ii);
+            }
+        }
+    } else if (prod_subset_type == "input_list") {
+        input_list = config.get_int_array(unique_name, "input_list");
+        // Find the products in the subset
+        for (size_t ii = 0; ii < num_prod; ii++) {
+            if (input_list_condition(ii, num_elements, input_list)) {
+                prod_ind.push_back(ii);
             }
         }
     }

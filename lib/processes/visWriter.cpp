@@ -38,24 +38,43 @@ visWriter::visWriter(Config& config,
     // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
+    // Type of product selection based on config parameter
+    prod_subset_type = config.get_string_default(unique_name, "prod_subset_type", "all");
+
+    if (prod_subset_type == "autos") {
     // If this writter is auto-correlations only:
-    autos_only = config.get_bool_default(unique_name, "autos_only", false);
-    if (autos_only) {
         for (uint16_t ii=0; ii < inputs.size(); ii++) {
             prods.push_back({ii,ii});
         }
-    } else {
-        // If this writer takes a baseline subset as input, generate subset products
-        // as specified in config.
-        xmax = config.get_int_default(unique_name, "max_ew_baseline", -1);
-        ymax = config.get_int_default(unique_name, "max_ns_baseline", -1);
-        all_prods = ((xmax + ymax)==-2);
-        for(uint16_t i=0; i < inputs.size(); i++) {
-            for(uint16_t j = i; j < inputs.size(); j++) {
+    } else if (prod_subset_type == "baseline") {
+        // If this writer takes a baseline subset as input, generate 
+        // subset products as specified in config.
+        xmax = config.get_int(unique_name, "max_ew_baseline");
+        ymax = config.get_int(unique_name, "max_ns_baseline");
+        for(uint16_t ii=0; ii < inputs.size(); ii++) {
+            for(uint16_t jj = ii; jj < inputs.size(); jj++) {
                 // restrict products to those within max baseline length
-                if (all_prods || max_bl_condition({i, j}, xmax, ymax)) {
-                    prods.push_back({i, j});
+                if (max_bl_condition({ii, jj}, xmax, ymax)) {
+                    prods.push_back({ii, jj});
                 }
+            }
+        }
+    } else if (prod_subset_type == "input_list") {
+        input_list = config.get_int_array(unique_name, "input_list");
+        // Find the products in the subset
+        for(uint16_t ii=0; ii < inputs.size(); ii++) {
+            for(uint16_t jj = ii; jj < inputs.size(); jj++) {
+                // restrict products to those containing selected inputs
+                if (input_list_condition({ii,jj}, input_list)) {
+                    prods.push_back({ii, jj});
+                }
+            }
+        }
+    } else if (prod_subset_type == "all") {
+        // Select all rpoducts
+        for(uint16_t ii=0; ii < inputs.size(); ii++) {
+            for(uint16_t jj = ii; jj < inputs.size(); jj++) {
+                prods.push_back({ii, jj});
             }
         }
     }
