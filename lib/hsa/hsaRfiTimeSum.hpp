@@ -27,6 +27,7 @@ private:
 
     uint32_t _sk_step;
     uint32_t _num_bad_inputs;
+    uint32_t rfi_size;
 };
 
 #endif
