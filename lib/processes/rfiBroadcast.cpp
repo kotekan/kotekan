@@ -40,6 +40,7 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 	
     _sk_step = config.get_int(unique_name, "sk_step");
     COMBINED = config.get_bool(unique_name,"rfi_combined");
+    frames_per_packet = config.get_int(unique_name, "frames_per_packet");
 
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");
@@ -49,11 +50,11 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 void rfiBroadcast::main_thread() {
 
     uint32_t frame_id = 0;
-    uint32_t i, j;
+    uint32_t i, j, f;
     uint8_t * frame = NULL;
 
     //Intialize empty packet header
-    uint32_t packet_header_length = sizeof(bool) + sizeof(uint16_t) + sizeof(int)*5 + sizeof(int64_t);
+    uint32_t packet_header_length = sizeof(bool) + sizeof(uint16_t) + sizeof(int)*6 + sizeof(int64_t);
     char *packet_header = (char *)malloc(packet_header_length);
     //Declare array to hold averaged kurtosis estimates
     float RFI_Avg[_num_local_freq];
@@ -102,40 +103,56 @@ void rfiBroadcast::main_thread() {
         packet_header_bytes_written += sizeof(uint32_t);
         memcpy(packet_header + packet_header_bytes_written, &_num_local_freq, sizeof(uint32_t));
         packet_header_bytes_written += sizeof(uint32_t);
+        memcpy(packet_header + packet_header_bytes_written, &frames_per_packet, sizeof(uint32_t));
+        packet_header_bytes_written += sizeof(uint32_t);
         
         //Connection succesful
         INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
         
         while (!stop_thread) { //Endless loop
 
-            //Get Frame
-            frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL) break;
-
             float rfi_data[_num_local_freq*_samples_per_data_set/_sk_step];
-            memcpy(rfi_data, frame, rfi_buf->frame_size);
-
-            seq_num = get_fpga_seq_num(rfi_buf, frame_id);
-            //Adjust Header
-            memcpy(packet_header + packet_header_bytes_written, &seq_num, sizeof(int64_t));
-            packet_header_bytes_written += sizeof(int64_t);
             
-            //Add Header to packet
-            memcpy(packet_buffer, packet_header, packet_header_length);
-
             for(i = 0; i < _num_local_freq; i++){
                 RFI_Avg[i] = 0;
-                //Average over the whole frame
-                for(j = 0; j < _samples_per_data_set/_sk_step; j++){
-                    RFI_Avg[i] += rfi_data[i + _num_local_freq*j];
+            }
+
+            for(f = 0; f < frames_per_packet; f++){
+
+                //Get Frame
+                frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+                if (frame == NULL) break;
+
+                memcpy(rfi_data, frame, rfi_buf->frame_size);
+                if(f == 0){
+                    seq_num = get_fpga_seq_num(rfi_buf, frame_id);
+                    //Adjust Header
+                    memcpy(packet_header + packet_header_bytes_written, &seq_num, sizeof(int64_t));
+                    packet_header_bytes_written += sizeof(int64_t);
                 }
-                RFI_Avg[i] /= (_samples_per_data_set/_sk_step);
+
+                //Add Header to packet
+                memcpy(packet_buffer, packet_header, packet_header_length);
+
+                for(i = 0; i < _num_local_freq; i++){
+                    //Average over the whole frame
+                    for(j = 0; j < _samples_per_data_set/_sk_step; j++){
+                        RFI_Avg[i] += rfi_data[i + _num_local_freq*j];
+                    }
+                }
+                
+                mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+                frame_id = (frame_id + 1) % rfi_buf->num_frames;
+            }
+
+            for(i = 0; i < _num_local_freq; i++){
+                RFI_Avg[i] /= frames_per_packet*(_samples_per_data_set/_sk_step);
                 INFO("SK value %f for freq %d, stream %d", RFI_Avg[i], i, encoded_stream_id)
             }
 
             //Add Data to packet
             memcpy(packet_buffer + packet_header_length, RFI_Avg, _num_local_freq*sizeof(float));
-                
+
             //Send Packet
             uint32_t bytes_sent = sendto(socket_fd,
                              packet_buffer,
@@ -153,8 +170,6 @@ void rfiBroadcast::main_thread() {
             //seq_num++;
 
             // Mark frame as empty.
-            mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % rfi_buf->num_frames;
             
             //INFO("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
         }

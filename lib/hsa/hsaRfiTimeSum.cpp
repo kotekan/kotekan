@@ -37,7 +37,7 @@ void hsaRfiTimeSum::apply_config(const uint64_t& fpga_seq) {
 
     //RFI Config Parameters
     _sk_step = config.get_int(unique_name, "sk_step");
-
+    rfi_size = config.get_int(unique_name, "rfi_size");
     //Compute Buffer lengths
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
     output_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
@@ -49,8 +49,8 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     struct __attribute__ ((aligned(16))) args_t { 
 	void *input;
 	void *output; 
-	void *InputMask; 
-	uint32_t num_bad_inputs; 
+	void *InputMask;
+        uint32_t num_elements; 
 	uint32_t sk_step; 
     } args;
 
@@ -58,7 +58,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
     args.InputMask = device.get_gpu_memory("input_mask", mask_len); 
-    args.num_bad_inputs = _num_bad_inputs;
+    args.num_elements = _num_elements;
     args.sk_step = _sk_step;
 
 //    INFO("%d %d %d %d %d",input_frame_len, output_frame_len, mask_len, _num_bad_inputs, _sk_step);
@@ -68,15 +68,19 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
 
     kernelParams params;
     params.workgroup_size_x = 1;
-    params.workgroup_size_y = 256;
     params.workgroup_size_z = 1;
-    params.grid_size_x = _num_local_freq*_num_elements;
-    params.grid_size_y = 256;
+    params.grid_size_x = rfi_size;//_num_elements*_num_local_freq;
+    if(_sk_step <= 256){
+        params.grid_size_y = _sk_step;
+        params.workgroup_size_y = _sk_step;
+    }
+    else{
+        params.grid_size_y = 256;
+        params.workgroup_size_y = 256;
+    }
     params.grid_size_z = _samples_per_data_set/_sk_step;
     params.num_dims = 3;
 
-    params.private_segment_size = 0;
-    params.group_segment_size = 16384;
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

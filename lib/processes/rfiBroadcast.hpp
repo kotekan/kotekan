@@ -70,6 +70,8 @@ private:
     uint32_t  _sk_step;
     //Flag for element summation in kurtosis estimation process
     bool COMBINED;
+    //Number of frames to average per UDP packet
+    uint32_t frames_per_packet;
 
     //Process config parameters
     //The port for UDP stream to be sent to

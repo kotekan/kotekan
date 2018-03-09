@@ -31,9 +31,9 @@ class CommandLine:
         self.TCP_IP = '10.10.10.2'
         self.TCP_PORT = 41214
         self.mode = 'pathfinder'
-        self.config = {'frames_per_packet': 64, 'num_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
+        self.config = {'frames_per_packet': 4, 'num_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
                         'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'vdif_rfi_header_size': 21,
-                        'sk_step': 256, 'chime_rfi_header_size': 31}
+                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4}
         self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
@@ -126,10 +126,13 @@ def chimeHeaderCheck(header,app):
         print("Chime Header Error: Number of Global Frequencies does not match config")
         return False
     if(header['num_local_freq'] != app.config['num_local_freq']):
-        print("VDIF Header Error: Number of Local Frequencies does not match config")
+        print("Chime Header Error: Number of Local Frequencies does not match config")
         return False
     if(header['fpga_seq_num'] < 0):
         print("Chime Header Error: Invalid FPGA sequenc Number")
+        return False
+    if(header['frames_per_packet']  != app.config['frames_per_packet']):
+        print("Chime Header Error: Frames per Packet does not match config")
         return False
 
     print("First Packet Received, Valid Chime Header Confirmed.")
@@ -155,9 +158,9 @@ def VDIFHeaderCheck(header,app):
         return False
     return True
 
-def data_listener():
+def data_listener(socket_udp):
 
-    global sock_udp, waterfall, t_min, app
+    global waterfall, t_min, app
 
     #Config Variables
     frames_per_packet = app.config['frames_per_packet']
@@ -175,9 +178,9 @@ def data_listener():
     chimePacketSize = chimeRFIHeaderSize + 4*local_freq
     chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1), ('encoded_stream_ID',np.uint16,1),('sk_step',np.uint32,1),
         ('num_elements',np.uint32,1),('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),
-        ('num_local_freq',np.uint32,1),('fpga_seq_num',np.int64,1)])
+        ('num_local_freq',np.uint32,1),('frames_per_packet',np.uint32,1),('fpga_seq_num',np.int64,1)])
     stream_dict = dict()
-
+    packetCounter = 0;
     while True:
 
         if (mode == 'pathfinder'):
@@ -224,7 +227,10 @@ def data_listener():
         
             if(packet != ''):
 
-                print('Receiving UDP Packet...')
+                if(packetCounter % 25*len(stream_dict) == 0):
+                    print("Receiving Packets from %d Streams"%(len(stream_dict)))
+                packetCounter += 1
+
                 header = np.fromstring(packet[:chimeRFIHeaderSize],dtype=chimeHeaderDataType)
                 data = np.fromstring(packet[chimeRFIHeaderSize:],dtype=np.float32)
 
@@ -237,28 +243,37 @@ def data_listener():
                     #Add to the dictionary of Streams
                     stream_dict[header['encoded_stream_ID'][0]] = Stream(header)
                 
+                #On first packet received by any stream
                 if(firstPacket):
 
+                    #Set up waterfall parameters
                     t_min = datetime.datetime.utcnow()
                     min_seq = header['fpga_seq_num'][0]
-                    max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame
+                    max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
                     firstPacket = False       
 
                 else:
 
                     if(header['fpga_seq_num'][0] > max_seq):
 
-                        roll_amount = int(-1*waterfall.shape[1]/8)
+                        roll_amount = int(-1*max((header['fpga_seq_num'][0]-max_seq)/(timesteps_per_frame*frames_per_packet),waterfall.shape[1]/8))
+                        #If the roll is larger than the whole waterfall (kotekan dies and rejoins)
+                        if(-1*roll_amount > waterfall.shape[1]):
+                            #Reset Waterfall
+                            t_min = datetime.datetime.utcnow()
+                            waterfall[:,:] = -1
+                            min_seq = header['fpga_seq_num'][0]
+                            max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
+                        else:
+                            #DO THE ROLL, Note: Roll Amount is negative
+                            waterfall = np.roll(waterfall,roll_amount,axis=1)
+                            waterfall[:,roll_amount:] = -1
+                            min_seq -= roll_amount*timesteps_per_frame*frames_per_packet
+                            max_seq -= roll_amount*timesteps_per_frame*frames_per_packet
+                            #Adjust Time
+                            t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame*frames_per_packet)
 
-                        #DO THE ROLL, Note: Roll Amount is negative
-                        waterfall = np.roll(waterfall,roll_amount,axis=1)
-                        waterfall[:,roll_amount:] = -1
-                        min_seq -= roll_amount*timesteps_per_frame
-                        max_seq -= roll_amount*timesteps_per_frame
-                        #Adjust Time
-                        t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
-
-            waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-min_seq)/timesteps_per_frame)] = data
+                waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-min_seq)/(timesteps_per_frame*frames_per_packet))] = data
 
         elif (mode == 'vdif'):
 
@@ -282,7 +297,7 @@ def data_listener():
                     max_seq = min_seq + (waterfall.shape[1] - 1)
                     firstPacket = False
 
-                else:
+           sock_udp.recvfrom     else:
 
                     if(header['seq'] > max_seq):
 
@@ -332,12 +347,6 @@ if( __name__ == '__main__'):
 
     app = CommandLine()
 
-    #Intialize UDP
-    UDP_IP= app.UDP_IP
-    UDP_PORT = app.UDP_PORT
-    sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_udp.bind((UDP_IP, UDP_PORT))
-
     #Intialize TCP
     TCP_IP= app.TCP_IP
     TCP_PORT = app.TCP_PORT
@@ -353,9 +362,14 @@ if( __name__ == '__main__'):
 
     time.sleep(1)
    
-    thread = threading.Thread(target=data_listener)
-    thread.daemon = True
-    thread.start()
+    receive_threads = []
+    for i in range(app.config['num_receive_threads']):
+        UDP_PORT = app.UDP_PORT + i
+        sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock_udp.bind((UDP_IP, UDP_PORT))
+        receive_threads.append(threading.Thread(target=data_listener), args = (sock_udp,))
+        receive_threads[i].daemon = True
+        receive_threads[i].start()
 
     thread2 = threading.Thread(target=TCP_stream)
     thread2.daemon = True
