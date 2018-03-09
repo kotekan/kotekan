@@ -15,7 +15,6 @@
 
 __kernel void zero_padded_FFT512_noflip( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array,  __global float2 *Gain){
 
-  
   __local float2 local_data[2048];//4* 512 float2 * 2 float/float2 * 4 B/float = 16kB
     uint local_address = get_local_id(0);  //0 to 255
     uint data_temp;
@@ -78,7 +77,7 @@ __kernel void zero_padded_FFT512_noflip( __global uint *data, __global uint *map
       local_data[index_1 + i*512] = temp_0-temp;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 2
     index_0 = ((local_address & 0xfc) << 1) | ((local_address & 0x3)<<0);
     index_1 = index_0 + 4;
@@ -110,7 +109,7 @@ __kernel void zero_padded_FFT512_noflip( __global uint *data, __global uint *map
       local_data[index_1 + i*512] = temp_0-temp;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 4
     index_0 = ((local_address & 0xf0) << 1) | ((local_address & 0xf)<<0);
     index_1 = index_0 + 16;
@@ -126,7 +125,7 @@ __kernel void zero_padded_FFT512_noflip( __global uint *data, __global uint *map
       local_data[index_1 + i*512] = temp_0-temp;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 5
     index_0 = ((local_address & 0xe0) << 1) | ((local_address & 0x1f)<<0);
     index_1 = index_0 + 32;
@@ -269,6 +268,6 @@ __kernel void zero_padded_FFT512_noflip( __global uint *data, __global uint *map
 //    results_array[address+ 3*256] = local_data[index_3];
 
   //exit
-    
+
 }
 
