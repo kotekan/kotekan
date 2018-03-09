@@ -155,8 +155,8 @@ void dpdkWrapper::main_thread() {
         network_dpdk_args->dump_full_packets = 0;
         network_dpdk_args->lcore_port_mapping[0] = 0;
         network_dpdk_args->lcore_port_mapping[1] = 1;
-        network_dpdk_args->lcore_port_mapping[4] = 2;
-        network_dpdk_args->lcore_port_mapping[5] = 3;
+        network_dpdk_args->lcore_port_mapping[2] = 2;
+        network_dpdk_args->lcore_port_mapping[3] = 3;
     } else if (_mode == "vdif") {
         INFO("DPDK mode: vdif");
         for (int i = 0; i < _num_fpga_links; ++i) {
@@ -170,8 +170,8 @@ void dpdkWrapper::main_thread() {
         network_dpdk_args->dump_full_packets = 0;
         network_dpdk_args->lcore_port_mapping[0] = 0;
         network_dpdk_args->lcore_port_mapping[1] = 1;
-        network_dpdk_args->lcore_port_mapping[4] = 2;
-        network_dpdk_args->lcore_port_mapping[5] = 3;
+        network_dpdk_args->lcore_port_mapping[2] = 2;
+        network_dpdk_args->lcore_port_mapping[3] = 3;
     } else {
         ERROR("DPDK Mode %s not supported!", _mode.c_str());
         return;
