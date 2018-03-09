@@ -5,4 +5,5 @@
 .kdev_include_paths
 *.c~
 *.h~
+/.vscode/
 /nbproject/

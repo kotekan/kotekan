@@ -12,15 +12,18 @@
     // This shouldn't go above 4, since it's for the shuffle.
     // A better name might be SHUFFLE_SIZE?
     #define NUM_FREQ (1)
+    #define MAX_CORES (8)
 #else
     #ifdef WITH_OPENCL
         // Pathfinder mode
         #define NUM_LINKS (8)
         #define NUM_FREQ (1)
+        #define MAX_CORES (8)
     #else
         // CHIME Mode
         #define NUM_LINKS (4)
         #define NUM_FREQ (4)
+        #define MAX_CORES (12)
     #endif
 
     #define NUM_LCORES (4)
@@ -44,6 +47,8 @@ struct networkDPDKArg {
     uint32_t num_links_in_group[NUM_LINKS];
     uint32_t link_id[NUM_LINKS];
     uint32_t port_offset[NUM_LCORES];
+    /// Maps lcores to ports.  Note lcore == -1 always mapps to port 0.
+    uint32_t lcore_port_mapping[MAX_CORES];
 
     int32_t timesamples_per_packet;
     int32_t samples_per_data_set;
