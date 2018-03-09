@@ -33,6 +33,8 @@ public:
      *  @param weights_type What the visibility weights represent (e.g. 'inverse_var')
      *  @param freqs Frequencies channels that will be in the file
      *  @param inputs Inputs that are in the file
+     *  @param prods Products that are in the file.
+     *  @param num_ev Number of eigenvectors to write (0 turns off the datasets entirely).
      **/
     visFile(const std::string& name,
             const std::string& acq_name,
@@ -61,6 +63,9 @@ public:
      * @param new_weight Weight data.
      * @param new_gcoeff Gain coefficients.
      * @param new_gexp Gain exponents.
+     * @param new_eval Eigenvalues.
+     * @param new_evec Eigenvectors.
+     * @param new_erms RMS after eigenvalue removal.
      **/
     void writeSample(uint32_t time_ind, uint32_t freq_ind,
                      std::vector<cfloat> new_vis,
@@ -132,32 +137,28 @@ class visFileBundle {
 
 public:
 
-    /** Initialise the file bundle
-     *  @param root_path Directory to write into.
-     *  @param freq_chunk ID of the frequency chunk being written
-     *  @param inst_name Instrument name (e.g. chime)
-     *  @param notes Note about the acquisition
-     *  @param weights_type What the visibility weights represent (e.g. 'inverse_var')
-     *  @param freqs Frequencies channels that will be in the file
-     *  @param inputs Inputs that are in the file
+    /**
+     * Initialise the file bundle
+     * @param root_path Directory to write into.
+     * @param inst_name Instrument name (e.g. chime)
+     * @param freq_chunk ID of the frequency chunk being written
+     * @param rollover Maximum time length of file.
+     * @param window_size Number of "active" timesamples to keep.
+     * @param ... Arguments passed through to `visFile::visFile`.
      * 
      * @warning The directory will not be created if it doesn't exist.
      **/
     template<typename... InitArgs>
-    visFileBundle(const std::string acq_name,
+    visFileBundle(const std::string root_path,
                   const std::string instrument_name,
                   int freq_chunk,
                   size_t rollover, size_t window_size,
                   InitArgs... args);
 
-    /** Write a new time sample into this set of files
-     *  @param new_time Time of sample
-     *  @param freq_ind Index of the frequency we are writing
-     *  @param new_vis Visibility data for this frequency
-     *  @param new_weight Visibility weights for this frequency
-     *  @param new_gcoeff Gain coefficient data
-     *  @param new_gexp Gain exponent data
-     *  @return The number of entries in the time axis
+    /**
+     * Write a new time sample into this set of files
+     * @param new_time Time of sample
+     * @param ...      Arguments passed through to `visFile::writeSample`
      **/
     template<typename... WriteArgs>
     void addSample(time_ctype new_time, WriteArgs&&... args);
