@@ -32,6 +32,7 @@ private:
     int32_t coeff_len;
     int32_t gain_len;
     string _gain_dir;
+    vector<float> default_gains;
 
     Buffer * metadata_buf;
     int32_t metadata_buffer_id;
@@ -43,9 +44,8 @@ private:
     float * host_gain;
 
     float scaling;
-    bool zero_missing_gains;
 
-    int32_t _num_elements;
+    uint32_t _num_elements;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
     bool first_pass; //so gains only load at the start!

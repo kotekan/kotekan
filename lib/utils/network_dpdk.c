@@ -60,8 +60,8 @@
 #define COUNTER_BITS 32
 #define COUNTER_MAX (1ll << COUNTER_BITS) - 1ll
 
-static inline double e_time(void) {
-    static struct timeval now;
+inline double e_time(void) {
+    struct timeval now;
     gettimeofday(&now, NULL);
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 }
@@ -211,7 +211,7 @@ static void advance_frame(struct NetworkDPDK * dpdk_net,
         (dpdk_net->link_data[port][freq].buffer_id + dpdk_net->args->num_links_in_group[port]) % dpdk_net->args->buf[port][freq]->num_frames;
 
     // TODO this should be based on packet arrival time - or the seq->time mapping.
-    static struct timeval now;
+    struct timeval now;
     gettimeofday(&now, NULL);
 
     // TODO it is really bad to have a blocking call here(!)
@@ -897,8 +897,13 @@ int lcore_recv_pkt(void *args)
     INFO("lcore ID: %d", lcore);
     // Because of the way that we launch the network thread we run the master cores out
     // side of the DPDK RTE framework, so the lcore id of the master core becomes -1.
-    if (lcore == -1)
+    if (lcore == -1) {
         lcore = 0;
+    } else {
+        assert(lcore < MAX_CORES);
+        lcore = dpdk_net->args->lcore_port_mapping[lcore];
+    }
+
 
     const int port_offset = dpdk_net->args->port_offset[lcore];
     for (port = port_offset;

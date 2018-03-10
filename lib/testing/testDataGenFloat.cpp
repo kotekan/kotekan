@@ -1,16 +1,16 @@
-#include "testDataGen.hpp"
+#include "testDataGenFloat.hpp"
 #include <random>
 #include "errors.h"
 #include "chimeMetadata.h"
 #include <unistd.h>
 #include <sys/time.h>
 
-REGISTER_KOTEKAN_PROCESS(testDataGen);
+REGISTER_KOTEKAN_PROCESS(testDataGenFloat);
 
-testDataGen::testDataGen(Config& config, const string& unique_name,
+testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name,
-                   buffer_container, std::bind(&testDataGen::main_thread, this)) {
+                   buffer_container, std::bind(&testDataGenFloat::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
@@ -19,22 +19,22 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     if (type == "const")
         value = config.get_int(unique_name, "value");
     if (type=="ramp")
-        value = config.get_int(unique_name, "value");
+        value = config.get_float(unique_name, "value");
     _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
 }
 
-testDataGen::~testDataGen() {
+testDataGenFloat::~testDataGenFloat() {
 
 }
 
-void testDataGen::apply_config(uint64_t fpga_seq) {
+void testDataGenFloat::apply_config(uint64_t fpga_seq) {
 
 }
 
-void testDataGen::main_thread() {
+void testDataGenFloat::main_thread() {
 
     int frame_id = 0;
-    uint8_t * frame = NULL;
+    float * frame = NULL;
     uint64_t seq_num = 0;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -42,7 +42,7 @@ void testDataGen::main_thread() {
     int link_id = 0;
 
     while (!stop_thread) {
-        frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (float*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
         allocate_new_metadata_object(buf, frame_id);
@@ -64,7 +64,6 @@ void testDataGen::main_thread() {
                 frame[j] = value;
             } else if (type == "ramp"){
                 frame[j] = fmod(j*value,256*value);
-//                frame[j] = j*value;
             } else if (type == "random") {
                 unsigned char new_real;
                 unsigned char new_imaginary;
