@@ -15,7 +15,6 @@
 
 __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array,  __global float2 *Gain){
 
-  
   __local float2 local_data[2048];//4* 512 float2 * 2 float/float2 * 4 B/float = 16kB
     uint local_address = get_local_id(0);  //0 to 255
     uint data_temp;
@@ -23,10 +22,11 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     data_temp = data[get_global_id(2)*512 + get_global_id(1)*256 + local_address];
 
     //unpack to index, with gaps of 256
-    uint index_0 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
-    uint index_1 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4+1) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
-    uint index_2 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4+2) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
-    uint index_3 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4+3) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
+    //flipped by (255-local_add) in order to have N-S beams go from South to North
+    uint index_0 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
+    uint index_1 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4+1) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
+    uint index_2 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4+2) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
+    uint index_3 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4+3) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
 
     temp_0.REAL = ((int)((data_temp & 0x000000f0) >>   4u)) - 8;  //240
     temp_0.IMAG = ((int)((data_temp & 0x0000000f) >>   0u)) - 8;   //15
@@ -38,23 +38,23 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     temp_3.IMAG = ((int)((data_temp & 0x0f000000) >>  24u)) - 8;
 
     uint gain_id = get_global_id(1)*1024+local_address*4;
-    local_data[index_0    ].REAL = temp_0.REAL*Gain[gain_id].REAL - temp_0.IMAG*Gain[gain_id].IMAG;
-    local_data[index_0    ].IMAG = temp_0.REAL*Gain[gain_id].IMAG + temp_0.IMAG*Gain[gain_id].REAL;
+    local_data[index_0    ].REAL = temp_0.REAL*Gain[gain_id].REAL + temp_0.IMAG*Gain[gain_id].IMAG;
+    local_data[index_0    ].IMAG = -temp_0.REAL*Gain[gain_id].IMAG + temp_0.IMAG*Gain[gain_id].REAL;
     local_data[index_0 +1 ]      = local_data[index_0    ];
 
     gain_id = gain_id + 1;
-    local_data[index_1    ].REAL = temp_1.REAL*Gain[gain_id].REAL - temp_1.IMAG*Gain[gain_id].IMAG;
-    local_data[index_1    ].IMAG = temp_1.REAL*Gain[gain_id].IMAG + temp_1.IMAG*Gain[gain_id].REAL;
+    local_data[index_1    ].REAL = temp_1.REAL*Gain[gain_id].REAL + temp_1.IMAG*Gain[gain_id].IMAG;
+    local_data[index_1    ].IMAG = -temp_1.REAL*Gain[gain_id].IMAG + temp_1.IMAG*Gain[gain_id].REAL;
     local_data[index_1 +1 ]      = local_data[index_1    ];
 
     gain_id = gain_id + 1;
-    local_data[index_2    ].REAL = temp_2.REAL*Gain[gain_id].REAL - temp_2.IMAG*Gain[gain_id].IMAG;
-    local_data[index_2    ].IMAG = temp_2.REAL*Gain[gain_id].IMAG + temp_2.IMAG*Gain[gain_id].REAL;
+    local_data[index_2    ].REAL = temp_2.REAL*Gain[gain_id].REAL + temp_2.IMAG*Gain[gain_id].IMAG;
+    local_data[index_2    ].IMAG = -temp_2.REAL*Gain[gain_id].IMAG + temp_2.IMAG*Gain[gain_id].REAL;
     local_data[index_2 +1 ]      = local_data[index_2    ];
 
     gain_id = gain_id + 1;
-    local_data[index_3    ].REAL = temp_3.REAL*Gain[gain_id].REAL - temp_3.IMAG*Gain[gain_id].IMAG;
-    local_data[index_3    ].IMAG = temp_3.REAL*Gain[gain_id].IMAG + temp_3.IMAG*Gain[gain_id].REAL;
+    local_data[index_3    ].REAL = temp_3.REAL*Gain[gain_id].REAL + temp_3.IMAG*Gain[gain_id].IMAG;
+    local_data[index_3    ].IMAG = -temp_3.REAL*Gain[gain_id].IMAG + temp_3.IMAG*Gain[gain_id].REAL;
     local_data[index_3 +1 ]      = local_data[index_3    ];
 
     barrier(CLK_LOCAL_MEM_FENCE);  //crucial
@@ -78,7 +78,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1 + i*512] = temp_0-temp;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 2
     index_0 = ((local_address & 0xfc) << 1) | ((local_address & 0x3)<<0);
     index_1 = index_0 + 4;
@@ -110,7 +110,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1 + i*512] = temp_0-temp;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 4
     index_0 = ((local_address & 0xf0) << 1) | ((local_address & 0xf)<<0);
     index_1 = index_0 + 16;
@@ -126,7 +126,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1 + i*512] = temp_0-temp;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    
+
     //stage 5
     index_0 = ((local_address & 0xe0) << 1) | ((local_address & 0x1f)<<0);
     index_1 = index_0 + 32;
@@ -189,7 +189,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_0 + i*512] = temp_0+temp;
       local_data[index_1 + i*512] = temp_0-temp;
     }
-   
+
     barrier(CLK_LOCAL_MEM_FENCE);
 
     //Clamping
@@ -223,6 +223,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_2].REAL * CoArray[2].IMAG - local_data[index_2].IMAG * CoArray[2].REAL + \
       local_data[index_3].REAL * CoArray[3].IMAG - local_data[index_3].IMAG * CoArray[3].REAL ;
     results_array[address] = Temp/temp_0;
+//      results_array[address]  = local_data[index_0];
 
 
     //Beam1
@@ -237,6 +238,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_2].REAL * CoArray[6].IMAG - local_data[index_2].IMAG * CoArray[6].REAL + \
       local_data[index_3].REAL * CoArray[7].IMAG - local_data[index_3].IMAG * CoArray[7].REAL ;
     results_array[address+ 256] = Temp/temp_0;
+//      results_array[address+ 256] = local_data[index_1];
 
     //Beam2
   Temp.REAL = \
@@ -250,7 +252,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     local_data[index_2].REAL * CoArray[10].IMAG - local_data[index_2].IMAG * CoArray[10].REAL +   \
     local_data[index_3].REAL * CoArray[11].IMAG - local_data[index_3].IMAG * CoArray[11].REAL ;
   results_array[address + 2*256] = Temp/temp_0;
-
+//    results_array[address + 2*256] =local_data[index_2];
 
   //Beam3
   Temp.REAL = \
@@ -264,8 +266,9 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     local_data[index_2].REAL * CoArray[14].IMAG - local_data[index_2].IMAG * CoArray[14].REAL +   \
     local_data[index_3].REAL * CoArray[15].IMAG - local_data[index_3].IMAG * CoArray[15].REAL ;
   results_array[address+ 3*256] = Temp/temp_0;
+//    results_array[address+ 3*256] = local_data[index_3];
 
   //exit
-    
+
 }
 

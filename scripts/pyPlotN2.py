@@ -36,7 +36,7 @@ if (data_type == "CORR_MATRIX"): #N^2
 	x_blk=0
 	y_blk=0
 	for i in np.arange(num_blocks):
-		corr_matrix[x_blk:x_blk+block_dims[0],y_blk:y_blk+block_dims[1],:]=data[i,:,:].reshape(block_dims)
+		corr_matrix[x_blk:x_blk+block_dims[0],y_blk:y_blk+block_dims[1],:]=data[i,:,:].reshape(block_dims).transpose(1,0,2)
 		x_blk+=block_dims[0]
 		if x_blk >= num_elements:
 			y_blk+=block_dims[1];

@@ -11,6 +11,25 @@
 #endif
 
 #ifdef __cplusplus
+#include <string>
+
+/**
+ * @brief Returns the last N characters of a string
+ *
+ * @param str The string to get the last characters from
+ * @param N The number of characters to take form the end of the string
+ * @return std::string
+ */
+inline std::string string_tail(std::string const& str, size_t const N) {
+    if (N >= str.size()) {
+        return str;
+    }
+    return str.substr(str.size() - N);
+}
+
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 

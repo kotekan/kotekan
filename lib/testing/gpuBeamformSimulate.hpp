@@ -23,6 +23,7 @@ private:
     int32_t _downsample_time;
     int32_t _downsample_freq;
     vector<int32_t> _reorder_map;
+    vector<float> default_gains;
     string _gain_dir;
 
     float * coff;
@@ -37,7 +38,7 @@ private:
     double * tmp128;
     int * tmp512;
     int * reorder_map_c;
-    unsigned char * cpu_final_output;
+    float * cpu_final_output;
 
 
     int input_len;
@@ -46,7 +47,6 @@ private:
     int output_len;
 
     float scaling;
-    bool zero_missing_gains;
 
     void reorder(unsigned char *data, int *map);
     void cpu_beamform_ns(double *data, uint64_t transform_length, int stop_level);

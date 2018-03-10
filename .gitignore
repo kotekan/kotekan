@@ -6,4 +6,5 @@
 *.c~
 *.h~
 *.swp
+/.vscode/
 /nbproject/

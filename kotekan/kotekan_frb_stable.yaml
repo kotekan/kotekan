@@ -5,23 +5,22 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 udp_packet_size: 4928
+udp_frb_packet_size: 4264
+udp_frb_header_size: 168
 num_links: 4
+freq_array: [4,7,10,16]
 timesamples_per_packet: 2
+timesamples_per_frb_packet: 16
 num_elements: 2048
 num_local_freq: 1
+num_total_freq: 4
 samples_per_data_set: 49152
-num_data_sets: 1
-num_gpus: 4
-buffer_depth: 6
-num_gpu_frames: 1
-cpu_affinity: [4,5,6,7,8,9,10,11]
-#-----FRB specific global parameters----
 downsample_time: 3
 downsample_freq: 8
 factor_upchan: 128
 factor_upchan_out: 16
-sizeof_float: 4
 gain_dir: /root/FRB-GainFiles
+num_beams: 4
 num_frb_total_beams: 1024
 num_data_sets: 1
 num_gpus: 4
@@ -34,7 +33,7 @@ reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,104,10
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 10 * buffer_depth
+    num_metadata_objects: 30 * buffer_depth
 
 # Buffers
 gpu_input_buffers:
@@ -52,7 +51,7 @@ gpu_input_buffers:
 
 beamform_output_buffers:
     num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams 
+    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams
     metadata_pool: main_pool
     beamform_output_buffer_0:
         kotekan_buffer: standard
@@ -62,6 +61,19 @@ beamform_output_buffers:
         kotekan_buffer: standard
     beamform_output_buffer_3:
         kotekan_buffer: standard
+
+frb_output_buffer:
+    num_frames: 10 * buffer_depth
+    frame_size: udp_frb_packet_size*8*256
+    metadata_pool: main_pool
+    kotekan_buffer: standard
+
+#file_output_buffer:
+#    num_frames: buffer_depth
+#    frame_size: udp_frb_packet_size*8*256
+#    metadata_pool: main_pool
+#    file_output_buffer_0:
+#        kotekan_buffer: standard
 
 dpdk:
   kotekan_process: dpdkWrapper
@@ -86,10 +98,13 @@ gpu:
   - name: hsa_beamform_transpose
     kernel: "../lib/hsa/kernels/transpose.hsaco"
   - name: hsa_beamform_upchan
-    kernel: "../lib/hsa/kernels/upchannelize.hsaco"
-  - name: hsa_beamform_output_solo
+    kernel: "../lib/hsa/kernels/upchannelize-working.hsaco"
+  - name: hsa_beamform_output
     kernel: ''
-  buffer_depth: 4
+  link_map: [0,1,2,3]
+  num_gpus: 4
+  block_size: 32
+  buffer_depth: 3
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
       kotekan_process: hsaProcess
@@ -120,77 +135,37 @@ gpu:
       out_buffers:
         beamform_output_buf: beamform_output_buffer_3
 
+postprocess:
+  kotekan_process: frbPostProcess
+  network_input_buffer_0: beamform_output_buffer_0
+  network_input_buffer_1: beamform_output_buffer_1
+  network_input_buffer_2: beamform_output_buffer_2
+  network_input_buffer_3: beamform_output_buffer_3
+  frb_out_buf: frb_output_buffer
 
-frb:
-  udp_frb_packet_size: 4264
-  udp_frb_header_size: 168
-  timesamples_per_frb_packet: 16
-  num_beams: 4
-  frb_output_buffer:
-    num_frames: 4 * buffer_depth
-    frame_size: udp_frb_packet_size*8*256
-    metadata_pool: main_pool
-    kotekan_buffer: standard
-  postprocess:
-    cpu_affinity: [11]
-#    kotekan_process: frbPostProcess
-    kotekan_process: frbPostProcess_in
-    network_input_buffer_0: beamform_output_buffer_0
-    network_input_buffer_1: beamform_output_buffer_1
-    network_input_buffer_2: beamform_output_buffer_2
-    network_input_buffer_3: beamform_output_buffer_3
-    frb_out_buf: frb_output_buffer
-  buffer_read:
-    kotekan_process: frbNetworkProcess
-    in_buf: frb_output_buffer
-    udp_frb_port_number: 1313
-    number_of_nodes: 256
-    packets_per_stream: 8
-    number_of_subnets: 4
-    #column_mode: true
-    beam_offset: 0
-    time_interval: 125829120
-    L1_node_ips:
-      - 10.6.200.10
-      - 10.7.200.10
-      - 10.6.200.11
-      - 10.7.200.11
-      - 10.6.200.12
-      - 10.7.200.12
-      - 10.6.200.13
-      - 10.7.200.13
-      - 10.6.200.14
-      - 10.7.200.14
-      - 10.6.200.15
-      - 10.7.200.15
-      - 10.6.200.16
-      - 10.7.200.16
-      - 10.6.200.17
-      - 10.7.200.17
-
-# FRB Run 5 2019-03-14 Offsets
-# B0329 - 108
-# Crab  - 036
-
-#  file_output_buffer:
-#    num_frames: buffer_depth
-#    frame_size: udp_frb_packet_size*8*256
-#    metadata_pool: main_pool
-#    file_output_buffer_0:
-#        kotekan_buffer: standard
-#  file_out:
-#    base_dir: /data/frb/
-#    file_ext: dump
-#    file_0:
-#        kotekan_process: rawFileWrite
-#        in_buf: frb_output_buffer
-#        file_name: frb_out
-
-
-#hex_dump:
-#  kotekan_process: hexDump
-#  buf: frb_output_buffer
-#  len: 128
-#  offset: 0
-
-
+buffer_read:
+  kotekan_process: frbNetworkProcess
+  frb_out_buf: frb_output_buffer
+  udp_frb_port_number: 1313
+  number_of_nodes: 256
+  packets_per_stream: 8
+  number_of_subnets: 4
+  beam_offset: 108
+  time_interval: 125829120
+  L1_node_ips:
+    - 10.6.200.10
+    - 10.7.200.10
+    - 10.6.200.11
+    - 10.7.200.11
+    - 10.6.200.12
+    - 10.7.200.12
+    - 10.6.200.13
+    - 10.7.200.13
+    - 10.6.200.14
+    - 10.7.200.14
+    - 10.6.200.15
+    - 10.7.200.15
+    - 10.6.200.16
+    - 10.7.200.16
+    - 10.6.200.17
+    - 10.7.200.17

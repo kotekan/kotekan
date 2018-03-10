@@ -113,6 +113,9 @@ void restServer::start() {
     for (int j = 4; j < 12; j++)
         CPU_SET(j, &cpuset);
     pthread_setaffinity_np(main_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+#ifndef MAC_OSX
+    pthread_setname_np(main_thread.native_handle(), "rest_server");
+#endif
 }
 
 // *** Connection Instance functions ***

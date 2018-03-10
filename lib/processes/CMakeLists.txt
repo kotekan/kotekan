@@ -9,14 +9,13 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               computeDualpolPower.cpp
               fullPacketDump.cpp
               gpuPostProcess.cpp
-              frbPostProcess.cpp
               pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
               integratePowerStream.cpp
               networkInputPowerStream.cpp
-              pyPlotResult.cpp
+              pyPlotN2.cpp
               rawFileRead.cpp
               rawFileWrite.cpp
               vdifStream.cpp
@@ -30,13 +29,12 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferRecv.cpp
               simpleAutocorr.cpp
               freqSlicer.cpp
-              frbPostProcess_in.cpp
               prodSubset.cpp
               visProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
 endif ()
 
 if (${USE_DPDK})
