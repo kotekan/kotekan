@@ -91,9 +91,17 @@ inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
     return (n * (n + 1) / 2) - ((n - i) * (n - i + 1) / 2) + (j - i);
 }
 
+/**
+ * @brief Convert a product index to an input pair.
+ * @param k Product index.
+ * @param n Total number of inputs.
+ * @return Product pair indices.
+ * 
+ * @todo This is super inefficient.
+ **/
 inline prod_ctype icmap(uint32_t k, uint16_t n) {
-    uint16_t ii = 0;
-    for (ii; ii < n; ii++) {
+    uint16_t ii;
+    for (ii = 0; ii < n; ii++) {
         if (cmap(ii, n - 1, n) >= k) {
             break;
         }

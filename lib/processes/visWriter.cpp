@@ -36,6 +36,11 @@ visWriter::visWriter(Config& config,
     // If specified, get the weights type to write to attributes
     weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
+    // Write the eigen values out
+    bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
+    if(write_ev) {
+        num_ev = config.get_int(unique_name, "num_eigenvectors");
+    }
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
     // it uses the hostname of the current node
@@ -143,11 +148,13 @@ void visWriter::main_thread() {
             std::vector<float> vis_weight(frame.weight.begin(), frame.weight.end());
             std::vector<cfloat> gain_coeff(inputs.size(), {1, 0});
             std::vector<int32_t> gain_exp(inputs.size(), 0);
+            std::vector<float> eval(frame.eigenvalues.begin(), frame.eigenvalues.end());
+            std::vector<cfloat> evec(frame.eigenvectors.begin(), frame.eigenvectors.end());
 
             // Add all the new information to the file.
             double start = current_time();
             file_bundle->addSample(t, freq_ind, vis, vis_weight,
-                                   gain_coeff, gain_exp);
+                                   gain_coeff, gain_exp, eval, evec, frame.rms);
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);
@@ -192,7 +199,8 @@ void visWriter::init_acq() {
     std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
          new visFileBundle(
-             root_path, chunk_id, instrument_name, notes, weights_type, freqs, inputs, prods
+             root_path, instrument_name, chunk_id, file_length, window,
+             notes, weights_type, freqs, inputs, prods, num_ev
          )
     );
 }
