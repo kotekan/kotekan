@@ -84,6 +84,10 @@ private:
     // The current file of visibilities that we are writing
     std::unique_ptr<visFileBundle> file_bundle;
 
+    // File length and number of samples to keep "active"
+    size_t file_length = 1024;
+    size_t window = 20;
+
     /// Input buffer to read from
     Buffer * in_buf;
 

@@ -73,9 +73,8 @@ def test_subset(subset_data):
         assert (frame.vis == np.array(vis)).all()
         assert (frame.evals == np.arange(
                 subset_params['num_eigenvectors'])).all()
-        evecs = (np.arange(subset_params['num_eigenvectors'],
-                    dtype=complex)[:,None]*subset_params['num_elements']
-            +np.arange(subset_params['num_elements'])[None,:]).flatten()
+        evecs = (np.arange(subset_params['num_eigenvectors'])[:, None] +
+                 1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
         assert (frame.evecs == evecs).all()
         assert (frame.rms == 1.)
 
