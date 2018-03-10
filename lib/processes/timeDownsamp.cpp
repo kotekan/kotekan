@@ -73,6 +73,13 @@ void timeDownsamp::main_thread() {
 
             // Transfer over the metadata from the first frame
             output_frame.fill_chime_metadata((const chimeMetadata *)in_buf->metadata[frame_id]->metadata);
+
+            // Zero out existing data
+            std::fill(output_frame.vis.begin(), output_frame.vis.end(), 0.0);
+            std::fill(output_frame.weight.begin(), output_frame.weight.end(), 0.0);
+            std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
+            std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
+            output_frame.rms = 0.0;
         }
 
         auto output_frame = visFrameView(out_buf, output_frame_id,
@@ -96,7 +103,7 @@ void timeDownsamp::main_thread() {
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.vis[i] /= nsamp;
                 // extra factor of nsamp for sample variance
-                output_frame.weight[i] = nsamp*nsamp / frame.weight[i];
+                output_frame.weight[i] = nsamp*nsamp / output_frame.weight[i];
             }
             for (int i = 0; i < num_eigenvectors; i++) {
                 output_frame.eigenvalues[i] /= nsamp;
