@@ -22,11 +22,10 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     data_temp = data[get_global_id(2)*512 + get_global_id(1)*256 + local_address];
 
     //unpack to index, with gaps of 256
-    //flipped by (255-local_add) in order to have N-S beams go from South to North
-    uint index_0 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
-    uint index_1 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4+1) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
-    uint index_2 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4+2) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
-    uint index_3 = CUSTOM_BIT_REVERSE_9_BITS((255-local_address)*4+3) + ((((255-local_address)&0x40)<<2)  + (((255-local_address)&0x80)<<2) + (((255-local_address)&0xc0)<<2));
+    uint index_0 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
+    uint index_1 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4+1) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
+    uint index_2 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4+2) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
+    uint index_3 = CUSTOM_BIT_REVERSE_9_BITS(local_address*4+3) + (((local_address&0x40)<<2)  + ((local_address&0x80)<<2) + ((local_address&0xc0)<<2));
 
     temp_0.REAL = ((int)((data_temp & 0x000000f0) >>   4u)) - 8;  //240
     temp_0.IMAG = ((int)((data_temp & 0x0000000f) >>   0u)) - 8;   //15
@@ -207,7 +206,8 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     barrier(CLK_LOCAL_MEM_FENCE);
 
     float2 Temp;
-    uint address = get_global_id(2)*2048 + get_global_id(1)*1024 + local_address;
+    //change to 255-localadd in order to flip cylinder NS
+    uint address = get_global_id(2)*2048 + get_global_id(1)*1024 + (255-local_address);
 
     temp_0.REAL = 4;
     temp_0.IMAG = 4;
@@ -222,8 +222,8 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1].REAL * CoArray[1].IMAG - local_data[index_1].IMAG * CoArray[1].REAL + \
       local_data[index_2].REAL * CoArray[2].IMAG - local_data[index_2].IMAG * CoArray[2].REAL + \
       local_data[index_3].REAL * CoArray[3].IMAG - local_data[index_3].IMAG * CoArray[3].REAL ;
-    results_array[address] = Temp/temp_0;
-//      results_array[address]  = local_data[index_0];
+//    results_array[address] = Temp/temp_0;
+      results_array[address]  = local_data[index_0];
 
 
     //Beam1
@@ -237,8 +237,8 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1].REAL * CoArray[5].IMAG - local_data[index_1].IMAG * CoArray[5].REAL + \
       local_data[index_2].REAL * CoArray[6].IMAG - local_data[index_2].IMAG * CoArray[6].REAL + \
       local_data[index_3].REAL * CoArray[7].IMAG - local_data[index_3].IMAG * CoArray[7].REAL ;
-    results_array[address+ 256] = Temp/temp_0;
-//      results_array[address+ 256] = local_data[index_1];
+//    results_array[address+ 256] = Temp/temp_0;
+      results_array[address+ 256] = local_data[index_1];
 
     //Beam2
   Temp.REAL = \
@@ -251,8 +251,8 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     local_data[index_1].REAL * CoArray[9].IMAG - local_data[index_1].IMAG * CoArray[9].REAL + \
     local_data[index_2].REAL * CoArray[10].IMAG - local_data[index_2].IMAG * CoArray[10].REAL +   \
     local_data[index_3].REAL * CoArray[11].IMAG - local_data[index_3].IMAG * CoArray[11].REAL ;
-  results_array[address + 2*256] = Temp/temp_0;
-//    results_array[address + 2*256] =local_data[index_2];
+//  results_array[address + 2*256] = Temp/temp_0;
+    results_array[address + 2*256] =local_data[index_2];
 
   //Beam3
   Temp.REAL = \
@@ -265,8 +265,8 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     local_data[index_1].REAL * CoArray[13].IMAG - local_data[index_1].IMAG * CoArray[13].REAL + \
     local_data[index_2].REAL * CoArray[14].IMAG - local_data[index_2].IMAG * CoArray[14].REAL +   \
     local_data[index_3].REAL * CoArray[15].IMAG - local_data[index_3].IMAG * CoArray[15].REAL ;
-  results_array[address+ 3*256] = Temp/temp_0;
-//    results_array[address+ 3*256] = local_data[index_3];
+//  results_array[address+ 3*256] = Temp/temp_0;
+    results_array[address+ 3*256] = local_data[index_3];
 
   //exit
 
