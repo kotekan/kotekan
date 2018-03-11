@@ -220,6 +220,8 @@ void visAccumulate::main_thread() {
 
     std::vector<cfloat> vis(nprod);
     std::vector<cfloat> vis_even(nprod);
+    //cfloat * vis = new cfloat[nprod];
+    //cfloat * vis_even = new cfloat[nprod];
 
     while (!stop_thread) {
 
@@ -256,6 +258,7 @@ void visAccumulate::main_thread() {
         // Copy out the visibilities from the blocked representation and reorder
         // them. This is done for simplicity, now we can just use them how we
         // want without any remapping
+        //copy_vis_triangle((const int32_t *)in_frame, input_remap, block_size, num_elements, {vis, vis + nprod});
         copy_vis_triangle((const int32_t *)in_frame, input_remap, block_size, num_elements, vis);
 
         auto output_frame = visFrameView(out_buf, out_frame_id);
@@ -263,12 +266,18 @@ void visAccumulate::main_thread() {
         // First, divide through by the number of accumulations done in the GPUs
         // themselves. Then accumulate the weighted vis into the main vis buffer
         // to progressively calculate the average
+
+	float w1 = 1.0 / samples_per_data_set;
+	float w2 = 1.0 / num_gpu_frames;
+
+	cfloat * ovis = output_frame.vis.begin();
         for(size_t i = 0; i < nprod; i++) {
-            vis[i] /= (float)(samples_per_data_set);
+            vis[i] *= w1;
 
-            output_frame.vis[i] += vis[i] / (float)(num_gpu_frames);
+            ovis[i] += w2 * vis[i];
+            //output_frame.vis[i] += vis[i] / (float)(num_gpu_frames);
         }
-
+        
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
         if(frame_id % 2 == 0) {
@@ -279,8 +288,11 @@ void visAccumulate::main_thread() {
         // output_frame.weight will hold the *inverse* variance
         else {
             for(size_t i = 0; i < nprod; i++) {
-                auto t = abs(vis[i] - vis_even[i]) / (float)(num_gpu_frames);
-                output_frame.weight[i] += pow(t, 2);
+                //auto t = abs(vis[i] - vis_even[i]) / (float)(num_gpu_frames);
+                cfloat t = (vis[i] - vis_even[i]) * w2;
+		float tr = t.real(), ti = t.imag();
+                //output_frame.weight[i] += std::norm(t);
+                output_frame.weight[i] += (tr * tr + ti * ti);
             }
         }
         

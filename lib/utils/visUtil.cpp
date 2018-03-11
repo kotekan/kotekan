@@ -26,22 +26,24 @@ void copy_vis_triangle(
         throw std::invalid_argument("Input map asks for elements out of range.");
     }
 
-    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
-        for(auto j = i; j != inputmap.end(); j++) {
+//    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
+//        for(auto j = i; j != inputmap.end(); j++) {
 
+    for(int i = 0; i < N; i++) {
+        for(int j = i; j < N; j++) {
             // Account for the case when the reordering means we should be
             // indexing into the lower triangle, by flipping into the upper
             // triangle and conjugating.
-            no_flip = *i <= *j;
-            ii = no_flip ? *i : *j;
-            jj = no_flip ? *j : *i;
-            i_sign = no_flip ? 1.0 : -1.0;
+            //no_flip = *i <= *j;
+            //ii = no_flip ? *i : *j;
+            //jj = no_flip ? *j : *i;
+            //i_sign = no_flip ? 1.0 : -1.0;
 
-            bi = prod_index(ii, jj, block, N);
+            bi = prod_index(i, j, block, N);
 
             // IMPORTANT: for some reason the buffers are packed as imaginary
             // *then* real so we need to account for that here.
-            output[pi]= {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
+            output[pi]= {(float)inputdata[2 * bi + 1], (float)inputdata[2 * bi]};
             pi++;
         }
     }
