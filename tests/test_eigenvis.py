@@ -50,15 +50,15 @@ def test_basic(tmpdir_factory):
 
     eigen_data = run_eigenvis(tmpdir_factory)
     for frame in eigen_data:
-        largeset_eval = frame.evals[-1]
-        largeset_evec = frame.evecs[-num_elements:]
-        assert abs(largeset_eval - num_elements) / num_elements < 1e-6
-        assert np.allclose(largeset_evec / largeset_evec[0],
+        largest_eval = frame.evals[0]
+        largest_evec = frame.evecs[:num_elements]
+        assert abs(largest_eval - num_elements) / num_elements < 1e-6
+        assert np.allclose(largest_evec / largest_evec[0],
                            expected_evec_phase_fact)
-        assert np.allclose(abs(largeset_evec), 1 / np.sqrt(num_elements))
-        zero_eval = frame.evals[-2]
+        assert np.allclose(abs(largest_evec), 1 / np.sqrt(num_elements))
+        zero_eval = frame.evals[1]
         assert zero_eval / num_elements < 1e-6
-        assert frame.rms < 1e-6
+        assert frame.rms < 1e-3
 
 
 def test_filled(tmpdir_factory):
@@ -70,14 +70,14 @@ def test_filled(tmpdir_factory):
 
     eigen_data = run_eigenvis(tmpdir_factory, params)
     for frame in eigen_data[8:]:
-        largeset_eval = frame.evals[-1]
-        largeset_evec = frame.evecs[-num_elements:]
-        assert abs(largeset_eval - num_elements) / num_elements < 1e-4
-        assert np.allclose(largeset_evec / largeset_evec[0],
+        largest_eval = frame.evals[0]
+        largest_evec = frame.evecs[:num_elements]
+        assert abs(largest_eval - num_elements) / num_elements < 1e-4
+        assert np.allclose(largest_evec / largest_evec[0],
                            expected_evec_phase, rtol=1e-3)
-        assert np.allclose(abs(largeset_evec),
+        assert np.allclose(abs(largest_evec),
                            1 / np.sqrt(num_elements), rtol=1e-3)
-        assert frame.rms < 1e-6
+        assert frame.rms < 1e-3
 
 
 def test_input_excluded(tmpdir_factory):
@@ -92,8 +92,8 @@ def test_input_excluded(tmpdir_factory):
 
     eigen_data = run_eigenvis(tmpdir_factory, params)
     for frame in eigen_data:
-        largeset_eval = frame.evals[-1]
-        largeset_evec = frame.evecs[-num_elements:]
-        assert abs(largeset_eval - expected_eval) / num_elements < 1e-6
-        assert np.allclose(largeset_evec / largeset_evec[0],
+        largest_eval = frame.evals[0]
+        largest_evec = frame.evecs[:num_elements]
+        assert abs(largest_eval - expected_eval) / num_elements < 1e-6
+        assert np.allclose(largest_evec / largest_evec[0],
                            expected_evec_phase_fact)

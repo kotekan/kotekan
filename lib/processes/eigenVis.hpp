@@ -25,6 +25,8 @@
  * @metric kotekan_eigenvis_comp_time_seconds
  *         Time required to find eigenvectors. An exponential moving average over
  *         ~10 samples.
+ * @metric kotekan_eigenvis_eigenvalue
+ *         The value of each eigenvalue calculated, or the RMS.
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
