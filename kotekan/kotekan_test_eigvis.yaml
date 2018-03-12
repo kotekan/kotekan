@@ -67,6 +67,10 @@ eig_vis:
   in_buf: vis_buffer
   out_buf: write_buffer
 
+debug:
+  kotekan_process: visDebug
+  in_buf: write_buffer
+
 hdf5_writer:
   kotekan_process: visWriter
   in_buf: write_buffer

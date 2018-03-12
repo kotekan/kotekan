@@ -1,5 +1,6 @@
 #include "visBuffer.hpp"
 #include "gpsTime.h"
+#include "fmt.hpp"
 
 
 template<typename T>
@@ -51,7 +52,9 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     num_eigenvectors(metadata->num_eigenvectors),
 
     // Set the refs to the general metadata
-    time(std::tie(metadata->fpga_seq_num, metadata->ctime)),
+    time(std::tie(metadata->fpga_seq_start, metadata->ctime)),
+    fpga_seq_length(metadata->fpga_seq_length),
+    fpga_seq_total(metadata->fpga_seq_total),
     freq_id(metadata->freq_id),
     dataset_id(metadata->dataset_id),
 
@@ -101,23 +104,22 @@ visFrameView::visFrameView(Buffer * buf, int frame_id,
 
 std::string visFrameView::summary() const {
 
-    std::ostringstream s;
-
     auto tm = gmtime(&(std::get<1>(time).tv_sec));
 
-    s << "visBuffer[name=" << buffer->buffer_name << "]:"
-      << " freq=" << freq_id
-      << " dataset=" << dataset_id
-      << " fpga_seq=" << std::get<0>(time)
-      << " time=" << std::put_time(tm, "%F %T");
+    string s = fmt::format(
+        "visBuffer[name={}]: freq={} dataset={} fpga_start={} time={:%F %T}",
+        buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm
+    );
 
-    return s.str();
+    return s;
 }
 
 
 // Copy the non-const parts of the metadata
 void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
-    metadata->fpga_seq_num = frame_to_copy.metadata->fpga_seq_num;
+    metadata->fpga_seq_start = frame_to_copy.metadata->fpga_seq_start;
+    metadata->fpga_seq_length = frame_to_copy.metadata->fpga_seq_length;
+    metadata->fpga_seq_total = frame_to_copy.metadata->fpga_seq_total;
     metadata->ctime = frame_to_copy.metadata->ctime;
     metadata->freq_id = frame_to_copy.metadata->freq_id;
     metadata->dataset_id = frame_to_copy.metadata->dataset_id;

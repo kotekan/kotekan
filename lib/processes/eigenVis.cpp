@@ -4,7 +4,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
-#include "format.h"
+#include "fmt.hpp"
 
 #include <cblas.h>
 #include <lapacke.h>

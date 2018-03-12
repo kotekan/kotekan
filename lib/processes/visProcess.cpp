@@ -4,7 +4,7 @@
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
-#include "format.h"
+#include "fmt.hpp"
 
 #include <time.h>
 #include <iomanip>
@@ -216,6 +216,7 @@ void visAccumulate::main_thread() {
     int out_frame_id = 0;
 
     uint last_frame_count = 0;
+    uint frames_in_this_cycle = 0;
 
     size_t nb = num_elements / block_size;
     size_t nprod_gpu = nb * (nb + 1) * block_size * block_size / 2;
@@ -264,10 +265,14 @@ void visAccumulate::main_thread() {
                     output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
                 }
             );
-            
+
+            // Set the actual amount of time we accumulated for 
+            output_frame.fpga_seq_total = frames_in_this_cycle * samples_per_data_set;
+
             mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
             init = false;
+            frames_in_this_cycle = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -284,6 +289,9 @@ void visAccumulate::main_thread() {
 
             // Copy over the metadata
             output_frame.fill_chime_metadata((const chimeMetadata *)in_buf->metadata[in_frame_id]->metadata);
+
+            // Set the length of time this frame will cover
+            output_frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
             
             // Zero out existing data
             std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
@@ -329,6 +337,7 @@ void visAccumulate::main_thread() {
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
         last_frame_count = frame_count;
+        frames_in_this_cycle++;
     }
 
     // Cleanup 
