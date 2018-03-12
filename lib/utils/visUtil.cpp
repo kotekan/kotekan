@@ -11,6 +11,7 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
 
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
+// TODO: port this to using map_vis_triangle. Need a unit test first.
 void copy_vis_triangle(
     const int32_t * inputdata, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N, gsl::span<cfloat> output

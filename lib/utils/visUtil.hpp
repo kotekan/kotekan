@@ -182,7 +182,21 @@ void copy_vis_triangle(
 );
 
 
-// Apply a function over the visibility triangle
+/**
+ * @brief Apply a function over the visibility triangle.
+ * 
+ * This function is best by passing a lambda function/closure that does the
+ * computation you want. It allows you to avoid doing the index computation
+ * yourself.
+ * 
+ * @param inputmap  Vector of feed indices to use.
+ * @param block     Block size.
+ * @param N         Number of inputs in input data.
+ * @param f         Function to apply. It takes three arguments.
+ *                    - The product index into the correlation triangle.
+ *                    - The same product in the GPU packed data.
+ *                    - Whether we need to conjugate to map between the two. 
+ */
 void map_vis_triangle(const std::vector<uint32_t>& inputmap,
     size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
 );
