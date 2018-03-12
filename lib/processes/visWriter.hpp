@@ -121,6 +121,9 @@ private:
     // Number of eigenvectors to write out
     size_t num_ev;
 
+    /// Number of products to write
+    size_t num_prod;
+
     /// Keep track of the average write time
     movingAverage write_time;
 };
