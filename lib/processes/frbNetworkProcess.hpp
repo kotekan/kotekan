@@ -10,6 +10,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
+#include "restServer.hpp"
 
  /**
  * @class frbNetworkProcess
@@ -58,6 +59,9 @@ public:
   /// parse hostname to derive the ip_address using gethosname() 
   void parse_host_name();
 
+  /// Callback to update the beam offset
+  void update_offset_callback(connectionInstance& conn, json& json_request);
+
   /// main thread
   void main_thread();
 private:
@@ -97,6 +101,8 @@ private:
 
   //Beam Configuration Mode
   bool column_mode;
+
+  std::mutex _packet_frame_lock;
 };
  
 #endif
