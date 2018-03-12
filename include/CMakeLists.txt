@@ -5,6 +5,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 include_directories (${KOTEKAN_SOURCE_DIR}/generated)
 
 add_library( libinclude
-             mongoose.c )
+             mongoose.c
+             format.cc )
 
 target_link_libraries( libinclude m )

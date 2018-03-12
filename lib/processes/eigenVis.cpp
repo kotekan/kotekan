@@ -4,7 +4,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
-#include "tinyformat.h"
+#include "format.h"
 
 #include <cblas.h>
 #include <lapacke.h>
@@ -198,8 +198,8 @@ void eigenVis::main_thread() {
 
         // Output eigenvalues to prometheus
         for(int i = 0; i < num_eigenvectors; i++) {
-            std::string labels = tfm::format(
-                "eigenvalue=\"%d\",freq_id=\"%i\",dataset_id=\"%i\"",
+            std::string labels = fmt::format(
+                "eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
                 i, freq_id, input_frame.dataset_id
             );
             prometheusMetrics::instance().add_process_metric(
@@ -209,8 +209,8 @@ void eigenVis::main_thread() {
         }
 
         // Output RMS to prometheus
-        std::string labels = tfm::format(
-            "eigenvalue=\"rms\",freq_id=\"%i\",dataset_id=\"%i\"",
+        std::string labels = fmt::format(
+            "eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"",
             freq_id, input_frame.dataset_id
         );
         prometheusMetrics::instance().add_process_metric(

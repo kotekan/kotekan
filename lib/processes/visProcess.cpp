@@ -4,6 +4,7 @@
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
+#include "format.h"
 
 #include <time.h>
 #include <iomanip>
@@ -148,11 +149,10 @@ void visDebug::main_thread() {
         // Update the frame count for prometheus
         fd_pair key {frame.freq_id, frame.dataset_id};
         frame_counts[key]++;  // Relies on the fact that insertion zero intialises
-        std::ostringstream labels;
-        labels << "freq_id=\"" << frame.freq_id
-               << "\",dataset_id=\"" << frame.dataset_id << "\"";
+        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
+                                         frame.freq_id, frame.dataset_id);
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels.str()
+            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels
         );
 
         // Mark the buffers and move on
