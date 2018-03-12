@@ -27,13 +27,16 @@
 struct visMetadata {
 
     /// The FPGA sequence number of the integration frame
-    uint64_t fpga_seq_num;
+    uint64_t fpga_seq_start;
     /// The ctime of the integration frame
     timespec ctime;
+    /// Nominal length of the frame in FPGA ticks
+    uint64_t fpga_seq_length;
+    // Amount of data that actually went into the frame (in FPGA ticks)
+    uint64_t fpga_seq_total;
 
     /// ID of the frequency bin
     uint32_t freq_id;
-
     /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
     uint32_t dataset_id;
 
@@ -41,7 +44,6 @@ struct visMetadata {
     uint32_t num_elements;
     /// Number of products for data in buffer
     uint32_t num_prod;
-
     /// Number of eigenvectors and values calculated
     uint32_t num_eigenvectors;
 
@@ -191,6 +193,11 @@ public:
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
+    /// The nominal frame length in FPGA ticks
+    uint64_t& fpga_seq_length;
+    /// The actual amount of data accumulated in FPGA ticks
+    uint64_t& fpga_seq_total;
+
     /// A reference to the frequency ID.
     uint32_t& freq_id;
     /// A reference to the dataset ID.
