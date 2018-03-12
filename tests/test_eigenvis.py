@@ -58,7 +58,7 @@ def test_basic(tmpdir_factory):
         assert np.allclose(abs(largest_evec), 1 / np.sqrt(num_elements))
         zero_eval = frame.evals[1]
         assert zero_eval / num_elements < 1e-6
-        assert frame.rms < 1e-3
+        assert frame.rms < 1e-6
 
 
 def test_filled(tmpdir_factory):
