@@ -11,7 +11,7 @@
  *
  * This task performs the factorization of the visibility matrix into 
  * ``num_eigenvector`` eigenvectors and eigenvalues and stores them in reserve space
- * in the ``visBuffer``
+ * in the ``visBuffer``. They are stored in descending order of the eigenvalue.
  *
  * @par Buffers
  * @buffer in_buf The set of buffers coming out the GPU buffers
