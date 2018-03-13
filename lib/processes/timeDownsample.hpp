@@ -29,11 +29,8 @@
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  in_buf           String. Name of buffer to read from.
+ * @conf  in_buf            String. Name of buffer to read from.
  * @conf  out_buf           String. Name of buffer to output to.
- * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
- *                          correlator data,
- * @conf  num_ev            Int. The number of eigenvectors to be stored.
  * @conf  num_samples       Int. The number of time frames to average.
  *
  * @warning There is not mechanism in place to verify or enforce that frames being
@@ -61,8 +58,8 @@ public:
 
 private:
 
-    // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
+    // Frame parameters
+    size_t num_elements, num_eigenvectors;
     size_t nprod;
 
     // Number of samples to combine
