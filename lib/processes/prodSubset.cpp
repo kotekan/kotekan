@@ -26,8 +26,9 @@ prodSubset::prodSubset(Config &config,
     // Type of product selection based on config parameter
     prod_subset_type = config.get_string(unique_name, "prod_subset_type");
 
+    prod_ind = std::get<0>(parse_prod_subset(config, unique_name));
 
-
+    // TODO: delete the block below
 ///////////////////////////////////////////////////////////
     if (prod_subset_type == "autos") {
         int idx = 0;
@@ -141,7 +142,7 @@ parse_prod_subset(Config& config, const std::string base_path) {
     size_t num_prod = config.get_int(base_path, "num_prod");
     size_t num_elements = config.get_int(base_path, "num_elements");
     std::vector<uint32_t> prod_ind_vec;
-    std::vector<input_ctype>> pctype_vec;
+    std::vector<input_ctype> prod_ctype_vec;
 
     // Type of product selection based on config parameter
     std::string prod_subset_type = config.get_string(base_path, "prod_subset_type");
@@ -150,8 +151,7 @@ parse_prod_subset(Config& config, const std::string base_path) {
     if (prod_subset_type == "autos") {
         for (int ii=0; ii<num_elements; ii++) {
             prod_ind_vec.push_back(cmap(ii,ii,num_elements));
-            pctype_vec.push_back((prod_ctype){ii,ii});
-            // TODO: add inputctype here
+            prod_ctype_vec.emplace_back((prod_ctype){ii,ii});
         }
     } else if (prod_subset_type == "baseline") {
         // Define criteria for baseline selection based on config parameters
@@ -160,29 +160,25 @@ parse_prod_subset(Config& config, const std::string base_path) {
         // Find the products in the subset
         for (int ii=0; ii<num_elements; ii++) {
             for (int jj=ii; jj<num_elements; jj++) {
-//        for (size_t ii = 0; ii < num_prod; ii++) {
-//              
                 if (max_bl_condition((prod_ctype){ii,jj}, xmax, ymax)) {
                     prod_ind_vec.push_back(cmap(ii,jj,num_elements));
-                    pctype_vec.push_back((prod_ctype){ii,jj});
-                    // TODO: add inputctype here
+                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
                 }
             }
         }
-
-//TODO: Continue work from here
-
     } else if (prod_subset_type == "have_inputs") {
         input_list = config.get_int_array(base_path, "input_list");
         // Find the products in the subset
-        for (size_t ii = 0; ii < num_prod; ii++) {
-            if (have_inputs_condition(ii, num_elements, input_list)) {
-                prod_ind.push_back(ii);
+        for (int ii=0; ii<num_elements; ii++) {
+            for (int jj=ii; jj<num_elements; jj++) {
+                if (have_inputs_condition((prod_ctype){ii,jj}, xmax, ymax)) {
+                    prod_ind_vec.push_back(cmap(ii,jj,num_elements));
+                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
+                }
             }
         }
     }
 
+    return std::make_tuple(prod_ind_vec, prod_ctype_vec);
 
 }
-
-
