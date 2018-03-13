@@ -10,7 +10,7 @@
  * @brief Perform eigen factorization of the visibilities
  *
  * This task performs the factorization of the visibility matrix into 
- * ``num_eigenvector`` eigenvectors and eigenvalues and stores them in reserve space
+ * ``num_ev`` eigenvectors and eigenvalues and stores them in reserve space
  * in the ``visBuffer``. They are stored in descending order of the eigenvalue.
  *
  * @par Buffers
@@ -31,7 +31,7 @@
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_eigenvectors      Int. The number of eigenvectors to be calculated as
+ * @conf  num_ev                Int. The number of eigenvectors to be calculated as
  *                              an approximation to the visibilities.
  * @conf  num_diagonals_filled  Int, default 0. Number of diagonals to fill with
  *                              the previous time step's solution prior to

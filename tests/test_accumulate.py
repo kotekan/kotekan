@@ -6,7 +6,7 @@ import kotekan_runner
 
 accumulate_params = {
     'num_elements': 4,
-    'num_eigenvectors': 4,
+    'num_ev': 4,
     'samples_per_data_set': 32768,
     'int_frames': 64,
     'total_frames': 257,  # One extra sample to ensure we actually get 256
@@ -33,7 +33,7 @@ def accumulate_data(tmpdir_factory):
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'visAccumulate', {'num_eigenvectors': 4},
+        'visAccumulate', {'num_ev': 4},
         kotekan_runner.FakeGPUBuffer(
             mode='accumulate',
             freq=accumulate_params['freq'],
@@ -56,7 +56,7 @@ def gaussian_data(tmpdir_factory):
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'visAccumulate', {'num_eigenvectors': 4},
+        'visAccumulate', {'num_ev': 4},
         kotekan_runner.FakeGPUBuffer(
             mode='gaussian',
             freq=gaussian_params['freq'],
@@ -79,7 +79,7 @@ def time_data(tmpdir_factory):
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'visAccumulate', {'num_eigenvectors': 4},
+        'visAccumulate', {'num_ev': 4},
         kotekan_runner.FakeGPUBuffer(
             mode='accumulate',
             freq=time_params['freq'],
@@ -102,8 +102,8 @@ def test_structure(accumulate_data):
     for frame in accumulate_data:
         assert frame.metadata.num_elements == n
         assert frame.metadata.num_prod == (n * (n + 1) / 2)
-        assert (frame.metadata.num_eigenvectors ==
-                accumulate_params['num_eigenvectors'])
+        assert (frame.metadata.num_ev ==
+                accumulate_params['num_ev'])
 
     # Check that we have the expected number of samples
     nsamp = accumulate_params['total_frames'] / accumulate_params['int_frames']

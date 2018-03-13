@@ -26,7 +26,7 @@ visTransform::visTransform(Config& config,
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
     block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_eigenvectors =  config.get_int(unique_name, "num_ev");
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
@@ -95,9 +95,9 @@ void visTransform::main_thread() {
 
             // Fill other datasets with reasonable values
             std::fill(output_frame.weight.begin(), output_frame.weight.end(), 1.0);
-            std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
-            std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
-            output_frame.rms = 0;
+            std::fill(output_frame.evec.begin(), output_frame.evec.end(), 0.0);
+            std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
+            output_frame.erms = 0;
 
             // Mark the buffers and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -178,7 +178,7 @@ visAccumulate::visAccumulate(Config& config,
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
     block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_eigenvectors =  config.get_int(unique_name, "num_ev");
     samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 
     // Get the indices for reordering
@@ -294,9 +294,9 @@ void visAccumulate::main_thread() {
             output_frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
             
             // Zero out existing data
-            std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
-            std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
-            output_frame.rms = 0;
+            std::fill(output_frame.evec.begin(), output_frame.evec.end(), 0.0);
+            std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
+            output_frame.erms = 0;
 
             // Zero out accumulation arrays
             std::fill(vis1, vis1 + nprod_gpu, 0);

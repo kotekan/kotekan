@@ -24,7 +24,7 @@
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in
  *                              the correlator data
  * @conf  block_size            Int. The block size of the packed data
- * @conf  num_eigenvectors      Int. The number of eigenvectors to be stored
+ * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  freq_id               Int. The single frequency ID to generate frames
  *                              for.
  * @conf  cadence               Float. The interval of time (in seconds)

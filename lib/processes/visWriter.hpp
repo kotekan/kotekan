@@ -53,7 +53,7 @@
  *                          'inverse_var'. Will saved as an attribute in the saved
  *                          file. (default 'unknown')
  * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
- * @conf   num_eigenvectors Int. Only needed if `write_ev` is true.
+ * @conf   num_ev           Int. Only needed if `write_ev` is true.
  *
  * @author Richard Shaw
  */

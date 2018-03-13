@@ -5,7 +5,7 @@ import kotekan_runner
 
 downsamp_params = {
     'num_elements': 4,
-    'num_eigenvectors': 4,
+    'num_ev': 4,
     'num_samples': 2,
     'total_frames': 10,
     'fakevis_mode': 'fill_ij',
@@ -43,8 +43,7 @@ def test_structure(vis_data):
     for frame in vis_data:
         assert frame.metadata.num_elements == n
         assert frame.metadata.num_prod == (n * (n + 1) / 2)
-        assert (frame.metadata.num_eigenvectors ==
-                downsamp_params['num_eigenvectors'])
+        assert (frame.metadata.num_ev == downsamp_params['num_ev'])
 
     # Check that we have the expected number of samples
     nsamp = downsamp_params['total_frames'] / downsamp_params['num_samples']
@@ -72,7 +71,7 @@ def test_time(vis_data):
 def test_contents(vis_data):
 
     n = downsamp_params['num_elements']
-    n_ev = downsamp_params['num_eigenvectors']
+    n_ev = downsamp_params['num_ev']
 
     # Reproduce expected fakeVis output
     model_vis = np.zeros(n * (n+1) / 2, dtype=np.complex64)
@@ -86,14 +85,14 @@ def test_contents(vis_data):
     for i in range(n_ev):
         model_eval[i] = i
         for j in range(n):
-            model_evec[i * n + j] = i * n + j
+            model_evec[i * n + j] = i + 1j * j
 
     # Averaging shouldn't change vis, eigenstuff
     for frame in vis_data:
         assert np.all(frame.vis == model_vis)
-        assert np.all(frame.evecs == model_evec)
-        assert np.all(frame.evals == model_eval)
-        assert frame.rms == 1.
+        assert np.all(frame.evec == model_evec)
+        assert np.all(frame.eval == model_eval)
+        assert frame.erms == 1.
 
     # weights get an extra factor of nsamp
     for frame in vis_data:

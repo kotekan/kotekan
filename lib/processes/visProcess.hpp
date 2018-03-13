@@ -33,7 +33,7 @@
  * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
  *                          correlator data.
  * @conf  block_size        Int. The block size of the packed data.
- * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
+ * @conf  num_ev            Int. The number of eigenvectors to be stored
  * @conf  input_reorder     Array of [int, int, string]. The reordering mapping.
  *                          Only the first element of each sub-array is used and
  *                          it is the the index of the input to move into this
@@ -137,7 +137,7 @@ private:
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_eigenvectors      Int. The number of eigenvectors to be stored
+ * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
  *                              Only the first element of each sub-array is used and it is the the index of
  *                              the input to move into this new location. The remaining elements of the

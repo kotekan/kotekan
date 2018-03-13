@@ -33,7 +33,7 @@
  * @conf  out_buf           String. Name of buffer to output to.
  * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
  *                          correlator data,
- * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored.
+ * @conf  num_ev            Int. The number of eigenvectors to be stored.
  * @conf  num_samples       Int. The number of time frames to average.
  *
  * @warning There is not mechanism in place to verify or enforce that frames being

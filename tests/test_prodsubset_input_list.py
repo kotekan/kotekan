@@ -7,7 +7,7 @@ import visutil
 subset_params = {
     'num_elements': 16,
     'num_prod': 120,
-    'num_eigenvectors': 2,
+    'num_ev': 2,
     'total_frames': 128,
     'cadence': 5.0,
     'mode':'fill_ij',
@@ -71,10 +71,10 @@ def test_subset(subset_data):
                 vis.append(prod.input_a+1j*prod.input_b)
 
         assert (frame.vis == np.array(vis)).all()
-        assert (frame.evals == np.arange(
-                subset_params['num_eigenvectors'])).all()
-        evecs = (np.arange(subset_params['num_eigenvectors'])[:, None] +
+        assert (frame.eval == np.arange(
+                subset_params['num_ev'])).all()
+        evecs = (np.arange(subset_params['num_ev'])[:, None] +
                  1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
-        assert (frame.evecs == evecs).all()
-        assert (frame.rms == 1.)
+        assert (frame.evec == evecs).all()
+        assert (frame.erms == 1.)
 

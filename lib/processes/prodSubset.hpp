@@ -45,7 +45,7 @@
  * @conf  num_prod          int. The number of products in the correlator data
  * @conf  subset_num_prod   int. The number of products in the subset data
  *                               (before subsetting)
-+* @conf  num_eigenvectors  int. The number of eigenvectors to be stored
++* @conf  num_ev            int. The number of eigenvectors to be stored
  * @conf  max_ew_baseline   int. The maximum baseline length along the EW direction to
  *                               include in subset (in units of the shortest EW baseline)
  * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to

@@ -40,7 +40,7 @@ visWriter::visWriter(Config& config,
     // Write the eigen values out
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
     if(write_ev) {
-        num_ev = config.get_int(unique_name, "num_eigenvectors");
+        num_ev = config.get_int(unique_name, "num_ev");
     }
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
@@ -144,11 +144,11 @@ void visWriter::main_thread() {
             );
             throw std::runtime_error(msg);
 
-        } else if (num_ev > 0  and frame.num_eigenvectors != num_ev) {
+        } else if (num_ev > 0  and frame.num_ev != num_ev) {
 
             string msg = fmt::format(
                 "Number of eigenvectors in frame doesn't match file ({} != {}).", 
-                frame.num_eigenvectors, num_ev
+                frame.num_ev, num_ev
             );
             throw std::runtime_error(msg);
 
@@ -166,14 +166,14 @@ void visWriter::main_thread() {
             std::vector<float> vis_weight(frame.weight.begin(), frame.weight.end());
             std::vector<cfloat> gain_coeff(inputs.size(), {1, 0});
             std::vector<int32_t> gain_exp(inputs.size(), 0);
-            std::vector<float> eval(frame.eigenvalues.begin(), frame.eigenvalues.end());
-            std::vector<cfloat> evec(frame.eigenvectors.begin(), frame.eigenvectors.end());
+            std::vector<float> eval(frame.eval.begin(), frame.eval.end());
+            std::vector<cfloat> evec(frame.evec.begin(), frame.evec.end());
 
             // Add all the new information to the file.
             double start = current_time();
             bool error = file_bundle->addSample(t, freq_ind, vis, vis_weight,
                                                 gain_coeff, gain_exp, eval,
-                                                evec, frame.rms);
+                                                evec, frame.erms);
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);

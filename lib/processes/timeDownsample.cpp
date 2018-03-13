@@ -15,7 +15,7 @@ timeDownsample::timeDownsample(Config &config,
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
     block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_eigenvectors =  config.get_int(unique_name, "num_ev");
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
@@ -77,9 +77,9 @@ void timeDownsample::main_thread() {
             // Zero out existing data
             std::fill(output_frame.vis.begin(), output_frame.vis.end(), 0.0);
             std::fill(output_frame.weight.begin(), output_frame.weight.end(), 0.0);
-            std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
-            std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
-            output_frame.rms = 0.0;
+            std::fill(output_frame.evec.begin(), output_frame.evec.end(), 0.0);
+            std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
+            output_frame.erms = 0.0;
         }
 
         auto output_frame = visFrameView(out_buf, output_frame_id,
@@ -91,13 +91,13 @@ void timeDownsample::main_thread() {
             output_frame.weight[i] += 1. / frame.weight[i];
         }
         for (int i = 0; i < num_eigenvectors; i++) {
-            output_frame.eigenvalues[i] += frame.eigenvalues[i];
+            output_frame.eval[i] += frame.eval[i];
             for (int j = 0; j < num_elements; j++) {
                 int k = i * num_elements + j;
-                output_frame.eigenvectors[k] += frame.eigenvectors[k];
+                output_frame.evec[k] += frame.evec[k];
             }
         }
-        output_frame.rms += frame.rms;
+        output_frame.erms += frame.erms;
 
         if (nframes == nsamp - 1) { // Reached the end, average contents of buffer
             for (size_t i = 0; i < nprod; i++) {
@@ -106,13 +106,13 @@ void timeDownsample::main_thread() {
                 output_frame.weight[i] = nsamp*nsamp / output_frame.weight[i];
             }
             for (int i = 0; i < num_eigenvectors; i++) {
-                output_frame.eigenvalues[i] /= nsamp;
+                output_frame.eval[i] /= nsamp;
                 for (int j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
-                    output_frame.eigenvectors[k] /= nsamp;
+                    output_frame.evec[k] /= nsamp;
                 }
             }
-            output_frame.rms /= nsamp;
+            output_frame.erms /= nsamp;
             // mark as full
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
