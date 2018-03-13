@@ -21,14 +21,19 @@
  * passes on a subset of products to an output ``visBuffer``. The subset
  * extracted depends on the parameter 'prod_subset_type'. Here is a list of
  * values 'prod_subset_type' can take and the parameters they support:
+ * - 'all': no extra arameters needed
+ *   - Default. All the products.
  * - 'autos': no extra arameters needed
  *   - The subset are all the auto-correlations.
  * - 'baseline': max_ew_baseline, max_ns_baseline
  *   - Selects a subset of products whose baseline length is smaller than the 
  *   maximum values given by config parameters in the EW and NS directions.
- * - 'input_list': input_list
+ * - 'have_inputs': input_list
  *   - The subset are all the correlations containing at leat one of the 
  *   inputs in the input_list.
+ * - 'only_inputs': input_list
+ *   - The subset are all the correlations containing only inputs from the 
+ *   input_list.
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
@@ -83,108 +88,23 @@ private:
     /// Output buffer to receive baseline subset visibilities
     Buffer* out_buf;
 
-    /// Upper limits for baseline lengths in subset
-    uint16_t xmax, ymax;
-
-    /// Type of product subset to make
-    std::string prod_subset_type;
-
     /// Vector of indices for subset of products
     std::vector<size_t> prod_ind;
 
-    /// List of inputs whose correlations will be selected
-    std::vector<int> input_list;
 };
 
 
-/**
- * @fn max_bl_condition
- *
- * Check if a correlation product corresponds to a baseline with length less
- * than or equal to specified maximum in the two grid directions.
- * Assumes the CHIME channel ordering.
- *
- * @param  prod     prod_ctype. The product pair to be checked.
- * @param  xmax     int. The maximum baseline length in the x direction.
- * @param  ymax     int. The maximum baseline length in the y direction.
- *
- * @return          bool. true if the product satisfies the condition.
- *
- */
-inline bool max_bl_condition(prod_ctype prod, int xmax, int ymax) {
-
-    // Figure out feed separations
-    int x_sep = prod.input_a / 512 - prod.input_b / 512;
-    int y_sep = prod.input_a % 256 - prod.input_b % 256;
-    if (x_sep < 0) x_sep = - x_sep;
-    if (y_sep < 0) y_sep = - y_sep;
-
-    return (x_sep <= xmax) && (y_sep <= ymax);
-}
 
 /**
- * @overload max_bl_condition
- *
- * Accepts a visibility index (in the standard packing scheme) and the number
- * of elements in place of an explicit product pair.
- *
- * @param  vis_ind   int. Index of visibility in the standard UT packing.
- * @param  n         int. Total number of elements.
- *
+ * @brief Parse the product subseting section
+ * @param config    Configuration handle.
+ * @param base_path Path into YAML file to search from.
+ * @return          Tuple containing a vector of the product inputs, and a
+ *                  vector of the corresponding input labels.
  */
-inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
+std::tuple<std::vector<size_t>, std::vector<prod_ctype>> parse_prod_subset(Config& config, const std::string base_path);
 
-    // Get product indices
-    prod_ctype prod = icmap(vis_ind, n);
 
-    return max_bl_condition(prod, xmax, ymax);
-}
-
-/**
- * @fn input_list_condition
- *
- * Check if a correlation product contains at least one of the inputs
- * in the input_list parameter.
- * Assumes the CHIME channel ordering.
- *
- * @param  prod        prod_ctype. The product pair to be checked.
- * @param  input_list  vector of int. The list of inputs to include.
- *
- * @return          bool. true if the product satisfies the condition.
- *
- */
-inline bool input_list_condition(prod_ctype prod, 
-                                std::vector<int> input_list) {
-   
-    bool prod_in_list = false;
-    for(auto ipt : input_list) {
-        if ((prod.input_a==ipt) || (prod.input_b==ipt)) {
-            prod_in_list = true;
-            break;
-        }
-    }
-
-    return prod_in_list;
-}
-
-/**
- * @overload input_list_condition
- *
- * Accepts a visibility index (in the standard packing scheme) and the number
- * of elements in place of an explicit product pair.
- *
- * @param  vis_ind   int. Index of visibility in the standard UT packing.
- * @param  n         int. Total number of elements.
- *
- */
-inline bool input_list_condition(uint32_t vis_ind, int n, 
-                                std::vector<int> input_list) {
-    
-    // Get product indices
-    prod_ctype prod = icmap(vis_ind, n);
-
-    return input_list_condition(prod, input_list);
-}
 
 #endif
 

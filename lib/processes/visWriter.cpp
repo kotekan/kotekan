@@ -46,47 +46,8 @@ visWriter::visWriter(Config& config,
     // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
-    // Type of product selection based on config parameter
-    prod_subset_type = config.get_string_default(unique_name, "prod_subset_type", "all");
-
-    if (prod_subset_type == "autos") {
-    // If this writter is auto-correlations only:
-        for (uint16_t ii=0; ii < inputs.size(); ii++) {
-            prods.push_back({ii,ii});
-        }
-    } else if (prod_subset_type == "baseline") {
-        // If this writer takes a baseline subset as input, generate 
-        // subset products as specified in config.
-        xmax = config.get_int(unique_name, "max_ew_baseline");
-        ymax = config.get_int(unique_name, "max_ns_baseline");
-        for(uint16_t ii=0; ii < inputs.size(); ii++) {
-            for(uint16_t jj = ii; jj < inputs.size(); jj++) {
-                // restrict products to those within max baseline length
-                if (max_bl_condition({ii, jj}, xmax, ymax)) {
-                    prods.push_back({ii, jj});
-                }
-            }
-        }
-    } else if (prod_subset_type == "input_list") {
-        input_list = config.get_int_array(unique_name, "input_list");
-        // Find the products in the subset
-        for(uint16_t ii=0; ii < inputs.size(); ii++) {
-            for(uint16_t jj = ii; jj < inputs.size(); jj++) {
-                // restrict products to those containing selected inputs
-                if (input_list_condition({ii,jj}, input_list)) {
-                    prods.push_back({ii, jj});
-                }
-            }
-        }
-    } else if (prod_subset_type == "all") {
-        // Select all rpoducts
-        for(uint16_t ii=0; ii < inputs.size(); ii++) {
-            for(uint16_t jj = ii; jj < inputs.size(); jj++) {
-                prods.push_back({ii, jj});
-            }
-        }
-    }
-
+    // Calculate the set of products we are writing from the config
+    prods = std::get<1>(parse_prod_subset(config, unique_name));
     num_prod = prods.size();
 
     if(node_mode) {
@@ -238,14 +199,11 @@ void visWriter::setup_freq(const std::vector<uint32_t>& freq_ids) {
     // TODO: this function needs to do three things: set the frequency input map
     // (freqs), set the frequency ordering (freq_map) and set the chunk ID
     // (chunk_id).
-
     if(node_mode) {
         // Output all the frequencies that we have found
         std::string s;
         for(auto id : freq_ids) {
-            char t[32];
-            snprintf(t, 32, "%i [%.2f MHz] ", id, freq_from_bin(id));
-            s += t;
+            s += fmt::format("{} [{:.2f} MHz] ", id, freq_from_bin(id));
         }
         INFO("Frequency bins found: %s", s.c_str());
 

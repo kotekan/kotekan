@@ -22,8 +22,12 @@
  * acquisition per node. Alternatively it can be run more generally, receiving
  * and writing arbitrary frequencies, but it must be given the frequency list in
  * the config.
+ * 
+ * The products we are outputting must be specified correctly. This is done
+ * using the same configuration parameters as `prodSubset`. If not explicitly
+ * set `all` products is assumed.
  *
- * The output is written into the CHIME N^2 HDF% format version 3.0.
+ * The output is written into the CHIME N^2 HDF% format version 3.1.0.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
@@ -104,17 +108,8 @@ private:
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
-    /// Type of product subset to write. Default writes all products.
-    std::string prod_subset_type;
-
     // Vector of products if options to restrict them are present
     std::vector<prod_ctype> prods;
-
-    /// Upper limits for baseline lengths that will be included in products
-    uint16_t xmax, ymax;
-
-    /// List of inputs whose correlations will be written
-    std::vector<int> input_list;
 
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
