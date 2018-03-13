@@ -15,7 +15,7 @@ subset_params = {
 }
 
 vis_params = {
-    'prod_subset_type': 'input_list',
+    'prod_subset_type': 'only_inputs',
     'input_list': [1, 134],
 }
 
@@ -43,15 +43,17 @@ def subset_data(tmpdir_factory):
     yield dump_buffer.load()
 
 
-def input_list_condition(prod, input_list):
+def only_inputs_condition(prod, input_list):
    
-    prod_in_list = False
+    inpa_in_list = False
+    inpb_in_list = False
     for ipt in input_list :
-        if ((prod.input_a==ipt) or (prod.input_b==ipt)):
-            prod_in_list = True
-            break
+        if (prod.input_a==ipt):
+            inpa_in_list = True
+        if (prod.input_b==ipt):
+            inpb_in_list = True
 
-    return prod_in_list
+    return (inpa_in_list and inpb_in_list)
 
 
 def test_subset(subset_data):
@@ -68,7 +70,7 @@ def test_subset(subset_data):
 
         for ii in range(num_prod):
             prod = visutil.icmap(ii,subset_params['num_elements'])
-            if input_list_condition(prod,
+            if only_inputs_condition(prod,
                                 vis_params['input_list']) :
                 vis.append(prod.input_a+1j*prod.input_b)
 
