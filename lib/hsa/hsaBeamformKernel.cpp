@@ -2,6 +2,9 @@
 
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
+// Request gain file re-parse with e.g.
+// curl localhost:12048/frb/update_gains/3 -X POST -H 'Content-Type: application/json' -d '{}'
+
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
                             hsaDeviceInterface& device) :
