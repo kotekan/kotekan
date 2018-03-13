@@ -15,10 +15,12 @@
 
 /**
  * @class prodSubset
- * @brief ``KotekanProcess`` that consumes a full set of visibilities from a ``visBuffer``
- *        and passes on a subset of products to an output ``visBuffer``.
- * The subset extracted depends on the parameter 'prod_subset_type'. Here is a list of values
- * 'prod_subset_type' can take and the parameters they support: 
+ * @brief ``KotekanProcess`` that extracts a subset of the products.
+ * 
+ * This task consumes a full set of visibilities from a ``visBuffer`` and
+ * passes on a subset of products to an output ``visBuffer``. The subset
+ * extracted depends on the parameter 'prod_subset_type'. Here is a list of
+ * values 'prod_subset_type' can take and the parameters they support:
  * - 'autos': no extra arameters needed
  *   - The subset are all the auto-correlations.
  * - 'baseline': max_ew_baseline, max_ns_baseline
@@ -41,10 +43,6 @@
  * @conf  prod_subset_type  string. Type of product subset to perform.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
 +*                               correlator data
-+* @conf  block_size        int. The block size of the packed data (read from "/")
- * @conf  num_prod          int. The number of products in the correlator data
- * @conf  subset_num_prod   int. The number of products in the subset data
- *                               (before subsetting)
 +* @conf  num_eigenvectors  int. The number of eigenvectors to be stored
  * @conf  max_ew_baseline   int. The maximum baseline length along the EW direction to
  *                               include in subset (in units of the shortest EW baseline)
@@ -52,6 +50,9 @@
  *                               include in subset (in units of the shortest NS baseline)
  * @conf  input_list        vector of int. The list of inputs to include.
  *
+ * @warning This will only work correctly if the full correlation triangle is
+ * passed in as input.
+ * 
  * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
  *
  */
@@ -71,7 +72,7 @@ public:
 
 private:
     /// Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, num_prod;
+    size_t num_elements, num_eigenvectors;
 
     /// Number of products in subset
     size_t subset_num_prod;
