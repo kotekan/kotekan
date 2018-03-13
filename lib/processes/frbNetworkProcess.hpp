@@ -104,8 +104,6 @@ private:
 
   //Beam Configuration Mode
   bool column_mode;
-
-  std::mutex _packet_frame_lock;
 };
  
 #endif

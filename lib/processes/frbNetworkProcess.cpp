@@ -49,17 +49,14 @@ frbNetworkProcess::~frbNetworkProcess()
 }
 
 void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& json_request) {
-    DEBUG("Got a callback!");
-    std::lock_guard<std::mutex> lock(_packet_frame_lock);
+    //no need for a lock here, beam_offset copied into a local variable for use
     try {
-        int bo = json_request["beam_offset"];
-        if (bo > 512) throw std::invalid_argument("beam_offset can be >512!");
-        if (bo < 0) throw std::invalid_argument("Negative beam_offset!");
-        beam_offset = bo;
+        beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("could not parse/find num_packets parameter", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new beam_offset parameter.", STATUS_BAD_REQUEST);
         return;
     }
+    INFO("Updating beam_offset to %i",beam_offset);
     conn.send_empty_reply(STATUS_OK);
 }
 
@@ -313,8 +310,17 @@ void frbNetworkProcess::main_thread()
     uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
     INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*4*253+12],lock_miss);
 
-    std::lock_guard<std::mutex> lock(_packet_frame_lock);
-    DEBUG("Beam offset: %i",beam_offset);
+    int local_beam_offset = beam_offset;
+    int beam_offset_upper_limit=512;
+    if (local_beam_offset > beam_offset_upper_limit) {
+        WARN("Large beam_offset requested... capping at %i",beam_offset_upper_limit);
+        local_beam_offset=beam_offset_upper_limit;
+    }
+    if (local_beam_offset < 0){
+        WARN("Negative beam_offset requested... setting to 0.");
+        local_beam_offset=0;
+    }
+    DEBUG("Beam offset: %i",local_beam_offset);
     for(int frame=0; frame<packets_per_stream; frame++)
     {
       for(int stream=0; stream<256; stream++)
@@ -324,7 +330,7 @@ void frbNetworkProcess::main_thread()
         
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
         
-         //if(e_stream==(beam_offset/4)+link/4+(link%4)*64)
+         //if(e_stream==(local_beam_offset/4)+link/4+(link%4)*64)
          //{
          //  int i = link%2;
          //  sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
@@ -337,9 +343,9 @@ void frbNetworkProcess::main_thread()
          for(int link=0;link<number_of_l1_links;link++)
          {
            //Block Mode
-           //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //if(e_stream==(int)(local_beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
            //RA Mode
-           if (e_stream==beam_offset/4+link)
+           if (e_stream==local_beam_offset/4+link)
            {
              int i = link%2;
              sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
@@ -349,12 +355,12 @@ void frbNetworkProcess::main_thread()
 */
          for(int link=0;link<number_of_l1_links;link++)
          {    
-           //if (((column_mode) && (e_stream==beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
-           if (e_stream==beam_offset/4+link) 
+           //if (((column_mode) && (e_stream==local_beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(local_beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
+           if (e_stream==local_beam_offset/4+link) 
            {
            //}
-           //if(e_stream==(int)(beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
-           //if(e_stream==beam_offset/4+link)
+           //if(e_stream==(int)(local_beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
+           //if(e_stream==local_beam_offset/4+link)
            //{
 
              int i = link%2;

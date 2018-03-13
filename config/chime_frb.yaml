@@ -214,6 +214,7 @@ frb:
     in_buf_3: beamform_output_buffer_3
     out_buf: frb_output_buffer
   buffer_read:
+    log_level: debug
     cpu_affinity: [11]
     kotekan_process: frbNetworkProcess
     in_buf: frb_output_buffer

@@ -3,7 +3,7 @@
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/frb/update_gains/3 -X POST -H 'Content-Type: application/json' -d '{}'
+// curl localhost:12048/frb/update_gains/3 -X POST -H 'Content-Type: application/json' -d '{"gain_dir":"/etc/kotekan/gains/"}'
 
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
@@ -59,7 +59,16 @@ hsaBeamformKernel::~hsaBeamformKernel() {
 
 
 void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& json_request) {
+    //we're not fussy about exactly when the gains update, so no need for a lock here
+    try {
+        _gain_dir = json_request["gain_dir"];
+    } catch (...) {
+        conn.send_error("Couldn't parse new gain_dir parameter.", STATUS_BAD_REQUEST);
+        return;
+    }
+    //nothing will happen until this gets changed.
     update_gains=true;
+    INFO("Updating gains from %s",_gain_dir);
     conn.send_empty_reply(STATUS_OK);
 }
 
