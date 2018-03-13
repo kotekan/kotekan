@@ -7,7 +7,7 @@ import kotekan_runner
 
 writer_params = {
     'num_elements': 4,
-    'num_eigenvectors': 2,
+    'num_ev': 2,
     'cadence': 5.0,
     'total_frames': 10,  # One extra sample to ensure we actually get 256
     'freq': [3, 777, 554],
@@ -111,9 +111,9 @@ def test_metadata(written_data):
 def test_no_eigenvectors(written_data):
 
     for fh in written_data:
-        assert 'eigenvalues' not in fh
-        assert 'eigenvectors' not in fh
-        assert 'eigen_rms' not in fh
+        assert 'eval' not in fh
+        assert 'evec' not in fh
+        assert 'erms' not in fh
 
 
 def test_eigenvectors(written_data_ev):
@@ -121,7 +121,7 @@ def test_eigenvectors(written_data_ev):
     for fh in written_data_ev:
         nt = writer_params['total_frames']
         nf = len(writer_params['write_freq'])
-        ne = writer_params['num_eigenvectors']
+        ne = writer_params['num_ev']
         ni = writer_params['num_elements']
 
         # Check datasets are present

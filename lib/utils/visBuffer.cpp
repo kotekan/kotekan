@@ -25,14 +25,14 @@ visFrameView::visFrameView(Buffer * buf, int frame_id) :
     visFrameView(buf, frame_id,
                  ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_elements,
                  ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_prod,
-                 ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_eigenvectors)
+                 ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_ev)
 {
 }
 
 visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                           uint32_t num_eigenvectors) :
+                           uint32_t num_ev) :
     visFrameView(buf, frame_id, num_elements,
-                 num_elements * (num_elements + 1) / 2, num_eigenvectors)
+                 num_elements * (num_elements + 1) / 2, num_ev)
 {
 }
 
@@ -49,7 +49,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     // Set the const refs to the structural metadata
     num_elements(metadata->num_elements),
     num_prod(metadata->num_prod),
-    num_eigenvectors(metadata->num_eigenvectors),
+    num_ev(metadata->num_ev),
 
     // Set the refs to the general metadata
     time(std::tie(metadata->fpga_seq_start, metadata->ctime)),
@@ -61,9 +61,9 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     // Bind the regions of the buffer to spans and refernces on the view
     vis(bind_span<cfloat>(frame, buffer_layout["vis"])),
     weight(bind_span<float>(frame, buffer_layout["weight"])),
-    eigenvalues(bind_span<float>(frame, buffer_layout["evals"])),
-    eigenvectors(bind_span<cfloat>(frame, buffer_layout["evecs"])),
-    rms(bind_scalar<float>(frame, buffer_layout["rms"]))
+    eval(bind_span<float>(frame, buffer_layout["eval"])),
+    evec(bind_span<cfloat>(frame, buffer_layout["evec"])),
+    erms(bind_scalar<float>(frame, buffer_layout["erms"]))
 
 {
     // Initialise the structure if not already done
@@ -71,17 +71,22 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     // the layout, but here we need to make sure the metadata tracks them too.
     metadata->num_elements = n_elements;
     metadata->num_prod = n_prod;
-    metadata->num_eigenvectors = n_eigenvectors;
+    metadata->num_ev = n_eigenvectors;
 
     // Check that the actual buffer size is big enough to contain the calculated
     // view
     size_t required_size = buffer_layout["_struct"].second;
 
     if(required_size > (uint32_t)buffer->frame_size) {
-        throw std::runtime_error(
-            "Visibility buffer too small. Must be a minimum of " +
-            std::to_string((int)required_size) + " bytes."
+
+        std::string s = fmt::format(
+            "Visibility buffer [{}] too small. Must be a minimum of\
+             {} bytes for elements={}, products={}, ev={}",
+            buffer->buffer_name, required_size, n_elements, n_prod,
+            n_eigenvectors
         );
+
+        throw std::runtime_error(s);
     }
 }
 
@@ -89,7 +94,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
 visFrameView::visFrameView(Buffer * buf, int frame_id,
                            visFrameView frame_to_copy) :
     visFrameView(buf, frame_id, frame_to_copy.num_elements,
-                 frame_to_copy.num_prod, frame_to_copy.num_eigenvectors)
+                 frame_to_copy.num_prod, frame_to_copy.num_ev)
 {
     // Copy over the metadata values
     *metadata = *(frame_to_copy.metadata);
@@ -127,17 +132,17 @@ void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
 
 // Copy the non-visibility parts of the buffer
 void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
-    std::copy(frame_to_copy.eigenvalues.begin(), 
-              frame_to_copy.eigenvalues.end(), 
-              eigenvalues.begin());
-    std::copy(frame_to_copy.eigenvectors.begin(),
-              frame_to_copy.eigenvectors.end(), 
-              eigenvectors.begin());
-    rms = frame_to_copy.rms;
+    std::copy(frame_to_copy.eval.begin(), 
+              frame_to_copy.eval.end(), 
+              eval.begin());
+    std::copy(frame_to_copy.evec.begin(),
+              frame_to_copy.evec.end(), 
+              evec.begin());
+    erms = frame_to_copy.erms;
 }
 
 struct_layout visFrameView::calculate_buffer_layout(
-    uint32_t num_elements, uint32_t num_prod, uint32_t num_eigenvectors
+    uint32_t num_elements, uint32_t num_prod, uint32_t num_ev
 )
 {
     // TODO: get the types of each element using a template on the member
@@ -145,9 +150,9 @@ struct_layout visFrameView::calculate_buffer_layout(
     std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
         std::make_tuple("vis", sizeof(cfloat), num_prod),
         std::make_tuple("weight", sizeof(float),  num_prod),
-        std::make_tuple("evals", sizeof(float),  num_eigenvectors),
-        std::make_tuple("evecs", sizeof(cfloat), num_eigenvectors * num_elements),
-        std::make_tuple("rms", sizeof(float),  1)
+        std::make_tuple("eval", sizeof(float),  num_ev),
+        std::make_tuple("evec", sizeof(cfloat), num_ev * num_elements),
+        std::make_tuple("erms", sizeof(float),  1)
     };
 
     return struct_alignment(buffer_members);

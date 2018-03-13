@@ -52,7 +52,7 @@ frequencies: &freq
 fake_vis:
   kotekan_process: fakeVis
   out_buf: vis_buffer
-  num_eigenvectors: 4
+  num_ev: 4
   <<: *freq
   cadence: 2.
 
@@ -64,7 +64,7 @@ evec_writer:
   kotekan_process: eigenWriter
   in_buf: vis_buffer
   ev_file_len: 5
-  num_eigenvectors: 4
+  num_ev: 4
   <<: *freq
 
 

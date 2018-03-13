@@ -22,7 +22,7 @@ eigenWriter::eigenWriter(Config &config,
                    std::bind(&eigenWriter::main_thread, this)) {
 
     // Get parameters from config
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_ev =  config.get_int(unique_name, "num_ev");
     ev_fname = config.get_string_default(unique_name, "ev_file", "./ev.h5");
     // Default value is 1h / 10s cadence
     ev_file_len = config.get_int_default(unique_name, "ev_file_len", 360);
@@ -43,8 +43,7 @@ eigenWriter::eigenWriter(Config &config,
     struct stat check_exists;
     if (stat(ev_fname.c_str(), &check_exists) == 0) std::remove(ev_fname.c_str());
     file = std::unique_ptr<eigenFile>(
-            new eigenFile(ev_fname, num_eigenvectors, ev_file_len,
-                          freqs, inputs)
+            new eigenFile(ev_fname, num_ev, ev_file_len, freqs, inputs)
     );
 
 }
@@ -82,14 +81,13 @@ void eigenWriter::main_thread() {
 
         // Get data and write to file
         // TODO: once we have a better idea how HDF5 handles writing, could skip this extra copy
-        std::vector<cfloat> evec(frame.eigenvectors.begin(), 
-                                              frame.eigenvectors.end());
+        std::vector<cfloat> evec(frame.evec.begin(), frame.evec.end());
 
-        std::vector<float> eval(frame.eigenvalues.begin(), frame.eigenvalues.end());
+        std::vector<float> eval(frame.eval.begin(), frame.eval.end());
 
-        float rms = frame.rms;
+        float erms = frame.erms;
 
-        file->write_eigenvectors(t, freq_ind, evec, eval, rms);
+        file->write_eigenvectors(t, freq_ind, evec, eval, erms);
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -101,7 +99,7 @@ void eigenWriter::main_thread() {
 
 // TODO: include weights used in decomposition
 eigenFile::eigenFile(const std::string & fname,
-                     const uint16_t & num_eigenvectors,
+                     const uint16_t & num_ev,
                      const size_t & file_len,
                      const std::vector<freq_ctype> & freqs,
                      const std::vector<input_ctype> & inputs) {
@@ -109,7 +107,7 @@ eigenFile::eigenFile(const std::string & fname,
     ninput = inputs.size();
     nfreq = freqs.size();
     ntimes = file_len;
-    nev = num_eigenvectors;
+    nev = num_ev;
 
     // Create file
     INFO("Creating new eigenvectors file %s", fname.c_str());
@@ -122,7 +120,7 @@ eigenFile::eigenFile(const std::string & fname,
     std::vector<std::string> ev_axes = {"time", "freq", "eigenmode", "input"};
     DataSpace ev_space = DataSpace(ev_dims);
     DataSet ev = file->createDataSet(
-            "eigenvector", ev_space, create_datatype<cfloat>()
+            "evec", ev_space, create_datatype<cfloat>()
     );
     ev.createAttribute<std::string>(
             "axis", DataSpace::From(ev_axes)
@@ -133,7 +131,7 @@ eigenFile::eigenFile(const std::string & fname,
     std::vector<std::string> eval_axes = {"time", "freq", "eigenmode"};
     DataSpace eval_space = DataSpace(eval_dims);
     DataSet eval = file->createDataSet(
-            "eigenvalue", eval_space, create_datatype<float>()
+            "eval", eval_space, create_datatype<float>()
     );
     eval.createAttribute<std::string>(
             "axis", DataSpace::From(eval_axes)
@@ -144,7 +142,7 @@ eigenFile::eigenFile(const std::string & fname,
     std::vector<std::string> rms_axes = {"time", "freq"};
     DataSpace rms_space = DataSpace(rms_dims);
     DataSet rms = file->createDataSet(
-            "rms", rms_space, create_datatype<float>()
+            "erms", rms_space, create_datatype<float>()
     );
     rms.createAttribute<std::string>(
             "axis", DataSpace::From(rms_axes)
@@ -213,7 +211,7 @@ void eigenFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
             {curr_ind, freq_ind, 0}, {1, 1, nev}
     ).write((const float *) eigenvalues.data());
     // write rms
-    rms().select(
+    erms().select(
             {curr_ind, freq_ind}, {1, 1}
     ).write(new_rms);
     // write time
@@ -222,15 +220,15 @@ void eigenFile::write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
 }
 
 DataSet eigenFile::evec() {
-    return file->getDataSet("eigenvector");
+    return file->getDataSet("evec");
 }
 
 DataSet eigenFile::eval() {
-    return file->getDataSet("eigenvalue");
+    return file->getDataSet("eval");
 }
 
-DataSet eigenFile::rms() {
-    return file->getDataSet("rms");
+DataSet eigenFile::erms() {
+    return file->getDataSet("erms");
 }
 
 DataSet eigenFile::time() {

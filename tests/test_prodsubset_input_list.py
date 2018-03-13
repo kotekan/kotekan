@@ -6,18 +6,17 @@ import visutil
 
 subset_params = {
     'num_elements': 16,
-    'num_prod': 120,
-    'num_eigenvectors': 2,
+    'num_ev': 2,
     'total_frames': 128,
     'cadence': 5.0,
-    'mode':'fill_ij',
+    'mode': 'fill_ij',
     'freq_ids': [250],
     'buffer_depth': 5
 }
 
 vis_params = {
-    'prod_subset_type' : 'input_list',
-    'input_list' : [1,134], 
+    'prod_subset_type': 'input_list',
+    'input_list': [1, 134],
 }
 
 @pytest.fixture(scope="module")
@@ -60,21 +59,24 @@ def test_subset(subset_data):
 #    for frame in subset_data:
 #        print frame.metadata.freq_id, frame.metadata.fpga_seq
 
+    n_el = subset_params['num_elements']
+    num_prod = n_el * (n_el + 1) / 2
+
     for frame in subset_data:
         # With fill_ij, vis_ij = i+j*(1j)
         vis = []
 
-        for ii in range(subset_params['num_prod']):
+        for ii in range(num_prod):
             prod = visutil.icmap(ii,subset_params['num_elements'])
             if input_list_condition(prod,
                                 vis_params['input_list']) :
                 vis.append(prod.input_a+1j*prod.input_b)
 
         assert (frame.vis == np.array(vis)).all()
-        assert (frame.evals == np.arange(
-                subset_params['num_eigenvectors'])).all()
-        evecs = (np.arange(subset_params['num_eigenvectors'])[:, None] +
+        assert (frame.eval == np.arange(
+                subset_params['num_ev'])).all()
+        evecs = (np.arange(subset_params['num_ev'])[:, None] +
                  1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
-        assert (frame.evecs == evecs).all()
-        assert (frame.rms == 1.)
+        assert (frame.evec == evecs).all()
+        assert (frame.erms == 1.)
 

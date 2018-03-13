@@ -45,7 +45,7 @@ struct visMetadata {
     /// Number of products for data in buffer
     uint32_t num_prod;
     /// Number of eigenvectors and values calculated
-    uint32_t num_eigenvectors;
+    uint32_t num_ev;
 
 };
 
@@ -92,12 +92,12 @@ public:
      * @param buf              The buffer the frame is in.
      * @param frame_id         The id of the frame to read.
      * @param num_elements     Number of elements in the data.
-     * @param num_eigenvectors Number of eigenvectors to hold.
+     * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
      */
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                 uint32_t num_eigenvectors);
+                 uint32_t num_ev);
 
     /**
      * @brief Create view and set structure metadata.
@@ -109,12 +109,12 @@ public:
      * @param frame_id         The id of the frame to read.
      * @param num_elements     Number of elements in the data.
      * @param num_prod         Number of products in the data.
-     * @param num_eigenvectors Number of eigenvectors to hold.
+     * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
      */
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                 uint32_t num_prod, uint32_t num_eigenvectors);
+                 uint32_t num_prod, uint32_t num_ev);
 
     /**
      * @brief Copy frame to a new buffer and create view of copied frame
@@ -134,7 +134,7 @@ public:
      *
      * @param num_elements     Number of elements.
      * @param num_prod         Number of products.
-     * @param num_eigenvectors Number of eigenvectors.
+     * @param num_ev           Number of eigenvectors.
      *
      * @returns A map from member name to start and end in bytes. The start
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
@@ -142,7 +142,7 @@ public:
      */
     static struct_layout calculate_buffer_layout(uint32_t num_elements,
                                                  uint32_t num_prod,
-                                                 uint32_t num_eigenvectors);
+                                                 uint32_t num_ev);
 
     /// Return a summary of the visibility buffer contents
     std::string summary() const;
@@ -189,7 +189,7 @@ public:
     /// The number of products in the data (read only).
     const uint32_t& num_prod;
     /// The number of eigenvectors/values in the data (read only).
-    const uint32_t& num_eigenvectors;
+    const uint32_t& num_ev;
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
@@ -208,11 +208,11 @@ public:
     /// View of the weight data.
     const gsl::span<float> weight;
     /// View of the eigenvalues.
-    const gsl::span<float> eigenvalues;
+    const gsl::span<float> eval;
     /// View of the eigenvectors (packed as ev,feed).
-    const gsl::span<cfloat> eigenvectors;
+    const gsl::span<cfloat> evec;
     /// The RMS of residual visibilities
-    float& rms;
+    float& erms;
 
 };
 

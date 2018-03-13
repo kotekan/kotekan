@@ -38,13 +38,13 @@ public:
      * @brief Create SWMR HDF5 file
      *
      * @param fname Path to the file to write
-     * @param num_eigenvectors The number of eigenvectors per frame
+     * @param num_ev The number of eigenvectors per frame
      * @param num_times The total length of the file (number of frames to buffer)
      * @param freqs The list of frequencies for which eigenvectors will be provided
      * @param inputs The list of inputs that make up the eigenvectors
      */
     eigenFile(const std::string & fname,
-              const uint16_t & num_eigenvectors,
+              const uint16_t & num_ev,
               const size_t & num_times,
               const std::vector<freq_ctype> & freqs,
               const std::vector<input_ctype> & inputs);
@@ -60,18 +60,18 @@ public:
      * @param freq_ind The index to the list of frequencies corresponding to this sample
      * @param eigenvectors The eigenvectors to write out
      * @param eigenvalues The eigenvalues to write out
-     * @param rms The RMS value to write out
+     * @param erms The RMS value to write out
      */
     void write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
                             std::vector<cfloat> eigenvectors,
-                            std::vector<float> eigenvalues, float rms);
+                            std::vector<float> eigenvalues, float erms);
 
     /// Access eigenvector dataset
     HighFive::DataSet evec();
     /// Access eigenvalue dataset
     HighFive::DataSet eval();
     /// Access RMS dataset
-    HighFive::DataSet rms();
+    HighFive::DataSet erms();
     /// Access times dataset
     HighFive::DataSet time();
     /// Access frequencies dataset
@@ -109,7 +109,7 @@ private:
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  num_eigenvectors  Int. The number of eigenvectors carried with the visibilitues.
+ * @conf  num_ev            Int. The number of eigenvectors carried with the visibilitues.
  * @conf  freq_ids          List of int. The frequency IDs to expect.
  * @conf  ev_file           String. The path to the file to write to (will be overwritten).
  * @conf  ev_file_len       Int. The number of frames to buffer in the file.
@@ -138,7 +138,7 @@ public:
 
 private:
     /// Number of eigenvectors that will be provided
-    size_t num_eigenvectors;
+    size_t num_ev;
     /// File path to write to
     std::string ev_fname;
     /// Number of frames to hold in file

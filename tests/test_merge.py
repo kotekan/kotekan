@@ -7,7 +7,7 @@ import kotekan_runner
 
 merge_params = {
     'num_elements': 4,
-    'num_eigenvectors': 0,
+    'num_ev': 0,
     'total_frames': 16,
     'cadence': 5.0,
     'mode': 'fill_ij',
