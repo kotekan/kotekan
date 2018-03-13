@@ -7,7 +7,6 @@ import visutil
 
 subset_params = {
     'num_elements': 16,
-    'num_prod': 120,
     'num_eigenvectors': 2,
     'total_frames': 128,
     'cadence': 5.0,
@@ -61,10 +60,13 @@ def test_subset(subset_data):
 #    for frame in subset_data:
 #        print frame.metadata.freq_id, frame.metadata.fpga_seq
 
+    n_el = subset_params['num_elements']
+    num_prod = n_el * (n_el + 1) / 2
+
     for frame in subset_data:
         # With fill_ij, vis_ij = i+j*(1j)
         vis = []
-        for ii in range(subset_params['num_prod']):
+        for ii in range(num_prod):
             prod = visutil.icmap(ii,subset_params['num_elements'])
             if max_bl_condition(prod,
                                 vis_params['max_ew_baseline'],
