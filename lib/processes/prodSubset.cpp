@@ -24,45 +24,7 @@ prodSubset::prodSubset(Config &config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    // Type of product selection based on config parameter
-    prod_subset_type = config.get_string(unique_name, "prod_subset_type");
-
     prod_ind = std::get<0>(parse_prod_subset(config, unique_name));
-
-    // TODO: delete the block below
-///////////////////////////////////////////////////////////
-    if (prod_subset_type == "autos") {
-        int idx = 0;
-        for (int ii=0; ii<num_elements; ii++) {
-            for (int jj=ii; jj<num_elements; jj++) {
-                // Only add auto-correlations
-                if (jj==ii) {
-                    prod_ind.push_back(idx);
-                }
-                idx++;
-            }
-        }
-    } else if (prod_subset_type == "baseline") {
-        // Define criteria for baseline selection based on config parameters
-        xmax = config.get_int(unique_name, "max_ew_baseline");
-        ymax = config.get_int(unique_name, "max_ns_baseline");
-        // Find the products in the subset
-        for (size_t ii = 0; ii < num_prod; ii++) {
-            if (max_bl_condition(ii, num_elements, xmax, ymax)) {
-                prod_ind.push_back(ii);
-            }
-        }
-    } else if (prod_subset_type == "have_inputs") {
-        input_list = config.get_int_array(unique_name, "input_list");
-        // Find the products in the subset
-        for (size_t ii = 0; ii < num_prod; ii++) {
-            if (have_inputs_condition(ii, num_elements, input_list)) {
-                prod_ind.push_back(ii);
-            }
-        }
-    }
-///////////////////////////////////////////////////////
-
 
     subset_num_prod = prod_ind.size();
 }
@@ -122,40 +84,95 @@ void prodSubset::main_thread() {
     }
 }
 
+inline bool max_bl_condition(prod_ctype prod, int xmax, int ymax) {
 
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    // Figure out feed separations
+    int x_sep = prod.input_a / 512 - prod.input_b / 512;
+    int y_sep = prod.input_a % 256 - prod.input_b % 256;
+    if (x_sep < 0) x_sep = - x_sep;
+    if (y_sep < 0) y_sep = - y_sep;
+
+    return (x_sep <= xmax) && (y_sep <= ymax);
+}
+
+inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
+
+    // Get product indices
+    prod_ctype prod = icmap(vis_ind, n);
+
+    return max_bl_condition(prod, xmax, ymax);
+}
+
+inline bool have_inputs_condition(prod_ctype prod, 
+                                std::vector<int> input_list) {
+   
+    bool prod_in_list = false;
+    for(auto ipt : input_list) {
+        if ((prod.input_a==ipt) || (prod.input_b==ipt)) {
+            prod_in_list = true;
+            break;
+        }
+    }
+
+    return prod_in_list;
+}
+
+inline bool have_inputs_condition(uint32_t vis_ind, int n, 
+                                std::vector<int> input_list) {
+    
+    // Get product indices
+    prod_ctype prod = icmap(vis_ind, n);
+
+    return have_inputs_condition(prod, input_list);
+}
+
+inline bool only_inputs_condition(prod_ctype prod, 
+                                std::vector<int> input_list) {
+   
+    bool ipta_in_list = false;
+    bool iptb_in_list = false;
+    for(auto ipt : input_list) {
+        if (prod.input_a==ipt) {
+            ipta_in_list = true;
+        }
+        if (prod.input_b==ipt) {
+            iptb_in_list = true;
+        }
+    }
+
+    return (ipta_in_list && iptb_in_list);
+}
+
+inline bool only_inputs_condition(uint32_t vis_ind, int n, 
+                                std::vector<int> input_list) {
+    
+    // Get product indices
+    prod_ctype prod = icmap(vis_ind, n);
+
+    return only_inputs_condition(prod, input_list);
+}
+
+
+std::tuple<std::vector<size_t>, std::vector<prod_ctype>>
 parse_prod_subset(Config& config, const std::string base_path) {
 
-//    size_t num_elements = config.get_int("/", "num_elements");
-//
-//    try {
-//        json reorder_config = config.get_json_array(base_path, "input_reorder");
-//
-//        return parse_reorder(reorder_config);
-//    }
-//    catch(const std::exception& e) {
-//        return default_reorder(num_elements);
-//    }
-
-
-
-
-    size_t num_prod = config.get_int(base_path, "num_prod");
     size_t num_elements = config.get_int(base_path, "num_elements");
-    std::vector<uint32_t> prod_ind_vec;
-    std::vector<input_ctype> prod_ctype_vec;
+    std::vector<size_t> prod_ind_vec;
+    std::vector<prod_ctype> prod_ctype_vec;
 
     // Type of product selection based on config parameter
-    std::string prod_subset_type = config.get_string(base_path, "prod_subset_type");
+    std::string prod_subset_type = config.get_string_default(base_path, "prod_subset_type", "all");
 
 
     if (prod_subset_type == "autos") {
         for (int ii=0; ii<num_elements; ii++) {
             prod_ind_vec.push_back(cmap(ii,ii,num_elements));
-            prod_ctype_vec.emplace_back((prod_ctype){ii,ii});
+            prod_ctype_vec.push_back({ii,ii});
+//            prod_ctype_vec.emplace_back((prod_ctype){ii,ii});
         }
     } else if (prod_subset_type == "baseline") {
         // Define criteria for baseline selection based on config parameters
+        uint16_t xmax, ymax;
         xmax = config.get_int(base_path, "max_ew_baseline");
         ymax = config.get_int(base_path, "max_ns_baseline");
         // Find the products in the subset
@@ -163,19 +180,44 @@ parse_prod_subset(Config& config, const std::string base_path) {
             for (int jj=ii; jj<num_elements; jj++) {
                 if (max_bl_condition((prod_ctype){ii,jj}, xmax, ymax)) {
                     prod_ind_vec.push_back(cmap(ii,jj,num_elements));
-                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
+                    prod_ctype_vec.push_back({ii,jj});
+//                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
                 }
             }
         }
     } else if (prod_subset_type == "have_inputs") {
+        std::vector<int> input_list;
         input_list = config.get_int_array(base_path, "input_list");
         // Find the products in the subset
         for (int ii=0; ii<num_elements; ii++) {
             for (int jj=ii; jj<num_elements; jj++) {
-                if (have_inputs_condition((prod_ctype){ii,jj}, xmax, ymax)) {
+                if (have_inputs_condition((prod_ctype){ii,jj}, input_list)) {
                     prod_ind_vec.push_back(cmap(ii,jj,num_elements));
-                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
+                    prod_ctype_vec.push_back({ii,jj});
+//                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
                 }
+            }
+        }
+    } else if (prod_subset_type == "only_inputs") {
+        std::vector<int> input_list;
+        input_list = config.get_int_array(base_path, "input_list");
+        // Find the products in the subset
+        for (int ii=0; ii<num_elements; ii++) {
+            for (int jj=ii; jj<num_elements; jj++) {
+                if (only_inputs_condition((prod_ctype){ii,jj}, input_list)) {
+                    prod_ind_vec.push_back(cmap(ii,jj,num_elements));
+                    prod_ctype_vec.push_back({ii,jj});
+//                    prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
+                }
+            }
+        }
+    } else if (prod_subset_type == "all") {
+        // Find the products in the subset
+        for (int ii=0; ii<num_elements; ii++) {
+            for (int jj=ii; jj<num_elements; jj++) {
+                prod_ind_vec.push_back(cmap(ii,jj,num_elements));
+                prod_ctype_vec.push_back({ii,jj});
+//              prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
             }
         }
     }
