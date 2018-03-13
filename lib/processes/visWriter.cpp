@@ -13,6 +13,7 @@
 #include <iostream>
 #include <fstream>
 #include <time.h>
+#include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 
@@ -87,6 +88,8 @@ visWriter::visWriter(Config& config,
         }
     }
 
+    num_prod = prods.size();
+
     if(node_mode) {
 
         // Set the instrument_name from the hostname
@@ -134,6 +137,21 @@ void visWriter::main_thread() {
         // Check if the frequency we are receiving is on the list of frequencies we are processing
         if(freq_map.count(frame.freq_id) == 0) {
             WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id);
+        } else if (frame.num_prod != num_prod) {
+
+            string msg = fmt::format(
+                "Number of products in frame doesn't match file ({} != {}).", frame.num_prod, num_prod
+            );
+            throw std::runtime_error(msg);
+
+        } else if (num_ev > 0  and frame.num_eigenvectors != num_ev) {
+
+            string msg = fmt::format(
+                "Number of eigenvectors in frame doesn't match file ({} != {}).", 
+                frame.num_eigenvectors, num_ev
+            );
+            throw std::runtime_error(msg);
+
         } else {
 
             INFO("Writing frequency id=%i", frame.freq_id);
