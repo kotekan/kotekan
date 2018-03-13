@@ -46,6 +46,7 @@ visWriter::visWriter(Config& config,
     // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
+    // Calculate the set of products we are writing from the config
     prods = std::get<1>(parse_prod_subset(config, unique_name));
     num_prod = prods.size();
 
@@ -198,14 +199,11 @@ void visWriter::setup_freq(const std::vector<uint32_t>& freq_ids) {
     // TODO: this function needs to do three things: set the frequency input map
     // (freqs), set the frequency ordering (freq_map) and set the chunk ID
     // (chunk_id).
-
     if(node_mode) {
         // Output all the frequencies that we have found
         std::string s;
         for(auto id : freq_ids) {
-            char t[32];
-            snprintf(t, 32, "%i [%.2f MHz] ", id, freq_from_bin(id));
-            s += t;
+            s += fmt::format("{} [{:.2f} MHz] ", id, freq_from_bin(id));
         }
         INFO("Frequency bins found: %s", s.c_str());
 

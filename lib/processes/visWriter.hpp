@@ -22,8 +22,12 @@
  * acquisition per node. Alternatively it can be run more generally, receiving
  * and writing arbitrary frequencies, but it must be given the frequency list in
  * the config.
+ * 
+ * The products we are outputting must be specified correctly. This is done
+ * using the same configuration parameters as `prodSubset`. If not explicitly
+ * set `all` products is assumed.
  *
- * The output is written into the CHIME N^2 HDF% format version 3.0.
+ * The output is written into the CHIME N^2 HDF% format version 3.1.0.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write

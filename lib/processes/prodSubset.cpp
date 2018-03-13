@@ -14,8 +14,6 @@ prodSubset::prodSubset(Config &config,
     num_elements = config.get_int(unique_name, "num_elements");
     num_eigenvectors =  config.get_int(unique_name, "num_ev");
 
-    size_t num_prod = num_elements * (num_elements + 1) / 2;
-
     // Get buffers
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -165,7 +163,7 @@ parse_prod_subset(Config& config, const std::string base_path) {
 
 
     if (prod_subset_type == "autos") {
-        for (int ii=0; ii<num_elements; ii++) {
+        for (uint16_t ii=0; ii<num_elements; ii++) {
             prod_ind_vec.push_back(cmap(ii,ii,num_elements));
             prod_ctype_vec.push_back({ii,ii});
 //            prod_ctype_vec.emplace_back((prod_ctype){ii,ii});
@@ -176,8 +174,8 @@ parse_prod_subset(Config& config, const std::string base_path) {
         xmax = config.get_int(base_path, "max_ew_baseline");
         ymax = config.get_int(base_path, "max_ns_baseline");
         // Find the products in the subset
-        for (int ii=0; ii<num_elements; ii++) {
-            for (int jj=ii; jj<num_elements; jj++) {
+        for (uint16_t ii=0; ii<num_elements; ii++) {
+            for (uint16_t jj=ii; jj<num_elements; jj++) {
                 if (max_bl_condition((prod_ctype){ii,jj}, xmax, ymax)) {
                     prod_ind_vec.push_back(cmap(ii,jj,num_elements));
                     prod_ctype_vec.push_back({ii,jj});
@@ -189,8 +187,8 @@ parse_prod_subset(Config& config, const std::string base_path) {
         std::vector<int> input_list;
         input_list = config.get_int_array(base_path, "input_list");
         // Find the products in the subset
-        for (int ii=0; ii<num_elements; ii++) {
-            for (int jj=ii; jj<num_elements; jj++) {
+        for (uint16_t ii=0; ii<num_elements; ii++) {
+            for (uint16_t jj=ii; jj<num_elements; jj++) {
                 if (have_inputs_condition((prod_ctype){ii,jj}, input_list)) {
                     prod_ind_vec.push_back(cmap(ii,jj,num_elements));
                     prod_ctype_vec.push_back({ii,jj});
@@ -202,8 +200,8 @@ parse_prod_subset(Config& config, const std::string base_path) {
         std::vector<int> input_list;
         input_list = config.get_int_array(base_path, "input_list");
         // Find the products in the subset
-        for (int ii=0; ii<num_elements; ii++) {
-            for (int jj=ii; jj<num_elements; jj++) {
+        for (uint16_t ii=0; ii<num_elements; ii++) {
+            for (uint16_t jj=ii; jj<num_elements; jj++) {
                 if (only_inputs_condition((prod_ctype){ii,jj}, input_list)) {
                     prod_ind_vec.push_back(cmap(ii,jj,num_elements));
                     prod_ctype_vec.push_back({ii,jj});
@@ -213,8 +211,8 @@ parse_prod_subset(Config& config, const std::string base_path) {
         }
     } else if (prod_subset_type == "all") {
         // Find the products in the subset
-        for (int ii=0; ii<num_elements; ii++) {
-            for (int jj=ii; jj<num_elements; jj++) {
+        for (uint16_t ii=0; ii<num_elements; ii++) {
+            for (uint16_t jj=ii; jj<num_elements; jj++) {
                 prod_ind_vec.push_back(cmap(ii,jj,num_elements));
                 prod_ctype_vec.push_back({ii,jj});
 //              prod_ctype_vec.emplace_back((prod_ctype){ii,jj});
