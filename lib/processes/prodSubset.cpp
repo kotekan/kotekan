@@ -1,5 +1,6 @@
 #include "prodSubset.hpp"
 #include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(prodSubset);
 
@@ -25,6 +26,9 @@ prodSubset::prodSubset(Config &config,
     // Type of product selection based on config parameter
     prod_subset_type = config.get_string(unique_name, "prod_subset_type");
 
+
+
+///////////////////////////////////////////////////////////
     if (prod_subset_type == "autos") {
         int idx = 0;
         for (int ii=0; ii<num_elements; ii++) {
@@ -46,15 +50,18 @@ prodSubset::prodSubset(Config &config,
                 prod_ind.push_back(ii);
             }
         }
-    } else if (prod_subset_type == "input_list") {
+    } else if (prod_subset_type == "have_inputs") {
         input_list = config.get_int_array(unique_name, "input_list");
         // Find the products in the subset
         for (size_t ii = 0; ii < num_prod; ii++) {
-            if (input_list_condition(ii, num_elements, input_list)) {
+            if (have_inputs_condition(ii, num_elements, input_list)) {
                 prod_ind.push_back(ii);
             }
         }
     }
+///////////////////////////////////////////////////////
+
+
     subset_num_prod = prod_ind.size();
 }
 
@@ -112,3 +119,70 @@ void prodSubset::main_thread() {
 
     }
 }
+
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+parse_prod_subset(Config& config, const std::string base_path) {
+
+//    size_t num_elements = config.get_int("/", "num_elements");
+//
+//    try {
+//        json reorder_config = config.get_json_array(base_path, "input_reorder");
+//
+//        return parse_reorder(reorder_config);
+//    }
+//    catch(const std::exception& e) {
+//        return default_reorder(num_elements);
+//    }
+
+
+
+
+    size_t num_prod = config.get_int(base_path, "num_prod");
+    size_t num_elements = config.get_int(base_path, "num_elements");
+    std::vector<uint32_t> prod_ind_vec;
+    std::vector<input_ctype>> pctype_vec;
+
+    // Type of product selection based on config parameter
+    std::string prod_subset_type = config.get_string(base_path, "prod_subset_type");
+
+
+    if (prod_subset_type == "autos") {
+        for (int ii=0; ii<num_elements; ii++) {
+            prod_ind_vec.push_back(cmap(ii,ii,num_elements));
+            pctype_vec.push_back((prod_ctype){ii,ii});
+            // TODO: add inputctype here
+        }
+    } else if (prod_subset_type == "baseline") {
+        // Define criteria for baseline selection based on config parameters
+        xmax = config.get_int(base_path, "max_ew_baseline");
+        ymax = config.get_int(base_path, "max_ns_baseline");
+        // Find the products in the subset
+        for (int ii=0; ii<num_elements; ii++) {
+            for (int jj=ii; jj<num_elements; jj++) {
+//        for (size_t ii = 0; ii < num_prod; ii++) {
+//              
+                if (max_bl_condition((prod_ctype){ii,jj}, xmax, ymax)) {
+                    prod_ind_vec.push_back(cmap(ii,jj,num_elements));
+                    pctype_vec.push_back((prod_ctype){ii,jj});
+                    // TODO: add inputctype here
+                }
+            }
+        }
+
+//TODO: Continue work from here
+
+    } else if (prod_subset_type == "have_inputs") {
+        input_list = config.get_int_array(base_path, "input_list");
+        // Find the products in the subset
+        for (size_t ii = 0; ii < num_prod; ii++) {
+            if (have_inputs_condition(ii, num_elements, input_list)) {
+                prod_ind.push_back(ii);
+            }
+        }
+    }
+
+
+}
+
+

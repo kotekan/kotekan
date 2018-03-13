@@ -140,7 +140,7 @@ inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
 }
 
 /**
- * @fn input_list_condition
+ * @fn have_inputs_condition
  *
  * Check if a correlation product contains at least one of the inputs
  * in the input_list parameter.
@@ -152,7 +152,7 @@ inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
  * @return          bool. true if the product satisfies the condition.
  *
  */
-inline bool input_list_condition(prod_ctype prod, 
+inline bool have_inputs_condition(prod_ctype prod, 
                                 std::vector<int> input_list) {
    
     bool prod_in_list = false;
@@ -167,7 +167,7 @@ inline bool input_list_condition(prod_ctype prod,
 }
 
 /**
- * @overload input_list_condition
+ * @overload have_inputs_condition
  *
  * Accepts a visibility index (in the standard packing scheme) and the number
  * of elements in place of an explicit product pair.
@@ -176,14 +176,56 @@ inline bool input_list_condition(prod_ctype prod,
  * @param  n         int. Total number of elements.
  *
  */
-inline bool input_list_condition(uint32_t vis_ind, int n, 
+inline bool have_inputs_condition(uint32_t vis_ind, int n, 
                                 std::vector<int> input_list) {
     
     // Get product indices
     prod_ctype prod = icmap(vis_ind, n);
 
-    return input_list_condition(prod, input_list);
+    return have_inputs_condition(prod, input_list);
 }
+
+
+
+
+inline bool only_inputs_condition(prod_ctype prod, 
+                                std::vector<int> input_list) {
+   
+    bool ipta_in_list = false;
+    bool iptb_in_list = false;
+    for(auto ipt : input_list) {
+        if (prod.input_a==ipt) {
+            ipta_in_list = true;
+        }
+        if (prod.input_b==ipt) {
+            iptb_in_list = true;
+        }
+    }
+
+    return (ipta_in_list && iptb_in_list);
+}
+
+
+inline bool only_inputs_condition(uint32_t vis_ind, int n, 
+                                std::vector<int> input_list) {
+    
+    // Get product indices
+    prod_ctype prod = icmap(vis_ind, n);
+
+    return only_inputs_condition(prod, input_list);
+}
+
+
+/**
+ * @brief Parse the product subseting section
+ * @param config    Configuration handle.
+ * @param base_path Path into YAML file to search from.
+ * @return          Tuple containing a vector of the product inputs, and a
+ *                  vector of the corresponding input labels.
+ */
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_prod_subset(Config& config, const std::string base_path);
+
+
 
 #endif
 

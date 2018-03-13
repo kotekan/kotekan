@@ -69,7 +69,7 @@ vis_subset:
   kotekan_process: prodSubset
   in_buf: vis_buffer
   out_buf: write_buffer
-  prod_subset_type: input_list
+  prod_subset_type: have_inputs
   input_list: [0,1]
 
 hdf5_writer:
@@ -78,7 +78,7 @@ hdf5_writer:
   num_freq: 4
   enabled_chunks: [238, 250, 278]
   per_node_instrument: true
-  prod_subset_type: input_list
+  prod_subset_type: have_inputs
   input_list: [0,1]
   root_path: '/home/fandino/chime/kotekan_dev/test_data/prodsub'
 

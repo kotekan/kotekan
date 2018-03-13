@@ -67,13 +67,13 @@ visWriter::visWriter(Config& config,
                 }
             }
         }
-    } else if (prod_subset_type == "input_list") {
+    } else if (prod_subset_type == "have_inputs") {
         input_list = config.get_int_array(unique_name, "input_list");
         // Find the products in the subset
         for(uint16_t ii=0; ii < inputs.size(); ii++) {
             for(uint16_t jj = ii; jj < inputs.size(); jj++) {
                 // restrict products to those containing selected inputs
-                if (input_list_condition({ii,jj}, input_list)) {
+                if (have_inputs_condition({ii,jj}, input_list)) {
                     prods.push_back({ii, jj});
                 }
             }
