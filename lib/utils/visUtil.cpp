@@ -11,6 +11,7 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
 
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
+// TODO: port this to using map_vis_triangle. Need a unit test first.
 void copy_vis_triangle(
     const int32_t * inputdata, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N, gsl::span<cfloat> output
@@ -41,11 +42,45 @@ void copy_vis_triangle(
 
             // IMPORTANT: for some reason the buffers are packed as imaginary
             // *then* real so we need to account for that here.
-            output[pi]= {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
+            output[pi] = {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
             pi++;
         }
     }
 }
+
+// Apply a function over the visibility triangle
+void map_vis_triangle(const std::vector<uint32_t>& inputmap,
+    size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
+) {
+
+    size_t pi = 0;
+    uint32_t bi;
+    uint32_t ii, jj;
+    bool no_flip;
+
+    if(*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
+        throw std::invalid_argument("Input map asks for elements out of range.");
+    }
+
+    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
+        for(auto j = i; j != inputmap.end(); j++) {
+
+            // Account for the case when the reordering means we should be
+            // indexing into the lower triangle, by flipping into the upper
+            // triangle and conjugating.
+            no_flip = *i <= *j;
+            ii = no_flip ? *i : *j;
+            jj = no_flip ? *j : *i;
+
+            bi = prod_index(ii, jj, block, N);
+
+            f(pi, bi, !no_flip);
+
+            pi++;
+        }
+    }
+}
+
 
 std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
     if(!j.is_array() || j.size() != 3) {

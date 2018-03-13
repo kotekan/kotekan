@@ -171,11 +171,21 @@ void visWriter::main_thread() {
 
             // Add all the new information to the file.
             double start = current_time();
-            file_bundle->addSample(t, freq_ind, vis, vis_weight,
-                                   gain_coeff, gain_exp, eval, evec, frame.rms);
+            bool error = file_bundle->addSample(t, freq_ind, vis, vis_weight,
+                                                gain_coeff, gain_exp, eval,
+                                                evec, frame.rms);
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);
+
+            // Increase metric count if we dropped a frame at write time
+            if(error) {
+                dropped_frame_count++;
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_viswriter_dropped_frame_total",
+                    unique_name, dropped_frame_count
+                );
+            }
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
@@ -183,6 +193,7 @@ void visWriter::main_thread() {
                 "kotekan_viswriter_write_time_seconds",
                 unique_name, write_time.average()
             );
+
         }
 
         // Mark the buffer and move on

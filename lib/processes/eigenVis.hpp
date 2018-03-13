@@ -11,7 +11,7 @@
  *
  * This task performs the factorization of the visibility matrix into 
  * ``num_eigenvector`` eigenvectors and eigenvalues and stores them in reserve space
- * in the ``visBuffer``
+ * in the ``visBuffer``. They are stored in descending order of the eigenvalue.
  *
  * @par Buffers
  * @buffer in_buf The set of buffers coming out the GPU buffers
@@ -25,6 +25,8 @@
  * @metric kotekan_eigenvis_comp_time_seconds
  *         Time required to find eigenvectors. An exponential moving average over
  *         ~10 samples.
+ * @metric kotekan_eigenvis_eigenvalue
+ *         The value of each eigenvalue calculated, or the RMS.
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
