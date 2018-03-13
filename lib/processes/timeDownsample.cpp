@@ -1,16 +1,16 @@
-#include "timeDownsamp.hpp"
+#include "timeDownsample.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 #include "chimeMetadata.h"
 #include "errors.h"
 
-REGISTER_KOTEKAN_PROCESS(timeDownsamp);
+REGISTER_KOTEKAN_PROCESS(timeDownsample);
 
-timeDownsamp::timeDownsamp(Config &config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container) :
+timeDownsample::timeDownsample(Config &config,
+                               const string& unique_name,
+                               bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&timeDownsamp::main_thread, this)) {
+                   std::bind(&timeDownsample::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
@@ -30,7 +30,7 @@ timeDownsamp::timeDownsamp(Config &config,
 
 }
 
-void timeDownsamp::apply_config(uint64_t fpga_seq) {
+void timeDownsample::apply_config(uint64_t fpga_seq) {
 
 }
 
@@ -38,7 +38,7 @@ void timeDownsamp::apply_config(uint64_t fpga_seq) {
 //       being misaligned between frequencies. Could enforce starting on even/odd
 //       number of frames.
 //       There is also no mechanism to report or deal with missing frames.
-void timeDownsamp::main_thread() {
+void timeDownsample::main_thread() {
 
     unsigned int frame_id = 0;
     unsigned int nframes = 0;

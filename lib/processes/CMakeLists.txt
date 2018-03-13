@@ -32,7 +32,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               freqSlicer.cpp
               frbPostProcess_in.cpp
               visProcess.cpp
-              timeDownsamp.cpp
+              timeDownsample.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

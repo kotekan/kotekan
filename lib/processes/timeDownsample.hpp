@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Reduce cadence of a single-frequency.
-- timeDownsamp : public KotekanProcess
+- timeDownsample : public KotekanProcess
 *****************************************/
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
@@ -10,7 +10,7 @@
 #include "KotekanProcess.hpp"
 
 /**
- * @class timeDownsamp
+ * @class timeDownsample
  * @brief Average a set number of frames on a single-frequency stream to effectively
  *        reduce the cadence of the acquisition.
  *
@@ -44,14 +44,14 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class timeDownsamp : public KotekanProcess {
+class timeDownsample : public KotekanProcess {
 
 public:
 
     /// Default constructor, loads config params.
-    timeDownsamp(Config &config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+    timeDownsample(Config &config,
+                   const string& unique_name,
+                   bufferContainer &buffer_container);
 
     /// Not yet implemented, should update runtime parameters.
     void apply_config(uint64_t fpga_seq);

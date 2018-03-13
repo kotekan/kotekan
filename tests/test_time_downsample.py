@@ -20,7 +20,7 @@ def vis_data(tmpdir_factory):
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'timeDownsamp', downsamp_params,
+        'timeDownsample', downsamp_params,
         kotekan_runner.FakeVisBuffer(
             num_frames=downsamp_params['total_frames'],
             mode=downsamp_params['fakevis_mode'],
