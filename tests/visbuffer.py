@@ -27,14 +27,14 @@ class VisMetadata(ctypes.Structure):
         ("dataset_id", ctypes.c_uint32),
         ("num_elements", ctypes.c_uint32),
         ("num_prod", ctypes.c_uint32),
-        ("num_eigenvectors", ctypes.c_uint32)
+        ("num_ev", ctypes.c_uint32)
     ]
 
 
 class VisBuffer(object):
     """Python representation of a visBuffer dump.
 
-    Access the data through the `vis`, `weight`, `eval`, `evec` and `rms`
+    Access the data through the `vis`, `weight`, `eval`, `evec` and `erms`
     attributes which are all numpy arrays.
     """
 
@@ -56,14 +56,14 @@ class VisBuffer(object):
 
         num_prod = self.metadata.num_prod
         num_elements = self.metadata.num_elements
-        num_eigen = self.metadata.num_eigenvectors
+        num_eigen = self.metadata.num_ev
 
         structure = [
             ('vis', np.complex64, num_prod),
             ('weight', np.float32, num_prod),
-            ("evals", np.float32,  num_eigen),
-            ("evecs", np.complex64, num_eigen * num_elements),
-            ("rms", np.float32,  1)
+            ("eval", np.float32,  num_eigen),
+            ("evec", np.complex64, num_eigen * num_elements),
+            ("erms", np.float32,  1)
         ]
 
         end = 0

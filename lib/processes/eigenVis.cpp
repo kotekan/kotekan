@@ -23,7 +23,7 @@ eigenVis::eigenVis(Config& config,
     register_consumer(input_buffer, unique_name.c_str());
     output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_eigenvectors =  config.get_int(unique_name, "num_ev");
     num_diagonals_filled =  config.get_int_default(unique_name,
                                                    "num_diagonals_filled", 0);
     // Read a list from the config, but permit it to be absent (implying empty).
@@ -78,7 +78,7 @@ void eigenVis::main_thread() {
 
         if (!initialized) {
             num_elements = input_frame.num_elements;
-            if (input_frame.num_eigenvectors < num_eigenvectors) {
+            if (input_frame.num_ev < num_eigenvectors) {
                 throw std::runtime_error("Insufficient storage space for"
                                          " requested number of eigenvectors.");
             }
@@ -229,13 +229,13 @@ void eigenVis::main_thread() {
         // Copy in eigenvectors and eigenvalues.
         for(int i = 0; i < num_eigenvectors; i++) {
             int indr = num_eigenvectors - 1 - i;
-            output_frame.eigenvalues[i] = evals[indr];
+            output_frame.eval[i] = evals[indr];
 
             for(int j = 0; j < num_elements; j++) {
-                output_frame.eigenvectors[i * num_elements + j] = evecs[indr * num_elements + j];
+                output_frame.evec[i * num_elements + j] = evecs[indr * num_elements + j];
             }
         }
-        output_frame.rms = rms;
+        output_frame.erms = rms;
 
         // Finish up interation.
         mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id);

@@ -20,7 +20,7 @@ fakeVis::fakeVis(Config &config,
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
     block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_eigenvectors =  config.get_int(unique_name, "num_ev");
 
     // Get the output buffer
     std::string buffer_name = config.get_string(unique_name, "out_buf");
@@ -136,11 +136,11 @@ void fakeVis::main_thread() {
             for (int i = 0; i < num_eigenvectors; i++) {
                 for (int j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
-                    output_frame.eigenvectors[k] = {(float)i, (float)j};
+                    output_frame.evec[k] = {(float)i, (float)j};
                 }
-                output_frame.eigenvalues[i] = i;
+                output_frame.eval[i] = i;
             }
-            output_frame.rms = 1.;
+            output_frame.erms = 1.;
 
             // Set the weights to 1.
             auto out_wei = output_frame.weight;

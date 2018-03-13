@@ -31,7 +31,7 @@ vis_buffers:
 fake_vis:
   kotekan_process: fakeVis
   out_buf: vis_buffer_in
-  num_eigenvectors: 4
+  num_ev: 4
   freq_ids: [250,256,512,768]
   cadence: 10.
 
@@ -44,7 +44,7 @@ freq_subset:
   in_buf: vis_buffer_in
   out_buf: vis_buffer_out
   subset_list: [256,512,602,603]
-  num_eigenvectors: 4
+  num_ev: 4
 
 hdf5_writer_sub:
   kotekan_process: visWriter

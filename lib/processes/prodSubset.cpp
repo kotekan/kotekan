@@ -11,7 +11,7 @@ prodSubset::prodSubset(Config &config,
 
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
-    num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
+    num_eigenvectors =  config.get_int(unique_name, "num_ev");
 
     size_t num_prod = num_elements * (num_elements + 1) / 2;
 

@@ -43,7 +43,7 @@
  * @conf  prod_subset_type  string. Type of product subset to perform.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
 +*                               correlator data
-+* @conf  num_eigenvectors  int. The number of eigenvectors to be stored
++* @conf  num_ev            int. The number of eigenvectors to be stored
  * @conf  max_ew_baseline   int. The maximum baseline length along the EW direction to
  *                               include in subset (in units of the shortest EW baseline)
  * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to

@@ -50,7 +50,7 @@ vis_transform:
   in_bufs:
       - gpu_data_buffer
   out_buf: vis_buffer
-  num_eigenvectors: 4
+  num_ev: 4
 
 #vis_debug:
   #kotekan_process: visDebug

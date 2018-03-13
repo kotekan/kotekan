@@ -104,7 +104,7 @@ vis_transform:
       - gpu_buf2
       - gpu_buf3
   out_buf: vis_buffer
-  num_eigenvectors: 4
+  num_ev: 4
 
 hdf5_writer:
   kotekan_process: visWriter
