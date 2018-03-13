@@ -105,6 +105,7 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
         host_map[b] = cl_index;
     }
 
+    //NOTE: EW BEAMFORMING SET TO 0 SPACING (ALL AT ZENITH) FOR 2-MONTH RUN!!!
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
         float anglefrac = sin(0.0*angle_iter*PI/180.);   //EW beam separation 0.5 deg
         for (int cylinder=0; cylinder < 4; cylinder++) {
