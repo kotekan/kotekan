@@ -4,6 +4,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
+#include "fmt.hpp"
 
 #include <cblas.h>
 #include <lapacke.h>
@@ -174,7 +175,7 @@ void eigenVis::main_thread() {
                 prod_ind++;
             }
         }
-        double rms = sum_sq / nprod_sum;
+        double rms = pow(sum_sq / nprod_sum, 0.5);
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
         // the buffers, but that has to wait for one to be available.
@@ -195,6 +196,28 @@ void eigenVis::main_thread() {
             unique_name, calc_time.average()
         );
 
+        // Output eigenvalues to prometheus
+        for(int i = 0; i < num_eigenvectors; i++) {
+            std::string labels = fmt::format(
+                "eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
+                i, freq_id, input_frame.dataset_id
+            );
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_eigenvis_eigenvalue",
+                unique_name, evals[num_eigenvectors - 1 - i], labels
+            );
+        }
+
+        // Output RMS to prometheus
+        std::string labels = fmt::format(
+            "eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"",
+            freq_id, input_frame.dataset_id
+        );
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_eigenvis_eigenvalue",
+            unique_name, rms, labels
+        );
+
         // Get output buffer for visibilities. Essentially identical to input buffers.
         if (wait_for_empty_frame(output_buffer, unique_name.c_str(),
                                  output_frame_id) == nullptr) {
@@ -204,10 +227,14 @@ void eigenVis::main_thread() {
         auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
 
         // Copy in eigenvectors and eigenvalues.
-        gsl::span<cfloat> evecs_s{evecs};
-        gsl::span<float> evals_s{evals};
-        copy(evecs_s, output_frame.eigenvectors);
-        copy(evals_s.subspan(0, num_eigenvectors), output_frame.eigenvalues);
+        for(int i = 0; i < num_eigenvectors; i++) {
+            int indr = num_eigenvectors - 1 - i;
+            output_frame.eigenvalues[i] = evals[indr];
+
+            for(int j = 0; j < num_elements; j++) {
+                output_frame.eigenvectors[i * num_elements + j] = evecs[indr * num_elements + j];
+            }
+        }
         output_frame.rms = rms;
 
         // Finish up interation.

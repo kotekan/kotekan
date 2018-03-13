@@ -13,6 +13,7 @@
 #include <iostream>
 #include <fstream>
 #include <time.h>
+#include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 
@@ -36,11 +37,10 @@ visWriter::visWriter(Config& config,
     // If specified, get the weights type to write to attributes
     weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
-    // Write the eigen values out
+    // Write the eigen values out? Communicated to visFile by num_ev > 0
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
-    if(write_ev) {
-        num_ev = config.get_int(unique_name, "num_eigenvectors");
-    }
+    num_ev = write_ev ? config.get_int(unique_name, "num_eigenvectors") : 0;
+
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
     // it uses the hostname of the current node
@@ -86,6 +86,8 @@ visWriter::visWriter(Config& config,
             }
         }
     }
+
+    num_prod = prods.size();
 
     if(node_mode) {
 
@@ -134,6 +136,21 @@ void visWriter::main_thread() {
         // Check if the frequency we are receiving is on the list of frequencies we are processing
         if(freq_map.count(frame.freq_id) == 0) {
             WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id);
+        } else if (frame.num_prod != num_prod) {
+
+            string msg = fmt::format(
+                "Number of products in frame doesn't match file ({} != {}).", frame.num_prod, num_prod
+            );
+            throw std::runtime_error(msg);
+
+        } else if (num_ev > 0  and frame.num_eigenvectors != num_ev) {
+
+            string msg = fmt::format(
+                "Number of eigenvectors in frame doesn't match file ({} != {}).", 
+                frame.num_eigenvectors, num_ev
+            );
+            throw std::runtime_error(msg);
+
         } else {
 
             INFO("Writing frequency id=%i", frame.freq_id);
@@ -153,11 +170,21 @@ void visWriter::main_thread() {
 
             // Add all the new information to the file.
             double start = current_time();
-            file_bundle->addSample(t, freq_ind, vis, vis_weight,
-                                   gain_coeff, gain_exp, eval, evec, frame.rms);
+            bool error = file_bundle->addSample(t, freq_ind, vis, vis_weight,
+                                                gain_coeff, gain_exp, eval,
+                                                evec, frame.rms);
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);
+
+            // Increase metric count if we dropped a frame at write time
+            if(error) {
+                dropped_frame_count++;
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_viswriter_dropped_frame_total",
+                    unique_name, dropped_frame_count
+                );
+            }
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
@@ -165,6 +192,7 @@ void visWriter::main_thread() {
                 "kotekan_viswriter_write_time_seconds",
                 unique_name, write_time.average()
             );
+
         }
 
         // Mark the buffer and move on
@@ -198,10 +226,10 @@ void visWriter::init_acq() {
     // TODO: connect up notes
     std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
-         new visFileBundle(
-             root_path, instrument_name, chunk_id, file_length, window,
-             notes, weights_type, freqs, inputs, prods, num_ev
-         )
+        new visFileBundle(
+            root_path, instrument_name, chunk_id, file_length, window,
+            notes, weights_type, freqs, inputs, prods, num_ev
+        )
     );
 }
 

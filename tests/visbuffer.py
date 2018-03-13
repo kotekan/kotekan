@@ -21,6 +21,8 @@ class VisMetadata(ctypes.Structure):
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
         ("ctime", time_spec),
+        ("fpga_length", ctypes.c_uint64),
+        ("fpga_total", ctypes.c_uint64),
         ("freq_id", ctypes.c_uint32),
         ("dataset_id", ctypes.c_uint32),
         ("num_elements", ctypes.c_uint32),

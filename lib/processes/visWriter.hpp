@@ -34,6 +34,8 @@
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
+ * @metric kotekan_viswriter_dropped_frame_total
+ *         The number of frames dropped while attempting to write.
  *
  * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
  * @conf   root_path        String. Location in filesystem to write to.
@@ -121,8 +123,13 @@ private:
     // Number of eigenvectors to write out
     size_t num_ev;
 
+    /// Number of products to write
+    size_t num_prod;
+
     /// Keep track of the average write time
     movingAverage write_time;
+
+    uint32_t dropped_frame_count = 0;
 };
 
 #endif

@@ -4,12 +4,12 @@
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
+#include "fmt.hpp"
 
 #include <time.h>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
-
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -85,13 +85,19 @@ void visTransform::main_thread() {
             auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
-            // Transfer over the metadata
+            // Copy over the metadata
             output_frame.fill_chime_metadata((const chimeMetadata *)buf->metadata[frame_id]->metadata);
 
             // Copy the visibility data into a proper triangle and write into
             // the file
             copy_vis_triangle((int32_t *)frame, input_remap, block_size,
                               num_elements, output_frame.vis);
+
+            // Fill other datasets with reasonable values
+            std::fill(output_frame.weight.begin(), output_frame.weight.end(), 1.0);
+            std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
+            std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
+            output_frame.rms = 0;
 
             // Mark the buffers and move on
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -143,11 +149,10 @@ void visDebug::main_thread() {
         // Update the frame count for prometheus
         fd_pair key {frame.freq_id, frame.dataset_id};
         frame_counts[key]++;  // Relies on the fact that insertion zero intialises
-        std::ostringstream labels;
-        labels << "freq_id=\"" << frame.freq_id
-               << "\",dataset_id=\"" << frame.dataset_id << "\"";
+        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
+                                         frame.freq_id, frame.dataset_id);
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels.str()
+            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels
         );
 
         // Mark the buffers and move on
@@ -209,31 +214,70 @@ void visAccumulate::main_thread() {
 
     int in_frame_id = 0;
     int out_frame_id = 0;
-    int64_t frame_id = 0;
-    int32_t * input;
-    int32_t * output;
-    uint64_t seq_num;
 
-    uint8_t * in_frame;
+    uint last_frame_count = 0;
+    uint frames_in_this_cycle = 0;
 
-    size_t nprod = num_elements * (num_elements + 1) / 2;
+    size_t nb = num_elements / block_size;
+    size_t nprod_gpu = nb * (nb + 1) * block_size * block_size / 2;
 
-    std::vector<cfloat> vis(nprod);
-    std::vector<cfloat> vis_even(nprod);
+    // Temporary arrays for storing intermediates
+    int32_t* vis_even = new int32_t[2 * nprod_gpu];
+    cfloat* vis1 = new cfloat[nprod_gpu];
+    float* vis2 = new float[nprod_gpu];
+
+    // Have we initialised a frame for writing yet
+    bool init = false;
 
     while (!stop_thread) {
 
-        if((in_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
-                                           in_frame_id)) == nullptr) {
-            break;
+        // Fetch a new frame and get its sequence id
+        uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
+                                                in_frame_id);
+        if(in_frame == nullptr) break;
+
+        int32_t* input = (int32_t *)in_frame;
+        uint frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
+
+        // If we have wrapped around we need to write out any frames that have
+        // been filled in previous iterations. In here we need to reorder the
+        // accumulates and do any final manipulations. `last_frame_count` is
+        // initially set to UINT_MAX to ensure this doesn't happen immediately.
+        bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
+        if (init && wrapped) {
+            auto output_frame = visFrameView(out_buf, out_frame_id);
+
+            // Unpack the main visibilities
+            float w1 = 1.0 / (num_gpu_frames * samples_per_data_set);
+
+            map_vis_triangle(input_remap, block_size, num_elements,
+                [&](int32_t pi, int32_t bi, bool conj) {
+                    cfloat t = !conj ? vis1[bi] : std::conj(vis1[bi]);
+                    output_frame.vis[pi] = w1 * t;
+                }
+            );
+
+            // Unpack and invert the weights
+            map_vis_triangle(input_remap, block_size, num_elements,
+                [&](int32_t pi, int32_t bi, bool conj) {
+                    float t = vis2[bi];
+                    //std::cout << t << std::endl;
+                    output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
+                }
+            );
+
+            // Set the actual amount of time we accumulated for 
+            output_frame.fpga_seq_total = frames_in_this_cycle * samples_per_data_set;
+
+            mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+            out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
+            init = false;
+            frames_in_this_cycle = 0;
         }
 
-        input = (int32_t *)in_frame;
-
-        seq_num = get_fpga_seq_num(in_buf, in_frame_id);
-
-        // We've started a new frame, start the initialisation
-        if (frame_id % num_gpu_frames == 0) {
+        // We've started accumulating a new frame. Initialise the output and
+        // copy over any metadata.
+        if (frame_count % num_gpu_frames == 0) {
 
             if (wait_for_empty_frame(out_buf, unique_name.c_str(),
                                      out_frame_id) == nullptr) {
@@ -243,47 +287,47 @@ void visAccumulate::main_thread() {
             allocate_new_metadata_object(out_buf, out_frame_id);
             auto output_frame = visFrameView(out_buf, out_frame_id, num_elements, num_eigenvectors);
 
-            // Transfer over the metadata
+            // Copy over the metadata
             output_frame.fill_chime_metadata((const chimeMetadata *)in_buf->metadata[in_frame_id]->metadata);
+
+            // Set the length of time this frame will cover
+            output_frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
             
             // Zero out existing data
-            std::fill(output_frame.vis.begin(), output_frame.vis.end(), 0.0);
-            std::fill(output_frame.weight.begin(), output_frame.weight.end(), 0.0);
             std::fill(output_frame.eigenvectors.begin(), output_frame.eigenvectors.end(), 0.0);
             std::fill(output_frame.eigenvalues.begin(), output_frame.eigenvalues.end(), 0.0);
+            output_frame.rms = 0;
+
+            // Zero out accumulation arrays
+            std::fill(vis1, vis1 + nprod_gpu, 0);
+            std::fill(vis2, vis2 + nprod_gpu, 0);
+
+            init = true;
         }
 
-        // Copy out the visibilities from the blocked representation and reorder
-        // them. This is done for simplicity, now we can just use them how we
-        // want without any remapping
-        copy_vis_triangle((const int32_t *)in_frame, input_remap, block_size, num_elements, vis);
-
-        auto output_frame = visFrameView(out_buf, out_frame_id);
-
-        // First, divide through by the number of accumulations done in the GPUs
-        // themselves. Then accumulate the weighted vis into the main vis buffer
-        // to progressively calculate the average
-        for(size_t i = 0; i < nprod; i++) {
-            vis[i] /= (float)(samples_per_data_set);
-
-            output_frame.vis[i] += vis[i] / (float)(num_gpu_frames);
+        // Perform primary accumulation
+        for(int i = 0; i < nprod_gpu; i++) {
+            cfloat t = {(float)input[2*i+1], (float)input[2*i]};
+            vis1[i] += t;
         }
 
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
-        if(frame_id % 2 == 0) {
-            std::swap(vis, vis_even);  // Swap the vis into a separate vector to save it
+        if(frame_count % 2 == 0) {
+            std::memcpy(vis_even, input, 8 * nprod_gpu);
         }
         // ... every odd sample we accumulate the squared differences into the weight dataset
         // NOTE: this incrementally calculates the variance, but eventually
         // output_frame.weight will hold the *inverse* variance
         else {
-            for(size_t i = 0; i < nprod; i++) {
-                auto t = abs(vis[i] - vis_even[i]) / (float)(num_gpu_frames);
-                output_frame.weight[i] += pow(t, 2);
+            for(size_t i = 0; i < nprod_gpu; i++) {
+                // NOTE: avoid using the slow std::complex routines in here
+                float di = input[2 * i    ] - vis_even[2 * i    ];
+                float dr = input[2 * i + 1] - vis_even[2 * i + 1];
+                vis2[i] += (dr * dr + di * di);
             }
         }
-        
+
         // TODO: do something with the lost packet counts
 
         // TODO: gating should go in here. Gates much be created such that the
@@ -292,22 +336,14 @@ void visAccumulate::main_thread() {
         // Move the input buffer on one step
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
-        
-        // Increment the frame counter which counts the number of GPU frames we've seen
-        frame_id++;
-
-        // Once we've integrated over the required number of frames, then do any
-        // final cleanups and release the data...
-        if (frame_id % num_gpu_frames == 0) {
-
-            // Invert everything in the weight dataset
-            for(size_t i = 0; i < nprod; i++) {
-                output_frame.weight[i] = 1.0 / output_frame.weight[i];
-            }
-            mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-            out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
-        }
+        last_frame_count = frame_count;
+        frames_in_this_cycle++;
     }
+
+    // Cleanup 
+    delete[] vis_even;
+    delete[] vis1;
+    delete[] vis2;
 }
 
 

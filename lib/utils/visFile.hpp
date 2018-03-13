@@ -159,9 +159,10 @@ public:
      * Write a new time sample into this set of files
      * @param new_time Time of sample
      * @param ...      Arguments passed through to `visFile::writeSample`
+     * @return True if an error occured while writing
      **/
     template<typename... WriteArgs>
-    void addSample(time_ctype new_time, WriteArgs&&... args);
+    bool addSample(time_ctype new_time, WriteArgs&&... args);
 
 private:
 
@@ -212,7 +213,7 @@ inline visFileBundle::visFileBundle(const std::string root_path,
 
 
 template<typename... WriteArgs>
-inline void visFileBundle::addSample(time_ctype new_time, WriteArgs&&... args) {
+inline bool visFileBundle::addSample(time_ctype new_time, WriteArgs&&... args) {
     
     if(resolveSample(new_time)) {
         std::shared_ptr<visFile> file;
@@ -220,6 +221,10 @@ inline void visFileBundle::addSample(time_ctype new_time, WriteArgs&&... args) {
         // We can now safely add the sample into the file
         std::tie(file, ind) = vis_file_map[new_time.fpga_count];
         file->writeSample(ind, std::forward<WriteArgs>(args)...);
+
+        return false;
+    } else {
+        return true;
     }
 }
 
