@@ -66,7 +66,7 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
 
     if(type_name == "vis") {
         int num_elements = config.get_int(location, "num_elements");
-        int num_ev = config.get_int(location, "num_eigenvectors");
+        int num_ev = config.get_int(location, "num_ev");
         int num_prod = config.get_int_default(location, "num_prod", -1);
 
         if(num_prod < 0) {
