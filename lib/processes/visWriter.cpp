@@ -37,11 +37,10 @@ visWriter::visWriter(Config& config,
     // If specified, get the weights type to write to attributes
     weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
-    // Write the eigen values out
+    // Write the eigen values out? Communicated to visFile by num_ev > 0
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
-    if(write_ev) {
-        num_ev = config.get_int(unique_name, "num_ev");
-    }
+    num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
+
     // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
     // the moment this either uses chime, or if set to use a per_node_instrument
     // it uses the hostname of the current node
@@ -227,10 +226,10 @@ void visWriter::init_acq() {
     // TODO: connect up notes
     std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
-         new visFileBundle(
-             root_path, instrument_name, chunk_id, file_length, window,
-             notes, weights_type, freqs, inputs, prods, num_ev
-         )
+        new visFileBundle(
+            root_path, instrument_name, chunk_id, file_length, window,
+            notes, weights_type, freqs, inputs, prods, num_ev
+        )
     );
 }
 

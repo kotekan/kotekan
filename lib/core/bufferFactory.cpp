@@ -1,6 +1,7 @@
 #include "bufferFactory.hpp"
 #include "metadata.h"
 #include "Config.hpp"
+#include "visBuffer.hpp"
 
 bufferFactory::bufferFactory(Config& _config,
             map<string, struct metadataPool *> &_metadataPools) :
@@ -49,7 +50,6 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
 
     //DEBUG("Creating buffer of type: %s, at config tree path: %s", name.c_str(), location.c_str());
     uint32_t num_frames = config.get_int_eval(location, "num_frames");
-    uint32_t frame_size = config.get_int_eval(location, "frame_size");
     string metadataPool_name = config.get_string(location, "metadata_pool");
     if (metadataPools.count(metadataPool_name) != 1) {
         throw std::runtime_error("The buffer " + name +
@@ -58,8 +58,28 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
     struct metadataPool * pool = metadataPools[metadataPool_name];
 
     if (type_name == "standard") {
+        uint32_t frame_size = config.get_int_eval(location, "frame_size");
         INFO("Creating standard buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
                 name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
+        return create_buffer(num_frames, frame_size, pool, name.c_str());
+    }
+
+    if(type_name == "vis") {
+        int num_elements = config.get_int(location, "num_elements");
+        int num_ev = config.get_int(location, "num_eigenvectors");
+        int num_prod = config.get_int_default(location, "num_prod", -1);
+
+        if(num_prod < 0) {
+            num_prod = num_elements * (num_elements + 1) / 2;
+        }
+
+        auto layout = visFrameView::calculate_buffer_layout(
+            num_elements, num_prod, num_ev
+        );
+        uint32_t frame_size = layout["_struct"].second;
+
+        INFO("Creating visBuffer named %s with %d frames, frame size of %d and metadata pool %s",
+             name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
         return create_buffer(num_frames, frame_size, pool, name.c_str());
     }
 

@@ -78,10 +78,15 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     size_t required_size = buffer_layout["_struct"].second;
 
     if(required_size > (uint32_t)buffer->frame_size) {
-        throw std::runtime_error(
-            "Visibility buffer too small. Must be a minimum of " +
-            std::to_string((int)required_size) + " bytes."
+
+        std::string s = fmt::format(
+            "Visibility buffer [{}] too small. Must be a minimum of\
+             {} bytes for elements={}, products={}, ev={}",
+            buffer->buffer_name, required_size, n_elements, n_prod,
+            n_eigenvectors
         );
+
+        throw std::runtime_error(s);
     }
 }
 
