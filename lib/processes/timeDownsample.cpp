@@ -12,11 +12,6 @@ timeDownsample::timeDownsample(Config &config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&timeDownsample::main_thread, this)) {
 
-    // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
-
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -52,13 +47,18 @@ void timeDownsample::main_thread() {
             break;
         }
 
-        auto frame = visFrameView(in_buf, frame_id, num_elements, num_eigenvectors);
+        auto frame = visFrameView(in_buf, frame_id);
 
         // Should only ever read one frequency
-        if (freq_id == -1)
+        if (freq_id == -1) {
+            // Get parameters from first frame
             freq_id = frame.freq_id;
-        else if (frame.freq_id != freq_id)
+            nprod = frame.num_prod;
+            num_elements = frame.num_elements;
+            num_eigenvectors = frame.num_ev;
+        } else if (frame.freq_id != freq_id) {
             throw std::runtime_error("Cannot downsample stream with more than one frequency.");
+        }
 
         if (nframes == 0) { // Start accumulating frames
             // Wait for an empty frame
@@ -68,22 +68,18 @@ void timeDownsample::main_thread() {
             }
             allocate_new_metadata_object(out_buf, output_frame_id);
 
-            auto output_frame = visFrameView(out_buf, output_frame_id,
-                                             num_elements, num_eigenvectors);
+            // Copy frame into output buffer
+            auto output_frame = visFrameView(out_buf, output_frame_id, frame);
 
-            // Transfer over the metadata from the first frame
-            output_frame.fill_chime_metadata((const chimeMetadata *)in_buf->metadata[frame_id]->metadata);
-
-            // Zero out existing data
-            std::fill(output_frame.vis.begin(), output_frame.vis.end(), 0.0);
-            std::fill(output_frame.weight.begin(), output_frame.weight.end(), 0.0);
-            std::fill(output_frame.evec.begin(), output_frame.evec.end(), 0.0);
-            std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
-            output_frame.erms = 0.0;
+            // Go to next frame
+            nframes = (nframes + 1) % nsamp;
+            mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % in_buf->num_frames;
+            continue;
         }
 
-        auto output_frame = visFrameView(out_buf, output_frame_id,
-                                         num_elements, num_eigenvectors);
+        auto output_frame = visFrameView(out_buf, output_frame_id);
+
         // Accumulate contents of buffer
         for (size_t i = 0; i < nprod; i++) {
             output_frame.vis[i] += frame.vis[i];
