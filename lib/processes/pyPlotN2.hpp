@@ -70,7 +70,7 @@ public:
      * @warning        Nobody should ever call this directly, it's only meant to service the
      *                 RESTful callback.
      */
-    void request_plot_callback(connectionInstance& conn, json& json_request);
+    void request_plot_callback(connectionInstance& conn);
 private:
     void make_plot(void);
 
