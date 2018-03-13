@@ -119,12 +119,9 @@ class FakeVisBuffer(InputBuffer):
 
         self.buffer_block = {
             self.name: {
-                'kotekan_buffer': 'standard',
+                'kotekan_buffer': 'vis',
                 'metadata_pool': 'vis_pool',
                 'num_frames': 'buffer_depth',
-                'sizeof_int': 4,
-                'frame_size': ('10 * sizeof_int * num_local_freq *'
-                               'num_elements * num_elements')
             }
         }
 
@@ -162,12 +159,9 @@ class DumpVisBuffer(OutputBuffer):
 
         self.buffer_block = {
             self.name: {
-                'kotekan_buffer': 'standard',
+                'kotekan_buffer': 'vis',
                 'metadata_pool': 'vis_pool',
                 'num_frames': 'buffer_depth',
-                'sizeof_int': 4,
-                'frame_size': ('10 * sizeof_int * num_local_freq *'
-                               'num_elements * num_elements')
             }
         }
 

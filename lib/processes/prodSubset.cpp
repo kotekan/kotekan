@@ -12,7 +12,9 @@ prodSubset::prodSubset(Config &config,
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
     num_eigenvectors =  config.get_int(unique_name, "num_eigenvectors");
-    num_prod = config.get_int(unique_name, "num_prod");
+    //num_prod = config.get_int(unique_name, "num_prod");
+
+    num_prod = num_elements * (num_elements + 1) / 2;
 
     // Get buffers
     in_buf = get_buffer("in_buf");

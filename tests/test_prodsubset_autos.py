@@ -7,7 +7,6 @@ import kotekan_runner
 
 subset_params = {
     'num_elements': 16,
-    'num_prod': 120,
     'num_eigenvectors': 2,
     'total_frames': 128,
     'cadence': 5.0,
