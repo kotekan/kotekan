@@ -3,6 +3,8 @@
 @brief Processes for handling visibility data.
 - visTransform : public KotekanProcess
 - visDebug : public KotekanProcess
+- visAccumulate : public KotekanProcess
+- visMerge : public KotekanProcess
 *****************************************/
 #ifndef VIS_PROCESS_HPP
 #define VIS_PROCESS_HPP
