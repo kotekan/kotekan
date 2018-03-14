@@ -28,7 +28,6 @@
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  out_buf           String. Name of buffer to output to.
  * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
  *                          correlator data,
  * @conf  block_size        Int. The block size of the packed data.

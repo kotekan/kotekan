@@ -21,13 +21,6 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @par Metrics
- * @metric kotekan_eigenvis_comp_time_seconds
- *         Time required to find eigenvectors. An exponential moving average over
- *         ~10 samples.
- * @metric kotekan_eigenvis_eigenvalue
- *         The value of each eigenvalue calculated, or the RMS.
- *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  block_size            Int. The block size of the packed data.
@@ -41,6 +34,13 @@
  * @conf  exclude_inputs        List of Ints, optional. Inputs to exclude (rows and
  *                              columns to set to zero) in visibilities prior to
  *                              factorization.
+ *
+ * @par Metrics
+ * @metric kotekan_eigenvis_comp_time_seconds
+ *         Time required to find eigenvectors. An exponential moving average over
+ *         ~10 samples.
+ * @metric kotekan_eigenvis_eigenvalue
+ *         The value of each eigenvalue calculated, or the RMS.
  *
  * @author Kiyoshi Masui
  */

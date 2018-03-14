@@ -43,8 +43,6 @@
  *     @buffer_format visBuffer structured
 +*     @buffer_metadata visMetadata
  *
- * @conf  out_buf           string. Name of buffer to output subset to.
- * @conf  in_buf            string. Name of buffer to read from.
  * @conf  prod_subset_type  string. Type of product subset to perform.
  * @conf  num_elements      int. The number of elements (i.e. inputs) in the
 +*                               correlator data

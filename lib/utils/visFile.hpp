@@ -54,7 +54,7 @@ public:
      * @param new_time The new time to add.
      * @return The index of the added time in the file.
      **/ 
-    uint32_t extendTime(time_ctype new_time);
+    uint32_t extend_time(time_ctype new_time);
 
     /**
      * @brief Write a sample of data into the file at the given index.
@@ -67,14 +67,14 @@ public:
      * @param new_evec Eigenvectors.
      * @param new_erms RMS after eigenvalue removal.
      **/
-    void writeSample(uint32_t time_ind, uint32_t freq_ind,
-                     std::vector<cfloat> new_vis,
-                     std::vector<float> new_weight,
-                     std::vector<cfloat> new_gcoeff,
-                     std::vector<int32_t> new_gexp,
-                     std::vector<float> new_eval,
-                     std::vector<cfloat> new_evec,
-                     float new_erms);
+    void write_sample(uint32_t time_ind, uint32_t freq_ind,
+                      std::vector<cfloat> new_vis,
+                      std::vector<float> new_weight,
+                      std::vector<cfloat> new_gcoeff,
+                      std::vector<int32_t> new_gexp,
+                      std::vector<float> new_eval,
+                      std::vector<cfloat> new_evec,
+                      float new_erms);
 
     /**
      * @brief Return the current number of current time samples.
@@ -87,14 +87,14 @@ private:
 
 
     // Create the index maps from the frequencies and the inputs
-    void createIndex(const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs,
-                     const std::vector<prod_ctype>& prods,
-                     size_t num_ev);
+    void create_index(const std::vector<freq_ctype>& freqs,
+                      const std::vector<input_ctype>& inputs,
+                      const std::vector<prod_ctype>& prods,
+                      size_t num_ev);
 
     // Create the main visibility holding datasets
-    void createDatasets(size_t nfreq, size_t ninput, size_t nprod,
-                        size_t num_ev, std::string weights_type);
+    void create_datasets(size_t nfreq, size_t ninput, size_t nprod,
+                         size_t num_ev, std::string weights_type);
 
     // Get datasets
     HighFive::DataSet vis();
@@ -158,22 +158,22 @@ public:
     /**
      * Write a new time sample into this set of files
      * @param new_time Time of sample
-     * @param ...      Arguments passed through to `visFile::writeSample`
+     * @param ...      Arguments passed through to `visFile::write_sample`
      * @return True if an error occured while writing
      **/
     template<typename... WriteArgs>
-    bool addSample(time_ctype new_time, WriteArgs&&... args);
+    bool add_sample(time_ctype new_time, WriteArgs&&... args);
 
 private:
 
     // Add a file if we need to 
-    void addFile(time_ctype first_time);
+    void add_file(time_ctype first_time);
 
     // Thin function to actually create the file
     std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mkFile;
 
     // Find/create the slot for data at this time to go into
-    bool resolveSample(time_ctype new_time);
+    bool resolve_sample(time_ctype new_time);
 
     const std::string root_path;
     const std::string instrument_name;
@@ -213,14 +213,14 @@ inline visFileBundle::visFileBundle(const std::string root_path,
 
 
 template<typename... WriteArgs>
-inline bool visFileBundle::addSample(time_ctype new_time, WriteArgs&&... args) {
+inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) {
     
-    if(resolveSample(new_time)) {
+    if(resolve_sample(new_time)) {
         std::shared_ptr<visFile> file;
         uint32_t ind;
         // We can now safely add the sample into the file
         std::tie(file, ind) = vis_file_map[new_time.fpga_count];
-        file->writeSample(ind, std::forward<WriteArgs>(args)...);
+        file->write_sample(ind, std::forward<WriteArgs>(args)...);
 
         return false;
     } else {

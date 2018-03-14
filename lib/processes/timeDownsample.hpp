@@ -29,8 +29,6 @@
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  in_buf            String. Name of buffer to read from.
- * @conf  out_buf           String. Name of buffer to output to.
  * @conf  num_samples       Int. The number of time frames to average.
  *
  * @warning There is not mechanism in place to verify or enforce that frames being

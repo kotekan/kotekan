@@ -121,7 +121,7 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
             if (frame_id == -1) {
                 WARN("No free buffer frames, dropping data from %s",
                         instance->client_ip.c_str());
-                
+
                 // Update dropped frame count in prometheus
                 dropped_frame_count++;
                 prometheusMetrics::instance().add_process_metric(

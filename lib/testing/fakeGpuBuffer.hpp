@@ -69,7 +69,7 @@ public:
     void fill_mode_block(int32_t* data, int frame_num);
 
     /**
-     * Fill with a pattern for debugging the accumulation.
+     * @brief Fill with a pattern for debugging the accumulation.
      *
      * Fill each element with its full correlation index (real = row; column =
      * imag), with real and imaginary parts being shifted every 4th frame.
@@ -83,7 +83,7 @@ public:
     void fill_mode_accumulate(int32_t* data, int frame_num);
 
     /**
-     * Fill with a pattern with Gaussian noise with radiometer variance.
+     * @brief Fill with a pattern with Gaussian noise with radiometer variance.
      *
      * The underlying inputs are uncorrelated with variance of 1.
      * 

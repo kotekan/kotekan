@@ -90,6 +90,10 @@ void fakeVis::main_thread() {
             // Set the time
             output_frame.time = std::make_tuple(fpga_seq, ts);
 
+            // Set the length and total data
+            output_frame.fpga_seq_length = delta_seq;
+            output_frame.fpga_seq_total = delta_seq;
+
             // Insert values into vis array to help with debugging
             auto out_vis = output_frame.vis;
 

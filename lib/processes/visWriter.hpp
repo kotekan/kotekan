@@ -34,13 +34,6 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @par Metrics
- * @metric kotekan_viswriter_write_time_seconds
- *         The write time of the HDF5 writer. An exponential moving average over ~10
- *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
- *         The number of frames dropped while attempting to write.
- *
  * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
  * @conf   root_path        String. Location in filesystem to write to.
  * @conf   instrument_name  String (default: chime). Name of the instrument
@@ -58,6 +51,17 @@
  *                          file. (default 'unknown')
  * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
  * @conf   num_ev           Int. Only needed if `write_ev` is true.
+ * @conf   file_length      Int (default 1024). Maximum number of samples to
+ *                          write into a file.
+ * @conf   window           Int (default 20). Number of samples to keep active
+ *                          for writing at any time.
+ *
+ * @par Metrics
+ * @metric kotekan_viswriter_write_time_seconds
+ *         The write time of the HDF5 writer. An exponential moving average over ~10
+ *         samples.
+ * @metric kotekan_viswriter_dropped_frame_total
+ *         The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
  */
@@ -91,8 +95,8 @@ private:
     std::unique_ptr<visFileBundle> file_bundle;
 
     // File length and number of samples to keep "active"
-    size_t file_length = 1024;
-    size_t window = 20;
+    size_t file_length;
+    size_t window;
 
     /// Input buffer to read from
     Buffer * in_buf;

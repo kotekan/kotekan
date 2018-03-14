@@ -71,6 +71,9 @@ void timeDownsample::main_thread() {
             // Copy frame into output buffer
             auto output_frame = visFrameView(out_buf, output_frame_id, frame);
 
+            // Increase the total frame length
+            output_frame.fpga_seq_length *= nsamp;
+
             // Go to next frame
             nframes = (nframes + 1) % nsamp;
             mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -94,6 +97,9 @@ void timeDownsample::main_thread() {
             }
         }
         output_frame.erms += frame.erms;
+
+        // Accumulate integration totals
+        output_frame.fpga_seq_total += frame.fpga_seq_total;
 
         if (nframes == nsamp - 1) { // Reached the end, average contents of buffer
             for (size_t i = 0; i < nprod; i++) {

@@ -52,9 +52,14 @@ def test_structure(vis_data):
 
 def test_metadata(vis_data):
 
+    input_frame_length = int(800e6 / 2048 * downsamp_params['cadence']) 
+    frame_length = input_frame_length * downsamp_params['num_samples']
+
     for frame in vis_data:
         assert frame.metadata.freq_id == 0
         assert frame.metadata.dataset_id == 0
+        assert frame.metadata.fpga_length == frame_length
+        assert frame.metadata.fpga_total == frame_length
 
 
 def test_time(vis_data):

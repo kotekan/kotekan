@@ -131,6 +131,8 @@ def test_time(accumulate_data):
         assert frame.metadata.fpga_seq == ii * delta_samp
         assert ((timespec_to_float(frame.metadata.ctime) - t0) ==
                 pytest.approx(ii * delta_samp * 2.56e-6, abs=1e-5, rel=0))
+        assert frame.metadata.fpga_length == delta_samp
+        assert frame.metadata.fpga_total == delta_samp
 
 
 def test_accumulate(accumulate_data):
@@ -164,9 +166,10 @@ def test_int_time(time_data):
     time_per_frame = 2.56e-6 * time_params['samples_per_data_set']
     frames_per_int = (int(time_params['integration_time'] /
                           time_per_frame) / 2) * 2
-
+    delta_samp = time_params['samples_per_data_set'] * frames_per_int
     fpga0 = time_data[0].metadata.fpga_seq
 
     for ii, frame in enumerate(time_data):
-        assert (frame.metadata.fpga_seq - fpga0 ==
-                ii * time_params['samples_per_data_set'] * frames_per_int)
+        assert (frame.metadata.fpga_seq - fpga0 == ii * delta_samp)
+        assert frame.metadata.fpga_length == delta_samp
+        assert frame.metadata.fpga_total == delta_samp

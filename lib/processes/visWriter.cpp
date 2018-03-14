@@ -37,6 +37,9 @@ visWriter::visWriter(Config& config,
     // If specified, get the weights type to write to attributes
     weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
+    file_length = config.get_int_default(unique_name, "file_length", 1024);
+    window = config.get_int_default(unique_name, "window", 20);
+
     // Write the eigen values out? Communicated to visFile by num_ev > 0
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
@@ -131,7 +134,7 @@ void visWriter::main_thread() {
 
             // Add all the new information to the file.
             double start = current_time();
-            bool error = file_bundle->addSample(t, freq_ind, vis, vis_weight,
+            bool error = file_bundle->add_sample(t, freq_ind, vis, vis_weight,
                                                 gain_coeff, gain_exp, eval,
                                                 evec, frame.erms);
             double elapsed = current_time() - start;
@@ -182,7 +185,7 @@ void visWriter::init_acq() {
     // Use the per buffer info to setup the acqusition properties
     setup_freq(freq_ids);
 
-    // Create the visFileBundle. This will not create any files until addSample
+    // Create the visFileBundle. This will not create any files until add_sample
     // is called
     // TODO: connect up notes
     std::string notes = "";

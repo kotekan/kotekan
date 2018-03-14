@@ -45,8 +45,8 @@ visFile::visFile(const std::string& name,
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
     );
 
-    createIndex(freqs, inputs, prods, num_ev);
-    createDatasets(freqs.size(), ninput, prods.size(), num_ev, weights_type);
+    create_index(freqs, inputs, prods, num_ev);
+    create_datasets(freqs.size(), ninput, prods.size(), num_ev, weights_type);
 
     // === Set the required attributes for a valid file ===
     std::string version = "NT_3.1.0";
@@ -86,7 +86,7 @@ visFile::~visFile() {
 // TODO: will need to make prods an input to this method for baseline subsetting
 //       should make use of overloading so that previous calls don't break.
 //       this should propagate to Filebundle
-void visFile::createIndex(const std::vector<freq_ctype>& freqs,
+void visFile::create_index(const std::vector<freq_ctype>& freqs,
                           const std::vector<input_ctype>& inputs,
                           const std::vector<prod_ctype>& prods,
                           size_t num_ev) {
@@ -126,7 +126,7 @@ void visFile::createIndex(const std::vector<freq_ctype>& freqs,
 
 }
 
-void visFile::createDatasets(size_t nfreq, size_t ninput, size_t nprod,
+void visFile::create_datasets(size_t nfreq, size_t ninput, size_t nprod,
                              size_t nev, std::string weights_type) {
 
     // Create extensible spaces for the different types of spaces we have
@@ -269,7 +269,7 @@ size_t visFile::num_ev() {
     return write_ev ? eval().getSpace().getDimensions()[2] : 0;
 }
 
-uint32_t visFile::extendTime(time_ctype new_time) {
+uint32_t visFile::extend_time(time_ctype new_time) {
 
     // Get the current dimensions
     size_t ntime = num_time(), nprod = num_prod(),
@@ -301,7 +301,7 @@ uint32_t visFile::extendTime(time_ctype new_time) {
 }
 
 
-void visFile::writeSample(
+void visFile::write_sample(
     uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
     std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
     std::vector<int32_t> new_gexp, std::vector<float> new_eval,
@@ -326,13 +326,13 @@ void visFile::writeSample(
 }
 
 
-bool visFileBundle::resolveSample(time_ctype new_time) {
+bool visFileBundle::resolve_sample(time_ctype new_time) {
 
     uint64_t count = new_time.fpga_count;
 
     if(vis_file_map.size() == 0) {
         // If no files are currently in the map we should create a new one.
-        addFile(new_time);
+        add_file(new_time);
     } else {
         // If there are files in the list we need to figure out whether to
         // insert a new entry or not
@@ -357,10 +357,10 @@ bool visFileBundle::resolveSample(time_ctype new_time) {
 
             if(file->num_time() < rollover) {
                 // Extend the time axis and add into the sample map
-                ind = file->extendTime(new_time);
+                ind = file->extend_time(new_time);
                 vis_file_map[count] = std::make_tuple(file, ind);
             } else {
-                addFile(new_time);
+                add_file(new_time);
             }
 
             // As we've added a new sample we need to delete the earliest sample
@@ -384,7 +384,7 @@ bool visFileBundle::resolveSample(time_ctype new_time) {
 }
 
 
-void visFileBundle::addFile(time_ctype first_time) {
+void visFileBundle::add_file(time_ctype first_time) {
 
     time_t t = (time_t)first_time.ctime;
 
@@ -413,7 +413,7 @@ void visFileBundle::addFile(time_ctype first_time) {
 
     // Create the file, create room for the first sample and add into the file map
     auto file = mkFile(file_name, acq_name, root_path);
-    auto ind = file->extendTime(first_time);
+    auto ind = file->extend_time(first_time);
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
 }
 

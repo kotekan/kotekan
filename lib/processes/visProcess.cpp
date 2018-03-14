@@ -61,8 +61,8 @@ void visTransform::main_thread() {
     while (!stop_thread) {
 
         // This is where all the main set of work happens. Iterate over the
-        // available buffers, wait for data to appear and then attempt to write
-        // the data into a file
+        // available buffers, wait for data to appear and transform into
+        // visBuffer style data
         unsigned int buf_ind = 0;
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
