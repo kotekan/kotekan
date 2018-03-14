@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <functional>
 #include <thread>
+#include <assert.h>
 
 #include "basebandReadout.hpp"
 #include "buffer.h"
@@ -48,44 +49,52 @@ void basebandReadout::apply_config(uint64_t fpga_seq) {
 
 void basebandReadout::main_thread() {
 
-    int fd;
-    int file_num = 0;
     int frame_id = 0;
+    int done_frame;
     uint8_t * frame = NULL;
-    char hostname[64];
-    gethostname(hostname, 64);
 
-    bufferManager manager(num_frames_buffer);
+    bufferManager manager(buf, num_frames_buffer);
 
+    std::cout << "START LOOP" << std::endl;
 
     while (!stop_thread) {
 
-        std::cout << "START THREAD" << std::endl;
+        frame = wait_for_full_frame(buf, unique_name.c_str(),
+                                    frame_id % buf->num_frames);
+        done_frame = manager.add_replace_frame(frame_id);
+        if (done_frame >= 0) {
+            mark_frame_empty(buf, unique_name.c_str(),
+                             done_frame % buf->num_frames);
+        }
 
-        // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
+        std::cout << frame_id << " : " << done_frame << std::endl;
 
-        const int full_path_len = 200;
-        char full_path[full_path_len];
-
-        snprintf(full_path, full_path_len, "%s/%s_%07d.%s",
-                base_dir.c_str(),
-                hostname,
-                file_num,
-                file_ext.c_str());
-
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
-
-        frame_id = ( frame_id + 1 ) % buf->num_frames;
-        file_num++;
+        frame_id++;
     }
 }
 
 
-bufferManager::bufferManager(unsigned int length_) :
-    length(length_), next_frame(0), oldest_frame(-1), metas(length, NULL), 
-    frames(length, NULL), manager_lock() {
+bufferManager::bufferManager(Buffer * buf_, int length_) :
+    buf(buf_), length(length_), next_frame(0), oldest_frame(-1),
+    frame_locks(length), manager_lock() {
+}
+
+int bufferManager::add_replace_frame(int frame_id) {
+    manager_lock.lock();
+    int replaced_frame = -1;
+    assert(frame_id == next_frame);
+
+    // This will block if we are trying to replace a frame currenlty being read out.
+    frame_locks[frame_id % length].lock();
+    if (frame_id % length == oldest_frame % length) {
+        replaced_frame = oldest_frame;
+        oldest_frame++;
+    }
+    frame_locks[frame_id % length].unlock();
+
+    next_frame++;
+    manager_lock.unlock();
+    return replaced_frame;
 }
 
 bufferManager::~bufferManager() {
