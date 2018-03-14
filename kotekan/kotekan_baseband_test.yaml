@@ -9,7 +9,10 @@ num_local_freq: 1
 num_total_freq: 4
 samples_per_data_set: 32768
 num_data_sets: 1
-buffer_depth: 32    # 4 GB/stream
+baseband_buffer_depth: 32   # 4 GB/stream
+# XXX Why doesn't this work?
+#buffer_depth: baseband_buffer_depth + 6
+buffer_depth: 38
 #buffer_depth: 6
 num_gpu_frames: 1
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
@@ -52,4 +55,22 @@ gen_data:
   test_data_gen_3:
     kotekan_process: testDataGen
     network_out_buf: gpu_input_buffer_3
+
+baseband_buffler:
+    # Why doesn't this work?
+    #num_frames_buffer: baseband_buffer_depth
+    num_frames_buffer: 32
+    file_ext: "_baseband.h5"
+    buffer_0:
+        kotekan_process: basebandReadout
+        in_buf: gpu_input_buffer_0
+    buffer_1:
+        kotekan_process: basebandReadout
+        in_buf: gpu_input_buffer_1
+    buffer_2:
+        kotekan_process: basebandReadout
+        in_buf: gpu_input_buffer_2
+    buffer_3:
+        kotekan_process: basebandReadout
+        in_buf: gpu_input_buffer_3
 
