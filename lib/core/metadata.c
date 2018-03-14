@@ -47,15 +47,18 @@ void increment_metadata_ref_count(struct metadataContainer * container) {
 }
 
 void decrement_metadata_ref_count(struct metadataContainer * container) {
+    uint32_t local_ref_count;
+
     lock_metadata(container);
 
     assert(container->ref_count > 0);
 
     container->ref_count -= 1;
+    local_ref_count = container->ref_count;
 
     unlock_metadata(container);
 
-    if (container->ref_count == 0) {
+    if (local_ref_count == 0) {
         return_metadata_to_pool(container->parent_pool, container);
     }
 }
