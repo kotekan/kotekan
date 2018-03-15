@@ -181,7 +181,7 @@ vis_transform:
       - file_output_buffer_2
       - file_output_buffer_3
   out_buf: vis_buffer
-  num_eigenvectors: 4
+  num_ev: 4
 
 buffer_send:
   kotekan_process: bufferSend

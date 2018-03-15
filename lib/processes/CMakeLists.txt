@@ -9,7 +9,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               computeDualpolPower.cpp
               fullPacketDump.cpp
               gpuPostProcess.cpp
-              frbPostProcess.cpp
               pulsarPostProcess.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
@@ -29,11 +28,14 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
-              fakeVis.cpp
+              freqSlicer.cpp
+              prodSubset.cpp
+              visProcess.cpp
+              timeDownsample.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
 endif ()
 
 if (${USE_DPDK})
@@ -48,10 +50,19 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
+# This is temporarily disabled because it requires a newer version of hdf5
+# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
+  # Disable for the moment as requires too modern HDF5
+  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp calibration_io.cpp)
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
 endif ()
+
+if (${USE_LAPACK})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
+endif ()
+
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
@@ -59,6 +70,11 @@ add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+endif ()
+
+if (${USE_LAPACK})
+  include_directories (${OpenBLAS_INCLUDE_DIRS} ${LAPACK_INCLUDE_DIRS})
+  target_link_libraries ( kotekan_processes  ${OpenBLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 endif ()
 
 target_link_libraries( kotekan_processes kotekan_utils kotekan_core )

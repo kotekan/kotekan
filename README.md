@@ -19,7 +19,8 @@ Required for some build options:
 * Hugepage support
 * [AMD OpenCL drivers](http://support.amd.com/en-us/download/linux) and [SDK](http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/)
 * [AMD ROCm](https://github.com/RadeonOpenCompute/ROCm)
-* [HDF5](https://www.hdfgroup.org/HDF5/) and [HighFive (Richard's fork)](https://github.com/jrs65/HighFive)
+* [HDF5](https://www.hdfgroup.org/HDF5/) and [HighFive](https://github.com/jrs65/HighFive)
+* [OpenBLAS](http://www.openblas.net/) (optional)
 
 ## Hardware:
 
@@ -47,7 +48,26 @@ Unpack it in `/opt/` and run:
 
     make install T=x86_64-native-linuxapp-gcc
 
-It will give a warning about install path being missing, just ingore it.
+It will give a warning about install path being missing, just ignore it.
+
+## OpenBLAS
+
+Optional and only required for some kotekan processes. Only from-source builds are supported, not the
+version that is distributed with Debian/Ubuntu.
+
+Obtain the source from the OpenBLAS homepage or via:
+
+    git clone https://github.com/xianyi/OpenBLAS.git
+
+Enter the source directory and run:
+
+    make
+    make PREFIX=<openblas_prefix> install
+
+where `<openblas_prefix>` is the *full* path to a directory of your choice, eg. `/opt/OpenBLAS`, or just a
+'build' directory in the source dir. Set the environment variable `CMAKE_PREFIX_PATH` to include
+`<openblas_prefix>` or supply `-DOPENBLAS_PATH=<openblas_prefix>` to `cmake` when building kotekan.
+
 
 ### Startup scripts to help load DPDK drivers and setup huge pages
 
@@ -92,6 +112,8 @@ Cmake build options:
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
+* `-DUSE_LAPACK=ON` - Build processes depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
+* `-DOPENBLAS_PATH=<openblas_prefix>` - Path to OpenBLAS installation, if not in the `CMAKE_PREFIX_PATH`
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 
 **Examples:**
@@ -130,4 +152,4 @@ For example:
 
 When installed kotekan's config files are located at /etc/kotekan/
 
-If running with no options then kotekan just stats a rest server, and waits for someone to send it a config in json format on port `12048`
+If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json format on port `12048`
