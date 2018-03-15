@@ -28,7 +28,7 @@ pyPlotN2::~pyPlotN2() {
     free(in_local);
 }
 
-void pyPlotN2::request_plot_callback(connectionInstance& conn, json& json_request) {
+void pyPlotN2::request_plot_callback(connectionInstance& conn) {
 //    std::lock_guard<std::mutex> lock(_packet_frame_lock);
     dump_plot=true;
     conn.send_empty_reply(STATUS_OK);
@@ -41,8 +41,8 @@ void pyPlotN2::main_thread() {
     using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
     string endpoint = "/plot_corr_matrix/" + std::to_string(gpu_id);
-    rest_server->register_json_callback(endpoint,
-            std::bind(&pyPlotN2::request_plot_callback, this, _1, _2));
+    rest_server->register_get_callback(endpoint,
+            std::bind(&pyPlotN2::request_plot_callback, this, _1));
 
     int frame_id = 0;
     uint8_t * frame = NULL;
