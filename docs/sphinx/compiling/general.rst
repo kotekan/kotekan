@@ -40,6 +40,7 @@ Required for some options
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and `HighFive (Richard's fork) <https://github.com/jrs65/HighFive>`_
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
+* `OpenBLAS <http://www.openblas.net/>`_
 
 Hardware
 =========
@@ -97,6 +98,12 @@ Cmake build options
     Build the AirSpy producer. Requires libairspy.
 * ``-DUSE_FFTW=ON``
     Build an FFTW-based F-engine. Requires FFTW3.
+* ``-DUSE_FFTW=ON``
+    Build an FFTW-based F-engine. Requires FFTW3.
+* ``-DUSE_LAPACK=ON``
+    Build processes depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
+* ``-DOPENBLAS_PATH=<openblas_prefix>``
+    Path to OpenBLAS installation, if not in the ``CMAKE_PREFIX_PATH``
 * ``-DCOMPILE_DOCS=ON``
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 

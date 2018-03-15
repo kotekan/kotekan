@@ -119,7 +119,9 @@ void pulsarPostProcess::main_thread() {
     vdif_header.frame_len = 5000;
     vdif_header.log_num_chan = 0; //Check ln4=2 or ln1=0 ? 
     vdif_header.vdif_version = 1;
-    vdif_header.station_id = 'CH'; //Need to fomrally ask the Vdif community
+//    vdif_header.station_id = 'CH'; //Need to fomrally ask the Vdif community
+    char si[2]={'C','H'};
+    vdif_header.station_id =  (si[0]<<8) + si[1]; //Need to fomrally ask the Vdif community
     vdif_header.thread_id = 0; //UD   freq
     vdif_header.bits_depth = 8 ; //4+4 
     vdif_header.data_type = 1; // Complex

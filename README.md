@@ -3,7 +3,6 @@
 Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.
 One day we'll move them to readthedocs...
 
-
 # Build Instructions
 
 The project is build using cmake, so you will need to install cmake
@@ -28,6 +27,8 @@ Cmake build options:
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
+* `-DUSE_LAPACK=ON` - Build processes depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
+* `-DOPENBLAS_PATH=<openblas_prefix>` - Path to OpenBLAS installation, if not in the `CMAKE_PREFIX_PATH`
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 
 **Examples:**
@@ -66,4 +67,4 @@ For example:
 
 When installed kotekan's config files are located at /etc/kotekan/
 
-If running with no options then kotekan just stats a rest server, and waits for someone to send it a config in json format on port `12048`
+If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json format on port `12048`

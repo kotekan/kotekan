@@ -5,6 +5,7 @@ add_library ( kotekan_testing
               chimeMetadataDump.cpp
               constDataCheck.cpp
               fakeGpuBuffer.cpp
+              fakeVis.cpp
               gpuBeamformSimulate.cpp
               gpuBeamformPulsarSimulate.cpp
               gpuSimulate.cpp
@@ -14,6 +15,7 @@ add_library ( kotekan_testing
               testDataCheck.cpp
               testDataGen.cpp
               testDataGenQuad.cpp
+              testDataGenFloat.cpp
               test_data_generation.c
+              pulsarSimProcess.cpp
               )
-add_definitions(/D__STDC_FORMAT_MACROS)

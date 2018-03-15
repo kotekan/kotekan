@@ -16,7 +16,7 @@ public:
 private:
     struct Buffer *buf;
     std::string type;
-    int32_t value;
+    int value;
     bool _pathfinder_test_mode;
 };
 

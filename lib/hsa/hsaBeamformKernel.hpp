@@ -2,6 +2,7 @@
 #define HSA_BEAMFORM_KERNEL_H
 
 #include "hsaCommand.hpp"
+#include "restServer.hpp"
 
 // #define N_ELEM 2048
 // #define N_ITER 38400 // 32768
@@ -25,6 +26,7 @@ public:
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 
+    void update_gains_callback(connectionInstance& conn, json& json_request);
 private:
     int32_t input_frame_len;
     int32_t output_frame_len;
@@ -32,23 +34,25 @@ private:
     int32_t coeff_len;
     int32_t gain_len;
     string _gain_dir;
+    vector<float> default_gains;
 
     Buffer * metadata_buf;
     int32_t metadata_buffer_id;
     int32_t metadata_buffer_precondition_id;
-    int32_t freq_now;
+    int32_t freq_idx;
+    float freq_MHz;
 
     uint32_t * host_map;
     float * host_coeff;
     float * host_gain;
 
     float scaling;
-    bool zero_missing_gains;
 
-    int32_t _num_elements;
+    uint32_t _num_elements;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
-    bool first_pass; //so gains only load at the start!
+    bool update_gains; //so gains only load on request!
+    bool first_pass; //avoid re-calculating freq-specific params
 };
 
 #endif

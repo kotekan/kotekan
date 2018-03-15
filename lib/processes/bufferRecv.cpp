@@ -1,6 +1,7 @@
 #include "bufferRecv.hpp"
 #include "util.h"
 #include "bufferSend.hpp"
+#include "prometheusMetrics.hpp"
 
 #include <exception>
 #include <errno.h>
@@ -40,7 +41,7 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
     struct evbuffer *input;
     input = bufferevent_get_input(bev);
     connInstance * instance = (connInstance *) ctx;
-    size_t n = 0;
+    int64_t n = 0;
 
     while (evbuffer_get_length(input) && !instance->buffer_recv->stop_thread) {
         switch (instance->state) {
@@ -120,6 +121,12 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
             if (frame_id == -1) {
                 WARN("No free buffer frames, dropping data from %s",
                         instance->client_ip.c_str());
+
+                // Update dropped frame count in prometheus
+                dropped_frame_count++;
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_buffer_recv_dropped_frame_total", unique_name, dropped_frame_count
+                );
             } else {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
@@ -215,7 +222,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
                                 accept_args->buf->metadata_pool->metadata_object_size +
                                 accept_args->buf->frame_size;
         bufferevent_setwatermark(bev, EV_READ, expected_size, 0);
-        const int timeout_sec = 30;
+        const int timeout_sec = 60;
         struct timeval read_timeout = {timeout_sec, 0};
         struct timeval write_timeout = {timeout_sec, 0};
         bufferevent_set_timeouts(bev, &read_timeout, &write_timeout);

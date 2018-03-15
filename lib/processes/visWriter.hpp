@@ -1,112 +1,17 @@
 /*****************************************
 @file
-@brief Processes for handling visibility data.
-- visTransform : public KotekanProcess
-- visDebug : public KotekanProcess
+@brief Processes for writing visibility data.
 - visWriter : public KotekanProcess
-
-@todo Move processes that require HDF5 into a separate file.
 *****************************************/
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include <unistd.h>
-#include "fpga_header_functions.h"
+#include <cstdint>
+
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visFile.hpp"
-#include "errors.h"
-#include "util.h"
 #include "visUtil.hpp"
-
-
-/**
- * @class visTransform
- * @brief Merge a set of GPU buffers into a single visBuffer stream.
- *
- * This task takes data coming out of a collecton of GPU streams and merges and
- * reformats it into a single stream in the new visBuffer format that is used
- * for the receiver.
- *
- * @par Buffers
- * @buffer in_bufs The set of buffers coming out the GPU buffers
- *         @buffer_format GPU packed upper triangle
- *         @buffer_metadata chimeMetadata
- * @buffer out_buf The merged and transformed buffer
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
- *
- * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
- *                          correlator data.
- * @conf  block_size        Int. The block size of the packed data.
- * @conf  num_eigenvectors  Int. The number of eigenvectors to be stored
- * @conf  input_reorder     Array of [int, int, string]. The reordering mapping.
- *                          Only the first element of each sub-array is used and
- *                          it is the the index of the input to move into this
- *                          new location. The remaining elements of the subarray
- *                          are for correctly labelling the input in
- *                          ``visWriter``.
- *
- * @author Richard Shaw
- */
-class visTransform : public KotekanProcess {
-
-public:
-
-    // Default constructor
-    visTransform(Config &config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq);
-
-    // Main loop for the process
-    void main_thread();
-
-private:
-
-    // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
-
-    // Vector of the buffers we are using and their current frame ids.
-    std::vector<std::pair<Buffer*, unsigned int>> in_bufs;
-    Buffer * out_buf;
-
-    // The mapping from buffer element order to output file element ordering
-    std::vector<uint32_t> input_remap;
-
-};
-
-
-/**
- * @class visDebug
- * @brief Output some useful properties about the buffer for debugging
- *
- * The output is produced by calling ``visFrameView::summary``
- *
- * @par Buffers
- * @buffer in_buf The buffer to debug
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
- *
- * @author Richard Shaw
- */
-class visDebug : public KotekanProcess {
-
-public:
-    visDebug(Config &config,
-             const string& unique_name,
-             bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq);
-
-    void main_thread();
-
-private:
-
-    Buffer * in_buf;
-};
-
 
 /**
  * @class visWriter
@@ -117,8 +22,12 @@ private:
  * acquisition per node. Alternatively it can be run more generally, receiving
  * and writing arbitrary frequencies, but it must be given the frequency list in
  * the config.
+ * 
+ * The products we are outputting must be specified correctly. This is done
+ * using the same configuration parameters as `prodSubset`. If not explicitly
+ * set `all` products is assumed.
  *
- * The output is written into the CHIME N^2 HDF% format version 3.0.
+ * The output is written into the CHIME N^2 HDF% format version 3.1.0.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
@@ -137,6 +46,22 @@ private:
  *                          are used and are expected to be @c channel_id and
  *                          @c channel_serial (the first contains the @c adc_id
  *                          used for reordering om ``visTransform``)
+ * @conf   weights_type     Indicate what the visibility weights represent, e.g,
+ *                          'inverse_var'. Will saved as an attribute in the saved
+ *                          file. (default 'unknown')
+ * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
+ * @conf   num_ev           Int. Only needed if `write_ev` is true.
+ * @conf   file_length      Int (default 1024). Maximum number of samples to
+ *                          write into a file.
+ * @conf   window           Int (default 20). Number of samples to keep active
+ *                          for writing at any time.
+ *
+ * @par Metrics
+ * @metric kotekan_viswriter_write_time_seconds
+ *         The write time of the HDF5 writer. An exponential moving average over ~10
+ *         samples.
+ * @metric kotekan_viswriter_dropped_frame_total
+ *         The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
  */
@@ -164,9 +89,14 @@ private:
     size_t num_freq;
     std::string root_path;
     std::string instrument_name;
+    std::string weights_type;
 
     // The current file of visibilities that we are writing
     std::unique_ptr<visFileBundle> file_bundle;
+
+    // File length and number of samples to keep "active"
+    size_t file_length;
+    size_t window;
 
     /// Input buffer to read from
     Buffer * in_buf;
@@ -182,9 +112,23 @@ private:
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
+    // Vector of products if options to restrict them are present
+    std::vector<prod_ctype> prods;
+
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
     std::vector<int> freq_id_list;
+
+    // Number of eigenvectors to write out
+    size_t num_ev;
+
+    /// Number of products to write
+    size_t num_prod;
+
+    /// Keep track of the average write time
+    movingAverage write_time;
+
+    uint32_t dropped_frame_count = 0;
 };
 
 #endif

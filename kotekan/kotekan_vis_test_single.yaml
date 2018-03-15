@@ -1,7 +1,7 @@
 ---
 type: config
 log_level: info
-num_elements: 2048
+num_elements: 5
 num_local_freq: 1
 udp_packet_size: 4928
 num_data_sets: 1
@@ -40,7 +40,7 @@ vis_buffer:
   metadata_pool: vis_pool
   num_frames: buffer_depth
   sizeof_int: 4
-  frame_size: 2 * sizeof_int * num_local_freq * num_elements * num_elements
+  frame_size: 5 * sizeof_int * num_local_freq * num_elements * num_elements
 
 
 
@@ -75,15 +75,15 @@ vis_buffer:
 #
 vis_gen:
   kotekan_process: fakeVis
-  freq: [0, 256, 512, 768]
+  freq_ids: [0, 256, 512, 768]
   out_buf: vis_buffer
-  num_eigenvectors: 4
+  num_ev: 4
   cadence: 5.0
-  fill_ij: true
+  mode: default
 
-#vis_debug:
-  #kotekan_process: visDebug
-  #buffer: vis_buffer
+vis_debug:
+  kotekan_process: visDebug
+  in_buf: vis_buffer
 
 hdf5_writer:
   kotekan_process: visWriter
@@ -95,7 +95,7 @@ hdf5_writer:
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
 # The first is for the reordering, the last two are for making the index map
-input_reorder:
+chinput_reorder:
     - [ 128,    0, FCC000812]
     - [ 129,    1, FCC000813]
     - [ 130,    2, FCC000814]
