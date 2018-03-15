@@ -21,7 +21,7 @@ public:
 
     int wait_on_precondition(int gpu_frame_id) override;
 
-    void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff);
+    void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff, float *_ew_spacing_c);
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -53,6 +53,9 @@ private:
     int32_t _samples_per_data_set;
     bool update_gains; //so gains only load on request!
     bool first_pass; //avoid re-calculating freq-specific params
+
+    vector<float> _ew_spacing;
+    float * _ew_spacing_c;
 };
 
 #endif
