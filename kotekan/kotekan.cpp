@@ -91,6 +91,7 @@ void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --config (-c) [file]        The local JSON config file to use.\n");
+    printf("    --config-daemon (-d) [file] Same as -c, but uses installed yaml->json script\n");
     printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
     printf("    --syslog (-s)               Send a copy of the output to syslog.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
@@ -221,7 +222,7 @@ int main(int argc, char ** argv) {
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
-            {"config-deamon", required_argument, 0, 'd'},
+            {"config-daemon", required_argument, 0, 'd'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
@@ -245,11 +246,14 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
+                // If logging gets set to syslog, we still want stderr
+                // for modes with the config file given on command line.
                 log_options |= LOG_PERROR;
-                openlog ("kotekan", log_options, LOG_LOCAL1);
                 break;
             case 'd':
                 config_file_name = strdup(optarg);
+                // Same as option 'c'
+                log_options |= LOG_PERROR;
                 opt_d_set = true;
                 break;
             case 'g':
@@ -267,9 +271,12 @@ int main(int argc, char ** argv) {
 
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
-        openlog ("kotekan", log_options, LOG_LOCAL1);
         fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
         fprintf(stderr, "Configuration should be provided via the `/start/` REST endpoint.\n");
+    }
+
+    if (__enable_syslog == 1) {
+        openlog ("kotekan", log_options, LOG_LOCAL1);
     }
 
     // Load configuration file.
@@ -288,20 +295,22 @@ int main(int argc, char ** argv) {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO("Opening config file %s", config_file_name);
-        //config.parse_file(config_file_name, 0);
 
-        string exec_path;
+        string exec_script;
+        string exec_base;
         if (gps_time) {
             INFO("Getting GPS time from ch_master, this might take some time...");
-            exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
+            exec_script = "gps_yaml_to_json.py ";
         } else {
-            if (opt_d_set) {
-                exec_path = "python /usr/sbin/yaml_to_json.py " + std::string(config_file_name);
-            } else {
-                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
-            }
+            exec_script = "yaml_to_json.py ";
         }
-        std::string json_string = exec(exec_path.c_str());
+        if (opt_d_set) {
+            exec_base = "/usr/local/bin/";
+        } else {
+            exec_base = "../../scripts/";
+        }
+        string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
+        std::string json_string = exec(exec_command.c_str());
         config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
         if (start_new_kotekan_mode(config) == -1) {
