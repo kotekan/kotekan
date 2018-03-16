@@ -3,6 +3,7 @@ from urlparse import urljoin, urlsplit
 import click
 import yaml
 import json
+import os
 
 TIMEOUT = 1.
 
@@ -51,11 +52,18 @@ def start(config, url):
 
 
 @cli.command()
-@click.option("--url", "-u", default="http://localhost:12048/",
-              help="The URL where the kotekan server can be reached.")
-def stop(url):
-    """ Stop kotekan """
-    send_put(urljoin(url, "stop"))
+#@click.option("--url", "-u", default="http://localhost:12048/",
+#              help="The URL where the kotekan server can be reached.")
+def stop():
+    """ Stop kotekan.
+        Requires sudo.
+        Will only work for instances running on localhost since stop endpoint is
+        not reliable at this point.
+    """
+    # TODO: looks like stop endpoint blocks on join()
+    #       just send SIGINT for now
+    #send_put(urljoin(url, "stop"))
+    os.system("killall -s SIGINT kotekan")
 
 
 @cli.command()
