@@ -15,9 +15,11 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get_string(unique_name, "type");
+    assert(type == "const" || type == "random" || type=="ramp");
     if (type == "const")
         value = config.get_int(unique_name, "value");
-    assert(type == "const" || type == "random");
+    if (type=="ramp")
+        value = config.get_int(unique_name, "value");
     _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
 }
 
@@ -40,7 +42,7 @@ void testDataGen::main_thread() {
     int link_id = 0;
 
     while (!stop_thread) {
-        frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
         allocate_new_metadata_object(buf, frame_id);
@@ -56,10 +58,13 @@ void testDataGen::main_thread() {
         //std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
-        for (int j = 0; j < buf->frame_size; ++j) {
+        for (uint j = 0; j < buf->frame_size/sizeof(float); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant) break;
                 frame[j] = value;
+            } else if (type == "ramp"){
+                frame[j] = fmod(j*value,256*value);
+//                frame[j] = j*value;
             } else if (type == "random") {
                 unsigned char new_real;
                 unsigned char new_imaginary;

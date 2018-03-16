@@ -1,11 +1,11 @@
 /**
- * @file pyPlotResult.hpp
+ * @file
  * @brief A process to read VDIF files from multiple drives.
- *  - pyPlotResult : public KotekanProcess
+ *  - pyPlotN2 : public KotekanProcess
  */
 
-#ifndef PY_PLOT_RESULT_H
-#define PY_PLOT_RESULT_H
+#ifndef PY_PLOT_N2_H
+#define PY_PLOT_N2_H
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -14,13 +14,18 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstdio>
+#include "buffer.h"
+#include "errors.h"
+#include "chimeMetadata.h"
+#include "accumulate.hpp"
+#include "fpga_header_functions.h"
 
 /**
- * @class pyPlotResult
+ * @class pyPlotN2
  * @brief Consumer ``KotekanProcess`` to produce PDF plots of correlation matrices.
  *
  * This process does nothing until it receives a REST request from an outside user.
- * Upon receipt, it spawns a companion python script (``pyPlotResult.py``),
+ * Upon receipt, it spawns a companion python script (``pyPlotN2.py``),
  * and pipes a short configuration header to it, followed by the contents of the next available buffer.
  * The python script generates a pdf plot of the visibilitiy matrix, saving it to a timestamped file.
  *
@@ -41,14 +46,14 @@
  *
  * @author Keith Vanderlinde
  */
-class pyPlotResult : public KotekanProcess {
+class pyPlotN2 : public KotekanProcess {
 public:
     ///Constructor, calls apply_config to intialize parameters
-    pyPlotResult(Config& config, const string& unique_name,
+    pyPlotN2(Config& config, const string& unique_name,
                  bufferContainer &buffer_container);
 
     ///Destructor, currently does nothing 
-    virtual ~pyPlotResult();
+    virtual ~pyPlotN2();
 
     ///Applies the config parameters
     void apply_config(uint64_t fpga_seq) override;
@@ -65,13 +70,18 @@ public:
      * @warning        Nobody should ever call this directly, it's only meant to service the
      *                 RESTful callback.
      */
-    void request_plot_callback(connectionInstance& conn, json& json_request);
+    void request_plot_callback(connectionInstance& conn);
 private:
+    void make_plot(void);
+
     ///The kotekan buffer object the processes is producing for
     struct Buffer *buf;
+    unsigned char *in_local;
 
     int gpu_id=-1;
     bool dump_plot=false;
+    bool busy=false;
+    stream_id_t stream_id;
 };
 
 #endif

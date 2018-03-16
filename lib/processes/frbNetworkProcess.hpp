@@ -11,6 +11,8 @@
 #include "KotekanProcess.hpp"
 #include <string>
 #include "timing_mach.h"
+#include "restServer.hpp"
+
  /**
  * @class frbNetworkProcess
  * @brief frbNetworkProcess Network transmission process for FRB obs
@@ -19,6 +21,9 @@
  * This is an Kotekan process that read packetized data from frbPostProcess and transmits 1024 beams to 256 links of frb backend. 
  * frbNetworkProcess distributes the out going traffic to four VLANS (10.6 10.7 10.8 10.9) on single 1 Gig port.
  * The frb total data rate is ~0.55 gbps. The node IP address is derived by parsing the hostname. 
+ *
+ * @par REST Endpoints
+ * @endpoint /frb/update_gains/``gpu_id`` Any contact here triggers a re-parse of the gains file.
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer to hold the packets to be transmitted to L1 nodes 
@@ -57,6 +62,9 @@ public:
 
   /// parse hostname to derive the ip_address using gethosname() 
   void parse_host_name();
+
+  /// Callback to update the beam offset
+  void update_offset_callback(connectionInstance& conn, json& json_request);
 
   /// main thread
   void main_thread() override;

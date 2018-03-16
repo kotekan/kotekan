@@ -17,12 +17,12 @@ public:
 
 private:
     void fill_headers(unsigned char * out_buf,
-                  struct VDIFHeader * vdif_header,
-                  const uint64_t fpga_seq_num,
-		  struct timeval * time_now,
-		  struct psrCoord * psr_coord,
-		  uint16_t * freq_ids);
-  
+                struct VDIFHeader * vdif_header,
+                const uint64_t fpga_seq_num,
+                struct timeval * time_now,
+                struct psrCoord * psr_coord,
+                uint16_t * freq_ids);
+
     struct Buffer **in_buf;
     struct Buffer *pulsar_buf;
 
