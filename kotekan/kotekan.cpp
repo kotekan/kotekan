@@ -91,7 +91,7 @@ void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --config (-c) [file]        The local JSON config file to use.\n");
-    printf("    --config-deamon (-d) [file] Same as -c, but uses installed yaml->json script\n");
+    printf("    --config-daemon (-d) [file] Same as -c, but uses installed yaml->json script\n");
     printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
     printf("    --syslog (-s)               Send a copy of the output to syslog.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
@@ -222,7 +222,7 @@ int main(int argc, char ** argv) {
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
-            {"config-deamon", required_argument, 0, 'd'},
+            {"config-daemon", required_argument, 0, 'd'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
