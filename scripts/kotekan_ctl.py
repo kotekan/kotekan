@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import requests
 from urlparse import urljoin, urlsplit
 import click
