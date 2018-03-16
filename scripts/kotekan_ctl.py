@@ -13,18 +13,20 @@ def send_get(url):
         r = requests.get(url, timeout=TIMEOUT)
     except requests.exceptions.ReadTimeout:
         print("Server response timed out.")
+        return
     if r.status_code != 200:
         print("Request unsuccessful.")
         print(r.headers)
     return r
 
 
-def send_put(url, json_s=""):
+def send_put(url, json_data=""):
     """ Send a put request and JSON content to the specified URL. """
     try:
-        r = requests.put(url, timeout=TIMEOUT, json=json_s)
+        r = requests.put(url, timeout=TIMEOUT, json=json_data)
     except requests.exceptions.ReadTimeout:
         print("Server response timed out.")
+        return
     if r.status_code != 200:
         print("Request unsuccessful.")
         print(r.headers)
@@ -44,8 +46,8 @@ def cli():
 def start(config, url):
     """ Start kotekan with yaml CONFIG. """
     with open(config, 'r') as stream:
-        cfg_json = json.dumps(yaml.load(stream))
-    send_put(urljoin(url, "start"), json_s=cfg_json)
+        cfg_yaml = yaml.load(stream)
+    send_put(urljoin(url, "start"), json_data=cfg_yaml)
 
 
 @cli.command()
