@@ -32,10 +32,13 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               visProcess.cpp
               timeDownsample.cpp
+              frbPostProcess.cpp
+              frbNetworkProcess.cpp
+              pulsarNetworkProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES}   )
 endif ()
 
 if (${USE_DPDK})
