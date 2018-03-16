@@ -329,7 +329,7 @@ int main(int argc, char ** argv) {
         config.update_config(json_config, 0);
 
         try {
-            if (!start_new_kotekan_mode(config)) {
+            if (start_new_kotekan_mode(config)) {
                 conn.send_error("Mode not supported", STATUS_BAD_REQUEST);
                 return;
             }
