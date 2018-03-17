@@ -140,6 +140,7 @@ void bufferSend::connect_to_server() {
 
         if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
             ERROR("Could not connect to server %s:%d, error: %d, waiting 5 seconds to retry...", server_ip.c_str(), server_port, errno);
+            close(socket_fd);
             sleep(5);
             continue;
         }
