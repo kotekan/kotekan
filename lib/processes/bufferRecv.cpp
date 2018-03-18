@@ -2,7 +2,9 @@
 #include "util.h"
 #include "bufferSend.hpp"
 #include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
 
+#include "fmt.hpp"
 #include <exception>
 #include <errno.h>
 #include <functional>
@@ -42,6 +44,8 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
     input = bufferevent_get_input(bev);
     connInstance * instance = (connInstance *) ctx;
     int64_t n = 0;
+
+    double st = current_time();
 
     while (evbuffer_get_length(input) && !instance->buffer_recv->stop_thread) {
         switch (instance->state) {
@@ -145,6 +149,17 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
                             instance->buf_frame_header.metadata_size);
 
                 mark_frame_full(instance->buf, instance->producer_name.c_str(), frame_id);
+
+                // Save a prometheus metric of the elapsed time
+                double elapsed = current_time() - st;
+                std::string labels = fmt::format("source=\"{}:{}\"",
+                                                 instance->client_ip,
+                                                 instance->port);
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_buffer_recv_transfer_time_seconds", unique_name,
+                    elapsed, labels
+                );
+
                 INFO("Received data from client: %s:%d into frame: %s[%d]",
                         instance->client_ip.c_str(), instance->port,
                         instance->buf->buffer_name, frame_id);

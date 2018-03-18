@@ -122,7 +122,8 @@ void visFile::create_index(const std::vector<freq_ctype>& freqs,
         ev_imap.write(ev_vector);
     }
 
-    file->flush();
+    // Removing the flush for the time being as it's not clear this is a good idea.
+    // file->flush();
 
 }
 
