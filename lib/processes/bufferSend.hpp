@@ -24,6 +24,22 @@ struct bufferFrameHeader {
     uint32_t frame_size;
 };
 
+/**
+ * @brief Transfers a buffer and metadata over TCP.
+ *
+ * @config send_timeout  Int, default 20. The number of seconds
+ *                       before @c send() times out and closes the connection.
+ *
+ * @par Metrics
+ * @metric kotekan_buffer_send_dropped_frame_count
+ *         The number of frames dropped because @c send() is running too slow.
+ *
+ * @todo Add the rest of the comments here.
+ * @todo we might also add counters for dropped frames because the connection
+ *       is down, and frames that are lost because of connection errors.
+ *
+ * @author Andre Renard
+ */
 class bufferSend : public KotekanProcess {
 public:
     bufferSend(Config &config,
@@ -37,7 +53,15 @@ private:
     uint32_t server_port;
     std::string server_ip;
 
-    int32_t integration_len;
+    /// The number of seconds before send() times outs and returns and error.
+    uint32_t send_timeout;
+
+    /**
+     * @brief Number of frame dropped because the send is too slow.
+     * Only counts dropped data from caused by the send being too slow,
+     * it does not include the number of frames dropped because the server is down.
+     */
+    uint64_t dropped_frame_count;
 
     std::atomic<bool> connected;
     struct sockaddr_in server_addr;
