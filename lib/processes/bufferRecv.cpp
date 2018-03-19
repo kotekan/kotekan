@@ -262,7 +262,7 @@ void bufferRecv::main_thread() {
         return;
     }
 
-    if (listen(listener, 128)<0) {
+    if (listen(listener, 256)<0) {
         ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
         raise(SIGINT);
         return;
