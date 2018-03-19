@@ -8,19 +8,8 @@
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 
-class basebandReadout : public KotekanProcess {
-public:
-    basebandReadout(Config& config,
-                 const string& unique_name,
-                 bufferContainer &buffer_container);
-    virtual ~basebandReadout();
-    void apply_config(uint64_t fpga_seq) override;
-    void main_thread() override;
-private:
-    struct Buffer * buf;
-    std::string base_dir;
-    std::string file_ext;
-    int num_frames_buffer;
+
+class basebandDump {
 };
 
 
@@ -30,6 +19,7 @@ public:
     ~bufferManager();
 
     int add_replace_frame(int frame_id);
+    basebandDump get_data(int64_t trigger_start_fpga, int64_t trigger_length_fpga);
 
 private:
     Buffer * buf;
@@ -38,5 +28,24 @@ private:
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
 };
+
+
+class basebandReadout : public KotekanProcess {
+public:
+    basebandReadout(Config& config, const string& unique_name,
+                    bufferContainer &buffer_container);
+    virtual ~basebandReadout();
+    void apply_config(uint64_t fpga_seq) override;
+    void main_thread() override;
+private:
+    bufferManager * manager;
+    void listen_thread();
+    struct Buffer * buf;
+    std::string base_dir;
+    std::string file_ext;
+    int num_frames_buffer;
+};
+
+
 
 #endif

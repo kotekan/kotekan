@@ -1,10 +1,4 @@
 #include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <functional>
 #include <thread>
 #include <assert.h>
 
@@ -14,9 +8,8 @@
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
-basebandReadout::basebandReadout(Config& config,
-                 const string& unique_name,
-                 bufferContainer &buffer_container) :
+basebandReadout::basebandReadout(Config& config, const string& unique_name,
+                                 bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
                        std::bind(&basebandReadout::main_thread, this)) {
 
@@ -39,9 +32,11 @@ basebandReadout::basebandReadout(Config& config,
         throw std::runtime_error(msg);
     }
 
+    manager = new bufferManager(buf, num_frames_buffer);
 }
 
 basebandReadout::~basebandReadout() {
+    delete(manager);
 }
 
 void basebandReadout::apply_config(uint64_t fpga_seq) {
@@ -53,24 +48,40 @@ void basebandReadout::main_thread() {
     int done_frame;
     uint8_t * frame = NULL;
 
-    bufferManager manager(buf, num_frames_buffer);
-
-    std::cout << "START LOOP" << std::endl;
+    // XXX std::thread lt(listen_thread);
 
     while (!stop_thread) {
 
         frame = wait_for_full_frame(buf, unique_name.c_str(),
                                     frame_id % buf->num_frames);
-        done_frame = manager.add_replace_frame(frame_id);
+        done_frame = manager->add_replace_frame(frame_id);
         if (done_frame >= 0) {
             mark_frame_empty(buf, unique_name.c_str(),
                              done_frame % buf->num_frames);
         }
 
-        std::cout << frame_id << " : " << done_frame << std::endl;
+        std::cout << "Discarding: " << done_frame << ", adding " << frame_id << std::endl;
 
         frame_id++;
     }
+    // XXX lt.join();
+}
+
+void basebandReadout::listen_thread() {
+    int64_t trigger_start_fpga=0, trigger_length_fpga=0;
+
+    while (!stop_thread) {
+        // Code that listens waits for triggers and fills in trigger parameters.
+        sleep(1);
+        std::cout << "I'm waiting." << std::endl;
+        // Code to run after getting a trigger.
+        if (0) {
+            basebandDump data = manager->get_data(trigger_start_fpga, trigger_length_fpga);
+            // Spawn thread to write out the data.
+        }
+        // Somehow keep track of active writer threads, clean them up, and free any memory.
+    }
+    // Make sure all writer threads are done.
 }
 
 
@@ -84,9 +95,10 @@ int bufferManager::add_replace_frame(int frame_id) {
     int replaced_frame = -1;
     assert(frame_id == next_frame);
 
-    // This will block if we are trying to replace a frame currenlty being read out.
+    // This will block if we are trying to replace a frame currenty being read out.
     frame_locks[frame_id % length].lock();
-    if (frame_id % length == oldest_frame % length) {
+    // Somehow in C `-1 % length == -1` which makes no sence to me.
+    if (frame_id % length == (oldest_frame + length) % length) {
         replaced_frame = oldest_frame;
         oldest_frame++;
     }

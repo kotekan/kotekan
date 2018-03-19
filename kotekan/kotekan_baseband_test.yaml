@@ -31,12 +31,6 @@ gpu_input_buffers:
     metadata_pool: main_pool
     gpu_input_buffer_0:
         kotekan_buffer: standard
-    gpu_input_buffer_1:
-        kotekan_buffer: standard
-    gpu_input_buffer_2:
-        kotekan_buffer: standard
-    gpu_input_buffer_3:
-        kotekan_buffer: standard
 
 
 # Processes
@@ -46,15 +40,6 @@ gen_data:
   test_data_gen_0:
     kotekan_process: testDataGen
     network_out_buf: gpu_input_buffer_0
-  test_data_gen_1:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_1
-  test_data_gen_2:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_2
-  test_data_gen_3:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_3
 
 baseband_buffler:
     # Why doesn't this work?
@@ -64,13 +49,4 @@ baseband_buffler:
     buffer_0:
         kotekan_process: basebandReadout
         in_buf: gpu_input_buffer_0
-    buffer_1:
-        kotekan_process: basebandReadout
-        in_buf: gpu_input_buffer_1
-    buffer_2:
-        kotekan_process: basebandReadout
-        in_buf: gpu_input_buffer_2
-    buffer_3:
-        kotekan_process: basebandReadout
-        in_buf: gpu_input_buffer_3
 
