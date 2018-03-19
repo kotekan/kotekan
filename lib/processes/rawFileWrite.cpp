@@ -7,6 +7,8 @@
 #include <functional>
 
 #include "rawFileWrite.hpp"
+#include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
 #include "buffer.h"
 #include "errors.h"
 
@@ -41,6 +43,8 @@ void rawFileWrite::main_thread() {
     gethostname(hostname, 64);
 
     while (!stop_thread) {
+
+        double st = current_time();
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
@@ -97,6 +101,11 @@ void rawFileWrite::main_thread() {
             ERROR("Cannot close file %s", full_path);
         }
 
+        double elapsed = current_time() - st;
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_rawfilewrite_write_time_seconds",
+            unique_name, elapsed
+        );
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = ( frame_id + 1 ) % buf->num_frames;
