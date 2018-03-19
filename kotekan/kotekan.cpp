@@ -362,6 +362,9 @@ int main(int argc, char ** argv) {
             return;
         }
         assert(kotekan_mode != nullptr);
+        // XXX: for some reason this function appears to block on joining.
+        //      for now, just raise SIGINT
+        raise(SIGINT);
         kotekan_mode->stop_processes();
         // TODO should we have three states (running, shutting down, and stopped)?
         // This would prevent this function from blocking on join.
