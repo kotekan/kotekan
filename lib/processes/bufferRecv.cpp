@@ -245,6 +245,7 @@ void bufferRecv::main_thread() {
     if (!base) {
         ERROR("Failed to crate libevent base");
         raise(SIGINT);
+        return;
     }
 
     server_addr.sin_family = AF_INET;
