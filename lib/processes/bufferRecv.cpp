@@ -6,6 +6,7 @@
 #include <exception>
 #include <errno.h>
 #include <functional>
+#include <signal.h>
 
 using namespace std::placeholders;
 
@@ -241,8 +242,10 @@ void bufferRecv::main_thread() {
     struct event *listener_event;
 
     base = event_base_new();
-    if (!base)
-        throw std::runtime_error("Failed to crate libevent base");
+    if (!base) {
+        ERROR("Failed to crate libevent base");
+        raise(SIGINT);
+    }
 
     server_addr.sin_family = AF_INET;
     // Bind to every address (might want to change this later)
@@ -255,11 +258,13 @@ void bufferRecv::main_thread() {
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)",
                 listen_port, errno, strerror(errno));
+        raise(SIGINT);
         return;
     }
 
     if (listen(listener, 128)<0) {
         ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
+        raise(SIGINT);
         return;
     }
 
