@@ -6,6 +6,8 @@ After=syslog.target network.target
 Type=simple
 Restart=always
 WorkingDirectory=/var/lib/kotekan
+TimeoutStopSec=60
+KillSignal=SIGINT
 ExecStart=/usr/local/bin/kotekan
 PIDFile=/var/run/kotekan.pid
 
