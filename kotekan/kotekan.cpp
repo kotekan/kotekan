@@ -93,7 +93,8 @@ void print_help() {
     printf("    --config (-c) [file]        The local JSON config file to use.\n");
     printf("    --config-daemon (-d) [file] Same as -c, but uses installed yaml->json script\n");
     printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
-    printf("    --syslog (-s)               Send a copy of the output to syslog.\n\n");
+    printf("    --syslog (-s)               Send a copy of the output to syslog.\n");
+    printf("    --no-stderr (-n)            Disables output to std error if syslog (-s) is enabled.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
@@ -212,6 +213,7 @@ int main(int argc, char ** argv) {
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool opt_d_set = false;
     bool gps_time = false;
+    bool enable_stderr = true;
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
     // If --syslog is added, then output is to both syslog and stderr
@@ -226,12 +228,13 @@ int main(int argc, char ** argv) {
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
+            {"no-stderr", no_argument, 0, 'n'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:d:s",
+        opt_val = getopt_long (argc, argv, "ghc:d:sn",
                                long_options, &option_index);
 
         // End of args
@@ -246,14 +249,9 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
-                // If logging gets set to syslog, we still want stderr
-                // for modes with the config file given on command line.
-                log_options |= LOG_PERROR;
                 break;
             case 'd':
                 config_file_name = strdup(optarg);
-                // Same as option 'c'
-                log_options |= LOG_PERROR;
                 opt_d_set = true;
                 break;
             case 'g':
@@ -261,6 +259,9 @@ int main(int argc, char ** argv) {
                 break;
             case 's':
                 __enable_syslog = 1;
+                break;
+            case 'n':
+                enable_stderr = false;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -275,8 +276,14 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "Configuration should be provided via the `/start/` REST endpoint.\n");
     }
 
+    if (string(config_file_name) != "none" && enable_stderr) {
+        log_options |= LOG_PERROR;
+    }
+
     if (__enable_syslog == 1) {
         openlog ("kotekan", log_options, LOG_LOCAL1);
+        if (!enable_stderr)
+            fprintf(stderr, "Kotekan logging to syslog only!");
     }
 
     // Load configuration file.
