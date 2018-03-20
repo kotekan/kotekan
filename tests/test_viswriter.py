@@ -68,8 +68,10 @@ def written_data_ev(request, tmpdir_factory):
 
 def test_vis(written_data):
 
+    nt = writer_params['total_frames']
+
     for fh in written_data:
-        vis = fh['vis'][:]
+        vis = fh['vis'][:nt]
 
         # Check the diagonals are correct
         pi = 0
@@ -78,23 +80,25 @@ def test_vis(written_data):
             pi += writer_params['num_elements'] - ii
 
         # Check the times are correct
-        ftime = fh['index_map/time']['fpga_count'].astype(np.float32)
-        ctime = fh['index_map/time']['ctime'].astype(np.float32)
-        assert (fh['vis'][:, :, 0].real == ftime[:, np.newaxis]).all()
-        assert (fh['vis'][:, :, 1].real == ctime[:, np.newaxis]).all()
+        ftime = fh['index_map/time']['fpga_count'][:nt].astype(np.float32)
+        ctime = fh['index_map/time']['ctime'][:nt].astype(np.float32)
+        assert (vis[:, :, 0].real == ftime[:, np.newaxis]).all()
+        assert (vis[:, :, 1].real == ctime[:, np.newaxis]).all()
 
         # Check the frequencies are correct
         freq = fh['index_map/freq']['centre']
-        vfreq = (800.0 - 400.0 * fh['vis'][:, :, 2].real / 1024)
+        vfreq = (800.0 - 400.0 * vis[:, :, 2].real / 1024)
         assert (vfreq == freq[np.newaxis, :]).all()
 
 
 def test_metadata(written_data):
 
+    nt = writer_params['total_frames']
+
     for fh in written_data:
 
         # Check the times
-        ctime = fh['index_map/time']['ctime']
+        ctime = fh['index_map/time']['ctime'][:nt]
         assert np.allclose(np.diff(ctime), writer_params['cadence'])
 
         # Check the frequencies
@@ -124,16 +128,20 @@ def test_eigenvectors(written_data_ev):
         ne = writer_params['num_ev']
         ni = writer_params['num_elements']
 
+        evals = fh['eval'][:nt]
+        evecs = fh['evec'][:nt]
+        erms= fh['erms'][:nt]
+
         # Check datasets are present
-        assert fh['eval'].shape == (nt, nf, ne)
-        assert fh['evec'].shape == (nt, nf, ne, ni)
-        assert fh['erms'].shape == (nt, nf)
+        assert evals.shape == (nt, nf, ne)
+        assert evecs.shape == (nt, nf, ne, ni)
+        assert erms.shape == (nt, nf)
 
         # Check that the index map is there correctly
         assert (fh['index_map/ev'][:] == np.arange(ne)).all()
 
         # Check that the datasets have the correct values
-        assert (fh['eval'][:] == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
-        assert (fh['evec'][:].real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]).all()
-        assert (fh['evec'][:].imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]).all()
-        assert (fh['erms'][:] == 1.0).all()
+        assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
+        assert (evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]).all()
+        assert (evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]).all()
+        assert (erms == 1.0).all()
