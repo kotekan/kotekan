@@ -23,9 +23,9 @@
  *                       If true buffer stats are send to the logs/stderr
  *
  * @par Metrics
- * @metric kotekan_buffer_status_full_frames_total
+ * @metric kotekan_bufferstatus_full_frames_total
  *         The number of full frames for a given buffer
- * @metric kotekan_buffer_status_frames_total
+ * @metric kotekan_bufferstatus_frames_total
  *         The total number of frames in a given buffer (buffer depth)
  *
  * @author Jacob Taylor, Andre Renard

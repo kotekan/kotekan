@@ -46,11 +46,11 @@ void bufferStatus::main_thread() {
         for (auto &buf_entry : buffers) {
             uint32_t num_full_frames = get_num_full_frames(buf_entry.second);
             string buffer_name = buf_entry.first;
-            metrics.add_process_metric("kotekan_buffer_status_full_frames_total",
+            metrics.add_process_metric("kotekan_bufferstatus_full_frames_total",
                                        unique_name,
                                        num_full_frames,
                                        "buffer_name=\"" + buffer_name + "\"");
-            metrics.add_process_metric("kotekan_buffer_status_frames_total",
+            metrics.add_process_metric("kotekan_bufferstatus_frames_total",
                                        unique_name,
                                        buf_entry.second->num_frames,
                                        "buffer_name=\"" + buffer_name + "\"");
