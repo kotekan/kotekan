@@ -35,6 +35,7 @@ public:
      *  @param inputs Inputs that are in the file
      *  @param prods Products that are in the file.
      *  @param num_ev Number of eigenvectors to write (0 turns off the datasets entirely).
+     *  @param max_time Maximum number of times to write into the file.
      **/
     visFile(const std::string& name,
             const std::string& acq_name,
@@ -45,8 +46,119 @@ public:
             const std::vector<freq_ctype>& freqs,
             const std::vector<input_ctype>& inputs,
             const std::vector<prod_ctype>& prods,
-            size_t num_ev);
+            size_t num_ev, size_t max_time);
     ~visFile();
+
+    /**
+     * @brief Extend the file to a new time sample.
+     * 
+     * @param new_time The new time to add.
+     * @return The index of the added time in the file.
+     **/ 
+    uint32_t extend_time(time_ctype new_time);
+
+    /**
+     * @brief Write a sample of data into the file at the given index.
+     * 
+     * @param new_vis Vis data.
+     * @param new_weight Weight data.
+     * @param new_gcoeff Gain coefficients.
+     * @param new_gexp Gain exponents.
+     * @param new_eval Eigenvalues.
+     * @param new_evec Eigenvectors.
+     * @param new_erms RMS after eigenvalue removal.
+     **/
+    void write_sample(uint32_t time_ind, uint32_t freq_ind,
+                      std::vector<cfloat> new_vis,
+                      std::vector<float> new_weight,
+                      std::vector<cfloat> new_gcoeff,
+                      std::vector<int32_t> new_gexp,
+                      std::vector<float> new_eval,
+                      std::vector<cfloat> new_evec,
+                      float new_erms);
+
+    /**
+     * @brief Return the current number of current time samples.
+     * 
+     * @return The current number of time samples.
+     **/
+    size_t num_time();
+
+private:
+
+
+    // Create the index maps from the frequencies and the inputs
+    void create_axes(const std::vector<freq_ctype>& freqs,
+                     const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods,
+                     size_t num_ev, size_t num_time);
+
+    // Helper function to create an axis
+    template<typename T>
+    void create_axis(std::string name, const std::vector<T>& axis);
+
+    // Create the time axis (separated for overloading)
+    void create_time_axis(size_t num_time);
+
+    // Create the main visibility holding datasets
+    void create_datasets(size_t nfreq, size_t ninput, size_t nprod,
+                         size_t num_ev, std::string weights_type);
+
+    // Helper to create datasets
+    template<typename T>
+    void create_dataset(const std::string& name,
+                        const std::vector<std::string>& axes);
+
+    // Get datasets
+    HighFive::DataSet dset(const std::string& name);
+    size_t length(const std::string& axis_name);
+
+    // Whether to write eigenvalues or not
+    bool write_ev;
+
+    // Pointer to the underlying HighFive file
+    std::unique_ptr<HighFive::File> file;
+
+    std::string lock_filename;
+
+};
+
+
+/** @brief A CHIME correlator file with fast writing.
+ * 
+ * This file writes HDF5 formatted files, but for improved speed bypasses HDF5
+ * where possible, particularly when writing out data.
+ * 
+ * @author Richard Shaw
+ **/
+class visFileFast {
+
+public:
+
+    /** @brief Create the file.
+     * 
+     *  @param name Name of the file to write
+     *  @param acq_name Name of the acquisition to write
+     *  @param root_path Base directory to write the acquisition into
+     *  @param inst_name Instrument name (e.g. chime)
+     *  @param notes Note about the acquisition
+     *  @param weights_type What the visibility weights represent (e.g. 'inverse_var')
+     *  @param freqs Frequencies channels that will be in the file
+     *  @param inputs Inputs that are in the file
+     *  @param prods Products that are in the file.
+     *  @param num_ev Number of eigenvectors to write (0 turns off the datasets entirely).
+     **/
+    visFileFast(const std::string& name,
+                const std::string& acq_name,
+                const std::string& root_path,
+                const std::string& inst_name,
+                const std::string& notes,
+                const std::string& weights_type,
+                const std::vector<freq_ctype>& freqs,
+                const std::vector<input_ctype>& inputs,
+                const std::vector<prod_ctype>& prods,
+                size_t num_ev);
+    ~visFileFast();
 
     /**
      * @brief Extend the file to a new time sample.
