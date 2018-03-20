@@ -181,7 +181,7 @@ void set_gps_time(Config &config) {
     }
 }
 
-int start_new_kotekan_mode(Config &config) {
+void start_new_kotekan_mode(Config &config) {
     config.dump_config();
     update_log_levels(config);
     set_gps_time(config);
@@ -191,8 +191,6 @@ int start_new_kotekan_mode(Config &config) {
     kotekan_mode->initalize_processes();
     kotekan_mode->start_processes();
     running = true;
-
-    return 0;
 }
 
 int main(int argc, char ** argv) {
@@ -313,10 +311,7 @@ int main(int argc, char ** argv) {
         std::string json_string = exec(exec_command.c_str());
         config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
-        if (start_new_kotekan_mode(config) == -1) {
-            ERROR("Error with config file, exiting...");
-            return -1;
-        }
+        start_new_kotekan_mode(config);
     }
 
     // Main REST callbacks.
@@ -329,10 +324,7 @@ int main(int argc, char ** argv) {
         config.update_config(json_config, 0);
 
         try {
-            if (!start_new_kotekan_mode(config)) {
-                conn.send_error("Mode not supported", STATUS_BAD_REQUEST);
-                return;
-            }
+            start_new_kotekan_mode(config);
         } catch (std::out_of_range ex) {
             DEBUG("Out of range exception %s", ex.what());
             delete kotekan_mode;
@@ -368,6 +360,7 @@ int main(int argc, char ** argv) {
         kotekan_mode->join();
         delete kotekan_mode;
         kotekan_mode = nullptr;
+        running = false;
         conn.send_empty_reply(STATUS_OK);
     });
 
