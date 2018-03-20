@@ -20,7 +20,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     num_frames_buffer = config.get_int(unique_name, "num_frames_buffer");
 
     // XXX
-    std::cout << "YOYOYO  " << num_frames_buffer << " " << buf->num_frames << std::endl;
+    std::cout << "BB constructor " << num_frames_buffer << " " << buf->num_frames << std::endl;
 
     // Ensure input buffer is long enough.
     if (buf->num_frames <= num_frames_buffer) {
@@ -48,7 +48,7 @@ void basebandReadout::main_thread() {
     int done_frame;
     uint8_t * frame = NULL;
 
-    // XXX std::thread lt(listen_thread);
+    std::thread lt(&basebandReadout::listen_thread, this);
 
     while (!stop_thread) {
 
@@ -64,7 +64,7 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    // XXX lt.join();
+    lt.join();
 }
 
 void basebandReadout::listen_thread() {
