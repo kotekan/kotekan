@@ -74,6 +74,11 @@ void timeDownsample::main_thread() {
             // Increase the total frame length
             output_frame.fpga_seq_length *= nsamp;
 
+            // Accumulate inverse weights, i.e. variance
+            for (size_t i = 0; i < nprod; i++) {
+                output_frame.weight[i] = 1. / output_frame.weight[i];
+            }
+
             // Go to next frame
             nframes = (nframes + 1) % nsamp;
             mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
