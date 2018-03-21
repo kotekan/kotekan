@@ -28,6 +28,9 @@ public:
      */
     void status_callback(connectionInstance& conn);
 
+    void handle_request_callback(connectionInstance& conn, json& request);
+
+
 private:
     /// Constructor, not used directly
     BasebandManager();
