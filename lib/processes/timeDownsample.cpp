@@ -29,14 +29,13 @@ void timeDownsample::apply_config(uint64_t fpga_seq) {
 
 }
 
-// TODO: Currently there is nothing preventing sets of combined  timestamps from
-//       being misaligned between frequencies. Could enforce starting on even/odd
-//       number of frames.
-//       There is also no mechanism to report or deal with missing frames.
 void timeDownsample::main_thread() {
 
     unsigned int frame_id = 0;
-    unsigned int nframes = 0;
+    unsigned int nframes = 0;  // the number of frames accumulated so far
+    unsigned int wdw_pos = 0;  // the current position within the accumulation window
+    unsigned int wdw_end = 0;  // the end of the accumulation window in FPGA counts
+    unsigned int wdw_len = 0;  // the length of the accumulation window
     unsigned int output_frame_id = 0;
     int32_t freq_id = -1;  // needs to be set by first frame
 
@@ -49,32 +48,70 @@ void timeDownsample::main_thread() {
 
         auto frame = visFrameView(in_buf, frame_id);
 
-        // Should only ever read one frequency
+        // The first frame
         if (freq_id == -1) {
+            // Enforce starting on an even sample to help with synchronisation
+            if (frame.fpga_seq_start  % (nsamp * frame.fpga_seq_len) != 0) {
+                mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+                frame_id = (frame_id + 1) % in_buf->num_frames;
+                continue;
+            }
             // Get parameters from first frame
             freq_id = frame.freq_id;
             nprod = frame.num_prod;
             num_elements = frame.num_elements;
             num_eigenvectors = frame.num_ev;
+            // Set the parameters of the accumulation window
+            wdw_len = nsamp * frame.fpga_seq_len;
+            wdw_end = frame.fpga_seq_start + wdw_len;
         } else if (frame.freq_id != freq_id) {
             throw std::runtime_error("Cannot downsample stream with more than one frequency.");
         }
 
+        // Get position within accumulation window
+        wdw_pos = frame.fpga_seq_start % wdw_len;
+
+        // Check if we have left accumulation window
+        if (frame.fpga_seq_start >= wdw_end) {
+            // stop accumulating
+            for (size_t i = 0; i < nprod; i++) {
+                output_frame.vis[i] /= nframes;
+                // extra factor of nsamp for sample variance
+                output_frame.weight[i] = nframes*nframes / output_frame.weight[i];
+            }
+            for (int i = 0; i < num_eigenvectors; i++) {
+                output_frame.eval[i] /= nframes;
+                for (int j = 0; j < num_elements; j++) {
+                    int k = i * num_elements + j;
+                    output_frame.evec[k] /= nframes;
+                }
+            }
+            output_frame.erms /= nframes;
+            // mark as full
+            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
+            // reset accumulation
+            nframes = 0;
+        }
+
         if (nframes == 0) { // Start accumulating frames
+            // Update window
+            wdw_end = frame.fpga_seq_start + (nsamp - wdw_pos) * wdw_len;
+
             // Wait for an empty frame
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),
                                     output_frame_id) == nullptr) {
                 break;
             }
-            allocate_new_metadata_object(out_buf, output_frame_id);
 
             // Copy frame into output buffer
+            allocate_new_metadata_object(out_buf, output_frame_id);
             auto output_frame = visFrameView(out_buf, output_frame_id, frame);
 
             // Increase the total frame length
             output_frame.fpga_seq_length *= nsamp;
 
-            // Accumulate inverse weights, i.e. variance
+            // We will accumulate inverse weights, i.e. variance
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.weight[i] = 1. / output_frame.weight[i];
             }
@@ -105,28 +142,6 @@ void timeDownsample::main_thread() {
 
         // Accumulate integration totals
         output_frame.fpga_seq_total += frame.fpga_seq_total;
-
-        if (nframes == nsamp - 1) { // Reached the end, average contents of buffer
-            for (size_t i = 0; i < nprod; i++) {
-                output_frame.vis[i] /= nsamp;
-                // extra factor of nsamp for sample variance
-                output_frame.weight[i] = nsamp*nsamp / output_frame.weight[i];
-            }
-            for (int i = 0; i < num_eigenvectors; i++) {
-                output_frame.eval[i] /= nsamp;
-                for (int j = 0; j < num_elements; j++) {
-                    int k = i * num_elements + j;
-                    output_frame.evec[k] /= nsamp;
-                }
-            }
-            output_frame.erms /= nsamp;
-            // mark as full
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-
-            // TODO: would be good to verify timestamps are concurrent.
-            //       Would need to know integration time.
-        }
 
         // Move to next frame
         nframes = (nframes + 1) % nsamp;
