@@ -97,6 +97,9 @@ def test_metadata(written_data):
 
     for fh in written_data:
 
+        # Check the number of samples has been written correctly
+        assert fh.attrs['num_time'] == nt
+
         # Check the times
         ctime = fh['index_map/time']['ctime'][:nt]
         assert np.allclose(np.diff(ctime), writer_params['cadence'])
@@ -130,7 +133,7 @@ def test_eigenvectors(written_data_ev):
 
         evals = fh['eval'][:nt]
         evecs = fh['evec'][:nt]
-        erms= fh['erms'][:nt]
+        erms = fh['erms'][:nt]
 
         # Check datasets are present
         assert evals.shape == (nt, nf, ne)
@@ -145,3 +148,15 @@ def test_eigenvectors(written_data_ev):
         assert (evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]).all()
         assert (evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]).all()
         assert (erms == 1.0).all()
+
+
+def test_unwritten(written_data):
+
+    nt = writer_params['total_frames']
+
+    for fh in written_data:
+
+        assert (fh['vis'][nt:] == 0.0).all()
+        assert (fh['flags/vis_weight'][nt:] == 0.0).all()
+        assert (fh['index_map/time'][nt:]['ctime'] == 0.0).all()
+        assert (fh['index_map/time'][nt:]['fpga_count'] == 0).all()

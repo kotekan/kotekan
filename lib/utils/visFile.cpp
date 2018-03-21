@@ -99,7 +99,6 @@ void visFile::create(const std::string& name,
 }
 
 visFile::~visFile() {
-
     file->flush();
     file.reset(nullptr);
     std::remove(lock_filename.c_str());
@@ -275,11 +274,17 @@ void visFile::write_sample(
 //
 // Implementation of the fast HDF5 visibility data file
 //
+visFileFast::~visFileFast() {
+    // Save the number of samples added into the `num_time` attribute.
+    int nt = (size_t)num_time();
+    file->createAttribute<int>(
+        "num_time", DataSpace::From(nt)).write(nt);
+}
 
 
 void visFileFast::create_time_axis(size_t max_time) {
-    std::vector<time_ctype> times(max_time, {0, -1.0});
-
+    // Fill the time axis with zeros
+    std::vector<time_ctype> times(max_time, {0, 0.0});
     create_axis("time", times);
 }
 
@@ -309,29 +314,29 @@ void visFileFast::create_dataset(const std::string& name, const std::vector<std:
 
 void visFileFast::setup_raw() {
 
-    std::string filename = file->getName();
-
-    time_offset = H5Dget_offset(dset("index_map/time").getId());
-    vis_offset = H5Dget_offset(dset("vis").getId());
-    weight_offset = H5Dget_offset(dset("vis_weight").getId());
-    gcoeff_offset = H5Dget_offset(dset("gain_coeff").getId());
-    gexp_offset = H5Dget_offset(dset("gain_exp").getId());
-
+    // Get all the dataset lengths
     ntime = 0;
     nfreq = length("freq");
     nprod = length("prod");
     ninput = length("input");
     nev = length("ev");
 
+    // Calculate all the dataset file offsets
+    time_offset = H5Dget_offset(dset("index_map/time").getId());
+    vis_offset = H5Dget_offset(dset("vis").getId());
+    weight_offset = H5Dget_offset(dset("vis_weight").getId());
+    gcoeff_offset = H5Dget_offset(dset("gain_coeff").getId());
+    gexp_offset = H5Dget_offset(dset("gain_exp").getId());
+
     if(write_ev) {
         eval_offset = H5Dget_offset(dset("eval").getId());
         evec_offset = H5Dget_offset(dset("evec").getId());
         erms_offset = H5Dget_offset(dset("erms").getId());
     }
-    int * fhandle;
 
     // WARNING: this is very much discouraged by the HDF5 folks. Only really
     // works for the sec2 driver.
+    int * fhandle;
     H5Fget_vfd_handle(file->getId(), H5P_DEFAULT, (void**)(&fhandle));
     fd = *fhandle;
 }
@@ -358,12 +363,12 @@ bool visFileFast::write_raw(off_t dset_base, int ind, size_t n,
     size_t nb = n * sizeof(T);
     off_t offset = dset_base + ind * nb;
 
+    // Write in a retry macro loop incase the write was interrupted by a signal
     int nbytes = TEMP_FAILURE_RETRY( 
         pwrite(fd, (const void *)data, nb, offset)
     );
 
     if(nbytes < 0) {
-        
         ERROR("Write error attempting to write %i bytes at offset %i: %s",
               nb, offset, strerror(errno));
         return false;
@@ -374,11 +379,11 @@ bool visFileFast::write_raw(off_t dset_base, int ind, size_t n,
 
 uint32_t visFileFast::extend_time(time_ctype new_time) {
 
+    // Perform a raw write of the new time sample
     write_raw(time_offset, ntime, 1, &new_time);
 
     // Increment the time count and return the index of the added sample
     return ntime++;
-
 }
 
 
@@ -388,14 +393,6 @@ void visFileFast::write_sample(
     std::vector<int32_t> new_gexp, std::vector<float> new_eval,
     std::vector<cfloat> new_evec, float new_erms
 ) {
-
-    // if(!init) {
-    //     visFile::write_sample(time_ind, freq_ind, new_vis, new_weight,
-    //                           new_gcoeff, new_gexp, new_eval, new_evec,
-    //                           new_erms);
-    //     init = true;
-    //     return;
-    // }
 
     write_raw(vis_offset, time_ind * nfreq + freq_ind, nprod, new_vis);
     write_raw(weight_offset, time_ind * nfreq + freq_ind, nprod, new_weight);

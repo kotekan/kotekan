@@ -125,10 +125,18 @@ protected:
 };
 
 
-/** @brief A CHIME correlator file with fast writing.
+/** 
+ * @brief A correlator output file with fast direct writing..
  * 
- * This file writes HDF5 formatted files, but for improved speed bypasses HDF5
- * where possible, particularly when writing out data.
+ * This class writes HDF5 formatted files, but for improved speed bypasses HDF5
+ * when writing out data. To do this it uses contiguous datasets, which means
+ * that the files are pre-allocated to their maximum size. On close, the number
+ * of time samples written is written into an attribute on the file called
+ * `num_time`.
+ * 
+ * Note that we rely on the behaviour of the filesystem to return 0 in
+ * allocated but unwritten parts of the files to give zero weights for
+ * unwritten data.
  * 
  * @author Richard Shaw
  **/
@@ -145,7 +153,8 @@ public:
     template<typename... InitArgs>
     void create(InitArgs... args);
 
-    //~visFileFast();
+    // Write out the number of times as we are destroyed.
+    ~visFileFast();
 
     /**
      * @brief Extend the file to a new time sample.
@@ -185,7 +194,8 @@ protected:
      // Helper to create datasets
     void create_dataset(const std::string& name,
                                 const std::vector<std::string>& axes,
-                                HighFive::DataType type) override;   // Helper to create datasets
+                                HighFive::DataType type) override;
+
     // Calculate offsets into the file for each dataset, and open it
     void setup_raw();
 
@@ -200,6 +210,15 @@ protected:
     template<typename T>
     bool write_raw(off_t dset_base, int ind, size_t n, 
                    const std::vector<T>& vec);
+
+    /**
+     * @brief  Helper routine for writing data into the file
+     * 
+     * @param dset_base Offset of dataset in file
+     * @param ind       The index into the file dataset in chunks.
+     * @param n         The size of the chunk in elements.
+     * @param data       The data to write out.
+     **/
     template<typename T>
     bool write_raw(off_t dset_base, int ind, size_t n, 
                    const T * data);
@@ -213,23 +232,15 @@ protected:
     // Store offsets into the file for writing
     off_t vis_offset, weight_offset, gcoeff_offset, gexp_offset,
           eval_offset, evec_offset, erms_offset, time_offset;
-
-    bool init = false;
 };
 
 
 template<typename... InitArgs>
 inline void visFileFast::create(InitArgs... args)
 {
-
     visFile::create(args...);
     setup_raw();
-
-    // Close the file so we've left HDF5 space completely
-    // file->flush();
-    // file.reset(nullptr);
 }
-
 
 
 /**
