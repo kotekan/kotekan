@@ -3,6 +3,16 @@
 
 #include "json.hpp"
 #include "restServer.hpp"
+#include <chrono>
+#include <deque>
+
+
+struct BasebandRequest {
+    int64_t start_fpga;
+    int64_t length_fpga;
+    std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
+};
+
 
 class BasebandManager {
 public:
@@ -20,21 +30,34 @@ public:
     void register_with_server(restServer * rest_server);
 
     /**
-     * @brief The call back function for the REST server to use.
+     * @brief The call back function for GET requests to `/baseband`.
      *
      * This function is never called directly.
      *
-     * @param conn The connection instance to send results too.
+     * @param conn The connection instance to send results to
      */
     void status_callback(connectionInstance& conn);
 
+    /**
+     * @brief The call back function for POST requests to `/baseband`.
+     *
+     * This function is never called directly.
+     *
+     * @param conn The connection instance to send results to
+     * @param request JSON dictionary with the request data
+     */
     void handle_request_callback(connectionInstance& conn, json& request);
 
 
 private:
     /// Constructor, not used directly
-    BasebandManager();
+    BasebandManager() = default;
 
+    /// Queue of unprocessed baseband requests
+    std::deque<BasebandRequest> requests;
+
+    /// request updating lock
+    std::mutex requests_lock;
 };
 
 #endif /* BASEBAND_MANAGER_HPP */
