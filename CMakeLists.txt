@@ -183,8 +183,6 @@ set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 
 SET(CMAKE_INSTALL_PREFIX "/")
 
-#install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
-
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     # On MacOS turn off ASLR for better debugging/profiling
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -Wl,-no_pie")
@@ -211,7 +209,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
 #set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 #SET(CMAKE_INSTALL_PREFIX "/")
-#install(DIRECTORY kernels DESTINATION /var/lib/kotekan/ )
 #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 

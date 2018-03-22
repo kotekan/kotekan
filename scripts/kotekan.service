@@ -4,9 +4,11 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
-Environment="DISPLAY=:0"
+Restart=always
 WorkingDirectory=/var/lib/kotekan
-ExecStart=/usr/sbin/kotekan -d /etc/kotekan/kotekan_config_%H
+TimeoutStopSec=60
+KillSignal=SIGINT
+ExecStart=/usr/local/bin/kotekan
 PIDFile=/var/run/kotekan.pid
 
 [Install]
