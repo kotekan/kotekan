@@ -46,6 +46,10 @@ void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
     connInstance * instance = (connInstance *) ctx;
     int64_t n = 0;
 
+    // TODO: this timer really needs to be done differently as there might be
+    // several calls in `internal_read_callback` required to complete a
+    // transfer. Best option is to make `st` a member of `connInstance` and only
+    // reset when we start to get the header.
     double st = current_time();
 
     while (evbuffer_get_length(input) && !instance->buffer_recv->stop_thread) {
