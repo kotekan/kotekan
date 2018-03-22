@@ -68,7 +68,7 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     }
     //nothing will happen until this gets changed.
     update_gains=true;
-    INFO("Updating gains from %s",_gain_dir);
+    INFO("Updating gains from %s", _gain_dir.c_str());
     conn.send_empty_reply(STATUS_OK);
 }
 
