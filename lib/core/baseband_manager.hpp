@@ -5,6 +5,7 @@
 #include "restServer.hpp"
 #include <chrono>
 #include <deque>
+#include <memory>
 
 
 struct BasebandRequest {
@@ -48,6 +49,13 @@ public:
      */
     void handle_request_callback(connectionInstance& conn, json& request);
 
+    /**
+     * @brief Tries to get the next BasebandRequest, if available.
+     *
+     * @return a unique_ptr to the `BasebandRequest` object if there is a
+     * request available, or nullptr if the request queue is empty.
+     */
+    std::unique_ptr<BasebandRequest> get_next_request();
 
 private:
     /// Constructor, not used directly

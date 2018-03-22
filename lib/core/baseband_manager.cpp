@@ -55,3 +55,16 @@ void BasebandManager::handle_request_callback(connectionInstance& conn, json& re
         conn.send_empty_reply(STATUS_BAD_REQUEST);
     }
 }
+
+
+std::unique_ptr<BasebandRequest> BasebandManager::get_next_request() {
+    std::lock_guard<std::mutex> lock(requests_lock);
+    if (!requests.empty()) {
+        std::unique_ptr<BasebandRequest> req = std::make_unique<BasebandRequest>(requests.front());
+        requests.pop_front();
+        return req;
+    }
+    else {
+        return nullptr;
+    }
+}

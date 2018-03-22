@@ -3,6 +3,7 @@
 #include <assert.h>
 
 #include "basebandReadout.hpp"
+#include "baseband_manager.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
@@ -78,20 +79,25 @@ void basebandReadout::main_thread() {
 void basebandReadout::listen_thread() {
     int64_t trigger_start_fpga=0, trigger_length_fpga=0;
     uint64_t event_id=0;
+    BasebandManager& mgr = BasebandManager::instance();
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call manager->get_data within 100ms
         // of L4 sending the trigger.
         sleep(1);
-        std::cout << "I'm waiting." << std::endl;
-        // Code to run after getting a trigger.
-        if (0) {
-            basebandDump data = manager->get_data(
-                    event_id,
-                    trigger_start_fpga,
-                    trigger_length_fpga
-                    );
+        if (auto req = mgr.get_next_request()) {
+            std::cout << "Something to do!" << std::endl;
+            std::time_t tt = std::chrono::system_clock::to_time_t(req->received);
+            std::cout << "Received: " << std::put_time(std::localtime(&tt), "%F %T")
+                      << ", start: " << req->start_fpga
+                      << ", length: " << req->length_fpga << std::endl;
+
+            // basebandDump data = manager->get_data(
+            //         event_id,
+            //         trigger_start_fpga,
+            //         trigger_length_fpga
+            //         );
             // Spawn thread to write out the data.
         }
         // Somehow keep track of active writer threads, clean them up, and free any memory.
