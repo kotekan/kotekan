@@ -339,6 +339,13 @@ void visFileFast::setup_raw() {
     int * fhandle;
     H5Fget_vfd_handle(file->getId(), H5P_DEFAULT, (void**)(&fhandle));
     fd = *fhandle;
+
+#ifndef __APPLE__
+    struct stat st;
+    if((fstat(fd, &buffer) != 0) || (posix_fallocate(fd, 0, st.st_size) != 0)) {
+        ERROR("Couldn't preallocate file: %s", strerror(errno));
+    }
+#endif
 }
 
 template<typename T>
