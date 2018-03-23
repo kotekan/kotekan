@@ -1,5 +1,6 @@
 #include "visFile.hpp"
 #include "errors.h"
+#include "version.h"
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -80,7 +81,7 @@ void visFile::create(const std::string& name,
         "instrument_name", DataSpace::From(inst_name)).write(inst_name);
 
     // TODO: get git version tag somehow
-    std::string git_version = "not set";
+    std::string git_version = GIT_COMMIT_HASH;
     file->createAttribute<std::string>(
         "git_version_tag", DataSpace::From(git_version)).write(git_version);
 
