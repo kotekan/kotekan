@@ -9,9 +9,13 @@ version that is distributed with Debian/Ubuntu.
 
 Obtain the source from the OpenBLAS homepage or via:
 
+.. code-block:: bash
+
     git clone https://github.com/xianyi/OpenBLAS.git
 
 Enter the source directory and run:
+
+.. code-block:: bash
 
     make
     make PREFIX=<openblas_prefix> install
