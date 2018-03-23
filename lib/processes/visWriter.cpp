@@ -192,7 +192,7 @@ void visWriter::init_acq() {
     file_bundle = std::unique_ptr<visFileBundle>(
         new visFileBundle(
             root_path, instrument_name, chunk_id, file_length, window,
-            notes, weights_type, freqs, inputs, prods, num_ev
+            notes, weights_type, freqs, inputs, prods, num_ev, file_length
         )
     );
 }
