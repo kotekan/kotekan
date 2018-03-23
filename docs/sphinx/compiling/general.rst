@@ -13,6 +13,7 @@ Compiling **Kotekan**
 
    dpdk
    hugepages
+   openblas
 
 
 .. toctree::

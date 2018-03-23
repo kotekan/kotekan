@@ -9,7 +9,7 @@ Minimal Definition
 -------------------
 A minimalist process is defined in SampleProcess.cpp and reproduced below. This should be considered a minimal process.
 
-.. literalinclude:: ../../../lib/SampleProcess.cpp
+.. literalinclude:: ../../../lib/processes/SampleProcess.cpp
     :language: c++
     :linenos:
 
