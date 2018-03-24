@@ -85,7 +85,7 @@ void basebandReadout::listen_thread() {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call manager->get_data within 100ms
         // of L4 sending the trigger.
-        sleep(1);
+        std::cout << "listen: get baseband request" << std::endl;
         if (auto req = mgr.get_next_request()) {
             std::cout << "Something to do!" << std::endl;
             std::time_t tt = std::chrono::system_clock::to_time_t(req->received);

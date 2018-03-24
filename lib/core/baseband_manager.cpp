@@ -42,13 +42,16 @@ void BasebandManager::status_callback(connectionInstance& conn){
 
 void BasebandManager::handle_request_callback(connectionInstance& conn, json& request){
     auto now = std::chrono::system_clock::now();
-    std::lock_guard<std::mutex> lock(requests_lock);
     json start_json = request["start"];
     json length_json = request["length"];
     if (start_json.is_number_integer() && length_json.is_number_integer()) {
         int64_t start_fpga = request["start"];
         int64_t length_fpga = request["length"];
-        requests.push_back({start_fpga, length_fpga, now});
+        {
+            std::lock_guard<std::mutex> lock(requests_lock);
+            requests.push_back({start_fpga, length_fpga, now});
+        }
+        requests_cv.notify_all();
         conn.send_empty_reply(STATUS_OK);
     }
     else {
@@ -58,7 +61,17 @@ void BasebandManager::handle_request_callback(connectionInstance& conn, json& re
 
 
 std::unique_ptr<BasebandRequest> BasebandManager::get_next_request() {
-    std::lock_guard<std::mutex> lock(requests_lock);
+    std::cout << "Waiting for notification\n";
+    std::unique_lock<std::mutex> lock(requests_lock);
+
+    using namespace std::chrono_literals;
+    if (requests_cv.wait_for(lock, 1s) == std::cv_status::no_timeout) {
+        std::cout << "Notified\n";
+    }
+    else {
+        std::cout << "Expired\n";
+    }
+
     if (!requests.empty()) {
         std::unique_ptr<BasebandRequest> req = std::make_unique<BasebandRequest>(requests.front());
         requests.pop_front();

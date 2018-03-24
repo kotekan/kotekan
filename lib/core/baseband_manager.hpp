@@ -4,6 +4,7 @@
 #include "json.hpp"
 #include "restServer.hpp"
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 
@@ -66,6 +67,9 @@ private:
 
     /// request updating lock
     std::mutex requests_lock;
+
+    /// new request notification
+    std::condition_variable requests_cv;
 };
 
 #endif /* BASEBAND_MANAGER_HPP */
