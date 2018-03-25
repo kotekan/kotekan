@@ -8,10 +8,6 @@ set (LIBINCLUDE_LIB_SOURCES
               mongoose.c
               timing_mach.c)
 
-#if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-#    set (LIBINCLUDE_LIB_SOURCES ${LIBINCLUDE_LIB_SOURCES} timing_mach.c)
-#endif()
-
 add_library( libinclude
              ${LIBINCLUDE_LIB_SOURCES} )
 
