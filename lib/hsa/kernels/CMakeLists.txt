@@ -143,3 +143,6 @@ endif()
 
 # Build list of depenencies
 ADD_CUSTOM_TARGET(makeHSACOKernels ALL DEPENDS ${outFiles})
+
+INSTALL(DIRECTORY DESTINATION /var/lib/kotekan/hsa_kernels/)
+INSTALL(FILES ${outFiles} DESTINATION /var/lib/kotekan/hsa_kernels/)
