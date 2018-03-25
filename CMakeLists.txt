@@ -55,6 +55,9 @@ if (${USE_LAPACK})
   find_package( LAPACK REQUIRED )
 endif()
 
+find_package(LibEvent)
+set(USE_EVENT ${EVENT_FOUND})
+
 if(${DPDK_VDIF})
   add_definitions(-DDPDK_VDIF_MODE)
 endif()

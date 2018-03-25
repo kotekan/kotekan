@@ -24,5 +24,5 @@ add_library ( kotekan_core
 
 target_link_libraries( kotekan_core ${CMAKE_THREAD_LIBS_INIT} )
 target_link_libraries( kotekan_core libinclude )
-target_link_libraries( kotekan_core event )
+
 
