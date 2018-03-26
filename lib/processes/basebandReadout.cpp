@@ -12,6 +12,19 @@
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 
+/// Worker task that mocks the progress of a baseband dump
+// TODO: implement
+static void process_request(const std::shared_ptr<BasebandDump> dump) {
+    std::cout << "Started processing " << dump << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    dump->bytes_remaining -= 51;
+    std::cout << "Half way processing " << dump << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    dump->bytes_remaining = 0;
+    std::cout << "Finished processing " << dump << std::endl;
+}
+
+
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
@@ -85,13 +98,20 @@ void basebandReadout::listen_thread() {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call manager->get_data within 100ms
         // of L4 sending the trigger.
-        std::cout << "listen: get baseband request" << std::endl;
-        if (auto req = mgr.get_next_request()) {
+        // std::cout << "listen: get baseband request" << std::endl;
+        if (auto dump = mgr.get_next_dump()) {
             std::cout << "Something to do!" << std::endl;
-            std::time_t tt = std::chrono::system_clock::to_time_t(req->received);
+            std::time_t tt = std::chrono::system_clock::to_time_t(dump->request.received);
             std::cout << "Received: " << std::put_time(std::localtime(&tt), "%F %T")
-                      << ", start: " << req->start_fpga
-                      << ", length: " << req->length_fpga << std::endl;
+                      << ", start: " << dump->request.start_fpga
+                      << ", length: " << dump->request.length_fpga << std::endl;
+
+            dump->bytes_remaining -= 42;
+            std::cout << "processing: " << dump
+                      << ", saved: " << dump->bytes_remaining
+                      << std::endl;
+            std::thread worker(process_request, dump);
+            worker.detach();
 
             // basebandDump data = manager->get_data(
             //         event_id,
@@ -112,7 +132,7 @@ bufferManager::bufferManager(Buffer * buf_, int length_) :
 }
 
 int bufferManager::add_replace_frame(int frame_id) {
-    manager_lock.lock();
+    std::lock_guard<std::mutex> lock(manager_lock);
     int replaced_frame = -1;
     assert(frame_id == next_frame);
 
@@ -126,7 +146,6 @@ int bufferManager::add_replace_frame(int frame_id) {
     frame_locks[frame_id % length].unlock();
 
     next_frame++;
-    manager_lock.unlock();
     return replaced_frame;
 }
 

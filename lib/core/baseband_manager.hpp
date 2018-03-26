@@ -9,10 +9,23 @@
 #include <memory>
 
 
+/**
+ * Helper structure to capture a baseband dump request.
+ */
 struct BasebandRequest {
     int64_t start_fpga;
     int64_t length_fpga;
     std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
+};
+
+
+/**
+ * Helper structure to track the progress of a dump request's processing.
+ */
+struct BasebandDump {
+    const BasebandRequest request;
+    const size_t bytes_total = request.length_fpga * 17;
+    size_t bytes_remaining = bytes_total;
 };
 
 
@@ -51,12 +64,12 @@ public:
     void handle_request_callback(connectionInstance& conn, json& request);
 
     /**
-     * @brief Tries to get the next BasebandRequest, if available.
+     * @brief Tries to get the next dump request to process.
      *
-     * @return a unique_ptr to the `BasebandRequest` object if there is a
+     * @return a shared_ptr to the `BasebandDump` object if there is a
      * request available, or nullptr if the request queue is empty.
      */
-    std::unique_ptr<BasebandRequest> get_next_request();
+    std::shared_ptr<BasebandDump> get_next_dump();
 
 private:
     /// Constructor, not used directly
@@ -64,6 +77,9 @@ private:
 
     /// Queue of unprocessed baseband requests
     std::deque<BasebandRequest> requests;
+
+    /// Queue of baseband dumps in progress
+    std::vector<std::shared_ptr<BasebandDump>> processing;
 
     /// request updating lock
     std::mutex requests_lock;
