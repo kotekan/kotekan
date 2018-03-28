@@ -3,6 +3,31 @@
 
 #include "json.hpp"
 #include "restServer.hpp"
+#include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <memory>
+
+
+/**
+ * Helper structure to capture a baseband dump request.
+ */
+struct BasebandRequest {
+    int64_t start_fpga;
+    int64_t length_fpga;
+    std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
+};
+
+
+/**
+ * Helper structure to track the progress of a dump request's processing.
+ */
+struct BasebandDump {
+    const BasebandRequest request;
+    const size_t bytes_total = request.length_fpga * 17;
+    size_t bytes_remaining = bytes_total;
+};
+
 
 class BasebandManager {
 public:
@@ -20,21 +45,47 @@ public:
     void register_with_server(restServer * rest_server);
 
     /**
-     * @brief The call back function for the REST server to use.
+     * @brief The call back function for GET requests to `/baseband`.
      *
      * This function is never called directly.
      *
-     * @param conn The connection instance to send results too.
+     * @param conn The connection instance to send results to
      */
     void status_callback(connectionInstance& conn);
 
+    /**
+     * @brief The call back function for POST requests to `/baseband`.
+     *
+     * This function is never called directly.
+     *
+     * @param conn The connection instance to send results to
+     * @param request JSON dictionary with the request data
+     */
     void handle_request_callback(connectionInstance& conn, json& request);
 
+    /**
+     * @brief Tries to get the next dump request to process.
+     *
+     * @return a shared_ptr to the `BasebandDump` object if there is a
+     * request available, or nullptr if the request queue is empty.
+     */
+    std::shared_ptr<BasebandDump> get_next_dump();
 
 private:
     /// Constructor, not used directly
-    BasebandManager();
+    BasebandManager() = default;
 
+    /// Queue of unprocessed baseband requests
+    std::deque<BasebandRequest> requests;
+
+    /// Queue of baseband dumps in progress
+    std::vector<std::shared_ptr<BasebandDump>> processing;
+
+    /// request updating lock
+    std::mutex requests_lock;
+
+    /// new request notification
+    std::condition_variable requests_cv;
 };
 
 #endif /* BASEBAND_MANAGER_HPP */

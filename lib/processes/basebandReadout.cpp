@@ -3,12 +3,26 @@
 #include <assert.h>
 
 #include "basebandReadout.hpp"
+#include "baseband_manager.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
 
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
+
+
+/// Worker task that mocks the progress of a baseband dump
+// TODO: implement
+static void process_request(const std::shared_ptr<BasebandDump> dump) {
+    std::cout << "Started processing " << dump << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    dump->bytes_remaining -= 51;
+    std::cout << "Half way processing " << dump << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    dump->bytes_remaining = 0;
+    std::cout << "Finished processing " << dump << std::endl;
+}
 
 
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
@@ -76,29 +90,42 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::listen_thread() {
-    int64_t trigger_start_fpga, trigger_length_fpga;
     uint64_t event_id=0;
+    BasebandManager& mgr = BasebandManager::instance();
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call manager->get_data within 100ms
         // of L4 sending the trigger.
-        trigger_start_fpga=98304;
-        trigger_length_fpga=98304;
-        sleep(5);
-        std::cout << "I'm waiting." << std::endl;
+
         // Code to run after getting a trigger.
         //
-        // Here we also want to limit the number of simultanious readouts, mostly so
-        // we don't run out of memory and crash everything. That will also prevent too
-        // many calls to get_data and thus buffer deadlock.
-        if (1) {
+        if (auto dump = mgr.get_next_dump()) {
+            std::cout << "Something to do!" << std::endl;
+            std::time_t tt = std::chrono::system_clock::to_time_t(dump->request.received);
+            std::cout << "Received: " << std::put_time(std::localtime(&tt), "%F %T")
+                      << ", start: " << dump->request.start_fpga
+                      << ", length: " << dump->request.length_fpga << std::endl;
+
+            // Copying the data from the ring buffer is done in *this* thread. Writing the data out is done
+            // by a new thread. This keeps the number of threads that can lock out the main buffer limited
+            // to 2 (listen and main).
             basebandDump data = manager->get_data(
-                    event_id,
-                    trigger_start_fpga,
-                    trigger_length_fpga
+                    event_id,    // XXX need this from the request.
+                    dump->request.start_fpga,
+                    dump->request.length_fpga
                     );
+
             // Spawn thread to write out the data.
+            dump->bytes_remaining -= 42;
+            std::cout << "processing: " << dump
+                      << ", saved: " << dump->bytes_remaining
+                      << std::endl;
+            // Here we also want to limit the number of simultanious readout threads, mostly so
+            // we don't run out of memory and crash everything. That will also prevent too
+            // many calls to get_data and thus buffer deadlock.
+            std::thread worker(process_request, dump);
+            worker.detach();
         }
         // Somehow keep track of active writer threads, clean them up, and free any memory.
     }
@@ -112,7 +139,7 @@ bufferManager::bufferManager(Buffer * buf_, int length_) :
 }
 
 int bufferManager::add_replace_frame(int frame_id) {
-    manager_lock.lock();
+    std::lock_guard<std::mutex> lock(manager_lock);
     int replaced_frame = -1;
     assert(frame_id == next_frame);
 
@@ -127,7 +154,6 @@ int bufferManager::add_replace_frame(int frame_id) {
     frame_locks[frame_id % length].unlock();
 
     next_frame++;
-    manager_lock.unlock();
     return replaced_frame;
 }
 
