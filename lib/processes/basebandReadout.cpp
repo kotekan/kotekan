@@ -83,11 +83,15 @@ void basebandReadout::listen_thread() {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call manager->get_data within 100ms
         // of L4 sending the trigger.
-        trigger_start_fpga=1000;
-        trigger_length_fpga=100000;
+        trigger_start_fpga=98304;
+        trigger_length_fpga=98304;
         sleep(5);
         std::cout << "I'm waiting." << std::endl;
         // Code to run after getting a trigger.
+        //
+        // Here we also want to limit the number of simultanious readouts, mostly so
+        // we don't run out of memory and crash everything. That will also prevent too
+        // many calls to get_data and thus buffer deadlock.
         if (1) {
             basebandDump data = manager->get_data(
                     event_id,
@@ -115,6 +119,7 @@ int bufferManager::add_replace_frame(int frame_id) {
     // This will block if we are trying to replace a frame currenty being read out.
     frame_locks[frame_id % length].lock();
     // Somehow in C `-1 % length == -1` which makes no sence to me.
+    // So add `length` to `oldest_frame`.
     if (frame_id % length == (oldest_frame + length) % length) {
         replaced_frame = oldest_frame;
         oldest_frame++;
@@ -136,18 +141,32 @@ basebandDump bufferManager::get_data(
         ) {
     manager_lock.lock();
 
-    int start_frame = (oldest_frame > 0) ? oldest_frame : 0;
+    int dump_start_frame = (oldest_frame > 0) ? oldest_frame : 0;
+    int dump_end_frame = dump_start_frame;
 
-    for (int frame_index = start_frame; frame_index < next_frame; frame_index++) {
+
+
+    std::cout << "Dump samples: " << trigger_start_fpga << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
+
+    for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
         int buf_frame = frame_index % buf->num_frames;
         chimeMetadata metadata = *((chimeMetadata *) buf->metadata[buf_frame]->metadata);
         int64_t frame_fpga_seq = metadata.fpga_seq_num;
         std::cout << buf_frame << " : " << frame_fpga_seq << std::endl;
+        if (trigger_start_fpga + trigger_length_fpga <= frame_fpga_seq) continue;
+        if (trigger_start_fpga >= frame_fpga_seq + samples_per_data_set) {
+            dump_start_frame = frame_index + 1;
+            continue;
+        }
+        frame_locks[frame_index % length].lock();
+        dump_end_frame = frame_index + 1;
     }
 
-    // Now that the relevant frames are locked, we can unlock the manager so the other
-    // frames the rest of the buffer can continue to opperate.
+    // Now that the relevant frames are locked, we can unlock the manager so the
+    // rest of the buffer can continue to opperate.
     manager_lock.unlock();
+
+    std::cout << "Frames in dump: " << dump_start_frame << " : " << dump_end_frame << std::endl;
 
     uint32_t freq_id = 10; //fake
     int64_t data_length_fpga = 10000;
@@ -171,6 +190,11 @@ basebandDump bufferManager::get_data(
     }
 
     std::cout << "Here." << std::endl;
+
+    // All the data has been copied. Release the locks.
+    for (int frame_index = dump_start_frame; frame_index < dump_end_frame; frame_index++) {
+        frame_locks[frame_index % length].unlock();
+    }
 
     return dump;
 }
