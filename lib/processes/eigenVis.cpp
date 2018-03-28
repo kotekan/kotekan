@@ -175,6 +175,29 @@ void eigenVis::main_thread() {
                 prod_ind++;
             }
         }
+        // Go through and remove entries of excluded inputs from RMS calculation.
+        // Taking care of not removing the (not included to begin with) filled diagonals.
+        // TODO: if num_diagonals_filled==0, this removes the autos twice!
+        for (auto iexclude : exclude_inputs) {
+            for (int i = 0; i < iexclude - num_diagonals_filled + 1; i++) {
+                cfloat residual = input_frame.vis[i * num_elements + iexclude];
+                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                    residual -= (last_evs[freq_id][ev_ind * num_elements + i]
+                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + iexclude]));
+                }
+                sum_sq -= std::norm(residual); // remove the entry from sum
+                nprod_sum--; // decrement counter
+            }
+            for (int j = iexclude + num_diagonals_filled; j < num_elements; j++) {
+                cfloat residual = input_frame.vis[iexclude * num_elements + j];
+                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                    residual -= (last_evs[freq_id][ev_ind * num_elements + iexclude]
+                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + j]));
+                }
+                sum_sq -= std::norm(residual); // remove the entry from sum
+                nprod_sum--; // decrement counter
+            }
+        }
         double rms = pow(sum_sq / nprod_sum, 0.5);
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
