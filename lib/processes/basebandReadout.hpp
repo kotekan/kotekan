@@ -4,11 +4,21 @@
 #include <string>
 #include <mutex>
 
+#include "gsl-lite.hpp"
+
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 
 
+/* A container for baseband data and metadata.
+ *
+ * The use of a shared pointer to point to an array means that this class is copyable
+ * without copying the underlying data buffer. However the memory for the underlying
+ * buffer is managed and is deleted when the last copy of the container goes out of
+ * scope.
+ *
+ */
 class basebandDump {
 public:
     // Initializes the container with all parameters, and allocates memory for data
@@ -22,14 +32,18 @@ public:
             );
     ~basebandDump();
 
-    uint64_t event_id;
-    uint32_t freq_id;
-    uint32_t num_elements;
-    int64_t data_start_fpga;
-    int64_t data_length_fpga;
-    // I think if I change this to a shared pointer I can just pass a copy off to
-    // a new thread and the data will persist until the thread ends.
-    std::shared_ptr<uint8_t> data;
+    const uint64_t event_id;
+    const uint32_t freq_id;
+    const uint32_t num_elements;
+    const int64_t data_start_fpga;
+    const int64_t data_length_fpga;
+    // Span used for data access.
+    // This should be const, but I can't figure out a way to initialize it properly.
+    gsl::span<uint8_t> data;
+
+private:
+    // For keeping track of references.
+    const std::shared_ptr<uint8_t> data_ref;
 };
 
 
@@ -44,6 +58,9 @@ public:
             int64_t trigger_start_fpga,
             int64_t trigger_length_fpga
             );
+
+    int num_elements;
+    int samples_per_data_set;
 
 private:
     Buffer * buf;
@@ -68,8 +85,6 @@ private:
     std::string base_dir;
     std::string file_ext;
     int num_frames_buffer;
-    int num_elements;
-    int samples_per_data_set;
 };
 
 

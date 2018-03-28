@@ -21,8 +21,6 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     base_dir = config.get_string_default(unique_name, "base_dir", "./");
     file_ext = config.get_string(unique_name, "file_ext");
     num_frames_buffer = config.get_int(unique_name, "num_frames_buffer");
-    num_elements = config.get_int(unique_name, "num_elements");
-    samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 
     // XXX
     std::cout << "BB constructor " << num_frames_buffer << " " << buf->num_frames << std::endl;
@@ -40,6 +38,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     }
 
     manager = new bufferManager(buf, num_frames_buffer);
+    manager->num_elements = config.get_int(unique_name, "num_elements");
+    manager->samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 }
 
 basebandReadout::~basebandReadout() {
@@ -76,17 +76,19 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::listen_thread() {
-    int64_t trigger_start_fpga=0, trigger_length_fpga=0;
+    int64_t trigger_start_fpga, trigger_length_fpga;
     uint64_t event_id=0;
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call manager->get_data within 100ms
         // of L4 sending the trigger.
-        sleep(1);
+        trigger_start_fpga=1000;
+        trigger_length_fpga=100000;
+        sleep(5);
         std::cout << "I'm waiting." << std::endl;
         // Code to run after getting a trigger.
-        if (0) {
+        if (1) {
             basebandDump data = manager->get_data(
                     event_id,
                     trigger_start_fpga,
@@ -132,10 +134,24 @@ basebandDump bufferManager::get_data(
         int64_t trigger_start_fpga,
         int64_t trigger_length_fpga
         ) {
+    manager_lock.lock();
+
+    int start_frame = (oldest_frame > 0) ? oldest_frame : 0;
+
+    for (int frame_index = start_frame; frame_index < next_frame; frame_index++) {
+        int buf_frame = frame_index % buf->num_frames;
+        chimeMetadata metadata = *((chimeMetadata *) buf->metadata[buf_frame]->metadata);
+        int64_t frame_fpga_seq = metadata.fpga_seq_num;
+        std::cout << buf_frame << " : " << frame_fpga_seq << std::endl;
+    }
+
+    // Now that the relevant frames are locked, we can unlock the manager so the other
+    // frames the rest of the buffer can continue to opperate.
+    manager_lock.unlock();
+
     uint32_t freq_id = 10; //fake
-    int64_t data_length_fpga = 0;
+    int64_t data_length_fpga = 10000;
     int64_t data_start_fpga = 0;
-    uint32_t num_elements = 0;
 
     // Figure out how much data we have.
 
@@ -144,14 +160,29 @@ basebandDump bufferManager::get_data(
             freq_id,
             num_elements,
             data_start_fpga,
-            data_start_fpga
+            data_length_fpga
             );
 
     // Fill in the data.
+    for (int ii = 0; ii < data_length_fpga; ii++) {
+        for (int jj = 0; jj < num_elements; jj++) {
+            dump.data[ii * num_elements + jj] = 8;
+        }
+    }
+
+    std::cout << "Here." << std::endl;
 
     return dump;
 }
 
+
+template<typename T>
+gsl::span<T> span_from_length(uint8_t * start, size_t length) {
+    T* span_start = (T*)start;
+    T* span_end = (T*)(start + length);
+
+    return gsl::span<T>(span_start, span_end);
+}
 
 basebandDump::basebandDump(
         uint64_t event_id_,
@@ -165,8 +196,29 @@ basebandDump::basebandDump(
         num_elements(num_elements_),
         data_start_fpga(data_start_fpga_),
         data_length_fpga(data_length_fpga_),
-        data(new uint8_t[num_elements_ * data_length_fpga_])
-        {
+        // XXX Since I didn't supply a deleter, I think it is implicitly `delete`
+        // instead of `delete[]`, so this should leak memory.
+        // Actually this does not appear to leak. Not positive I understand why.
+        data_ref(new uint8_t[num_elements_ * data_length_fpga_])
+        // Candidate correct constructor.
+        // data_ref(new uint8_t[num_elements_ * data_length_fpga_],
+        //      [](uint8_t *p ) { delete[] p; }),
+        // Intensional leak, for testing.
+        // data_ref(new uint8_t[num_elements_ * data_length_fpga_],
+        //      [](uint8_t *p ) { std::cout << "Delete!" << std::endl; })
+
+        // This appearently isn't allowed since data_ref hasn't been inialized.
+        //data(data_ref.get(), data_ref.get() + num_elements_ * data_length_fpga_)
+
+        // If we initialized the memory in the span instead of the ref.
+        // data(span_from_length<uint8_t>(new uint8_t[num_elements_ * data_length_fpga_],
+        //                               num_elements_ * data_length_fpga_))
+{
+
+    data = gsl::span<uint8_t>(data_ref.get(),
+                              data_ref.get() + num_elements * data_length_fpga);
+
+    //data_ref.reset(&(data[0]));
 }
 
 basebandDump::~basebandDump() {
