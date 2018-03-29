@@ -32,6 +32,8 @@ bufferSend::bufferSend(Config& config,
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
     server_addr.sin_port = htons(server_port);
+
+    socket_fd = -1;
 }
 
 bufferSend::~bufferSend() {
@@ -141,10 +143,10 @@ void bufferSend::main_thread() {
 }
 
 void bufferSend::close_connection() {
-    if (socket_fd > 0)
+    if (socket_fd >= 0)
         close(socket_fd);
 
-    socket_fd = 0;
+    socket_fd = -1;
     {
         std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
         connected = false;
