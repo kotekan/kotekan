@@ -5,6 +5,7 @@
 #include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
 #include "fmt.hpp"
+#include "visUtil.hpp"
 
 #include <cblas.h>
 #include <lapacke.h>
@@ -184,7 +185,7 @@ void eigenVis::main_thread() {
             }
             for(auto j_idx = j0_idx; j_idx != ipts.size(); j_idx++) {
                 int j = ipts[j_idx];
-                prod_ind = i * num_elements + j;
+                prod_ind = cmap(i,j,num_elements)
                 cfloat residual = input_frame.vis[prod_ind];
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     residual -= (last_evs[freq_id][ev_ind * num_elements + i]
