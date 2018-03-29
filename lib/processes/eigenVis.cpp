@@ -157,14 +157,34 @@ void eigenVis::main_thread() {
         }
 
         // Calculate RMS residuals to eigenvalue approximation to the visibilities.
-        prod_ind = 0;
         double sum_sq = 0;
         int nprod_sum = 0;
-        for (int i = 0; i < num_elements; i++) {
-            for (int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
-                prod_ind++;
+        std::vector<int> ipts(num_elements); // Inputs to iterate over
+        std::iota(ipts.begin(), ipts.end(), 0); // Fill sequentially
+
+        for (auto iexclude : exclude_inputs) { // Remove excluded inputs
+            ipts.erase(std::remove(ipts.begin(), ipts.end(), iexclude),ipts.end());
+        }
+        for(std::vector<int>::size_type idx = 0; idx != ipts.size(); idx++) {
+            int i = ipts[idx];
+            int j0 = i + num_diagonals_filled;
+            unsigned int j0_idx;
+            // Find start column:
+            while(j0 < num_elements) {
+                auto j0_iterator = std::find(ipts.begin(), ipts.end(), j0);
+                if(j0_iterator == ipts.end()) {
+                    j0++;
+                } else {
+                    j0_idx = std::distance(ipts.begin(), j0_iterator);
+                    break;
+                }
             }
-            for (int j = i + num_diagonals_filled; j < num_elements; j++) {
+            if(j0 >= num_elements) {
+                break;
+            }
+            for(auto j_idx = j0_idx; j_idx != ipts.size(); j_idx++) {
+                int j = ipts[j_idx];
+                prod_ind = i * num_elements + j;
                 cfloat residual = input_frame.vis[prod_ind];
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     residual -= (last_evs[freq_id][ev_ind * num_elements + i]
@@ -172,30 +192,6 @@ void eigenVis::main_thread() {
                 }
                 sum_sq += std::norm(residual);
                 nprod_sum++;
-                prod_ind++;
-            }
-        }
-        // Go through and remove entries of excluded inputs from RMS calculation.
-        // Taking care of not removing the (not included to begin with) filled diagonals.
-        // TODO: if num_diagonals_filled==0, this removes the autos twice!
-        for (auto iexclude : exclude_inputs) {
-            for (int i = 0; i < iexclude - num_diagonals_filled + 1; i++) {
-                cfloat residual = input_frame.vis[i * num_elements + iexclude];
-                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-                    residual -= (last_evs[freq_id][ev_ind * num_elements + i]
-                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + iexclude]));
-                }
-                sum_sq -= std::norm(residual); // remove the entry from sum
-                nprod_sum--; // decrement counter
-            }
-            for (int j = iexclude + num_diagonals_filled; j < num_elements; j++) {
-                cfloat residual = input_frame.vis[iexclude * num_elements + j];
-                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-                    residual -= (last_evs[freq_id][ev_ind * num_elements + iexclude]
-                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + j]));
-                }
-                sum_sq -= std::norm(residual); // remove the entry from sum
-                nprod_sum--; // decrement counter
             }
         }
         double rms = pow(sum_sq / nprod_sum, 0.5);
