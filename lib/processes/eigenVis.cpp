@@ -166,30 +166,14 @@ void eigenVis::main_thread() {
         for (auto iexclude : exclude_inputs) { // Remove excluded inputs
             ipts.erase(std::remove(ipts.begin(), ipts.end(), iexclude),ipts.end());
         }
-        for(std::vector<int>::size_type idx = 0; idx != ipts.size(); idx++) {
-            int i = ipts[idx];
-            int j0 = i + num_diagonals_filled;
-            unsigned int j0_idx;
-            // Find start column:
-            while(j0 < num_elements) {
-                auto j0_iterator = std::find(ipts.begin(), ipts.end(), j0);
-                if(j0_iterator == ipts.end()) {
-                    j0++;
-                } else {
-                    j0_idx = std::distance(ipts.begin(), j0_iterator);
-                    break;
-                }
-            }
-            if(j0 >= num_elements) {
-                break;
-            }
-            for(auto j_idx = j0_idx; j_idx != ipts.size(); j_idx++) {
-                int j = ipts[j_idx];
-                prod_ind = cmap(i,j,num_elements);
+        for(auto i = ipts.begin(); i != ipts.end(); i++) {
+            auto jstart = std::lower_bound(i, ipts.end(), *i + num_diagonals_filled);
+            for(auto j = jstart; j != ipts.end(); j++) {
+                prod_ind = cmap(*i,*j,num_elements);
                 cfloat residual = input_frame.vis[prod_ind];
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-                    residual -= (last_evs[freq_id][ev_ind * num_elements + i]
-                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + j]));
+                    residual -= (last_evs[freq_id][ev_ind * num_elements + *i]
+                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + *j]));
                 }
                 sum_sq += std::norm(residual);
                 nprod_sum++;
