@@ -92,6 +92,10 @@ void basebandReadout::main_thread() {
 void basebandReadout::listen_thread() {
     uint64_t event_id=0;
     BasebandManager& mgr = BasebandManager::instance();
+    // XXX I see you are using a singleton here. Note that there will be 4 copies of this running
+    // (for the 4 frequencies) in the same processess, so you will need some way to make sure the
+    // right requests go to the right frequencies. Based on the freq_id, which is in the incoming
+    // packet headers.
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
@@ -175,8 +179,6 @@ basebandDump bufferManager::get_data(
 
     int dump_start_frame = (oldest_frame > 0) ? oldest_frame : 0;
     int dump_end_frame = dump_start_frame;
-
-
 
     std::cout << "Dump samples: " << trigger_start_fpga << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
 
