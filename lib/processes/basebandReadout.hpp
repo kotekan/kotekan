@@ -39,11 +39,11 @@ public:
     const int64_t data_length_fpga;
     // Span used for data access.
     // This should be const, but I can't figure out a way to initialize it properly.
-    gsl::span<uint8_t> data;
+    const gsl::span<uint8_t> data;
 
 private:
     // For keeping track of references.
-    const std::shared_ptr<uint8_t> data_ref;
+    std::shared_ptr<uint8_t> data_ref;
 };
 
 

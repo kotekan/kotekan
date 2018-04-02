@@ -203,7 +203,7 @@ basebandDump bufferManager::get_data(
     std::cout << "Frames in dump: " << dump_start_frame << " : " << dump_end_frame << std::endl;
 
     uint32_t freq_id = 10; //fake
-    int64_t data_length_fpga = 10000;
+    int64_t data_length_fpga = 100000;
     int64_t data_start_fpga = 0;
 
     // Figure out how much data we have.
@@ -254,29 +254,25 @@ basebandDump::basebandDump(
         num_elements(num_elements_),
         data_start_fpga(data_start_fpga_),
         data_length_fpga(data_length_fpga_),
-        // XXX Since I didn't supply a deleter, I think it is implicitly `delete`
-        // instead of `delete[]`, so this should leak memory.
-        // Actually this does not appear to leak. Not positive I understand why.
-        data_ref(new uint8_t[num_elements_ * data_length_fpga_])
-        // Candidate correct constructor.
-        // data_ref(new uint8_t[num_elements_ * data_length_fpga_],
-        //      [](uint8_t *p ) { delete[] p; }),
-        // Intensional leak, for testing.
-        // data_ref(new uint8_t[num_elements_ * data_length_fpga_],
-        //      [](uint8_t *p ) { std::cout << "Delete!" << std::endl; })
-
-        // This appearently isn't allowed since data_ref hasn't been inialized.
-        //data(data_ref.get(), data_ref.get() + num_elements_ * data_length_fpga_)
-
         // If we initialized the memory in the span instead of the ref.
-        // data(span_from_length<uint8_t>(new uint8_t[num_elements_ * data_length_fpga_],
-        //                               num_elements_ * data_length_fpga_))
+        data(span_from_length<uint8_t>(new uint8_t[num_elements_ * data_length_fpga_],
+                                       num_elements_ * data_length_fpga_))
 {
+    // Doesn't work because data is const. Use initializer list.
+    //data = gsl::span<uint8_t>(data_ref.get(),
+    //                          data_ref.get() + num_elements * data_length_fpga);
+    //
 
-    data = gsl::span<uint8_t>(data_ref.get(),
-                              data_ref.get() + num_elements * data_length_fpga);
+    // XXX Since I didn't supply a deleter, I think it is implicitly `delete`
+    // instead of `delete[]`, so this should leak memory.
+    // Actually this does not appear to leak. Not positive I understand why.
+    data_ref = std::shared_ptr<uint8_t>(&data[0]);
 
-    //data_ref.reset(&(data[0]));
+    // Candidate correct constructor.
+    //data_ref = std::shared_ptr<uint8_t>(&data[0],
+    //      [](uint8_t *p ) { delete[] p; });
+    // Intensional leak, for testing.
+    //      [](uint8_t *p ) { std::cout << "Delete!" << std::endl; });
 }
 
 basebandDump::~basebandDump() {
