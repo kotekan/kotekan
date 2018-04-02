@@ -12,7 +12,7 @@
 
 #define FREQ_REF 492.125984252
 #define LIGHT_SPEED 3.e8
-#define FEED_SEP 0.3048 
+#define FEED_SEP 0.3048
 #define PI 3.14159265
 
 /**
