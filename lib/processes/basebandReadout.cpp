@@ -99,8 +99,14 @@ void basebandReadout::listen_thread() {
         // of L4 sending the trigger.
 
         // Code to run after getting a trigger.
-        //
-        if (auto dump = mgr.get_next_dump()) {
+
+        // For testing readout logic.
+        //auto dump = mgr.get_next_dump();
+        auto dump =  std::make_shared<BasebandDump>(
+                BasebandDump{BasebandRequest{360000, 131079}});
+        sleep(5);
+
+        if (dump) {
             std::cout << "Something to do!" << std::endl;
             std::time_t tt = std::chrono::system_clock::to_time_t(dump->request.received);
             std::cout << "Received: " << std::put_time(std::localtime(&tt), "%F %T")
