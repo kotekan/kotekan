@@ -50,7 +50,7 @@
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
- * @gpu_mem  beamform_gain"     Array of gains size 2048*2
+ * @gpu_mem  beamform_gain      Array of gains size 2048*2
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
@@ -82,10 +82,10 @@ public:
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformKernel();
 
-    /// Wati for full metadata frame and keep track of preconditioin_id
+    /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
 
-    /// For a given freq, calculate N-S FFT clmaping index (host_map) and E-W phase delays (host_coeff)
+    /// For a given freq, calculate N-S FFT clamping index (host_map) and E-W phase delays (host_coeff)
     void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff);
 
     /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
@@ -136,7 +136,7 @@ private:
     uint32_t _num_elements;
     /// Number of local freq, should be 1
     int32_t _num_local_freq;
-    /// Number of time samples, shoould be a multiple of 3x128 for FRB, currently set to 49152
+    /// Number of time samples, should be a multiple of 3x128 for FRB, currently set to 49152
     int32_t _samples_per_data_set;
     ///Flag to control gains to be only loaded on request.
     bool update_gains; 
