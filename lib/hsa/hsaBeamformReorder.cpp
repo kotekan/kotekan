@@ -15,7 +15,7 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
     input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;
     output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set ;
 
-    // Create a C style array for backwards compatiably.
+    // Create a C style array for backwards compatibility.
     map_len = 512 * sizeof(int);
     _reorder_map_c = (int *)hsa_host_malloc(map_len);
     for (uint i=0;i<512;++i){
