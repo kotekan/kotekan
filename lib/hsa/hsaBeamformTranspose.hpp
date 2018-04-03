@@ -13,7 +13,6 @@
  * @class hsaBeamformTranspose
  * @brief hsaCommand to transpose FRB data from time-pol-beam to pol-beam-time
  *
- *
  * This is an hsaCommand that transposes FRB output from the beamform 
  * kernel with format time-pol-beam to pol-beam-time, in order to 
  * minimize striding for the next step of upchannelization, which 
@@ -34,8 +33,6 @@
  *
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
- *
- * @todo   none
  *
  * @author Cherry Ng
  *
