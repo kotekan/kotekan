@@ -14,7 +14,7 @@
  * @brief hsaCommand for copying FRB output gpu to host (FRB solo run).
  *
  *
- * This is an hsaCommand that async copy FRB output buffer from GPU
+ * This is an hsaCommand that async copies FRB output buffer from GPU
  * to CPU. It marks the FRB output buffer to be full and marks the network 
  * buffer to be empty when all done so that these buffers can be reused. 
  * This code also passes metadata along.
