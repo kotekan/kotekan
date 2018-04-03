@@ -13,7 +13,6 @@
  * @class hsaBeamformUpchan
  * @brief hsaCommand to upchannelize and downsample FRB data
  *
- *
  * This is an hsaCommand that launches the kernel (upchannelize_flip) for
  * upchannelizing and downsampling FRB data. First, 128 time samples 
  * is traded for 128 upchannelized freq channels via FFT. The freq axis is 
@@ -22,7 +21,6 @@
  * averaged in order to downsample to fit the output bandwidth. The 2 
  * polarizations are summed to produce a final output in float of 
  * 1024 beams x 128 times x 16 freq. 
- *
  *
  * @requires_kernel    upchannelize_flip.hasco
  *
@@ -41,7 +39,6 @@
  * @conf   downsample_time      Int (default 3). Downsample factor in time
  * @conf   downsample_freq      Int (default 8). Downsample factor in freq
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
- *
  *
  * @todo   Check that the 16 freq axis has the correct orientation
  * 
