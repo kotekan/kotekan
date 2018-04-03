@@ -64,8 +64,6 @@
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
  *
  *
- * @todo
- *
  * @author Cherry Ng
  *
  */
