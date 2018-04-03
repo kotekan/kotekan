@@ -13,7 +13,6 @@
  * @class hsaBeamformOutput
  * @brief hsaCommand for copying FRB output gpu to host (for run with N2).
  *
- *
  * This is an hsaCommand that async copy FRB output buffer from GPU 
  * to CPU. It marks the FRB output buffer to be full when done so that 
  * it can be reused. This code also passes metadata along. The finalize_frame 
@@ -26,7 +25,6 @@
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     chimeMetadata
- *
  *
  * @todo   tidy up hack in finalize_frame for concurrent run?
  *
