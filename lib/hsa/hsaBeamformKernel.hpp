@@ -55,7 +55,6 @@
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
  * 
- *
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   num_local_freq       Int (default 1). Number of local freq.
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
