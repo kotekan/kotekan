@@ -19,7 +19,6 @@
  * @class hsaBeamformKernel
  * @brief hsaCommand to beamform for FRB
  *
- *
  * This is an hsaCommand that launches the kernel (unpack_shift_beamform_flip) for
  * FRB beamforming. The kernel unpacks the already reordered input data (shape @c 
  * n_samp x @c n_elem) and multiplies the conjugate of gains to it. We then apply 
