@@ -13,7 +13,6 @@
  * @class hsaBeamformOutputSolo
  * @brief hsaCommand for copying FRB output gpu to host (FRB solo run).
  *
- *
  * This is an hsaCommand that async copies FRB output buffer from GPU
  * to CPU. It marks the FRB output buffer to be full and marks the network 
  * buffer to be empty when all done so that these buffers can be reused. 
@@ -24,9 +23,6 @@
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     chimeMetadata
- *
- *
- * @todo   none
  *
  * @author Cherry Ng
  *
