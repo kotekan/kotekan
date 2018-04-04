@@ -7,6 +7,7 @@
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
+#include "chimeMetadata.h"
 
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
@@ -105,10 +106,10 @@ void basebandReadout::listen_thread() {
         // Code to run after getting a trigger.
 
         // For testing readout logic.
-        //auto dump = mgr.get_next_dump();
-        auto dump =  std::make_shared<BasebandDump>(
-                BasebandDump{BasebandRequest{360000, 131079}});
-        sleep(5);
+        auto dump = mgr.get_next_dump();
+        //auto dump =  std::make_shared<BasebandDump>(
+        //        BasebandDump{BasebandRequest{360000, 131079}});
+        //sleep(5);
 
         if (dump) {
             std::cout << "Something to do!" << std::endl;
@@ -117,14 +118,18 @@ void basebandReadout::listen_thread() {
                       << ", start: " << dump->request.start_fpga
                       << ", length: " << dump->request.length_fpga << std::endl;
 
-            // Copying the data from the ring buffer is done in *this* thread. Writing the data out is done
-            // by a new thread. This keeps the number of threads that can lock out the main buffer limited
-            // to 2 (listen and main).
+            // Copying the data from the ring buffer is done in *this* thread. Writing the data
+            // out is done by a new thread. This keeps the number of threads that can lock out
+            // the main buffer limited to 2 (listen and main).
             basebandDump data = manager->get_data(
                     event_id,    // XXX need this from the request.
                     dump->request.start_fpga,
                     dump->request.length_fpga
                     );
+
+            // At this point we know how much of the requested data we managed to read from the
+            // buffer (which may be nothing if the request as recieved too late). Do we need to
+            // report this?
 
             // Spawn thread to write out the data.
             dump->bytes_remaining -= 42;
@@ -180,12 +185,13 @@ basebandDump bufferManager::get_data(
     int dump_start_frame = (oldest_frame > 0) ? oldest_frame : 0;
     int dump_end_frame = dump_start_frame;
 
-    std::cout << "Dump samples: " << trigger_start_fpga << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
+    std::cout << "Dump samples: " << trigger_start_fpga;
+    std::cout << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
 
     for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
         int buf_frame = frame_index % buf->num_frames;
-        chimeMetadata metadata = *((chimeMetadata *) buf->metadata[buf_frame]->metadata);
-        int64_t frame_fpga_seq = metadata.fpga_seq_num;
+        auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
+        int64_t frame_fpga_seq = metadata->fpga_seq_num;
         std::cout << buf_frame << " : " << frame_fpga_seq << std::endl;
         if (trigger_start_fpga + trigger_length_fpga <= frame_fpga_seq) continue;
         if (trigger_start_fpga >= frame_fpga_seq + samples_per_data_set) {
@@ -200,9 +206,14 @@ basebandDump bufferManager::get_data(
     // rest of the buffer can continue to opperate.
     manager_lock.unlock();
 
-    std::cout << "Frames in dump: " << dump_start_frame << " : " << dump_end_frame << std::endl;
+    std::cout << "Frames in dump: " << dump_start_frame;
+    std::cout << " : " << dump_end_frame << std::endl;
 
-    uint32_t freq_id = 10; //fake
+    auto first_meta = (chimeMetadata *) buf->metadata[dump_start_frame]->metadata;
+
+    stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
+    uint32_t freq_id = bin_number_chime(&stream_id);
+
     int64_t data_length_fpga = 100000;
     int64_t data_start_fpga = 0;
 
@@ -242,6 +253,7 @@ gsl::span<T> span_from_length(uint8_t * start, size_t length) {
     return gsl::span<T>(span_start, span_end);
 }
 
+
 basebandDump::basebandDump(
         uint64_t event_id_,
         uint32_t freq_id_,
@@ -254,25 +266,11 @@ basebandDump::basebandDump(
         num_elements(num_elements_),
         data_start_fpga(data_start_fpga_),
         data_length_fpga(data_length_fpga_),
-        // If we initialized the memory in the span instead of the ref.
         data(span_from_length<uint8_t>(new uint8_t[num_elements_ * data_length_fpga_],
                                        num_elements_ * data_length_fpga_))
 {
-    // Doesn't work because data is const. Use initializer list.
-    //data = gsl::span<uint8_t>(data_ref.get(),
-    //                          data_ref.get() + num_elements * data_length_fpga);
-    //
-
-    // XXX Since I didn't supply a deleter, I think it is implicitly `delete`
-    // instead of `delete[]`, so this should leak memory.
-    // Actually this does not appear to leak. Not positive I understand why.
-    data_ref = std::shared_ptr<uint8_t>(&data[0]);
-
-    // Candidate correct constructor.
-    //data_ref = std::shared_ptr<uint8_t>(&data[0],
-    //      [](uint8_t *p ) { delete[] p; });
-    // Intensional leak, for testing.
-    //      [](uint8_t *p ) { std::cout << "Delete!" << std::endl; });
+    data_ref = std::shared_ptr<uint8_t>(&data[0],
+                                        [](uint8_t *p ) { delete [] p; });
 }
 
 basebandDump::~basebandDump() {
