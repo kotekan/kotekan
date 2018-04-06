@@ -1,5 +1,5 @@
-#ifndef BASEBAND_MANAGER_HPP
-#define BASEBAND_MANAGER_HPP
+#ifndef BASEBAND_REQUEST_MANAGER_HPP
+#define BASEBAND_REQUEST_MANAGER_HPP
 
 #include "json.hpp"
 #include "restServer.hpp"
@@ -29,13 +29,13 @@ struct BasebandDump {
 };
 
 
-class BasebandManager {
+class BasebandRequestManager {
 public:
     /**
-     * @brief Returns the singleton instance of the BasebandManager object.
-     * @return A pointer to the BasebandManager object
+     * @brief Returns the singleton instance of the BasebandRequestManager object.
+     * @return A pointer to the BasebandRequestManager object
      */
-    static BasebandManager& instance();
+    static BasebandRequestManager& instance();
 
     /**
      * @brief Registers this class with the REST server, creating the
@@ -73,7 +73,7 @@ public:
 
 private:
     /// Constructor, not used directly
-    BasebandManager() = default;
+    BasebandRequestManager() = default;
 
     /// Queue of unprocessed baseband requests
     std::deque<BasebandRequest> requests;
@@ -88,4 +88,4 @@ private:
     std::condition_variable requests_cv;
 };
 
-#endif /* BASEBAND_MANAGER_HPP */
+#endif /* BASEBAND_REQUEST_MANAGER_HPP */

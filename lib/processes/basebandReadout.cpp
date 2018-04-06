@@ -3,7 +3,7 @@
 #include <assert.h>
 
 #include "basebandReadout.hpp"
-#include "baseband_manager.hpp"
+#include "baseband_request_manager.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
@@ -92,7 +92,7 @@ void basebandReadout::main_thread() {
 
 void basebandReadout::listen_thread() {
     uint64_t event_id=0;
-    BasebandManager& mgr = BasebandManager::instance();
+    BasebandRequestManager& mgr = BasebandRequestManager::instance();
     // XXX I see you are using a singleton here. Note that there will be 4 copies of this running
     // (for the 4 frequencies) in the same processess, so you will need some way to make sure the
     // right requests go to the right frequencies. Based on the freq_id, which is in the incoming
