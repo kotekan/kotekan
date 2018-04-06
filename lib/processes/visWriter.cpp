@@ -56,9 +56,8 @@ visWriter::visWriter(Config& config,
     if(node_mode) {
 
         // Set the instrument_name from the hostname
-        char temp[256];
-        gethostname(temp, 256);
-        std::string t = temp;
+        std::string t(256, '\0');
+        gethostname(&t[0], 256);
         // Here we trim the hostname to the first alphanumeric segment only.
         instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
 
@@ -185,14 +184,30 @@ void visWriter::init_acq() {
     // Use the per buffer info to setup the acqusition properties
     setup_freq(freq_ids);
 
+    // Get the current user
+    std::string user(256, '\0');
+    user = (getlogin_r(&user[0], 256) == 0) ? user : "unknown";
+
+    // Get the current hostname of the system
+    std::string hostname(256, '\0');
+    gethostname(&hostname[0], 256);
+
+    // Set the metadata that we want to save with the file
+    std::map<std::string, std::string> metadata;
+    metadata["weight_type"] = weights_type;
+    metadata["archive_version"] = "NT_3.1.0";
+    metadata["instrument_name"] = instrument_name;
+    metadata["notes"] = "";   // TODO: connect up notes
+    metadata["git_version_tag"] = "not set";
+    metadata["system_user"] = user;
+    metadata["collection_server"] = hostname;
+
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
-    // TODO: connect up notes
-    std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
         new visFileBundle(
-            root_path, instrument_name, chunk_id, file_length, window,
-            notes, weights_type, freqs, inputs, prods, num_ev, file_length
+            "hdf5fast", root_path, instrument_name, metadata, chunk_id, file_length, window,
+            freqs, inputs, prods, num_ev, file_length
         )
     );
 }
