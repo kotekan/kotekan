@@ -2,11 +2,21 @@
 #
 # kotekan_longrun_recv.yaml
 #
-# CHIME GPU node configuration used in the
-# March 2018 run.  Includes 5 second 26m baselines,
+# CHIME GPU node configuration used in the March 2018 run.
+#
+# For the N2 data it includes 5 second 26m baselines,
 # 10 second calibration data, full triangles for 4 frequencies
 # at 10 seconds, and 20 second baseline subseted data
-# for a subset of frequencies.
+# for a subset of frequencies.  Eigenvalues are also computed.
+#
+# Also includes the FRB kernels and transmition to
+# 10 FRB L1 nodes.
+#
+# Because of problems with the FRB Tx code there is a
+# Large random delay added to the processing time
+# for each incoming block of data from the FPGAs
+#
+# The kernels for the Pulsar system are not included
 #
 # Author: Andre Renard
 #
