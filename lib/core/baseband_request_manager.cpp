@@ -12,7 +12,7 @@ static void to_json(json& j, const BasebandRequest& r) {
     j = json{{"start", r.start_fpga}, {"length", r.length_fpga}, {"received", received.str()}};
 }
 
-static void to_json(json& j, const BasebandDump& d) {
+static void to_json(json& j, const BasebandDumpStatus& d) {
     j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
 }
 
@@ -68,7 +68,7 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-std::shared_ptr<BasebandDump> BasebandRequestManager::get_next_dump() {
+std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_dump() {
     std::cout << "Waiting for notification\n";
     std::unique_lock<std::mutex> lock(requests_lock);
 
@@ -82,7 +82,7 @@ std::shared_ptr<BasebandDump> BasebandRequestManager::get_next_dump() {
 
     if (!requests.empty()) {
         BasebandRequest req = requests.front();
-        std::shared_ptr<BasebandDump> task = std::make_shared<BasebandDump>(BasebandDump{req});
+        std::shared_ptr<BasebandDumpStatus> task = std::make_shared<BasebandDumpStatus>(BasebandDumpStatus{req});
         requests.pop_front();
         processing.push_back(task);
         return task;

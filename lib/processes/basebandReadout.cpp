@@ -15,7 +15,7 @@ REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 /// Worker task that mocks the progress of a baseband dump
 // TODO: implement
-static void process_request(const std::shared_ptr<BasebandDump> dump) {
+static void process_request(const std::shared_ptr<BasebandDumpStatus> dump) {
     std::cout << "Started processing " << dump << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
     dump->bytes_remaining -= 51;
@@ -107,8 +107,8 @@ void basebandReadout::listen_thread() {
 
         // For testing readout logic.
         auto dump = mgr.get_next_dump();
-        //auto dump =  std::make_shared<BasebandDump>(
-        //        BasebandDump{BasebandRequest{360000, 131079}});
+        //auto dump =  std::make_shared<BasebandDumpStatus>(
+        //        BasebandDumpStatus{BasebandRequest{360000, 131079}});
         //sleep(5);
 
         if (dump) {

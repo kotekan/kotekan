@@ -22,7 +22,7 @@ struct BasebandRequest {
 /**
  * Helper structure to track the progress of a dump request's processing.
  */
-struct BasebandDump {
+struct BasebandDumpStatus {
     const BasebandRequest request;
     const size_t bytes_total = request.length_fpga * 17;
     size_t bytes_remaining = bytes_total;
@@ -66,10 +66,10 @@ public:
     /**
      * @brief Tries to get the next dump request to process.
      *
-     * @return a shared_ptr to the `BasebandDump` object if there is a
+     * @return a shared_ptr to the `BasebandDumpStatus` object if there is a
      * request available, or nullptr if the request queue is empty.
      */
-    std::shared_ptr<BasebandDump> get_next_dump();
+    std::shared_ptr<BasebandDumpStatus> get_next_dump();
 
 private:
     /// Constructor, not used directly
@@ -79,7 +79,7 @@ private:
     std::deque<BasebandRequest> requests;
 
     /// Queue of baseband dumps in progress
-    std::vector<std::shared_ptr<BasebandDump>> processing;
+    std::vector<std::shared_ptr<BasebandDumpStatus>> processing;
 
     /// request updating lock
     std::mutex requests_lock;
