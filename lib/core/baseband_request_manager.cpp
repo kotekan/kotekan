@@ -68,7 +68,7 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_dump() {
+std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request() {
     std::cout << "Waiting for notification\n";
     std::unique_lock<std::mutex> lock(requests_lock);
 
@@ -82,7 +82,7 @@ std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_dump() {
 
     if (!requests.empty()) {
         BasebandRequest req = requests.front();
-        std::shared_ptr<BasebandDumpStatus> task = std::make_shared<BasebandDumpStatus>(BasebandDumpStatus{req});
+        auto task = std::make_shared<BasebandDumpStatus>(BasebandDumpStatus{req});
         requests.pop_front();
         processing.push_back(task);
         return task;

@@ -106,7 +106,7 @@ void basebandReadout::listen_thread() {
         // Code to run after getting a trigger.
 
         // For testing readout logic.
-        auto dump = mgr.get_next_dump();
+        auto dump = mgr.get_next_request();
         //auto dump =  std::make_shared<BasebandDumpStatus>(
         //        BasebandDumpStatus{BasebandRequest{360000, 131079}});
         //sleep(5);

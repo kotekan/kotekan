@@ -69,7 +69,7 @@ public:
      * @return a shared_ptr to the `BasebandDumpStatus` object if there is a
      * request available, or nullptr if the request queue is empty.
      */
-    std::shared_ptr<BasebandDumpStatus> get_next_dump();
+    std::shared_ptr<BasebandDumpStatus> get_next_request();
 
 private:
     /// Constructor, not used directly
