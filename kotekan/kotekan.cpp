@@ -31,8 +31,6 @@ extern "C" {
 #include <pthread.h>
 }
 
-Break again on new branch
-
 // DPDK!
 #ifdef WITH_DPDK
 extern "C" {
