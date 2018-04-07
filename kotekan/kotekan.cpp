@@ -27,8 +27,6 @@
 #include <csignal>
 #include "configEval.hpp"
 
-break the build, remove this line
-
 extern "C" {
 #include <pthread.h>
 }
