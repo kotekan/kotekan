@@ -51,7 +51,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     update_gains=true;
     first_pass=true;
-    gain_len = 2*2048*sizeof(float);
+    gain_len = 2*_num_elements*sizeof(float);
     host_gain = (float *)hsa_host_malloc(gain_len);
     
     phase_frame_len = _num_elements*_num_pulsar*2*sizeof(float);
