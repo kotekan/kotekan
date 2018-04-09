@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_frbscale.yaml
+# chime_frb.yaml
 #
 # CHIME config to exercise full GPU functionality (N2 + FRB),
 # with FRB postprocessing and output.
