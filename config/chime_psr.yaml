@@ -2,7 +2,7 @@
 #
 # chime_frbscale.yaml
 #
-# CHIME config to exercise full GPU functionality (N2 + FRB).
+# CHIME config to exercise full GPU functionality (N2 + FRB + Pulsar).
 #
 # Author: Keith Vanderlinde
 #
@@ -135,8 +135,8 @@ gpu:
   - name: hsaInputData
   - name: hsaPresumZero
   - name: hsaOutputDataZero
-#  - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
+  - name: hsaPulsarUpdatePhase
   - name: hsaPresumKernel
   - name: hsaCorrelatorKernel
   - name: hsaBeamformReorder
