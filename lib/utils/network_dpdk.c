@@ -653,6 +653,12 @@ static inline int align_first_packet(struct NetworkDPDK * dpdk_net,
 
 static void handle_lost_packets(struct NetworkDPDK * dpdk_net, int port) {
 
+    // If doing the shuffle-4 mode, then select the location of the
+    // output to zero according to the stream ID.
+    int shuffle_pos = 0;
+    if (NUM_FREQ == 4)
+        shuffle_pos = dpdk_net->link_data[port][0].s_stream_ID.crate_id / 2;
+
     for (int freq = 0; freq < NUM_FREQ; ++freq) {
         // TODO Consider extracting this to another thread since it is non-deterministic.
         int lost_frames = dpdk_net->link_data[port][freq].seq - dpdk_net->link_data[port][freq].last_seq;
@@ -670,14 +676,14 @@ static void handle_lost_packets(struct NetworkDPDK * dpdk_net, int port) {
 
         atomic_add_lost_timesamples(dpdk_net->args->buf[port][freq], buffer_id, lost_frames);
 
-        //fprintf(stderr, "Number of lost frames: %d\n", lost_frames);
         while (lost_frames > 0) {
             if (unlikely(frame_location * frame_size == dpdk_net->args->buf[port][freq]->frame_size)) {
                 advance_frame(dpdk_net, port, freq, cur_seq_num);
                 frame_location = 0;
             }
             for (int i = 0; i < timesamples_per_packet; ++ i) {
-                nt_memset((void *)&dpdk_net->args->buf[port][freq]->frames[buffer_id][frame_location * frame_size + i*frame_size + freq*sub_frame_size],
+                int zero_location = frame_location * frame_size + i*frame_size + shuffle_pos*sub_frame_size;
+                nt_memset((void *)&dpdk_net->args->buf[port][freq]->frames[buffer_id][zero_location],
                       0x88,
                       sub_frame_size);
             }
