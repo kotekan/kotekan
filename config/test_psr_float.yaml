@@ -43,7 +43,8 @@ feed_sep_NS : 0.3048
 feed_sep_EW : 22.0
 num_pulsar: 10
 num_pol: 2
-
+source_ra: 19.99121016666667
+source_dec: 40.733915555555555
 
 # Pool
 main_pool:
@@ -64,19 +65,6 @@ gpu_input_buffers:
     gpu_input_buffer_3:
         kotekan_buffer: standard
 
-beamform_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    beamform_output_buffer_0:
-        kotekan_buffer: standard
-    beamform_output_buffer_1:
-        kotekan_buffer: standard
-    beamform_output_buffer_2:
-        kotekan_buffer: standard
-    beamform_output_buffer_3:
-        kotekan_buffer: standard
-
 pulsar_output_buffers:
     num_frames: buffer_depth
     frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float *2
@@ -90,22 +78,9 @@ pulsar_output_buffers:
     beamform_pulsar_output_buffer_3:
         kotekan_buffer: standard
 
-gpu_output_buffers:
-    num_frames: buffer_depth
-    frame_size: 4 * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
-    metadata_pool: main_pool
-    gpu_output_buffer_0:
-        kotekan_buffer: standard
-    gpu_output_buffer_1:
-        kotekan_buffer: standard
-    gpu_output_buffer_2:
-        kotekan_buffer: standard
-    gpu_output_buffer_3:
-        kotekan_buffer: standard
-
 baseband:
-  base_dir: /root/cherry/data/march8_B0329/
-  file_name: cs8g9_bb_82
+  base_dir: /mnt/gong/
+  file_name: cs8g9_bb
   read0:
     kotekan_process: rawFileRead
     file_ext: dat0
@@ -128,21 +103,11 @@ gpu:
   gain_dir: "/etc/kotekan/gains/tauA_03_09/"
   commands:
   - name: hsaInputData
-  - name: hsaPresumZero
-  - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
-  - name: hsaPresumKernel
-  - name: hsaCorrelatorKernel
   - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchan
   - name: hsaBeamformPulsar
-    kernel: matvec_mult
   - name: hsaBeamformPulsarOutput
-  - name: hsaBeamformOutputData
-  - name: hsaOutputData
   enable_delay: true
   delay_max_fraction: 0.5
   num_gpus: 4
@@ -156,8 +121,6 @@ gpu:
     in_buffers:
       network_buf: gpu_input_buffer_0
     out_buffers:
-      output_buf: gpu_output_buffer_0
-      beamform_output_buf: beamform_output_buffer_0
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
   gpu_1:
     kotekan_process: hsaProcess
@@ -165,8 +128,6 @@ gpu:
     in_buffers:
       network_buf: gpu_input_buffer_1
     out_buffers:
-      output_buf: gpu_output_buffer_1
-      beamform_output_buf: beamform_output_buffer_1
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
   gpu_2:
     kotekan_process: hsaProcess
@@ -174,8 +135,6 @@ gpu:
     in_buffers:
       network_buf: gpu_input_buffer_2
     out_buffers:
-      output_buf: gpu_output_buffer_2
-      beamform_output_buf: beamform_output_buffer_2
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
   gpu_3:
     kotekan_process: hsaProcess
@@ -183,8 +142,6 @@ gpu:
     in_buffers:
       network_buf: gpu_input_buffer_3
     out_buffers:
-      output_buf: gpu_output_buffer_3
-      beamform_output_buf: beamform_output_buffer_3
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
 
 file_out:
@@ -193,16 +150,16 @@ file_out:
   file_0:
     kotekan_process: rawFileWrite
     in_buf: beamform_pulsar_output_buffer_0
-    file_name: frb_out_b0329_psr_stream0
+    file_name: output_psr_stream0
   file_1:
     kotekan_process: rawFileWrite
     in_buf: beamform_pulsar_output_buffer_1
-    file_name: frb_out_b0329_psr_stream1
+    file_name: output_psr_stream1
   file_2:
     kotekan_process: rawFileWrite
     in_buf: beamform_pulsar_output_buffer_2
-    file_name: frb_out_b0329_psr_stream2
+    file_name: output_psr_stream2
   file_3:
     kotekan_process: rawFileWrite
     in_buf: beamform_pulsar_output_buffer_3
-    file_name: frb_out_b0329_psr_stream3
+    file_name: output_psr_stream3
