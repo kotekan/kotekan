@@ -42,6 +42,10 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
         _reorder_map_c[i] = _reorder_map[i];
     }
 
+    //Temporary solution: get ra and dec from config file
+    _source_ra = config.get_float(unique_name, "source_ra");
+    _source_dec = config.get_float(unique_name, "source_dec");
+
     //Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
     metadata_buffer_id = 0;
@@ -70,8 +74,8 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     //Come up with an initial position, to be updated via endpoint
     for (int i=0;i<_num_pulsar;i++){
-        psr_coord.ra[i]  = 53.51337+offset_ra[i]*15.;  //B0329 as default for now
-        psr_coord.dec[i] = 54.6248916+offset_dec[i];  //B0329 as default for now
+        psr_coord.ra[i]  = (_source_ra+offset_ra[i])*15.;
+        psr_coord.dec[i] = _source_dec+offset_dec[i];
     }
     bank_read_id = 8;
     bank_write = 0;
@@ -166,7 +170,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
 hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             hsa_signal_t precede_signal) {
     //Update phase every one second
-    const uint64_t phase_update_period = 390625;
+    const uint64_t phase_update_period = 49152; //390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
     uint bankID = (current_seq / phase_update_period) % 2;
 
