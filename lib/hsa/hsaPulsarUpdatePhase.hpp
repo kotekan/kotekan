@@ -17,7 +17,7 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     void update_gains_callback(connectionInstance& conn, json& json_request);
-  
+
     void calculate_phase(struct psrCoord psr_coord, timeval time_now, float freq_now, float *gain, float *output);
 
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
@@ -46,11 +46,11 @@ private:
     int32_t map_len;
     vector<int32_t> _reorder_map;
     int * _reorder_map_c;
-  
+
     int32_t metadata_buffer_id;
     int32_t metadata_buffer_precondition_id;
     Buffer * metadata_buf;
-  
+
     struct psrCoord psr_coord;
     struct psrCoord * psr_coord2;
     struct timeval time_now;
