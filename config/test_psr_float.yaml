@@ -79,7 +79,7 @@ beamform_output_buffers:
 
 pulsar_output_buffers:
     num_frames: buffer_depth
-    frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float
+    frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
         kotekan_buffer: standard
@@ -186,25 +186,6 @@ gpu:
       output_buf: gpu_output_buffer_3
       beamform_output_buf: beamform_output_buffer_3
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
-
-accumulate:
-    cpu_affinity: [8]
-    acc_0:
-        kotekan_process: accumulate
-        in_buf: gpu_output_buffer_0
-        out_buf: file_output_buffer_0
-    acc_1:
-        kotekan_process: accumulate
-        in_buf: gpu_output_buffer_1
-        out_buf: file_output_buffer_1
-    acc_2:
-        kotekan_process: accumulate
-        in_buf: gpu_output_buffer_2
-        out_buf: file_output_buffer_2
-    acc_3:
-        kotekan_process: accumulate
-        in_buf: gpu_output_buffer_3
-        out_buf: file_output_buffer_3
 
 file_out:
   base_dir: /mnt/gong/cherry/output_march8_psr_v4/
