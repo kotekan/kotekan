@@ -116,7 +116,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.data_frame = 0 ;  //UD
     vdif_header.ref_epoch = 36; // First half of 2018. 
     vdif_header.unused = 0;
-    vdif_header.frame_len = 5000;
+    vdif_header.frame_len = 768; //(6250-B data + 6-B pad + 32-B header)
     vdif_header.log_num_chan = 1; //2pol so ln2=1
     vdif_header.vdif_version = 1;
     char si[2]={'C','X'};
