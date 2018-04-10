@@ -10,6 +10,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               fullPacketDump.cpp
               gpuPostProcess.cpp
               pulsarPostProcess.cpp
+              pulsarPostProcess625.cpp
               nDiskFileWrite.cpp
               nDiskFileRead.cpp
               networkPowerStream.cpp
