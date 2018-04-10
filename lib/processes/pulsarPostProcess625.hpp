@@ -20,7 +20,7 @@ private:
                 struct VDIFHeader * vdif_header,
                 const uint64_t fpga_seq_num,
                 struct timeval * time_now,
-                struct psrCoord * psr_coord,
+                struct psrCoord psr_coord,
                 uint8_t freq_id);
 
     struct Buffer **in_buf;

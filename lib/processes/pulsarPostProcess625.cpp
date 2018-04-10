@@ -51,7 +51,7 @@ void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
 		  struct timeval * time_now,
-		  struct psrCoord * psr_coord,
+		  struct psrCoord psr_coord,
 		  uint8_t freq_id){
     //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
     for (int i = 0; i < num_packet; ++i) {  //80 frames in a stream
@@ -64,8 +64,8 @@ void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
 
 	for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
 	    vdif_header->eud1 = psr; //beam id
-	    uint16_t ra_part = (uint16_t)(psr_coord[0].ra[psr]*100);
-	    uint16_t dec_part = (uint16_t)((psr_coord[0].dec[psr]+90)*100);
+	    uint16_t ra_part = (uint16_t)(psr_coord.ra[psr]*100);
+	    uint16_t dec_part = (uint16_t)((psr_coord.dec[psr]+90)*100);
 	    vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
 	    memcpy(&out_buf[psr*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
 	} 
@@ -132,7 +132,7 @@ void pulsarPostProcess625::main_thread() {
     int in_frame_location = 0; //goes from 0 to 625
     uint64_t fpga_seq_num = 0;
 
-    struct psrCoord psr_coord[_num_gpus];
+    struct psrCoord psr_coord;
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t * out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == NULL) goto end_loop;
@@ -143,8 +143,8 @@ void pulsarPostProcess625::main_thread() {
 	    in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
 	    if (in_frame[i] == NULL) goto end_loop;
 
-	    psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
 	}
+	psr_coord = get_psr_coord(in_buf[0], in_buffer_ID[0]);
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
 	//Get time, use system time for now, gps time requires ch_master
