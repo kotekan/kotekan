@@ -6,9 +6,9 @@
 
 using std::vector;
 
-class pulsarPostProcess : public KotekanProcess {
+class pulsarPostProcess625 : public KotekanProcess {
 public:
-    pulsarPostProcess(Config& config_,
+    pulsarPostProcess625(Config& config_,
                   const string& unique_name,
                   bufferContainer &buffer_container);
     virtual ~pulsarPostProcess625();

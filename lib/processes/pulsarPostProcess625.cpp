@@ -64,8 +64,8 @@ void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
 
 	for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
 	    vdif_header->eud1 = psr; //beam id
-	    uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
-	    uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
+	    uint16_t ra_part = (uint16_t)(psr_coord[0].ra[psr]*100);
+	    uint16_t dec_part = (uint16_t)((psr_coord[0].dec[psr]+90)*100);
 	    vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
 	    memcpy(&out_buf[psr*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
 	} 
@@ -118,7 +118,7 @@ void pulsarPostProcess625::main_thread() {
     vdif_header.vdif_version = 1;
     char si[2]={'C','X'};
     vdif_header.station_id =  (si[0]<<8) + si[1]; //Need to fomrally ask the Vdif community
-    vdif_header.thread_id = 0; //UD Encoding freq map goes from [0:256]
+    vdif_header.thread_id = 0; //UD Encoding freq map goes from [0:256], using freq_bin_id from GPU0
     vdif_header.bits_depth = 3 ; //4-4b so 4-1=3
     vdif_header.data_type = 1; // Complex
     vdif_header.edv = 0;
@@ -155,8 +155,8 @@ void pulsarPostProcess625::main_thread() {
 		   (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
 	}
 	stream_id_t stream_id = get_stream_id_t(in_buf[0], in_buffer_ID[0]);
-	uint8_t freq_now = bin_number_chime(&stream_id);
-	INFO("[pulsar PP625] got freq bin %d",freq_now);
+	uint8_t freq_id = bin_number_chime(&stream_id);
+	INFO("[pulsar PP625] got freq bin %d",freq_id);
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
