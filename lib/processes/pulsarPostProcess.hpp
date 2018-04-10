@@ -32,6 +32,7 @@ private:
     uint32_t _nfreq_coarse;
     uint32_t _num_pulsar;
     uint32_t _num_pol;
+    uint32_t _psr_scaling;
     uint32_t _timesamples_per_pulsar_packet;
     uint32_t _udp_packet_size;
     uint32_t _udp_header_size;
