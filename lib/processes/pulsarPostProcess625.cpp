@@ -204,7 +204,11 @@ void pulsarPostProcess625::main_thread() {
  		        for (uint32_t p=0;p<_num_pol; ++p) {
 			    uint32_t out_index = (psr+thread_id*_num_pulsar) *_udp_packet_size*num_packet + frame * _udp_packet_size 
 			                          + p*samples_in_frame + in_frame_location + _udp_header_size ;
-			    out_buf[out_index] = int(in_buf_data[i*_num_pulsar*_num_pol + psr*_num_pol + p] / _psr_scaling); 
+                            uint8_t real_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2])/_psr_scaling +0.5)+8;
+                            uint8_t imag_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2+1])/_psr_scaling +0.5)+8;
+                            if (real_part > 15) real_part = 15;
+                            if (imag_part > 15) imag_part = 15;
+			    out_buf[out_index] = ((real_part<<4) & 0xF0) + (imag_part & 0x0F);
 			} //end loop pol
 		    } //end loop psr
 		} //end loop 4 GPUs
