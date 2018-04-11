@@ -33,8 +33,8 @@ The kotekan framework registers a number of points
     Returns all available REST endpoints in the system.
 
 ``/metrics`` ``[GET]``
-    Folder containing `Prometheus <https://prometheus.io/>`_-formatted
-    endpoints which serve a host of system state properties.
+    Returns text containing `Prometheus <https://prometheus.io/>`_-formatted
+    metrics which serve a host of system state properties.
 
 
 Per-process
