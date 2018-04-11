@@ -214,11 +214,6 @@ void pulsarPostProcess::main_thread() {
                             if (imag_part > 15) imag_part = 15;
 			    out_buf[out_index] = ((real_part<<4) & 0xF0) + (imag_part & 0x0F);
 			} //end loop pol
-
-			//pad 6 Bytes of 0 to make each packet size divisible by 8
-			for (i=6282; i<6288;i++){
- 			    out_buf[ (psr+thread_id*_num_pulsar) *_udp_packet_size*num_packet + frame * _udp_packet_size + i] = 0;
-			}
 		    } //end loop psr
 		} //end loop 4 GPUs
 		in_frame_location++;
