@@ -51,7 +51,6 @@ if (${USE_LAPACK})
     set(ENV{CMAKE_PREFIX_PATH} ${OPENBLAS_PATH})
   endif()
   find_package( OpenBLAS REQUIRED )
-  find_package( LAPACK REQUIRED )
 endif()
 
 if(${DPDK_VDIF})
