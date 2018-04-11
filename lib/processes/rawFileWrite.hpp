@@ -5,6 +5,25 @@
 #include "KotekanProcess.hpp"
 #include <string>
 
+/**
+ * @class rawFileWrite
+ * @brief Stream a buffer to disk.
+ *
+ * @par Buffers:
+ * @buffer in_buf Buffer to write to disk.
+ *     @buffer_format Any
+ *     @buffer_metadata Any
+ *
+ * @conf base_dir  String. Directory to write into.
+ * @conf file_name String. Base filename to write.
+ * @conf file_ext  String. File extension.
+ *
+ * @par Metrics
+ * @metric kotekan_rawfilewrite_write_time_seconds
+ *         The write time to write out the last frame.
+ *
+ * @author Andre Renard
+ **/
 class rawFileWrite : public KotekanProcess {
 public:
     rawFileWrite(Config& config,
