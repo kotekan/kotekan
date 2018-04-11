@@ -12,7 +12,6 @@ Compiling **Kotekan**
    :hidden:
 
    dpdk
-   hugepages
    openblas
 
 
@@ -33,9 +32,8 @@ Required for some options
 ==========================
 
 * pthread
-* Hugepage support (see :ref:`hugepages`)
 * `libevent <http://libevent.org/>`_
-* `DPDK dpdk-16.11.3 <http://dpdk.org/>`_ (see :ref:`dpdk`)
+* `DPDK dpdk-16.11.3 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and `HighFive <https://github.com/jrs65/HighFive>`_

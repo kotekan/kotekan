@@ -24,6 +24,7 @@ You should now be able to build & run kotekan!
 .. code:: bash
 
     cd <kotekan_dir>/build
+    cmake <options> ..
     make
     cd kotekan
     ./kotekan -c `<config_file.yaml>`

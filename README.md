@@ -5,13 +5,15 @@ One day we'll move them to readthedocs...
 
 # Build Instructions
 
+Detailed instructions at http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
+
 The project is build using cmake, so you will need to install cmake
 before starting a build.
 
 To build just the base framework:
 
 	cd build
-	cmake ..
+	cmake <options> ..
 	make
 
 Cmake build options:
