@@ -199,7 +199,7 @@ void pulsarPostProcess625::main_thread() {
 
 		unsigned char * out_buf = (unsigned char*)out_frame;
 		for (uint32_t thread_id = 0; thread_id < _num_gpus; ++thread_id) { //loop the 4 GPUs (input)
-		    unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
+		    float * in_buf_data = (float *)in_frame[thread_id];
 		    for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
  		        for (uint32_t p=0;p<_num_pol; ++p) {
 			    uint32_t out_index = (psr+thread_id*_num_pulsar) *_udp_packet_size*num_packet + frame * _udp_packet_size 
