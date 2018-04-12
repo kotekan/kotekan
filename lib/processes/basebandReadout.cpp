@@ -3,7 +3,7 @@
 #include <assert.h>
 
 #include "basebandReadout.hpp"
-#include "baseband_manager.hpp"
+#include "baseband_request_manager.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
@@ -16,7 +16,7 @@ REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 /// Worker task that mocks the progress of a baseband dump
 // TODO: implement
-static void process_request(const std::shared_ptr<BasebandDump> dump) {
+static void process_request(const std::shared_ptr<BasebandDumpStatus> dump) {
     std::cout << "Started processing " << dump << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
     dump->bytes_remaining -= 51;
@@ -93,7 +93,7 @@ void basebandReadout::main_thread() {
 
 void basebandReadout::listen_thread() {
     uint64_t event_id=0;
-    BasebandManager& mgr = BasebandManager::instance();
+    BasebandRequestManager& mgr = BasebandRequestManager::instance();
     // XXX I see you are using a singleton here. Note that there will be 4 copies of this running
     // (for the 4 frequencies) in the same processess, so you will need some way to make sure the
     // right requests go to the right frequencies. Based on the freq_id, which is in the incoming
@@ -107,9 +107,9 @@ void basebandReadout::listen_thread() {
         // Code to run after getting a trigger.
 
         // For testing readout logic.
-        auto dump = mgr.get_next_dump();
-        //auto dump =  std::make_shared<BasebandDump>(
-        //        BasebandDump{BasebandRequest{360000, 131079}});
+        auto dump = mgr.get_next_request();
+        //auto dump =  std::make_shared<BasebandDumpStatus>(
+        //        BasebandDumpStatus{BasebandRequest{360000, 131079}});
         //sleep(5);
 
         if (dump) {

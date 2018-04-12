@@ -1,5 +1,5 @@
-#ifndef BASEBAND_MANAGER_HPP
-#define BASEBAND_MANAGER_HPP
+#ifndef BASEBAND_REQUEST_MANAGER_HPP
+#define BASEBAND_REQUEST_MANAGER_HPP
 
 #include "json.hpp"
 #include "restServer.hpp"
@@ -22,20 +22,20 @@ struct BasebandRequest {
 /**
  * Helper structure to track the progress of a dump request's processing.
  */
-struct BasebandDump {
+struct BasebandDumpStatus {
     const BasebandRequest request;
     const size_t bytes_total = request.length_fpga * 17;
     size_t bytes_remaining = bytes_total;
 };
 
 
-class BasebandManager {
+class BasebandRequestManager {
 public:
     /**
-     * @brief Returns the singleton instance of the BasebandManager object.
-     * @return A pointer to the BasebandManager object
+     * @brief Returns the singleton instance of the BasebandRequestManager object.
+     * @return A pointer to the BasebandRequestManager object
      */
-    static BasebandManager& instance();
+    static BasebandRequestManager& instance();
 
     /**
      * @brief Registers this class with the REST server, creating the
@@ -66,20 +66,20 @@ public:
     /**
      * @brief Tries to get the next dump request to process.
      *
-     * @return a shared_ptr to the `BasebandDump` object if there is a
+     * @return a shared_ptr to the `BasebandDumpStatus` object if there is a
      * request available, or nullptr if the request queue is empty.
      */
-    std::shared_ptr<BasebandDump> get_next_dump();
+    std::shared_ptr<BasebandDumpStatus> get_next_request();
 
 private:
     /// Constructor, not used directly
-    BasebandManager() = default;
+    BasebandRequestManager() = default;
 
     /// Queue of unprocessed baseband requests
     std::deque<BasebandRequest> requests;
 
     /// Queue of baseband dumps in progress
-    std::vector<std::shared_ptr<BasebandDump>> processing;
+    std::vector<std::shared_ptr<BasebandDumpStatus>> processing;
 
     /// request updating lock
     std::mutex requests_lock;
@@ -88,4 +88,4 @@ private:
     std::condition_variable requests_cv;
 };
 
-#endif /* BASEBAND_MANAGER_HPP */
+#endif /* BASEBAND_REQUEST_MANAGER_HPP */

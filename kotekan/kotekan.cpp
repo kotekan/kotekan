@@ -70,7 +70,7 @@ extern "C" {
 #include "gpsTime.h"
 #include "KotekanProcess.hpp"
 #include "prometheusMetrics.hpp"
-#include "baseband_manager.hpp"
+#include "baseband_request_manager.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -373,7 +373,7 @@ int main(int argc, char ** argv) {
     prometheusMetrics &metrics = prometheusMetrics::instance();
     metrics.register_with_server(rest_server);
 
-    BasebandManager &baseband = BasebandManager::instance();
+    BasebandRequestManager &baseband = BasebandRequestManager::instance();
     baseband.register_with_server(rest_server);
 
     for(EVER){

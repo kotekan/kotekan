@@ -1,4 +1,4 @@
-#include "baseband_manager.hpp"
+#include "baseband_request_manager.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -12,24 +12,24 @@ static void to_json(json& j, const BasebandRequest& r) {
     j = json{{"start", r.start_fpga}, {"length", r.length_fpga}, {"received", received.str()}};
 }
 
-static void to_json(json& j, const BasebandDump& d) {
+static void to_json(json& j, const BasebandDumpStatus& d) {
     j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
 }
 
-BasebandManager& BasebandManager::instance() {
-    static BasebandManager _instance;
+BasebandRequestManager& BasebandRequestManager::instance() {
+    static BasebandRequestManager _instance;
     return _instance;
 }
 
-void BasebandManager::register_with_server(restServer* rest_server) {
+void BasebandRequestManager::register_with_server(restServer* rest_server) {
   using namespace std::placeholders;
   rest_server->register_get_callback("/baseband",
-                                     std::bind(&BasebandManager::status_callback, this, _1));
+                                     std::bind(&BasebandRequestManager::status_callback, this, _1));
   rest_server->register_json_callback("/baseband",
-                                      std::bind(&BasebandManager::handle_request_callback, this, _1, _2));
+                                      std::bind(&BasebandRequestManager::handle_request_callback, this, _1, _2));
 }
 
-void BasebandManager::status_callback(connectionInstance& conn){
+void BasebandRequestManager::status_callback(connectionInstance& conn){
     json requests_json = json::array();
     std::lock_guard<std::mutex> lock(requests_lock);
 
@@ -48,7 +48,7 @@ void BasebandManager::status_callback(connectionInstance& conn){
     conn.send_text_reply(requests_json.dump());
 }
 
-void BasebandManager::handle_request_callback(connectionInstance& conn, json& request){
+void BasebandRequestManager::handle_request_callback(connectionInstance& conn, json& request){
     auto now = std::chrono::system_clock::now();
     json start_json = request["start"];
     json length_json = request["length"];
@@ -68,7 +68,7 @@ void BasebandManager::handle_request_callback(connectionInstance& conn, json& re
 }
 
 
-std::shared_ptr<BasebandDump> BasebandManager::get_next_dump() {
+std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request() {
     std::cout << "Waiting for notification\n";
     std::unique_lock<std::mutex> lock(requests_lock);
 
@@ -82,7 +82,7 @@ std::shared_ptr<BasebandDump> BasebandManager::get_next_dump() {
 
     if (!requests.empty()) {
         BasebandRequest req = requests.front();
-        std::shared_ptr<BasebandDump> task = std::make_shared<BasebandDump>(BasebandDump{req});
+        auto task = std::make_shared<BasebandDumpStatus>(BasebandDumpStatus{req});
         requests.pop_front();
         processing.push_back(task);
         return task;
