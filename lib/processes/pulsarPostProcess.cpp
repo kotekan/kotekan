@@ -65,6 +65,7 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 
 	    for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
 	        vdif_header->eud1 = psr; //beam id
+		vdif_header->eud2 = psr_coord[f].scaling[psr];
 		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
 		uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
 		vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
@@ -92,7 +93,6 @@ void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
     _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_pulsar_header_size");
-    _psr_scaling = config.get_int(unique_name, "psr_scaling");      
 }
 
 void pulsarPostProcess::main_thread() {
@@ -125,7 +125,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.data_type = 1; // Complex
     vdif_header.edv = 0;
     vdif_header.eud1 = 0;  //UD: beam number [0 to 9]
-    vdif_header.eud2 = _psr_scaling;
+    vdif_header.eud2 = 0; //_psr_scaling from metadata
     vdif_header.eud3 = 0;  // UD: fpga count low bit
     vdif_header.eud4 = 0;  // 16-b RA + 16-b Dec
 

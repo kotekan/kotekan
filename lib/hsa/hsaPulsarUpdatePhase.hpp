@@ -41,6 +41,7 @@ private:
 
     float _source_ra;
     float _source_dec;
+    uint32_t _psr_scaling
 
     int32_t _num_elements;
     int16_t _num_pulsar;

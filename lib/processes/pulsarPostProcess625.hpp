@@ -35,7 +35,6 @@ private:
     uint32_t _timesamples_per_pulsar_packet;
     uint32_t _udp_packet_size;
     uint32_t _udp_header_size;
-    uint32_t _psr_scaling;
     struct timeval time_now;
 };
 

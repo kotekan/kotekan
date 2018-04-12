@@ -45,6 +45,8 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     //Temporary solution: get ra and dec from config file
     _source_ra = config.get_float(unique_name, "source_ra");
     _source_dec = config.get_float(unique_name, "source_dec");
+    //Default scaling factor, can be changed via endpoint
+    _psr_scaling = config.get_int(unique_name, "psr_scaling");
 
     //Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
@@ -76,6 +78,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     for (int i=0;i<_num_pulsar;i++){
         psr_coord.ra[i]  = (_source_ra+offset_ra[i])*15.;
         psr_coord.dec[i] = _source_dec+offset_dec[i];
+	psr_coord.scaling[i] = _psr_scaling;
     }
     bank_read_id = 8;
     bank_write = 0;
