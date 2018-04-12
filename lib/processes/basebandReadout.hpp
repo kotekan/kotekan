@@ -9,6 +9,7 @@
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
+#include "gpsTime.h"
 
 
 /* A container for baseband data and metadata.
@@ -68,6 +69,9 @@ private:
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
+
+    void lock_range(int start_frame, int end_frame);
+    void unlock_range(int start_frame, int end_frame);
 };
 
 

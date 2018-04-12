@@ -8,6 +8,7 @@
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
+#include "gpsTime.h"
 
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
@@ -180,39 +181,75 @@ basebandDump bufferManager::get_data(
         int64_t trigger_start_fpga,
         int64_t trigger_length_fpga
         ) {
-    manager_lock.lock();
+    // This assumes that the frame's timestamps are in order, but not that they
+    // are nessisarily contiguous.
 
-    int dump_start_frame = (oldest_frame > 0) ? oldest_frame : 0;
-    int dump_end_frame = dump_start_frame;
+    int dump_start_frame;
+    int dump_end_frame;
+    int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
+    float max_wait_time = 1.;
 
     std::cout << "Dump samples: " << trigger_start_fpga;
     std::cout << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
 
-    for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
-        int buf_frame = frame_index % buf->num_frames;
-        auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
-        int64_t frame_fpga_seq = metadata->fpga_seq_num;
-        std::cout << buf_frame << " : " << frame_fpga_seq << std::endl;
-        if (trigger_start_fpga + trigger_length_fpga <= frame_fpga_seq) continue;
-        if (trigger_start_fpga >= frame_fpga_seq + samples_per_data_set) {
-            dump_start_frame = frame_index + 1;
-            continue;
+    //while (!stop_thread) {
+    for (int try_no = 0; try_no < 2; try_no++) {
+        int64_t frame_fpga_seq = -1;
+        manager_lock.lock();
+        dump_start_frame = (oldest_frame > 0) ? oldest_frame : 0;
+        dump_end_frame = dump_start_frame;
+
+        for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
+            int buf_frame = frame_index % buf->num_frames;
+            auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
+            frame_fpga_seq = metadata->fpga_seq_num;
+            // XXX
+            std::cout << buf_frame << " : " << frame_fpga_seq << std::endl;
+
+            if (trigger_end_fpga <= frame_fpga_seq) continue;
+            if (trigger_start_fpga >= frame_fpga_seq + samples_per_data_set) {
+                dump_start_frame = frame_index + 1;
+                continue;
+            }
+            //frame_locks[frame_index % length].lock();
+            dump_end_frame = frame_index + 1;
         }
-        frame_locks[frame_index % length].lock();
-        dump_end_frame = frame_index + 1;
+        lock_range(dump_start_frame, dump_end_frame);
+
+        // Now that the relevant frames are locked, we can unlock the manager so the
+        // rest of the buffer can continue to opperate.
+        manager_lock.unlock();
+
+        std::cout << "Frames in dump: " << dump_start_frame;
+        std::cout << " : " << dump_end_frame << std::endl;
+
+        // Check if the trigger is 'precient'. That is, if any of the requested data has
+        // not yet arrived.
+        int64_t last_sample_present = frame_fpga_seq + samples_per_data_set;
+        if (last_sample_present <= trigger_start_fpga + trigger_length_fpga) {
+            unlock_range(dump_start_frame, dump_end_frame);
+            int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
+            time_to_wait_seq += samples_per_data_set;
+            // XXX
+            float wait_time = fmin(time_to_wait_seq * FPGA_PERIOD_NS * 1e-9, max_wait_time);
+            std::cout << "Wait: " << wait_time << std::endl;
+            sleep(wait_time);
+        } else {
+            // We have the data we need, break from the loop and copy it out.
+            break;
+        }
     }
 
-    // Now that the relevant frames are locked, we can unlock the manager so the
-    // rest of the buffer can continue to opperate.
-    manager_lock.unlock();
-
-    std::cout << "Frames in dump: " << dump_start_frame;
-    std::cout << " : " << dump_end_frame << std::endl;
-
-    auto first_meta = (chimeMetadata *) buf->metadata[dump_start_frame]->metadata;
+    std::cout << "Here." << std::endl;
+    // XXX This segfaults if dump_start_frame is no longer in the buffer 
+    // (it is equal to dump_end_frame).
+    int buf_frame = dump_start_frame % buf->num_frames;
+    auto first_meta = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
 
     stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
     uint32_t freq_id = bin_number_chime(&stream_id);
+
+
 
     int64_t data_length_fpga = 100000;
     int64_t data_start_fpga = 0;
@@ -234,14 +271,23 @@ basebandDump bufferManager::get_data(
         }
     }
 
-    std::cout << "Here." << std::endl;
+    std::cout << "There." << std::endl;
 
     // All the data has been copied. Release the locks.
-    for (int frame_index = dump_start_frame; frame_index < dump_end_frame; frame_index++) {
+    unlock_range(dump_start_frame, dump_end_frame);
+    return dump;
+}
+
+void bufferManager::lock_range(int start_frame, int end_frame) {
+    for (int frame_index = start_frame; frame_index < end_frame; frame_index++) {
+        frame_locks[frame_index % length].lock();
+    }
+}
+
+void bufferManager::unlock_range(int start_frame, int end_frame) {
+    for (int frame_index = start_frame; frame_index < end_frame; frame_index++) {
         frame_locks[frame_index % length].unlock();
     }
-
-    return dump;
 }
 
 
