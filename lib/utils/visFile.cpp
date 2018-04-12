@@ -80,7 +80,6 @@ void visFile::create(const std::string& name,
     file->createAttribute<std::string>(
         "instrument_name", DataSpace::From(inst_name)).write(inst_name);
 
-    // TODO: get git version tag somehow
     std::string git_version = GIT_COMMIT_HASH;
     file->createAttribute<std::string>(
         "git_version_tag", DataSpace::From(git_version)).write(git_version);
