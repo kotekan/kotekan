@@ -204,7 +204,7 @@ void pulsarPostProcess625::main_thread() {
  		        for (uint32_t p=0;p<_num_pol; ++p) {
 			    //beam->packets->[freq-time-pol]
 			    uint32_t out_index = psr*_udp_packet_size*num_packet + frame * _udp_packet_size
-			                         + thread_id*samples_in_frame*num_pol + in_frame_location*num_pol + p + _udp_header_size;
+			                         + thread_id*samples_in_frame*_num_pol + in_frame_location*_num_pol + p + _udp_header_size;
 			    uint8_t real_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2])/_psr_scaling +0.5)+8;
                             uint8_t imag_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2+1])/_psr_scaling +0.5)+8;
                             if (real_part > 15) real_part = 15;
