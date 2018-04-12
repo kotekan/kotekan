@@ -29,10 +29,11 @@ rfi_chime_inputsum(
     __local float sq_power_across_input[256];
     
     //Partial Sum across inputs
-    sq_power_across_input[lx] = input[lx + gy*num_elements + gz*num_elements*gy_size];
+    uint base_index = gx + gy*num_elements + gz*num_elements*gy_size;
+    sq_power_across_input[lx] = input[base_index];
     //printf("Input into Kernel 2: %f\n", sq_power_across_input[lx]);
     for(int i = 1; i < num_elements/lx_size; i++){
-        sq_power_across_input[lx] += input[lx + i*lx_size + gy*num_elements + gz*num_elements*gy_size]; 
+        sq_power_across_input[lx] += input[base_index + i*lx_size]; 
     }
 
     //Sum Across Input

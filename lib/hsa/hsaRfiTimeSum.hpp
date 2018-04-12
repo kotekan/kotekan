@@ -3,11 +3,13 @@
 
 #include "hsaCommand.hpp"
 
-class hsaRfi: public hsaCommand
+class hsaRfiTimeSum: public hsaCommand
 {
+
 public:
-    hsaRfi(Config &config,const string &unique_name,
-            bufferContainer &host_buffers, hsaDeviceInterface &device);
+
+    hsaRfiTimeSum(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaRfiTimeSum();
 
@@ -15,6 +17,7 @@ public:
                          hsa_signal_t precede_signal) override;
 
 private:
+
     uint32_t input_frame_len;
     uint32_t output_frame_len;
     uint32_t mask_len;
@@ -28,6 +31,8 @@ private:
     uint32_t _sk_step;
     uint32_t _num_bad_inputs;
     uint32_t rfi_size;
+
+    bool first_pass;
 };
 
 #endif

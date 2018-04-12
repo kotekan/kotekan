@@ -2,23 +2,16 @@
 #include "hsaBase.h"
 #include <math.h>
 
-hsaRfiInputSum::hsaRfiInputSum(const string& kernel_name, const string& kernel_file_name,
-                            hsaDeviceInterface& device, Config& config,
-                            bufferContainer& host_buffers,
-                            const string &unique_name) :
-    hsaCommand(kernel_name, kernel_file_name, device, config, host_buffers, unique_name) {
+REGISTER_HSA_COMMAND(hsaRfiInputSum);
+
+hsaRfiInputSum::hsaRfiInputSum(Config& config,
+                       const string &unique_name, 
+                       bufferContainer& host_buffers,
+                       hsaDeviceInterface& device) :
+    hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
 
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
-    apply_config(0); 
-}
-
-hsaRfiInputSum::~hsaRfiInputSum() {
-}
-
-void hsaRfiInputSum::apply_config(const uint64_t& fpga_seq) {
-    hsaCommand::apply_config(fpga_seq);
-
     //Data Parameters
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -31,8 +24,12 @@ void hsaRfiInputSum::apply_config(const uint64_t& fpga_seq) {
     input_frame_len = sizeof(float)*_num_elements*_num_local_freq*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;
     _num_bad_inputs = 0;
-    _M = (_num_elements - _num_bad_inputs)*_sk_step; 
+    _M = (_num_elements - _num_bad_inputs)*_sk_step;
 }
+
+hsaRfiInputSum::~hsaRfiInputSum() {
+}
+
 
 hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
