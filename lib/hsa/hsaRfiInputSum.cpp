@@ -30,7 +30,6 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
 hsaRfiInputSum::~hsaRfiInputSum() {
 }
 
-
 hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
     struct __attribute__ ((aligned(16))) args_t { 

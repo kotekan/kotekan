@@ -72,9 +72,3 @@ rfi_chime_timesum(
         output[4*gx + 3 + gz*4*gx_size] = (1-InputMask[4*gx + 3])*tmp.s1;
     }
 }
-
-
-
-
-
-
