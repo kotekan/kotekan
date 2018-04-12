@@ -56,7 +56,6 @@ void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
     //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
     for (int i = 0; i < num_packet; ++i) {  //80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
-	vdif_header->eud2 = (fpga_now & (0xFFFFFFFFl<<32))>>32;
 	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
 	vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
@@ -123,9 +122,9 @@ void pulsarPostProcess625::main_thread() {
     vdif_header.data_type = 1; // Complex
     vdif_header.edv = 0;
     vdif_header.eud1 = 0;  //UD: beam number [0 to 9]
-    vdif_header.eud2 = 0;  // UD: fpga count high bit
+    vdif_header.eud2 = _psr_scaling;  
     vdif_header.eud3 = 0;  // UD: fpga count low bit
-    vdif_header.eud4 = 0;  // Ra_int + Ra_dec + Dec_int + Dec_dec ? Source name ? Obs ID?
+    vdif_header.eud4 = 0;  // 16-b RA + 16-b Dec
 
 
     int frame = 0;
