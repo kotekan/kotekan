@@ -254,7 +254,7 @@ accumulate:
 
 # Adds endpoints /inspect_frame/file_output_buffer_*
 inspect_output:
-  # sets lenght to frame_size of file_output_buffer_0
+  # sets length to frame_size of file_output_buffer_0
   len: 0
   inspect_0:
     kotekan_process: restInspectFrame
