@@ -39,7 +39,6 @@ public:
     const int64_t data_start_fpga;
     const int64_t data_length_fpga;
     // Span used for data access.
-    // This should be const, but I can't figure out a way to initialize it properly.
     const gsl::span<uint8_t> data;
 
 private:
@@ -47,32 +46,6 @@ private:
     std::shared_ptr<uint8_t> data_ref;
 };
 
-
-class bufferManager {
-public:
-    bufferManager(Buffer * buf_, int length_);
-    ~bufferManager();
-
-    int add_replace_frame(int frame_id);
-    basebandDump get_data(
-            uint64_t event_id,
-            int64_t trigger_start_fpga,
-            int64_t trigger_length_fpga
-            );
-
-    int num_elements;
-    int samples_per_data_set;
-
-private:
-    Buffer * buf;
-    const int length;
-    int next_frame, oldest_frame;
-    std::vector<std::mutex> frame_locks;
-    std::mutex manager_lock;
-
-    void lock_range(int start_frame, int end_frame);
-    void unlock_range(int start_frame, int end_frame);
-};
 
 
 class basebandReadout : public KotekanProcess {
@@ -83,12 +56,27 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
-    bufferManager * manager;
-    void listen_thread();
     struct Buffer * buf;
     std::string base_dir;
     std::string file_ext;
     int num_frames_buffer;
+    int num_elements;
+    int samples_per_data_set;
+
+    int next_frame, oldest_frame;
+    std::vector<std::mutex> frame_locks;
+    std::mutex manager_lock;
+
+    void listen_thread();
+    int add_replace_frame(int frame_id);
+    void lock_range(int start_frame, int end_frame);
+    void unlock_range(int start_frame, int end_frame);
+    basebandDump get_data(
+            uint64_t event_id,
+            int64_t trigger_start_fpga,
+            int64_t trigger_length_fpga
+            );
+
 };
 
 

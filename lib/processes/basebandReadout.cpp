@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <thread>
 #include <assert.h>
+#include <algorithm>
 
 #include "basebandReadout.hpp"
 #include "baseband_request_manager.hpp"
@@ -30,13 +31,19 @@ static void process_request(const std::shared_ptr<BasebandDumpStatus> dump) {
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
-                       std::bind(&basebandReadout::main_thread, this)) {
+                       std::bind(&basebandReadout::main_thread, this)),
+        buf(get_buffer("in_buf")),
+        base_dir(config.get_string_default(unique_name, "base_dir", "./")),
+        file_ext(config.get_string(unique_name, "file_ext")),
+        num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
+        num_elements(config.get_int(unique_name, "num_elements")),
+        samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
+        next_frame(0),
+        oldest_frame(-1),
+        frame_locks(num_frames_buffer)
+{
 
-    buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
-    base_dir = config.get_string_default(unique_name, "base_dir", "./");
-    file_ext = config.get_string(unique_name, "file_ext");
-    num_frames_buffer = config.get_int(unique_name, "num_frames_buffer");
 
     // XXX
     std::cout << "BB constructor " << num_frames_buffer << " " << buf->num_frames << std::endl;
@@ -52,14 +59,9 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
                  buf->num_frames, num_frames_buffer);
         throw std::runtime_error(msg);
     }
-
-    manager = new bufferManager(buf, num_frames_buffer);
-    manager->num_elements = config.get_int(unique_name, "num_elements");
-    manager->samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 }
 
 basebandReadout::~basebandReadout() {
-    delete(manager);
 }
 
 void basebandReadout::apply_config(uint64_t fpga_seq) {
@@ -78,7 +80,7 @@ void basebandReadout::main_thread() {
                                 frame_id % buf->num_frames) == nullptr) {
             break;
         }
-        done_frame = manager->add_replace_frame(frame_id);
+        done_frame = add_replace_frame(frame_id);
         if (done_frame >= 0) {
             mark_frame_empty(buf, unique_name.c_str(),
                              done_frame % buf->num_frames);
@@ -101,7 +103,7 @@ void basebandReadout::listen_thread() {
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
-        // Latency is *key* here. We want to call manager->get_data within 100ms
+        // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
 
         // Code to run after getting a trigger.
@@ -122,7 +124,7 @@ void basebandReadout::listen_thread() {
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by a new thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
-            basebandDump data = manager->get_data(
+            basebandDump data = get_data(
                     event_id,    // XXX need this from the request.
                     dump->request.start_fpga,
                     dump->request.length_fpga
@@ -149,34 +151,26 @@ void basebandReadout::listen_thread() {
 }
 
 
-bufferManager::bufferManager(Buffer * buf_, int length_) :
-    buf(buf_), length(length_), next_frame(0), oldest_frame(-1),
-    frame_locks(length), manager_lock() {
-}
-
-int bufferManager::add_replace_frame(int frame_id) {
+int basebandReadout::add_replace_frame(int frame_id) {
     std::lock_guard<std::mutex> lock(manager_lock);
     int replaced_frame = -1;
     assert(frame_id == next_frame);
 
     // This will block if we are trying to replace a frame currenty being read out.
-    frame_locks[frame_id % length].lock();
-    // Somehow in C `-1 % length == -1` which makes no sence to me.
-    // So add `length` to `oldest_frame`.
-    if (frame_id % length == (oldest_frame + length) % length) {
+    frame_locks[frame_id % num_frames_buffer].lock();
+    // Somehow in C `-1 % num_frames_buffer == -1` which makes no sence to me.
+    // So add `num_frames_buffer` to `oldest_frame`.
+    if (frame_id % num_frames_buffer == (oldest_frame + num_frames_buffer) % num_frames_buffer) {
         replaced_frame = oldest_frame;
         oldest_frame++;
     }
-    frame_locks[frame_id % length].unlock();
+    frame_locks[frame_id % num_frames_buffer].unlock();
 
     next_frame++;
     return replaced_frame;
 }
 
-bufferManager::~bufferManager() {
-}
-
-basebandDump bufferManager::get_data(
+basebandDump basebandReadout::get_data(
         uint64_t event_id,
         int64_t trigger_start_fpga,
         int64_t trigger_length_fpga
@@ -192,8 +186,7 @@ basebandDump bufferManager::get_data(
     std::cout << "Dump samples: " << trigger_start_fpga;
     std::cout << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
 
-    //while (!stop_thread) {
-    for (int try_no = 0; try_no < 2; try_no++) {
+    while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
         manager_lock.lock();
         dump_start_frame = (oldest_frame > 0) ? oldest_frame : 0;
@@ -211,19 +204,18 @@ basebandDump bufferManager::get_data(
                 dump_start_frame = frame_index + 1;
                 continue;
             }
-            //frame_locks[frame_index % length].lock();
             dump_end_frame = frame_index + 1;
         }
         lock_range(dump_start_frame, dump_end_frame);
 
-        // Now that the relevant frames are locked, we can unlock the manager so the
-        // rest of the buffer can continue to opperate.
+        // Now that the relevant frames are locked, we can unlock the rest of the buffer so
+        // it can continue to opperate.
         manager_lock.unlock();
 
         std::cout << "Frames in dump: " << dump_start_frame;
         std::cout << " : " << dump_end_frame << std::endl;
 
-        // Check if the trigger is 'precient'. That is, if any of the requested data has
+        // Check if the trigger is 'prescient'. That is, if any of the requested data has
         // not yet arrived.
         int64_t last_sample_present = frame_fpga_seq + samples_per_data_set;
         if (last_sample_present <= trigger_start_fpga + trigger_length_fpga) {
@@ -231,7 +223,8 @@ basebandDump bufferManager::get_data(
             int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
             time_to_wait_seq += samples_per_data_set;
             // XXX
-            float wait_time = fmin(time_to_wait_seq * FPGA_PERIOD_NS * 1e-9, max_wait_time);
+            float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
+            wait_time = std::min(wait_time, max_wait_time);
             std::cout << "Wait: " << wait_time << std::endl;
             sleep(wait_time);
         } else {
@@ -240,53 +233,82 @@ basebandDump bufferManager::get_data(
         }
     }
 
+    if (dump_start_frame >= dump_end_frame) {
+        // Trigger was too late and missed the data. Return an empty dataset.
+        return basebandDump(event_id, 0, 0, 0, 0);
+    }
+
     std::cout << "Here." << std::endl;
-    // XXX This segfaults if dump_start_frame is no longer in the buffer 
-    // (it is equal to dump_end_frame).
+
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
 
     stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
     uint32_t freq_id = bin_number_chime(&stream_id);
 
-
-
-    int64_t data_length_fpga = 100000;
-    int64_t data_start_fpga = 0;
-
     // Figure out how much data we have.
+    int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
+    // For now just assume that we have the last sample, because the locking logic currently waits
+    // for it. Could be made to be more robust.
+    int64_t data_end_fpga = trigger_end_fpga;
 
     basebandDump dump(
             event_id,
             freq_id,
             num_elements,
             data_start_fpga,
-            data_length_fpga
+            data_end_fpga - data_start_fpga
             );
 
     // Fill in the data.
-    for (int ii = 0; ii < data_length_fpga; ii++) {
-        for (int jj = 0; jj < num_elements; jj++) {
-            dump.data[ii * num_elements + jj] = 8;
+    int64_t next_data_ind = 0;
+    for (int frame_index = dump_start_frame; frame_index < dump_end_frame; frame_index++) {
+        buf_frame = frame_index % buf->num_frames;
+        auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
+        uint8_t * buf_data = buf->frames[buf_frame];
+        int64_t frame_fpga_seq = metadata->fpga_seq_num;
+        int64_t frame_ind_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t) 0);
+        int64_t frame_ind_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t) samples_per_data_set);
+        int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
+        // XXX
+        std::cout << "frame index: " << frame_index << ", frame seq: " << frame_fpga_seq;
+        std::cout << ", frame ind start: " << frame_ind_start << ", data ind start: " << data_ind_start ;
+        std::cout << ", next data index: " << next_data_ind << ", frame ind end: " << frame_ind_end << std::endl;
+        // The folloing loop has 0 length unless there is a missing frame.
+        for (int64_t ii = next_data_ind; ii < data_ind_start; ii++) {
+            for (int64_t jj = 0; jj < num_elements; jj++) {
+                // Replace with fast memset?
+                dump.data[ii * num_elements + jj] = 0;
+            }
         }
+        for (int64_t ii = 0; ii < (frame_ind_end - frame_ind_start); ii++) {
+            for (int64_t jj = 0; jj < num_elements; jj++) {
+                // Replace with fast memcopy?
+                dump.data[(data_ind_start + ii) * num_elements + jj] =
+                        buf_data[(frame_ind_start + ii) * num_elements + jj];
+            }
+        }
+        // What data index are we expecting on the next iteration.
+        next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
+        // Done with this frame. Allow it to participate in the ring buffer.
+        frame_locks[frame_index % num_frames_buffer].unlock();
     }
 
     std::cout << "There." << std::endl;
 
-    // All the data has been copied. Release the locks.
     unlock_range(dump_start_frame, dump_end_frame);
     return dump;
 }
 
-void bufferManager::lock_range(int start_frame, int end_frame) {
+void basebandReadout::lock_range(int start_frame, int end_frame) {
     for (int frame_index = start_frame; frame_index < end_frame; frame_index++) {
-        frame_locks[frame_index % length].lock();
+        frame_locks[frame_index % num_frames_buffer].lock();
     }
 }
 
-void bufferManager::unlock_range(int start_frame, int end_frame) {
+void basebandReadout::unlock_range(int start_frame, int end_frame) {
     for (int frame_index = start_frame; frame_index < end_frame; frame_index++) {
-        frame_locks[frame_index % length].unlock();
+        frame_locks[frame_index % num_frames_buffer].unlock();
     }
 }
 
