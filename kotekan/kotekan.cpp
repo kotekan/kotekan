@@ -70,6 +70,7 @@ extern "C" {
 #include "gpsTime.h"
 #include "KotekanProcess.hpp"
 #include "prometheusMetrics.hpp"
+#include "processFactory.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -94,10 +95,28 @@ void print_help() {
     printf("    --config-daemon (-d) [file] Same as -c, but uses installed yaml->json script\n");
     printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
     printf("    --syslog (-s)               Send a copy of the output to syslog.\n");
-    printf("    --no-stderr (-n)            Disables output to std error if syslog (-s) is enabled.\n\n");
+    printf("    --no-stderr (-n)            Disables output to std error if syslog (-s) is enabled.\n");
+    printf("    --version (-v)              Prints the kotekan version and build details.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
+}
+
+void print_version() {
+    printf("Kotekan version %s\n", KOTEKAN_VERSION_STR);
+    printf("Build branch: %s\n", GIT_BRANCH);
+    printf("Git commit hash: %s\n\n", GIT_COMMIT_HASH);
+    printf("CMake build settings: \n%s\n", CMAKE_BUILD_SETTINGS);
+
+    printf("Available kotekan processes:\n");
+    std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
+    for (auto &process_maker : known_processes) {
+        if (process_maker.first != known_processes.rbegin()->first) {
+            printf("%s, ", process_maker.first.c_str());
+        } else {
+            printf("%s\n\n", process_maker.first.c_str());
+        }
+    }
 }
 
 #ifdef WITH_DPDK
@@ -195,14 +214,6 @@ void start_new_kotekan_mode(Config &config) {
 }
 
 int main(int argc, char ** argv) {
-#ifdef WITH_DPDK
-    dpdk_setup();
-#endif
-
-#ifdef WITH_HSA
-    kotekan_hsa_start();
-#endif
-    json config_json;
 
     std::signal(SIGINT, signal_handler);
 
@@ -227,12 +238,13 @@ int main(int argc, char ** argv) {
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
             {"no-stderr", no_argument, 0, 'n'},
+            {"version", no_argument, 0, 'v'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:d:sn",
+        opt_val = getopt_long (argc, argv, "ghc:d:snv",
                                long_options, &option_index);
 
         // End of args
@@ -261,12 +273,24 @@ int main(int argc, char ** argv) {
             case 'n':
                 enable_stderr = false;
                 break;
+            case 'v':
+                print_version();
+                return 0;
+                break;
             default:
                 printf("Invalid option, run with -h to see options");
                 return -1;
                 break;
         }
     }
+
+#ifdef WITH_DPDK
+    dpdk_setup();
+#endif
+
+#ifdef WITH_HSA
+    kotekan_hsa_start();
+#endif
 
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
@@ -316,7 +340,7 @@ int main(int argc, char ** argv) {
         }
         string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
         std::string json_string = exec(exec_command.c_str());
-        config_json = json::parse(json_string.c_str());
+        json config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
         start_new_kotekan_mode(config);
     }
