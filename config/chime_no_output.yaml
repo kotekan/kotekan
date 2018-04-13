@@ -123,7 +123,8 @@ dpdk:
 
 # Adds endpoints /inspect_frame/gpu_input_buffer_*
 inspect_input:
-  len: 8096
+  # Frames are 2048 bytes, so 524288 = 256 frames
+  len: 524288
   inspect_0:
     kotekan_process: restInspectFrame
     in_buf: gpu_input_buffer_0
