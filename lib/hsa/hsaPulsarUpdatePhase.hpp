@@ -27,8 +27,6 @@ public:
 
     void pulsar_grab_callback(connectionInstance& conn, json& json_request);
 
-    void phase_thread();
-
 private:
 
     int32_t phase_frame_len;
@@ -41,7 +39,7 @@ private:
 
     float _source_ra;
     float _source_dec;
-    uint32_t _psr_scaling
+    uint32_t _psr_scaling;
 
     int32_t _num_elements;
     int16_t _num_pulsar;

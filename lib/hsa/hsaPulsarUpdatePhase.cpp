@@ -96,6 +96,10 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     restServer * rest_server = get_rest_server();
     string endpoint = "/frb/update_gains/" + std::to_string(device.get_gpu_id());
     rest_server->register_json_callback(endpoint,std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
+
+    //Another endpoint for pointing updates
+    string endpoint2 = "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    rest_server->register_json_callback(endpoint2,std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
@@ -173,7 +177,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
 hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             hsa_signal_t precede_signal) {
     //Update phase every one second
-    const uint64_t phase_update_period = 49152; //390625;
+    const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
     uint bankID = (current_seq / phase_update_period) % 2;
 
@@ -291,20 +295,8 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         psr_coord.ra[beam] = json_request["ra"];
         psr_coord.dec[beam] = json_request["dec"];
+	psr_coord.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(STATUS_OK);
     }
 }
 
-void hsaPulsarUpdatePhase::phase_thread() {
-
-    using namespace std::placeholders;
-    sleep(5);
-    for(;;) {
-        sleep(1);
-        //Listen to RestServer for new pulsar, and update ra and dec
-        restServer * rest_server = get_rest_server();
-        string endpoint = "/update_pulsar/"+std::to_string(device.get_gpu_id());
-        rest_server->register_json_callback(endpoint,
-                                            std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
-    }
-}
