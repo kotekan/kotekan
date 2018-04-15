@@ -33,10 +33,13 @@ void BasebandRequestManager::status_callback(connectionInstance& conn){
     json requests_json = json::array();
     std::lock_guard<std::mutex> lock(requests_lock);
 
-    for (auto& req : requests) {
-        json j;
-        to_json(j, req);
-        requests_json.push_back(j);
+    for (auto& element : requests) {
+        std::string str_id = element.first;
+        for (auto& req : element.second) {
+            json j;
+            to_json(j, req);
+            requests_json.push_back(j);
+        }
     }
 
     for (const auto& d : processing) {
@@ -52,12 +55,16 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
     auto now = std::chrono::system_clock::now();
     json start_json = request["start"];
     json length_json = request["length"];
-    if (start_json.is_number_integer() && length_json.is_number_integer()) {
+    json str_id_json = request["str_id"];
+    if (start_json.is_number_integer() &&
+        length_json.is_number_integer() &&
+        str_id_json.is_string()) {
         int64_t start_fpga = request["start"];
         int64_t length_fpga = request["length"];
+        std::string str_id = request["str_id"];
         {
             std::lock_guard<std::mutex> lock(requests_lock);
-            requests.push_back({start_fpga, length_fpga, now});
+            requests[str_id].push_back({start_fpga, length_fpga, now});
         }
         requests_cv.notify_all();
         conn.send_empty_reply(STATUS_OK);
@@ -68,7 +75,7 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request() {
+std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(const std::string& str_id) {
     std::cout << "Waiting for notification\n";
     std::unique_lock<std::mutex> lock(requests_lock);
 
@@ -80,10 +87,10 @@ std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request() {
         std::cout << "Expired\n";
     }
 
-    if (!requests.empty()) {
-        BasebandRequest req = requests.front();
+    if (!requests[str_id].empty()) {
+        BasebandRequest req = requests[str_id].front();
         auto task = std::make_shared<BasebandDumpStatus>(BasebandDumpStatus{req});
-        requests.pop_front();
+        requests[str_id].pop_front();
         processing.push_back(task);
         return task;
     }
