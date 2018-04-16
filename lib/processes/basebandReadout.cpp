@@ -11,6 +11,9 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
+#include "nt_memcpy.h"
+#include "nt_memset.h"
+
 
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
@@ -184,6 +187,10 @@ basebandDump basebandReadout::get_data(
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     float max_wait_time = 1.;
 
+    if (trigger_length_fpga > samples_per_data_set * num_frames_buffer / 2) {
+        throw std::runtime_error("Baseband dump request too long");
+    }
+
     std::cout << "Dump samples: " << trigger_start_fpga;
     std::cout << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
 
@@ -197,8 +204,6 @@ basebandDump basebandReadout::get_data(
             int buf_frame = frame_index % buf->num_frames;
             auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
             frame_fpga_seq = metadata->fpga_seq_num;
-            // XXX
-            std::cout << buf_frame << " : " << frame_fpga_seq << std::endl;
 
             if (trigger_end_fpga <= frame_fpga_seq) continue;
             if (trigger_start_fpga >= frame_fpga_seq + samples_per_data_set) {
@@ -223,10 +228,8 @@ basebandDump basebandReadout::get_data(
             unlock_range(dump_start_frame, dump_end_frame);
             int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
             time_to_wait_seq += samples_per_data_set;
-            // XXX
             float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
             wait_time = std::min(wait_time, max_wait_time);
-            std::cout << "Wait: " << wait_time << std::endl;
             sleep(wait_time);
         } else {
             // We have the data we need, break from the loop and copy it out.
@@ -271,31 +274,23 @@ basebandDump basebandReadout::get_data(
         int64_t frame_ind_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t) 0);
         int64_t frame_ind_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t) samples_per_data_set);
         int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
-        // XXX
-        std::cout << "frame index: " << frame_index << ", frame seq: " << frame_fpga_seq;
-        std::cout << ", frame ind start: " << frame_ind_start << ", data ind start: " << data_ind_start ;
-        std::cout << ", next data index: " << next_data_ind << ", frame ind end: " << frame_ind_end << std::endl;
-        // The folloing loop has 0 length unless there is a missing frame.
-        for (int64_t ii = next_data_ind; ii < data_ind_start; ii++) {
-            for (int64_t jj = 0; jj < num_elements; jj++) {
-                // Replace with fast memset?
-                dump.data[ii * num_elements + jj] = 0;
-            }
-        }
-        for (int64_t ii = 0; ii < (frame_ind_end - frame_ind_start); ii++) {
-            for (int64_t jj = 0; jj < num_elements; jj++) {
-                // Replace with fast memcopy?
-                dump.data[(data_ind_start + ii) * num_elements + jj] =
-                        buf_data[(frame_ind_start + ii) * num_elements + jj];
-            }
-        }
+        // The following copy has 0 length unless there is a missing frame.
+        nt_memset(
+                &dump.data[next_data_ind * num_elements],
+                0,
+                (data_ind_start - next_data_ind) * num_elements
+                );
+        // Now copy in the frame data.
+        nt_memcpy(
+                &dump.data[data_ind_start * num_elements],
+                &buf_data[frame_ind_start * num_elements],
+                (frame_ind_end - frame_ind_start) * num_elements
+                );
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
         // Done with this frame. Allow it to participate in the ring buffer.
         frame_locks[frame_index % num_frames_buffer].unlock();
     }
-
-    std::cout << "There." << std::endl;
 
     unlock_range(dump_start_frame, dump_end_frame);
     return dump;
