@@ -15,6 +15,8 @@
 #include "errors.h"
 #include "chimeMetadata.h"
 
+REGISTER_KOTEKAN_PROCESS(rfiBroadcast);
+
 rfiBroadcast::rfiBroadcast(Config& config,
                                        const string& unique_name,
                                        bufferContainer &buffer_container) :
@@ -33,7 +35,7 @@ rfiBroadcast::~rfiBroadcast() {
 
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 
-    _num_freq = config.get_int(unique_name, "num_freq");
+    _num_freq = config.get_int(unique_name, "num_total_freq");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _num_elements = config.get_int(unique_name, "num_elements");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");

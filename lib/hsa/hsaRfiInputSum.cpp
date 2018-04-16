@@ -44,7 +44,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     args.output = device.get_gpu_memory_array("rfi_output",gpu_frame_id, output_frame_len);
     args.num_elements = _num_elements;
     args.M = _M;
-    //INFO("NUM ELEMENTS: %d M: %d",_num_elements, _M);
+    INFO("NUM ELEMENTS: %d M: %d",_num_elements, _M);
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 

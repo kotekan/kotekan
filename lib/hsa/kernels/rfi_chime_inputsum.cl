@@ -21,8 +21,8 @@ rfi_chime_inputsum(
     short gz = get_global_id(2);
     short lx = get_local_id(0);
     short gx_size = get_global_size(0); //#256
-    short gy_size = get_global_size(1); //#8
-    short gz_size = get_global_size(2); //#128
+    short gy_size = get_global_size(1); //#num_freq
+    short gz_size = get_global_size(2); //#timesteps/sk_step
     short lx_size = get_local_size(0);
 
     //Declare Local Memory
@@ -31,7 +31,7 @@ rfi_chime_inputsum(
     //Partial Sum across inputs
     uint base_index = gx + gy*num_elements + gz*num_elements*gy_size;
     sq_power_across_input[lx] = input[base_index];
-    //printf("Input into Kernel 2: %f\n", sq_power_across_input[lx]);
+
     for(int i = 1; i < num_elements/lx_size; i++){
         sq_power_across_input[lx] += input[base_index + i*lx_size]; 
     }
@@ -47,6 +47,5 @@ rfi_chime_inputsum(
 
     if(lx == 0){
         output[gy + gz*gy_size] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1);
-        //printf("Kurtosis Out %f \n", (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1));
     }
 }

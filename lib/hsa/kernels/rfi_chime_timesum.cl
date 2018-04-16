@@ -13,7 +13,8 @@ rfi_chime_timesum(
      __global uint *input,
      __global float *output,
      __constant uchar *InputMask,
-     const uint sk_step
+     const uint sk_step,
+     const uint num_elements
 )
 {
     short gx = get_global_id(0); //Get Work Id's
@@ -58,7 +59,7 @@ rfi_chime_timesum(
             power_across_time[ly] += power_across_time[ly + j];
             sq_power_across_time[ly] += sq_power_across_time[ly + j];
         }
-        barrier(CLK_LOCAL_MEM_FENCE);
+	barrier(CLK_LOCAL_MEM_FENCE);
     }
 
     if(ly == 0){
@@ -66,9 +67,9 @@ rfi_chime_timesum(
         float4 mean = convert_float4(power_across_time[0])/sk_step + (float4)0.00000001;
         float4 tmp = convert_float4(sq_power_across_time[0])/(mean*mean);
 
-        output[4*gx + 0 + gz*4*gx_size] = (1-InputMask[4*gx + 0])*tmp.s0;
-        output[4*gx + 1 + gz*4*gx_size] = (1-InputMask[4*gx + 1])*tmp.s3;
-        output[4*gx + 2 + gz*4*gx_size] = (1-InputMask[4*gx + 2])*tmp.s2;
-        output[4*gx + 3 + gz*4*gx_size] = (1-InputMask[4*gx + 3])*tmp.s1;
+        output[4*gx + 0 + gz*4*gx_size] = (1-InputMask[4*gx%num_elements + 0])*tmp.s0;
+        output[4*gx + 1 + gz*4*gx_size] = (1-InputMask[4*gx%num_elements + 1])*tmp.s1;
+        output[4*gx + 2 + gz*4*gx_size] = (1-InputMask[4*gx%num_elements + 2])*tmp.s2;
+        output[4*gx + 3 + gz*4*gx_size] = (1-InputMask[4*gx%num_elements + 3])*tmp.s3;
     }
 }
