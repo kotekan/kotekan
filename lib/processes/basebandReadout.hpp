@@ -38,12 +38,11 @@ public:
     const uint32_t num_elements;
     const int64_t data_start_fpga;
     const int64_t data_length_fpga;
+    // For keeping track of references.
+    std::shared_ptr<uint8_t> data_ref;
     // Span used for data access.
     const gsl::span<uint8_t> data;
 
-private:
-    // For keeping track of references.
-    std::shared_ptr<uint8_t> data_ref;
 };
 
 

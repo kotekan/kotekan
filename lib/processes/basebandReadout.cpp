@@ -2,6 +2,7 @@
 #include <thread>
 #include <assert.h>
 #include <algorithm>
+#include <cstdint>
 
 #include "basebandReadout.hpp"
 #include "baseband_request_manager.hpp"
@@ -313,12 +314,17 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 }
 
 
-template<typename T>
-gsl::span<T> span_from_length(uint8_t * start, size_t length) {
-    T* span_start = (T*)start;
-    T* span_end = (T*)(start + length);
+/* Binds a span to an array, aligning it on a 16 byte boundary. Array should
+ * be at least 15 bytes too long.
+ */
+gsl::span<uint8_t> span_from_length_aligned(uint8_t* start, size_t length) {
 
-    return gsl::span<T>(span_start, span_end);
+    intptr_t span_start_int = (intptr_t) start + 15;
+    span_start_int -= span_start_int % 16;
+    uint8_t* span_start = (uint8_t*) span_start_int;
+    uint8_t* span_end = span_start + length;
+
+    return gsl::span<uint8_t>(span_start, span_end);
 }
 
 
@@ -334,11 +340,10 @@ basebandDump::basebandDump(
         num_elements(num_elements_),
         data_start_fpga(data_start_fpga_),
         data_length_fpga(data_length_fpga_),
-        data(span_from_length<uint8_t>(new uint8_t[num_elements_ * data_length_fpga_],
-                                       num_elements_ * data_length_fpga_))
+        // Over allocate so we can align the memory.
+        data_ref(new uint8_t[num_elements_ * data_length_fpga_ + 15]),
+        data(span_from_length_aligned(data_ref.get(), num_elements_ * data_length_fpga_))
 {
-    data_ref = std::shared_ptr<uint8_t>(&data[0],
-                                        [](uint8_t *p ) { delete [] p; });
 }
 
 basebandDump::~basebandDump() {
