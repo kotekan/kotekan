@@ -1,3 +1,17 @@
+##########################################
+#
+# kotekan_longrun_recv.yaml
+#
+# CHIME receiver node configuration used in the March 2018 run.
+#
+# For the N2 data it includes 5 second 26m baselines,
+# 10 second calibration data, full triangles for 4 frequencies
+# at 10 seconds, and 20 second baseline subseted data
+# for a subset of frequencies.
+#
+# Author: Richard Shaw
+#
+##########################################
 ---
 type: config
 log_level: info
@@ -196,13 +210,13 @@ hdf5_writers:
     prod_subset_type: autos
     freq_ids: *allfreq
     instrument_name: chimecal
-#  26m:
-#    kotekan_process: visWriter
-#    in_buf: visbuf_5s_26m
-#    prod_subset_type: have_inputs
-#    input_list: [1225, 1521]
-#    freq_ids: *allfreq
-#    instrument_name: chime26m
+  26m:
+    kotekan_process: visWriter
+    in_buf: visbuf_5s_26m
+    prod_subset_type: have_inputs
+    input_list: [1225, 1521]
+    freq_ids: *allfreq
+    instrument_name: chime26m
   pathb:
     kotekan_process: visWriter
     in_buf: visbuf_20s_pb

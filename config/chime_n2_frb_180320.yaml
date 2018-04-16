@@ -21,7 +21,6 @@
 # Author: Andre Renard
 #
 ##########################################
-
 ---
 type: config
 # Logging level can be one of:
