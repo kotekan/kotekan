@@ -6,10 +6,14 @@
 #include "restServer.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
-
+    restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
+        conn.send_json_reply(config.get_full_config_json());
+    });
 }
 
 kotekanMode::~kotekanMode() {
+
+    restServer::instance().remove_get_callback("/config");
 
     for (auto const &process : processes) {
         if (process.second != nullptr) {

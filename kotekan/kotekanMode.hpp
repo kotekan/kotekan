@@ -4,6 +4,7 @@
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "metadata.h"
+#include "restServer.hpp"
 
 #include <map>
 
@@ -27,11 +28,11 @@ public:
     // Join blocks until all processes have stopped.
     void join();
 
-protected:
+private:
+
     Config &config;
     bufferContainer buffer_container;
 
-private:
     map<string, KotekanProcess *> processes;
     map<string, struct metadataPool *> metadata_pools;
     map<string, struct Buffer *> buffers;
