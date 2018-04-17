@@ -119,6 +119,21 @@ void print_version() {
     }
 }
 
+json get_json_version_into() {
+    // Create version information
+    json version_json;
+    version_json["kotekan_version"] = KOTEKAN_VERSION_STR;
+    version_json["branch"] = GIT_BRANCH;
+    version_json["git_commit_hash"] = GIT_COMMIT_HASH;
+    version_json["cmake_build_settings"] = CMAKE_BUILD_SETTINGS;
+    vector<string> available_processes;
+    std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
+    for (auto &process_maker : known_processes)
+        available_processes.push_back(process_maker.first);
+    version_json["available_processes"] = available_processes;
+    return version_json;
+}
+
 #ifdef WITH_DPDK
 void dpdk_setup() {
 
@@ -399,6 +414,12 @@ int main(int argc, char ** argv) {
         json reply;
         reply["running"] = running;
         conn.send_json_reply(reply);
+    });
+
+    json version_json = get_json_version_into();
+
+    rest_server.register_get_callback("/version", [&](connectionInstance &conn) {
+        conn.send_json_reply(version_json);
     });
 
     prometheusMetrics &metrics = prometheusMetrics::instance();
