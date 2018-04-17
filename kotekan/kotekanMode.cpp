@@ -3,6 +3,7 @@
 #include "processFactory.hpp"
 #include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
+#include "restServer.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
@@ -46,6 +47,8 @@ void kotekanMode::initalize_processes() {
     processFactory process_factory(config, buffer_container);
     processes = process_factory.build_processes();
 
+    // Update REST server
+    restServer::instance().set_server_affinity(config);
 }
 
 void kotekanMode::join() {

@@ -44,9 +44,9 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     first_pass=true;
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint,
+    restServer &rest_server = restServer::instance();
+    string endpoint = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
+    rest_server.register_json_callback(endpoint,
             std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
 }
 

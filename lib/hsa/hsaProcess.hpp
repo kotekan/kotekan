@@ -34,7 +34,7 @@ public:
 
     virtual void apply_config(uint64_t fpga_seq);
 
-    void profile_callback(connectionInstance& conn, json& json_request);
+    void profile_callback(connectionInstance& conn);
 
 private:
 

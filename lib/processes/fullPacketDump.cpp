@@ -68,9 +68,9 @@ void fullPacketDump::main_thread() {
     int frame_id = 0;
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/packet_grab/" + std::to_string(link_id);
-    rest_server->register_json_callback(endpoint,
+    restServer &rest_server = restServer::instance();
+    string endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
+    rest_server.register_json_callback(endpoint,
             std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 
     int file_num = 0;

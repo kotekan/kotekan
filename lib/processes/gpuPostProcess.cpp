@@ -185,8 +185,8 @@ void gpuPostProcess::main_thread() {
     // TODO also clean up this function.
     _rest_copy_vis = new complex_int_t[num_values];
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    rest_server->register_json_callback("/vis", std::bind(&gpuPostProcess::vis_endpoint, this, _1, _2));
+    restServer &rest_server = restServer::instance();
+    rest_server.register_json_callback(unique_name + "/vis", std::bind(&gpuPostProcess::vis_endpoint, this, _1, _2));
     // end REST server section
 
     // Wait for full buffers.

@@ -39,9 +39,9 @@ void pyPlotN2::apply_config(uint64_t fpga_seq) {
 
 void pyPlotN2::main_thread() {
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/plot_corr_matrix/" + std::to_string(gpu_id);
-    rest_server->register_get_callback(endpoint,
+    restServer &rest_server = restServer::instance();
+    string endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);
+    rest_server.register_get_callback(endpoint,
             std::bind(&pyPlotN2::request_plot_callback, this, _1));
 
     int frame_id = 0;

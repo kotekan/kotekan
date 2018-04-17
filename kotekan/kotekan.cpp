@@ -271,7 +271,7 @@ int main(int argc, char ** argv) {
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
         fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
-        fprintf(stderr, "Configuration should be provided via the `/start/` REST endpoint.\n");
+        fprintf(stderr, "Configuration should be provided via the `/start` REST endpoint.\n");
     }
 
     if (string(config_file_name) != "none" && enable_stderr) {
@@ -293,8 +293,7 @@ int main(int argc, char ** argv) {
 
     Config config;
 
-    restServer *rest_server = get_rest_server();
-    rest_server->start();
+    restServer &rest_server = restServer::instance();
 
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
@@ -322,7 +321,7 @@ int main(int argc, char ** argv) {
     }
 
     // Main REST callbacks.
-    rest_server->register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
+    rest_server.register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
             conn.send_error("Already running", STATUS_REQUEST_FAILED);
@@ -354,7 +353,7 @@ int main(int argc, char ** argv) {
         conn.send_empty_reply(STATUS_OK);
     });
 
-    rest_server->register_json_callback("/stop", [&](connectionInstance &conn, json &json_request) {
+    rest_server.register_get_callback("/stop", [&](connectionInstance &conn) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (!running) {
             conn.send_error("kotekan is already stopped", STATUS_REQUEST_FAILED);
@@ -371,7 +370,7 @@ int main(int argc, char ** argv) {
         conn.send_empty_reply(STATUS_OK);
     });
 
-    rest_server->register_json_callback("/status", [&](connectionInstance &conn, json &json_request){
+    rest_server.register_get_callback("/status", [&](connectionInstance &conn){
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         json reply;
         reply["running"] = running;
@@ -379,7 +378,7 @@ int main(int argc, char ** argv) {
     });
 
     prometheusMetrics &metrics = prometheusMetrics::instance();
-    metrics.register_with_server(rest_server);
+    metrics.register_with_server(&rest_server);
 
     for(EVER){
         sleep(1);

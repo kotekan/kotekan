@@ -15,7 +15,7 @@ rfi_kernel::~rfi_kernel()
 {
     for(int i = 0; i < num_links_per_gpu; i++){
         clReleaseMemObject(mem_Mean_Array[i]);
-    }    
+    }
 }
 
 void rfi_kernel::rest_callback(connectionInstance& conn, json& json_request) {
@@ -25,7 +25,7 @@ void rfi_kernel::rest_callback(connectionInstance& conn, json& json_request) {
     _sk_step =  json_request["sk_step"];
     gws[2] = (_samples_per_data_set/_sk_step);
     sqrtM = sqrt(_num_elements*_sk_step);
-    
+
     CHECK_CL_ERROR( clSetKernelArg(kernel,
                                    (cl_uint)3,
                                    sizeof(float),
@@ -57,9 +57,9 @@ void rfi_kernel::build(device_interface &param_Device)
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     apply_config(0);
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/rfi_callback/" + std::to_string(param_Device.getGpuID());
-    rest_server->register_json_callback(endpoint,
+    restServer &rest_server = restServer::instance();
+    string endpoint = unique_name + "/rfi_callback/" + std::to_string(param_Device.getGpuID());
+    rest_server.register_json_callback(endpoint,
             std::bind(&rfi_kernel::rest_callback, this, _1, _2));
 
     INFO("Starting RFI kernel build");
