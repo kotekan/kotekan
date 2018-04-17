@@ -53,11 +53,12 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
     try {
         beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new beam_offset parameter.",
+                        HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     INFO("Updating beam_offset to %i",beam_offset);
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq)

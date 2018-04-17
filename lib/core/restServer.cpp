@@ -4,6 +4,9 @@
 #include <pthread.h>
 #include <sched.h>
 #include <string>
+#ifdef MAC_OSX
+	#include "osxBindCPU.hpp"
+#endif
 
 using json = nlohmann::json;
 using std::string;
@@ -45,7 +48,7 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
     if (method == "GET") {
         if (!server.get_callbacks.count(url)) {
             DEBUG("GET Endpoint %s called, but not found", url.c_str());
-            mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
+            mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), 0, NULL);
             return;
         }
         connectionInstance conn(nc, ev, ev_data);
@@ -57,7 +60,7 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
     if (method == "POST") {
         if (!server.json_callbacks.count(url)) {
             DEBUG("Endpoint %s called, but not found", url.c_str());
-            mg_send_head(nc, STATUS_NOT_FOUND, 0, NULL);
+            mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), 0, NULL);
             return;
         }
 
@@ -73,7 +76,7 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
 
     WARN("Call back with method != POST or GET called, method = %s, endpoint = %s",
          method.c_str(), url.c_str());
-    mg_send_head(nc, STATUS_BAD_REQUEST, 0, NULL);
+    mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), 0, NULL);
 }
 
 void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
@@ -126,7 +129,7 @@ int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json
         json_parse = json::parse(string(msg->body.p, msg->body.len));
     } catch (std::exception ex) {
         string message =  string("Error Message: JSON failed to parse, error: ") + string(ex.what());
-        mg_send_head(nc, STATUS_BAD_REQUEST, 0, message.c_str());
+        mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), 0, message.c_str());
         return -1;
     }
     return 0;
@@ -200,12 +203,12 @@ string connectionInstance::get_full_message() {
     return string(msg->message.p, msg->message.len);
 }
 
-void connectionInstance::send_empty_reply(int status_code) {
-    mg_send_head(nc, status_code, 0, NULL);
+void connectionInstance::send_empty_reply(const HTTP_RESPONSE &status) {
+    mg_send_head(nc, static_cast<int>(status), 0, NULL);
 }
 
-void connectionInstance::send_text_reply(const string &reply, int status_code) {
-    mg_send_head(nc, status_code, reply.length(), "Content-Type: text/plain");
+void connectionInstance::send_text_reply(const string &reply, const HTTP_RESPONSE &status) {
+    mg_send_head(nc, static_cast<int>(status), reply.length(), "Content-Type: text/plain");
     mg_send(nc, (void *) reply.c_str(), reply.length());
 }
 
@@ -213,17 +216,18 @@ void connectionInstance::send_binary_reply(uint8_t * data, int len) {
     assert(data != nullptr);
     assert(len > 0);
 
-    mg_send_head(nc, STATUS_OK, len, "Content-Type: application/octet-stream");
+    mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK),
+                 len, "Content-Type: application/octet-stream");
     mg_send(nc, (void *)data, len);
 }
 
-void connectionInstance::send_error(const string& message, int status_code) {
+void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &status) {
     string error_message = "Error: " + message;
-    mg_send_head(nc, status_code, 0, error_message.c_str());
+    mg_send_head(nc, static_cast<int>(status), 0, error_message.c_str());
 }
 
 void connectionInstance::send_json_reply(json &json_reply) {
     string json_string = json_reply.dump(0);
-    mg_send_head(nc, STATUS_OK, json_string.size(), NULL);
+    mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK), json_string.size(), NULL);
     mg_send(nc, (void*) json_string.c_str(), json_string.size());
 }

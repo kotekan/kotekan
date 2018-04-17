@@ -63,13 +63,13 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     try {
         _gain_dir = json_request["gain_dir"];
     } catch (...) {
-        conn.send_error("Couldn't parse new gain_dir parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //nothing will happen until this gets changed.
     update_gains=true;
     INFO("Updating gains from %s", _gain_dir.c_str());
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {

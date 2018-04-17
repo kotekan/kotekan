@@ -4,28 +4,64 @@
 #include "Config.hpp"
 #include "mongoose.h"
 #include "json.hpp"
-#ifdef MAC_OSX
-	#include "osxBindCPU.hpp"
-#endif
 #include <thread>
 #include <functional>
 #include <map>
 
-#define STATUS_OK 200
-#define STATUS_BAD_REQUEST 400
-#define STATUS_REQUEST_FAILED 402
-#define STATUS_NOT_FOUND 404
-#define STATUS_INTERNAL_ERROR 500
+enum class HTTP_RESPONSE {
+    OK = 200,
+    BAD_REQUEST = 400,
+    REQUEST_FAILED = 402,
+    NOT_FOUND = 404,
+    INTERNAL_ERROR = 500
+};
 
+/**
+ * @brief Contains details of a request (POST or GET), and provides
+ *        functions for replying to the request.
+ *
+ * Used in call back functions to provide a way to reply to
+ * request with either an error, json, binary, text, or empty message.
+ *
+ * The @c send_ functions should called exactly once per connection instance.
+ *
+ * @author Andre Renard
+ */
 class connectionInstance {
 public:
     connectionInstance(mg_connection *nc, int ev, void * ev_data);
     ~connectionInstance();
 
-    void send_error(const std::string &message, int status_code);
+    /**
+     * @brief Sends an error message with the details in the
+     *        HTTP "Error:" header
+     *
+     * @param message The message to include in the HTTP header
+     * @param status_code The HTTP error code.
+     */
+    void send_error(const std::string &message, const HTTP_RESPONSE &status);
+
+    /**
+     * @brief Sends a json reply to the client
+     *
+     * @param json_reply The json object to send to the client.
+     */
     void send_json_reply(nlohmann::json &json_reply);
+
+    /**
+     * @brief Sends a binary reply to the client
+     *
+     * @param data Pointer to the data to send
+     * @param len The size of the data in bytes to send
+     */
     void send_binary_reply(uint8_t * data, int len);
-    void send_empty_reply(int status_code);
+
+    /**
+     * @brief Sents an empty reply with the given status code
+     *
+     * @param status_code The HTTP status code to return
+     */
+    void send_empty_reply(const HTTP_RESPONSE &status);
 
     /**
      * Sends an HTTP response with "content-type" header set to "text/plain"
@@ -33,14 +69,30 @@ public:
      * @param[in] reply The body of the reply
      * @param[in] status_code HTTP response status code (default = HTTP_OK = 200)
      */
-    void send_text_reply(const std::string &reply, int status_code=STATUS_OK);
+    void send_text_reply(const std::string &reply, const HTTP_RESPONSE &status = HTTP_RESPONSE::OK);
 
-    // TODO use move constructors with this.
+    /**
+     * @brief Returns the message body.
+     *
+     * @return The body of the http request message
+     */
     std::string get_body();
+
+    /**
+     * @brief Get the full http request message
+     *
+     * @return The full http request message
+     */
     std::string get_full_message();
 private:
+
+    /// The connection details
     mg_connection *nc;
+
+    /// Event ID
     int ev;
+
+    /// Event data
     void * ev_data;
 };
 
@@ -51,6 +103,8 @@ private:
  *
  * Currently this object uses the mongoose webserver internally to handle
  * the http requests.
+ *
+ * See the docs for examples of using this class.
  *
  * @author Andre Renard
  */

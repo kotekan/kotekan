@@ -208,12 +208,12 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
     try {
         beam = json_request["beam"];
     } catch (...) {
-        conn.send_error("could not parse new pulsar beam id", STATUS_BAD_REQUEST);
+        conn.send_error("could not parse new pulsar beam id", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //check beam within range
     if (beam >= _num_pulsar || beam <0) {
-        conn.send_error("num_pulsar out of range", STATUS_BAD_REQUEST);
+        conn.send_error("num_pulsar out of range", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //update ra and dec
@@ -221,7 +221,7 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         psr_coord.ra[beam] = json_request["ra"];
         psr_coord.dec[beam] = json_request["dec"];
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
         INFO("=============!!![H8]!!-------Pulsar endpoint got beam=%d, ra=%.4f dec=%.4f gpu=%d",beam,psr_coord.ra[beam],psr_coord.dec[beam], device.get_gpu_id());
     }
 }

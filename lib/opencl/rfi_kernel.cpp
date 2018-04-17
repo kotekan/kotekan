@@ -35,7 +35,7 @@ void rfi_kernel::rest_callback(connectionInstance& conn, json& json_request) {
                                    (cl_uint)4,
                                    sizeof(int),
                                    &_rfi_sensitivity) );
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 void rfi_kernel::apply_config(const uint64_t& fpga_seq) {

@@ -52,7 +52,7 @@ public:
     pyPlotN2(Config& config, const string& unique_name,
                  bufferContainer &buffer_container);
 
-    ///Destructor, currently does nothing 
+    ///Destructor, currently does nothing
     virtual ~pyPlotN2();
 
     ///Applies the config parameters
@@ -64,7 +64,7 @@ public:
     /**
      * Function to receive and receive the request for a new plot.
      * Sets a flag informing the main loop to produce a plot of the next available buffer frame.
-     * @param conn         Connection object requesting the plot. Only used to reply `STATUS_OK`.
+     * @param conn         Connection object requesting the plot. Only used to reply `HTTP_RESPONSE::OK`.
      * @param json_request The contents of the REST json transmission. Ignored.
      *
      * @warning        Nobody should ever call this directly, it's only meant to service the

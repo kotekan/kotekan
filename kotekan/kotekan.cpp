@@ -324,7 +324,7 @@ int main(int argc, char ** argv) {
     rest_server.register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
-            conn.send_error("Already running", STATUS_REQUEST_FAILED);
+            conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
         }
 
         config.update_config(json_config, 0);
@@ -335,28 +335,28 @@ int main(int argc, char ** argv) {
             DEBUG("Out of range exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
-            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
             return;
         } catch (std::runtime_error ex) {
             DEBUG("Runtime error %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
-            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
             return;
         } catch (std::exception ex) {
             DEBUG("Generic exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
-            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
     rest_server.register_get_callback("/stop", [&](connectionInstance &conn) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (!running) {
-            conn.send_error("kotekan is already stopped", STATUS_REQUEST_FAILED);
+            conn.send_error("kotekan is already stopped", HTTP_RESPONSE::REQUEST_FAILED);
             return;
         }
         assert(kotekan_mode != nullptr);
@@ -367,7 +367,7 @@ int main(int argc, char ** argv) {
         delete kotekan_mode;
         kotekan_mode = nullptr;
         running = false;
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
     rest_server.register_get_callback("/status", [&](connectionInstance &conn){

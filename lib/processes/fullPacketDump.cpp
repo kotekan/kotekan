@@ -43,7 +43,7 @@ void fullPacketDump::apply_config(uint64_t fpga_seq) {
 void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_request) {
 
     if (!got_packets) {
-        conn.send_error("no packets captured yet.", STATUS_REQUEST_FAILED);
+        conn.send_error("no packets captured yet.", HTTP_RESPONSE::REQUEST_FAILED);
         return;
     }
 
@@ -51,12 +51,13 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
     try {
         num_packets = json_request["num_packets"];
     } catch (...) {
-        conn.send_error("could not parse/find num_packets parameter", STATUS_BAD_REQUEST);
+        conn.send_error("could not parse/find num_packets parameter",
+                        HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
 
     if (num_packets > MAX_NUM_PACKETS || num_packets < 0) {
-        conn.send_error("num_packets out of range", STATUS_BAD_REQUEST);
+        conn.send_error("num_packets out of range", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     int len = num_packets * _packet_size;

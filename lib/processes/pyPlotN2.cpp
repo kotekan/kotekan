@@ -31,7 +31,7 @@ pyPlotN2::~pyPlotN2() {
 void pyPlotN2::request_plot_callback(connectionInstance& conn) {
 //    std::lock_guard<std::mutex> lock(_packet_frame_lock);
     dump_plot=true;
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 void pyPlotN2::apply_config(uint64_t fpga_seq) {

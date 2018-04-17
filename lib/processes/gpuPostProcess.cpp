@@ -58,10 +58,10 @@ void gpuPostProcess::vis_endpoint(connectionInstance& conn, json& json_request) 
     try {
         freq = json_request["freq"];
     } catch (...) {
-        conn.send_error("Could not parse freq", STATUS_BAD_REQUEST);
+        conn.send_error("Could not parse freq", HTTP_RESPONSE::BAD_REQUEST);
     }
     if (freq > _num_total_freq) {
-        conn.send_error("freq out of range", STATUS_BAD_REQUEST);
+        conn.send_error("freq out of range", HTTP_RESPONSE::BAD_REQUEST);
     }
     int num_values = ((_num_elem * (_num_elem + 1)) / 2 );
     conn.send_binary_reply((uint8_t *)&_rest_copy_vis[num_values * freq], num_values * sizeof(complex_int_t));
