@@ -18,15 +18,15 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
 
     //RFI Config Parameters
     _sk_step = config.get_int(unique_name, "sk_step");
-    
+
     //Compute Buffer lengths
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
     output_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
     mask_len = sizeof(uint8_t)*_num_elements;
-    
+
     //Local Parameters
     _num_bad_inputs = 0;
-    first_pass=true;
+    first_pass = true;
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {
@@ -44,23 +44,21 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
         device.sync_copy_host_to_gpu(input_mask_map, (void *)InputMask, mask_len);
     }
 
-    struct __attribute__ ((aligned(16))) args_t { 
+    struct __attribute__ ((aligned(16))) args_t {
 	void *input;
-	void *output; 
+	void *output;
 	void *InputMask;
 	uint32_t sk_step;
-        uint32_t num_elements; 
+        uint32_t num_elements;
     } args;
 
     memset(&args, 0, sizeof(args));
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
-    args.InputMask = device.get_gpu_memory("input_mask", mask_len); 
+    args.InputMask = device.get_gpu_memory("input_mask", mask_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
 
-    //INFO("%d %d %d %d %d",input_frame_len, output_frame_len, mask_len, _num_bad_inputs, _sk_step);
-    //INFO("GX %d GY %d GZ %d", _num_elements*_num_local_freq/4, 256, _samples_per_data_set/_sk_step);
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 

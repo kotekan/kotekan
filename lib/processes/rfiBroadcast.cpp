@@ -39,7 +39,7 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _num_elements = config.get_int(unique_name, "num_elements");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-	
+
     _sk_step = config.get_int(unique_name, "sk_step");
     COMBINED = config.get_bool(unique_name,"rfi_combined");
     frames_per_packet = config.get_int(unique_name, "frames_per_packet");
@@ -62,16 +62,14 @@ void rfiBroadcast::main_thread() {
     float RFI_Avg[_num_local_freq];
     uint32_t packet_header_bytes_written = 0;
     uint32_t packet_length = packet_header_length + _num_local_freq*sizeof(float);
-    //uint32_t seq_num = 0;
-    frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-    INFO("GOT FIRST FRAME")
-    int64_t seq_num = get_fpga_seq_num(rfi_buf, frame_id);
-    INFO("GOT SEQ NUM")
-    uint16_t encoded_stream_id = get_stream_id(rfi_buf, frame_id); 
-    INFO("Seq: %ld Stream: %d", (long)seq_num, encoded_stream_id);
-    mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
     //Intialize empty packet
     char *packet_buffer = (char *)malloc(packet_length);
+
+    //Get starting seq num and stream id.
+    frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+    int64_t seq_num = get_fpga_seq_num(rfi_buf, frame_id);
+    uint16_t encoded_stream_id = get_stream_id(rfi_buf, frame_id); 
+    mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
 
     if (dest_protocol == "UDP")
     {
@@ -107,14 +105,14 @@ void rfiBroadcast::main_thread() {
         packet_header_bytes_written += sizeof(uint32_t);
         memcpy(packet_header + packet_header_bytes_written, &frames_per_packet, sizeof(uint32_t));
         packet_header_bytes_written += sizeof(uint32_t);
-        
+
         //Connection succesful
         INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
-        
+
         while (!stop_thread) { //Endless loop
 
             float rfi_data[_num_local_freq*_samples_per_data_set/_sk_step];
-            
+
             for(i = 0; i < _num_local_freq; i++){
                 RFI_Avg[i] = 0;
             }
@@ -126,9 +124,10 @@ void rfiBroadcast::main_thread() {
                 if (frame == NULL) break;
 
                 memcpy(rfi_data, frame, rfi_buf->frame_size);
+
                 if(f == 0){
-                    seq_num = get_fpga_seq_num(rfi_buf, frame_id);
                     //Adjust Header
+                    seq_num = get_fpga_seq_num(rfi_buf, frame_id);
                     memcpy(packet_header + packet_header_bytes_written, &seq_num, sizeof(int64_t));
                     packet_header_bytes_written += sizeof(int64_t);
                 }
@@ -142,14 +141,15 @@ void rfiBroadcast::main_thread() {
                         RFI_Avg[i] += rfi_data[i + _num_local_freq*j];
                     }
                 }
-                
+
+                //Mark Frame Empty
                 mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
                 frame_id = (frame_id + 1) % rfi_buf->num_frames;
             }
 
             for(i = 0; i < _num_local_freq; i++){
                 RFI_Avg[i] /= frames_per_packet*(_samples_per_data_set/_sk_step);
-                INFO("SK value %f for freq %d, stream %d", RFI_Avg[i], i, encoded_stream_id)
+                DEBUG("SK value %f for freq %d, stream %d", RFI_Avg[i], i, encoded_stream_id)
             }
 
             //Add Data to packet
@@ -164,22 +164,14 @@ void rfiBroadcast::main_thread() {
             if (bytes_sent != packet_length){
                 ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
             }
-            
             //Prepare Header For Adjustment
             packet_header_bytes_written -= sizeof(int64_t); 
-            
-            //Adjust Packet Number
-            //seq_num++;
 
-            // Mark frame as empty.
-            
-            //INFO("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
+            DEBUG("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
         }
     }
     else{
-
         ERROR("Bad protocol: %s Only UDP currently Supported", dest_protocol.c_str());
-
     }
 
     free(packet_buffer);

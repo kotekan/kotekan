@@ -28,15 +28,16 @@ rfi_chime_inputsum(
     //Declare Local Memory
     __local float sq_power_across_input[256];
     
-    //Partial Sum across inputs
+    //Compute index in input array
     uint base_index = gx + gy*num_elements + gz*num_elements*gy_size;
     sq_power_across_input[lx] = input[base_index];
 
+    //Partial sum if more than 256 inputs
     for(int i = 1; i < num_elements/lx_size; i++){
         sq_power_across_input[lx] += input[base_index + i*lx_size]; 
     }
 
-    //Sum Across Input
+    //Sum Across Input in local memory
     barrier(CLK_LOCAL_MEM_FENCE);
     for(int j = lx_size/2; j>0; j >>= 1){
         if(lx < j){
@@ -45,6 +46,7 @@ rfi_chime_inputsum(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
+    //Compute spectral kurtosis estimate and add to output
     if(lx == 0){
         output[gy + gz*gy_size] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1);
     }

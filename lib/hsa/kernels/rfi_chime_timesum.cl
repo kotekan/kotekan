@@ -1,11 +1,11 @@
 /*********************************************************************************
 Kotekan RFI Documentation Block:
 By: Jacob Taylor
-Date: January 2018
-File Purpose: OpenCL Kernel for kurtosis presum
+Date: April 2018
+File Purpose: OpenCL Kernel for kurtosis presum across time
 Details:
         Sums power and square power across time
-        Normalizes by the mean power
+        Normalizes square power sum by the mean power
 **********************************************************************************/
 
 __kernel void
@@ -23,7 +23,7 @@ rfi_chime_timesum(
     short ly = get_local_id(1);
     short gx_size = get_global_size(0); //num_elements*num_freq/4
     short gy_size = get_global_size(1); //256
-    short gz_size = get_global_size(2); //32768/sk_step
+    short gz_size = get_global_size(2); //timesteps/sk_step
     short ly_size = get_local_size(1);
 
     //Declare Local Memory
@@ -34,6 +34,7 @@ rfi_chime_timesum(
     sq_power_across_time[ly] = (uint4)0;
 
     uint data; 
+    //Compute current index in input
     uint base_index = gx + gy*gx_size + gz*sk_step*gx_size;
     
     uint4 temp;
@@ -41,18 +42,22 @@ rfi_chime_timesum(
 
     for(int i = 0; i < sk_step/ly_size; i++){
 	
+        //Retrieve Input (4 uint8's as 1 float) 
         data = input[base_index + i*gx_size*ly_size];
 
+        //Decompose input (float) into 4 values (uint8)
         temp.s0 = ((data & 0x000000f0) << 12u) | ((data & 0x0000000f) >>   0u);
         temp.s1 = ((data & 0x0000f000) <<  4u) | ((data & 0x00000f00) >>   8u);
         temp.s2 = ((data & 0x00f00000) >>  4u) | ((data & 0x000f0000) >>  16u);
         temp.s3 = ((data & 0xf0000000) >> 12u) | ((data & 0x0f000000) >>  24u);
 
+        //Compute Power and add to local array
         power = ((temp>>16) - 8)*((temp>>16) - 8) + ((temp&0x0000ffff)- 8)*((temp&0x0000ffff) - 8);
         power_across_time[ly] += power;
         sq_power_across_time[ly] += power*power;
     }
 
+    //Parallel sum of power and square power in local memory
     barrier(CLK_LOCAL_MEM_FENCE);
     for(int j = ly_size/2; j>0; j >>= 1){
         if(ly < j){
@@ -62,6 +67,7 @@ rfi_chime_timesum(
 	barrier(CLK_LOCAL_MEM_FENCE);
     }
 
+    //Normalize square power sum and place in output array
     if(ly == 0){
 
         float4 mean = convert_float4(power_across_time[0])/sk_step + (float4)0.00000001;
