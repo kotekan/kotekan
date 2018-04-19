@@ -56,6 +56,8 @@ private:
 
     // The mean expected time between frames in seconds
     double frame_arrival_period;
+
+    std::string endpoint;
 };
 
 #endif

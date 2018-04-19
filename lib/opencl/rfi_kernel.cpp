@@ -13,6 +13,7 @@ rfi_kernel::rfi_kernel(const char * param_gpuKernel, const char* param_name, Con
 
 rfi_kernel::~rfi_kernel()
 {
+    restServer::instance().remove_json_callback(endpoint);
     for(int i = 0; i < num_links_per_gpu; i++){
         clReleaseMemObject(mem_Mean_Array[i]);
     }
@@ -58,7 +59,7 @@ void rfi_kernel::build(device_interface &param_Device)
     apply_config(0);
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/rfi_callback/" + std::to_string(param_Device.getGpuID());
+    endpoint = unique_name + "/rfi_callback/" + std::to_string(param_Device.getGpuID());
     rest_server.register_json_callback(endpoint,
             std::bind(&rfi_kernel::rest_callback, this, _1, _2));
 

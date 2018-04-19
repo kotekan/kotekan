@@ -61,16 +61,17 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_read_id = 8;
     bank_write = 0;
 
-    //Here launch a new thread to listen for updates
-    phase_thread_handle = std::thread(&hsaPulsarUpdatePhase::phase_thread, std::ref(*this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
-      CPU_SET(i, &cpuset);
-    pthread_setaffinity_np(phase_thread_handle.native_handle(), sizeof(cpu_set_t), &cpuset);
+    // Register function to listen for new pulsar, and update ra and dec
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    endpoint = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    rest_server.register_json_callback(endpoint,
+                                        std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
+
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
+    restServer::instance().remove_json_callback(endpoint);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     if (_elem_position_c != NULL) {
@@ -223,19 +224,5 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord.dec[beam] = json_request["dec"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
         INFO("=============!!![H8]!!-------Pulsar endpoint got beam=%d, ra=%.4f dec=%.4f gpu=%d",beam,psr_coord.ra[beam],psr_coord.dec[beam], device.get_gpu_id());
-    }
-}
-
-void hsaPulsarUpdatePhase::phase_thread() {
-
-    using namespace std::placeholders;
-    sleep(5);
-    for(;;) {
-        sleep(1);
-        //Listen to RestServer for new pulsar, and update ra and dec
-        restServer &rest_server = restServer::instance();
-        string endpoint = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
-        rest_server.register_json_callback(endpoint,
-                                            std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
     }
 }

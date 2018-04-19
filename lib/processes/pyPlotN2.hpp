@@ -77,6 +77,7 @@ private:
     ///The kotekan buffer object the processes is producing for
     struct Buffer *buf;
     unsigned char *in_local;
+    std::string endpoint;
 
     int gpu_id=-1;
     bool dump_plot=false;

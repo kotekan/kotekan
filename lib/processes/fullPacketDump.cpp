@@ -26,9 +26,16 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
     apply_config(0);
 
     _packet_frame = (uint8_t*)malloc(_packet_size * MAX_NUM_PACKETS);
+
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
+    rest_server.register_json_callback(endpoint,
+            std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 }
 
 fullPacketDump::~fullPacketDump() {
+    restServer::instance().remove_json_callback(endpoint);
     free(_packet_frame);
 }
 
@@ -67,12 +74,6 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
 
 void fullPacketDump::main_thread() {
     int frame_id = 0;
-
-    using namespace std::placeholders;
-    restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
-    rest_server.register_json_callback(endpoint,
-            std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 
     int file_num = 0;
     char host_name[100];

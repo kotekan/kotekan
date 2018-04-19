@@ -57,6 +57,16 @@ Individual processes can register REST endpoints using code similar to:
 
 Processes should always register endpoints relative to ``/unique_name``.
 
+The endpoint should be removed in the destructor of the process registering it:
+
+.. code-block:: c++
+
+    restServer &rest_server = restServer::instance();
+    // Remove a GET call back
+    rest_server.remove_get_callback(unique_name + "/my_get_endpoint");
+    // Remove a POST call back
+    rest_server.remove_json_callback(unique_name + "/my_post_endpoint");
+
 Aliases
 **************
 To make things easier to access, it is possible to define aliases to endpoints in

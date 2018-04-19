@@ -22,9 +22,11 @@ pyPlotN2::pyPlotN2(Config& config, const string& unique_name,
     register_consumer(buf, unique_name.c_str());
     gpu_id = config.get_int(unique_name, "gpu_id");
     in_local = (unsigned char*)malloc(buf->frame_size);
+    endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);
 }
 
 pyPlotN2::~pyPlotN2() {
+    restServer::instance().remove_get_callback(endpoint);
     free(in_local);
 }
 
@@ -40,7 +42,6 @@ void pyPlotN2::apply_config(uint64_t fpga_seq) {
 void pyPlotN2::main_thread() {
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);
     rest_server.register_get_callback(endpoint,
             std::bind(&pyPlotN2::request_plot_callback, this, _1));
 
