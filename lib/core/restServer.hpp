@@ -168,6 +168,41 @@ public:
      */
     void remove_json_callback(std::string endpoint);
 
+    /**
+     * @brief Adds an alias for a given endpoint
+     *
+     * Maps a new endpoint at @c alias to the endpoint given
+     * by the end point given by @c target
+     *
+     * Note: does not check that the endpoint exists,
+     * of if an alias for this endpoint already exists.
+     *
+     * @TODO Should there be more error checking here?
+     *
+     * @param alias The new endpoint
+     * @param target The existing endpoint to map to
+     */
+    void add_alias(std::string alias, std::string target);
+
+    /**
+     * @brief Remove the alias endpoint if it exists
+     *
+     * @param alias The alias to remove
+     */
+    void remove_alias(std::string alias);
+
+    /**
+     * @brief Adds aliases from the /rest_server/aliases part of the config
+     *
+     * @param config The config file to use
+     */
+    void add_aliases_from_config(Config &config);
+
+    /**
+     * @brief Removes all aliases
+     */
+    void remove_all_aliases();
+
 private:
     /// Private constuctor
     restServer();
@@ -216,11 +251,21 @@ private:
      */
     int handle_json(struct mg_connection *nc, int ev, void *ev_data, nlohmann::json &json_parse);
 
+    /**
+     * @brief Returns the aliases map
+     *
+     * @return Alias map
+     */
+    std::map<std::string, std::string> &get_aliases();
+
     /// Map of GET callbacks
-    std::map<string, std::function<void(connectionInstance &)>> get_callbacks;
+    std::map<std::string, std::function<void(connectionInstance &)>> get_callbacks;
 
     /// Map of JSON POST callbacks
-    std::map<string, std::function<void(connectionInstance &, json &)>> json_callbacks;
+    std::map<std::string, std::function<void(connectionInstance &, json &)>> json_callbacks;
+
+    /// Alias map
+    std::map<std::string, std::string> aliases;
 
     /// mongoose management object.
     struct mg_mgr mgr;

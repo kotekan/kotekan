@@ -45,6 +45,11 @@ void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
     string url = string(msg->uri.p, msg->uri.len);
     string method = string(msg->method.p, msg->method.len);
 
+    map<string, string> &aliases = server.get_aliases();
+    if (aliases.find(url) != aliases.end()) {
+        url = aliases[url];
+    }
+
     if (method == "GET") {
         if (!server.get_callbacks.count(url)) {
             DEBUG("GET Endpoint %s called, but not found", url.c_str());
@@ -121,6 +126,52 @@ void restServer::remove_json_callback(string endpoint) {
     }
 }
 
+void restServer::add_alias(string alias, string target) {
+    if (alias.substr(0, 1) != "/") {
+        alias = "/" + alias;
+    }
+    if (target.substr(0, 1) != "/") {
+        target = "/" + target;
+    }
+
+    if (json_callbacks.find(alias) != json_callbacks.end() ||
+        get_callbacks.find(alias) != get_callbacks.end()) {
+        WARN("The endpoint %s already exists, cannot add an alias with that name");
+        return;
+    }
+
+    aliases[alias] = target;
+}
+
+void restServer::remove_alias(string alias) {
+    if (alias.substr(0, 1) != "/") {
+        alias = "/" + alias;
+    }
+
+    auto it = aliases.find(alias);
+    if (it != aliases.end()) {
+        aliases.erase(it);
+    }
+}
+
+void restServer::add_aliases_from_config(Config &config) {
+    if (!config.exists("/rest_server", "aliases"))
+        return;
+    json config_aliases = config.get_value("/rest_server", "aliases");
+    INFO("%s", config_aliases.dump().c_str());
+    for (json::iterator it = config_aliases.begin(); it != config_aliases.end(); ++it) {
+        add_alias(it.key(), it.value());
+    }
+}
+
+void restServer::remove_all_aliases() {
+    aliases.clear();
+}
+
+map<string, string> &restServer::get_aliases() {
+    return aliases;
+}
+
 int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json_parse) {
 
     struct http_message *msg = (struct http_message *)ev_data;
@@ -148,8 +199,14 @@ void restServer::endpoint_list_callback(connectionInstance &conn) {
         post_json_callback_names.push_back(endpoint.first);
     }
 
+    json aliases_names;
+    for (auto &item : aliases) {
+        aliases_names[item.first] = item.second;
+    }
+
     reply["GET"] = get_callback_names;
     reply["POST"] = post_json_callback_names;
+    reply["aliases"] = aliases_names;
 
     conn.send_json_reply(reply);
 }

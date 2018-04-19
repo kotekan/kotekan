@@ -29,6 +29,9 @@ The kotekan framework registers a number of points
 ``/config`` ``[GET]``
     Returns the current system configuration.
 
+``/version`` ``[GET``
+    Returns the current kotekan version information; including build options.
+
 ``/endpoints`` ``[GET]``
     Returns all available REST endpoints in the system.
 
@@ -53,3 +56,29 @@ Individual processes can register REST endpoints using code similar to:
             std::bind(&myKotekanPorcess::endpoint_callback_func, this, _1));
 
 Processes should always register endpoints relative to ``/unique_name``.
+
+Aliases
+**************
+To make things easier to access, it is possible to define aliases to endpoints in
+the config under ``the aliases:`` block in the ``rest_server`` block:
+
+.. code-block:: json
+
+    rest_server:
+        aliases:
+            new_name: existing_endpoint
+
+The above maps ``/new_name`` to ``/existing_endpoint``
+
+The list of aliases available is given by the ``/endpoints`` endpoint.
+
+CPU Affinity
+**************
+The CPU affinity defaults to the global ``cpu_affinity:`` property
+
+To override that and pin it to say cores 3,4:
+
+.. code_block:: json
+
+    rest_server:
+        cpu_affinity: [3,4]
