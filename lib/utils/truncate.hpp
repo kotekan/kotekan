@@ -53,7 +53,7 @@ inline int32_t count_zeros(int32_t x) {
 
 /**
  *  @brief Truncate precision of a floating point number by applying the algorithm of
- *         `bit_truncate_c` to the mantissa.
+ *         `bit_truncate` to the mantissa.
  *
  *  Note that NaN and inf are not explicitly checked for. According to the IEEE spec, it is
  *  impossible for the truncation to turn an inf into a NaN. However, if the truncation
