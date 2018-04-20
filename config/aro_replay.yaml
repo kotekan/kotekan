@@ -23,7 +23,7 @@ sizeof_short: 2
 vdif_header_size: 32 
 num_disks: 10
 RFI_combined: true
-sk_step: 256
+sk_step: 32768
 
 # Pool
 main_pool:
@@ -91,10 +91,10 @@ rfi_broadcast:
    destination_ip: 192.168.52.108 
    destination_protocol: UDP
 
-rfi_viewer:
-   frames_per_packet: 1
-   waterfallX: 1024
-   waterfallY: 1024
-   num_receive_threads: 1
-   vdif_rfi_header_size: 21
-   waterfall_request_delay: 1 #seconds
+#rfi viewer config
+frames_per_packet: 1 
+waterfallX: 256
+waterfallY: 1024
+num_receive_threads: 1
+vdif_rfi_header_size: 21
+waterfall_request_delay: 1 #seconds
