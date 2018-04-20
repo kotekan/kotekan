@@ -4,7 +4,7 @@ import numpy as np
 import kotekan_runner
 
 trunc_params = {
-    'fakevis_mode': 'phase_ij',
+    'fakevis_mode': 'gaussian',
     'cadence': 2.,
     'total_frames': 10,
     'err_sq_lim': 0.003,
@@ -14,9 +14,10 @@ trunc_params = {
 }
 
 @pytest.fixture(scope="module")
-def vis_data(tmpdir_factory):
+def vis_data_t(tmpdir_factory):
+    """ Truncated visibilities """
 
-    tmpdir = tmpdir_factory.mktemp("vis_data")
+    tmpdir = tmpdir_factory.mktemp("vis_data_t")
 
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
@@ -35,21 +36,34 @@ def vis_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
-def test_truncation(vis_data):
+@pytest.fixture(scope="module")
+def vis_data(tmpdir_factory):
+    """ Raw visibilities. """
+
+    tmpdir = tmpdir_factory.mktemp("vis_data")
+    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+
+    process_config = { 'num_frames': trunc_params['total_frames'],
+            'freq_ids': [0], 'mode': trunc_params['fakevis_mode'] }
+    process_config.update(trunc_params)
+    test = kotekan_runner.KotekanProcessTester(
+        'fakeVis', process_config,
+        buffers_in=None,
+        buffers_out=dump_buffer,
+        global_config=trunc_params
+    )
+
+    test.run()
+
+    yield dump_buffer.load()
+
+def test_truncation(vis_data_t, vis_data):
     n = trunc_params['num_elements']
 
-    # Reproduce expected fakeVis output
-    model_vis = np.zeros(n * (n+1) / 2, dtype=np.complex64)
-    ind = 0
-    for i in range(n):
-        for j in range(i, n):
-            phase = i - j
-            model_vis[ind] = np.cos(phase) + np.sin(phase) * 1j
-            ind += 1
-
-    for frame in vis_data:
-        assert np.any(frame.vis != model_vis)
-        assert np.all(np.abs(frame.vis - model_vis)
-                      <= np.sqrt(trunc_params['err_sq_lim']))
-        assert np.any(frame.weight != 1.)
-        assert np.all(np.abs(frame.weight - 1.) <= trunc_params['fixed_precision'])
+    for i, frame in enumerate(vis_data_t):
+        assert np.any(frame.vis != vis_data[i].vis)
+        assert np.all(np.abs(frame.vis - vis_data[i].vis)
+                      <= np.sqrt(trunc_params['err_sq_lim'] / vis_data[i].weight))
+        assert np.any(frame.weight != vis_data[i].weight)
+        assert np.all(np.abs(frame.weight - vis_data[i].weight) 
+                      <= vis_data[i].weight * trunc_params['fixed_precision'])
