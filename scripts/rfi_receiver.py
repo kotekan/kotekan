@@ -143,7 +143,7 @@ def chimeHeaderCheck(header,app):
 
 
 def VDIFHeaderCheck(header,app):
-    
+
     if(header['combined_flag'] != 1):
         print("VDIF Header Error: Only Combined RFI values are currently supported ")
         return False
@@ -228,7 +228,6 @@ def data_listener(socket_udp):
             #Receive packet from port
             packet, addr = sock_udp.recvfrom(chimePacketSize)
 
-
             if(packet != ''):
 
                 if(packetCounter % 25*len(stream_dict) == 0):
@@ -254,7 +253,7 @@ def data_listener(socket_udp):
                     t_min = datetime.datetime.utcnow()
                     min_seq = header['fpga_seq_num'][0]
                     max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
-                    firstPacket = False       
+                    firstPacket = False
 
                 else:
 
@@ -292,13 +291,14 @@ def data_listener(socket_udp):
                     ('num_times_per_frame', np.int32,1), ('num_freq', np.int32,1), ('seq', np.uint32 ,1)]))
                 data = np.fromstring(packet[vdifRFIHeaderSize:],dtype=np.float32)
                 print(header, data)
+
                 if(firstPacket):
 
                     if(VDIFHeaderCheck(header,app) == False):
                         break
                     t_min = datetime.datetime.utcnow()
-                    min_seq = header['seq']
-                    max_seq = min_seq + (waterfall.shape[1] - 1)
+                    min_seq = int(header['seq'])
+                    max_seq = int(min_seq + (waterfall.shape[1] - 1))
                     firstPacket = False
 
                 else:
