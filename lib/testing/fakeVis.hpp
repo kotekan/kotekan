@@ -46,7 +46,8 @@
  *                            - gaussian: Fill real and imaginary parts with normally
  *                              distributed random numbers. Specify mean and standard
  *                              deviation with additional parameters. Will use the same
- *                              distribution to set the weights.
+ *                              distribution to set the weights. Note that the seed for
+ *                              the generator is not random.
  * @conf  vis_mean          When used with mode="gaussian", the mean of the distribution.
  * @conf  vis_std           When used with mode="gaussian", the std dev of the distribution.
  * @conf  wait              Bool. Sleep to try and output data at roughly

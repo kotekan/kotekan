@@ -137,15 +137,12 @@ void fakeVis::main_thread() {
                     }
                 }
             } else if (mode == "gaussian") {
-                std::random_device rd{};
-                std::mt19937 gen{rd()};
-                std::normal_distribution<float> gaussian{0,1};
-                //std::default_random_engine gen;
-                //std::normal_distribution<float> gauss(vis_mean, vis_std);
+                std::default_random_engine gen;
+                std::normal_distribution<float> gauss(vis_mean, vis_std);
                 int ind = 0;
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
-                        out_vis[ind] = {gaussian(gen), 0.};
+                        out_vis[ind] = {gauss(gen), 0.};
                         ind++;
                     }
                 }
@@ -154,11 +151,9 @@ void fakeVis::main_thread() {
                 break;
             }
 
-            DEBUG("generated vis");
-
             // Insert values into eigenvectors, eigenvalues and rms
-            for (int i = 0; i < num_eigenvectors; i++) {
-                for (int j = 0; j < num_elements; j++) {
+            for (uint32_t i = 0; i < num_eigenvectors; i++) {
+                for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
                     output_frame.evec[k] = {(float)i, (float)j};
                 }
@@ -170,11 +165,12 @@ void fakeVis::main_thread() {
             auto out_wei = output_frame.weight;
             int ind = 0;
             if (mode == "gaussian") {
+                // generate vaguely realistic weights
                 std::default_random_engine gen;
-                std::normal_distribution<float> gauss(vis_mean, vis_std);
+                std::normal_distribution<float> gauss(vis_std, 0.1 * vis_std);
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
-                        out_wei[ind] = gauss(gen);
+                        out_wei[ind] = 1. / pow(gauss(gen), 2);
                         ind++;
                     }
                 }
@@ -265,7 +261,7 @@ void replaceVis::main_thread() {
         auto output_frame = visFrameView(out_buf,
                                          output_frame_id, input_frame);
 
-        for(int i = 0; i < output_frame.num_prod; i++) {
+        for(uint32_t i = 0; i < output_frame.num_prod; i++) {
             float real = (i % 2 == 0 ?
                           output_frame.freq_id :
                           std::get<0>(output_frame.time));
