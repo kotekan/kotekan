@@ -58,7 +58,7 @@ file_read:
     out_buf: vdif_buffer_0
     disk_base: /mnt/
     disk_set: D
-    capture: 20170804T192150Z_aro_vdif
+    capture: 20170805T155218Z_aro_vdif
     starting_file_index: 0
 
 power_integration:
@@ -78,6 +78,8 @@ rfi_vdif:
 power_stream:
    kotekan_process: networkPowerStream
    in_buf: power_buffer_0
+   freq: 600
+   sample_bw: 200
    destination_port: 41214
    destination_ip: 127.0.0.1
    destination_protocol: TCP
@@ -86,5 +88,13 @@ rfi_broadcast:
    kotekan_process: rfiBroadcastVDIF
    rfi_in: rfi_buffer_0
    destination_port: 41215
-   destination_ip: 127.0.0.1
+   destination_ip: 192.168.52.108 
    destination_protocol: UDP
+
+rfi_viewer:
+   frames_per_packet: 1
+   waterfallX: 1024
+   waterfallY: 1024
+   num_receive_threads: 1
+   vdif_rfi_header_size: 21
+   waterfall_request_delay: 1 #seconds
