@@ -5,6 +5,7 @@
 #include <csignal>
 #include <time.h>
 #include <math.h>
+#include <random>
 
 
 REGISTER_KOTEKAN_PROCESS(fakeVis);
@@ -36,6 +37,10 @@ fakeVis::fakeVis(Config &config,
 
     // Get fill type
     mode = config.get_string_default(unique_name, "mode", "default");
+    if (mode == "gaussian") {
+        vis_mean = config.get_float_default(unique_name, "vis_mean", 0.);
+        vis_std = config.get_float_default(unique_name, "vis_std", 1.);
+    }
 
     // Get timing and frame params
     cadence = config.get_float(unique_name, "cadence");
@@ -131,10 +136,25 @@ void fakeVis::main_thread() {
                         ind++;
                     }
                 }
+            } else if (mode == "gaussian") {
+                std::random_device rd{};
+                std::mt19937 gen{rd()};
+                std::normal_distribution<float> gaussian{0,1};
+                //std::default_random_engine gen;
+                //std::normal_distribution<float> gauss(vis_mean, vis_std);
+                int ind = 0;
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_vis[ind] = {gaussian(gen), 0.};
+                        ind++;
+                    }
+                }
             } else {
                 ERROR("Invalid visibility filling mode: %s.", mode.c_str());
                 break;
             }
+
+            DEBUG("generated vis");
 
             // Insert values into eigenvectors, eigenvalues and rms
             for (int i = 0; i < num_eigenvectors; i++) {
@@ -146,16 +166,26 @@ void fakeVis::main_thread() {
             }
             output_frame.erms = 1.;
 
-            // Set the weights to 1.
+            // weights
             auto out_wei = output_frame.weight;
             int ind = 0;
-            for(uint32_t i = 0; i < num_elements; i++) {
-                for(uint32_t j = i; j < num_elements; j++) {
-                    out_wei[ind] = 1.;
-                    ind++;
+            if (mode == "gaussian") {
+                std::default_random_engine gen;
+                std::normal_distribution<float> gauss(vis_mean, vis_std);
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_wei[ind] = gauss(gen);
+                        ind++;
+                    }
+                }
+            } else {  // Set the weights to 1. by default
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_wei[ind] = 1.;
+                        ind++;
+                    }
                 }
             }
-
 
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),

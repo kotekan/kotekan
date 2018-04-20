@@ -43,6 +43,12 @@
  *                              of feed i and the imaginary part with the index of j.
  *                            - phase_ij: Fill with unit amplitude numbers with phase
  *                              ``i - j`` radians.
+ *                            - gaussian: Fill real and imaginary parts with normally
+ *                              distributed random numbers. Specify mean and standard
+ *                              deviation with additional parameters. Will use the same
+ *                              distribution to set the weights.
+ * @conf  vis_mean          When used with mode="gaussian", the mean of the distribution.
+ * @conf  vis_std           When used with mode="gaussian", the std dev of the distribution.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If
@@ -82,6 +88,7 @@ private:
 
     // Visibility filling mode
     std::string mode;
+    float vis_mean, vis_std;
 
     bool wait;
     int32_t num_frames;
