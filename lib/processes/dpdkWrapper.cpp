@@ -172,6 +172,10 @@ void dpdkWrapper::main_thread() {
         network_dpdk_args->lcore_port_mapping[1] = 1;
         network_dpdk_args->lcore_port_mapping[2] = 2;
         network_dpdk_args->lcore_port_mapping[3] = 3;
+        network_dpdk_args->lcore_port_mapping[6] = 4;
+        network_dpdk_args->lcore_port_mapping[7] = 5;
+        network_dpdk_args->lcore_port_mapping[8] = 6;
+        network_dpdk_args->lcore_port_mapping[9] = 7;
     } else {
         ERROR("DPDK Mode %s not supported!", _mode.c_str());
         return;
