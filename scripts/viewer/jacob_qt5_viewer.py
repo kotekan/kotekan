@@ -77,7 +77,7 @@ class Settings(QDialog):
 
 		#Intialize Widgets and Add them to screen
 		self.layout = QVBoxLayout() #Main layout, Vertical
-		
+
 		#Timer
 		self.timer = QTimer()
 		self.timer.timeout.connect(self.UpdateGraph)
@@ -333,8 +333,8 @@ class Window(QDialog):
 		self.colorscale=[-.5,.5] #Intial Color Scale
 
 		#Intialize Handshake and Variables
-		self.TCP_IP="0.0.0.0"
-		self.TCP_PORT = 2054
+		self.TCP_IP="127.0.0.1"
+		self.TCP_PORT = 41214
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self.sock.bind((self.TCP_IP, self.TCP_PORT))

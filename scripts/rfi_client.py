@@ -30,7 +30,7 @@ class CommandLine:
         #Defaults
         self.TCP_IP = '127.0.0.1'
         self.TCP_PORT = 2901
-        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 60}
+        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 10}
         self.mode = 'pathfinder'
         self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")

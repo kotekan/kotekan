@@ -33,7 +33,7 @@ class CommandLine:
         self.mode = 'pathfinder'
         self.config = {'frames_per_packet': 4, 'num_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
                         'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'vdif_rfi_header_size': 21,
-                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4}
+                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 1}
         self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
@@ -78,6 +78,7 @@ class CommandLine:
             status = True
         if argument.mode:
             print("You have used '-m' or '--mode' with argument: {0}".format(argument.mode))
+
             if(argument.mode in self.supportedModes):
                 self.mode = argument.mode
                 print("Setting mode to %s mode."%(argument.mode))
@@ -91,6 +92,7 @@ class CommandLine:
             print("Remember: You can use -H or - Help to see configuration options") 
 
 class Stream:
+
 
     def __init__(self, header):
 
@@ -118,6 +120,7 @@ def chimeHeaderCheck(header,app):
         return False
     if(header['num_elements'] != app.config['num_elements']):
         print("Chime Header Error: Number of Elements does not match config")
+
         return False
     if(header['num_timesteps'] != app.config['samples_per_data_set']):
         print("Chime Header Error: Samples per Dataset does not match config")
@@ -187,7 +190,7 @@ def data_listener(socket_udp):
 
             #Receive packet from port
             packet, addr = sock_udp.recvfrom(frames_per_packet*local_freq*bytesPerFreq)
-            
+
             if(packet != ''):
 
                 print('Receiving UDP Packet...')
@@ -207,7 +210,7 @@ def data_listener(socket_udp):
                     if(new_max > max_seq):
 
                         roll_amount = int(-1*max((new_max-max_seq)/timesteps_per_frame,waterfall.shape[1]/8))
-                        
+
                         #DO THE ROLL
                         waterfall = np.roll(waterfall,roll_amount,axis=1)
                         waterfall[:,roll_amount:] = -1
@@ -224,7 +227,8 @@ def data_listener(socket_udp):
 
             #Receive packet from port
             packet, addr = sock_udp.recvfrom(chimePacketSize)
-        
+
+
             if(packet != ''):
 
                 if(packetCounter % 25*len(stream_dict) == 0):
@@ -236,13 +240,13 @@ def data_listener(socket_udp):
 
                 #Create a new stream object each time a new stream connects
                 if(header['encoded_stream_ID'][0] not in stream_dict.keys()):
-                    
+
                     #Check that the new stream is providing the correct data
                     if(chimeHeaderCheck(header,app) == False):
                         break
                     #Add to the dictionary of Streams
                     stream_dict[header['encoded_stream_ID'][0]] = Stream(header)
-                
+
                 #On first packet received by any stream
                 if(firstPacket):
 
@@ -287,7 +291,7 @@ def data_listener(socket_udp):
                     ('sk_step', np.int32,1), ('num_elements', np.int32,1),
                     ('num_times_per_frame', np.int32,1), ('num_freq', np.int32,1), ('seq', np.uint32 ,1)]))
                 data = np.fromstring(packet[vdifRFIHeaderSize:],dtype=np.float32)
-
+                print(header, data)
                 if(firstPacket):
 
                     if(VDIFHeaderCheck(header,app) == False):
@@ -297,24 +301,23 @@ def data_listener(socket_udp):
                     max_seq = min_seq + (waterfall.shape[1] - 1)
                     firstPacket = False
 
-           sock_udp.recvfrom     else:
+                else:
 
                     if(header['seq'] > max_seq):
 
                         roll_amount = int(-1*waterfall.shape[1]/8)
-                        
+
                         #DO THE ROLL
                         waterfall = np.roll(waterfall,roll_amount,axis=1)
                         waterfall[:,roll_amount:] = -1
                         min_seq -= roll_amount
                         max_seq -= roll_amount
-                        
+
                         #Adjust Times
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
 
                 waterfall[:,int(header['seq']-min_seq)] = data
-                    
-                
+
 def TCP_stream():
 
     global sock_tcp, waterfall, t_min
@@ -361,13 +364,14 @@ if( __name__ == '__main__'):
     waterfall = -1*np.ones([nx,ny],dtype=float)
 
     time.sleep(1)
-   
+
     receive_threads = []
+    UDP_IP= app.UDP_IP
     for i in range(app.config['num_receive_threads']):
         UDP_PORT = app.UDP_PORT + i
         sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock_udp.bind((UDP_IP, UDP_PORT))
-        receive_threads.append(threading.Thread(target=data_listener), args = (sock_udp,))
+        receive_threads.append(threading.Thread(target=data_listener, args = (sock_udp,)))
         receive_threads[i].daemon = True
         receive_threads[i].start()
 
