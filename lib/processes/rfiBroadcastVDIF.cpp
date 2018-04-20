@@ -54,7 +54,7 @@ void rfiBroadcastVDIF::main_thread() {
     //Intialize empty packet header
     int packet_header_length = sizeof(bool) + sizeof(int)*4 + sizeof(uint32_t);
     char *packet_header = (char *)malloc(packet_header_length);
-    
+
     //Declare array to hold averaged kurtosis estimates
     float RFI_Avg[_num_freq];
     unsigned int packet_header_bytes_written = 0;
@@ -92,10 +92,10 @@ void rfiBroadcastVDIF::main_thread() {
         packet_header_bytes_written += sizeof(int);
         memcpy(packet_header + packet_header_bytes_written, &_num_freq, sizeof(int));
         packet_header_bytes_written += sizeof(int);
-        
+
         //Connection succesful
         INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
-        
+
         while (!stop_thread) { //Endless loop
 
             //Get Frame
@@ -108,7 +108,7 @@ void rfiBroadcastVDIF::main_thread() {
             //Adjust Header
             memcpy(packet_header + packet_header_bytes_written, &vdif_seq_num, sizeof(uint32_t));
             packet_header_bytes_written += sizeof(uint32_t);
-            
+
             //Add Header to packet
             memcpy(packet_buffer, packet_header, packet_header_length);
 
@@ -124,7 +124,7 @@ void rfiBroadcastVDIF::main_thread() {
 
             //Add Data to packet
             memcpy(packet_buffer + packet_header_length, RFI_Avg, _num_freq*sizeof(float));
-                
+
             //Send Packet
             int bytes_sent = sendto(socket_fd,
                              packet_buffer,
@@ -134,17 +134,17 @@ void rfiBroadcastVDIF::main_thread() {
             if (bytes_sent != packet_length){
                 ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
             }
-            
+
             //Prepare Header For Adjustment
             packet_header_bytes_written -= sizeof(uint32_t); 
-            
+
             //Adjust Packet Number
             vdif_seq_num++;
 
             // Mark frame as empty.
             mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % rfi_buf->num_frames;
-            
+
             INFO("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
         }
     }
