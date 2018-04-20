@@ -166,6 +166,8 @@ void dpdkWrapper::main_thread() {
                     (unique_name + "_" + std::to_string(i)).c_str(), 128);
             register_producer(network_input_buffer[0], network_dpdk_args->producer_names[i]);
         }
+        // We need to zero part of the header between uses of each frame in this mode.
+        zero_frames(network_input_buffer[0]);
         network_dpdk_args->enable_shuffle = 0;
         network_dpdk_args->dump_full_packets = 0;
         network_dpdk_args->lcore_port_mapping[0] = 0;
