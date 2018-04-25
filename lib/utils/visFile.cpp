@@ -124,3 +124,20 @@ void visFileBundle::add_file(time_ctype first_time) {
     auto ind = file->extend_time(first_time);
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
 }
+
+std::string create_lockfile(std::string filename) {
+
+    // Create the lock file first such that there is no time the file is
+    // unlocked
+    std::string dir = filename;
+    std::string base = filename;
+    dir = dirname(&dir[0]);
+    base = basename(&base[0]);
+
+    std::string lock_filename = dir + "/." + base + ".lock";
+    std::ofstream lock_file(lock_filename);
+    lock_file << getpid() << std::endl;
+    lock_file.close();
+
+    return lock_filename;
+}

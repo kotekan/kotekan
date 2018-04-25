@@ -24,39 +24,6 @@ REGISTER_VIS_FILE("hdf5", visFileH5);
 REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 
 
-#if defined( __APPLE__ )
-// Taken from
-// https://android.googlesource.com/platform/system/core/+/master/base/include/android-base/macros.h
-#ifndef TEMP_FAILURE_RETRY
-#define TEMP_FAILURE_RETRY(exp)            \
-  ({                                       \
-    decltype(exp) _rc;                     \
-    do {                                   \
-      _rc = (exp);                         \
-    } while (_rc == -1 && errno == EINTR); \
-    _rc;                                   \
-  })
-#endif
-#endif
-
-
-std::string create_lockfile(std::string filename) {
-
-    // Create the lock file first such that there is no time the file is
-    // unlocked
-    std::string dir = filename;
-    std::string base = filename;
-    dir = dirname(&dir[0]);
-    base = basename(&base[0]);
-
-    std::string lock_filename = dir + "/." + base + ".lock";
-    std::ofstream lock_file(lock_filename);
-    lock_file << getpid() << std::endl;
-    lock_file.close();
-
-    return lock_filename;
-}
-
 //
 // Implementation of standard HDF5 visibility data file
 //

@@ -22,7 +22,7 @@ class visFile {
 
 public:
 
-    virtual ~visFile() {};
+virtual ~visFile() {};
 
     /** @brief Create the file.
      * 
@@ -251,7 +251,31 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
     }
 }
 
+/**
+ * @brief Create a lock file for the given file.
+ * @param filename Name of file to lock.
+ * @return The name of the lock file.
+ **/
+std::string create_lockfile(std::string filename);
+
 #define REGISTER_VIS_FILE(key, T) int _register_ ## T = visFile::register_file_type<T>(key)
+
+
+// Implementation of TEMP_FAILURE_RETRY for file writing which is missing on MacOS
+#if defined( __APPLE__ )
+// Taken from
+// https://android.googlesource.com/platform/system/core/+/master/base/include/android-base/macros.h
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(exp)            \
+  ({                                       \
+    decltype(exp) _rc;                     \
+    do {                                   \
+      _rc = (exp);                         \
+    } while (_rc == -1 && errno == EINTR); \
+    _rc;                                   \
+  })
+#endif
+#endif
 
 
 #endif

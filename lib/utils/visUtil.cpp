@@ -9,6 +9,23 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
     serial.copy(correlator_input, 32);
 }
 
+// JSON converters
+void to_json(json& j, freq_ctype& f) {
+    j = json{{"centre", f.centre}, {"width", f.width}};
+}
+
+void to_json(json& j, input_ctype& i) {
+    j = json{{"chan_id", i.chan_id}, {"correlator_input", i.correlator_input}};
+}
+
+void to_json(json& j, prod_ctype& p) {
+    j = json{{"input_a", p.input_a}, {"input_b", p.input_b}};
+}
+
+void to_json(json& j, time_ctype& t) {
+    j = json{{"fpga_count", t.fpga_count} {"ctime", t.ctime}};
+}
+
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 // TODO: port this to using map_vis_triangle. Need a unit test first.

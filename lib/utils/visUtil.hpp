@@ -81,6 +81,14 @@ struct prod_ctype {
     uint16_t input_b;
 };
 
+
+// Conversions of the index types to json
+void to_json(json& j, freq_ctype& f);
+void to_json(json& j, input_ctype& f);
+void to_json(json& j, prod_ctype& f);
+void to_json(json& j, time_ctype& f);
+
+
 /**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
