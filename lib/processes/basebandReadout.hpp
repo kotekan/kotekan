@@ -75,9 +75,6 @@ private:
             int64_t trigger_start_fpga,
             int64_t trigger_length_fpga
             );
-
-    /// the stream id this process is handling
-    std::string str_id;
 };
 
 

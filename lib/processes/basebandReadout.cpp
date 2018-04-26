@@ -49,10 +49,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
 
     register_consumer(buf, unique_name.c_str());
 
-    str_id = unique_name.substr(unique_name.rfind("_")+1);
-
     // XXX
-    std::cout << "BB constructor (" << str_id << ") " << num_frames_buffer << " " << buf->num_frames << std::endl;
+    std::cout << "BB constructor " << num_frames_buffer << " " << buf->num_frames << std::endl;
 
     // Ensure input buffer is long enough.
     if (buf->num_frames <= num_frames_buffer) {
@@ -115,7 +113,8 @@ void basebandReadout::listen_thread() {
         // Code to run after getting a trigger.
 
         // For testing readout logic.
-        auto dump = mgr.get_next_request(str_id);
+        uint32_t freq_id = 0; // TODO: use the real frequency from the input buffer
+        auto dump = mgr.get_next_request(freq_id);
         //auto dump =  std::make_shared<BasebandDumpStatus>(
         //        BasebandDumpStatus{BasebandRequest{360000, 131079}});
         //sleep(5);
