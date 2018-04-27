@@ -83,14 +83,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_read_id = 8;
     bank_write = 0;
 
-    //Here launch a new thread to listen for updates
-    phase_thread_handle = std::thread(&hsaPulsarUpdatePhase::phase_thread, std::ref(*this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
-      CPU_SET(i, &cpuset);
-    pthread_setaffinity_np(phase_thread_handle.native_handle(), sizeof(cpu_set_t), &cpuset);
-
     //Piggy-back on FRB to listen for gain updates
     using namespace std::placeholders;
     restServer * rest_server = get_rest_server();
