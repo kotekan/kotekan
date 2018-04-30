@@ -5,6 +5,7 @@
 #include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
 #include "fmt.hpp"
+#include "visUtil.hpp"
 
 #include <cblas.h>
 #include <lapacke.h>
@@ -157,22 +158,25 @@ void eigenVis::main_thread() {
         }
 
         // Calculate RMS residuals to eigenvalue approximation to the visibilities.
-        prod_ind = 0;
         double sum_sq = 0;
         int nprod_sum = 0;
-        for (int i = 0; i < num_elements; i++) {
-            for (int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
-                prod_ind++;
-            }
-            for (int j = i + num_diagonals_filled; j < num_elements; j++) {
+        std::vector<int> ipts(num_elements); // Inputs to iterate over
+        std::iota(ipts.begin(), ipts.end(), 0); // Fill sequentially
+
+        for (auto iexclude : exclude_inputs) { // Remove excluded inputs
+            ipts.erase(std::remove(ipts.begin(), ipts.end(), iexclude),ipts.end());
+        }
+        for(auto i = ipts.begin(); i != ipts.end(); i++) {
+            auto jstart = std::lower_bound(i, ipts.end(), *i + num_diagonals_filled);
+            for(auto j = jstart; j != ipts.end(); j++) {
+                prod_ind = cmap(*i,*j,num_elements);
                 cfloat residual = input_frame.vis[prod_ind];
                 for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-                    residual -= (last_evs[freq_id][ev_ind * num_elements + i]
-                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + j]));
+                    residual -= (last_evs[freq_id][ev_ind * num_elements + *i]
+                                 * std::conj(last_evs[freq_id][ev_ind * num_elements + *j]));
                 }
                 sum_sq += std::norm(residual);
                 nprod_sum++;
-                prod_ind++;
             }
         }
         double rms = pow(sum_sq / nprod_sum, 0.5);
