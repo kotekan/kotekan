@@ -66,6 +66,15 @@ public:
      **/
     size_t num_time() override;
 
+    /**
+     * @brief Remove the time sample from the active set being written to.
+     * 
+     * This explicit flushes the requested time sample and evicts it from the
+     * page cache.
+     *
+     * @param time_ind Sample to cleanup.
+     **/ 
+    void deactivate_time(uint32_t time_ind);
 
 protected:
 
@@ -85,6 +94,20 @@ protected:
      * @param data   The data to write out.
      **/
     bool write_raw(off_t offset, size_t nb, const void* data);
+
+    /**
+     * @brief Start an async flush to disk
+     * 
+     * @param ind       The index into the file dataset in time.
+     **/
+    void flush_raw_async(int ind);
+
+    /**
+     * @brief Start a synchronised flush to disk and evict any clean pages.
+     * 
+     * @param ind       The index into the file dataset in time.
+     **/
+    void flush_raw_sync(int ind);
 
     // The metadata we will write into the file
     json file_metadata;

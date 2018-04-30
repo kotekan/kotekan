@@ -363,15 +363,73 @@ bool visFileH5Fast::write_raw(off_t dset_base, int ind, size_t n,
     return true;
 }
 
+void visFileH5Fast::flush_raw_async(off_t dset_base, int ind, size_t n) {
+#ifdef __linux__
+    sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#endif
+}
+
+void visFileH5Fast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
+#ifdef __linux__
+    sync_file_range(fd, dset_base + ind * n, n,
+                    SYNC_FILE_RANGE_WAIT_BEFORE |
+                    SYNC_FILE_RANGE_WRITE |
+                    SYNC_FILE_RANGE_WAIT_AFTER);
+    posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED); 
+#endif
+}
+
 uint32_t visFileH5Fast::extend_time(time_ctype new_time) {
 
     // Perform a raw write of the new time sample
     write_raw(time_offset, ntime, 1, &new_time);
 
+    // Start to flush out older dataset regions
+    uint delta_async = 2;
+    if(ntime > delta_async) {
+        flush_raw_async(vis_offset, ntime - delta_async, nfreq * nprod * sizeof(cfloat));
+        flush_raw_async(weight_offset, ntime - delta_async, nfreq * nprod * sizeof(float));
+        flush_raw_async(gcoeff_offset, ntime - delta_async, nfreq * ninput * sizeof(cfloat));
+        flush_raw_async(gexp_offset, ntime - delta_async, ninput * sizeof(int32_t));
+         
+        if(write_ev) {
+            flush_raw_async(eval_offset, ntime - delta_async, nfreq * nev * sizeof(float));
+            flush_raw_async(evec_offset, ntime - delta_async, nfreq * nev * ninput * sizeof(cfloat));
+            flush_raw_async(evec_offset, ntime - delta_async, nfreq * sizeof(float));
+        }
+    }
+
+    // Flush and clear out any really old parts of the datasets
+    uint delta_sync = 4;
+    if(ntime > delta_sync) {
+        flush_raw_sync(vis_offset, ntime - delta_sync, nfreq * nprod * sizeof(cfloat));
+        flush_raw_sync(weight_offset, ntime - delta_sync, nfreq * nprod * sizeof(float));
+        flush_raw_sync(gcoeff_offset, ntime - delta_sync, nfreq * ninput * sizeof(cfloat));
+        flush_raw_sync(gexp_offset, ntime - delta_sync, ninput * sizeof(int32_t));
+         
+        if(write_ev) {
+            flush_raw_sync(eval_offset, ntime - delta_sync, nfreq * nev * sizeof(float));
+            flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * nev * ninput * sizeof(cfloat));
+            flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * sizeof(float));
+        }
+    }
+
     // Increment the time count and return the index of the added sample
     return ntime++;
 }
 
+void visFileH5Fast::deactivate_time(uint32_t time_ind) {
+    flush_raw_sync(vis_offset, time_ind, nfreq * nprod * sizeof(cfloat));
+    flush_raw_sync(weight_offset, time_ind, nfreq * nprod * sizeof(float));
+    flush_raw_sync(gcoeff_offset, time_ind, nfreq * ninput * sizeof(cfloat));
+    flush_raw_sync(gexp_offset, time_ind, ninput * sizeof(int32_t));
+     
+    if(write_ev) {
+        flush_raw_sync(eval_offset, time_ind, nfreq * nev * sizeof(float));
+        flush_raw_sync(evec_offset, time_ind, nfreq * nev * ninput * sizeof(cfloat));
+        flush_raw_sync(evec_offset, time_ind, nfreq * sizeof(float));
+    }
+}
 
 void visFileH5Fast::write_sample(
     uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame

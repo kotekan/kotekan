@@ -88,16 +88,6 @@ virtual ~visFile() {};
     virtual size_t num_time() = 0;
 
     /**
-     * @brief Remove the time sample from the active set being written to.
-     * 
-     * This explicit flushes the requested time sample and evicts it from the
-     * page cache.
-     *
-     * @param time_ind Sample to cleanup.
-     **/ 
-    void deactivate_time(uint32_t time_ind);
-
-    /**
      * @brief Register a compatible visFile type.
      * @param type Name of type.
      **/

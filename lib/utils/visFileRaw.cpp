@@ -96,15 +96,48 @@ size_t visFileRaw::num_time() {
     return times.size();
 }
 
+void visFileRaw::flush_raw_async(int ind) {
+#ifdef __linux__
+    size_t n = nfreq * frame_size;
+    sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#endif
+}
+
+void visFileRaw::flush_raw_sync(int ind) {
+#ifdef __linux__
+    size_t n = nfreq * frame_size;
+    sync_file_range(fd, dset_base + ind * n, n,
+                    SYNC_FILE_RANGE_WAIT_BEFORE |
+                    SYNC_FILE_RANGE_WRITE |
+                    SYNC_FILE_RANGE_WAIT_AFTER);
+    posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED); 
+#endif
+}
 
 uint32_t visFileRaw::extend_time(time_ctype new_time) {
 
-    times.push_back(new_time);
+    size_t ntime = num_time();
 
+    // Start to flush out older dataset regions
+    uint delta_async = 2;
+    if(ntime > delta_async) {
+        flush_raw_async(ntime - delta_async);
+    }
+
+    // Flush and clear out any really old parts of the datasets
+    uint delta_sync = 4;
+    if(ntime > delta_sync) {
+        flush_raw_async(ntime - delta_sync);
+    }
+
+    times.push_back(new_time);
     ftruncate(fd, frame_size * nfreq * num_time());
 
-    // Extend the file length
     return num_time() - 1;
+}
+
+void visFileRaw::deactivate_time(uint32_t time_ind) {
+    flush_raw_sync(time_ind);
 }
 
 
