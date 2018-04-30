@@ -24,12 +24,15 @@ visWriter::visWriter(Config& config,
                    std::bind(&visWriter::main_thread, this)) {
 
     // Fetch any simple configuration
-    // num_freq = config.get_int(unique_name, "num_freq");
     root_path = config.get_string_default(unique_name, "root_path", ".");
 
     // Get the list of buffers that this process shoud connect to
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
+
+    // Get the type of the file we are writing
+    // TODO: we may want to validate here rather than at creation time
+    file_type = config.get_string_default(unique_name, "file_type", "hdf5fast");
 
     // Get the input labels
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
@@ -133,9 +136,7 @@ void visWriter::main_thread() {
 
             // Add all the new information to the file.
             double start = current_time();
-            bool error = file_bundle->add_sample(t, freq_ind, vis, vis_weight,
-                                                gain_coeff, gain_exp, eval,
-                                                evec, frame.erms);
+            bool error = file_bundle->add_sample(t, freq_ind, frame);
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);
@@ -186,11 +187,12 @@ void visWriter::init_acq() {
 
     // Get the current user
     std::string user(256, '\0');
-    user = (getlogin_r(&user[0], 256) == 0) ? user : "unknown";
+    user = (getlogin_r(&user[0], 256) == 0) ? user.c_str() : "unknown";
 
     // Get the current hostname of the system
     std::string hostname(256, '\0');
     gethostname(&hostname[0], 256);
+    hostname = hostname.c_str();
 
     // Set the metadata that we want to save with the file
     std::map<std::string, std::string> metadata;
@@ -206,7 +208,7 @@ void visWriter::init_acq() {
     // is called
     file_bundle = std::unique_ptr<visFileBundle>(
         new visFileBundle(
-            "hdf5fast", root_path, instrument_name, metadata, chunk_id, file_length, window,
+            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
             freqs, inputs, prods, num_ev, file_length
         )
     );

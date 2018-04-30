@@ -212,24 +212,25 @@ uint32_t visFileH5::extend_time(time_ctype new_time) {
 
 
 void visFileH5::write_sample(
-    uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
-    std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
-    std::vector<int32_t> new_gexp, std::vector<float> new_eval,
-    std::vector<cfloat> new_evec, float new_erms
+    uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
 ) {
 
     // Get the current dimensions
     size_t nprod = length("prod"), ninput = length("input"), nev = length("ev");
 
-    dset("vis").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
-    dset("vis_weight").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_weight);
-    dset("gain_coeff").select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(new_gcoeff);
-    dset("gain_exp").select({time_ind, 0}, {1, ninput}).write(new_gexp);
+    std::vector<cfloat> gain_coeff(ninput, {1, 0});
+    std::vector<int32_t> gain_exp(ninput, 0);
+
+    dset("vis").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(frame.vis.data());
+
+    dset("vis_weight").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(frame.weight.data());
+    dset("gain_coeff").select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(gain_coeff);
+    dset("gain_exp").select({time_ind, 0}, {1, ninput}).write(gain_exp);
 
     if(write_ev) {
-        dset("eval").select({time_ind, freq_ind, 0}, {1, 1, nev}).write(new_eval);
-        dset("evec").select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}).write((const cfloat *)new_evec.data());
-        dset("erms").select({time_ind, freq_ind}, {1, 1}).write(new_erms);
+        dset("eval").select({time_ind, freq_ind, 0}, {1, 1, nev}).write(frame.eval.data());
+        dset("evec").select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}).write(frame.evec.data());
+        dset("erms").select({time_ind, freq_ind}, {1, 1}).write(&frame.erms);
     }
 
     file->flush();
@@ -373,21 +374,21 @@ uint32_t visFileH5Fast::extend_time(time_ctype new_time) {
 
 
 void visFileH5Fast::write_sample(
-    uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
-    std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
-    std::vector<int32_t> new_gexp, std::vector<float> new_eval,
-    std::vector<cfloat> new_evec, float new_erms
+    uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
 ) {
 
-    write_raw(vis_offset, time_ind * nfreq + freq_ind, nprod, new_vis);
-    write_raw(weight_offset, time_ind * nfreq + freq_ind, nprod, new_weight);
-    write_raw(gcoeff_offset, time_ind * nfreq + freq_ind, ninput, new_gcoeff);
-    write_raw(gexp_offset, time_ind, ninput, new_gexp);
+    std::vector<cfloat> gain_coeff(ninput, {1, 0});
+    std::vector<int32_t> gain_exp(ninput, 0);
+
+    write_raw(vis_offset, time_ind * nfreq + freq_ind, nprod, frame.vis.data());
+    write_raw(weight_offset, time_ind * nfreq + freq_ind, nprod, frame.weight.data());
+    write_raw(gcoeff_offset, time_ind * nfreq + freq_ind, ninput, gain_coeff);
+    write_raw(gexp_offset, time_ind, ninput, gain_exp);
 
     if(write_ev) {
-        write_raw(eval_offset, time_ind * nfreq + freq_ind, nev, new_eval);
-        write_raw(evec_offset, time_ind * nfreq + freq_ind, nev * ninput, new_evec);
-        write_raw(erms_offset, time_ind * nfreq + freq_ind, 1, (const float*)&new_erms);
+        write_raw(eval_offset, time_ind * nfreq + freq_ind, nev, frame.eval.data());
+        write_raw(evec_offset, time_ind * nfreq + freq_ind, nev * ninput, frame.evec.data());
+        write_raw(erms_offset, time_ind * nfreq + freq_ind, 1, (const float*)&frame.erms);
     }
 
     // Figure out what (if any) flushing or advising to do here.

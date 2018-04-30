@@ -83,11 +83,15 @@ struct prod_ctype {
 
 
 // Conversions of the index types to json
-void to_json(json& j, freq_ctype& f);
-void to_json(json& j, input_ctype& f);
-void to_json(json& j, prod_ctype& f);
-void to_json(json& j, time_ctype& f);
+void to_json(json& j, const freq_ctype& f);
+void to_json(json& j, const input_ctype& f);
+void to_json(json& j, const prod_ctype& f);
+void to_json(json& j, const time_ctype& f);
 
+void from_json(const json& j, freq_ctype& f);
+void from_json(const json& j, input_ctype& f);
+void from_json(const json& j, prod_ctype& f);
+void from_json(const json& j, time_ctype& f);
 
 /**
  * @brief Index into a flattened upper matrix triangle.

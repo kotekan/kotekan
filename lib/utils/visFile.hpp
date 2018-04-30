@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 
+#include "visBuffer.hpp"
 #include "visUtil.hpp"
 #include "errors.h"
 
@@ -61,22 +62,12 @@ virtual ~visFile() {};
     /**
      * @brief Write a sample of data into the file at the given index.
      * 
-     * @param new_vis Vis data.
-     * @param new_weight Weight data.
-     * @param new_gcoeff Gain coefficients.
-     * @param new_gexp Gain exponents.
-     * @param new_eval Eigenvalues.
-     * @param new_evec Eigenvectors.
-     * @param new_erms RMS after eigenvalue removal.
+     * @param time_ind Time index to write into.
+     * @param freq_ind Frequency index to write into.
+     * @param frame Frame to write out.
      **/
     virtual void write_sample(uint32_t time_ind, uint32_t freq_ind,
-                              std::vector<cfloat> new_vis,
-                              std::vector<float> new_weight,
-                              std::vector<cfloat> new_gcoeff,
-                              std::vector<int32_t> new_gexp,
-                              std::vector<float> new_eval,
-                              std::vector<cfloat> new_evec,
-                              float new_erms) = 0;
+                              const visFrameView& frame) = 0;
 
     /**
      * @brief Return the current number of current time samples.
@@ -91,6 +82,7 @@ virtual ~visFile() {};
      **/
     template <typename T>
     static inline int register_file_type(const std::string type);
+
 
 protected:
 

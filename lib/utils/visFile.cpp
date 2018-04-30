@@ -8,12 +8,14 @@
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
+#include <libgen.h>
+#include <fstream>
 #include <sys/stat.h>
+#include "fmt.hpp"
 
 
 // Initialise the type map
 std::map<std::string, std::function<visFile*()>> visFile::_type_list;
-
 
 std::shared_ptr<visFile> visFile::create(
     const std::string& type,
@@ -24,6 +26,12 @@ std::shared_ptr<visFile> visFile::create(
     const std::vector<prod_ctype>& prods,
     size_t num_ev, size_t max_time
 ) {
+
+    if(_type_list.find(type) == _type_list.end()) {
+        throw std::runtime_error(
+            fmt::format("Cannot create visFile of unknown type {}", type)
+        );
+    }
 
     // Lookup the registered file and create an instance
     INFO("Creating file %s of type %s", name.c_str(), type.c_str());
@@ -99,11 +107,8 @@ void visFileBundle::add_file(time_ctype first_time) {
     // Start the acq and create the directory if required
     if(acq_name.empty()) {
         // Format the time (annoyingly you still have to use streams for this)
-        std::ostringstream s;
-        s << std::put_time(std::gmtime(&t), "%Y%m%dT%H%M%SZ");
-        // Set the acq name
-        acq_name = s.str() + "_" + instrument_name + "_corr";
-
+        acq_name = fmt::format("{:%Y%m%dT%H%M%SZ}_{}_corr",
+                               *std::gmtime(&t), instrument_name);
         // Set the acq fields on the instance
         acq_start_time = first_time.ctime;
 
@@ -112,12 +117,9 @@ void visFileBundle::add_file(time_ctype first_time) {
     }
 
     // Construct the name of the new file
-    char fname_temp[100];
-    snprintf(
-        fname_temp, sizeof(fname_temp), "%08d_%04d.h5",
-        (unsigned int)(first_time.ctime - acq_start_time), freq_chunk
-    );
-    std::string file_name = fname_temp;
+    uint32_t time_since_start = (uint32_t)(first_time.ctime - acq_start_time);
+    std::string file_name = fmt::format("{:08d}_{:04d}",
+                                        time_since_start, freq_chunk);
 
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);

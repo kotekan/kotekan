@@ -14,6 +14,7 @@ set (KOTEKAN_UTIL_SOURCES
               visBuffer.cpp
               visUtil.cpp
               visFile.cpp
+              visFileRaw.cpp
        )
 
 if (${USE_DPDK})
