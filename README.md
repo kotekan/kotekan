@@ -3,92 +3,9 @@
 Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.
 One day we'll move them to readthedocs...
 
-
-# Build/Run Requirements
-
-## Software:
-
-* CentOS 7.\*, Ubuntu 14.04, 16.04, macOS
-* GCC >= 4.9.4 or CLANG >= 3.5.0
-* CMake >= 2.8
-* libevent, pthread
-
-Required for some build options:
-
-* [DPDK dpdk-16.11.3](http://dpdk.org/)
-* Hugepage support
-* [AMD OpenCL drivers](http://support.amd.com/en-us/download/linux) and [SDK](http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/)
-* [AMD ROCm](https://github.com/RadeonOpenCompute/ROCm)
-* [HDF5](https://www.hdfgroup.org/HDF5/) and [HighFive](https://github.com/jrs65/HighFive)
-* [OpenBLAS](http://www.openblas.net/) (optional)
-
-## Hardware:
-
-To support the latest HSA builds with full networking stack:
-
-* NIC supporting DPDK, ideally Intel XL710 based
-* CPU supporting AVX2, 4 memory channels, and at least 4 real cores. e.g. Intel E5-2620 v3 or i7-5930K
-* AMD GPUs R9 Fury (s9300x2), RX 480/580, RX Vega, or later.
-* RAM >= 16GB
-
-To support OpenCL builds with the full networking stack:
-
-* NIC supporting DPDK, ideally Intel XL710 based
-* CPU supporting AVX2, 4 memory channels, and at least 4 real cores. e.g. Intel E5-2620 v3 or i7-5930K
-* AMD GPUs R9 2XX or later.
-* RAM >= 16GB
-
-## DPDK
-
-Install process.  Download the DPDK version 16.11.3 from:
-
-http://fast.dpdk.org/rel/dpdk-16.11.3.tar.xz
-
-Unpack it in `/opt/` and run:
-
-    make install T=x86_64-native-linuxapp-gcc
-
-It will give a warning about install path being missing, just ignore it.
-
-## OpenBLAS
-
-Optional and only required for some kotekan processes. Only from-source builds are supported, not the
-version that is distributed with Debian/Ubuntu.
-
-Obtain the source from the OpenBLAS homepage or via:
-
-    git clone https://github.com/xianyi/OpenBLAS.git
-
-Enter the source directory and run:
-
-    make
-    make PREFIX=<openblas_prefix> install
-
-where `<openblas_prefix>` is the *full* path to a directory of your choice, eg. `/opt/OpenBLAS`, or just a
-'build' directory in the source dir. Set the environment variable `CMAKE_PREFIX_PATH` to include
-`<openblas_prefix>` or supply `-DOPENBLAS_PATH=<openblas_prefix>` to `cmake` when building kotekan.
-
-
-### Startup scripts to help load DPDK drivers and setup huge pages
-
-Add the following to /etc/rc.local, and make sure rc.local is executable, the following assumes
-that Intel XL710 based NIC cards are being used, and dpdk is installed at /data/dpdk-2.2.0/
-
-    echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
-
-    modprobe uio_pci_generic
-    PCI_NIC_LIST=`/opt/dpdk-stable-16.11.3/tools/dpdk-devbind.py --status | grep X710 | cut -b 6-12 | tr '\n' ' '`
-    /opt/dpdk-stable-16.11.3/tools/dpdk-devbind.py --bind uio_pci_generic $PCI_NIC_LIST
-
-Also add the following line to /etc/fstab to enable huge pages
-
-    nodev   /mnt/huge   hugetlbfs   defaults        0 0
-
-And make the folder /mnt/huge
-
-    sudo mkdir /mnt/huge
-
 # Build Instructions
+
+Detailed instructions at http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
 
 The project is build using cmake, so you will need to install cmake
 before starting a build.
@@ -96,7 +13,7 @@ before starting a build.
 To build just the base framework:
 
 	cd build
-	cmake ..
+	cmake <options> ..
 	make
 
 Cmake build options:

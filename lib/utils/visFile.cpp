@@ -1,6 +1,7 @@
 
 #include "visFile.hpp"
 #include "errors.h"
+#include "version.h"
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -81,6 +82,8 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
 
             // As we've added a new sample we need to delete the earliest sample
             if(vis_file_map.size() > window_size) {
+                std::tie(file, ind) = vis_file_map.begin()->second;  // Unpack the first entry
+                file->deactivate_time(ind); // Cleanup the sample
                 vis_file_map.erase(vis_file_map.begin());
             }
         }

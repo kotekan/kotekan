@@ -60,6 +60,17 @@ virtual ~visFile() {};
     virtual uint32_t extend_time(time_ctype new_time) = 0;
 
     /**
+     * @brief Remove the time sample from the active set being written to.
+     * 
+     * After this is called there should be no more requests to write into 
+     * this timesample. Implement this method to perform any final cleanup
+     * on the file for this sample (e.g. flush, evict pages).
+     *
+     * @param time_ind Sample to cleanup.
+     **/ 
+    void deactivate_time(uint32_t time_ind) {};
+
+    /**
      * @brief Write a sample of data into the file at the given index.
      * 
      * @param time_ind Time index to write into.
@@ -75,6 +86,16 @@ virtual ~visFile() {};
      * @return The current number of time samples.
      **/
     virtual size_t num_time() = 0;
+
+    /**
+     * @brief Remove the time sample from the active set being written to.
+     * 
+     * This explicit flushes the requested time sample and evicts it from the
+     * page cache.
+     *
+     * @param time_ind Sample to cleanup.
+     **/ 
+    void deactivate_time(uint32_t time_ind);
 
     /**
      * @brief Register a compatible visFile type.
@@ -112,6 +133,9 @@ protected:
     // Private constructor to discourage creation of subclasses outside of the
     // create routine
     visFile() {};
+
+    // Save the size for when we are outside of HDF5 space
+    size_t nfreq, nprod, ninput, nev, ntime = 0;
 
 private:
 

@@ -154,7 +154,7 @@ void bufferSend::connect_to_server() {
 
     while (!stop_thread) {
 
-        INFO("Trying to connecting to server: %s:%d", server_ip.c_str(), server_port);
+        DEBUG("Trying to connecting to server: %s:%d", server_ip.c_str(), server_port);
 
         socket_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd == -1) {
