@@ -127,6 +127,4 @@ protected:
     size_t alignment;
 };
 
-
-
 #endif

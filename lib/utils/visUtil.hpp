@@ -48,6 +48,12 @@ struct freq_ctype {
  * @brief Correlator input index map
  */
 struct input_ctype {
+
+    /**
+     * @brief Default constructor.
+     **/
+    input_ctype();
+
     /**
      * @brief Allow initialisation from a std::string
      * @param id     Input ID

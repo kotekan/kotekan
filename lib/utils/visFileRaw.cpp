@@ -71,7 +71,6 @@ void visFileRaw::create_file(const std::string& name,
         std::runtime_error(fmt::format("Failed to open file {}: {}.",
                                        name + ".data", strerror(errno)));
     }
-    std::cout << (name + ".data ") << fd << std::endl;
 
     // TODO: Preallocate data file (without increasing the length)
 }
@@ -84,7 +83,6 @@ visFileRaw::~visFileRaw() {
     std::vector<uint8_t> t = json::to_msgpack(file_metadata);
     metadata_file.write((const char *)&t[0], t.size());
     metadata_file.close();
-
 
     // TODO: final sync of data file.
     close(fd);

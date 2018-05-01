@@ -1,6 +1,11 @@
 #include "visUtil.hpp"
 #include <cstring>
 
+// Initialise the serial from a std::string
+input_ctype::input_ctype() {
+    chan_id = 0;
+    std::memset(correlator_input, 0, 32);
+}
 
 // Initialise the serial from a std::string
 input_ctype::input_ctype(uint16_t id, std::string serial) {
@@ -32,7 +37,7 @@ void from_json(const json& j, freq_ctype& f) {
 }
 
 void from_json(const json& j, input_ctype& i) {
-    i.chan_id = j.at("centre").get<uint32_t>();
+    i.chan_id = j.at("chan_id").get<uint32_t>();
     std::string t = j.at("correlator_input").get<std::string>();
     std::memset(i.correlator_input, 0, 32);
     t.copy(i.correlator_input, 32);
