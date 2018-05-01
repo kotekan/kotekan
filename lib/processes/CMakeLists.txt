@@ -33,6 +33,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visProcess.cpp
               timeDownsample.cpp
               visTruncate.cpp
+              visRawReader.cpp
+              visWriter.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -56,8 +58,7 @@ endif ()
 # HDF5 stuff
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
+  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
 endif ()
 
 if (${USE_LAPACK})

@@ -35,10 +35,12 @@
  * @conf  freq_ids          List of int. The frequency IDs to generate frames for.
  * @conf  cadence           Float. The interval of time (in seconds) between frames.
  * @conf  mode              String. How to fill the visibility array. Options are:
- *                            - default: the visibility array is populated with integers
- *                              increasing from zero on the diagonal and FPGA sequence
- *                              number, timestamp, frequency, and frame ID in the first
- *                              elements. The remaining elements are zero.
+ *                            - default: the visibility array is populated with
+ *                              integers increasing from zero on the diagonal
+ *                              (imaginary part) and FPGA sequence number,
+ *                              timestamp, frequency, and frame ID in the first
+ *                              four elements (real part). The remaining
+ *                              elements are zero.
  *                            - fill_ij: Fill the real part with the index
  *                              of feed i and the imaginary part with the index of j.
  *                            - phase_ij: Fill with unit amplitude numbers with phase

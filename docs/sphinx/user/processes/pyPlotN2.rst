@@ -1,6 +1,6 @@
 ***********************
-pyPlotResult
+pyPlotN2
 ***********************
 
-.. doxygenclass:: pyPlotResult
+.. doxygenclass:: pyPlotN2
 
