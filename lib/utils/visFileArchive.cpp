@@ -100,6 +100,7 @@ void visFileArchive::create_datasets() {
     create_dataset("vis", {"freq", "prod", "time"}, create_datatype<cfloat>());
     create_dataset("flags/vis_weight", {"freq", "prod", "time"}, create_datatype<float>());
     create_dataset("gain_coeff", {"freq", "prod", "time"}, create_datatype<cfloat>());
+    // TODO: should this use a fixed size?
     create_dataset("gain_exp", {"input", "time"}, create_datatype<int>());
 
     // Only write the eigenvector datasets if there's going to be anything in

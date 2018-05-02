@@ -24,14 +24,14 @@ private:
     size_t chunk_f;
 
     // Datasets to be stored until ready to write
-    std::span<time_ctype> time;
-    std::span<cfloat> vis;
-    std::span<float> vis_weight;
-    std::span<cfloat> gain_coeff;
-    std::span<int32_t> gain_exp;
-    std::span<float> eval;
-    std::span<cfloat> evec;
-    std::span<float> erms;
+    gsl::span<time_ctype> time;
+    gsl::span<cfloat> vis;
+    gsl::span<float> vis_weight;
+    gsl::span<cfloat> gain_coeff;
+    gsl::span<int32_t> gain_exp;
+    gsl::span<float> eval;
+    gsl::span<cfloat> evec;
+    gsl::span<float> erms;
 
     /// The list of frequencies and inputs that gets written into the index maps
     /// of the HDF5 files
@@ -56,6 +56,9 @@ private:
     void transpose_write();
 
     std::shared_ptr<visFileArchive> file;
+
+    // Buffer for writing
+    char * write_buf;
 
 };
 
