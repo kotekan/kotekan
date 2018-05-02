@@ -29,7 +29,7 @@ The kotekan framework registers a number of points
 ``/config`` ``[GET]``
     Returns the current system configuration.
 
-``/version`` ``[GET``
+``/version`` ``[GET]``
     Returns the current kotekan version information; including build options.
 
 ``/endpoints`` ``[GET]``
