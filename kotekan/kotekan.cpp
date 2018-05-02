@@ -128,6 +128,8 @@ void dpdk_setup() {
     char  arg3[] = "-c";
 #ifdef WITH_OPENCL
     char  arg4[] = "0xF";
+#elif DPDK_VDIF_MODE
+    char  arg4[] = "0x3CF";
 #else
     // TODO This is a CHIME specific value with cores 0,1,6,7 active.
     // This value should be made dynamic
