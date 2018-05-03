@@ -5,6 +5,8 @@
 #include "buffer.h"
 #include "visFileArchive.hpp"
 
+using json = nlohmann::json;
+
 class visTranspose : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
@@ -23,6 +25,8 @@ private:
     size_t chunk_t;
     size_t chunk_f;
 
+    std::string filename;
+
     // Datasets to be stored until ready to write
     gsl::span<time_ctype> time;
     gsl::span<cfloat> vis;
@@ -33,16 +37,17 @@ private:
     gsl::span<cfloat> evec;
     gsl::span<float> erms;
 
-    /// The list of frequencies and inputs that gets written into the index maps
+    /// The list of frequencies and inputs that get written into the index maps
     /// of the HDF5 files
+    std::vector<time_ctype> times;
     std::vector<freq_ctype> freqs;
     std::vector<input_ctype> inputs;
+    std::vector<prod_ctype> prods;
+    std::vector<uint32_t> ev;
+    json metadata;
 
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
-
-    // Vector of products if options to restrict them are present
-    std::vector<prod_ctype> prods;
 
     /// Number of products to write
     size_t num_prod;
@@ -59,6 +64,9 @@ private:
 
     // Buffer for writing
     char * write_buf;
+
+    size_t f_ind = 0;
+    size_t t_ind = 0;
 
 };
 

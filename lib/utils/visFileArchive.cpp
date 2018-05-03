@@ -57,6 +57,35 @@ visFileArchive::visFileArchive(const std::string& name,
 
 }
 
+
+template<typename T>
+void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
+                                 size_t chunk_t, T* data) {
+    if (name == "gain_exp") {
+        dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
+    } else if (name == "evec") {
+        dset(name).select({f_ind, 0, 0, t_ind},
+                          {chunk_f, length("ev"), length("input"), chunk_t}).write(data);
+    } else if (name == "erms") {
+        dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
+    } else {
+        size_t last_dim = dset(name).getSpace().getDimensions().at(1);
+        dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
+    }
+
+    file->flush();
+}
+
+// Instantiate for types that will get used to satisfy linker
+template void visFileArchive::write_block<std::complex<float>>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, std::complex<float>*);
+template void visFileArchive::write_block<float>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, float*);
+template void visFileArchive::write_block<int>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, int*);
+
+
+//
+// The following was adapted from visFileH5
+//
+
 visFileArchive::~visFileArchive() {
     file->flush();
     file.reset(nullptr);
@@ -118,11 +147,9 @@ void visFileArchive::create_datasets() {
 void visFileArchive::create_dataset(const std::string& name, const std::vector<std::string>& axes,
                                DataType type) {
 
-    size_t num_time = dset("index_map/time").getSpace().getMaxDimensions()[0];
-
     // Mapping of axis names to sizes (start, chunk)
     // TODO: set chunk size
-    std::map<std::string, std::tuple<size_t, size_t, size_t>> size_map;
+    std::map<std::string, std::tuple<size_t, size_t>> size_map;
     size_map["freq"] = std::make_tuple(length("freq"), 1);
     size_map["input"] = std::make_tuple(length("input"), length("input"));
     size_map["prod"] = std::make_tuple(length("prod"), length("prod"));
@@ -154,65 +181,6 @@ DataSet visFileArchive::dset(const std::string& name) {
 size_t visFileArchive::length(const std::string& axis_name) {
     if(!write_ev && axis_name == "ev") return 0;
     return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
-}
-
-
-// TODO: remove?
-uint32_t visFileH5::extend_time(time_ctype new_time) {
-
-    // Get the current dimensions
-    size_t ntime = length("time"), nprod = length("prod"),
-           ninput = length("input"), nfreq = length("freq"),
-           nev = length("ev");
-
-    INFO("Current size: %zd; new size: %zd", ntime, ntime + 1);
-    // Add a new entry to the time axis
-    ntime++;
-    dset("index_map/time").resize({ntime});
-    dset("index_map/time").select({ntime - 1}, {1}).write(&new_time);
-
-    // Extend all other datasets
-    dset("vis").resize({ntime, nfreq, nprod});
-    dset("vis_weight").resize({ntime, nfreq, nprod});
-    dset("gain_coeff").resize({ntime, nfreq, ninput});
-    dset("gain_exp").resize({ntime, ninput});
-
-    if(write_ev) {
-        dset("eval").resize({ntime, nfreq, nev});
-        dset("evec").resize({ntime, nfreq, nev, ninput});
-        dset("erms").resize({ntime, nfreq});
-    }
-
-    // Flush the changes
-    file->flush();
-
-    return ntime - 1;
-}
-
-// TODO: remove?
-void visFileH5::write_sample(
-    uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
-) {
-
-    // Get the current dimensions
-    size_t nprod = length("prod"), ninput = length("input"), nev = length("ev");
-
-    std::vector<cfloat> gain_coeff(ninput, {1, 0});
-    std::vector<int32_t> gain_exp(ninput, 0);
-
-    dset("vis").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(frame.vis.data());
-
-    dset("vis_weight").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(frame.weight.data());
-    dset("gain_coeff").select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(gain_coeff);
-    dset("gain_exp").select({time_ind, 0}, {1, ninput}).write(gain_exp);
-
-    if(write_ev) {
-        dset("eval").select({time_ind, freq_ind, 0}, {1, 1, nev}).write(frame.eval.data());
-        dset("evec").select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}).write(frame.evec.data());
-        dset("erms").select({time_ind, freq_ind}, {1, 1}).write(&frame.erms);
-    }
-
-    file->flush();
 }
 
 

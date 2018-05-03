@@ -35,14 +35,9 @@ public:
     ~visFileArchive();
 
     // Write a block in time/freq
-    void write_samples(size_t time_ind, size_t freq_ind, vis, vis_weight...);
-
-    // TODO: remove
-    uint32_t extend_time(time_ctype new_time) override;
-
-    // TODO: remove?
-    void write_sample(uint32_t time_ind, uint32_t freq_ind,
-                      const visFrameView& frame) override;
+    template<typename T>
+    void write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
+                     size_t chunk_t, T* data);
 
 
 protected:

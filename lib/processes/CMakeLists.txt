@@ -33,6 +33,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visProcess.cpp
               timeDownsample.cpp
               visTruncate.cpp
+              visTranspose.cpp
               visRawReader.cpp
               visWriter.cpp
               )
