@@ -8,7 +8,7 @@
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
-const uint BLOCK_SIZE = 32;
+const size_t BLOCK_SIZE = 32;
 
 visTranspose::visTranspose(Config &config, const string& unique_name, bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&visTranspose::main_thread, this)) {
@@ -127,33 +127,36 @@ void visTranspose::main_thread() {
 void visTranspose::transpose_write() {
     DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
     // loop over frequency and transpose
+    // TODO: need to adjust block size for small dimensions
+    size_t block_size = std::min(BLOCK_SIZE, chunk_t);
+    size_t ev_block_size = std::min(block_size, num_ev);
     for (size_t f = 0; f < chunk_f; f++){
         blocked_transpose((void*) &*(vis.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
-                          chunk_t, num_prod, BLOCK_SIZE, sizeof(cfloat));
+                          chunk_t, num_prod, block_size, sizeof(cfloat));
         file->write_block("vis", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
 
         blocked_transpose((void*) &*(vis_weight.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
-                          chunk_t, num_prod, BLOCK_SIZE, sizeof(float));
+                          chunk_t, num_prod, block_size, sizeof(float));
         file->write_block("vis_weight", f_ind, t_ind, chunk_f, chunk_t, (const float*) write_buf.data());
 
         // TODO: for now should bypass this since we are just filling it with ones
         blocked_transpose((void*) &*(gain_coeff.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
-                          chunk_t, num_prod, BLOCK_SIZE, sizeof(cfloat));
+                          chunk_t, num_prod, block_size, sizeof(cfloat));
         file->write_block("gain_coeff", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
 
         blocked_transpose((void*) &*(eval.begin() + f * chunk_t * num_ev), (void*) write_buf.data(),
-                          chunk_t, num_ev, 4, sizeof(float));
+                          chunk_t, num_ev, ev_block_size, sizeof(float));
         file->write_block("eval", f_ind, t_ind, chunk_f, chunk_t, (const float*) write_buf.data());
 
         blocked_transpose((void*) &*(evec.begin() + f * chunk_t * num_ev * num_input), (void*) write_buf.data(),
-                          chunk_t, num_input, BLOCK_SIZE, num_ev * sizeof(cfloat));
+                          chunk_t, num_input, block_size, num_ev * sizeof(cfloat));
         file->write_block("evec", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
 
         file->write_block("erms", f_ind, t_ind, chunk_f, chunk_t, erms.data());
     }
 
     blocked_transpose((void*) gain_exp.data(), (void*) write_buf.data(),
-                      chunk_t, num_input, BLOCK_SIZE, sizeof(int));
+                      chunk_t, num_input, block_size, sizeof(int));
     file->write_block("gain_exp", f_ind, t_ind, chunk_f, chunk_t, (const int*) write_buf.data());
 
     t_ind = (t_ind + chunk_t) % num_time;
