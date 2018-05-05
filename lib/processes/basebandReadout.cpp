@@ -186,6 +186,7 @@ basebandDump basebandReadout::get_data(
     int dump_end_frame;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     float max_wait_time = 1.;
+    float min_wait_time = samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
 
     if (trigger_length_fpga > samples_per_data_set * num_frames_buffer / 2) {
         throw std::runtime_error("Baseband dump request too long");
@@ -230,7 +231,9 @@ basebandDump basebandReadout::get_data(
             time_to_wait_seq += samples_per_data_set;
             float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
             wait_time = std::min(wait_time, max_wait_time);
-            sleep(wait_time);
+            wait_time = std::max(wait_time, min_wait_time);
+            std::cout << "wait for: " << wait_time << std::endl;
+            usleep(wait_time * 1e6);
         } else {
             // We have the data we need, break from the loop and copy it out.
             break;
@@ -241,8 +244,6 @@ basebandDump basebandReadout::get_data(
         // Trigger was too late and missed the data. Return an empty dataset.
         return basebandDump(event_id, 0, 0, 0, 0);
     }
-
-    std::cout << "Here." << std::endl;
 
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
