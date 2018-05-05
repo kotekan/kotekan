@@ -37,7 +37,7 @@ public:
     // Write a block in time/freq
     template<typename T>
     void write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
-                     size_t chunk_t, T* data);
+                     size_t chunk_t, const T* data);
 
 
 protected:

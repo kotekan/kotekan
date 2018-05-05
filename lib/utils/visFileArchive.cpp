@@ -60,7 +60,7 @@ visFileArchive::visFileArchive(const std::string& name,
 
 template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
-                                 size_t chunk_t, T* data) {
+                                 size_t chunk_t, const T* data) {
     if (name == "gain_exp") {
         dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
     } else if (name == "evec") {
@@ -77,9 +77,9 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
 }
 
 // Instantiate for types that will get used to satisfy linker
-template void visFileArchive::write_block<std::complex<float>>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, std::complex<float>*);
-template void visFileArchive::write_block<float>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, float*);
-template void visFileArchive::write_block<int>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, int*);
+template void visFileArchive::write_block<std::complex<float>>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, std::complex<float> const*);
+template void visFileArchive::write_block<float>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, float const*);
+template void visFileArchive::write_block<int>(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f, size_t chunk_t, int const*);
 
 
 //

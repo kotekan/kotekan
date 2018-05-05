@@ -55,8 +55,17 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     num_ev = ev.size();
 
     // Allocate the memory for write buffer
-    write_buf = (char*) malloc(chunk_f * chunk_t * num_prod * sizeof(cfloat));
+    write_buf.reserve(chunk_f * chunk_t * num_prod * sizeof(cfloat));
 
+    // Allocate memory for collecting frames
+    vis.reserve(chunk_t*chunk_f*num_prod);
+    vis_weight.reserve(chunk_t*chunk_f*num_prod);
+    gain_coeff.reserve(chunk_t*chunk_f*num_input);
+    // TODO: fill these at this point?
+    gain_exp.reserve(chunk_t*num_input);
+    eval.reserve(chunk_t*chunk_f*num_ev);
+    evec.reserve(chunk_t*chunk_f*num_ev*num_input);
+    erms.reserve(chunk_t*chunk_f);
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
@@ -79,7 +88,7 @@ void visTranspose::main_thread() {
         new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev)
     );
 
-    while (!stop_thread && frames_sofar < num_time * num_freq) {
+    while (!stop_thread && frames_sofar <= num_time * num_freq) {
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
@@ -90,10 +99,6 @@ void visTranspose::main_thread() {
         // Collect frames until a chunk is filled
         //      The number of frames is specified in the config
         //      Ensure they are coming in the right order
-        // format time
-        auto ftime = frame.time;
-        time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
-        time[frames_sofar] = t;
         // copy data
         std::copy(frame.vis.begin(), frame.vis.end(), vis.begin() + frames_sofar * num_prod);
         std::copy(frame.weight.begin(), frame.weight.end(), vis_weight.begin() + frames_sofar * num_prod);
@@ -120,36 +125,38 @@ void visTranspose::main_thread() {
 }
 
 void visTranspose::transpose_write() {
+    DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
     // loop over frequency and transpose
     for (size_t f = 0; f < chunk_f; f++){
-        blocked_transpose((void*) (vis.begin() + f * chunk_t * num_prod), (void*) write_buf,
+        blocked_transpose((void*) &*(vis.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
                           chunk_t, num_prod, BLOCK_SIZE, sizeof(cfloat));
-        file->write_block("vis", f_ind, t_ind, chunk_f, chunk_t, (cfloat*) write_buf);
+        file->write_block("vis", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
 
-        blocked_transpose((void*) (vis_weight.begin() + f * chunk_t * num_prod), (void*) write_buf,
+        blocked_transpose((void*) &*(vis_weight.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
                           chunk_t, num_prod, BLOCK_SIZE, sizeof(float));
-        file->write_block("vis_weight", f_ind, t_ind, chunk_f, chunk_t, (float*) write_buf);
+        file->write_block("vis_weight", f_ind, t_ind, chunk_f, chunk_t, (const float*) write_buf.data());
 
         // TODO: for now should bypass this since we are just filling it with ones
-        blocked_transpose((void*) (gain_coeff.begin() + f * chunk_t * num_prod), (void*) write_buf,
+        blocked_transpose((void*) &*(gain_coeff.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
                           chunk_t, num_prod, BLOCK_SIZE, sizeof(cfloat));
-        file->write_block("gain_coeff", f_ind, t_ind, chunk_f, chunk_t, (cfloat*) write_buf);
+        file->write_block("gain_coeff", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
 
-        blocked_transpose((void*) (eval.begin() + f * chunk_t * num_ev), (void*) write_buf,
+        blocked_transpose((void*) &*(eval.begin() + f * chunk_t * num_ev), (void*) write_buf.data(),
                           chunk_t, num_ev, 4, sizeof(float));
-        file->write_block("eval", f_ind, t_ind, chunk_f, chunk_t, (float*) write_buf);
+        file->write_block("eval", f_ind, t_ind, chunk_f, chunk_t, (const float*) write_buf.data());
 
-        blocked_transpose((void*) (evec.begin() + f * chunk_t * num_ev * num_input), (void*) write_buf,
+        blocked_transpose((void*) &*(evec.begin() + f * chunk_t * num_ev * num_input), (void*) write_buf.data(),
                           chunk_t, num_input, BLOCK_SIZE, num_ev * sizeof(cfloat));
-        file->write_block("evec", f_ind, t_ind, chunk_f, chunk_t, (cfloat*) write_buf);
+        file->write_block("evec", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
 
         file->write_block("erms", f_ind, t_ind, chunk_f, chunk_t, erms.data());
     }
 
-    blocked_transpose((void*) gain_exp.data(), (void*) write_buf,
+    blocked_transpose((void*) gain_exp.data(), (void*) write_buf.data(),
                       chunk_t, num_input, BLOCK_SIZE, sizeof(int));
-    file->write_block("gain_exp", f_ind, t_ind, chunk_f, chunk_t, (int*) write_buf);
+    file->write_block("gain_exp", f_ind, t_ind, chunk_f, chunk_t, (const int*) write_buf.data());
 
-    f_ind += chunk_f;
-    t_ind += chunk_t;
+    t_ind = (t_ind + chunk_t) % num_time;
+    if (t_ind == 0)
+        f_ind += chunk_f;
 }
