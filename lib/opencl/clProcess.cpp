@@ -11,6 +11,8 @@
 #include <iostream>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(clProcess);
+
 using namespace std;
 
 //double e_time_1(void){
@@ -19,7 +21,6 @@ using namespace std;
 //    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 //}
 
-REGISTER_KOTEKAN_PROCESS(clProcess);
 
 // TODO Remove the GPU_ID from this constructor
 clProcess::clProcess(Config& config_,
@@ -35,8 +36,8 @@ clProcess::clProcess(Config& config_,
     register_producer(get_buffer("output_buffer"), unique_name.c_str());
     beamforming_out_buf = get_buffer("beam_out_buf");
     register_producer(get_buffer("beam_out_buf"), unique_name.c_str());
-//    rfi_out_buf = get_buffer("rfi_out_buf");
-//    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
+    rfi_out_buf = get_buffer("rfi_out_buf");
+    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
 
     //beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
 
@@ -131,7 +132,7 @@ void clProcess::main_thread()
         if (_use_beamforming) {
             wait_for_empty_frame(device->get_beamforming_out_buf(), unique_name.c_str(), frame_id);
         }
-//        wait_for_empty_frame(device->getRfiBuf(), unique_name.c_str(), frame_id);
+        wait_for_empty_frame(device->getRfiBuf(), unique_name.c_str(), frame_id);
         // Todo get/set time information here as well.
 
         CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock));
@@ -148,7 +149,7 @@ void clProcess::main_thread()
         cb_data[frame_id]->start_time = e_time();
         cb_data[frame_id]->unique_name = unique_name;
         cb_data[frame_id]->kill = kill;
-//	    cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
+        cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
         if (_use_beamforming == 1)
         {
             cb_data[frame_id]->beamforming_out_buf = device->get_beamforming_out_buf();
@@ -311,15 +312,15 @@ void clProcess::mem_reconcil_thread()
             }
             pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
-//            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-//                             cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
+            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                             cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
             // Mark the input buffer as "empty" so that it can be reused.
             mark_frame_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             // Mark the output buffer as full, so it can be processed.
             mark_frame_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
-//            mark_frame_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            mark_frame_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             for (int i = 0; i < cb_data[j]->numCommands; i++){
                 cb_data[j]->listCommands[i]->cleanMe(cb_data[j]->buffer_id);

@@ -49,7 +49,7 @@ void chimeMetadataDump::main_thread() {
         struct tm* l_gps_time = gmtime(&temp_gps_time);
         strftime(gps_time_buf, sizeof(gps_time_buf), "%Y-%m-%d %H:%M:%S", l_gps_time);
 
-        INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
+/*        INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
                 ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64
                  " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld), GPS time: %ld.%06ld (%s.%09ld)",
                 in_buf->buffer_name, frame_id, fpga_seq,
@@ -58,7 +58,7 @@ void chimeMetadataDump::main_thread() {
                 bin_number_chime(&stream_id), freq_from_bin(bin_number_chime(&stream_id)),
                 time_v.tv_sec, time_v.tv_usec, time_buf, time_v.tv_usec,
                 time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
-
+*/
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
