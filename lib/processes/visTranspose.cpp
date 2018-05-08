@@ -130,36 +130,74 @@ void visTranspose::transpose_write() {
     // TODO: need to adjust block size for small dimensions
     size_t block_size = std::min(BLOCK_SIZE, chunk_t);
     size_t ev_block_size = std::min(block_size, num_ev);
-    for (size_t f = 0; f < chunk_f; f++){
-        blocked_transpose((void*) &*(vis.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
-                          chunk_t, num_prod, block_size, sizeof(cfloat));
-        file->write_block("vis", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
-
-        blocked_transpose((void*) &*(vis_weight.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
-                          chunk_t, num_prod, block_size, sizeof(float));
-        file->write_block("vis_weight", f_ind, t_ind, chunk_f, chunk_t, (const float*) write_buf.data());
-
-        // TODO: for now should bypass this since we are just filling it with ones
-        blocked_transpose((void*) &*(gain_coeff.begin() + f * chunk_t * num_prod), (void*) write_buf.data(),
-                          chunk_t, num_prod, block_size, sizeof(cfloat));
-        file->write_block("gain_coeff", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
-
-        blocked_transpose((void*) &*(eval.begin() + f * chunk_t * num_ev), (void*) write_buf.data(),
-                          chunk_t, num_ev, ev_block_size, sizeof(float));
-        file->write_block("eval", f_ind, t_ind, chunk_f, chunk_t, (const float*) write_buf.data());
-
-        blocked_transpose((void*) &*(evec.begin() + f * chunk_t * num_ev * num_input), (void*) write_buf.data(),
-                          chunk_t, num_input, block_size, num_ev * sizeof(cfloat));
-        file->write_block("evec", f_ind, t_ind, chunk_f, chunk_t, (const cfloat*) write_buf.data());
-
-        file->write_block("erms", f_ind, t_ind, chunk_f, chunk_t, erms.data());
+    size_t n_val;
+    // Determine size of chunk to write out
+    write_f = f_edge ? num_freq - f_ind : chunk_f;
+    write_t = t_edge ? num_time - t_ind : chunk_t;
+    for (size_t f = 0; f < write_f; f++) {
+        n_val = f * write_t * num_prod;
+        blocked_transpose((void*) &*(vis.begin() + n_val),
+                          (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
+                          write_t, num_prod, block_size, sizeof(cfloat));
     }
+    file->write_block("vis", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
+
+    for (size_t f = 0; f < write_f; f++) {
+        n_val = f * write_t * num_prod;
+        blocked_transpose((void*) &*(vis_weight.begin() + n_val),
+                          (void*) &*(write_buf.begin() + n_val * sizeof(float)),
+                          write_t, num_prod, block_size, sizeof(float));
+    }
+    file->write_block("vis_weight", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
+
+    for (size_t f = 0; f < write_f; f++) {
+        n_val = f * write_t * num_prod;
+        // TODO: for now should bypass this since we are just filling it with ones
+        blocked_transpose((void*) &*(gain_coeff.begin() + n_val),
+                          (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
+                          write_t, num_prod, block_size, sizeof(cfloat));
+    }
+    file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
+
+    for (size_t f = 0; f < write_f; f++) {
+        n_val = f * write_t * num_ev;
+        blocked_transpose((void*) &*(eval.begin() + n_val),
+                          (void*) &*(write_buf.begin() + n_val * sizeof(float)),
+                          write_t, num_ev, ev_block_size, sizeof(float));
+    }
+    file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
+
+    for (size_t f = 0; f < write_f; f++) {
+        n_val = f * write_t * num_ev * num_input;
+        blocked_transpose((void*) &*(evec.begin() + n_val),
+                          (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
+                          write_t, num_input, block_size, num_ev * sizeof(cfloat));
+    }
+    file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
+
+    file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
 
     blocked_transpose((void*) gain_exp.data(), (void*) write_buf.data(),
-                      chunk_t, num_input, block_size, sizeof(int));
-    file->write_block("gain_exp", f_ind, t_ind, chunk_f, chunk_t, (const int*) write_buf.data());
+                      write_t, num_input, block_size, sizeof(int));
+    file->write_block("gain_exp", f_ind, t_ind, write_f, write_t, (const int*) write_buf.data());
 
+    increment_chunk();
+}
+
+// TODO: might be better to include same function as used by Reader
+void visTranspose::increment_chunk() {
     t_ind = (t_ind + chunk_t) % num_time;
-    if (t_ind == 0)
+    if (t_ind == 0) {
+        t_edge = false;  // reset incomplete chunk flag
         f_ind += chunk_f;
+        if (num_freq - f_ind < chunk_f) {
+            // Reached an incomplete chunk
+            f_edge = true;
+        }
+    } else if (num_time - t_ind < chunk_t) {
+        // Reached an incomplete chunk
+        t_edge = true;
+    }
+    if (f_ind == 0)
+        f_edge = false;  // reset incomplete chunk flag
 }

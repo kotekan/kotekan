@@ -37,6 +37,13 @@ private:
     std::vector<cfloat> evec;
     std::vector<float> erms;
 
+    // Keep track of the size to write out
+    size_t write_f;
+    size_t write_t;
+    bool t_edge = false;
+    bool f_edge = false;
+    void increment_chunk();
+
     /// The list of frequencies and inputs that get written into the index maps
     /// of the HDF5 files
     std::vector<time_ctype> times;
