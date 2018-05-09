@@ -151,7 +151,7 @@ public:
      * @note Re-registering on an endpoint will override the previous
      * callback value.
      */
-    void register_json_callback(std::string endpoint,
+    void register_post_callback(std::string endpoint,
                         std::function<void(connectionInstance &, nlohmann::json &)> callback);
 
     /**

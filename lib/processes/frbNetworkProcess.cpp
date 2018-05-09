@@ -45,7 +45,7 @@ std::bind(&frbNetworkProcess::main_thread, this))
   using namespace std::placeholders;
   restServer &rest_server = restServer::instance();
   endpoint = unique_name + "/frb/update_beam_offset";
-  rest_server.register_json_callback(endpoint,
+  rest_server.register_post_callback(endpoint,
       std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
 }
 

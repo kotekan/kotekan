@@ -65,7 +65,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
     endpoint = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
-    rest_server.register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
 }

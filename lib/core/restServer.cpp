@@ -95,7 +95,7 @@ void restServer::register_get_callback(string endpoint, std::function<void(conne
     get_callbacks[endpoint] = callback;
 }
 
-void restServer::register_json_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
+void restServer::register_post_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }

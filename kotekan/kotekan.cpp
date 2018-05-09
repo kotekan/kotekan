@@ -360,7 +360,7 @@ int main(int argc, char ** argv) {
     }
 
     // Main REST callbacks.
-    rest_server.register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
+    rest_server.register_post_callback("/start", [&] (connectionInstance &conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
             conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);

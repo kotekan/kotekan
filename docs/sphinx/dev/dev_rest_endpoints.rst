@@ -49,7 +49,7 @@ Individual processes can register REST endpoints using code similar to:
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
     // register a POST endpoint
-    rest_server.register_json_callback(unique_name + "/my_post_endpoint",
+    rest_server.register_post_callback(unique_name + "/my_post_endpoint",
             std::bind(&myKotekanPorcess::endpoint_callback_func, this, _1, _2));
     // register a GET endpoint
     rest_server.register_get_callback(unique_name + "/my_get_endpoint",

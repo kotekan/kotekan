@@ -60,7 +60,7 @@ void rfi_kernel::build(device_interface &param_Device)
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
     endpoint = unique_name + "/rfi_callback/" + std::to_string(param_Device.getGpuID());
-    rest_server.register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
             std::bind(&rfi_kernel::rest_callback, this, _1, _2));
 
     INFO("Starting RFI kernel build");
