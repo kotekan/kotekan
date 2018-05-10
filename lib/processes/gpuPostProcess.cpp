@@ -46,25 +46,7 @@ gpuPostProcess::~gpuPostProcess() {
     if (_product_remap_c != nullptr)
         delete _product_remap_c;
 
-    if (_rest_copy_vis != nullptr)
-        delete _rest_copy_vis;
-
     free(in_buf);
-}
-
-void gpuPostProcess::vis_endpoint(connectionInstance& conn, json& json_request) {
-    //std::lock_guard<std::mutex> lock(_rest_copy_lock);
-    int freq = 0;
-    try {
-        freq = json_request["freq"];
-    } catch (...) {
-        conn.send_error("Could not parse freq", STATUS_BAD_REQUEST);
-    }
-    if (freq > _num_total_freq) {
-        conn.send_error("freq out of range", STATUS_BAD_REQUEST);
-    }
-    int num_values = ((_num_elem * (_num_elem + 1)) / 2 );
-    conn.send_binary_reply((uint8_t *)&_rest_copy_vis[num_values * freq], num_values * sizeof(complex_int_t));
 }
 
 void gpuPostProcess::apply_config(uint64_t fpga_seq) {
@@ -179,15 +161,6 @@ void gpuPostProcess::main_thread() {
 
     // Changing destination pointer for the different gates
     complex_int_t * vis = visibilities;
-
-    // REST server section
-    // TODO move to a function?
-    // TODO also clean up this function.
-    _rest_copy_vis = new complex_int_t[num_values];
-    using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    rest_server->register_json_callback("/vis", std::bind(&gpuPostProcess::vis_endpoint, this, _1, _2));
-    // end REST server section
 
     // Wait for full buffers.
     while(!stop_thread) {
@@ -368,12 +341,6 @@ void gpuPostProcess::main_thread() {
                         }
                         memcpy(gate_frame, gated_buf, gated_buf_size);
                         mark_frame_full(gate_buf, unique_name.c_str(), out_buffer_ID);
-                    }
-
-                    // memcpy visibilities into REST buffer.
-                    {
-                        //std::lock_guard<std::mutex> lock(_rest_copy_lock);
-                        memcpy(_rest_copy_vis, visibilities, num_values * sizeof(complex_int_t));
                     }
 
                     memcpy(out_frame, buf, frame_size);

@@ -8,11 +8,11 @@
 // TODO Make these dynamic.
 #ifdef DPDK_VDIF_MODE
     #define NUM_LINKS (8)
-    #define NUM_LCORES (4)
+    #define NUM_LCORES (8)
     // This shouldn't go above 4, since it's for the shuffle.
     // A better name might be SHUFFLE_SIZE?
     #define NUM_FREQ (1)
-    #define MAX_CORES (8)
+    #define MAX_CORES (12)
 #else
     #ifdef WITH_OPENCL
         // Pathfinder mode

@@ -46,11 +46,9 @@ public:
 private:
 
     void build_from_tree(map<string, KotekanProcess *> &processes, json &config_tree, const string &path);
-//    KotekanProcess * new_process(const string &name, const string &location);
 
     Config &config;
     bufferContainer &buffer_container;
-
 
     KotekanProcess *create(const string &name,
                        Config& config,
@@ -78,7 +76,6 @@ class kotekanProcessMakerTemplate : public kotekanProcessMaker
     public:
         kotekanProcessMakerTemplate(const std::string& key)
         {
-            printf("Registering a KotekanProcess! %s\n",key.c_str());
             processFactoryRegistry::kotekan_register_process(key, this);
         }
         virtual KotekanProcess *create(Config &config, const string &unique_name,
@@ -86,7 +83,7 @@ class kotekanProcessMakerTemplate : public kotekanProcessMaker
         {
             return new T(config, unique_name, host_buffers);
         }
-}; 
+};
 #define REGISTER_KOTEKAN_PROCESS(T) static kotekanProcessMakerTemplate<T> maker##T(#T);
 
 

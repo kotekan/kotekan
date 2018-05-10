@@ -60,6 +60,17 @@ public:
     uint32_t extend_time(time_ctype new_time);
 
     /**
+     * @brief Remove the time sample from the active set being written to.
+     * 
+     * After this is called there should be no more requests to write into 
+     * this timesample. Implement this method to perform any final cleanup
+     * on the file for this sample (e.g. flush, evict pages).
+     *
+     * @param time_ind Sample to cleanup.
+     **/ 
+    void deactivate_time(uint32_t time_ind) {};
+
+    /**
      * @brief Write a sample of data into the file at the given index.
      * 
      * @param new_vis Vis data.
@@ -165,6 +176,16 @@ public:
     uint32_t extend_time(time_ctype new_time);
 
     /**
+     * @brief Remove the time sample from the active set being written to.
+     * 
+     * This explicit flushes the requested time sample and evicts it from the
+     * page cache.
+     *
+     * @param time_ind Sample to cleanup.
+     **/ 
+    void deactivate_time(uint32_t time_ind);
+
+    /**
      * @brief Write a sample of data into the file at the given index.
      * 
      * @param new_vis Vis data.
@@ -222,6 +243,24 @@ protected:
     template<typename T>
     bool write_raw(off_t dset_base, int ind, size_t n, 
                    const T * data);
+
+    /**
+     * @brief Start an async flush to disk
+     * 
+     * @param dset_base Offset of dataset in file
+     * @param ind       The index into the file dataset in time.
+     * @param n         The size of the region to flush in bytes.
+     **/
+    void flush_raw_async(off_t dset_base, int ind, size_t n);
+
+    /**
+     * @brief Start a synchronised flush to disk and evict any clean pages.
+     * 
+     * @param dset_base Offset of dataset in file
+     * @param ind       The index into the file dataset in time.
+     * @param n         The size of the region to flush in bytes.
+     **/
+    void flush_raw_sync(off_t dset_base, int ind, size_t n);
 
     // Save the size for when we are outside of HDF5 space
     size_t nfreq, nprod, ninput, nev, ntime = 0;

@@ -31,6 +31,7 @@ private:
     vector<cl_mem> mem_Mean_Array;
     Config config_local;
     std::mutex rest_callback_mutex;
+    std::string endpoint;
 };
 
 #endif // RFI_KERNEL_H

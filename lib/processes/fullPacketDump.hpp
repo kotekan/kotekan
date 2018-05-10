@@ -28,6 +28,7 @@ private:
     std::string _file_base;
     std::string _data_set;
     std::mutex _packet_frame_lock;
+    std::string endpoint;
 };
 
 #endif

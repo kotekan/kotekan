@@ -3,12 +3,20 @@
 #include "processFactory.hpp"
 #include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
+#include "restServer.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
+    restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
+        conn.send_json_reply(config.get_full_config_json());
+    });
 
+    restServer::instance().add_aliases_from_config(config);
 }
 
 kotekanMode::~kotekanMode() {
+
+    restServer::instance().remove_get_callback("/config");
+    restServer::instance().remove_all_aliases();
 
     for (auto const &process : processes) {
         if (process.second != nullptr) {
@@ -46,6 +54,8 @@ void kotekanMode::initalize_processes() {
     processFactory process_factory(config, buffer_container);
     processes = process_factory.build_processes();
 
+    // Update REST server
+    restServer::instance().set_server_affinity(config);
 }
 
 void kotekanMode::join() {
