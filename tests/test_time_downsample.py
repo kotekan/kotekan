@@ -7,7 +7,7 @@ downsamp_params = {
     'num_elements': 4,
     'num_ev': 4,
     'num_samples': 2,
-    'total_frames': 10,
+    'total_frames': 11,
     'fakevis_mode': 'fill_ij',
     'cadence': 2.
 }
