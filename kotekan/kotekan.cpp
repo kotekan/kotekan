@@ -119,6 +119,21 @@ void print_version() {
     }
 }
 
+json get_json_version_into() {
+    // Create version information
+    json version_json;
+    version_json["kotekan_version"] = KOTEKAN_VERSION_STR;
+    version_json["branch"] = GIT_BRANCH;
+    version_json["git_commit_hash"] = GIT_COMMIT_HASH;
+    version_json["cmake_build_settings"] = CMAKE_BUILD_SETTINGS;
+    vector<string> available_processes;
+    std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
+    for (auto &process_maker : known_processes)
+        available_processes.push_back(process_maker.first);
+    version_json["available_processes"] = available_processes;
+    return version_json;
+}
+
 #ifdef WITH_DPDK
 void dpdk_setup() {
 
@@ -317,7 +332,7 @@ int main(int argc, char ** argv) {
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
         fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
-        fprintf(stderr, "Configuration should be provided via the `/start/` REST endpoint.\n");
+        fprintf(stderr, "Configuration should be provided via the `/start` REST endpoint.\n");
     }
 
     if (string(config_file_name) != "none" && enable_stderr) {
@@ -339,8 +354,7 @@ int main(int argc, char ** argv) {
 
     Config config;
 
-    restServer *rest_server = get_rest_server();
-    rest_server->start();
+    restServer &rest_server = restServer::instance();
 
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
@@ -375,10 +389,10 @@ int main(int argc, char ** argv) {
     }
 
     // Main REST callbacks.
-    rest_server->register_json_callback("/start", [&] (connectionInstance &conn, json& json_config) {
+    rest_server.register_post_callback("/start", [&] (connectionInstance &conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
-            conn.send_error("Already running", STATUS_REQUEST_FAILED);
+            conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
         }
 
         config.update_config(json_config, 0);
@@ -389,28 +403,28 @@ int main(int argc, char ** argv) {
             ERROR("Out of range exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
-            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
             return;
         } catch (const std::runtime_error &ex) {
             ERROR("Runtime error %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
-            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
             return;
         } catch (const std::exception &ex) {
             ERROR("Generic exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
-            conn.send_error(ex.what(), STATUS_BAD_REQUEST);
+            conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
-    rest_server->register_json_callback("/stop", [&](connectionInstance &conn, json &json_request) {
+    rest_server.register_get_callback("/stop", [&](connectionInstance &conn) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (!running) {
-            conn.send_error("kotekan is already stopped", STATUS_REQUEST_FAILED);
+            conn.send_error("kotekan is already stopped", HTTP_RESPONSE::REQUEST_FAILED);
             return;
         }
         assert(kotekan_mode != nullptr);
@@ -421,18 +435,24 @@ int main(int argc, char ** argv) {
         delete kotekan_mode;
         kotekan_mode = nullptr;
         running = false;
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
-    rest_server->register_json_callback("/status", [&](connectionInstance &conn, json &json_request){
+    rest_server.register_get_callback("/status", [&](connectionInstance &conn){
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         json reply;
         reply["running"] = running;
         conn.send_json_reply(reply);
     });
 
+    json version_json = get_json_version_into();
+
+    rest_server.register_get_callback("/version", [&](connectionInstance &conn) {
+        conn.send_json_reply(version_json);
+    });
+
     prometheusMetrics &metrics = prometheusMetrics::instance();
-    metrics.register_with_server(rest_server);
+    metrics.register_with_server(&rest_server);
 
     for(EVER){
         sleep(1);

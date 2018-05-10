@@ -26,9 +26,16 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
     apply_config(0);
 
     _packet_frame = (uint8_t*)malloc(_packet_size * MAX_NUM_PACKETS);
+
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
+    rest_server.register_post_callback(endpoint,
+            std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 }
 
 fullPacketDump::~fullPacketDump() {
+    restServer::instance().remove_json_callback(endpoint);
     free(_packet_frame);
 }
 
@@ -43,7 +50,7 @@ void fullPacketDump::apply_config(uint64_t fpga_seq) {
 void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_request) {
 
     if (!got_packets) {
-        conn.send_error("no packets captured yet.", STATUS_REQUEST_FAILED);
+        conn.send_error("no packets captured yet.", HTTP_RESPONSE::REQUEST_FAILED);
         return;
     }
 
@@ -51,12 +58,13 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
     try {
         num_packets = json_request["num_packets"];
     } catch (...) {
-        conn.send_error("could not parse/find num_packets parameter", STATUS_BAD_REQUEST);
+        conn.send_error("could not parse/find num_packets parameter",
+                        HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
 
     if (num_packets > MAX_NUM_PACKETS || num_packets < 0) {
-        conn.send_error("num_packets out of range", STATUS_BAD_REQUEST);
+        conn.send_error("num_packets out of range", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     int len = num_packets * _packet_size;
@@ -66,12 +74,6 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
 
 void fullPacketDump::main_thread() {
     int frame_id = 0;
-
-    using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/packet_grab/" + std::to_string(link_id);
-    rest_server->register_json_callback(endpoint,
-            std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 
     int file_num = 0;
     char host_name[100];
