@@ -5,7 +5,6 @@
 #include <cstdint>
 
 #include "basebandReadout.hpp"
-#include "baseband_request_manager.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
@@ -21,7 +20,7 @@ REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 /// Worker task that mocks the progress of a baseband dump
 // TODO: implement
-static void process_request(const std::shared_ptr<BasebandDumpStatus> dump) {
+static void process_request(const std::shared_ptr<BasebandDumpStatus> dump, basebandDump data) {
     std::cout << "Started processing " << dump << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
     dump->bytes_remaining -= 51;
@@ -77,6 +76,7 @@ void basebandReadout::main_thread() {
     int done_frame;
 
     std::thread lt(&basebandReadout::listen_thread, this);
+    std::thread wt(&basebandReadout::write_thread, this);
 
     while (!stop_thread) {
 
@@ -95,10 +95,15 @@ void basebandReadout::main_thread() {
         frame_id++;
     }
     lt.join();
+    wt.join();
 }
 
 void basebandReadout::listen_thread() {
+    int max_writes = 2;
+
+    // XXX Fake.
     uint64_t event_id=0;
+
     BasebandRequestManager& mgr = BasebandRequestManager::instance();
     // XXX I see you are using a singleton here. Note that there will be 4 copies of this running
     // (for the 4 frequencies) in the same processess, so you will need some way to make sure the
@@ -114,6 +119,7 @@ void basebandReadout::listen_thread() {
 
         // For testing readout logic.
         auto dump = mgr.get_next_request();
+        // Fake, for testing.
         //auto dump =  std::make_shared<BasebandDumpStatus>(
         //        BasebandDumpStatus{BasebandRequest{360000, 131079}});
         //sleep(5);
@@ -137,21 +143,56 @@ void basebandReadout::listen_thread() {
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late). Do we need to
             // report this?
+            if (data.data_length_fpga == 0) {
+                INFO("Captured no data for event %d and freq ID %d.", data.event_id, data.freq_id);
+                // TODO Report to the request.
+                continue;
+            } else {
+                INFO("Captured %d samples for event %d and freq ID %d.",
+                     data.data_length_fpga,
+                     data.event_id,
+                     data.freq_id
+                     );
+                // TODO Report to the dump_request.
+            }
 
+            // XXX Obsolete.
             // Spawn thread to write out the data.
-            dump->bytes_remaining -= 42;
-            std::cout << "processing: " << dump
-                      << ", saved: " << dump->bytes_remaining
-                      << std::endl;
-            // Here we also want to limit the number of simultanious readout threads, mostly so
+            //dump->bytes_remaining -= 42;
+            //std::cout << "processing: " << dump
+            //          << ", saved: " << dump->bytes_remaining
+            //          << std::endl;
+
+            // XXX Here we also want to limit the number of simultanious readout threads, mostly so
             // we don't run out of memory and crash everything. That will also prevent too
             // many calls to get_data and thus buffer deadlock.
-            std::thread worker(process_request, dump);
-            worker.detach();
+            //std::thread worker(process_request, dump);
+            //worker.detach();
+
+            // Wait for free space in the write queue. This prevents this thread from receiving any
+            // more dump requests until the pipe clears out. Limits the memory use and buffer congestion.
+            while (!stop_thread) {
+                if (write_q.size() < max_writes) {
+                    std::cout << "Adding write to queue. q len: " << write_q.size() << std::endl;
+                    write_q.push(std::tuple<basebandDump, std::shared_ptr<BasebandDumpStatus>>(data, dump));
+                    break;
+                } else {
+                    sleep(1);
+                }
+            }
         }
-        // Somehow keep track of active writer threads, clean them up, and free any memory.
     }
-    // Make sure all writer threads are done.
+}
+
+
+void basebandReadout::write_thread() {
+    while (!stop_thread) {
+        // Here we should use a call that times out, so kotekan can shut down if there
+        // is a write in progress.
+        auto dump_tup = write_q.pop();
+
+        dump_tup.apply(&process_request);
+    }
 }
 
 

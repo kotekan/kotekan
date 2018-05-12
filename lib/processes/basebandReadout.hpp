@@ -3,6 +3,8 @@
 
 #include <string>
 #include <mutex>
+#include <queue>
+#include <tuple>
 
 #include "gsl-lite.hpp"
 
@@ -10,6 +12,8 @@
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 #include "gpsTime.h"
+#include "baseband_request_manager.hpp"
+
 
 
 /* A container for baseband data and metadata.
@@ -65,8 +69,10 @@ private:
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
+    std::queue<std::tuple<basebandDump, std::shared_ptr<BasebandDumpStatus>>> write_q;
 
     void listen_thread();
+    void write_thread();
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
