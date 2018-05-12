@@ -122,7 +122,6 @@ void rfiBroadcast::main_thread() {
                 //Get Frame
                 frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
                 if (frame == NULL) break;
-
                 memcpy(rfi_data, frame, rfi_buf->frame_size);
 
                 if(f == 0){
@@ -147,9 +146,12 @@ void rfiBroadcast::main_thread() {
                 frame_id = (frame_id + 1) % rfi_buf->num_frames;
             }
 
+            double start_time = e_time();
             for(i = 0; i < _num_local_freq; i++){
                 RFI_Avg[i] /= frames_per_packet*(_samples_per_data_set/_sk_step);
-                DEBUG("SK value %f for freq %d, stream %d", RFI_Avg[i], i, encoded_stream_id)
+                if(i == 0){
+                    DEBUG("SK value %f for freq %d, stream %d", RFI_Avg[i], i, encoded_stream_id)
+                }
             }
 
             //Add Data to packet
@@ -167,7 +169,7 @@ void rfiBroadcast::main_thread() {
             //Prepare Header For Adjustment
             packet_header_bytes_written -= sizeof(int64_t); 
 
-            DEBUG("Frame ID %d Succesfully Broadcasted %d",frame_id, bytes_sent);
+            INFO("Frame ID %d Succesfully Broadcasted %d Bytes in %fms",frame_id, bytes_sent, (e_time()-start_time)*1000);
         }
     }
     else{

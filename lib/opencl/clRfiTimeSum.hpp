@@ -5,6 +5,7 @@
 #include "device_interface.h"
 #include "restServer.hpp"
 #include <mutex>
+#include <vector>
 
 class clRfiTimeSum: public gpu_command
 {
@@ -37,7 +38,7 @@ private:
     uint32_t _sk_step;
     uint32_t mask_len;
     uint8_t * Input_Mask;
-
+    vector<int32_t> bad_inputs;
 
 };
 

@@ -38,7 +38,7 @@ config(param_Config)
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-    INFO("MAX_GPUS %d\n",MAX_GPUS);
+    //INFO("MAX_GPUS %d\n",MAX_GPUS);
     // Find a GPU device..
     CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
 

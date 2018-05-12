@@ -29,6 +29,6 @@ cl_event clRfiOutput::execute(int param_bufferID, const uint64_t& fpga_seq, clas
                                             1,
                                             &param_PrecedeEvent,
 					    &postEvent[param_bufferID]) );
-    INFO("Copied RFI to Buffer %d, Size %d",param_bufferID,param_Device.getRfiBuf()->frame_size);
+    DEBUG("RFI output copied to buffer id %d",param_bufferID);
     return postEvent[param_bufferID];
 }

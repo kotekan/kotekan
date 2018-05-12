@@ -32,6 +32,7 @@ void clRfiTimeSum::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
     
     _sk_step  = config.get_int(unique_name, "sk_step");
+    bad_inputs = config.get_int_array(unique_name, "bad_inputs");
     mask_len = sizeof(uint8_t)*_num_elements;
 }
 
@@ -68,8 +69,21 @@ void clRfiTimeSum::build(device_interface &param_Device)
                                    &_num_elements) );
 
     Input_Mask = (uint8_t *)malloc(mask_len); //Allocate memory
-    for (uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
-        Input_Mask[i] = 0; //Initialize Input Mask
+    //for (uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
+    //    Input_Mask[i] = 0; //Initialize Input Mask
+    //}
+    //uint32_t num_bad_inputs = 14;
+    //uint32_t FAULTY_CHANNELS[14] = {2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint32_t j = 0;
+    //Initialize Input Mask
+    for(uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
+        Input_Mask[i] = (uint8_t)0;
+        if(bad_inputs.size() > 0){
+            if((int32_t)i == bad_inputs[j]){
+                Input_Mask[i] = (uint8_t)1;
+                j += 1;
+            }
+        }
     }
 
     mem_input_mask = clCreateBuffer(param_Device.getContext(), 
@@ -77,12 +91,17 @@ void clRfiTimeSum::build(device_interface &param_Device)
     CHECK_CL_ERROR(err);
 
     // Accumulation kernel global and local work space sizes.
-    gws[0] = _num_elements * _num_local_freq / 4;
-    gws[1] = 256;
+//    gws[0] = _num_elements * _num_local_freq / 4;
+//    gws[1] = 256;
+    gws[0] = 64;//_num_elements/4;
+    gws[1] = 8;//_num_local_freq;
     gws[2] = _samples_per_data_set/_sk_step;
+//    gws[1] = _samples_per_data_set/_sk_step;
 
-    lws[0] = 1;
-    lws[1] = 256;
+    
+    lws[0] = 64;//_num_elements/4;
+//    lws[1] = 256;
+    lws[1] = 1;
     lws[2] = 1;
 }
 cl_event clRfiTimeSum::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
@@ -97,6 +116,7 @@ cl_event clRfiTimeSum::execute(int param_bufferID, const uint64_t& fpga_seq, dev
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
                                             kernel,
                                             3,
+//                                            2,
                                             NULL,
                                             gws,
                                             lws,

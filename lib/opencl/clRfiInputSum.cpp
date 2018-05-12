@@ -23,7 +23,9 @@ void clRfiInputSum::apply_config(const uint64_t& fpga_seq) {
     //Compute Buffer lengths
     input_frame_len = sizeof(float)*_num_elements*_num_local_freq*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;
-    _num_bad_inputs = 0;
+//    _num_bad_inputs = 0;    
+    _num_bad_inputs = config.get_int_array(unique_name, "bad_inputs").size();
+    INFO("NUMBER OF BAD INPUTS %d",_num_bad_inputs);
     _M = (_num_elements - _num_bad_inputs)*_sk_step;    
 }
 
@@ -53,11 +55,15 @@ void clRfiInputSum::build(device_interface &param_Device)
                                    &_M) );
 
     // Accumulation kernel global and local work space sizes.
-    gws[0] = 256;
-    gws[1] = _num_local_freq;
-    gws[2] = _samples_per_data_set/_sk_step;
+    //gws[0] = 256;
+    //gws[1] = _num_local_freq;
+    //gws[2] = _samples_per_data_set/_sk_step;
 
-    lws[0] = 256;
+    gws[0] = _num_local_freq;
+    gws[1] = (_samples_per_data_set/_sk_step)/4;
+    gws[2] = 4;
+
+    lws[0] = _num_local_freq;
     lws[1] = 1;
     lws[2] = 1;
 }
