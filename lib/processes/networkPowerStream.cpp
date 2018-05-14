@@ -30,8 +30,8 @@ networkPowerStream::networkPowerStream(Config& config,
     freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name, "num_elements");
 
-    freq0 = config.get_float_default(unique_name, "freq", 1420.)*1e6;
-    sample_bw = config.get_float_default(unique_name, "sample_bw", 10.)*1e6;
+    freq0 = config.get_float_default(unique_name, "freq", 600.)*1e6;
+    sample_bw = config.get_float_default(unique_name, "sample_bw", 200.)*1e6;
 
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");

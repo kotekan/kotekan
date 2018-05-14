@@ -78,6 +78,7 @@ class CommandLine:
             status = True
         if argument.mode:
             print("You have used '-m' or '--mode' with argument: {0}".format(argument.mode))
+
             if(argument.mode in self.supportedModes):
                 self.mode = argument.mode
                 print("Setting mode to %s mode."%(argument.mode))
@@ -120,6 +121,7 @@ def chimeHeaderCheck(header,app):
         return False
     if(header['num_elements'] != app.config['num_elements']):
         print("Chime Header Error: Number of Elements does not match config")
+
         return False
     if(header['num_timesteps'] != app.config['samples_per_data_set']):
         print("Chime Header Error: Samples per Dataset does not match config")
@@ -142,7 +144,7 @@ def chimeHeaderCheck(header,app):
 
 
 def VDIFHeaderCheck(header,app):
-    
+
     if(header['combined_flag'] != 1):
         print("VDIF Header Error: Only Combined RFI values are currently supported ")
         return False
@@ -189,7 +191,7 @@ def data_listener(thread_id, socket_udp):
 
             #Receive packet from port
             packet, addr = sock_udp.recvfrom(chimePacketSize)
-        
+
             if(packet != ''):
 
                 if(packetCounter % 25*len(stream_dict) == 0):
@@ -201,7 +203,7 @@ def data_listener(thread_id, socket_udp):
 
                 #Create a new stream object each time a new stream connects
                 if(header['encoded_stream_ID'][0] not in stream_dict.keys()):
-                    
+
                     #Check that the new stream is providing the correct data
                     if(chimeHeaderCheck(header,app) == False):
                         break
@@ -215,7 +217,7 @@ def data_listener(thread_id, socket_udp):
                     t_min = datetime.datetime.utcnow()
                     min_seq = header['fpga_seq_num'][0]
                     max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
-                    firstPacket = False       
+                    firstPacket = False
 
                 else:
 
@@ -252,14 +254,15 @@ def data_listener(thread_id, socket_udp):
                     ('sk_step', np.int32,1), ('num_elements', np.int32,1),
                     ('num_times_per_frame', np.int32,1), ('num_freq', np.int32,1), ('seq', np.uint32 ,1)]))
                 data = np.fromstring(packet[vdifRFIHeaderSize:],dtype=np.float32)
+                print(header, data)
 
                 if(firstPacket):
 
                     if(VDIFHeaderCheck(header,app) == False):
                         break
                     t_min = datetime.datetime.utcnow()
-                    min_seq = header['seq']
-                    max_seq = min_seq + (waterfall.shape[1] - 1)
+                    min_seq = int(header['seq'])
+                    max_seq = int(min_seq + (waterfall.shape[1] - 1))
                     firstPacket = False
 
                 else:
@@ -267,19 +270,18 @@ def data_listener(thread_id, socket_udp):
                     if(header['seq'] > max_seq):
 
                         roll_amount = int(-1*waterfall.shape[1]/8)
-                        
+
                         #DO THE ROLL
                         waterfall = np.roll(waterfall,roll_amount,axis=1)
                         waterfall[:,roll_amount:] = -1
                         min_seq -= roll_amount
                         max_seq -= roll_amount
-                        
+
                         #Adjust Times
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
 
                 waterfall[:,int(header['seq']-min_seq)] = data
-                    
-                
+
 def TCP_stream():
 
     global sock_tcp, waterfall, t_min
@@ -326,8 +328,9 @@ if( __name__ == '__main__'):
     waterfall = -1*np.ones([nx,ny],dtype=float)
 
     time.sleep(1)
-   
+
     receive_threads = []
+    UDP_IP= app.UDP_IP
     for i in range(app.config['num_receive_threads']):
         UDP_PORT = app.UDP_PORT + i
         sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

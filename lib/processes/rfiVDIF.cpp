@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "vdif_functions.h"
+#include "utils/util.h"
 
 using std::string;
 
@@ -35,7 +36,7 @@ void rfiVDIF::apply_config(uint64_t fpga_seq) {
     num_elements = config.get_int(unique_name,"num_elements");
     num_frequencies = config.get_int(unique_name,"num_freq");
     num_timesteps = config.get_int(unique_name,"samples_per_data_set");
-    
+
     //Rfi paramters
     COMBINED = config.get_bool(unique_name,"RFI_combined");
     SK_STEP = config.get_int(unique_name,"sk_step");
@@ -51,19 +52,19 @@ void rfiVDIF::main_thread() {
 
     //Set the VDIF block size
     unsigned int VDIF_BLOCK_SIZE = num_frequencies + sizeof(VDIFHeader);
- 
+
     //Counters and indices
     unsigned int i, j, k, block_counter, power, RFI_INDEX;
     long ptr_counter;
 
-    //Holders for real/imag componenets	
-    char real, imag; 
+    //Holders for real/imag componenets
+    char real, imag;
 
     //Total integration length
     float M;
 
     //Declare power arrays
-    float power_arr[num_elements][num_frequencies]; 
+    float power_arr[num_elements][num_frequencies];
     float power_sq_arr[num_elements][num_frequencies];
 
     //Invalid Data array
@@ -87,6 +88,9 @@ void rfiVDIF::main_thread() {
         //Get a new frame
         in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
         if (in_frame == NULL) break;
+
+        double start_time = e_time();
+
         //Reset Counters
         RFI_INDEX = 0;
         block_counter = 0;
@@ -97,7 +101,7 @@ void rfiVDIF::main_thread() {
 
             //Initialize Arrays for a single block
             unsigned char block[VDIF_BLOCK_SIZE]; 
-            
+
             if(block_counter == 0){ //Reset after each SK_Step
                 for(i = 0; i < num_elements; i++){
                     invalid_data_counter[i] = 0;
@@ -123,9 +127,9 @@ void rfiVDIF::main_thread() {
             //TODO Why doesn't this work?
             //if((block[3] & 0x1) == 0x1){
             //      invalid_data_counter[current_element]++;
-            //      continue;		
+            //      continue;
             //}
-            
+
             //Sum Across Time
             for(i = 0; i < num_frequencies; i++){
                 real = ((block[sizeof(VDIFHeader) + i] >> 4) & 0xF)-8;
@@ -134,7 +138,7 @@ void rfiVDIF::main_thread() {
                 power_arr[current_element][i] += power;
                 power_sq_arr[current_element][i] += power*power;
             }
-            
+
             //Update number of blocks read
             block_counter++; 
 
@@ -142,7 +146,7 @@ void rfiVDIF::main_thread() {
             if(block_counter == num_elements*SK_STEP){
 
                 if(COMBINED){
-                    
+
                     //Compute the correct value for M
                     M = num_elements*SK_STEP;
                     for(i = 0; i < num_elements; i++){
@@ -152,13 +156,13 @@ void rfiVDIF::main_thread() {
                             //Normalize
                             power_sq_arr[i][j] /= (power_arr[i][j]/SK_STEP)*(power_arr[i][j]/SK_STEP);
                         }
-                    }   
+                    }
                     for(i = 0; i < num_frequencies; i++){
 
                         S2[i] = 0; //Intialize
                         //Sum Across Input
                         for (j = 0; j < num_elements; j++){
-                
+
                             S2[i] += power_sq_arr[j][i];
 
                         }
@@ -167,7 +171,7 @@ void rfiVDIF::main_thread() {
                         RFI_Buffer[RFI_INDEX] = ((M+1)/(M-1))*(S2[i]/M-1);
                         RFI_INDEX++;
                         //INFO("Pre Value %f M %f Second Value %f S2 %f S2/M %f",((M+1)/(M-1)),M, (S2[i]/M-1),S2[i], S2[i]/M)
-                    }					        				    
+                    }
                 }
                 else{
 
@@ -182,7 +186,7 @@ void rfiVDIF::main_thread() {
                             //Compute Kurtosis for each frequency
                             RFI_Buffer[RFI_INDEX] = (((M+1)/(M-1))*((M*power_sq_arr[k][i])/(power_arr[k][i]*power_arr[k][i])-1));
                             RFI_INDEX++;
-                            
+
                         }
                     }
                 }
@@ -196,12 +200,14 @@ void rfiVDIF::main_thread() {
 
         memcpy(out_frame,RFI_Buffer,RFI_Buffer_Size*sizeof(float));
 
+        double stop_time = e_time();
+
         mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
 
         buf_out_id = (buf_out_id + 1) % buf_out->num_frames;
         buf_in_id = (buf_in_id + 1) % buf_in->num_frames;
-        INFO("Frame %d Complete Stream ID\n", buf_in_id); 
+        INFO("Frame %d Complete Time %fms", buf_in_id, (stop_time-start_time)*1000);
 
         //Testing
         /*
