@@ -38,8 +38,7 @@ private:
     std::vector<float> erms;
 
     // Keep track of the size to write out
-    size_t write_f;
-    size_t write_t;
+    size_t write_f, write_t;
     bool t_edge = false;
     bool f_edge = false;
     void increment_chunk();

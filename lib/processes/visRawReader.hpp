@@ -22,7 +22,7 @@ public:
     void apply_config(uint64_t fpga_seq);
 
     void main_thread();
-    
+
     const std::vector<time_ctype>& times() { return _times; }
     const std::vector<freq_ctype>& freqs() { return _freqs; }
     const std::vector<prod_ctype>& prods() { return _prods; }
@@ -65,6 +65,11 @@ private:
     std::vector<uint32_t> _ev;
 
     std::vector<int> chunk_size;
+    size_t chunk_t;
+    size_t chunk_f;
+
+    // Number of elements in a chunked row
+    size_t row_size;
 
     bool time_ordered = true;
 

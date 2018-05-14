@@ -19,8 +19,10 @@ visRawReader::visRawReader(Config &config,
                    std::bind(&visRawReader::main_thread, this)) {
 
     filename = config.get_string(unique_name, "filename");
-    
+
     chunk_size = config.get_int_array(unique_name, "chunk_size");
+    chunk_t = chunk_size[0];
+    chunk_f = chunk_size[1];
 
     // Get the list of buffers that this process shoud connect to
     out_buf = get_buffer("out_buf");
@@ -54,6 +56,11 @@ visRawReader::visRawReader(Config &config,
     data_size = _t["structure"]["data_size"].get<size_t>();
     nfreq = _t["structure"]["nfreq"].get<size_t>();
     ntime = _t["structure"]["ntime"].get<size_t>();
+
+    // Number of elements in a chunked row
+    row_size = (chunk_f * chunk_t) * (nfreq / chunk_f)
+             + (nfreq % chunk_f) * chunk_t;
+    DEBUG("row size %d", row_size);
 
     // Check metadata is the correct size 
     if(sizeof(visMetadata) != metadata_size) {
@@ -105,8 +112,20 @@ void visRawReader::read_ahead(int ind) {
 
 int visRawReader::position_map(int ind) {
     if(time_ordered) {
-        int ti = ind % ntime;
-        int fi = ind / ntime;
+        // chunked row index
+        int ri = ind / row_size;
+        // Special case at edges of time*freq array
+        int t_width = std::min(ntime - ri * chunk_t, chunk_t);
+        // chunked column index
+        int ci = (ind % row_size) / (t_width * chunk_f);
+        // edges case
+        int f_width = std::min(nfreq - ci * chunk_f, chunk_f);
+        // time and frequency indices
+        int ti = ri * chunk_t + ((ind % row_size) % 
+                 (t_width * f_width)) / f_width;
+        int fi = ci * chunk_f + ((ind % row_size) % 
+                 (t_width * f_width)) % f_width;
+
         return ti * nfreq + fi;
     } else {
         return ind;
@@ -155,6 +174,7 @@ void visRawReader::main_thread() {
         // Try and clear out the cached data as we don't need it again
         madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
 
+        DEBUG("ind %d", ind);
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % out_buf->num_frames;

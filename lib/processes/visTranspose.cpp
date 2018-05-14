@@ -20,6 +20,8 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     // Chunk dimensions for write
     chunk_t = config.get_int(unique_name, "chunk_dim_time");
     chunk_f = config.get_int(unique_name, "chunk_dim_freq");
+    write_t = chunk_t;
+    write_f = chunk_f;
 
     // Get file path to write to
     // TODO: communicate this from reader
@@ -88,7 +90,7 @@ void visTranspose::main_thread() {
         new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev)
     );
 
-    while (!stop_thread && frames_sofar <= num_time * num_freq) {
+    while (!stop_thread && frames_sofar < num_time * num_freq) {
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
@@ -112,8 +114,7 @@ void visTranspose::main_thread() {
         erms[frames_sofar] = frame.erms;
 
         frames_sofar++;
-        if (frames_sofar == chunk_t * chunk_f) {
-            // TODO: handle blocks that don't fit exactly in chunk_t*chunk_f
+        if (frames_sofar == write_t * write_f) {
             transpose_write();
             frames_sofar = 0;
         }
@@ -126,78 +127,87 @@ void visTranspose::main_thread() {
 
 void visTranspose::transpose_write() {
     DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
+    DEBUG("Writing block of %d times and %d freqs", write_t, write_f);
     // loop over frequency and transpose
     // TODO: need to adjust block size for small dimensions
     size_t block_size = std::min(BLOCK_SIZE, chunk_t);
     size_t ev_block_size = std::min(block_size, num_ev);
     size_t n_val;
-    // Determine size of chunk to write out
-    write_f = f_edge ? num_freq - f_ind : chunk_f;
-    write_t = t_edge ? num_time - t_ind : chunk_t;
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
         blocked_transpose((void*) &*(vis.begin() + n_val),
                           (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_prod, block_size, sizeof(cfloat));
     }
+    DEBUG("transposed vis");
     file->write_block("vis", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
+    DEBUG("wrote vis");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
-        blocked_transpose((void*) &*(vis_weight.begin() + n_val),
-                          (void*) &*(write_buf.begin() + n_val * sizeof(float)),
+        blocked_transpose(&*(vis_weight.begin() + n_val),
+                          &*(write_buf.begin() + n_val * sizeof(float)),
                           write_t, num_prod, block_size, sizeof(float));
     }
     file->write_block("vis_weight", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
+    DEBUG("wrote vis_weight");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
         // TODO: for now should bypass this since we are just filling it with ones
-        blocked_transpose((void*) &*(gain_coeff.begin() + n_val),
-                          (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
+        blocked_transpose(&*(gain_coeff.begin() + n_val),
+                          &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_prod, block_size, sizeof(cfloat));
     }
     file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
+    DEBUG("wrote gain_coeff");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_ev;
-        blocked_transpose((void*) &*(eval.begin() + n_val),
-                          (void*) &*(write_buf.begin() + n_val * sizeof(float)),
+        blocked_transpose(&*(eval.begin() + n_val),
+                          &*(write_buf.begin() + n_val * sizeof(float)),
                           write_t, num_ev, ev_block_size, sizeof(float));
     }
     file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
+    DEBUG("wrote eval");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_ev * num_input;
-        blocked_transpose((void*) &*(evec.begin() + n_val),
-                          (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
+        blocked_transpose(&*(evec.begin() + n_val),
+                          &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_input, block_size, num_ev * sizeof(cfloat));
     }
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
 
     file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
 
-    blocked_transpose((void*) gain_exp.data(), (void*) write_buf.data(),
+    blocked_transpose(gain_exp.data(), write_buf.data(),
                       write_t, num_input, block_size, sizeof(int));
     file->write_block("gain_exp", f_ind, t_ind, write_f, write_t, (const int*) write_buf.data());
 
+    DEBUG("wrote all");
     increment_chunk();
 }
 
 // TODO: might be better to include same function as used by Reader
 void visTranspose::increment_chunk() {
-    t_ind = (t_ind + chunk_t) % num_time;
-    if (t_ind == 0) {
-        t_edge = false;  // reset incomplete chunk flag
-        f_ind += chunk_f;
-        if (num_freq - f_ind < chunk_f) {
-            // Reached an incomplete chunk
-            f_edge = true;
-        }
-    } else if (num_time - t_ind < chunk_t) {
-        // Reached an incomplete chunk
-        t_edge = true;
-    }
-    if (f_ind == 0)
+    // Figure out where the next chunk starts
+    f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
+    if (f_ind == 0) {
         f_edge = false;  // reset incomplete chunk flag
+        t_ind += chunk_t;
+        if (num_time - t_ind < chunk_t) {
+            // Reached an incomplete chunk
+            t_edge = true;
+        }
+    } else if (num_freq - f_ind < chunk_f) {
+        // Reached an incomplete chunk
+        f_edge = true;
+    }
+    // if (t_ind == 0) {
+    //     t_edge = false;  // reset incomplete chunk flag
+    // }
+    // Determine size of next chunk
+    write_f = f_edge ? num_freq - f_ind : chunk_f;
+    write_t = t_edge ? num_time - t_ind : chunk_t;
 }
