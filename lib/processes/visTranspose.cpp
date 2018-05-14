@@ -173,13 +173,16 @@ void visTranspose::transpose_write() {
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_ev * num_input;
+        // TODO: need to stride over evals
         blocked_transpose(&*(evec.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_input, block_size, num_ev * sizeof(cfloat));
     }
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
 
-    file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
+    blocked_transpose(erms.data(), write_buf.data(), write_t, write_f,
+                      block_size, sizeof(float));
+    file->write_block("erms", f_ind, t_ind, write_f, write_t, write_buf.data());
 
     blocked_transpose(gain_exp.data(), write_buf.data(),
                       write_t, num_input, block_size, sizeof(int));
