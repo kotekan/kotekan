@@ -180,9 +180,9 @@ def data_listener(thread_id, socket_udp):
     firstPacket = True
     vdifPacketSize = global_freq*4 + vdifRFIHeaderSize
     chimePacketSize = chimeRFIHeaderSize + 4*local_freq
-    chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1), ('encoded_stream_ID',np.uint16,1),('sk_step',np.uint32,1),
-        ('num_elements',np.uint32,1),('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),
-        ('num_local_freq',np.uint32,1),('frames_per_packet',np.uint32,1),('fpga_seq_num',np.int64,1)])
+    chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1),('sk_step',np.uint32,1),('num_elements',np.uint32,1),
+        ('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),('num_local_freq',np.uint32,1),
+        ('frames_per_packet',np.uint32,1),('fpga_seq_num',np.int64,1),('encoded_stream_ID',np.uint16,1)])
     stream_dict = dict()
     packetCounter = 0;
     while True:
