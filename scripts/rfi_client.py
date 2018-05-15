@@ -14,7 +14,6 @@ import socket
 import numpy as np
 import matplotlib.animation as animation
 import matplotlib.dates as md
-from matplotlib.widgets import Button
 import datetime
 import matplotlib.pyplot as plt
 import random
@@ -150,22 +149,6 @@ def data_listener():
 
         time.sleep(delay)
 
-class Callback(object):
-
-    def SaveData(self, event): 
-        if not os.path.exists("RFIData"):
-            os.makedirs("RFIData")
-        newDir = "RFIData/" + datetime.datetime.utcnow().strftime('%Y%m%dT%H:%M:%S') #Create New Folder
-        os.makedirs(newDir)
-        np.save(newDir + '/data.npy', waterfall)
-        plt.savefig(newDir + '/image.png')
-        f = open(newDir + '/info.txt',"w") #Create Info Text File
-        f.write("X Lims: %f - %f\n"%(x_lims[0], x_lims[1]))
-        f.close()
-        print("Saved Data! Path: ./" + newDir)
-
-
-
 if( __name__ == '__main__'):
 
     app = CommandLine()
@@ -213,12 +196,6 @@ if( __name__ == '__main__'):
     thread = threading.Thread(target=data_listener)
     thread.daemon = True
     thread.start()
-
-    callback = Callback()
-    buttonLocation = plt.axes([0.81, 0.05, 0.1, 0.075])
-    saveButton = Button(buttonLocation, 'Save')
-    saveButton.on_clicked(callback.SaveData)
-
 
     input()
 
