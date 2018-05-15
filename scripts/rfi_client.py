@@ -14,6 +14,7 @@ import socket
 import numpy as np
 import matplotlib.animation as animation
 import matplotlib.dates as md
+from matplotlib.widgets import Button
 import datetime
 import matplotlib.pyplot as plt
 import random
@@ -21,7 +22,7 @@ import time
 import matplotlib.dates as mdates
 import os
 import argparse
-import yaml 
+import yaml
 
 class CommandLine:
 
@@ -30,7 +31,7 @@ class CommandLine:
         #Defaults
         self.TCP_IP = '127.0.0.1'
         self.TCP_PORT = 2901
-        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 60}
+        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0}
         self.mode = 'pathfinder'
         self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
@@ -149,6 +150,22 @@ def data_listener():
 
         time.sleep(delay)
 
+class Callback(object):
+
+    def SaveData(self, event): 
+        if not os.path.exists("RFIData"):
+            os.makedirs("RFIData")
+        newDir = "RFIData/" + datetime.datetime.utcnow().strftime('%Y%m%dT%H:%M:%S') #Create New Folder
+        os.makedirs(newDir)
+        np.save(newDir + '/data.npy', waterfall)
+        plt.savefig(newDir + '/image.png')
+        f = open(newDir + '/info.txt',"w") #Create Info Text File
+        f.write("X Lims: %f - %f\n"%(x_lims[0], x_lims[1]))
+        f.close()
+        print("Saved Data! Path: ./" + newDir)
+
+
+
 if( __name__ == '__main__'):
 
     app = CommandLine()
@@ -161,9 +178,9 @@ if( __name__ == '__main__'):
     waterfall = -1*np.ones([nx,ny])
 
     fig = plt.figure()
-    
+
     x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
-    im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=0,vmax=2.5)
+    im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
     plt.colorbar(label = "SK Value")
     plt.title("RFI Viewer (Mode: "+app.mode+")")
     plt.xlabel("Time")
@@ -192,10 +209,16 @@ if( __name__ == '__main__'):
         except:
             print("Could not connect to %s:%s Trying again in 5 seconds" %(addr[0],addr[1]))
             time.sleep(5)
-        
+
     thread = threading.Thread(target=data_listener)
     thread.daemon = True
     thread.start()
+
+    callback = Callback()
+    buttonLocation = plt.axes([0.81, 0.05, 0.1, 0.075])
+    saveButton = Button(buttonLocation, 'Save')
+    saveButton.on_clicked(callback.SaveData)
+
 
     input()
 
