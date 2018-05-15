@@ -62,8 +62,8 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     // Allocate memory for collecting frames
     vis.reserve(chunk_t*chunk_f*num_prod);
     vis_weight.reserve(chunk_t*chunk_f*num_prod);
-    gain_coeff.reserve(chunk_t*chunk_f*num_input);
     // TODO: fill these at this point?
+    gain_coeff.reserve(chunk_t*chunk_f*num_prod);
     gain_exp.reserve(chunk_t*num_input);
     eval.reserve(chunk_t*chunk_f*num_ev);
     evec.reserve(chunk_t*chunk_f*num_ev*num_input);
@@ -81,7 +81,10 @@ visTranspose::~visTranspose() {
 void visTranspose::main_thread() {
 
     uint32_t frame_id = 0;
-    uint32_t frames_sofar = 0;
+    //uint32_t frames_sofar = 0;
+    uint32_t fi = 0;
+    uint32_t ti = 0;
+    uint32_t offset = 0;
 
     // Create HDF5 file
     //      Create datasets and attributes
@@ -90,7 +93,8 @@ void visTranspose::main_thread() {
         new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev)
     );
 
-    while (!stop_thread && frames_sofar < num_time * num_freq) {
+    //while (!stop_thread && frames_sofar < num_time * num_freq) {
+    while (!stop_thread) {
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
@@ -102,21 +106,33 @@ void visTranspose::main_thread() {
         //      The number of frames is specified in the config
         //      Ensure they are coming in the right order
         // copy data
-        std::copy(frame.vis.begin(), frame.vis.end(), vis.begin() + frames_sofar * num_prod);
-        std::copy(frame.weight.begin(), frame.weight.end(), vis_weight.begin() + frames_sofar * num_prod);
-        std::fill(gain_coeff.begin() + frames_sofar * inputs.size(),
-                  gain_coeff.begin() + (frames_sofar+1) * inputs.size(), (cfloat) {1, 0});
-        std::fill(gain_exp.begin() + frames_sofar * inputs.size(),
-                  gain_exp.begin() + (frames_sofar+1) * inputs.size(), 0);
-        // TODO: are sizes of eigenvectors always the number of inputs?
-        std::copy(frame.eval.begin(), frame.eval.end(), eval.begin() + frames_sofar * num_input);
-        std::copy(frame.evec.begin(), frame.evec.end(), evec.begin() + frames_sofar * num_input * num_ev);
-        erms[frames_sofar] = frame.erms;
 
-        frames_sofar++;
-        if (frames_sofar == write_t * write_f) {
+        // Fastest varying is frequency
+        // TODO: could this be streamlined upstream?
+        //fi = frames_sofar % write_t;
+        //ti = frames_sofar / write_t;
+        offset = fi * write_t + ti;
+        std::copy(frame.vis.begin(), frame.vis.end(), vis.begin() + offset * num_prod);
+        std::copy(frame.weight.begin(), frame.weight.end(), vis_weight.begin() + offset * num_prod);
+        std::fill(gain_coeff.begin() + offset * num_prod,
+                  gain_coeff.begin() + (offset+1) * num_prod, (cfloat) {1, 0});
+        std::fill(gain_exp.begin() + offset * inputs.size(),
+                  gain_exp.begin() + (offset+1) * inputs.size(), 0);
+        // TODO: are sizes of eigenvectors always the number of inputs?
+        std::copy(frame.eval.begin(), frame.eval.end(), eval.begin() + offset * num_ev);
+        std::copy(frame.evec.begin(), frame.evec.end(), evec.begin() + offset * num_input * num_ev);
+        erms[offset] = frame.erms;
+
+        //frames_sofar++;
+        ti = (ti + 1) % write_t;
+        if (ti == 0)
+            fi++;
+        //if (frames_sofar == write_t * write_f) {
+        if (fi == write_f) {
             transpose_write();
-            frames_sofar = 0;
+            //frames_sofar = 0;
+            fi = 0;
+            ti = 0;
         }
 
         // move to next frame
@@ -129,19 +145,19 @@ void visTranspose::transpose_write() {
     DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
     DEBUG("Writing block of %d times and %d freqs", write_t, write_f);
     // loop over frequency and transpose
-    // TODO: need to adjust block size for small dimensions
+    // adjust block size for small dimensions
     size_t block_size = std::min(BLOCK_SIZE, chunk_t);
     size_t ev_block_size = std::min(block_size, num_ev);
     size_t n_val;
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
-        blocked_transpose((void*) &*(vis.begin() + n_val),
-                          (void*) &*(write_buf.begin() + n_val * sizeof(cfloat)),
+        blocked_transpose(&*(vis.begin() + n_val),
+                          &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_prod, block_size, sizeof(cfloat));
     }
     DEBUG("transposed vis");
     file->write_block("vis", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
-    DEBUG("wrote vis");
+    DEBUG("wrote vis.");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
@@ -168,21 +184,24 @@ void visTranspose::transpose_write() {
                           &*(write_buf.begin() + n_val * sizeof(float)),
                           write_t, num_ev, ev_block_size, sizeof(float));
     }
+    DEBUG("transposed eval");
     file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
     DEBUG("wrote eval");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_ev * num_input;
         // TODO: need to stride over evals
+        //       for now just memcpy large elements. nope, doesn't work
         blocked_transpose(&*(evec.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(cfloat)),
-                          write_t, num_input, block_size, num_ev * sizeof(cfloat));
+                          write_t, num_ev, ev_block_size, num_input * sizeof(cfloat));
     }
+    DEBUG("transposed evec.");
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
 
     blocked_transpose(erms.data(), write_buf.data(), write_t, write_f,
                       block_size, sizeof(float));
-    file->write_block("erms", f_ind, t_ind, write_f, write_t, write_buf.data());
+    file->write_block("erms", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
 
     blocked_transpose(gain_exp.data(), write_buf.data(),
                       write_t, num_input, block_size, sizeof(int));
