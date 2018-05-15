@@ -27,14 +27,14 @@ rfi_chime_inputsum(
 
     //Declare Local Memory
     __local float sq_power_across_input[256];
-    
+
     //Compute index in input array
     uint base_index = gx + gy*num_elements + gz*num_elements*gy_size;
     sq_power_across_input[lx] = input[base_index];
 
     //Partial sum if more than 256 inputs
     for(int i = 1; i < num_elements/lx_size; i++){
-        sq_power_across_input[lx] += input[base_index + i*lx_size]; 
+        sq_power_across_input[lx] += input[base_index + i*lx_size];
     }
 
     //Sum Across Input in local memory

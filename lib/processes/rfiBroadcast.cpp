@@ -175,11 +175,11 @@ void rfiBroadcast::main_thread() {
 
                 if (bytes_sent != packet_length){
                     ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
-                }                
+                }
 
                 packet_header_bytes_written -= sizeof(uint16_t);
                 INFO("Stream ID %d %d",j , StreamIDs[j])
-              
+
             }
 
             INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);

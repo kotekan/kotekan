@@ -5,7 +5,7 @@
 REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
 hsaRfiInputSum::hsaRfiInputSum(Config& config,
-                       const string &unique_name, 
+                       const string &unique_name,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
@@ -32,11 +32,11 @@ hsaRfiInputSum::~hsaRfiInputSum() {
 
 hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    struct __attribute__ ((aligned(16))) args_t { 
+    struct __attribute__ ((aligned(16))) args_t {
 	void *input; //Input Data
-	void *output; 
-	uint32_t num_elements; 
-	uint32_t M; 
+	void *output;
+	uint32_t num_elements;
+	uint32_t M;
     } args;
 
     memset(&args, 0, sizeof(args));
