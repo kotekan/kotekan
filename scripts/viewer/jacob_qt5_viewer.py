@@ -358,7 +358,7 @@ class Settings(QDialog):
             plt.title('Power vs Frequency') #Labels
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Power (arb, dB)')
-            plt.plot(x,y) #Plot
+            plt.plot(x,y[::-1]) #Plot
         else: #Calibration Mode
             y = self.main.waterfall[:,int(self.Bright_Freq_index)-self.Width_index:int(self.Bright_Freq_index)+self.Width_index,0]
             self.BrightnessMeasures.append(np.median(y)) #Make measurement

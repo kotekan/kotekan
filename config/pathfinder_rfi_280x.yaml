@@ -3,15 +3,13 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: DEBUG
+log_level: INFO
 
 instrument_name: pathfinder
 
 num_elements: 256
-//num_elements: 16
 num_adjusted_elements: 256
 num_local_freq: 8
-//num_local_freq: 128
 num_adjusted_local_freq: 8
 num_total_freq: 1024
 #num_adjusted_elements/block_size * (num_adjusted_elements/block_size + 1)/2; block_size = 32.
@@ -21,10 +19,8 @@ samples_per_data_set: 32768
 num_data_sets: 1
 buffer_depth: 6
 num_gpu_frames: 256
-#num_links: 8
-#link_map: [0,0,1,1,1,2,2,2]
-num_links: 4
-link_map: [1,1,1,2]
+num_links: 8
+link_map: [0,0,1,1,1,2,2,2]
 num_gpus: 3
 cpu_affinity: [4,5,10,11]
 enable_gating: false
@@ -116,8 +112,7 @@ dpdk:
   kotekan_process: dpdkWrapper
   mode: no_shuffle
   num_lcores: 4
-#  udp_packet_size: 4800
-  udp_packet_size: 4680
+  udp_packet_size: 4800  
   timesamples_per_packet: 2
   network_out_buf_0: gpu_270_input_buffer_0
   network_out_buf_1: gpu_280_input_buffer_0
@@ -146,18 +141,18 @@ gpu:
   - name: clRfiInputSum
 #    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
     kernel: "../lib/opencl/kernels/rfi_chime_inputsum_private.cl"
-  - name: beamform_phase_data
-    kernel: ''
-  - name: offset_accumulator
-    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
-  - name: preseed_multifreq
-    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
-  - name: pairwise_correlator
-    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
-  - name: beamform_kernel
-    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
-  - name: output_beamform_result
-    kernel: ''
+#  - name: beamform_phase_data
+#    kernel: ''
+#  - name: offset_accumulator
+#    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+#  - name: preseed_multifreq
+#    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+#  - name: pairwise_correlator
+#    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+#  - name: beamform_kernel
+#    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+#  - name: output_beamform_result
+#    kernel: ''
   - name: clRfiOutput
     kernel: ''
   - name: output_data_result
@@ -166,7 +161,7 @@ gpu:
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  enable_beamforming: true
+  enable_beamforming: false
   instrument_lat: 49.3203
   instrument_long: -119.6175
   ra: 53.5
@@ -203,29 +198,32 @@ gpu:
 rfiBroadcast:
   kotekan_process: rfiBroadcast
   rfi_in: gpu_rfi_output_buffer_0
-  destination_port: 41215
-#  destination_ip: 192.168.52.108
-  destination_ip: 127.0.0.1
+  total_links: 2
+  destination_port: 41216
+  destination_ip: 10.10.10.2
+#  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
 rfiBroadcast1:
   kotekan_process: rfiBroadcast
   rfi_in: gpu_rfi_output_buffer_1
-  destination_port: 41216
-#  destination_ip: 192.168.52.108
-  destination_ip: 127.0.0.1
+  total_links: 3
+  destination_port: 41217
+  destination_ip: 10.10.10.2
+#  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
 rfiBroadcast2:
   kotekan_process: rfiBroadcast
   rfi_in: gpu_rfi_output_buffer_2
-  destination_port: 41217
-#  destination_ip: 192.168.52.108
-  destination_ip: 127.0.0.1
+  total_links: 3
+  destination_port: 41218
+  destination_ip: 10.10.10.2
+#  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
 #RFI Live-view Paramters
-waterfallX: 512
-num_receive_threads: 3
-colorscale: 0.5
+waterfallX: 1024
+num_receive_threads: 4
+colorscale: 1.0
 waterfall_request_delay: 60

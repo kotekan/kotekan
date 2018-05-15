@@ -54,6 +54,7 @@ void rfiBroadcast::main_thread() {
 
     uint32_t frame_id = 0;
     uint32_t i, j, f;
+    uint32_t bytes_sent = 0;
     uint8_t * frame = NULL;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
@@ -67,10 +68,9 @@ void rfiBroadcast::main_thread() {
     char *packet_buffer = (char *)malloc(packet_length);
 
     //Get starting seq num and stream id.
-    frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-    int64_t seq_num = get_fpga_seq_num(rfi_buf, frame_id);
-    uint16_t encoded_stream_id = get_stream_id(rfi_buf, frame_id); 
-    mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+    //frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+    int64_t seq_num = 0;//get_fpga_seq_num(rfi_buf, frame_id);
+    //mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
 
     if (dest_protocol == "UDP")
     {
@@ -168,7 +168,7 @@ void rfiBroadcast::main_thread() {
                 memcpy(packet_buffer + packet_header_length, RFI_Avg[j], _num_local_freq*sizeof(float));
 
                 //Send Packet
-                uint32_t bytes_sent = sendto(socket_fd,
+                bytes_sent = sendto(socket_fd,
                                  packet_buffer,
                                  packet_length, 0,
                                  (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
@@ -178,10 +178,11 @@ void rfiBroadcast::main_thread() {
                 }                
 
                 packet_header_bytes_written -= sizeof(uint16_t);
-
-                INFO("Frame ID %d Succesfully Broadcasted %d Bytes in %fms",frame_id, bytes_sent, (e_time()-start_time)*1000);
+                INFO("Stream ID %d %d",j , StreamIDs[j])
               
             }
+
+            INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
 
             //Prepare Header For Adjustment
             packet_header_bytes_written -= sizeof(int64_t); 
