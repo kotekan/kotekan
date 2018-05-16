@@ -148,7 +148,7 @@ def chimeHeaderCheck(header,app):
 
 
 def VDIFHeaderCheck(header,app):
-    
+
     if(header['combined_flag'] != 1):
         print("VDIF Header Error: Only Combined RFI values are currently supported ")
         return False
@@ -196,7 +196,7 @@ def data_listener(thread_id, socket_udp):
 
             #Receive packet from port
             packet, addr = socket_udp.recvfrom(chimePacketSize)
-        
+
             if(packet != ''):
 
                 if(packetCounter % 25*len(stream_dict) == 0):
@@ -214,7 +214,7 @@ def data_listener(thread_id, socket_udp):
                         break
                     #Add to the dictionary of Streams
                     stream_dict[header['encoded_stream_ID'][0]] = Stream(thread_id, mode, header, known_streams)
-                
+
                 #On first packet received by any stream
                 if(app.min_seq == -1):
 
@@ -222,7 +222,7 @@ def data_listener(thread_id, socket_udp):
                     t_min = datetime.datetime.utcnow()
                     app.min_seq = header['fpga_seq_num'][0]
                     app.max_seq = app.min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
-                    firstPacket = False       
+                    firstPacket = False
 
                 else:
 
@@ -275,19 +275,19 @@ def data_listener(thread_id, socket_udp):
                     if(header['seq'] > app.max_seq):
 
                         roll_amount = int(-1*waterfall.shape[1]/8)
-                        
+
                         #DO THE ROLL
                         waterfall = np.roll(waterfall,roll_amount,axis=1)
                         waterfall[:,roll_amount:] = -1
                         app.min_seq -= roll_amount
                         app.max_seq -= roll_amount
-                        
+
                         #Adjust Times
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
 
                 waterfall[:,int(header['seq']-app.min_seq)] = data
-                    
-                
+
+
 def TCP_stream():
 
     global sock_tcp, waterfall, t_min
@@ -334,7 +334,7 @@ if( __name__ == '__main__'):
     waterfall = -1*np.ones([nx,ny],dtype=float)
 
     time.sleep(1)
-   
+
     receive_threads = []
     for i in range(app.config['num_receive_threads']):
         UDP_PORT = app.UDP_PORT + i
