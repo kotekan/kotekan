@@ -86,6 +86,8 @@ private:
     uint32_t frames_per_packet;
 
     //Process specific config parameters
+    /// The total number of links processed by gpu
+    uint32_t total_links;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to
