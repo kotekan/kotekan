@@ -231,3 +231,8 @@ rfiBroadcast3:
   destination_ip: 127.0.0.1 
   destination_protocol: UDP
 
+#RFI Live-view Paramters
+waterfallX: 1024
+num_receive_threads: 4
+colorscale: 1.0
+waterfall_request_delay: 60
