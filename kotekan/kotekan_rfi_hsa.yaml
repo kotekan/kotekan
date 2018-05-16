@@ -10,9 +10,11 @@ num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
 samples_per_data_set: 49152
+#samples_per_data_set: 32768
 num_data_sets: 1
 num_gpus: 4
 buffer_depth: 8
+#buffer_depth: 1
 cpu_affinity: [2,3,8,9]
 sizeof_float: 4
 sizeof_short: 2
@@ -34,9 +36,10 @@ frb_scaling: 0.05 #1.0
 
 
 #RFI stuff
-sk_step: 4096
+sk_step: 256
 rfi_combined: True
 frames_per_packet: 1
+bad_inputs: []
 
 # Pool
 main_pool:

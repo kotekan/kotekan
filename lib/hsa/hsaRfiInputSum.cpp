@@ -5,7 +5,7 @@
 REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
 hsaRfiInputSum::hsaRfiInputSum(Config& config,
-                       const string &unique_name, 
+                       const string &unique_name,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
@@ -23,7 +23,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     //Compute Buffer lengths
     input_frame_len = sizeof(float)*_num_elements*_num_local_freq*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;
-    _num_bad_inputs = 0;
+    _num_bad_inputs = config.get_int_array(unique_name, "bad_inputs").size();
     _M = (_num_elements - _num_bad_inputs)*_sk_step;
 }
 
@@ -32,11 +32,11 @@ hsaRfiInputSum::~hsaRfiInputSum() {
 
 hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
-    struct __attribute__ ((aligned(16))) args_t { 
+    struct __attribute__ ((aligned(16))) args_t {
 	void *input; //Input Data
-	void *output; 
-	uint32_t num_elements; 
-	uint32_t M; 
+	void *output;
+	uint32_t num_elements;
+	uint32_t M;
     } args;
 
     memset(&args, 0, sizeof(args));
@@ -55,6 +55,15 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     params.grid_size_x = 256;
     params.grid_size_y = _num_local_freq;
     params.grid_size_z = _samples_per_data_set/_sk_step;
+
+//For rfi_chime_inputsum_private.hsaco
+/*    params.workgroup_size_x = _num_local_freq;
+    params.workgroup_size_y = 1;
+    params.workgroup_size_z = 1;
+    params.grid_size_x = _num_local_freq;
+    params.grid_size_y = (_samples_per_data_set/_sk_step)/4;
+    params.grid_size_z = 4;*/
+
     params.num_dims = 3;
 
     params.private_segment_size = 0;
