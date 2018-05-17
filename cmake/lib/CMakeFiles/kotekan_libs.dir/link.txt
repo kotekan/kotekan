@@ -1,0 +1,2 @@
+/usr/bin/ar qc libkotekan_libs.a  CMakeFiles/kotekan_libs.dir/empty.c.o
+/usr/bin/ranlib libkotekan_libs.a

@@ -25,6 +25,7 @@ using std::string;
 #include "errors.h"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
+#include "parse_host_name.hpp"
 
 //Update beam_offset parameter with:
 //curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d '{"beam_offset":108}'
@@ -72,6 +73,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
   column_mode = config.get_bool_default(unique_name, "column_mode", false);
 }
 
+/*
 void frbNetworkProcess::parse_host_name()
 {
   int rack=0,node=0,nos=0;
@@ -143,15 +145,25 @@ void frbNetworkProcess::parse_host_name()
     my_ip_address[i] = temp_ip[i].str();
     INFO("%s ",my_ip_address[i].c_str());
   }
-  if(rack>7)my_node_id += rack*10+(9-node); //fix for the arrangment of nodes in the racks
+  if(rack<7)my_node_id += rack*10+(9-node); //fix for the arrangment of nodes in the racks
   if(rack>7) my_node_id += (rack-1)*10+(9-node);
 }
+
+*/
 
 
 void frbNetworkProcess::main_thread()
 {
   //parsing the host name
-  parse_host_name();
+  int rack,node,nos,my_node_id;
+
+  parse_host_name(&rack, &node, &nos, &my_node_id);
+  
+  for(int i=0;i<number_of_subnets;i++)
+  {
+    //my_ip_address[i]<<"10."<<i+6<<"."<<nos+rack<<".1"<<node;
+    INFO("%s ",my_ip_address[i].c_str());
+  }
 
   using namespace std::placeholders;
   restServer * rest_server = get_rest_server();

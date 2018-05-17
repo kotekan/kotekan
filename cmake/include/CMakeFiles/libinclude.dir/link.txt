@@ -1,0 +1,2 @@
+/usr/bin/ar qc liblibinclude.a  CMakeFiles/libinclude.dir/mongoose.c.o
+/usr/bin/ranlib liblibinclude.a
