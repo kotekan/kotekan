@@ -1,23 +1,16 @@
 #include "clProcess.hpp"
-#include "gpu_command.h"
+#include "clCommand.hpp"
 #include "callbackdata.h"
 #include "unistd.h"
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
-#include "device_interface.h"
 #include "util.h"
 
 #include <iostream>
 #include <sys/time.h>
 
 using namespace std;
-
-//double e_time_1(void){
-//    static struct timeval now;
-//    gettimeofday(&now, NULL);
-//    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
-//}
 
 REGISTER_KOTEKAN_PROCESS(clProcess);
 
@@ -45,7 +38,7 @@ clProcess::clProcess(Config& config_,
 
     //device = new device_interface(config, gpu_id);
     device = new device_interface(in_buf, out_buf, config, gpu_id, beamforming_out_buf, rfi_out_buf, unique_name);
-    factory = new gpu_command_factory(*device, config, unique_name);
+    factory = new clCommandFactory(*device, config, unique_name);
 
     //factory.initializeCommands(device, config);
 
@@ -64,7 +57,6 @@ void clProcess::main_thread()
 {
     apply_config(0);
 
-    gpu_command * currentCommand;
     cl_event sequenceEvent;
 
     loopCounter * loopCnt = new loopCounter;
@@ -86,7 +78,7 @@ void clProcess::main_thread()
     for (int j=0;j<device->getInBuf()->num_frames;j++)
     {
         //cb_data[j] = new callBackData(factory->getNumCommands());
-        cb_data.push_back(new callBackData(factory->getNumCommands()));
+        cb_data.push_back(new callBackData(factory->get_commands().size()));//getNumCommands()));
         buff_id_lock_list[j] = new buffer_id_lock;
         cb_data[j]->buff_id_lock = buff_id_lock_list[j];
     }
@@ -142,7 +134,7 @@ void clProcess::main_thread()
         cb_data[frame_id]->buffer_id = frame_id;
         cb_data[frame_id]->in_buf = device->getInBuf();
         cb_data[frame_id]->out_buf = device->getOutBuf();
-        cb_data[frame_id]->numCommands = factory->getNumCommands();
+        cb_data[frame_id]->numCommands = factory->get_commands().size();//getNumCommands();
         cb_data[frame_id]->cnt = loopCnt;
         cb_data[frame_id]->use_beamforming = _use_beamforming;
         cb_data[frame_id]->start_time = e_time();
@@ -158,10 +150,11 @@ void clProcess::main_thread()
 
         //DEBUG("cb_data initialized\n");
         usleep(gpu_id*10000);
-        for (uint32_t i = 0; i < factory->getNumCommands(); i++){
-            currentCommand = factory->getNextCommand();
+        for (auto &currentCommand : factory->get_commands()){
+//        for (uint32_t i = 0; i < factory->getNumCommands(); i++){
+//            currentCommand = factory->getNextCommand();
             sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
-            cb_data[frame_id]->listCommands[i] = currentCommand;
+//            cb_data[frame_id]->listCommands[i] = currentCommand;
         }
 
         if (first_run)
@@ -210,7 +203,8 @@ void clProcess::main_thread()
     CHECK_ERROR( pthread_mutex_unlock(&loopCnt->lock) );
     
     DEBUG("LockConditionReleased\n");
-    factory->deallocateResources();
+    delete factory;
+//    factory->deallocateResources();
     DEBUG("FactoryDone\n");
     device->deallocateResources();
     DEBUG("DeviceDone\n");

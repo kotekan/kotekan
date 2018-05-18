@@ -1,7 +1,7 @@
 #include "output_rfi.h"
 
 output_rfi::output_rfi(const char* param_name, Config &param_config, const string &unique_name):
-    gpu_command(param_name, param_config, unique_name)
+    clCommand(param_name, param_config, unique_name)
 {
 }
 
@@ -12,12 +12,12 @@ output_rfi::~output_rfi()
 void output_rfi::build(device_interface &param_Device)
 {
     apply_config(0);
-    gpu_command::build(param_Device);
+    clCommand::build(param_Device);
 }
 
 cl_event output_rfi::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
     /*unsigned int count_return_array[8*32768/256];
     clEnqueueReadBuffer (param_Device.getQueue(1),
         param_Device.getRfiCountBuffer(param_bufferID),

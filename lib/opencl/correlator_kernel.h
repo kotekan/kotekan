@@ -1,10 +1,10 @@
 #ifndef CORRELATOR_KERNEL_H
 #define CORRELATOR_KERNEL_H
 
-#include "gpu_command.h"
-#include "device_interface.h"
+#include "clCommand.hpp"
+#include "clDeviceInterface.hpp"
 
-class correlator_kernel: public gpu_command
+class correlator_kernel: public clCommand
 {
 public:
     correlator_kernel(const char* param_name, Config &config);

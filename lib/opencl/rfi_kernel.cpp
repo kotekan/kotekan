@@ -5,7 +5,7 @@
 
 
 rfi_kernel::rfi_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
-    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
+    clCommand(param_gpuKernel, param_name, param_config, unique_name)
 {
     //INFO("Launched RFI Consturctor");
     config_local = param_config;
@@ -40,7 +40,7 @@ void rfi_kernel::rest_callback(connectionInstance& conn, json& json_request) {
 }
 
 void rfi_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
+    clCommand::apply_config(fpga_seq);
     //INFO("Applying RFI config");
     _sk_step  = config.get_int(unique_name, "sk_step");
     _rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
@@ -64,7 +64,7 @@ void rfi_kernel::build(device_interface &param_Device)
             std::bind(&rfi_kernel::rest_callback, this, _1, _2));
 
     INFO("Starting RFI kernel build");
-    gpu_command::build(param_Device);
+    clCommand::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
     num_links_per_gpu = config_local.num_links_per_gpu(param_Device.getGpuID());
@@ -117,7 +117,7 @@ void rfi_kernel::build(device_interface &param_Device)
 
 cl_event rfi_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
 
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
 

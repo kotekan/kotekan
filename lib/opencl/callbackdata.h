@@ -1,7 +1,7 @@
 #ifndef CALLBACKDATA_H
 #define CALLBACKDATA_H
 
-#include "gpu_command.h"
+#include "clCommand.hpp"
 #include "buffer.h"
 #include "pthread.h"
 
@@ -60,7 +60,7 @@ public:
     double start_time;
     string unique_name;
 
-    gpu_command ** listCommands;
+    clCommand ** listCommands;
 
     // Buffer objects
     struct Buffer * in_buf;

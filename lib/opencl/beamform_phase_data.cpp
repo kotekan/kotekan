@@ -10,7 +10,7 @@
 #define TAU 6.28318530718 // 2*pi
 
 beamform_phase_data::beamform_phase_data(const char* param_name, Config &param_config, const string &unique_name):
-    gpu_command(param_name, param_config, unique_name)
+    clCommand(param_name, param_config, unique_name)
 {
 }
 
@@ -22,7 +22,7 @@ beamform_phase_data::~beamform_phase_data()
 }
 
 void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
+    clCommand::apply_config(fpga_seq);
 
     beamforming_do_not_track = config.get_int(unique_name, "do_not_track");
     inst_lat = config.get_double(unique_name, "instrument_lat");
@@ -36,7 +36,7 @@ void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
 void beamform_phase_data::build(class device_interface &param_Device)
 {
     apply_config(0);
-    gpu_command::build(param_Device);
+    clCommand::build(param_Device);
 
     last_bankID = -1;
 
@@ -49,7 +49,7 @@ void beamform_phase_data::build(class device_interface &param_Device)
 
 cl_event beamform_phase_data::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
 
     time_t local_beamform_time;
     uint64_t current_seq;
@@ -143,10 +143,10 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
 
 void beamform_phase_data::cleanMe(int param_BufferID)
 {
-    gpu_command::cleanMe(param_BufferID);
+    clCommand::cleanMe(param_BufferID);
 }
 
 void beamform_phase_data::freeMe()
 {
-    gpu_command::freeMe();
+    clCommand::freeMe();
 }

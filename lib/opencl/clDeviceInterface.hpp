@@ -18,9 +18,6 @@
 // result: 4096
 #define PAGESIZE_MEM 4096
 
-// The maximum number of expected GPUs in a host.  Increase as needed.
-#define MAX_GPUS 4
-
 // This adjusts the number of queues used by the OpenCL runtime
 // One queue is for data transfers to the GPU, one is for kernels,
 // and one is for data transfers from the GPU to host memory.
@@ -42,6 +39,7 @@ public:
     device_interface(struct Buffer* param_In_Buf, struct Buffer* param_Out_Buf
             , Config& param_Config, int param_GPU_ID
             , struct Buffer * param_beamforming_out_buf, struct Buffer * param_Rfi_buf, const string &unique_name);
+    ~device_interface();
     Buffer* getInBuf();
     Buffer* getOutBuf();
     Buffer* getRfiBuf();
@@ -86,7 +84,7 @@ public:
     int num_blocks;
 
     cl_platform_id platform_id;
-    cl_device_id device_id[MAX_GPUS];
+    cl_device_id *device_id;
     cl_context context;
     cl_command_queue queue[NUM_QUEUES];
 

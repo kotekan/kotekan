@@ -1,12 +1,12 @@
 #ifndef RFI_KERNEL_H
 #define RFI_KERNEL_H
 
-#include "gpu_command.h"
-#include "device_interface.h"
+#include "clCommand.hpp"
+#include "clDeviceInterface.hpp"
 #include "restServer.hpp"
 #include <mutex>
 
-class rfi_kernel: public gpu_command
+class rfi_kernel: public clCommand
 {
 public:
     rfi_kernel(const char* param_name, Config &config);

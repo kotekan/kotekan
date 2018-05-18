@@ -2,7 +2,7 @@
 #include "math.h"
 
 offset_kernel::offset_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
-    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
+    clCommand(param_gpuKernel, param_name, param_config, unique_name)
 {
 }
 
@@ -11,14 +11,14 @@ offset_kernel::~offset_kernel()
 }
 
 void offset_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
+    clCommand::apply_config(fpga_seq);
 }
 
 
 void offset_kernel::build(device_interface &param_Device)
 {
     apply_config(0);
-    gpu_command::build(param_Device);
+    clCommand::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
 
@@ -43,7 +43,7 @@ void offset_kernel::build(device_interface &param_Device)
 
 cl_event offset_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
 
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
     setKernelArg(1, param_Device.getAccumulateBuffer(param_bufferID));

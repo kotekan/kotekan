@@ -20,8 +20,8 @@
 
 #include "pthread.h"
 #include "fpga_header_functions.h"
-#include "device_interface.h"
-#include "gpu_command_factory.h"
+#include "clDeviceInterface.hpp"
+#include "clCommandFactory.hpp"
 #include "KotekanProcess.hpp"
 
 class clProcess : public KotekanProcess {
@@ -49,7 +49,7 @@ class clProcess : public KotekanProcess {
         // Config variables
         bool _use_beamforming;
 
-        gpu_command_factory * factory;
+        clCommandFactory * factory;
         device_interface * device;
 
 };

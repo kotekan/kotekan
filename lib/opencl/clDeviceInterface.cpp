@@ -1,7 +1,7 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 
-#include "device_interface.h"
-#include "gpu_command.h"
+#include "clDeviceInterface.hpp"
+#include "clCommand.hpp"
 #include "callbackdata.h"
 #include "math.h"
 #include <errno.h>
@@ -38,12 +38,24 @@ config(param_Config)
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-    INFO("MAX_GPUS %d\n",MAX_GPUS);
+    INFO("GPU Id %i\n",param_GPU_ID);
+
+    // Find out how many GPUs can be probed.
+    cl_uint max_num_gpus = 0;
+    clGetDeviceIDs(NULL,CL_DEVICE_TYPE_GPU,0,NULL,&max_num_gpus);
+    INFO("Maximum number of GPUs: %d\n",max_num_gpus);
+
     // Find a GPU device..
-    CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
+    device_id = (cl_device_id *)malloc(max_num_gpus * sizeof(cl_device_id));
+    CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, max_num_gpus, device_id, NULL) );
 
     context = clCreateContext( NULL, 1, &device_id[gpu_id], NULL, NULL, &err);
     CHECK_CL_ERROR(err);
+}
+
+device_interface::~device_interface()
+{
+    free(device_id);
 }
 
 size_t device_interface::get_opencl_resolution()

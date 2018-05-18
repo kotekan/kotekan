@@ -11,28 +11,37 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
 add_library ( kotekan_opencl
-              device_interface.cpp
+              clDeviceInterface.cpp
               callbackdata.cpp
-              beamform_kernel.cpp
-              beamform_phase_data.cpp
-              correlator_kernel.cpp
-              input_data_stage.cpp
-              offset_kernel.cpp
-              output_beamform_result.cpp
-              output_data_result.cpp
-              preseed_kernel.cpp
-              gpu_command.cpp
-              gpu_command_factory.cpp
+              clCommand.cpp
+              clCommandFactory.cpp
               clProcess.cpp
+              timer.cpp
+
+# Copy-in & general-purpose:
+              input_data_stage.cpp
+
+# CHIME N2 Kernels & copy-out:
+              preseed_kernel.cpp
+              offset_kernel.cpp
+              correlator_kernel.cpp
+              output_data_result.cpp
+
+# CHIME/Pulsar Kernels & copy-out:
+              beamform_phase_data.cpp
+              beamform_kernel.cpp
+              output_beamform_result.cpp
+
+#RFI Kernels
               rfi_kernel.cpp
               output_rfi.cpp
-              timer.cpp
               )
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
         "kernels/")
-add_dependencies( kotekan_opencl kernel_copy )
 
 target_link_libraries( kotekan_opencl kotekan_libs )
+
+add_dependencies( kotekan_opencl kernel_copy )

@@ -1,12 +1,12 @@
 #ifndef BEAMFORM_KERNEL_H
 #define BEAMFORM_KERNEL_H
 
-#include "gpu_command.h"
-#include "device_interface.h"
+#include "clCommand.hpp"
+#include "clDeviceInterface.hpp"
 
 #include <vector>
 
-class beamform_kernel: public gpu_command
+class beamform_kernel: public clCommand
 {
 public:
     beamform_kernel(const char* param_name, Config &param_config);

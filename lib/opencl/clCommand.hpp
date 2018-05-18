@@ -1,12 +1,12 @@
 /**
- * @file gpu_command.h
+ * @file clCommand.h
  * @brief Base class for defining openCL commands to execute on GPUs
- *  - gpu_command
+ *  - clCommand
  */ 
 
 
-#ifndef GPU_COMMAND_H
-#define GPU_COMMAND_H
+#ifndef CL_COMMAND_H
+#define CL_COMMAND_H
 
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
@@ -18,13 +18,13 @@
 #include "Config.hpp"
 #include "errors.h"
 #include <stdio.h>
-#include "device_interface.h"
+#include "clDeviceInterface.hpp"
 #include "assert.h"
 #include "buffer.h"
 #include <string>
 
 /**
- * @class gpu_command
+ * @class clCommand
  * @brief Base class for defining openCL commands to execute on GPUs
  *
  * Commands executed on a GPU can either be kernels that perform a simple calculation
@@ -58,25 +58,25 @@
  *
  */
 
-class gpu_command
+class clCommand
 {
 public:
-    /// Constructor when no kernel is defined for the gpu_command object.
-    gpu_command(const char* param_name, Config &param_config, const string &unique_name_);
+    /// Constructor when no kernel is defined for the clCommand object.
+    clCommand(const char* param_name, Config &param_config, const string &unique_name_);
     /// Overloaded constructor that sets a given openCL kernel file (.cl) to execute for this command object.
-    gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name);//, cl_device_id *param_DeviceID, cl_context param_Context);
+    clCommand(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name);//, cl_device_id *param_DeviceID, cl_context param_Context);
     /// Destructor that frees memory for the kernel and name.
-    virtual ~gpu_command();
+    virtual ~clCommand();
     /// gettor that returns the preceeding event in an event chain.
     cl_event getPreceedEvent();
     /// gettor that returns the next event in an event chain.
     cl_event getPostEvent();
-    /// gettor that returns the name given to this gpu_command object.
+    /// gettor that returns the name given to this clCommand object.
     char* get_name();
     /// gettor that returns the config values for a kernel formatted as a cl_options string to append to the kernel execution statement.
     string get_cl_options();
     /** The build function creates the event to return as the post event in an event chaining sequence.
-     * If a kernel is part of the gpu_command object definition the resources to run it are allocated on
+     * If a kernel is part of the clCommand object definition the resources to run it are allocated on
      * the gpu here.
      * @param param_Device  The instance of the device_interface class that abstracts the interfacing
      *                      layer between the software and hardware.
@@ -156,5 +156,5 @@ protected:
     string unique_name;
 };
 
-#endif // GPU_COMMAND_H
+#endif // CL_COMMAND_H
 

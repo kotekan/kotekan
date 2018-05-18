@@ -1,4 +1,4 @@
-#include "gpu_command.h"
+#include "clCommand.hpp"
 #include <string.h>
 #include <iostream>
 #include <string>
@@ -6,14 +6,14 @@
 using std::string;
 using std::to_string;
 
-gpu_command::gpu_command(const char* param_name, Config &param_config, const string &unique_name_) :
+clCommand::clCommand(const char* param_name, Config &param_config, const string &unique_name_) :
     config(param_config), gpuCommandState(0) , gpuKernel(NULL), unique_name(unique_name_)
 {
     name = strdup(param_name);
 //    INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name_) :
+clCommand::clCommand(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name_) :
     config(param_config), gpuCommandState(0), gpuKernel(NULL), unique_name(unique_name_)
 {
     gpuKernel = new char[strlen(param_gpuKernel)+1];
@@ -23,20 +23,20 @@ gpu_command::gpu_command(const char * param_gpuKernel, const char* param_name, C
 //    INFO("Name: %s, %s", param_name, name);
 }
 
-gpu_command::~gpu_command()
+clCommand::~clCommand()
 {
     if (gpuCommandState==1)
         free(gpuKernel);
     free(name);
 }
 
-char* gpu_command::get_name()
+char* clCommand::get_name()
 {
 //    INFO("get_name(): %s", name);
     return name;
 }
 
-void gpu_command::apply_config(const uint64_t& fpga_seq) {
+void clCommand::apply_config(const uint64_t& fpga_seq) {
     (void)fpga_seq;
     _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
     _num_elements = config.get_int(unique_name, "num_elements");
@@ -49,7 +49,7 @@ void gpu_command::apply_config(const uint64_t& fpga_seq) {
     _buffer_depth = config.get_int(unique_name, "buffer_depth");
 }
 
-void gpu_command::build(class device_interface &param_Device)
+void clCommand::build(class device_interface &param_Device)
 {
     size_t program_size;
     FILE *fp;
@@ -89,7 +89,7 @@ void gpu_command::build(class device_interface &param_Device)
     }
 }
 
-cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event clCommand::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
     assert(param_bufferID<param_Device.getInBuf()->num_frames);
     assert(param_bufferID>=0);
@@ -98,7 +98,7 @@ cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, devi
 //    DEBUG("Execute kernel: %s", name);
 }
 
-void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
+void clCommand::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 {
     CHECK_CL_ERROR( clSetKernelArg(kernel,
     param_ArgPos,
@@ -108,7 +108,7 @@ void gpu_command::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 
 // TODO This could be on a per command object basis,
 // it doesn't really need to be at this level.
-string gpu_command::get_cl_options()
+string clCommand::get_cl_options()
 {
     string cl_options = "";
 
@@ -125,7 +125,7 @@ string gpu_command::get_cl_options()
     return cl_options;
 }
 
-void gpu_command::cleanMe(int param_BufferID)
+void clCommand::cleanMe(int param_BufferID)
 {
     //the events need to be defined as arrays per buffer id
 
@@ -135,7 +135,7 @@ void gpu_command::cleanMe(int param_BufferID)
     }
 }
 
-void gpu_command::freeMe()
+void clCommand::freeMe()
 {
     if (gpuCommandState==1){
         CHECK_CL_ERROR( clReleaseKernel(kernel) );

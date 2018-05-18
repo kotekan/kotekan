@@ -1,10 +1,10 @@
 #ifndef OFFSET_KERNEL_H
 #define OFFSET_KERNEL_H
 
-#include "gpu_command.h"
-#include "device_interface.h"
+#include "clCommand.hpp"
+#include "clDeviceInterface.hpp"
 
-class offset_kernel: public gpu_command
+class offset_kernel: public clCommand
 {
 public:
     offset_kernel(const char* param_name, Config &config);

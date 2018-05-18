@@ -1,9 +1,9 @@
 #ifndef INPUT_DATA_STAGE_H
 #define INPUT_DATA_STAGE_H
 
-#include "gpu_command.h"
+#include "clCommand.hpp"
 
-class input_data_stage: public gpu_command
+class input_data_stage: public clCommand
 {
 public:
     input_data_stage(const char* param_name, Config &config, const string &unique_name);

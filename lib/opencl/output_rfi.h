@@ -1,10 +1,10 @@
 #ifndef OUTPUT_RFI_H
 #define OUTPUT_RFI_H
 
-#include "gpu_command.h"
+#include "clCommand.hpp"
 #include "callbackdata.h"
 
-class output_rfi: public gpu_command
+class output_rfi: public clCommand
 {
 public:
     output_rfi(const char* param_name, Config &config, const string &unique_name);

@@ -1,13 +1,13 @@
 /**
  * @file beamform_phase_data.h
  * @brief class to calculate phase data for beamforming.
- *  - beamform_phase_data: public gpu_command
+ *  - beamform_phase_data: public clCommand
  */ 
 
 #ifndef BEAMFORM_PHASE_DATA_H
 #define BEAMFORM_PHASE_DATA_H
 
-#include "gpu_command.h"
+#include "clCommand.hpp"
 #include "callbackdata.h"
 
 #include <vector>
@@ -42,7 +42,7 @@
  *
  */
 
-class beamform_phase_data: public gpu_command
+class beamform_phase_data: public clCommand
 {
 public:
     /// Constructor, no logic added.

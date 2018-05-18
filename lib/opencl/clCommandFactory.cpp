@@ -1,4 +1,4 @@
-#include "gpu_command_factory.h"
+#include "clCommandFactory.hpp"
 #include <stdio.h>
 #include <stdlib.h>
 #include "errors.h"
@@ -10,9 +10,9 @@
 
 using namespace std;
 
-gpu_command_factory::gpu_command_factory(class device_interface & device_
-                                            , Config &config_
-                                            , const string& unique_name_):
+clCommandFactory::clCommandFactory(device_interface & device_,
+                                   Config &config_,
+                                   const string& unique_name_):
     num_commands(0),
     current_command_cnt(0),
     config(config_),
@@ -20,12 +20,19 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
     unique_name(unique_name_)
 {
     vector<json> commands = config.get_json_array(unique_name, "commands");
+
+    for (uint32_t i = 0; i < commands.size(); i++){
+        auto cmd = create(commands[i]["name"], config, unique_name);
+        cmd->build(device);
+        list_commands.push_back(cmd);
+    }
+
+/*
     num_commands = commands.size();
     use_beamforming = config.get_bool(unique_name, "enable_beamforming");
     //use_incoh_beamforming = false; //config.get_bool(unique_name, "use_incoh_beamforming");
 
-    //list_commands =  new gpu_command * [num_commands];
-
+    //list_commands =  new clCommand * [num_commands];
 
     for (uint32_t i = 0; i < num_commands; i++){
 
@@ -59,17 +66,33 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
         list_commands[i]->build(device);
     }
 
-
     current_command_cnt = 0;
+*/
 }
 
-cl_uint gpu_command_factory::getNumCommands() const
+clCommand* clCommandFactory::create(const string &name,
+                                      Config& config,
+                                      const string &unique_name) const
+{
+    auto known_commands = clCommandFactoryRegistry::get_registered_commands();
+    auto i = known_commands.find(name);
+    if (i == known_commands.end())
+    {
+        ERROR("Unrecognized CL command! (%s)", name.c_str());
+        throw std::runtime_error("Unrecognized hsaCommand!");
+    }
+    clCommandMaker* maker = i->second;
+    return maker->create(config,unique_name);
+}
+
+/*
+cl_uint clCommandFactory::getNumCommands() const
 {
     return num_commands;
 }
-gpu_command* gpu_command_factory::getNextCommand()//class device_interface & param_Device, int param_BufferID)
+clCommand* clCommandFactory::getNextCommand()//class device_interface & param_Device, int param_BufferID)
 {
-    gpu_command* current_command;
+    clCommand* current_command;
 
     current_command = list_commands[current_command_cnt];
 
@@ -80,7 +103,8 @@ gpu_command* gpu_command_factory::getNextCommand()//class device_interface & par
     return current_command;
 
 }
-void gpu_command_factory::deallocateResources()
+*/
+clCommandFactory::~clCommandFactory()
 {
     // TODO freeMe should just be a part of the destructor
     for (uint32_t i = 0; i < num_commands; i++){
@@ -95,3 +119,33 @@ void gpu_command_factory::deallocateResources()
     DEBUG("ListCommandsDeleted\n");
 }
 
+vector<clCommand*>& clCommandFactory::get_commands() {
+    return list_commands;
+}
+
+void clCommandFactoryRegistry::cl_register_command(const std::string& key, clCommandMaker* cmd)
+{
+    clCommandFactoryRegistry::instance().cl_reg(key,cmd);
+}
+
+std::map<std::string, clCommandMaker*> clCommandFactoryRegistry::get_registered_commands(){
+    return clCommandFactoryRegistry::instance()._cl_commands;
+}
+
+
+clCommandFactoryRegistry& clCommandFactoryRegistry::instance() {
+    static clCommandFactoryRegistry factory;
+    return factory;
+}
+
+clCommandFactoryRegistry::clCommandFactoryRegistry(){}
+
+void clCommandFactoryRegistry::cl_reg(const std::string& key, clCommandMaker* cmd)
+{
+    if (_cl_commands.find(key) != _cl_commands.end())
+    {
+        ERROR("Multiple OpenCL Commands registered as '%s'!",key.c_str());
+        throw std::runtime_error("A clCommand was registered twice!");
+    }
+    _cl_commands[key] = cmd;
+}

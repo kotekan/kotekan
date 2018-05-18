@@ -7,7 +7,7 @@
 using std::string;
 
 beamform_kernel::beamform_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
-    gpu_command(param_gpuKernel, param_name, param_config, unique_name)
+    clCommand(param_gpuKernel, param_name, param_config, unique_name)
 {
 
 }
@@ -18,7 +18,7 @@ beamform_kernel::~beamform_kernel()
 }
 
 void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
+    clCommand::apply_config(fpga_seq);
 
     _element_mask = config.get_int_array(unique_name, "element_mask");
     _product_remap = config.get_int_array(unique_name, "product_remap");
@@ -40,7 +40,7 @@ void beamform_kernel::build(class device_interface& param_Device)
 {
     apply_config(0);
 
-    gpu_command::build(param_Device);
+    clCommand::build(param_Device);
 
     cl_int err;
     //stream_id_t stream_id;
@@ -101,7 +101,7 @@ void beamform_kernel::build(class device_interface& param_Device)
 
 cl_event beamform_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
 
     // TODO Make this a config file option
     // 390625 == 1 second.
