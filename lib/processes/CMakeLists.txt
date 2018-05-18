@@ -24,6 +24,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiVDIF.cpp
               rfiBroadcastVDIF.cpp
               rfiBroadcast.cpp
+              rfiRecord.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
