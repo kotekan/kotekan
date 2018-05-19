@@ -253,7 +253,7 @@ void pulsarNetworkProcess::main_thread()
 
     unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
     unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_sequence_id*750; // analytically it must be 781.25
+    unsigned long wait_ns = time_interval-reminder + my_sequence_id*600; // analytically it must be 781.25
  
     
     add_nsec(t0,wait_ns); 
@@ -300,34 +300,29 @@ void pulsarNetworkProcess::main_thread()
     INFO("Host name %s ip: %s node: %d sequence_id: %d lock_miss: %ld",my_host_name,my_ip_address[1].c_str(),my_node_id,my_sequence_id,lock_miss);
     
 
-    for(int frame=0; frame<16; frame++)
+    for(int frame=0; frame<80; frame++)
     {
-      for(int freq=0; freq<4; freq++)
+      for(int beam=0; beam<10; beam++)
       {
-        for(int beam=0; beam<10; beam++)
-        {
-          int e_beam = my_sequence_id + beam;
-          e_beam =  e_beam%10;
+        int e_beam = my_sequence_id + beam;
+        e_beam =  e_beam%10;
         
-          clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
 
-           if(e_beam<number_of_pulsar_links)
-           {
-             int i = e_beam%number_of_subnets;
-             sendto(sock_fd[i], &packet_buffer[(freq*10+e_beam)*16*udp_pulsar_packet_size + frame*udp_pulsar_packet_size], 
-                     udp_pulsar_packet_size , 0 , (struct sockaddr *) &server_address[e_beam] , sizeof(server_address[e_beam])); 
+        if(e_beam<number_of_pulsar_links)
+        {
+          int i = e_beam%number_of_subnets;
+          sendto(sock_fd[i], &packet_buffer[(e_beam)*80*udp_pulsar_packet_size + frame*udp_pulsar_packet_size], 
+                   udp_pulsar_packet_size , 0 , (struct sockaddr *) &server_address[e_beam] , sizeof(server_address[e_beam])); 
              
-           }
+        }
          
-           long wait_per_packet = (long)(192000); 
-         
-           //61521.25 is the theoritical seperation of packets in ns 
-           // I have used 61440 for convinence and also hope this will take care for
-           // any clock glitches.
-
-           add_nsec(t1,wait_per_packet);
-        }    
-         
+        long wait_per_packet = (long)(153600); 
+        
+        //61521.25 is the theoritical seperation of packets in ns 
+        // I have used 61440 for convinence and also hope this will take care for
+        // any clock glitches.
+        add_nsec(t1,wait_per_packet);
       }
     }
     
