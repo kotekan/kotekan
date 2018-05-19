@@ -43,6 +43,8 @@
  * @conf   source_dec           Float - one initial Dec (in deg) to form beams on.
  * @conf   psr_scaling          Float - nominal scaling for all beams (can be changed on per beam basis via endpoint)
  *
+ * @todo change time_now from system time to gps time
+ *
  * @author Cherry Ng
  *
  */
