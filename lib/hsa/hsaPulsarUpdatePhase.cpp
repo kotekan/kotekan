@@ -26,7 +26,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _num_gpus = config.get_int(unique_name, "num_gpus");
 
     _feed_sep_NS = config.get_float(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get_int(unique_name, "feed_sep_EW");
@@ -34,13 +33,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     _gain_dir = config.get_string(unique_name, "gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
-
-    _reorder_map = config.get_int_array(unique_name, "reorder_map");
-    map_len = 512 * sizeof(int);
-    _reorder_map_c = (int *)hsa_host_malloc(map_len);
-    for (uint i=0;i<512;++i){
-        _reorder_map_c[i] = _reorder_map[i];
-    }
 
     //Temporary solution: get ra and dec from config file
     _source_ra = config.get_float(unique_name, "source_ra");
@@ -98,7 +90,6 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(host_gain);
-    hsa_host_free(_reorder_map_c);
 }
 
 void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json& json_request) {
