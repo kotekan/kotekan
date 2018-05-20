@@ -6,21 +6,14 @@
 #include "math.h"
 #include <errno.h>
 
-device_interface::device_interface(struct Buffer * param_In_Buf, struct Buffer * param_Out_Buf, Config & param_Config
-, int param_GPU_ID, struct Buffer * param_beamforming_out_buf, struct Buffer * param_Rfi_Buf, const string &unique_name) :
-config(param_Config)
-{
+clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
+    config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
+
     cl_int err;
 
-    in_buf = param_In_Buf;
-    out_buf = param_Out_Buf;
-    rfi_buf = param_Rfi_Buf;
-    gpu_id = param_GPU_ID;
-    beamforming_out_buf = param_beamforming_out_buf;
-    //beamforming_out_incoh_buf = param_beamforming_out_incoh_buf;
-    num_links_per_gpu = param_Config.num_links_per_gpu(gpu_id);
-
+/*
     // Config variables
+    num_links_per_gpu = config.num_links_per_gpu(gpu_id);
     enable_beamforming = config.get_bool(unique_name, "enable_beamforming");
     num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
     num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
@@ -29,21 +22,21 @@ config(param_Config)
     num_data_sets = config.get_int(unique_name, "num_data_sets");
     num_elements = config.get_int(unique_name, "num_elements");
     num_blocks = config.get_int(unique_name, "num_blocks");
-//    sk_step = config.get_int(unique_name, "sk_step");
-    samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");    
+    samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));
     assert(aligned_accumulate_len >= accumulate_len);
+*/
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-    INFO("GPU Id %i\n",param_GPU_ID);
+    INFO("GPU Id %i",gpu_id);
 
     // Find out how many GPUs can be probed.
     cl_uint max_num_gpus = 0;
     clGetDeviceIDs(NULL,CL_DEVICE_TYPE_GPU,0,NULL,&max_num_gpus);
-    INFO("Maximum number of GPUs: %d\n",max_num_gpus);
+    INFO("Maximum number of GPUs: %d",max_num_gpus);
 
     // Find a GPU device..
     device_id = (cl_device_id *)malloc(max_num_gpus * sizeof(cl_device_id));
@@ -53,12 +46,53 @@ config(param_Config)
     CHECK_CL_ERROR(err);
 }
 
-device_interface::~device_interface()
-{
-    free(device_id);
+cl_mem clDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+    cl_int err;
+    // Check if the memory isn't yet allocated
+    if (gpu_memory.count(name) == 0) {
+        cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, NULL, &err);
+        CHECK_CL_ERROR(err);
+        INFO("Allocating GPU[%d] OpenCL memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
+        assert(err == CL_SUCCESS);
+        gpu_memory[name].len = len;
+        gpu_memory[name].gpu_pointers.push_back(ptr);
+    }
+    // The size must match what has already been allocated.
+    assert(len == gpu_memory[name].len);
+    assert(gpu_memory[name].gpu_pointers.size() == 1);
+
+    // Return the requested memory.
+    return gpu_memory[name].gpu_pointers[0];
 }
 
-size_t device_interface::get_opencl_resolution()
+cl_mem clDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index, const uint32_t len) {
+    cl_int err;
+    // Check if the memory isn't yet allocated
+    if (gpu_memory.count(name) == 0) {
+        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+            cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, NULL, &err);
+            CHECK_CL_ERROR(err);
+            INFO("Allocating GPU[%d] OpenCL memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
+            assert(err == CL_SUCCESS);
+            gpu_memory[name].len = len;
+            gpu_memory[name].gpu_pointers.push_back(ptr);
+        }
+    }
+    // The size must match what has already been allocated.
+    assert(len == gpu_memory[name].len);
+    // Make sure we aren't asking for an index past the end of the array.
+    assert(index < gpu_memory[name].gpu_pointers.size());
+
+    // Return the requested memory.
+    return gpu_memory[name].gpu_pointers[index];
+}
+
+
+cl_context &clDeviceInterface::get_context(){
+    return context;
+}
+
+size_t clDeviceInterface::get_opencl_resolution()
 {
     //one tick per nanosecond of timing
     size_t time_res;
@@ -68,62 +102,7 @@ size_t device_interface::get_opencl_resolution()
     return time_res;
 }
 
-int device_interface::getNumBlocks()
-{
-    return num_blocks;
-}
-
-int device_interface::getGpuID()
-{
-    return gpu_id;
-}
-
-Buffer* device_interface::getInBuf()
-{
-    return in_buf;
-}
-
-Buffer* device_interface::getOutBuf()
-{
-    return out_buf;
-}
-
-Buffer* device_interface::getRfiBuf()
-{
-    return rfi_buf;
-}
-
-Buffer* device_interface::get_beamforming_out_buf()
-{
-    return beamforming_out_buf;
-}
-
-//Buffer* device_interface::get_beamforming_out_incoh_buf()
-//{
-//    return beamforming_out_incoh_buf;
-//}
-
-cl_context device_interface::getContext()
-{
-    return context;
-}
-
-cl_device_id device_interface::getDeviceID(int param_GPUID)
-{
-    return device_id[param_GPUID];
-}
-
-cl_int* device_interface::getAccumulateZeros()
-{
-    return accumulate_zeros;
-}
-
-int device_interface::getAlignedAccumulateLen() const
-{
-    return aligned_accumulate_len;
-}
-
-void device_interface::prepareCommandQueue(bool enable_profiling)
+void clDeviceInterface::prepareCommandQueue(bool enable_profiling)
 {
     cl_int err;
 
@@ -140,24 +119,10 @@ void device_interface::prepareCommandQueue(bool enable_profiling)
     }
 }
 
-void device_interface::allocateMemory()
+void clDeviceInterface::allocateMemory()
 {
-    //IN THE FUTURE, ANDRE TALKED ABOUT WANTING MEMORY TO BE DYNAMICALLY ALLOCATE BASED ON KERNEL STATES AND ASK FOR MEMORY BY SIZE AND HAVE THAT MEMORY NAMED BY THE KERNEL.
-    //KERNELS WOULD THEN BE PASSED INTO DEVICE_INTERFACE
-    //TO BE GIVEN MEMORY AND DEVICE_INTERFACE WOULD LOOP THROUGH THE KERNELS MEMORY STATES TO DETERMINE ALL THE MEMORY THAT KERNEL NEEDS.
-
-
+/*
     cl_int err;
-    // TODO create a struct to contain all of these (including events) to make this memory allocation cleaner.
-
-    // Setup device input buffers
-    device_input_buffer = (cl_mem *) malloc(in_buf->num_frames * sizeof(cl_mem));
-    CHECK_MEM(device_input_buffer);
-    for (int i = 0; i < in_buf->num_frames; ++i) {
-        device_input_buffer[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, in_buf->aligned_frame_size, NULL, &err);
-        CHECK_CL_ERROR(err);
-    }
-
     // Array used to zero the output memory on the device.
     // TODO should this be in it's own function?
     err = posix_memalign((void **) &accumulate_zeros, PAGESIZE_MEM, aligned_accumulate_len);
@@ -165,7 +130,6 @@ void device_interface::allocateMemory()
         ERROR("Error creating aligned memory for accumulate zeros");
         exit(err);
     }
-
     // Ask that all pages be kept in memory
     err = mlock((void *) accumulate_zeros, aligned_accumulate_len);
     if ( err == -1 ) {
@@ -174,97 +138,22 @@ void device_interface::allocateMemory()
     }
     memset(accumulate_zeros, 0, aligned_accumulate_len );
 
-    // Setup device accumulate buffers.
-    device_accumulate_buffer = (cl_mem *) malloc(in_buf->num_frames * sizeof(cl_mem));
-    CHECK_MEM(device_accumulate_buffer);
-    for (int i = 0; i < in_buf->num_frames; ++i) {
-        device_accumulate_buffer[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, aligned_accumulate_len, NULL, &err);
+    // We have two phase blanks
+    const int num_phase_blanks = 2;
+    device_phases = (cl_mem *) malloc(num_phase_blanks * sizeof(cl_mem));
+    CHECK_MEM(device_phases);
+    for (int i = 0; i < num_phase_blanks; ++i) {
+        device_phases[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, num_elements * sizeof(float)
+                , NULL, &err);
         CHECK_CL_ERROR(err);
     }
-
-    // Setup device output buffers.
-    device_output_buffer = (cl_mem *) malloc(out_buf->num_frames * sizeof(cl_mem));
-    CHECK_MEM(device_output_buffer);
-    for (int i = 0; i < out_buf->num_frames; ++i) {
-        device_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, out_buf->aligned_frame_size, NULL, &err);
-        CHECK_CL_ERROR(err);
-    }
-
-    // Setup RFI buffers
-    //device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
-    //CHECK_MEM(device_rfi_count_buffer);
-//    for (int i = 0; i < in_buf->num_frames; ++i) {
-//	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
-//	CHECK_CL_ERROR(err);
-//    }
-
-    // Setup beamforming output buffers.
-    if (enable_beamforming) {
-        device_beamform_output_buffer = (cl_mem *) malloc(beamforming_out_buf->num_frames * sizeof(cl_mem));
-        CHECK_MEM(device_beamform_output_buffer);
-        for (int i = 0; i < beamforming_out_buf->num_frames; ++i) {
-            device_beamform_output_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
-                    , beamforming_out_buf->aligned_frame_size, NULL, &err);
-            CHECK_CL_ERROR(err);
-        }
-
-        /*
-        device_beamform_output_incoh_buffer = (cl_mem *) malloc(beamforming_out_incoh_buf->num_frames * sizeof(cl_mem));
-        CHECK_MEM(device_beamform_output_incoh_buffer);
-        for (int i = 0; i < beamforming_out_incoh_buf->num_frames; ++i) {
-            device_beamform_output_incoh_buffer[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY
-                    , beamforming_out_incoh_buf->aligned_frame_size, NULL, &err);
-            CHECK_CL_ERROR(err);
-        }*/
-
-        // We have two phase blanks
-        const int num_phase_blanks = 2;
-        device_phases = (cl_mem *) malloc(num_phase_blanks * sizeof(cl_mem));
-        CHECK_MEM(device_phases);
-        for (int i = 0; i < num_phase_blanks; ++i) {
-            device_phases[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, num_elements * sizeof(float)
-                    , NULL, &err);
-            CHECK_CL_ERROR(err);
-        }
-    }
+    */
 }
 
-cl_mem device_interface::getInputBuffer(int param_BufferID)
-{
-    return device_input_buffer[param_BufferID];
-}
-
-cl_mem device_interface::getOutputBuffer(int param_BufferID)
-{
-    return device_output_buffer[param_BufferID];
-}
-cl_mem device_interface::getRfiCountBuffer(int param_BufferID)
-{
-    return device_rfi_count_buffer[param_BufferID];
-}
-cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
-{
-    return device_accumulate_buffer[param_BufferID];
-}
-
-cl_mem device_interface::get_device_beamform_output_buffer(int param_BufferID)
-{
-    return device_beamform_output_buffer[param_BufferID];
-}
-
-//cl_mem device_interface::get_device_beamform_output_incoh_buffer(int param_BufferID)
-//{
-//    return device_beamform_output_incoh_buffer[param_BufferID];
-//}
-
-cl_mem device_interface::get_device_phases(int param_bankID)
-{
-    return device_phases[param_bankID];
-}
-
-cl_mem device_interface::get_device_freq_map(int32_t encoded_stream_id)
+cl_mem clDeviceInterface::get_device_freq_map(int32_t encoded_stream_id)
 {
     std::map<int32_t, cl_mem>::iterator it = device_freq_map.find(encoded_stream_id);
+/* 
     if(it == device_freq_map.end())
     {
         // Create the freq map for the first time.
@@ -280,11 +169,11 @@ cl_mem device_interface::get_device_freq_map(int32_t encoded_stream_id)
                                             CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                             num_local_freq * sizeof(float), freq, &err);
         CHECK_CL_ERROR(err);
-    }
+    }*/
     return device_freq_map[encoded_stream_id];
 }
 
-void device_interface::deallocateResources()
+clDeviceInterface::~clDeviceInterface()
 {
     cl_int err;
 
@@ -292,46 +181,13 @@ void device_interface::deallocateResources()
         CHECK_CL_ERROR( clReleaseCommandQueue(queue[i]) );
     }
 
-    for (int i = 0; i < in_buf->num_frames; ++i) {
-        CHECK_CL_ERROR( clReleaseMemObject(device_input_buffer[i]) );
-    }
     free(device_input_buffer);
-
-    for (int i = 0; i < in_buf->num_frames; ++i) {
-        CHECK_CL_ERROR( clReleaseMemObject(device_accumulate_buffer[i]) );
-    }
     free(device_accumulate_buffer);
-
-    for (int i = 0; i < out_buf->num_frames; ++i) {
-        CHECK_CL_ERROR( clReleaseMemObject(device_output_buffer[i]) );
-    }
     free(device_output_buffer);
+    free(device_beamform_output_buffer);
 
-//    for (int i = 0; i < out_buf->num_frames; ++i) {
-//        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
-//    }
-    //free(device_rfi_count_buffer);
-
-
-    if (enable_beamforming) {
-
-        for (int i = 0; i < 2; ++i) {
-            CHECK_CL_ERROR( clReleaseMemObject(device_phases[i]) );
-        }
-
-        for (int i = 0; i < beamforming_out_buf->num_frames; ++i) {
-            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_buffer[i]) );
-        }
-        free(device_beamform_output_buffer);
-
-//        for (int i = 0; i < beamforming_out_incoh_buf->num_buffers; ++i) {
-//            CHECK_CL_ERROR( clReleaseMemObject(device_beamform_output_incoh_buffer[i]) );
-//        }
-//        free(device_beamform_output_incoh_buffer);
-
-        for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
-            CHECK_CL_ERROR( clReleaseMemObject(it->second) );
-        }
+    for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
+        CHECK_CL_ERROR( clReleaseMemObject(it->second) );
     }
 
     err = munlock((void *) accumulate_zeros, aligned_accumulate_len);
@@ -342,12 +198,18 @@ void device_interface::deallocateResources()
     free(accumulate_zeros);
 
     CHECK_CL_ERROR( clReleaseContext(context) );
-
+    free(device_id);
 }
 
-cl_command_queue device_interface::getQueue(int param_Dim)
+cl_command_queue clDeviceInterface::getQueue(int param_Dim)
 {
     return queue[param_Dim];
 }
 
+
+clMemoryBlock::~clMemoryBlock()  {
+    for (auto gpu_pointer : gpu_pointers) {
+        clReleaseMemObject(gpu_pointer);
+    }
+}
 

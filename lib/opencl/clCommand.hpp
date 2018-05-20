@@ -19,6 +19,9 @@
 #include "errors.h"
 #include <stdio.h>
 #include "clDeviceInterface.hpp"
+#include "clCommandFactory.hpp"
+#include "bufferContainer.hpp"
+#include "kotekanLogging.hpp"
 #include "assert.h"
 #include "buffer.h"
 #include <string>
@@ -58,13 +61,18 @@
  *
  */
 
-class clCommand
+class clCommand: public kotekanLogging
 {
 public:
-    /// Constructor when no kernel is defined for the clCommand object.
-    clCommand(const char* param_name, Config &param_config, const string &unique_name_);
-    /// Overloaded constructor that sets a given openCL kernel file (.cl) to execute for this command object.
-    clCommand(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name);//, cl_device_id *param_DeviceID, cl_context param_Context);
+    /** Kernel file name is optional.
+     * @param param_Device  The instance of the clDeviceInterface class that abstracts the interfacing
+     *                      layer between the software and hardware.
+     *                      In this method, it returns the current context of the device when
+     *                      allocating resources for the kernel.
+    **/
+    clCommand(const string &default_kernel_command, const string &default_kernel_file_name,
+                Config &config, const string &unique_name,
+                bufferContainer &host_buffers, clDeviceInterface &device);
     /// Destructor that frees memory for the kernel and name.
     virtual ~clCommand();
     /// gettor that returns the preceeding event in an event chain.
@@ -72,18 +80,21 @@ public:
     /// gettor that returns the next event in an event chain.
     cl_event getPostEvent();
     /// gettor that returns the name given to this clCommand object.
-    char* get_name();
+    string &get_name();
     /// gettor that returns the config values for a kernel formatted as a cl_options string to append to the kernel execution statement.
     string get_cl_options();
     /** The build function creates the event to return as the post event in an event chaining sequence.
      * If a kernel is part of the clCommand object definition the resources to run it are allocated on
      * the gpu here.
-     * @param param_Device  The instance of the device_interface class that abstracts the interfacing
-     *                      layer between the software and hardware.
-     *                      In this method, it returns the current context of the device when
-     *                      allocating resources for the kernel.
     **/
-    virtual void build(device_interface& param_Device);
+    virtual void build();
+
+    // This function blocks on whatever resource is required by this command
+    // for example if this command requires a full buffer frame to copy
+    // then it should block on that.  It should also block on having any
+    // free output buffers that might be referenced by this command.
+    virtual int wait_on_precondition(int gpu_frame_id);
+
     /// This method appends arguements to the kernel execution statement that's run when the kernel is enqueued on the GPU.
     void setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer);
     /** The execute command does very little in the base case. The child class must provide an implementation of the 
@@ -97,13 +108,11 @@ public:
      * 
      * @param param_PrecedeEvent    The preceeding event in a sequence of chained event sequence of commands.
     **/
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent);
+    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent);
     /** Releases the memory of the event chain arrays per buffer_id
      * @param param_bufferID    The bufferID to release all the memory references for.
     **/
-    virtual void cleanMe(int param_BufferID);
-    /// Releases the memory of GPU resource allocation, events, and compiled GPU kernel.
-    virtual void freeMe();
+    virtual void finalize_frame(int frame_id);
     /// Reads all the relevant config values out of the config file references into the protected scope variables of the class.
     virtual void apply_config(const uint64_t &fpga_seq);
 protected:
@@ -114,6 +123,10 @@ protected:
     
     /// reference to the config file for the current run
     Config &config;
+    /// Name to use with consumer and producer assignment for buffers defined in yaml files.
+    string unique_name;
+    bufferContainer host_buffers;
+    clDeviceInterface &device;
 
     // Kernel values.
     /// global work space dimension
@@ -122,18 +135,15 @@ protected:
     size_t lws[3];
 
     // Kernel Events
-    /// The preceding event when building an event chain of commands.
-    cl_event * precedeEvent;
     /// The next event in an event chain when building an event chain of commands.
-    cl_event * postEvent;
-    /// Default state to non-kernel executing command. 1 means kernel is defined with this command.
-    int gpuCommandState; 
+    cl_event *post_event;
     /// File reference for the openCL file (.cl) where the kernel is written.
-    char * gpuKernel;
+    string kernel_file_name;
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing them by this value.
-    char* name;
+    string kernel_command;
 
     // Common configuration values (which do not change in a run)
+/*
     /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
     int32_t _num_adjusted_elements;
     /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
@@ -150,10 +160,10 @@ protected:
     int32_t _num_blocks;
     /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
     int32_t _block_size;
+*/
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
     int32_t _buffer_depth;
-    /// Name to use with consumer and producer assignment for buffers defined in yaml files.
-    string unique_name;
+    int32_t _gpu_buffer_depth;
 };
 
 #endif // CL_COMMAND_H

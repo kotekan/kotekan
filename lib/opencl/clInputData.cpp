@@ -1,0 +1,59 @@
+#include "clInputData.hpp"
+
+REGISTER_CL_COMMAND(clInputData);
+
+clInputData::clInputData(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, clDeviceInterface& device) :
+    clCommand("", "", config, unique_name, host_buffers, device)
+{
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
+
+    network_buf = host_buffers.get_buffer("network_buf");
+    network_buffer_id = 0;
+    network_buffer_precondition_id = 0;
+    network_buffer_finalize_id = 0;
+
+}
+
+clInputData::~clInputData()
+{
+
+}
+
+int clInputData::wait_on_precondition(int gpu_frame_id)
+{
+    // Wait for there to be data in the input (network) buffer.
+    uint8_t * frame = wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
+    if (frame == NULL) return -1;
+    //INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,
+    //        device.get_gpu_id(), gpu_frame_id);
+
+    network_buffer_precondition_id = (network_buffer_precondition_id + 1) % network_buf->num_frames;
+    return 0;
+}
+
+cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event param_PrecedeEvent)
+{
+    INFO("CLINPUTDATA::EXECUTE");
+
+    clCommand::execute(gpu_frame_id, 0, param_PrecedeEvent);
+
+    cl_mem gpu_memory_frame = device.get_gpu_memory_array("input",
+                                                gpu_frame_id, input_frame_len);
+    void * host_memory_frame = (void *)network_buf->frames[network_buffer_id];
+
+    // Data transfer to GPU
+    CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),
+                                            gpu_memory_frame,//device.getInputBuffer(param_bufferID),
+                                            CL_FALSE,
+                                            0, //offset
+                                            input_frame_len,//device.getInBuf()->aligned_frame_size,
+                                            host_memory_frame,//device.getInBuf()->frames[param_bufferID],
+                                            0,
+                                            NULL,
+                                            &post_event[gpu_frame_id]) );
+    return post_event[gpu_frame_id];
+}

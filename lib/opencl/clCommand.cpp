@@ -6,38 +6,37 @@
 using std::string;
 using std::to_string;
 
-clCommand::clCommand(const char* param_name, Config &param_config, const string &unique_name_) :
-    config(param_config), gpuCommandState(0) , gpuKernel(NULL), unique_name(unique_name_)
+clCommand::clCommand(
+        const string &default_kernel_command,
+        const string &default_kernel_file_name,
+        Config& config_,
+        const string &unique_name_,
+        bufferContainer &host_buffers_,
+        clDeviceInterface& device_) :
+        kernel_command(default_kernel_command),
+        kernel_file_name(default_kernel_file_name),
+        config(config_),
+        unique_name(unique_name_),
+        host_buffers(host_buffers_),
+        device(device_)
 {
-    name = strdup(param_name);
-//    INFO("Name: %s, %s", param_name, name);
-}
+    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
 
-clCommand::clCommand(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name_) :
-    config(param_config), gpuCommandState(0), gpuKernel(NULL), unique_name(unique_name_)
-{
-    gpuKernel = new char[strlen(param_gpuKernel)+1];
-    strcpy(gpuKernel, param_gpuKernel);
-    gpuCommandState=1;
-    name = strdup(param_name);
-//    INFO("Name: %s, %s", param_name, name);
-}
+    // Set the local log level.
+    string s_log_level = config.get_string(unique_name, "log_level");
+    set_log_level(s_log_level);
+    set_log_prefix(unique_name);
 
-clCommand::~clCommand()
-{
-    if (gpuCommandState==1)
-        free(gpuKernel);
-    free(name);
-}
+    // Load the kernel if there is one.
+    if (default_kernel_file_name != "") {
+        kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
+                           config.get_string_default(unique_name,"kernel",default_kernel_file_name);
+        kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
+//.        kernel_file_name, kernel_command);
+        build();
+    }
 
-char* clCommand::get_name()
-{
-//    INFO("get_name(): %s", name);
-    return name;
-}
-
-void clCommand::apply_config(const uint64_t& fpga_seq) {
-    (void)fpga_seq;
+/*
     _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -46,26 +45,49 @@ void clCommand::apply_config(const uint64_t& fpga_seq) {
     _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
     _block_size = config.get_int(unique_name, "block_size");
     _num_blocks = config.get_int(unique_name, "num_blocks");
+*/
     _buffer_depth = config.get_int(unique_name, "buffer_depth");
+
+    post_event = (cl_event*)malloc(_gpu_buffer_depth * sizeof(cl_event));
+    CHECK_MEM(post_event);
+    for (int j=0;j<_gpu_buffer_depth;++j) post_event[j] = NULL;
 }
 
-void clCommand::build(class device_interface &param_Device)
+clCommand::~clCommand()
+{
+    if (kernel_command != ""){
+        CHECK_CL_ERROR( clReleaseKernel(kernel) );
+        DEBUG("kernel Freed\n");
+        CHECK_CL_ERROR( clReleaseProgram(program) );
+        DEBUG("program Freed\n");
+    }
+    free(post_event);
+    DEBUG("posteEvent Freed\n");
+}
+
+int clCommand::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
+    return 0;
+}
+
+string &clCommand::get_name() {
+    return kernel_command;
+}
+
+void clCommand::apply_config(const uint64_t& fpga_seq) {
+}
+
+void clCommand::build()
 {
     size_t program_size;
     FILE *fp;
     char *program_buffer;
     cl_int err;
 
-    postEvent = (cl_event*)malloc(param_Device.getInBuf()->num_frames * sizeof(cl_event));
-    CHECK_MEM(postEvent);
-    for (int j=0;j<param_Device.getInBuf()->num_frames;++j){
-        postEvent[j] = NULL;
-    }
-
-    if (gpuCommandState==1){
-        fp = fopen(gpuKernel, "r");
+    if (kernel_command != ""){
+        fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == NULL){
-            ERROR("error loading file: %s", gpuKernel);
+            ERROR("error loading file: %s", kernel_file_name.c_str());
             exit(errno);
         }
         fseek(fp, 0, SEEK_END);
@@ -76,9 +98,9 @@ void clCommand::build(class device_interface &param_Device)
         program_buffer[program_size] = '\0';
         int sizeRead = fread(program_buffer, sizeof(char), program_size, fp);
         if (sizeRead < (int32_t)program_size)
-            ERROR("Error reading the file: %s", gpuKernel);
+            ERROR("Error reading the file: %s", kernel_file_name.c_str());
         fclose(fp);
-        program = clCreateProgramWithSource(param_Device.getContext(),
+        program = clCreateProgramWithSource(device.get_context(),
                                         (cl_uint)1,
                                         (const char**)&program_buffer,
                                         &program_size, &err );
@@ -89,9 +111,9 @@ void clCommand::build(class device_interface &param_Device)
     }
 }
 
-cl_event clCommand::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event clCommand::execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent)
 {
-    assert(param_bufferID<param_Device.getInBuf()->num_frames);
+    assert(param_bufferID<_gpu_buffer_depth);
     assert(param_bufferID>=0);
 
     return NULL;
@@ -111,7 +133,7 @@ void clCommand::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 string clCommand::get_cl_options()
 {
     string cl_options = "";
-
+/*
     cl_options += "-D ACTUAL_NUM_ELEMENTS=" + to_string(_num_elements);
     cl_options += " -D ACTUAL_NUM_FREQUENCIES=" + to_string(_num_local_freq);
     cl_options += " -D NUM_ELEMENTS=" + to_string(_num_adjusted_elements);
@@ -121,30 +143,16 @@ string clCommand::get_cl_options()
     cl_options += " -D NUM_BUFFERS=" + to_string(_buffer_depth);
 //ikt - commented out to test performance without DEBUG calls.
 //    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
-
+*/
     return cl_options;
 }
 
-void clCommand::cleanMe(int param_BufferID)
-{
+void clCommand::finalize_frame(int frame_id) {
     //the events need to be defined as arrays per buffer id
-
-    if (postEvent[param_BufferID] != NULL){
-        clReleaseEvent(postEvent[param_BufferID]);
-        postEvent[param_BufferID] = NULL;
+    if (post_event[frame_id] != NULL){
+        clReleaseEvent(post_event[frame_id]);
+        post_event[frame_id] = NULL;
     }
-}
-
-void clCommand::freeMe()
-{
-    if (gpuCommandState==1){
-        CHECK_CL_ERROR( clReleaseKernel(kernel) );
-        DEBUG("kernel Freed\n");
-        CHECK_CL_ERROR( clReleaseProgram(program) );
-        DEBUG("program Freed\n");
-    }
-    free(postEvent);
-    DEBUG("posteEvent Freed\n");
 }
 
 

@@ -5,6 +5,8 @@
 #include "buffer.h"
 #include "pthread.h"
 
+class clCommand;
+
 struct loopCounter {
     loopCounter() : iteration(0) {
         CHECK_ERROR( pthread_mutex_init(&lock, NULL) );

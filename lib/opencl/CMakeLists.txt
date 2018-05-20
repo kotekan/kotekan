@@ -12,6 +12,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
 add_library ( kotekan_opencl
               clDeviceInterface.cpp
+              clEventContainer.cpp
               callbackdata.cpp
               clCommand.cpp
               clCommandFactory.cpp
@@ -19,22 +20,23 @@ add_library ( kotekan_opencl
               timer.cpp
 
 # Copy-in & general-purpose:
-              input_data_stage.cpp
+              clInputData.cpp
 
 # CHIME N2 Kernels & copy-out:
-              preseed_kernel.cpp
-              offset_kernel.cpp
-              correlator_kernel.cpp
-              output_data_result.cpp
+#              preseed_kernel.cpp
+#              offset_kernel.cpp
+#              correlator_kernel.cpp
+#              output_data_result.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
-              beamform_phase_data.cpp
-              beamform_kernel.cpp
-              output_beamform_result.cpp
+#              beamform_phase_data.cpp
+#              beamform_kernel.cpp
+#              output_beamform_result.cpp
 
 #RFI Kernels
-              rfi_kernel.cpp
-              output_rfi.cpp
+#              rfi_kernel.cpp
+#              output_rfi.cpp
+
               )
 
 add_custom_target(kernel_copy

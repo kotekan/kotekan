@@ -21,36 +21,39 @@
 #include "pthread.h"
 #include "fpga_header_functions.h"
 #include "clDeviceInterface.hpp"
+#include "clEventContainer.hpp"
 #include "clCommandFactory.hpp"
 #include "KotekanProcess.hpp"
 
 class clProcess : public KotekanProcess {
-    public:
-        clProcess(Config& config,
-            const string& unique_name,
-            bufferContainer &buffer_container);
-        virtual ~clProcess();
-        void main_thread() override;
-        virtual void apply_config(uint64_t fpga_seq) override;
-        void mem_reconcil_thread();
-    
-    protected:
-        struct Buffer *in_buf;
-        struct Buffer *out_buf;
-	struct Buffer *rfi_out_buf;
-        struct Buffer *beamforming_out_buf;
-        //struct Buffer *beamforming_out_incoh_buf;
-        
-        vector<callBackData *> cb_data;
-        std::thread mem_reconcil_thread_handle;
+public:
+    clProcess(Config& config,
+        const string& unique_name,
+        bufferContainer &buffer_container);
+    virtual ~clProcess();
+    void main_thread() override;
+    virtual void apply_config(uint64_t fpga_seq) override;
+    void mem_reconcil_thread();
+    void CL_CALLBACK results_thread();
 
-        uint32_t gpu_id;
+protected:
+    vector<clEventContainer> final_signals;
+    bufferContainer local_buffer_container;
 
-        // Config variables
-        bool _use_beamforming;
+    std::thread results_thread_handle;
 
-        clCommandFactory * factory;
-        device_interface * device;
+    uint32_t _gpu_buffer_depth;
+
+    vector<callBackData *> cb_data;
+    std::thread mem_reconcil_thread_handle;
+
+    uint32_t gpu_id;
+
+    // Config variables
+    bool _use_beamforming;
+
+    clCommandFactory * factory;
+    clDeviceInterface * device;
 
 };
 

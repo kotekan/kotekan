@@ -9,20 +9,21 @@
 #endif
 
 #include "Config.hpp"
-#include "correlator_kernel.h"
-#include "offset_kernel.h"
-#include "preseed_kernel.h"
+//#include "correlator_kernel.h"
+//#include "offset_kernel.h"
+//#include "preseed_kernel.h"
 #include "clDeviceInterface.hpp"
-#include "input_data_stage.h"
-#include "output_data_result.h"
+#include "bufferContainer.hpp"
+//#include "input_data_stage.h"
+//#include "output_data_result.h"
 #include "callbackdata.h"
-#include "beamform_kernel.h"
-#include "beamform_phase_data.h"
-#include "output_beamform_result.h"
-#include "beamform_incoherent_kernel.h"
-#include "output_beamform_incoh_result.h"
-#include "rfi_kernel.h"
-#include "output_rfi.h"
+//#include "beamform_kernel.h"
+//#include "beamform_phase_data.h"
+//#include "output_beamform_result.h"
+//#include "beamform_incoherent_kernel.h"
+//#include "output_beamform_incoh_result.h"
+//#include "rfi_kernel.h"
+//#include "output_rfi.h"
 #include "timer.hpp"
 
 
@@ -30,13 +31,13 @@ class clCommand;
 
 class clCommandMaker{
 public:
-    virtual clCommand *create(Config &config, const string &unique_name) const = 0;
+    virtual clCommand *create(Config &config, const string &unique_name, bufferContainer &host_buffers, clDeviceInterface &device) const = 0;
  };
 
 class clCommandFactory
 {
 public:
-    clCommandFactory(class device_interface & param_Device, Config& param_Config, const string& unique_name);
+    clCommandFactory(Config& config, const string& unique_name, bufferContainer &host_buffers_, clDeviceInterface & param_Device);
     ~clCommandFactory();
     vector<clCommand *> &get_commands();
     //void initializeCommands(class device_interface & param_Device, Config& param_Config);
@@ -49,7 +50,8 @@ protected:
     //int use_incoh_beamforming;
 
     Config &config;
-    device_interface &device;
+    clDeviceInterface &device;
+    bufferContainer &host_buffers;
     string unique_name;
 
     vector<clCommand *> list_commands;
@@ -59,7 +61,9 @@ private:
 
     clCommand* create(const string &name,
                        Config& config,
-                       const string &unique_name) const;
+                       const string &unique_name,
+                       bufferContainer &host_buffers,
+                       clDeviceInterface& device) const;
 
 };
 
@@ -88,9 +92,10 @@ class clCommandMakerTemplate : public clCommandMaker
         {
             clCommandFactoryRegistry::cl_register_command(key, this);
         }
-        virtual clCommand *create(Config &config, const string &unique_name) const
+        virtual clCommand *create(Config &config, const string &unique_name,
+                    bufferContainer &host_buffers, clDeviceInterface &device) const
         {
-            return new T(config, unique_name);
+            return new T(config, unique_name, host_buffers, device);
         }
 }; 
 #define REGISTER_CL_COMMAND(T) static clCommandMakerTemplate<T> maker##T(#T);
