@@ -9,7 +9,7 @@ public:
     clOutputDataZero(Config &config, const string &unique_name,
                       bufferContainer &host_buffers, clDeviceInterface &device);
     ~clOutputDataZero();
-    cl_event execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent) override;
+    cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
 
 private:
     int32_t presum_len;

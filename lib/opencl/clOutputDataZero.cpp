@@ -24,7 +24,7 @@ cl_event clOutputDataZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
 
     clCommand::execute(gpu_frame_id, 0, pre_event);
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("presum",
+    cl_mem gpu_memory_frame = device.get_gpu_memory_array("output",
                                                 gpu_frame_id, presum_len);
 
     // Data transfer to GPU

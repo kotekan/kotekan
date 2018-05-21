@@ -11,6 +11,24 @@ clPresumZero::clPresumZero(Config& config, const string &unique_name,
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     presum_zeros = malloc(presum_len);
     memset(presum_zeros, 0, presum_len);
+
+/*
+    // Array used to zero the output memory on the device.
+    // TODO should this be in it's own function?
+    err = posix_memalign((void **) &accumulate_zeros, PAGESIZE_MEM, aligned_accumulate_len);
+    if ( err != 0 ) {
+        ERROR("Error creating aligned memory for accumulate zeros");
+        exit(err);
+    }
+
+    // Ask that all pages be kept in memory
+    err = mlock((void *) accumulate_zeros, aligned_accumulate_len);
+    if ( err == -1 ) {
+        ERROR("Error locking memory - check ulimit -a to check memlock limits");
+        exit(errno);
+    }
+    memset(accumulate_zeros, 0, aligned_accumulate_len );
+*/
 }
 
 clPresumZero::~clPresumZero()
@@ -24,8 +42,7 @@ cl_event clPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_ev
 
     clCommand::execute(gpu_frame_id, 0, pre_event);
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("presum",
-                                                gpu_frame_id, presum_len);
+    cl_mem gpu_memory_frame = device.get_gpu_memory("presum", presum_len);
 
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),

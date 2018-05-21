@@ -33,7 +33,7 @@ clCommand::clCommand(
                            config.get_string_default(unique_name,"kernel",default_kernel_file_name);
         kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
 //.        kernel_file_name, kernel_command);
-        build();
+//        build();
     }
 
 /*
@@ -85,6 +85,7 @@ void clCommand::build()
     cl_int err;
 
     if (kernel_command != ""){
+        INFO("Building! %s",kernel_command.c_str())
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == NULL){
             ERROR("error loading file: %s", kernel_file_name.c_str());

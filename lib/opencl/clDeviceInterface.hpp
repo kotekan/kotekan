@@ -63,6 +63,7 @@ public:
 //    void deallocateResources();
     size_t get_opencl_resolution();
     cl_context &get_context();
+    cl_device_id get_id();
 
     // Get one of the gpu memory pointers with the given name and size = len at the given index
     // The size of the set is equal to gpu_buffer_depth, so index < gpu_buffer_depth
@@ -98,7 +99,7 @@ public:
     int num_blocks;
 
     cl_platform_id platform_id;
-    cl_device_id *device_id;
+    cl_device_id device_id;
     cl_context context;
     cl_command_queue queue[NUM_QUEUES];
 

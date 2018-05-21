@@ -39,10 +39,11 @@ clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_b
     INFO("Maximum number of GPUs: %d",max_num_gpus);
 
     // Find a GPU device..
-    device_id = (cl_device_id *)malloc(max_num_gpus * sizeof(cl_device_id));
-    CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, max_num_gpus, device_id, NULL) );
+    cl_device_id device_ids[max_num_gpus];
+    CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, max_num_gpus, device_ids, NULL) );
+    device_id = device_ids[gpu_id];
 
-    context = clCreateContext( NULL, 1, &device_id[gpu_id], NULL, NULL, &err);
+    context = clCreateContext( NULL, 1, &device_id, NULL, NULL, &err);
     CHECK_CL_ERROR(err);
 }
 
@@ -67,7 +68,6 @@ clDeviceInterface::~clDeviceInterface()
     free(accumulate_zeros);
 */
     CHECK_CL_ERROR( clReleaseContext(context) );
-    free(device_id);
 }
 
 cl_mem clDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
@@ -121,7 +121,7 @@ size_t clDeviceInterface::get_opencl_resolution()
     //one tick per nanosecond of timing
     size_t time_res;
 
-    CHECK_CL_ERROR(clGetDeviceInfo(device_id[gpu_id], CL_DEVICE_PROFILING_TIMER_RESOLUTION, sizeof(time_res), &time_res, NULL));
+    CHECK_CL_ERROR(clGetDeviceInfo(device_id, CL_DEVICE_PROFILING_TIMER_RESOLUTION, sizeof(time_res), &time_res, NULL));
 
     return time_res;
 }
@@ -133,14 +133,18 @@ void clDeviceInterface::prepareCommandQueue(bool enable_profiling)
     // Create command queues
     for (int i = 0; i < NUM_QUEUES; ++i) {
         if (enable_profiling == true){
-            queue[i] = clCreateCommandQueue( context, device_id[gpu_id], CL_QUEUE_PROFILING_ENABLE, &err );
+            queue[i] = clCreateCommandQueue( context, device_id, CL_QUEUE_PROFILING_ENABLE, &err );
             CHECK_CL_ERROR(err);
         } else{
-            queue[i] = clCreateCommandQueue( context, device_id[gpu_id], 0, &err );
+            queue[i] = clCreateCommandQueue( context, device_id, 0, &err );
             CHECK_CL_ERROR(err);
         }
 
     }
+}
+
+cl_device_id clDeviceInterface::get_id() {
+    return device_id;
 }
 
 void clDeviceInterface::allocateMemory()
