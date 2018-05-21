@@ -23,6 +23,8 @@ add_library ( kotekan_opencl
               clInputData.cpp
 
 # CHIME N2 Kernels & copy-out:
+              clOutputDataZero.cpp
+              clPresumZero.cpp
 #              preseed_kernel.cpp
 #              offset_kernel.cpp
 #              correlator_kernel.cpp

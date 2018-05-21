@@ -126,6 +126,8 @@ gpu:
   log_level: DEBUG2
   commands:
   - name: clInputData
+  - name: clPresumZero
+  - name: clOutputDataZero
   gpu_0:
     kotekan_process: clProcess
     gpu_id: 0
@@ -133,5 +135,5 @@ gpu:
       network_buf: gpu_input_buffer
     out_buffers:
       output_buf: gpu_output_buffer
-      beamform_output_buf: beamform_output_buffer
+#      beamform_output_buf: beamform_output_buffer
 

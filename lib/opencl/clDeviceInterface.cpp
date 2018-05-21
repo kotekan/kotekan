@@ -46,6 +46,30 @@ clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_b
     CHECK_CL_ERROR(err);
 }
 
+clDeviceInterface::~clDeviceInterface()
+{
+    cl_int err;
+
+    for (int i = 0; i < NUM_QUEUES; ++i) {
+        CHECK_CL_ERROR( clReleaseCommandQueue(queue[i]) );
+    }
+
+/*
+    for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
+        CHECK_CL_ERROR( clReleaseMemObject(it->second) );
+    }
+
+    err = munlock((void *) accumulate_zeros, aligned_accumulate_len);
+    if ( err == -1 ) {
+        ERROR("Error unlocking memory");
+        exit(errno);
+    }
+    free(accumulate_zeros);
+*/
+    CHECK_CL_ERROR( clReleaseContext(context) );
+    free(device_id);
+}
+
 cl_mem clDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
     cl_int err;
     // Check if the memory isn't yet allocated
@@ -171,34 +195,6 @@ cl_mem clDeviceInterface::get_device_freq_map(int32_t encoded_stream_id)
         CHECK_CL_ERROR(err);
     }*/
     return device_freq_map[encoded_stream_id];
-}
-
-clDeviceInterface::~clDeviceInterface()
-{
-    cl_int err;
-
-    for (int i = 0; i < NUM_QUEUES; ++i) {
-        CHECK_CL_ERROR( clReleaseCommandQueue(queue[i]) );
-    }
-
-    free(device_input_buffer);
-    free(device_accumulate_buffer);
-    free(device_output_buffer);
-    free(device_beamform_output_buffer);
-
-    for (std::map<int32_t,cl_mem>::iterator it=device_freq_map.begin(); it!=device_freq_map.end(); ++it){
-        CHECK_CL_ERROR( clReleaseMemObject(it->second) );
-    }
-
-    err = munlock((void *) accumulate_zeros, aligned_accumulate_len);
-    if ( err == -1 ) {
-        ERROR("Error unlocking memory");
-        exit(errno);
-    }
-    free(accumulate_zeros);
-
-    CHECK_CL_ERROR( clReleaseContext(context) );
-    free(device_id);
 }
 
 cl_command_queue clDeviceInterface::getQueue(int param_Dim)

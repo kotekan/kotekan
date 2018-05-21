@@ -44,7 +44,7 @@ clCommand* clCommandFactory::create(const string &name,
     if (i == known_commands.end())
     {
         ERROR("Unrecognized CL command! (%s)", name.c_str());
-        throw std::runtime_error("Unrecognized hsaCommand!");
+        throw std::runtime_error("Unrecognized clCommand!");
     }
     clCommandMaker* maker = i->second;
     return maker->create(config,unique_name, host_buffers, device);
@@ -52,11 +52,8 @@ clCommand* clCommandFactory::create(const string &name,
 
 clCommandFactory::~clCommandFactory()
 {
-    //delete[] list_commands;
-    for (auto command : list_commands) {
+    for (auto command : list_commands)
         delete command;
-    }
-    DEBUG("ListCommandsDeleted\n");
 }
 
 vector<clCommand*>& clCommandFactory::get_commands() {

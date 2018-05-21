@@ -215,6 +215,9 @@ void hsaProcess::results_thread() {
             }
             INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }
+
+        final_signals[gpu_frame_id].reset();
+
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
 }

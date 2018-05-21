@@ -57,12 +57,12 @@ clCommand::~clCommand()
 {
     if (kernel_command != ""){
         CHECK_CL_ERROR( clReleaseKernel(kernel) );
-        DEBUG("kernel Freed\n");
+        DEBUG("kernel Freed");
         CHECK_CL_ERROR( clReleaseProgram(program) );
-        DEBUG("program Freed\n");
+        DEBUG("program Freed");
     }
     free(post_event);
-    DEBUG("posteEvent Freed\n");
+    DEBUG("postEvent Freed: %s",unique_name.c_str());
 }
 
 int clCommand::wait_on_precondition(int gpu_frame_id) {

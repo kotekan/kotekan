@@ -42,7 +42,7 @@ int clEventContainer::wait_for_signal() {
     // This signal hasn't been set, so we must be stopping without anything
     // to wait for.   If stopping is set, and there is a signal_set as well,
     // then we should still wait for the signal before exiting and
-    // cleaning up the HSA memory space.
+    // cleaning up the CL memory space.
     if (!signal_set) {
         return -1;
     }

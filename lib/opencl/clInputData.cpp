@@ -35,11 +35,11 @@ int clInputData::wait_on_precondition(int gpu_frame_id)
     return 0;
 }
 
-cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event param_PrecedeEvent)
+cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    INFO("CLINPUTDATA::EXECUTE");
+    DEBUG2("CLINPUTDATA::EXECUTE");
 
-    clCommand::execute(gpu_frame_id, 0, param_PrecedeEvent);
+    clCommand::execute(gpu_frame_id, 0, pre_event);
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("input",
                                                 gpu_frame_id, input_frame_len);
@@ -47,13 +47,13 @@ cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_eve
 
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),
-                                            gpu_memory_frame,//device.getInputBuffer(param_bufferID),
+                                            gpu_memory_frame,
                                             CL_FALSE,
                                             0, //offset
-                                            input_frame_len,//device.getInBuf()->aligned_frame_size,
-                                            host_memory_frame,//device.getInBuf()->frames[param_bufferID],
-                                            0,
-                                            NULL,
+                                            input_frame_len,
+                                            host_memory_frame,
+                                            (pre_event==NULL)?0:1,
+                                            (pre_event==NULL)?NULL:&pre_event,
                                             &post_event[gpu_frame_id]) );
     return post_event[gpu_frame_id];
 }

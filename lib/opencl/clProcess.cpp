@@ -86,16 +86,17 @@ void clProcess::main_thread()
             }
         }
 
-        //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
-//        final_signals[gpu_frame_id].wait_for_free_slot();
-        cl_event signal;
+        final_signals[gpu_frame_id].wait_for_free_slot();
+        cl_event signal = NULL;
         for (uint32_t i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
             signal = commands[i]->execute(gpu_frame_id, 0, signal);
             //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);
+        INFO("Commands executed.");
 
         if (first_run) {
             results_thread_handle = std::thread(&clProcess::results_thread, std::ref(*this));
@@ -104,7 +105,11 @@ void clProcess::main_thread()
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
+    for (clEventContainer &sig_container : final_signals) {
+        sig_container.stop();
+    }
     INFO("Waiting for CL packet queues to finish up before freeing memory.");
+    results_thread_handle.join();
 }
 
 
@@ -130,6 +135,8 @@ void clProcess::results_thread() {
             commands[i]->finalize_frame(gpu_frame_id);
         }
         DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+
+        final_signals[gpu_frame_id].reset();
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
