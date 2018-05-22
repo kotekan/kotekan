@@ -64,4 +64,3 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
 
     return signals[gpu_frame_id];
 }
-

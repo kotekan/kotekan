@@ -3,8 +3,6 @@
  * @brief RFI time sum, performs prallel sum of power, and square power of incoherent beam.
  *  - hsaRfiTimeSum : public hsaCommand
  */
-
-
 #ifndef HSA_RFI_TIME_SUM_H
 #define HSA_RFI_TIME_SUM_H
 
@@ -50,8 +48,6 @@
  * @author Jacob Taylor
  *
  */
-
-
 class hsaRfiTimeSum: public hsaCommand
 {
 

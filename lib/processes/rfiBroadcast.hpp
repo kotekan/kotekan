@@ -3,7 +3,6 @@
  * @brief Contains RFI data broadcaster for SK estimates in kotekan.
  *  - rfiBroadcast : public KotekanProcess
  */
-
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
@@ -13,7 +12,6 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "chimeMetadata.h"
-
 
 /**
  * @class rfiBroadcast
@@ -46,6 +44,17 @@
  * @author Jacob Taylor
  */
 
+struct RFIHeader {
+    bool rfi_combined;
+    uint32_t sk_step;
+    uint32_t num_elements;
+    uint32_t samples_per_data_set;
+    uint32_t num_total_freq;
+    uint32_t num_local_freq;
+    uint32_t frames_per_packet;
+    int64_t seq_num;
+    uint16_t streamID;
+};
 
 class rfiBroadcast : public KotekanProcess {
 public:
