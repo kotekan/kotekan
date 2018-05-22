@@ -80,15 +80,15 @@ power_stream:
    in_buf: power_buffer_0
    freq: 600
    sample_bw: 200
-   destination_port: 41214
+   destination_port: 2054
    destination_ip: 127.0.0.1
    destination_protocol: TCP
 
 rfi_broadcast:
    kotekan_process: rfiBroadcastVDIF
    rfi_in: rfi_buffer_0
-   destination_port: 41215
-   destination_ip: 192.168.52.108 
+   destination_port: 2055
+   destination_ip: 192.168.52.35 
    destination_protocol: UDP
 
 #rfi viewer config
