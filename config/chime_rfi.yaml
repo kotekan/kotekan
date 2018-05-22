@@ -2,8 +2,8 @@
 #
 # chime_rfi.yaml
 #
-# CHIME config which implmenets all currently availiable parts
-# of the RFI detection pipeline.
+# CHIME config which implements all currently availiable parts
+# of the CHIME RFI detection pipeline.
 #
 # Author: Jacob Taylor
 #

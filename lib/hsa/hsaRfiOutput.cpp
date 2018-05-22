@@ -34,13 +34,10 @@ int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
 hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
 
     void * gpu_output_ptr = device.get_gpu_memory_array("rfi_output", gpu_frame_id, output_buffer->frame_size);
-
     void * host_output_ptr = (void *)output_buffer->frames[output_buffer_execute_id];
-
     device.async_copy_gpu_to_host(host_output_ptr,
             gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
-
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];

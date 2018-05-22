@@ -44,7 +44,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     args.output = device.get_gpu_memory_array("rfi_output",gpu_frame_id, output_frame_len);
     args.num_elements = _num_elements;
     args.M = _M;
-    //INFO("NUM ELEMENTS: %d M: %d",_num_elements, _M);
+
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
@@ -55,17 +55,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     params.grid_size_x = 256;
     params.grid_size_y = _num_local_freq;
     params.grid_size_z = _samples_per_data_set/_sk_step;
-
-//For rfi_chime_inputsum_private.hsaco
-/*    params.workgroup_size_x = _num_local_freq;
-    params.workgroup_size_y = 1;
-    params.workgroup_size_z = 1;
-    params.grid_size_x = _num_local_freq;
-    params.grid_size_y = (_samples_per_data_set/_sk_step)/4;
-    params.grid_size_z = 4;*/
-
     params.num_dims = 3;
-
     params.private_segment_size = 0;
     params.group_segment_size = 16384;
 

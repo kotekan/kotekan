@@ -106,7 +106,7 @@ hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, in
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    //DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
@@ -141,7 +141,7 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    //DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
