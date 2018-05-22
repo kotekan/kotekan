@@ -21,25 +21,22 @@ num_elements: 2048
 num_local_freq: 1
 num_total_freq: 4
 block_size: 32
-samples_per_data_set: 49152
+samples_per_data_set: 32768
 downsample_time: 3
 downsample_freq: 8
-factor_upchan: 128
-factor_upchan_out: 16
 num_beams: 4
-num_frb_total_beams: 1024
 num_data_sets: 1
 num_gpus: 1
-buffer_depth: 8
+buffer_depth: 4
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
 one: 1
 two: 2
-vdif_fs_1: 625
-vdif_fs_2: 16
-vdif_fs_3: 5032
-link_map: [0,0,1,1,1,2,2,2]
+#vdif_fs_1: 625
+#vdif_fs_2: 16
+#vdif_fs_3: 5032
+#link_map: [0,0,1,1,1,2,2,2]
 num_elements: 256
 num_adjusted_elements: 256
 num_local_freq: 8
@@ -141,4 +138,12 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer
 #      beamform_output_buf: beamform_output_buffer
+
+check_data:
+  real: [0]
+  imag: [-5242880]
+  const_data_check:
+    kotekan_process: constDataCheck
+    in_buf: gpu_output_buffer
+
 

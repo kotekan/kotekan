@@ -54,5 +54,15 @@ cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_eve
                                             (pre_event==NULL)?0:1,
                                             (pre_event==NULL)?NULL:&pre_event,
                                             &post_event[gpu_frame_id]) );
+
+    network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
     return post_event[gpu_frame_id];
 }
+
+void clInputData::finalize_frame(int frame_id) {
+    clCommand::finalize_frame(frame_id);
+
+    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
+    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
+}
+

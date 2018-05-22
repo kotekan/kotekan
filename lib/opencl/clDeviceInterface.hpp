@@ -57,7 +57,6 @@ public:
     cl_command_queue getQueue(int param_Dim);
     int getAlignedAccumulateLen() const;
     void prepareCommandQueue(bool enable_profiling);
-    void allocateMemory();
 
     void release_events_for_buffer(int param_BufferID);
 //    void deallocateResources();
@@ -120,18 +119,6 @@ public:
     int output_len;
 
     // Config variables
-    /*
-    bool enable_beamforming;
-    int32_t num_adjusted_elements;
-    int32_t num_adjusted_local_freq;
-    int32_t num_local_freq;
-    int32_t num_elements;
-    int32_t block_size;
-    int32_t num_data_sets;
-    int32_t num_links_per_gpu;
-    int sk_step;
-    int samples_per_data_set;
-    */
     uint32_t gpu_buffer_depth;
 
 private:

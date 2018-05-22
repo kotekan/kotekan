@@ -100,7 +100,7 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
 
     cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    cl_mem output_memory_frame = device.get_gpu_memory_array("output",gpu_frame_id, output_len);
+    cl_mem output_memory_frame = device.get_gpu_memory_array("tmp",gpu_frame_id, output_len);
 
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);
@@ -112,8 +112,8 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             NULL,
                                             gws,
                                             lws,
-                                            1,
-                                            &pre_event,
+                                            (pre_event==NULL)?0:1,
+                                            (pre_event==NULL)?NULL:&pre_event,
                                             &post_event[gpu_frame_id]));
 
     return post_event[gpu_frame_id];

@@ -79,7 +79,6 @@ cl_event clPreseedKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl
     clCommand::execute(gpu_frame_id, 0, pre_event);
 
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
-    uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
 
     cl_mem presum_memory = device.get_gpu_memory("presum", presum_len);

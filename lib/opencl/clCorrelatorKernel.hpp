@@ -39,8 +39,6 @@ private:
     int32_t _num_blocks;
     /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
     int32_t _block_size;
-    /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
-    int32_t _buffer_depth;
 
 };
 

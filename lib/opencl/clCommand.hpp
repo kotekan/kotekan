@@ -81,8 +81,6 @@ public:
     cl_event getPostEvent();
     /// gettor that returns the name given to this clCommand object.
     string &get_name();
-    /// gettor that returns the config values for a kernel formatted as a cl_options string to append to the kernel execution statement.
-    string get_cl_options();
     /** The build function creates the event to return as the post event in an event chaining sequence.
      * If a kernel is part of the clCommand object definition the resources to run it are allocated on
      * the gpu here.
@@ -100,19 +98,17 @@ public:
     /** The execute command does very little in the base case. The child class must provide an implementation of the 
      * logic under the signature of the method defined here. Basic functions to execute a gpu command are done in the
      * base class such as checking that the buffer_ID is positive and is less than the number of frames in the buffer. 
-     * @param param_bufferID        The bufferID associated with the GPU commands.
+     * @param gpu_frame_id  The bufferID associated with the GPU commands.
      * 
-     * @param fpga_seq              Passed to apply_config.    
+     * @param fpga_seq      Passed to apply_config.
      * 
-     * @param param_Device          The instance of the current device the process is executing on.
-     * 
-     * @param param_PrecedeEvent    The preceeding event in a sequence of chained event sequence of commands.
+     * @param pre_event     The preceeding event in a sequence of chained event sequence of commands.
     **/
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent);
+    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event);
     /** Releases the memory of the event chain arrays per buffer_id
-     * @param param_bufferID    The bufferID to release all the memory references for.
+     * @param gpu_frame_id    The bufferID to release all the memory references for.
     **/
-    virtual void finalize_frame(int frame_id);
+    virtual void finalize_frame(int gpu_frame_id);
     /// Reads all the relevant config values out of the config file references into the protected scope variables of the class.
     virtual void apply_config(const uint64_t &fpga_seq);
 protected:
@@ -120,13 +116,6 @@ protected:
     cl_kernel kernel;
     /// Allocates resources on the GPU for the kernel.
     cl_program program;
-    
-    /// reference to the config file for the current run
-    Config &config;
-    /// Name to use with consumer and producer assignment for buffers defined in yaml files.
-    string unique_name;
-    bufferContainer host_buffers;
-    clDeviceInterface &device;
 
     // Kernel values.
     /// global work space dimension
@@ -137,30 +126,17 @@ protected:
     // Kernel Events
     /// The next event in an event chain when building an event chain of commands.
     cl_event *post_event;
-    /// File reference for the openCL file (.cl) where the kernel is written.
-    string kernel_file_name;
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing them by this value.
     string kernel_command;
+    /// File reference for the openCL file (.cl) where the kernel is written.
+    string kernel_file_name;
+    /// reference to the config file for the current run
+    Config &config;
+    /// Name to use with consumer and producer assignment for buffers defined in yaml files.
+    string unique_name;
+    bufferContainer host_buffers;
+    clDeviceInterface &device;
 
-    // Common configuration values (which do not change in a run)
-/*
-    /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
-    int32_t _num_adjusted_elements;
-    /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
-    int32_t _num_elements;
-    /// Number of frequencies per data stream sent to each node.
-    int32_t _num_local_freq;
-    /// Total samples in each dataset. Must be a value that is a power of 2.
-    int32_t _samples_per_data_set;
-    /// Number of independent integrations within a single dataset. (eg. 8 means samples_per_data_set/8= amount of integration per dataset.)
-    int32_t _num_data_sets;
-    /// Number of frequencies per data stream sent to each node.
-    int32_t _num_adjusted_local_freq;
-    /// Calculated value: num_adjusted_elements/block_size * (num_adjusted_elements/block_size + 1)/2
-    int32_t _num_blocks;
-    /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
-    int32_t _block_size;
-*/
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
     int32_t _buffer_depth;
     int32_t _gpu_buffer_depth;

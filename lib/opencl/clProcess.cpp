@@ -55,6 +55,7 @@ clProcess::clProcess(Config& config_,
     device->prepareCommandQueue(true); //yes profiling
 
     factory = new clCommandFactory(config, unique_name, local_buffer_container, *device);
+    INFO("Starting...");
 }
 
 void clProcess::apply_config(uint64_t fpga_seq) {
@@ -74,14 +75,13 @@ void clProcess::main_thread()
     bool first_run = true;
 
     while (!stop_thread) {
-
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
-        for (uint32_t i = 0; i < commands.size(); ++i) {
-            if (commands[i]->wait_on_precondition(gpu_frame_id) != 0){
-                INFO("Received exit in OpenCL command precondition! (Command %i, '%s')",i,commands[i]->get_name().c_str());
+        for (auto command : commands) {
+            if (command->wait_on_precondition(gpu_frame_id) != 0){
+                INFO("Received exit in OpenCL command precondition! (Command '%s')",command->get_name().c_str());
                 break;
             }
         }
@@ -90,9 +90,9 @@ void clProcess::main_thread()
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id].wait_for_free_slot();
         cl_event signal = NULL;
-        for (uint32_t i = 0; i < commands.size(); i++) {
+        for (auto command : commands) {
             // Feed the last signal into the next operation
-            signal = commands[i]->execute(gpu_frame_id, 0, signal);
+            signal = command->execute(gpu_frame_id, 0, signal);
             //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);
@@ -105,7 +105,7 @@ void clProcess::main_thread()
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
-    for (clEventContainer &sig_container : final_signals) {
+    for (auto &sig_container : final_signals) {
         sig_container.stop();
     }
     INFO("Waiting for CL packet queues to finish up before freeing memory.");
@@ -114,14 +114,12 @@ void clProcess::main_thread()
 
 
 void clProcess::results_thread() {
-
     vector<clCommand *> &commands = factory->get_commands();
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
     while (true) {
-
         // Wait for a signal to be completed
         DEBUG2("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
         if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
@@ -131,8 +129,8 @@ void clProcess::results_thread() {
         }
         DEBUG2("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
-        for (uint32_t i = 0; i < commands.size(); ++i) {
-            commands[i]->finalize_frame(gpu_frame_id);
+        for (auto command : commands) {
+            command->finalize_frame(gpu_frame_id);
         }
         DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
 

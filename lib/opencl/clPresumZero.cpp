@@ -12,23 +12,22 @@ clPresumZero::clPresumZero(Config& config, const string &unique_name,
     presum_zeros = malloc(presum_len);
     memset(presum_zeros, 0, presum_len);
 
-/*
+    int err;
     // Array used to zero the output memory on the device.
     // TODO should this be in it's own function?
-    err = posix_memalign((void **) &accumulate_zeros, PAGESIZE_MEM, aligned_accumulate_len);
+    err = posix_memalign((void **) &presum_zeros, PAGESIZE_MEM, presum_len);
     if ( err != 0 ) {
         ERROR("Error creating aligned memory for accumulate zeros");
         exit(err);
     }
 
     // Ask that all pages be kept in memory
-    err = mlock((void *) accumulate_zeros, aligned_accumulate_len);
+    err = mlock((void *) presum_zeros, presum_len);
     if ( err == -1 ) {
         ERROR("Error locking memory - check ulimit -a to check memlock limits");
         exit(errno);
     }
-    memset(accumulate_zeros, 0, aligned_accumulate_len );
-*/
+    memset(presum_zeros, 0, presum_len );
 }
 
 clPresumZero::~clPresumZero()

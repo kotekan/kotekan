@@ -32,20 +32,8 @@ clCommand::clCommand(
         kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
                            config.get_string_default(unique_name,"kernel",default_kernel_file_name);
         kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
-//.        kernel_file_name, kernel_command);
-//        build();
     }
 
-/*
-    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
-    _block_size = config.get_int(unique_name, "block_size");
-    _num_blocks = config.get_int(unique_name, "num_blocks");
-*/
     _buffer_depth = config.get_int(unique_name, "buffer_depth");
 
     post_event = (cl_event*)malloc(_gpu_buffer_depth * sizeof(cl_event));
@@ -62,7 +50,7 @@ clCommand::~clCommand()
         DEBUG("program Freed");
     }
     free(post_event);
-    DEBUG("postEvent Freed: %s",unique_name.c_str());
+    DEBUG("post_event Freed: %s",unique_name.c_str());
 }
 
 int clCommand::wait_on_precondition(int gpu_frame_id) {
@@ -113,10 +101,10 @@ void clCommand::build()
     }
 }
 
-cl_event clCommand::execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent)
+cl_event clCommand::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    assert(param_bufferID<_gpu_buffer_depth);
-    assert(param_bufferID>=0);
+    assert(gpu_frame_id<_gpu_buffer_depth);
+    assert(gpu_frame_id>=0);
 
     return NULL;
 //    DEBUG("Execute kernel: %s", name);
@@ -130,30 +118,11 @@ void clCommand::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
     (void*) &param_Buffer) );
 }
 
-// TODO This could be on a per command object basis,
-// it doesn't really need to be at this level.
-string clCommand::get_cl_options()
-{
-    string cl_options = "";
-/*
-    cl_options += "-D ACTUAL_NUM_ELEMENTS=" + to_string(_num_elements);
-    cl_options += " -D ACTUAL_NUM_FREQUENCIES=" + to_string(_num_local_freq);
-    cl_options += " -D NUM_ELEMENTS=" + to_string(_num_adjusted_elements);
-    cl_options += " -D NUM_FREQUENCIES=" + to_string(_num_adjusted_local_freq);
-    cl_options += " -D NUM_BLOCKS=" + to_string(_num_blocks);
-    cl_options += " -D NUM_TIMESAMPLES=" + to_string(_samples_per_data_set);
-    cl_options += " -D NUM_BUFFERS=" + to_string(_buffer_depth);
-//ikt - commented out to test performance without DEBUG calls.
-//    DEBUG("kernel: %s cl_options: %s", name, cl_options.c_str());
-*/
-    return cl_options;
-}
-
-void clCommand::finalize_frame(int frame_id) {
+void clCommand::finalize_frame(int gpu_frame_id) {
     //the events need to be defined as arrays per buffer id
-    if (post_event[frame_id] != NULL){
-        clReleaseEvent(post_event[frame_id]);
-        post_event[frame_id] = NULL;
+    if (post_event[gpu_frame_id] != NULL){
+        clReleaseEvent(post_event[gpu_frame_id]);
+        post_event[gpu_frame_id] = NULL;
     }
 }
 
