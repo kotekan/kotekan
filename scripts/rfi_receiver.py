@@ -30,17 +30,19 @@ class CommandLine:
         self.UDP_PORT = 2900
         self.TCP_IP = '10.10.10.2'
         self.TCP_PORT = 41214
-        self.mode = 'pathfinder'
+        self.mode = 'chime'
+        self.min_seq = -1
+        self.max_seq = -1
         self.config = {'frames_per_packet': 4, 'num_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
                         'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'vdif_rfi_header_size': 21,
-                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 1}
-        self.supportedModes = ['vdif','pathfinder', 'chime']
+                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4}
+        self.supportedModes = ['vdif', 'pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
         parser.add_argument("-r", "--receive", help = "Example: 127.0.0.1:2900", required = False, default = "")
         parser.add_argument("-s", "--send", help = "Example: 10.10.10.2:41214", required = False, default = "")
         parser.add_argument("-c", "--config", help = "Example: ../kotekan/kotekan_opencl_rfi.yaml", required = False, default = "")
-        parser.add_argument("-m", "--mode", help = "Example: vdif, pathfinder", required = False, default = "")
+        parser.add_argument("-m", "--mode", help = "Example: vdif, chime", required = False, default = "")
         argument = parser.parse_args()
         status = False
 
@@ -78,7 +80,6 @@ class CommandLine:
             status = True
         if argument.mode:
             print("You have used '-m' or '--mode' with argument: {0}".format(argument.mode))
-
             if(argument.mode in self.supportedModes):
                 self.mode = argument.mode
                 print("Setting mode to %s mode."%(argument.mode))
@@ -93,21 +94,26 @@ class CommandLine:
 
 class Stream:
 
-
-    def __init__(self, header):
+    def __init__(self, thread_id, mode, header, known_streams):
 
         encoded_stream_id = header['encoded_stream_ID'][0]
-        self.link_id = encoded_stream_id & 0x000F 
-        self.slot_id = (encoded_stream_id & 0x00F0) >> 4
-        self.crate = (encoded_stream_id & 0x0F00) >> 8
-        self.unused = (encoded_stream_id & 0xF000) >> 12
-        #self.bins = [self.slot_id + self.link_id * 16 + i * 128 for i in range(header['num_local_freq'])]
-        self.bins = [self.crate*16 + self.slot_id + self.link_id*32 + self.unused *256 for i in range(header['num_local_freq'])]
-        self.freqs = [800.0 - float(b) * 400.0/1024.0 for b in self.bins]
-        self.bins = np.array(self.bins).astype(int)
-        self.freqs = np.array(self.freqs)
-        print("Stream Created %d %d %d %d"%( self.slot_id, self.link_id, self.crate, self.unused))
-        print(self.bins, self.freqs)
+        if(encoded_stream_id not in known_streams):
+            known_streams.append(encoded_stream_id)
+            self.link_id = encoded_stream_id & 0x000F 
+            self.slot_id = (encoded_stream_id & 0x00F0) >> 4
+            self.crate = (encoded_stream_id & 0x0F00) >> 8
+            self.unused = (encoded_stream_id & 0xF000) >> 12
+            if(mode == "pathfinder"):
+                self.bins = [self.slot_id + self.link_id * 16 + i * 128 for i in range(header['num_local_freq'])]
+            else:
+                self.bins = [self.crate*16 + self.slot_id + self.link_id*32 + self.unused *256 for i in range(header['num_local_freq'])]
+            self.freqs = [800.0 - float(b) * 400.0/1024.0 for b in self.bins]
+            self.bins = np.array(self.bins).astype(int)
+            self.freqs = np.array(self.freqs)
+            print("Thread id %d Stream Created %d %d %d %d %d"%(thread_id, encoded_stream_id, self.slot_id, self.link_id, self.crate, self.unused))
+            #print(self.bins, self.freqs)
+        else:
+            print("Stream Creation Warning: Known Stream Creation Attempt")
 
 
 def chimeHeaderCheck(header,app):
@@ -120,7 +126,6 @@ def chimeHeaderCheck(header,app):
         return False
     if(header['num_elements'] != app.config['num_elements']):
         print("Chime Header Error: Number of Elements does not match config")
-
         return False
     if(header['num_timesteps'] != app.config['samples_per_data_set']):
         print("Chime Header Error: Samples per Dataset does not match config")
@@ -161,7 +166,7 @@ def VDIFHeaderCheck(header,app):
         return False
     return True
 
-def data_listener(socket_udp):
+def data_listener(thread_id, socket_udp):
 
     global waterfall, t_min, app
 
@@ -179,109 +184,73 @@ def data_listener(socket_udp):
     firstPacket = True
     vdifPacketSize = global_freq*4 + vdifRFIHeaderSize
     chimePacketSize = chimeRFIHeaderSize + 4*local_freq
-    chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1), ('encoded_stream_ID',np.uint16,1),('sk_step',np.uint32,1),
-        ('num_elements',np.uint32,1),('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),
-        ('num_local_freq',np.uint32,1),('frames_per_packet',np.uint32,1),('fpga_seq_num',np.int64,1)])
+    chimeHeaderDataType = np.dtype([('combined_flag',np.uint8,1),('sk_step',np.uint32,1),('num_elements',np.uint32,1),
+        ('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),('num_local_freq',np.uint32,1),
+        ('frames_per_packet',np.uint32,1),('fpga_seq_num',np.int64,1),('encoded_stream_ID',np.uint16,1)])
     stream_dict = dict()
+    known_streams = []
     packetCounter = 0;
     while True:
 
-        if (mode == 'pathfinder'):
+        if (mode == 'chime' or mode == 'pathfinder'):
 
             #Receive packet from port
-            packet, addr = sock_udp.recvfrom(frames_per_packet*local_freq*bytesPerFreq)
-
-            if(packet != ''):
-
-                print('Receiving UDP Packet...')
-                data = np.fromstring(packet,dtype=np.dtype([('bin', 'i4',1), ('seq', 'i8',1), ('mask', 'f4',1)]))
-
-                if(firstPacket):
-
-                    t_min = datetime.datetime.utcnow()
-                    min_seq = np.min(data['seq'])
-                    max_seq = min_seq + (waterfall.shape[1]-1)*timesteps_per_frame
-                    firstPacket = False
-
-                else:
-
-                    new_max = np.max(data['seq'])
-
-                    if(new_max > max_seq):
-
-                        roll_amount = int(-1*max((new_max-max_seq)/timesteps_per_frame,waterfall.shape[1]/8))
-
-                        #DO THE ROLL
-                        waterfall = np.roll(waterfall,roll_amount,axis=1)
-                        waterfall[:,roll_amount:] = -1
-
-                        #Adjust Times
-                        min_seq += -1*roll_amount*timesteps_per_frame
-                        max_seq += -1*roll_amount*timesteps_per_frame
-                        t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
-
-                waterfall[(data['bin']).astype(int),((data['seq']-min_seq)/timesteps_per_frame ).astype(int)] = data['mask']
-                #print(data['bin'])
-
-        elif (mode == 'chime'):
-
-            #Receive packet from port
-            packet, addr = sock_udp.recvfrom(chimePacketSize)
-
-
+            packet, addr = socket_udp.recvfrom(chimePacketSize)
+        
             if(packet != ''):
 
                 if(packetCounter % 25*len(stream_dict) == 0):
-                    print("Receiving Packets from %d Streams"%(len(stream_dict)))
+                    print("Thread id %d: Receiving Packets from %d Streams"%(thread_id,len(stream_dict)))
                 packetCounter += 1
 
-                header = np.fromstring(packet[:chimeRFIHeaderSize],dtype=chimeHeaderDataType)
-                data = np.fromstring(packet[chimeRFIHeaderSize:],dtype=np.float32)
+                header = np.fromstring(packet[:chimeRFIHeaderSize], dtype=chimeHeaderDataType)
+                data = np.fromstring(packet[chimeRFIHeaderSize:], dtype=np.float32)
 
                 #Create a new stream object each time a new stream connects
-                if(header['encoded_stream_ID'][0] not in stream_dict.keys()):
-
+                if(header['encoded_stream_ID'][0] not in known_streams):
+                    #known_streams.append(header['encoded_stream_ID'][0])
                     #Check that the new stream is providing the correct data
                     if(chimeHeaderCheck(header,app) == False):
                         break
                     #Add to the dictionary of Streams
-                    stream_dict[header['encoded_stream_ID'][0]] = Stream(header)
-
+                    stream_dict[header['encoded_stream_ID'][0]] = Stream(thread_id, mode, header, known_streams)
+                
                 #On first packet received by any stream
-                if(firstPacket):
+                if(app.min_seq == -1):
 
                     #Set up waterfall parameters
                     t_min = datetime.datetime.utcnow()
-                    min_seq = header['fpga_seq_num'][0]
-                    max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
+                    app.min_seq = header['fpga_seq_num'][0]
+                    app.max_seq = app.min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
                     firstPacket = False       
 
                 else:
 
-                    if(header['fpga_seq_num'][0] > max_seq):
+                    if(header['fpga_seq_num'][0] > app.max_seq):
 
-                        roll_amount = int(-1*max((header['fpga_seq_num'][0]-max_seq)/(timesteps_per_frame*frames_per_packet),waterfall.shape[1]/8))
+                        roll_amount = int(-1*max((header['fpga_seq_num'][0]-app.max_seq)/(timesteps_per_frame*frames_per_packet),waterfall.shape[1]/8))
                         #If the roll is larger than the whole waterfall (kotekan dies and rejoins)
                         if(-1*roll_amount > waterfall.shape[1]):
                             #Reset Waterfall
                             t_min = datetime.datetime.utcnow()
                             waterfall[:,:] = -1
-                            min_seq = header['fpga_seq_num'][0]
-                            max_seq = min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
+                            app.min_seq = header['fpga_seq_num'][0]
+                            app.max_seq = app.min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
                         else:
                             #DO THE ROLL, Note: Roll Amount is negative
                             waterfall = np.roll(waterfall,roll_amount,axis=1)
                             waterfall[:,roll_amount:] = -1
-                            min_seq -= roll_amount*timesteps_per_frame*frames_per_packet
-                            max_seq -= roll_amount*timesteps_per_frame*frames_per_packet
+                            app.min_seq -= roll_amount*timesteps_per_frame*frames_per_packet
+                            app.max_seq -= roll_amount*timesteps_per_frame*frames_per_packet
                             #Adjust Time
                             t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame*frames_per_packet)
-
-                waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-min_seq)/(timesteps_per_frame*frames_per_packet))] = data
+                #if(thread_id == 1):
+                    #print(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
+                waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-app.min_seq)/(timesteps_per_frame*frames_per_packet))] = data
 
         elif (mode == 'vdif'):
 
-            packet, addr = sock_udp.recvfrom(vdifPacketSize)
+            packet, addr = socket_udp.recvfrom(vdifPacketSize)
 
             if(packet != ''):
 
@@ -291,33 +260,34 @@ def data_listener(socket_udp):
                     ('sk_step', np.int32,1), ('num_elements', np.int32,1),
                     ('num_times_per_frame', np.int32,1), ('num_freq', np.int32,1), ('seq', np.uint32 ,1)]))
                 data = np.fromstring(packet[vdifRFIHeaderSize:],dtype=np.float32)
-                print(header, data)
-                if(firstPacket):
+
+                if(app.min_seq == -1):
 
                     if(VDIFHeaderCheck(header,app) == False):
                         break
                     t_min = datetime.datetime.utcnow()
-                    min_seq = header['seq']
-                    max_seq = min_seq + (waterfall.shape[1] - 1)
+                    app.min_seq = header['seq']
+                    app.max_seq = app.min_seq + (waterfall.shape[1] - 1)
                     firstPacket = False
 
                 else:
 
-                    if(header['seq'] > max_seq):
+                    if(header['seq'] > app.max_seq):
 
                         roll_amount = int(-1*waterfall.shape[1]/8)
-
+                        
                         #DO THE ROLL
                         waterfall = np.roll(waterfall,roll_amount,axis=1)
                         waterfall[:,roll_amount:] = -1
-                        min_seq -= roll_amount
-                        max_seq -= roll_amount
-
+                        app.min_seq -= roll_amount
+                        app.max_seq -= roll_amount
+                        
                         #Adjust Times
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame)
 
-                waterfall[:,int(header['seq']-min_seq)] = data
-
+                waterfall[:,int(header['seq']-app.min_seq)] = data
+                    
+                
 def TCP_stream():
 
     global sock_tcp, waterfall, t_min
@@ -364,14 +334,13 @@ if( __name__ == '__main__'):
     waterfall = -1*np.ones([nx,ny],dtype=float)
 
     time.sleep(1)
-
+   
     receive_threads = []
-    UDP_IP= app.UDP_IP
     for i in range(app.config['num_receive_threads']):
         UDP_PORT = app.UDP_PORT + i
         sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock_udp.bind((UDP_IP, UDP_PORT))
-        receive_threads.append(threading.Thread(target=data_listener, args = (sock_udp,)))
+        sock_udp.bind((app.UDP_IP, UDP_PORT))
+        receive_threads.append(threading.Thread(target=data_listener, args = (i, sock_udp,)))
         receive_threads[i].daemon = True
         receive_threads[i].start()
 

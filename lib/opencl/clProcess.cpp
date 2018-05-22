@@ -11,6 +11,8 @@
 #include <iostream>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(clProcess);
+
 using namespace std;
 
 //double e_time_1(void){
@@ -19,7 +21,6 @@ using namespace std;
 //    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 //}
 
-REGISTER_KOTEKAN_PROCESS(clProcess);
 
 // TODO Remove the GPU_ID from this constructor
 clProcess::clProcess(Config& config_,
@@ -35,8 +36,8 @@ clProcess::clProcess(Config& config_,
     register_producer(get_buffer("output_buffer"), unique_name.c_str());
     beamforming_out_buf = get_buffer("beam_out_buf");
     register_producer(get_buffer("beam_out_buf"), unique_name.c_str());
-//    rfi_out_buf = get_buffer("rfi_out_buf");
-//    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
+    rfi_out_buf = get_buffer("rfi_out_buf");
+    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
 
     //beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
 
@@ -98,6 +99,7 @@ void clProcess::main_thread()
 
     double last_time = e_time();
     timer tt;
+    int time_count = 0;
     kill_thread * kill = new kill_thread;
     
     while (!stop_thread) {
@@ -131,7 +133,7 @@ void clProcess::main_thread()
         if (_use_beamforming) {
             wait_for_empty_frame(device->get_beamforming_out_buf(), unique_name.c_str(), frame_id);
         }
-//        wait_for_empty_frame(device->getRfiBuf(), unique_name.c_str(), frame_id);
+        wait_for_empty_frame(device->getRfiBuf(), unique_name.c_str(), frame_id);
         // Todo get/set time information here as well.
 
         CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock));
@@ -148,7 +150,7 @@ void clProcess::main_thread()
         cb_data[frame_id]->start_time = e_time();
         cb_data[frame_id]->unique_name = unique_name;
         cb_data[frame_id]->kill = kill;
-//	    cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
+        cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
         if (_use_beamforming == 1)
         {
             cb_data[frame_id]->beamforming_out_buf = device->get_beamforming_out_buf();
@@ -162,6 +164,7 @@ void clProcess::main_thread()
             currentCommand = factory->getNextCommand();
             sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
             cb_data[frame_id]->listCommands[i] = currentCommand;
+            tt.time_opencl_multi_kernel(sequenceEvent, currentCommand->get_name());
         }
 
         if (first_run)
@@ -184,7 +187,7 @@ void clProcess::main_thread()
                                             &read_complete,
                                             cb_data[frame_id]) );
 
-        DEBUG("enqueued frame_id %d ", frame_id);
+        //DEBUG("enqueued frame_id %d ", frame_id);
 
         //buffer_list[0] = (buffer_list[0] + 1)
         frame_id = (frame_id+1) % device->getInBuf()->num_frames;
@@ -192,9 +195,17 @@ void clProcess::main_thread()
         if (frame_id == 0 && first_seq == true){
             first_seq = false;
         }
+        time_count++;
+        if(time_count == 10){
+            for (int i = 0; i < factory->getNumCommands(); i++){
+                currentCommand = factory->getNextCommand();
+                //tt.broadcast(currentCommand->get_name());
+            }
+            time_count = 0;
+        }
     }
 
-    DEBUG("Closing\n");
+    //DEBUG("Closing\n");
 
     CHECK_ERROR( pthread_mutex_lock(&kill->lock));
     kill->kill_switch = 1;
@@ -203,7 +214,7 @@ void clProcess::main_thread()
     //CHECK_ERROR( pthread_cond_broadcast(&kill->cond) );
     
     CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock) );
-    DEBUG("LockCnt\n");
+    //DEBUG("LockCnt\n");
     while ( loopCnt->iteration > 0) {
         pthread_cond_wait(&loopCnt->cond, &loopCnt->lock);
     }
@@ -264,21 +275,21 @@ void clProcess::mem_reconcil_thread()
 
             while (cb_data[j]->buff_id_lock->clean == 0) {
                 if (break_loop == false){
-                    DEBUG("Wait on frame_id %d ",j);
+                    //DEBUG("Wait on frame_id %d ",j);
                     pthread_cond_wait(&cb_data[j]->buff_id_lock->clean_cond, &cb_data[j]->buff_id_lock->lock);
                     //INFO("GPU_THREAD: Read Complete Buffer ID %d", cb_data[j]->buffer_id);
-                    DEBUG("Flipped frame_id %d ",j);
+                    //DEBUG("Flipped frame_id %d ",j);
                 }
-                DEBUG("in loop");
+                //DEBUG("in loop");
             }
 
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->buff_id_lock->lock));
             
-            DEBUG("left loop");
+            //DEBUG("left loop");
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->kill->lock));
-            DEBUG("check kill");
+            //DEBUG("check kill");
             if (cb_data[j]->kill->kill_switch == 1){
-                DEBUG("killed");
+                //DEBUG("killed");
                 thread_kill = true;
             }
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->kill->lock));
@@ -286,16 +297,16 @@ void clProcess::mem_reconcil_thread()
             CHECK_ERROR( pthread_mutex_lock(&cb_data[j]->cnt->lock));
 
             if (thread_kill == true){
-                DEBUG("stop thread set");
+                //DEBUG("stop thread set");
                 if (cb_data[j]->cnt->iteration == 0){
-                    DEBUG("break loop set");
+                    //DEBUG("break loop set");
                     break_loop = true;
                 }
             }
             CHECK_ERROR( pthread_mutex_unlock(&cb_data[j]->cnt->lock));
             
             if (break_loop == true){
-                DEBUG("break out of fist loop");
+                //DEBUG("break out of fist loop");
                 break;
             }
 
@@ -311,15 +322,15 @@ void clProcess::mem_reconcil_thread()
             }
             pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
-//            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-//                             cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
+            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                             cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
             // Mark the input buffer as "empty" so that it can be reused.
             mark_frame_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             // Mark the output buffer as full, so it can be processed.
             mark_frame_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
-//            mark_frame_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            mark_frame_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             for (int i = 0; i < cb_data[j]->numCommands; i++){
                 cb_data[j]->listCommands[i]->cleanMe(cb_data[j]->buffer_id);
@@ -335,11 +346,11 @@ void clProcess::mem_reconcil_thread()
             DEBUG("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
         }
         if (break_loop == true){
-            DEBUG("break out of second loop");
+            //DEBUG("break out of second loop");
             break;
     }
 }
-    DEBUG("loops broken");
+    //DEBUG("loops broken");
 }
 
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)

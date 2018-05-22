@@ -92,9 +92,10 @@ rfi_broadcast:
    destination_protocol: UDP
 
 #rfi viewer config
-frames_per_packet: 1 
-waterfallX: 256
+frames_per_packet: 1
+waterfallX: 128
 waterfallY: 1024
 num_receive_threads: 1
 vdif_rfi_header_size: 21
 waterfall_request_delay: 1 #seconds
+colorscale: 0.25

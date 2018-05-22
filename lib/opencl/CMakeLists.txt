@@ -1,5 +1,5 @@
 cmake_minimum_required( VERSION 2.8 )
-project( libkotekan_opencl )
+project( kotekan_opencl )
 
 include_directories(${OPENCL_INCLUDE_DIRS})
 
@@ -24,8 +24,11 @@ add_library ( kotekan_opencl
               gpu_command.cpp
               gpu_command_factory.cpp
               clProcess.cpp
-              rfi_kernel.cpp
-              output_rfi.cpp
+#              rfi_kernel.cpp
+              clRfiTimeSum.cpp
+              clRfiInputSum.cpp
+              clRfiOutput.cpp
+#              output_rfi.cpp
               timer.cpp
               )
 
@@ -35,4 +38,4 @@ add_custom_target(kernel_copy
         "kernels/")
 add_dependencies( kotekan_opencl kernel_copy )
 
-target_link_libraries( kotekan_opencl kotekan_libs )
+#target_link_libraries( kotekan_opencl kotekan_libs )
