@@ -26,8 +26,8 @@ add_library ( kotekan_opencl
               clOutputDataZero.cpp
               clPresumZero.cpp
               clPresumKernel.cpp
-#              preseed_kernel.cpp
-#              correlator_kernel.cpp
+              clPreseedKernel.cpp
+              clCorrelatorKernel.cpp
 #              output_data_result.cpp
 
 # CHIME/Pulsar Kernels & copy-out:

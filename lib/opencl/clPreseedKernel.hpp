@@ -1,20 +1,23 @@
-#ifndef CL_OUTPUT_DATA_ZERO_H
-#define CL_OUTPUT_DATA_ZERO_H
+#ifndef CL_PRESEED_KERNEL_H
+#define CL_PRESEED_KERNEL_H
 
 #include "clCommand.hpp"
+#include "clDeviceInterface.hpp"
 
-class clOutputDataZero: public clCommand
+class clPreseedKernel: public clCommand
 {
 public:
-    clOutputDataZero(Config &config, const string &unique_name,
-                      bufferContainer &host_buffers, clDeviceInterface &device);
-    ~clOutputDataZero();
-    cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
-
+    clPreseedKernel(Config& config, const string &unique_name,
+                    bufferContainer& host_buffers, clDeviceInterface& device);
+    ~clPreseedKernel();
+    virtual void build() override;
+    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
+protected:
+    void defineOutputDataMap();
+    //Host Buffers
+    cl_mem id_x_map;
+    cl_mem id_y_map;
 private:
-    int32_t output_len;
-    void * output_zeros;
-
     // Common configuration values (which do not change in a run)
     /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
     int32_t _num_adjusted_elements;
@@ -37,5 +40,4 @@ private:
 
 };
 
-#endif // CL_OUTPUT_DATA_ZERO_H
-
+#endif //CL_PRESEED_KERNEL_H

@@ -1,14 +1,27 @@
-#include "correlator_kernel.h"
+#include "clCorrelatorKernel.hpp"
 
 #include <string>
 using std::string;
 
-correlator_kernel::correlator_kernel(const char * param_gpuKernel, const char* param_name, Config &param_config, const string &unique_name):
-    clCommand(param_gpuKernel, param_name, param_config, unique_name)
+REGISTER_CL_COMMAND(clCorrelatorKernel);
+
+clCorrelatorKernel::clCorrelatorKernel(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, clDeviceInterface& device) :
+    clCommand("corr","pairwise_correlator.cl", config, unique_name, host_buffers, device)
 {
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
+    _block_size = config.get_int(unique_name, "block_size");
+    _num_data_sets = config.get_int(unique_name, "num_data_sets");
+    _num_blocks = config.get_int(unique_name,"num_blocks");
+    _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
+
+    defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
 }
 
-correlator_kernel::~correlator_kernel()
+clCorrelatorKernel::~clCorrelatorKernel()
 {
     free(zeros);
 
@@ -17,32 +30,33 @@ correlator_kernel::~correlator_kernel()
     clReleaseMemObject(id_y_map);
 }
 
-void correlator_kernel::apply_config(const uint64_t& fpga_seq) {
+void clCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
     clCommand::apply_config(fpga_seq);
 }
 
-void correlator_kernel::build(class device_interface& param_Device)
+void clCorrelatorKernel::build()
 {
     apply_config(0);
-    clCommand::build(param_Device);
+    clCommand::build();
 
     cl_int err;
 
     unsigned int num_accumulations;
-    cl_device_id valDeviceID;
 
     // Number of compressed accumulations.
     num_accumulations = _samples_per_data_set/256;
 
-    string cl_options = get_cl_options();
+    string cl_options = "";
+    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_adjusted_elements);
+    cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_adjusted_local_freq);
+    cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
 
-    valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
+    cl_device_id dev_id = device.get_id();
 
-    CHECK_CL_ERROR ( clBuildProgram( program, 1, &valDeviceID, cl_options.c_str(), NULL, NULL ) );
+    CHECK_CL_ERROR ( clBuildProgram( program, 1, &dev_id, cl_options.c_str(), NULL, NULL ) );
 
     kernel = clCreateKernel( program, "corr", &err );
     CHECK_CL_ERROR(err);
-    defineOutputDataMap(param_Device); //id_x_map and id_y_map depend on this call.
 
     //set other parameters that will be fixed for the kernels (changeable parameters will be set in run loops)
     CHECK_CL_ERROR( clSetKernelArg(kernel,
@@ -57,7 +71,7 @@ void correlator_kernel::build(class device_interface& param_Device)
 
     zeros=(cl_int *)calloc(_num_blocks*_num_local_freq,sizeof(cl_int)); //for the output buffers
 
-    device_block_lock = clCreateBuffer(param_Device.getContext(),
+    device_block_lock = clCreateBuffer(device.get_context(),
                                         CL_MEM_COPY_HOST_PTR,
                                         _num_blocks*_num_local_freq*sizeof(cl_int),
                                         zeros,
@@ -78,27 +92,33 @@ void correlator_kernel::build(class device_interface& param_Device)
     lws[2] = 1;
 }
 
-cl_event correlator_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(gpu_frame_id, 0, pre_event);
 
-    setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
-    setKernelArg(1, param_Device.getOutputBuffer(param_bufferID));
+    uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
+    uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
+
+    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    cl_mem output_memory_frame = device.get_gpu_memory_array("output",gpu_frame_id, output_len);
+
+    setKernelArg(0, input_memory);
+    setKernelArg(1, output_memory_frame);
 
 //    DEBUG("gws: %i, %i, %i. lws: %i, %i, %i", gws[0], gws[1], gws[2], lws[0], lws[1], lws[2]);
-    CHECK_CL_ERROR( clEnqueueNDRangeKernel(param_Device.getQueue(1),
+    CHECK_CL_ERROR( clEnqueueNDRangeKernel(device.getQueue(1),
                                             kernel,
                                             3,
                                             NULL,
                                             gws,
                                             lws,
                                             1,
-                                            &param_PrecedeEvent,
-                                            &postEvent[param_bufferID]));
+                                            &pre_event,
+                                            &post_event[gpu_frame_id]));
 
-    return postEvent[param_bufferID];
+    return post_event[gpu_frame_id];
 }
-void correlator_kernel::defineOutputDataMap(device_interface& param_Device)
+void clCorrelatorKernel::defineOutputDataMap()
 {
     cl_int err;
     // Create lookup tables
@@ -119,13 +139,13 @@ void correlator_kernel::defineOutputDataMap(device_interface& param_Device)
         }
     }
 
-    id_x_map = clCreateBuffer(param_Device.getContext(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+    id_x_map = clCreateBuffer(device.get_context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                     _num_blocks * sizeof(cl_uint), global_id_x_map, &err);
     if (err){
         printf("Error in clCreateBuffer %i\n", err);
     }
 
-    id_y_map = clCreateBuffer(param_Device.getContext(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+    id_y_map = clCreateBuffer(device.get_context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                     _num_blocks * sizeof(cl_uint), global_id_y_map, &err);
     if (err){
         printf("Error in clCreateBuffer %i\n", err);

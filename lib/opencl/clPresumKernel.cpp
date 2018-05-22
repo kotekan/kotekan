@@ -29,7 +29,6 @@ void clPresumKernel::apply_config(const uint64_t& fpga_seq) {
 
 void clPresumKernel::build()
 {
-    apply_config(0);
     clCommand::build();
     cl_int err;
 
@@ -38,11 +37,6 @@ void clPresumKernel::build()
     string cl_options = "";
     cl_options += " -D ACTUAL_NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D ACTUAL_NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
-    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_adjusted_elements);
-    cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_adjusted_local_freq);
-    cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
-    cl_options += " -D NUM_TIMESAMPLES=" + std::to_string(_samples_per_data_set);
-    cl_options += " -D NUM_BUFFERS=" + std::to_string(_buffer_depth);
 
     CHECK_CL_ERROR(clBuildProgram( program, 1, &dev_id, cl_options.c_str(), NULL, NULL ));
 

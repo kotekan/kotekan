@@ -35,7 +35,6 @@ private:
     int32_t _block_size;
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
     int32_t _buffer_depth;
-
 };
 
 #endif // CL_PRESUM_KERNEL_H

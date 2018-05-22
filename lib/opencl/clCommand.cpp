@@ -85,7 +85,7 @@ void clCommand::build()
     cl_int err;
 
     if (kernel_command != ""){
-        INFO("Building! %s",kernel_command.c_str())
+        DEBUG2("Building! %s",kernel_command.c_str())
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == NULL){
             ERROR("error loading file: %s", kernel_file_name.c_str());
@@ -109,6 +109,7 @@ void clCommand::build()
 
         program_size = 0;
         free(program_buffer);
+        DEBUG2("Built! %s",kernel_command.c_str())
     }
 }
 
