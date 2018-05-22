@@ -26,23 +26,21 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
 
     //Local Parameters
     _num_bad_inputs = 0;
-    first_pass = true;
+
+    //Initialize Input Mask
+    InputMask = (uint8_t *)hsa_host_malloc(mask_len); //Allocate memory
+    for(uint32_t i = 0; i < mask_len; i++){
+        InputMask[i] = (uint8_t)0;
+    }
+    void * input_mask_map = device.get_gpu_memory("input_mask", mask_len);
+    device.sync_copy_host_to_gpu(input_mask_map, (void *)InputMask, mask_len);
+
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {
 }
 
 hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-
-    if (first_pass) {
-        first_pass = false;
-        InputMask = (uint8_t *)hsa_host_malloc(mask_len); //Allocate memory
-        for(uint32_t i = 0; i < mask_len; i++){
-            InputMask[i] = (uint8_t)0;
-        }
-        void * input_mask_map = device.get_gpu_memory("input_mask", mask_len);
-        device.sync_copy_host_to_gpu(input_mask_map, (void *)InputMask, mask_len);
-    }
 
     struct __attribute__ ((aligned(16))) args_t {
 	void *input;
