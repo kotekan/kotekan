@@ -20,7 +20,6 @@ clInputData::clInputData(Config& config, const string &unique_name,
 
 clInputData::~clInputData()
 {
-
 }
 
 int clInputData::wait_on_precondition(int gpu_frame_id)

@@ -132,6 +132,7 @@ gpu:
   - name: clPresumKernel
   - name: clPreseedKernel
   - name: clCorrelatorKernel
+  - name: clOutputData
   gpu_0:
     kotekan_process: clProcess
     gpu_id: 0
