@@ -6,9 +6,9 @@
 REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 
 hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
-                         bufferContainer& host_buffers, 
+                         bufferContainer& host_buffers,
                          hsaDeviceInterface& device):
-    hsaCommand("rfi_chime_timesum", "rfi_chime_timesum.hsaco", config, unique_name, host_buffers, device){
+    hsaCommand("rfi_chime_timesum", "rfi_chime_timesum_private.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
 
     //Retrieve parameters from kotekan confint(unique_name, "num_elements");
@@ -63,11 +63,15 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     kernelParams params;
-    params.workgroup_size_x = 1;
-    params.workgroup_size_y = 256;
+//    params.workgroup_size_x = 1;
+//    params.workgroup_size_y = 256;
+    params.workgroup_size_x = 64;//_num_elements/4;
+    params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
-    params.grid_size_x = _num_elements*_num_local_freq/4;
-    params.grid_size_y = 256;
+//    params.grid_size_x = _num_elements*_num_local_freq/4;
+//    params.grid_size_y = 256;
+    params.grid_size_x = 64;//_num_elements/4;
+    params.grid_size_y = 8;//_num_local_freq;
     params.grid_size_z = _samples_per_data_set/_sk_step;
     params.num_dims = 3;
 

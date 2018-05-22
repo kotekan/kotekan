@@ -178,11 +178,11 @@ void rfiBroadcast::main_thread() {
                 }
 
                 packet_header_bytes_written -= sizeof(uint16_t);
-                INFO("Stream ID %d %d",j , StreamIDs[j])
+                DEBUG("Stream ID %d %d",j , StreamIDs[j])
 
             }
 
-            INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
+            DEBUG("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
 
             //Prepare Header For Adjustment
             packet_header_bytes_written -= sizeof(int64_t); 

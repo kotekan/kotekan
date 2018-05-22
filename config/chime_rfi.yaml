@@ -3,12 +3,12 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: DEBUG
+log_level: WARN
 num_links: 4
 timesamples_per_packet: 2
 num_elements: 2048
 num_local_freq: 1
-num_total_freq: 4
+num_total_freq: 1024
 samples_per_data_set: 49152
 #samples_per_data_set: 32768
 num_data_sets: 1
@@ -150,13 +150,13 @@ gpu:
   - name: hsaPresumKernel
   - name: hsaRfiTimeSum
   - name: hsaRfiInputSum
-  - name: hsaRfiOutput
   - name: hsaCorrelatorKernel
   - name: hsaBeamformReorder
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
   - name: hsaBeamformOutputData
+  - name: hsaRfiOutput
   - name: hsaOutputData
   enable_delay: true
   delay_max_fraction: 0.5
@@ -203,34 +203,51 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_3
 
 rfiBroadcast:
+  log_level: DEBUG
   kotekan_process: rfiBroadcast
+  total_links: 1
   rfi_in: gpu_rfi_output_buffer_0
   destination_port: 41215
+  destination_ip: 10.1.113.19
 #  destination_ip: 10.1.13.1
-  destination_ip: 127.0.0.1
+#  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
 rfiBroadcast1:
+  log_level: DEBUG
   kotekan_process: rfiBroadcast
+  total_links: 1
   rfi_in: gpu_rfi_output_buffer_1
   destination_port: 41216
+  destination_ip: 10.1.113.19
 #  destination_ip: 10.1.13.1
-  destination_ip: 127.0.0.1
+#  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
 rfiBroadcast2:
+  log_level: DEBUG
   kotekan_process: rfiBroadcast
+  total_links: 1
   rfi_in: gpu_rfi_output_buffer_2
   destination_port: 41217
+  destination_ip: 10.1.113.19
 #  destination_ip: 10.1.13.1
-  destination_ip: 127.0.0.1
+#  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
 rfiBroadcast3:
+  log_level: DEBUG
   kotekan_process: rfiBroadcast
+  total_links: 1
   rfi_in: gpu_rfi_output_buffer_3
   destination_port: 41218
+  destination_ip: 10.1.113.19
 #  destination_ip: 10.1.13.1
-  destination_ip: 127.0.0.1 
+#  destination_ip: 127.0.0.1 
   destination_protocol: UDP
 
+#RFI Live-view Paramters
+waterfallX: 1024
+num_receive_threads: 4
+colorscale: 1.0
+waterfall_request_delay: 60
