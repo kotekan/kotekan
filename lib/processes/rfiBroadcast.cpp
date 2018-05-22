@@ -56,20 +56,13 @@ void rfiBroadcast::main_thread() {
     uint32_t i, j, f;
     uint32_t bytes_sent = 0;
     uint8_t * frame = NULL;
-    int64_t seq_num = 0;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
-//    struct RFIHeader rfi_header;
-    struct RFIHeader rfi_header = {.rfi_combined=COMBINED, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
-                      .num_total_freq=1024, .num_local_freq=_num_local_freq, frames_per_packet=frames_per_packet};
     //Intialize empty packet header
-    //uint32_t packet_header_length = sizeof(bool) + sizeof(uint16_t) + sizeof(int)*6 + sizeof(int64_t);
-    //char *packet_header = (char *)malloc(packet_header_length);
-    //Declare array to hold averaged kurtosis estimates
-    //uint32_t packet_header_bytes_written = 0;
-    //uint32_t packet_length = packet_header_length + _num_local_freq*sizeof(float);
-    uint32_t packet_length = sizeof(rfi_header) + _num_local_freq*sizeof(float);
+    struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)COMBINED, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
+                      .num_total_freq=1024, .num_local_freq=_num_local_freq, frames_per_packet=frames_per_packet};
     //Intialize empty packet
+    uint32_t packet_length = sizeof(rfi_header) + _num_local_freq*sizeof(float);
     char *packet_buffer = (char *)malloc(packet_length);
 
     if (dest_protocol == "UDP")
@@ -88,22 +81,6 @@ void rfiBroadcast::main_thread() {
             ERROR("Invalid address given for remote server");
             return;
         }
-
-        //Fill Header
-        /*memcpy(packet_header + packet_header_bytes_written, &COMBINED, sizeof(bool));
-        packet_header_bytes_written += sizeof(bool);
-        memcpy(packet_header + packet_header_bytes_written, &_sk_step, sizeof(uint32_t));
-        packet_header_bytes_written += sizeof(uint32_t);
-        memcpy(packet_header + packet_header_bytes_written, &_num_elements, sizeof(uint32_t));
-        packet_header_bytes_written += sizeof(uint32_t);
-        memcpy(packet_header + packet_header_bytes_written, &_samples_per_data_set, sizeof(uint32_t));
-        packet_header_bytes_written += sizeof(uint32_t);
-        memcpy(packet_header + packet_header_bytes_written, &_num_freq, sizeof(uint32_t));
-        packet_header_bytes_written += sizeof(uint32_t);
-        memcpy(packet_header + packet_header_bytes_written, &_num_local_freq, sizeof(uint32_t));
-        packet_header_bytes_written += sizeof(uint32_t);
-        memcpy(packet_header + packet_header_bytes_written, &frames_per_packet, sizeof(uint32_t));
-        packet_header_bytes_written += sizeof(uint32_t);*/
         //Connection succesful
         INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
 
@@ -111,8 +88,6 @@ void rfiBroadcast::main_thread() {
 
             float rfi_data [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
             float RFI_Avg[total_links][_num_local_freq];
-            double start_time = e_time();
-            link_id = 0;
             //Zero Average array
             for(i = 0; i < total_links; i++){
                 for(j = 0; j < _num_local_freq; j++){
@@ -127,11 +102,8 @@ void rfiBroadcast::main_thread() {
                 //Copy frame data to array
                 memcpy(rfi_data[link_id], frame, rfi_buf->frame_size);
                 if(f == 0){
-                    //Adjust Header
-                    seq_num = get_fpga_seq_num(rfi_buf, frame_id);
-                    //memcpy(packet_header + packet_header_bytes_written, &seq_num, sizeof(int64_t));
-                    //packet_header_bytes_written += sizeof(int64_t);
-                    rfi_header.seq_num = seq_num;
+                    //Adjust Header on initial frame
+                    rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id);
                 }
                 //Adjust Stream ID's
                 StreamIDs[link_id] = get_stream_id(rfi_buf, frame_id);
@@ -146,6 +118,7 @@ void rfiBroadcast::main_thread() {
                 frame_id = (frame_id + 1) % rfi_buf->num_frames;
                 link_id = (link_id + 1) % total_links;
             }
+            double start_time = e_time();
             //Loop through each link to send data seperately
             for(j = 0; j < total_links; j++){
                 //Normalize Sum (Take Average)
@@ -154,11 +127,8 @@ void rfiBroadcast::main_thread() {
                     if(i == 0){ DEBUG("SK value %f for freq %d, stream %d", RFI_Avg[j][i], i, StreamIDs[j])}
                 }
                 //Add Stream ID to header
-                //memcpy(packet_header + packet_header_bytes_written, &StreamIDs[j], sizeof(uint16_t));
-                //packet_header_bytes_written += sizeof(uint16_t);
                 rfi_header.streamID = StreamIDs[j];
                 //Add Header to packet
-                //memcpy(packet_buffer, packet_header, packet_header_length);
                 memcpy(packet_buffer, &rfi_header, sizeof(rfi_header));
                 //Add Data to packet
                 memcpy(packet_buffer + sizeof(rfi_header), RFI_Avg[j], _num_local_freq*sizeof(float));
@@ -166,17 +136,11 @@ void rfiBroadcast::main_thread() {
                 bytes_sent = sendto(socket_fd,
                                  packet_buffer,
                                  packet_length, 0,
-                                 (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in)); <<<<<<< HEAD
-
+                                 (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
                 //Check if packet sent properly
                 if (bytes_sent != packet_length){ ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");}
-                //Adjust header
-                //packet_header_bytes_written -= sizeof(uint16_t);
-                INFO("Stream ID %d %d",j , StreamIDs[j])
             }
             INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
-            //Prepare Header For Adjustment
-            //packet_header_bytes_written -= sizeof(int64_t);
         }
     }
     else{

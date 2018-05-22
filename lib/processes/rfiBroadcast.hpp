@@ -44,8 +44,8 @@
  * @author Jacob Taylor
  */
 
-struct RFIHeader {
-    bool rfi_combined;
+struct __attribute__ ((packed)) RFIHeader {
+    uint8_t rfi_combined;
     uint32_t sk_step;
     uint32_t num_elements;
     uint32_t samples_per_data_set;
