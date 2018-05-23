@@ -24,6 +24,8 @@
 #include "clEventContainer.hpp"
 #include "clCommandFactory.hpp"
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
+#include "json.hpp"
 
 class clProcess : public KotekanProcess {
 public:
@@ -35,7 +37,7 @@ public:
     virtual void apply_config(uint64_t fpga_seq) override;
     void mem_reconcil_thread();
     void CL_CALLBACK results_thread();
-
+    void profile_callback(connectionInstance& conn);
 protected:
     vector<clEventContainer> final_signals;
     bufferContainer local_buffer_container;

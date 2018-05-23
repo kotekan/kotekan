@@ -7,10 +7,10 @@ headers = {'Content-type': 'application/json'}
 
 r = []
 json_data = []
-n_gpus = 4
+n_gpus = 1
 
 for gpu_id in range(0,n_gpus):
-    r.append(requests.post('http://localhost:12048/gpu_profile/' + str(gpu_id), data="{}", headers=headers))
+    r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id), headers=headers))
     json_data.append(r[gpu_id].json())
 
 kernels = []

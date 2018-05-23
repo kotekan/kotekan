@@ -62,12 +62,71 @@ void clProcess::apply_config(uint64_t fpga_seq) {
 }
 
 clProcess::~clProcess() {
+    restServer::instance().remove_get_callback("/gpu_profile/"+ std::to_string(gpu_id));
     delete factory;
     delete device;
 }
 
+
+void clProcess::profile_callback(connectionInstance& conn) {
+    DEBUG(" *** *** *** Profile call made.");
+
+    double frame_arrival_period=0.5;
+
+    json reply;
+    // Move to this class?
+    vector<clCommand *> &commands = factory->get_commands();
+
+    reply["copy_in"] = json::array();
+    reply["kernel"] = json::array();
+    reply["copy_out"] = json::array();
+
+    double total_copy_in_time = 0;
+    double total_copy_out_time = 0;
+    double total_kernel_time = 0;
+
+    for (uint32_t i = 0; i < commands.size(); ++i) {
+        double time = commands[i]->get_last_gpu_execution_time();
+        double utilization = time/frame_arrival_period;
+        if (commands[i]->get_command_type() == clCommandType::KERNEL) {
+            reply["kernel"].push_back({{"name", commands[i]->get_name()},
+                                        {"time", time},
+                                        {"utilization", utilization} });
+            total_kernel_time += commands[i]->get_last_gpu_execution_time();
+        } else if (commands[i]->get_command_type() == clCommandType::COPY_IN) {
+
+            reply["copy_in"].push_back({{"name", commands[i]->get_name()},
+                                        {"time", time},
+                                        {"utilization", utilization} });
+            total_copy_in_time += commands[i]->get_last_gpu_execution_time();
+        } else if (commands[i]->get_command_type() == clCommandType::COPY_OUT) {
+
+            reply["copy_out"].push_back({{"name", commands[i]->get_name()},
+                                        {"time", time},
+                                        {"utilization", utilization} });
+            total_copy_out_time += commands[i]->get_last_gpu_execution_time();
+        } else {
+            continue;
+        }
+    }
+
+    reply["copy_in_total_time"] = total_copy_in_time;
+    reply["kernel_total_time"] = total_kernel_time;
+    reply["copy_out_total_time"] = total_copy_out_time;
+    reply["copy_in_utilization"] = total_copy_in_time/frame_arrival_period;
+    reply["kernel_utilization"] = total_kernel_time/frame_arrival_period;
+    reply["copy_out_utilization"] = total_copy_out_time/frame_arrival_period;
+
+    conn.send_json_reply(reply);
+}
+
+
 void clProcess::main_thread()
 {
+    restServer &rest_server = restServer::instance();
+    rest_server.register_get_callback("/gpu_profile/"+ std::to_string(gpu_id),
+            std::bind(&clProcess::profile_callback, this, std::placeholders::_1));
+
     vector<clCommand *> &commands = factory->get_commands();
 
     // Start with the first GPU frame;
@@ -134,6 +193,16 @@ void clProcess::results_thread() {
             command->finalize_frame(gpu_frame_id);
         }
         DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+
+        bool log_profiling = true;
+        if (log_profiling) {
+            string output = "";
+            for (uint32_t i = 0; i < commands.size(); ++i) {
+                output += "kernel: " + commands[i]->get_name() +
+                          " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; \n";
+            }
+            INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
+        }
 
         final_signals[gpu_frame_id].reset();
 

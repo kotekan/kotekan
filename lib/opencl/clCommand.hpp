@@ -26,6 +26,8 @@
 #include "buffer.h"
 #include <string>
 
+
+enum class clCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
 /**
  * @class clCommand
  * @brief Base class for defining openCL commands to execute on GPUs
@@ -111,6 +113,9 @@ public:
     virtual void finalize_frame(int gpu_frame_id);
     /// Reads all the relevant config values out of the config file references into the protected scope variables of the class.
     virtual void apply_config(const uint64_t &fpga_seq);
+
+    double get_last_gpu_execution_time();
+    clCommandType get_command_type();
 protected:
     /// Compiled instance of the kernel that will execute on the GPU once enqueued.
     cl_kernel kernel;
@@ -140,6 +145,10 @@ protected:
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
     int32_t _buffer_depth;
     int32_t _gpu_buffer_depth;
+
+    // Profiling time for the last signal
+    double last_gpu_execution_time = 0;
+    clCommandType command_type = clCommandType::NOT_SET;
 };
 
 #endif // CL_COMMAND_H

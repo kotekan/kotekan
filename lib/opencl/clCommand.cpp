@@ -118,11 +118,36 @@ void clCommand::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 }
 
 void clCommand::finalize_frame(int gpu_frame_id) {
+    bool profiling = true;
     if (post_event[gpu_frame_id] != NULL){
+        if (profiling) {
+            cl_ulong start_time, stop_time;
+            CHECK_CL_ERROR(clGetEventProfilingInfo (post_event[gpu_frame_id],
+                                                    CL_PROFILING_COMMAND_START,
+                                                    sizeof(start_time),
+                                                    &start_time,
+                                                    NULL) );
+            CHECK_CL_ERROR(clGetEventProfilingInfo (post_event[gpu_frame_id],
+                                                    CL_PROFILING_COMMAND_END,
+                                                    sizeof(stop_time),
+                                                    &stop_time,
+                                                    NULL) );
+            last_gpu_execution_time = ((double)(stop_time - start_time)) * 1e-9;
+        }
+
         clReleaseEvent(post_event[gpu_frame_id]);
         post_event[gpu_frame_id] = NULL;
     }
-    else INFO("*** Null event!");
+    else INFO("*** WTF? Null event!");
+
 }
 
+
+double clCommand::get_last_gpu_execution_time() {
+    return last_gpu_execution_time;
+}
+
+clCommandType clCommand::get_command_type() {
+    return command_type;
+}
 

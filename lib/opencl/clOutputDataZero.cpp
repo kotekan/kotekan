@@ -15,6 +15,8 @@ clOutputDataZero::clOutputDataZero(Config& config, const string &unique_name,
     output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
     output_zeros = malloc(output_len);
     memset(output_zeros, 0, output_len);
+
+    command_type = clCommandType::COPY_IN;
 }
 
 clOutputDataZero::~clOutputDataZero()

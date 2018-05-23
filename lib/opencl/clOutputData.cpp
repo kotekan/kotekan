@@ -16,6 +16,8 @@ clOutputData::clOutputData(Config& config, const string &unique_name,
     output_buffer_id = 0;
     output_buffer_precondition_id = 0;
     output_buffer_finalize_id = 0;
+
+    command_type = clCommandType::COPY_OUT;
 }
 
 clOutputData::~clOutputData()

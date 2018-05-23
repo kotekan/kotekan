@@ -16,6 +16,8 @@ clPreseedKernel::clPreseedKernel(Config& config, const string &unique_name,
     _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
 
     defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
+
+    command_type = clCommandType::KERNEL;
 }
 
 clPreseedKernel::~clPreseedKernel()

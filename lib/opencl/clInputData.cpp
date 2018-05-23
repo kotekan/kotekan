@@ -16,6 +16,7 @@ clInputData::clInputData(Config& config, const string &unique_name,
     network_buffer_precondition_id = 0;
     network_buffer_finalize_id = 0;
 
+    command_type = clCommandType::COPY_IN;
 }
 
 clInputData::~clInputData()

@@ -16,6 +16,8 @@ clPresumKernel::clPresumKernel(Config& config, const string &unique_name,
     _block_size = config.get_int(unique_name, "block_size");
     _num_blocks = config.get_int(unique_name, "num_blocks");
     _buffer_depth = config.get_int(unique_name, "buffer_depth");
+
+    command_type = clCommandType::KERNEL;
 }
 
 clPresumKernel::~clPresumKernel()

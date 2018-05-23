@@ -28,6 +28,8 @@ clPresumZero::clPresumZero(Config& config, const string &unique_name,
         exit(errno);
     }
     memset(presum_zeros, 0, presum_len );
+
+    command_type = clCommandType::COPY_IN;
 }
 
 clPresumZero::~clPresumZero()
