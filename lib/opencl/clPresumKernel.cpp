@@ -63,7 +63,7 @@ cl_event clPresumKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_
     uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
 
     cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    cl_mem presum_memory = device.get_gpu_memory("presum", presum_len);
+    cl_mem presum_memory = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
 
     setKernelArg(0, input_memory);
     setKernelArg(1, presum_memory);

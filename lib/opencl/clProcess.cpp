@@ -73,13 +73,14 @@ void clProcess::main_thread()
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
     bool first_run = true;
+    cl_event signal;
 
     while (!stop_thread) {
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
-        for (auto command : commands) {
+        for (auto &command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0){
                 INFO("Received exit in OpenCL command precondition! (Command '%s')",command->get_name().c_str());
                 break;
@@ -89,8 +90,8 @@ void clProcess::main_thread()
         INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id].wait_for_free_slot();
-        cl_event signal = NULL;
-        for (auto command : commands) {
+        signal = NULL;
+        for (auto &command : commands) {
             // Feed the last signal into the next operation
             signal = command->execute(gpu_frame_id, 0, signal);
             //usleep(10);
@@ -129,7 +130,7 @@ void clProcess::results_thread() {
         }
         DEBUG2("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
-        for (auto command : commands) {
+        for (auto &command : commands) {
             command->finalize_frame(gpu_frame_id);
         }
         DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);

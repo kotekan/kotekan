@@ -41,7 +41,7 @@ cl_event clPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_ev
 
     clCommand::execute(gpu_frame_id, 0, pre_event);
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory("presum", presum_len);
+    cl_mem gpu_memory_frame = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
 
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),
@@ -50,8 +50,8 @@ cl_event clPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_ev
                                             0, //offset
                                             presum_len,
                                             presum_zeros,
-                                            (pre_event==NULL)?0:1,
-                                            (pre_event==NULL)?NULL:&pre_event,
+                                            1,
+                                            &pre_event,
                                             &post_event[gpu_frame_id]) );
     return post_event[gpu_frame_id];
 }

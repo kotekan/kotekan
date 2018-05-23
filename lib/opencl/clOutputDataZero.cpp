@@ -38,8 +38,8 @@ cl_event clOutputDataZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
                                             0, //offset
                                             output_len,
                                             output_zeros,
-                                            (pre_event==NULL)?0:1,
-                                            (pre_event==NULL)?NULL:&pre_event,
+                                            1,
+                                            &pre_event,
                                             &post_event[gpu_frame_id]) );
     return post_event[gpu_frame_id];
 }

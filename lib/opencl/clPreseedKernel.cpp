@@ -81,14 +81,12 @@ cl_event clPreseedKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
 
-    cl_mem presum_memory = device.get_gpu_memory("presum", presum_len);
-    cl_mem output_memory_frame = device.get_gpu_memory_array("output",
-                                                gpu_frame_id, output_len);
+    cl_mem output_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    cl_mem presum_memory = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
 
     setKernelArg(0, presum_memory);
     setKernelArg(1, output_memory_frame);
 
-//    DEBUG("gws: %i, %i, %i. lws: %i, %i, %i", gws[0], gws[1], gws[2], lws[0], lws[1], lws[2]);
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(device.getQueue(1),
                                             kernel,
                                             3,

@@ -52,7 +52,7 @@ clCommand* clCommandFactory::create(const string &name,
 
 clCommandFactory::~clCommandFactory()
 {
-    for (auto command : list_commands)
+    for (auto &command : list_commands)
         delete command;
 }
 

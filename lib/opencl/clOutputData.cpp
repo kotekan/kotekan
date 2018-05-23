@@ -54,8 +54,8 @@ cl_event clOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_ev
                                             0,
                                             output_len,
                                             host_output_frame,
-                                            (pre_event==NULL)?0:1,
-                                            (pre_event==NULL)?NULL:&pre_event,
+                                            1,
+                                            &pre_event,
                                             &post_event[gpu_frame_id]) );
 
     output_buffer_id = (output_buffer_id + 1) % output_buf->num_frames;

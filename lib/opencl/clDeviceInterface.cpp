@@ -144,7 +144,7 @@ cl_command_queue clDeviceInterface::getQueue(int param_Dim)
 
 
 clMemoryBlock::~clMemoryBlock()  {
-    for (auto gpu_pointer : gpu_pointers) {
+    for (auto &gpu_pointer : gpu_pointers) {
         clReleaseMemObject(gpu_pointer);
     }
 }

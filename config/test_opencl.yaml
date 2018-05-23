@@ -59,7 +59,7 @@ gpu_input_buffers:
         kotekan_buffer: standard
 
 gpu_output_buffers:
-    num_frames: buffer_depth
+    num_frames: buffer_depth * 4
     frame_size: num_local_freq * num_blocks * (block_size*block_size)*two*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer:
@@ -141,7 +141,7 @@ gpu:
 
 check_data:
   real: [0]
-  imag: [-5242880]
+  imag: [65536]
   const_data_check:
     kotekan_process: constDataCheck
     in_buf: gpu_output_buffer

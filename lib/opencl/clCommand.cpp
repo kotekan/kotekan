@@ -107,7 +107,6 @@ cl_event clCommand::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event
     assert(gpu_frame_id>=0);
 
     return NULL;
-//    DEBUG("Execute kernel: %s", name);
 }
 
 void clCommand::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
@@ -119,11 +118,11 @@ void clCommand::setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer)
 }
 
 void clCommand::finalize_frame(int gpu_frame_id) {
-    //the events need to be defined as arrays per buffer id
     if (post_event[gpu_frame_id] != NULL){
         clReleaseEvent(post_event[gpu_frame_id]);
         post_event[gpu_frame_id] = NULL;
     }
+    else INFO("*** Null event!");
 }
 
 
