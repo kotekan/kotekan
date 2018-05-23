@@ -28,7 +28,9 @@ frbPostProcess::frbPostProcess(Config& config_,
     frb_header_scale = new float[_nbeams * _num_gpus];
     frb_header_offset = new float[_nbeams * _num_gpus];
 
-    ib = (float*)aligned_alloc(32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float));
+    if (posix_memalign((void**)&ib,32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float))){
+        ERROR("Couldn't allocate memory.");
+    }
 }
 
 frbPostProcess::~frbPostProcess() {
