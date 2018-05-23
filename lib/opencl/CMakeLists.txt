@@ -1,5 +1,5 @@
 cmake_minimum_required( VERSION 2.8 )
-project( libkotekan_opencl )
+project( kotekan_opencl )
 
 include_directories(${OPENCL_INCLUDE_DIRS})
 
@@ -46,6 +46,6 @@ add_custom_target(kernel_copy
         "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
         "kernels/")
 
-target_link_libraries( kotekan_opencl kotekan_libs )
+#target_link_libraries( kotekan_opencl kotekan_libs )
 
 add_dependencies( kotekan_opencl kernel_copy )

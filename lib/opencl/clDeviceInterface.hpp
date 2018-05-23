@@ -3,7 +3,7 @@
 
 #include <map>
 #include <sys/mman.h>
-
+#include <vector>
 #ifdef __APPLE__
     #include <OpenCL/cl_platform.h>
     #include "OpenCL/opencl.h"

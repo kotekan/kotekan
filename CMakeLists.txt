@@ -99,6 +99,8 @@ if (${USE_OPENCL})
   include_directories( ${OPENCL_INCLUDE_DIRS} )
   #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
   add_definitions(-DWITH_OPENCL)
+  # Required for some CentOS gcc version
+  add_definitions(-D__STDC_FORMAT_MACROS)
   set(GPU_MODULES ${GPU_MODULES} "OpenCL")
 endif ()
 MESSAGE("GPU Modules Included: " ${GPU_MODULES})

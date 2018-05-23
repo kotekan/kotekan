@@ -28,9 +28,7 @@ frbPostProcess::frbPostProcess(Config& config_,
     frb_header_scale = new float[_nbeams * _num_gpus];
     frb_header_offset = new float[_nbeams * _num_gpus];
 
-    if (posix_memalign((void**)&ib,32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float))){
-        ERROR("Couldn't allocate memory.");
-    }
+    ib = (float*)aligned_alloc(32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float));
 }
 
 frbPostProcess::~frbPostProcess() {
@@ -87,7 +85,7 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
                     ;
     udp_packet_size = _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 }
-
+#ifdef __AVX2__
 void frbPostProcess::main_thread() {
 
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
@@ -240,3 +238,9 @@ void frbPostProcess::main_thread() {
         }
     } //end stop thread
 }
+#else
+void frbPostProcess::main_thread() {
+    ERROR("No AVX2 intrinsics present on this node")
+}
+#endif
+
