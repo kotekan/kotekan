@@ -14,8 +14,8 @@ clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_b
     INFO("GPU Id %i",gpu_id);
 
     // Find out how many GPUs can be probed.
-    cl_uint max_num_gpus = 4;//0;
-    clGetDeviceIDs(NULL,CL_DEVICE_TYPE_GPU,0,NULL,&max_num_gpus);
+    cl_uint max_num_gpus;
+    clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU,0,NULL,&max_num_gpus);
     INFO("Maximum number of GPUs: %d",max_num_gpus);
 
     // Find a GPU device..
