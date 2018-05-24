@@ -81,8 +81,8 @@ void frbNetworkProcess::main_thread()
   
   
   //parsing the host name
-  parse_host_name(rack, node, nos, my_node_id);
   
+  parse_host_name(rack, node, nos, my_node_id);
   for(int i=0;i<number_of_subnets;i++)
   {
     temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<".1"<<node;
@@ -91,21 +91,25 @@ void frbNetworkProcess::main_thread()
   }
   
   
-
+  //rest server
   using namespace std::placeholders;
   restServer * rest_server = get_rest_server();
   string endpoint = "/frb/update_beam_offset";
   rest_server->register_json_callback(endpoint,
       std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
 
-
+  //declaring and initializing variables for the buffers
   int frame_id = 0;
   uint8_t * packet_buffer = NULL;
-
+  
+  //reading the L1 ip addresses from the config file
   std::vector<std::string> link_ip = config.get_string_array(unique_name, "L1_node_ips");
   int number_of_l1_links = link_ip.size();
   INFO("number_of_l1_links: %d",number_of_l1_links);
+  
 
+
+  //initializing sockets for all the subnets (in this case these are .6 .7 .8 .9
   int *sock_fd = new int[number_of_subnets];
 
   for(int i=0;i<number_of_subnets;i++)
@@ -156,14 +160,23 @@ void frbNetworkProcess::main_thread()
       exit(0);
     }
   }
+  
 
+
+  // declaring the timespec variables used mostly for the timing issues
   struct timespec t0,t1,temp;
   t0.tv_sec = 0;
   t0.tv_nsec = 0; /*  nanoseconds */
 
-  //unsigned long time_interval = 125829120; //time per buffer frame in ns
+  unsigned long time_interval = 125829120; //time per buffer frame in ns
 
   long count=0;
+  
+  /* every node is introducing packets to the network. To achive load balancing a sequece_id is 
+  computed for each node this will make sure none of the catalyst switches are overloaded with 
+  traffic at a given point of time ofcourse this will be usefull when chrony is suffucuently 
+  synchronized across all nodes..
+  */
 
   int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
 
@@ -171,64 +184,56 @@ void frbNetworkProcess::main_thread()
   mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
   frame_id = ( frame_id + 1 ) % in_buf->num_frames;
   
-  clock_gettime(CLOCK_MONOTONIC, &t0);
   
-  add_nsec(t0,2*time_interval);
+  //waiting for atleast two frames for the buffer to fill up takes care of the random delay at the start.
 
+  clock_gettime(CLOCK_MONOTONIC, &t0);
+  add_nsec(t0,2*time_interval);  // time_interval is delay for each frame
   clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t0, NULL);
+  
+  
 
+  // time_interval value (125829120 ns) is divided into sections of 230 ns. Each node is assigned a section according to the 
+  // my_sequence_id. This will make sure that no two L0 nodes are introducing packets to the network at the same time. 
+ 
+  clock_gettime(CLOCK_REALTIME, &t0);
+
+  unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
+  unsigned long reminder = (abs_ns%time_interval);
+  unsigned long wait_ns = time_interval-reminder + my_sequence_id*230; // analytically it must be 240.3173828125
+
+
+  add_nsec(t0,wait_ns);
+  
+  clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t0, NULL);
+  
+  clock_gettime(CLOCK_MONOTONIC, &t0);
+  uint64_t *packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
+  uint64_t initial_fpga_count = packet_buffer_uint64[1];
+  uint64_t initial_nsec= t0.tv_sec*10e9+t0.tv_nsec;
   while(!stop_thread)
   {
-    long lock_miss=0;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-
-    unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
-    unsigned long reminder = (abs_ns%time_interval);
-    unsigned long wait_ns = time_interval-reminder + my_sequence_id*230; // analytically it must be 240.3173828125
-
     
-    add_nsec(t0,wait_ns);
-
+    // reading the next frame and comparing the fpga clock with the monotonic clock.   
+    if(count!=0)
+    {
+      packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+      if(packet_buffer==NULL)
+        break;
+      clock_gettime(CLOCK_MONOTONIC, &t1);
     
-    // Checking with the NTP server
-    if(count==0)
-    {
-      temp = t0;
-    }
-    else
-    {
-      
       add_nsec(t0,time_interval);
-      
-
-      long sec = (long)temp.tv_sec - (long)t0.tv_sec;
-      long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
-      nsec = sec*1e9+nsec;
-
-      if (abs(nsec)==time_interval && abs(nsec)!=0)
-      {
-        WARN("Buffers are too slow %d \n\n\n\n\n\n\n\n",abs(nsec));
-        add_nsec(t0,-1*nsec);
-        temp=t0;
-        lock_miss++;
-      }
-      else if(abs(nsec)!=0)
-      {
-        lock_miss++;
-        temp=t0;
-      }
+      if(t1.tv_sec*10e9 + t1.tv_nsec > t0.tv_sec*10e9 + t0.tv_nsec) add_nsec(t0,time_interval);     
+      uint64_t offset = (t0.tv_sec*10e9+t0.tv_nsec-initial_nsec) - (packet_buffer_uint64[1]-initial_fpga_count)*2560;
+      add_nsec(t0,-1*offset);    
     }
 
     t1=t0;
-
-    
-    packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    if(packet_buffer==NULL)
-      break;
-    
-
+     
+    /*
     uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
     INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*4*253+12],lock_miss);
+    */
 
     int local_beam_offset = beam_offset;
     int beam_offset_upper_limit=512;
@@ -250,7 +255,7 @@ void frbNetworkProcess::main_thread()
     {
       for(int stream=0; stream<256; stream++)
       {
-        int e_stream = my_sequence_id + stream;
+        int e_stream = my_sequence_id + stream; // making sure no two nodes send packets to same L1 node
         if(e_stream>255) e_stream -= 256;
 
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);

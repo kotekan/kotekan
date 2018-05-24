@@ -381,6 +381,7 @@ lib/processes/CMakeFiles/kotekan_processes.dir/pulsarNetworkProcess.cpp.o
  ../lib/metadata/chimeMetadata.h
  ../lib/utils/fpga_header_functions.h
  ../lib/utils/osxBindCPU.hpp
+ ../lib/utils/tx_utils.hpp
  ../lib/utils/util.h
  /root/arun/kotekan/lib/processes/pulsarNetworkProcess.cpp
  /root/arun/kotekan/lib/processes/pulsarNetworkProcess.hpp

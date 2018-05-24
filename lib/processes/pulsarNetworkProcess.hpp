@@ -16,6 +16,7 @@ File Contents:
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
+#include "tx_utils.hpp"
 
 
 /**
