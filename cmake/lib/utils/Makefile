@@ -331,33 +331,6 @@ output_formating.c.s:
 	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/output_formating.c.s
 .PHONY : output_formating.c.s
 
-parse_host_name.o: parse_host_name.cpp.o
-
-.PHONY : parse_host_name.o
-
-# target to build an object file
-parse_host_name.cpp.o:
-	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o
-.PHONY : parse_host_name.cpp.o
-
-parse_host_name.i: parse_host_name.cpp.i
-
-.PHONY : parse_host_name.i
-
-# target to preprocess a source file
-parse_host_name.cpp.i:
-	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.i
-.PHONY : parse_host_name.cpp.i
-
-parse_host_name.s: parse_host_name.cpp.s
-
-.PHONY : parse_host_name.s
-
-# target to generate assembly for a file
-parse_host_name.cpp.s:
-	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.s
-.PHONY : parse_host_name.cpp.s
-
 time_tracking.o: time_tracking.c.o
 
 .PHONY : time_tracking.o
@@ -384,6 +357,33 @@ time_tracking.s: time_tracking.c.s
 time_tracking.c.s:
 	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/time_tracking.c.s
 .PHONY : time_tracking.c.s
+
+tx_utils.o: tx_utils.cpp.o
+
+.PHONY : tx_utils.o
+
+# target to build an object file
+tx_utils.cpp.o:
+	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o
+.PHONY : tx_utils.cpp.o
+
+tx_utils.i: tx_utils.cpp.i
+
+.PHONY : tx_utils.i
+
+# target to preprocess a source file
+tx_utils.cpp.i:
+	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.i
+.PHONY : tx_utils.cpp.i
+
+tx_utils.s: tx_utils.cpp.s
+
+.PHONY : tx_utils.s
+
+# target to generate assembly for a file
+tx_utils.cpp.s:
+	cd /root/arun/kotekan/cmake && $(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.s
+.PHONY : tx_utils.cpp.s
 
 util.o: util.c.o
 
@@ -524,12 +524,12 @@ help:
 	@echo "... output_formating.o"
 	@echo "... output_formating.i"
 	@echo "... output_formating.s"
-	@echo "... parse_host_name.o"
-	@echo "... parse_host_name.i"
-	@echo "... parse_host_name.s"
 	@echo "... time_tracking.o"
 	@echo "... time_tracking.i"
 	@echo "... time_tracking.s"
+	@echo "... tx_utils.o"
+	@echo "... tx_utils.i"
+	@echo "... tx_utils.s"
 	@echo "... util.o"
 	@echo "... util.i"
 	@echo "... util.s"

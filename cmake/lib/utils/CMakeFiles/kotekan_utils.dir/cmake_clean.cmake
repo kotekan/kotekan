@@ -8,7 +8,7 @@ file(REMOVE_RECURSE
   "CMakeFiles/kotekan_utils.dir/util.c.o"
   "CMakeFiles/kotekan_utils.dir/visBuffer.cpp.o"
   "CMakeFiles/kotekan_utils.dir/visUtil.cpp.o"
-  "CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o"
+  "CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o"
   "CMakeFiles/kotekan_utils.dir/network_dpdk.c.o"
   "CMakeFiles/kotekan_utils.dir/visFile.cpp.o"
   "libkotekan_utils.pdb"

@@ -199,7 +199,7 @@ lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o
  ../lib/metadata/chimeMetadata.h
  ../lib/utils/fpga_header_functions.h
  ../lib/utils/osxBindCPU.hpp
- ../lib/utils/parse_host_name.hpp
+ ../lib/utils/tx_utils.hpp
  ../lib/utils/util.h
  /root/arun/kotekan/lib/processes/frbNetworkProcess.cpp
  /root/arun/kotekan/lib/processes/frbNetworkProcess.hpp

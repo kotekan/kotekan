@@ -6,7 +6,7 @@
 #define KOTEKAN_VERSION (2.3)
 #define KOTEKAN_VERSION_STR "2.3"
 
-#define GIT_BRANCH "pulsar_network"
-#define GIT_COMMIT_HASH "764bc15fa2c375a299f9044b24724ceb8b9c65b2"
+#define GIT_BRANCH "frb_pulsar_transmission"
+#define GIT_COMMIT_HASH "ecd4f7561056f50e10832597c22cfec65cfcbaf7"
 
 #endif

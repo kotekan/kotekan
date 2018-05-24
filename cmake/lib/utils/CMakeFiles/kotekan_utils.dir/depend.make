@@ -82,8 +82,8 @@ lib/utils/CMakeFiles/kotekan_utils.dir/time_tracking.c.o: ../lib/utils/time_trac
 lib/utils/CMakeFiles/kotekan_utils.dir/util.c.o: ../lib/utils/util.c
 lib/utils/CMakeFiles/kotekan_utils.dir/util.c.o: ../lib/utils/util.h
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o: ../lib/utils/parse_host_name.cpp
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o: ../lib/utils/parse_host_name.hpp
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o: ../lib/utils/parse_host_name.hpp
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o: ../lib/utils/tx_utils.cpp
 
 lib/utils/CMakeFiles/kotekan_utils.dir/visBuffer.cpp.o: ../include/fmt.hpp
 lib/utils/CMakeFiles/kotekan_utils.dir/visBuffer.cpp.o: ../include/fmt/format.cc

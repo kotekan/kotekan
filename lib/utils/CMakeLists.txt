@@ -13,7 +13,7 @@ set (KOTEKAN_UTIL_SOURCES
               util.c
               visBuffer.cpp
               visUtil.cpp
-              parse_host_name.cpp
+              tx_utils.cpp
        )
 
 if (${USE_DPDK})

@@ -576,7 +576,17 @@ errors.h
 util.h
 ../lib/utils/util.h
 
-../lib/utils/parse_host_name.hpp
+../lib/utils/powerStreamUtil.hpp
+
+../lib/utils/time_tracking.h
+sys/types.h
+-
+stdlib.h
+-
+stdint.h
+-
+
+../lib/utils/tx_utils.hpp
 assert.h
 -
 stdlib.h
@@ -608,16 +618,6 @@ sys/socket.h
 netinet/in.h
 -
 cmath
--
-
-../lib/utils/powerStreamUtil.hpp
-
-../lib/utils/time_tracking.h
-sys/types.h
--
-stdlib.h
--
-stdint.h
 -
 
 ../lib/utils/util.h
@@ -1081,8 +1081,8 @@ chimeMetadata.h
 /root/arun/kotekan/lib/processes/chimeMetadata.h
 fpga_header_functions.h
 /root/arun/kotekan/lib/processes/fpga_header_functions.h
-parse_host_name.hpp
-/root/arun/kotekan/lib/processes/parse_host_name.hpp
+tx_utils.hpp
+/root/arun/kotekan/lib/processes/tx_utils.hpp
 
 /root/arun/kotekan/lib/processes/frbNetworkProcess.hpp
 buffer.h

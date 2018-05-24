@@ -198,7 +198,7 @@ lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/c
 lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/metadata/chimeMetadata.h
 lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/utils/fpga_header_functions.h
 lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/utils/osxBindCPU.hpp
-lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/utils/parse_host_name.hpp
+lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/utils/tx_utils.hpp
 lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/utils/util.h
 lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/processes/frbNetworkProcess.cpp
 lib/processes/CMakeFiles/kotekan_processes.dir/frbNetworkProcess.cpp.o: ../lib/processes/frbNetworkProcess.hpp

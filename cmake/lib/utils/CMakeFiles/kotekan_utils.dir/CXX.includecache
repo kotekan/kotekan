@@ -280,10 +280,6 @@ time.h
 inttypes.h
 -
 
-/root/arun/kotekan/lib/utils/parse_host_name.cpp
-parse_host_name.hpp
-/root/arun/kotekan/lib/utils/parse_host_name.hpp
-
 /root/arun/kotekan/lib/utils/parse_host_name.hpp
 assert.h
 -
@@ -317,6 +313,10 @@ netinet/in.h
 -
 cmath
 -
+
+/root/arun/kotekan/lib/utils/tx_utils.cpp
+parse_host_name.hpp
+/root/arun/kotekan/lib/utils/parse_host_name.hpp
 
 /root/arun/kotekan/lib/utils/visBuffer.cpp
 visBuffer.hpp

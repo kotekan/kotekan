@@ -273,28 +273,28 @@ lib/utils/CMakeFiles/kotekan_utils.dir/visUtil.cpp.o.provides: lib/utils/CMakeFi
 lib/utils/CMakeFiles/kotekan_utils.dir/visUtil.cpp.o.provides.build: lib/utils/CMakeFiles/kotekan_utils.dir/visUtil.cpp.o
 
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o: lib/utils/CMakeFiles/kotekan_utils.dir/flags.make
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o: ../lib/utils/parse_host_name.cpp
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/root/arun/kotekan/cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o"
-	cd /root/arun/kotekan/cmake/lib/utils && /usr/bin/c++   $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o -c /root/arun/kotekan/lib/utils/parse_host_name.cpp
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o: lib/utils/CMakeFiles/kotekan_utils.dir/flags.make
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o: ../lib/utils/tx_utils.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/root/arun/kotekan/cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o"
+	cd /root/arun/kotekan/cmake/lib/utils && /usr/bin/c++   $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o -c /root/arun/kotekan/lib/utils/tx_utils.cpp
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.i"
-	cd /root/arun/kotekan/cmake/lib/utils && /usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /root/arun/kotekan/lib/utils/parse_host_name.cpp > CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.i
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/kotekan_utils.dir/tx_utils.cpp.i"
+	cd /root/arun/kotekan/cmake/lib/utils && /usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /root/arun/kotekan/lib/utils/tx_utils.cpp > CMakeFiles/kotekan_utils.dir/tx_utils.cpp.i
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.s"
-	cd /root/arun/kotekan/cmake/lib/utils && /usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /root/arun/kotekan/lib/utils/parse_host_name.cpp -o CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.s
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/kotekan_utils.dir/tx_utils.cpp.s"
+	cd /root/arun/kotekan/cmake/lib/utils && /usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /root/arun/kotekan/lib/utils/tx_utils.cpp -o CMakeFiles/kotekan_utils.dir/tx_utils.cpp.s
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.requires:
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.requires:
 
-.PHONY : lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.requires
+.PHONY : lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.requires
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.provides: lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.requires
-	$(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.provides.build
-.PHONY : lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.provides
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.provides: lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.requires
+	$(MAKE) -f lib/utils/CMakeFiles/kotekan_utils.dir/build.make lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.provides.build
+.PHONY : lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.provides
 
-lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.provides.build: lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o
+lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.provides.build: lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o
 
 
 lib/utils/CMakeFiles/kotekan_utils.dir/network_dpdk.c.o: lib/utils/CMakeFiles/kotekan_utils.dir/flags.make
@@ -356,7 +356,7 @@ kotekan_utils_OBJECTS = \
 "CMakeFiles/kotekan_utils.dir/util.c.o" \
 "CMakeFiles/kotekan_utils.dir/visBuffer.cpp.o" \
 "CMakeFiles/kotekan_utils.dir/visUtil.cpp.o" \
-"CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o" \
+"CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o" \
 "CMakeFiles/kotekan_utils.dir/network_dpdk.c.o" \
 "CMakeFiles/kotekan_utils.dir/visFile.cpp.o"
 
@@ -372,7 +372,7 @@ lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/time_tracki
 lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/util.c.o
 lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/visBuffer.cpp.o
 lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/visUtil.cpp.o
-lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o
+lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o
 lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/network_dpdk.c.o
 lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/visFile.cpp.o
 lib/utils/libkotekan_utils.a: lib/utils/CMakeFiles/kotekan_utils.dir/build.make
@@ -395,7 +395,7 @@ lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_ut
 lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/util.c.o.requires
 lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/visBuffer.cpp.o.requires
 lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/visUtil.cpp.o.requires
-lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/parse_host_name.cpp.o.requires
+lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/tx_utils.cpp.o.requires
 lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/network_dpdk.c.o.requires
 lib/utils/CMakeFiles/kotekan_utils.dir/requires: lib/utils/CMakeFiles/kotekan_utils.dir/visFile.cpp.o.requires
 
