@@ -1475,6 +1475,8 @@ chimeMetadata.h
 /root/arun/kotekan/lib/processes/chimeMetadata.h
 fpga_header_functions.h
 /root/arun/kotekan/lib/processes/fpga_header_functions.h
+tx_utils.hpp
+/root/arun/kotekan/lib/processes/tx_utils.hpp
 
 /root/arun/kotekan/lib/processes/pulsarNetworkProcess.hpp
 buffer.h
