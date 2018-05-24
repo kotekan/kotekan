@@ -12,10 +12,10 @@ restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
     register_consumer(in_buf, unique_name.c_str());
 
     len = config.get_int_default(unique_name, "len", 0);
-    
+
     registered = false;
     endpoint = "/inspect_frame/" + in_buf_config_name;
-      
+
     if (len == 0) {
         len = in_buf->frame_size;
     } else if (len > in_buf->frame_size) {
