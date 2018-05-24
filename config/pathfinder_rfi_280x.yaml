@@ -19,8 +19,6 @@ samples_per_data_set: 32768
 num_data_sets: 1
 buffer_depth: 6
 num_gpu_frames: 256
-num_links: 8
-link_map: [0,0,1,1,1,2,2,2]
 num_gpus: 3
 cpu_affinity: [4,5,10,11]
 enable_gating: false
@@ -32,23 +30,23 @@ sizeof_per_element_data: 12
 sizeof_uint8_t: 1
 sizeof_gate_frame_header: 236
 sizeof_float: 4
-
 num_links_fury: 8
-num_links_270: 2
-num_links_280: 3
-
 num_links_per_gpu: 1
+
+#num_links: 8
+#link_map: [0,0,1,1,1,2,2,2]
+#num_links_270: 2
+#num_links_280: 3
+num_links: 4
+link_map: [0,0,1,2]
+num_links_270: 2
+num_links_280: 1
 
 #RFI stuff
 sk_step: 256
 rfi_combined: True
 frames_per_packet: 1
 bad_inputs: []
-
-# Keeping and eye on status
-//buffer_status:
-//  kotekan_process: bufferStatus
-//  time_delay: 5000000 #microsec
 
 # Pool
 main_pool:
@@ -112,7 +110,8 @@ dpdk:
   kotekan_process: dpdkWrapper
   mode: no_shuffle
   num_lcores: 4
-  udp_packet_size: 4800  
+#  udp_packet_size: 4800  
+  udp_packet_size: 4160
   timesamples_per_packet: 2
   network_out_buf_0: gpu_270_input_buffer_0
   network_out_buf_1: gpu_280_input_buffer_0
@@ -141,18 +140,18 @@ gpu:
   - name: clRfiInputSum
 #    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
     kernel: "../lib/opencl/kernels/rfi_chime_inputsum_private.cl"
-#  - name: beamform_phase_data
-#    kernel: ''
-#  - name: offset_accumulator
-#    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
-#  - name: preseed_multifreq
-#    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
-#  - name: pairwise_correlator
-#    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
-#  - name: beamform_kernel
-#    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
-#  - name: output_beamform_result
-#    kernel: ''
+  - name: beamform_phase_data
+    kernel: ''
+  - name: offset_accumulator
+    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+  - name: preseed_multifreq
+    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+  - name: pairwise_correlator
+    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+  - name: beamform_kernel
+    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+  - name: output_beamform_result
+    kernel: ''
   - name: clRfiOutput
     kernel: ''
   - name: output_data_result
@@ -161,7 +160,7 @@ gpu:
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  enable_beamforming: false
+  enable_beamforming: true
   instrument_lat: 49.3203
   instrument_long: -119.6175
   ra: 53.5
@@ -196,31 +195,24 @@ gpu:
 
 
 rfiBroadcast:
-  kotekan_process: rfiBroadcast
-  rfi_in: gpu_rfi_output_buffer_0
-  total_links: 2
-  destination_port: 41216
-  destination_ip: 10.10.10.2
-#  destination_ip: 127.0.0.1
   destination_protocol: UDP
-
-rfiBroadcast1:
-  kotekan_process: rfiBroadcast
-  rfi_in: gpu_rfi_output_buffer_1
-  total_links: 3
-  destination_port: 41217
-  destination_ip: 10.10.10.2
-#  destination_ip: 127.0.0.1
-  destination_protocol: UDP
-
-rfiBroadcast2:
-  kotekan_process: rfiBroadcast
-  rfi_in: gpu_rfi_output_buffer_2
-  total_links: 3
-  destination_port: 41218
-  destination_ip: 10.10.10.2
-#  destination_ip: 127.0.0.1
-  destination_protocol: UDP
+#  destination_ip: 10.10.10.2
+  destination_ip: 127.0.0.1
+  gpu_0:
+    total_links: 2
+    destination_port: 41216
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_0
+  gpu_1:
+    total_links: 3
+    destination_port: 41217
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_1
+  gpu_2:
+    total_links: 3
+    destination_port: 41218
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_2
 
 #RFI Live-view Paramters
 waterfallX: 1024

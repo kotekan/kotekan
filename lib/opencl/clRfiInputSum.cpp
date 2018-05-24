@@ -84,6 +84,7 @@ void clRfiInputSum::build(device_interface &param_Device)
 cl_event clRfiInputSum::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
     gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    std::lock_guard<std::mutex> lock(rest_callback_mutex);
 
     setKernelArg(0, param_Device.getRfiTimeSumBuffer(param_bufferID));
     setKernelArg(1, param_Device.getRfiOutputBuffer(param_bufferID));
