@@ -66,7 +66,7 @@ private:
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
 
-    void listen_thread();
+    void listen_thread(const uint32_t freq_id);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
