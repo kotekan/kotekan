@@ -89,7 +89,7 @@ private:
     bool registered;
 
     /// The length of the frame_copy array.
-    uint32_t len;
+    int32_t len;
 };
 
 #endif /* REST_INSPECT_FRAME_HPP */
