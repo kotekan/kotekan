@@ -12,6 +12,8 @@
 #include <string>
 #include <errno.h>
 #include <time.h>
+#include <mutex>
+
 #include "rfiRecord.hpp"
 #include "util.h"
 #include "errors.h"
@@ -31,10 +33,30 @@ rfiRecord::rfiRecord(Config& config,
     register_consumer(rfi_buf, unique_name.c_str());
     //Intialize internal config
     apply_config(0);
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    string endpoint = unique_name + "/rfi_record"
+    rest_server.register_post_callback(endpoint,
+                                        std::bind(&rfiRecord::rest_callback, this, _1, _2));
 }
 
 rfiRecord::~rfiRecord() {
 }
+
+void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
+    rest_callback_mutex.lock()
+
+    INFO("RFI Callback Received... Changing Parameters")
+
+    frames_per_packet = json_request["frames_per_packet"];
+    write_to = json_request["write_to"];
+    write_to_disk = json_request["write_to_disk"];
+    filenum = 0;
+
+    conn.send_empty_reply(STATUS_OK);
+    rest_callback_mutex.unlock()
+}
+
 
 void rfiRecord::apply_config(uint64_t fpga_seq) {
 
@@ -63,7 +85,7 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum) {
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
     snprintf(time_dir, sizeof(time_dir), "%s_rfi", data_time);
     DEBUG("Making Directories")
-    make_rfi_dirs((int) streamID, write_to.c_str(), time_dir);    
+    make_rfi_dirs((int) streamID, write_to.c_str(), time_dir);
     //Create Info File
     char info_file_name[200];
     snprintf(info_file_name, sizeof(info_file_name), "%s/%d/%s/info.txt",
@@ -73,7 +95,7 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum) {
     if(!info_file) {
         ERROR("Error creating info file: %s\n", info_file_name);
     }
-    
+
     fprintf(info_file, "streamID=%d\n", streamID);
     fprintf(info_file, "firstSeqNum=%lld\n",(long long)firstSeqNum);
     fprintf(info_file, "utcTime=%s\n",data_time);
@@ -99,7 +121,7 @@ void rfiRecord::main_thread() {
     while (!stop_thread) {
 
         double start_time = e_time();
-        
+        rest_callback_mutex.lock()
         //Get Frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
@@ -135,16 +157,14 @@ void rfiRecord::main_thread() {
                 ERROR("Cannot close file %s", file_name);
             }
         }
-        
         //Mark Frame Empty
         mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % rfi_buf->num_frames;
-        
 //        DEBUG("Stream ID commented out for testing")
         link_id = (link_id + 1) % total_links;
-
         file_num++;
         DEBUG("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id, total_links, (e_time()-start_time)*1000);
+        rest_callback_mutex.unlock()
     }
 }
 

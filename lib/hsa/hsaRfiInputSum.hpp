@@ -60,6 +60,8 @@ public:
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiInputSum();
 
+    void rest_callback(connectionInstance& conn, json& json_request);
+
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -83,6 +85,7 @@ private:
     uint32_t _num_bad_inputs;
     /// The total integration length of the spectral kurtosis estimate
     uint32_t _M;
+    std::mutex rest_callback_mutex;
 };
 
 #endif

@@ -40,7 +40,7 @@ private:
     uint32_t _num_bad_inputs;
     /// The total integration length of the spectral kurtosis estimate
     uint32_t _M;
-
+    std::mutex rest_callback_mutex;
 };
 
 #endif

@@ -10,6 +10,8 @@
 #include <string>
 #include <errno.h>
 #include <time.h>
+#include <mutex>
+
 #include "rfiBroadcast.hpp"
 #include "util.h"
 #include "errors.h"
@@ -28,10 +30,28 @@ rfiBroadcast::rfiBroadcast(Config& config,
     register_consumer(rfi_buf, unique_name.c_str());
     //Intialize internal config
     apply_config(0);
+
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    string endpoint = unique_name + "/rfi_broadcast"
+    rest_server.register_post_callback(endpoint,
+                                        std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
 }
 
 rfiBroadcast::~rfiBroadcast() {
 }
+
+void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
+
+    rest_callback_mutex.lock();
+    INFO("RFI Callback Received... Changing Parameters")
+
+    frames_per_packet = json_request["frames_per_packet"];
+
+    conn.send_empty_reply(STATUS_OK);
+    rest_callback_mutex.unlock();
+}
+
 
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 
@@ -109,6 +129,7 @@ void rfiBroadcast::main_thread() {
         INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
 
         while (!stop_thread) { //Endless loop
+            rest_callback_mutex.lock();
 
             float rfi_data [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
             float RFI_Avg[total_links][_num_local_freq];
@@ -175,11 +196,11 @@ void rfiBroadcast::main_thread() {
 
                 if (bytes_sent != packet_length){
                     ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
-                }                
+                }
 
                 packet_header_bytes_written -= sizeof(uint16_t);
                 DEBUG("Stream ID %d %d",j , StreamIDs[j])
-              
+
             }
 
             DEBUG("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
@@ -187,6 +208,7 @@ void rfiBroadcast::main_thread() {
             //Prepare Header For Adjustment
             packet_header_bytes_written -= sizeof(int64_t); 
 
+            rest_callback_mutex.unlock();
         }
     }
     else{

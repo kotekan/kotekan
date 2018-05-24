@@ -96,6 +96,7 @@ private:
     string dest_protocol;
     /// Internal socket error holder
     int socket_fd;
+    std::mutex rest_callback_mutex;
 };
 
 #endif

@@ -87,11 +87,10 @@ private:
 
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
-    /// The total number of faulty inputs
-    uint32_t _num_bad_inputs;
 
     /// Boolean to hold whether or not the current kernel execution is the first or not.
-    bool first_pass;
+    bool rebuildInputMask;
+    vector<int32_t> bad_inputs;
 };
 
 #endif

@@ -65,6 +65,7 @@ private:
     string write_to;
     char time_dir[50];
     bool write_to_disk;
+    std::mutex rest_callback_mutex;
 };
 
 #endif
