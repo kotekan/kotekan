@@ -12,6 +12,7 @@
 #include "Config.hpp"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
 #include "chimeMetadata.h"
 
 
@@ -59,6 +60,8 @@ public:
 
     //Primary loop, reads buffer and sends out UDP stream
     void main_thread();
+
+    void rest_callback(connectionInstance& conn, json& json_request);
 
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);

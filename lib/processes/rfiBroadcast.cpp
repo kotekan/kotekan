@@ -32,10 +32,10 @@ rfiBroadcast::rfiBroadcast(Config& config,
     apply_config(0);
 
     using namespace std::placeholders;
-    restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/rfi_broadcast"
-    rest_server.register_post_callback(endpoint,
-                                        std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
+    restServer * rest_server = get_rest_server();
+    string endpoint = unique_name + "/rfi_broadcast";
+    rest_server->register_json_callback(endpoint,
+            std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
 }
 
 rfiBroadcast::~rfiBroadcast() {

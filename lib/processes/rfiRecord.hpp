@@ -12,6 +12,7 @@
 #include "Config.hpp"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
 #include "chimeMetadata.h"
 
 
@@ -33,7 +34,10 @@ public:
     //Primary loop, reads buffer and sends out UDP stream
     void main_thread();
 
+    void rest_callback(connectionInstance& conn, json& json_request);
+
     void save_meta_data(uint16_t streamID, int64_t firstSeqNum);
+
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 
@@ -66,6 +70,7 @@ private:
     char time_dir[50];
     bool write_to_disk;
     std::mutex rest_callback_mutex;
+    uint32_t file_num;
 };
 
 #endif

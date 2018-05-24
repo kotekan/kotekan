@@ -63,6 +63,8 @@ public:
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
 
+    void rest_callback(connectionInstance& conn, json& json_request);
+
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;

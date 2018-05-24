@@ -34,27 +34,27 @@ rfiRecord::rfiRecord(Config& config,
     //Intialize internal config
     apply_config(0);
     using namespace std::placeholders;
-    restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/rfi_record"
-    rest_server.register_post_callback(endpoint,
-                                        std::bind(&rfiRecord::rest_callback, this, _1, _2));
+    restServer * rest_server = get_rest_server();
+    string endpoint = unique_name + "/rfi_record";
+    rest_server->register_json_callback(endpoint,
+            std::bind(&rfiRecord::rest_callback, this, _1, _2));
 }
 
 rfiRecord::~rfiRecord() {
 }
 
 void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
-    rest_callback_mutex.lock()
+    rest_callback_mutex.lock();
 
     INFO("RFI Callback Received... Changing Parameters")
 
     frames_per_packet = json_request["frames_per_packet"];
     write_to = json_request["write_to"];
     write_to_disk = json_request["write_to_disk"];
-    filenum = 0;
+    file_num = 0;
 
     conn.send_empty_reply(STATUS_OK);
-    rest_callback_mutex.unlock()
+    rest_callback_mutex.unlock();
 }
 
 
@@ -116,12 +116,12 @@ void rfiRecord::main_thread() {
     uint32_t frame_id = 0;
     uint8_t * frame = NULL;
     uint32_t link_id = 0;
-    uint32_t file_num = 0;
     int fd = -1;
+    file_num = 0;
     while (!stop_thread) {
 
         double start_time = e_time();
-        rest_callback_mutex.lock()
+        rest_callback_mutex.lock();
         //Get Frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
@@ -164,7 +164,7 @@ void rfiRecord::main_thread() {
         link_id = (link_id + 1) % total_links;
         file_num++;
         DEBUG("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id, total_links, (e_time()-start_time)*1000);
-        rest_callback_mutex.unlock()
+        rest_callback_mutex.unlock();
     }
 }
 
