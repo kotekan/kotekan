@@ -28,9 +28,9 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
     rebuildInputMask = true;
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
+    restServer &rest_server = restServer::instance();
     string endpoint = "/rfi_time_sum_callback/" + std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiTimeSum::rest_callback, this, _1, _2));
 }
 
@@ -48,7 +48,7 @@ void hsaRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) 
     }
     rebuildInputMask = true;
 
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {

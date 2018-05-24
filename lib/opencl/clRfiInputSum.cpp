@@ -25,7 +25,7 @@ void clRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) 
                                    sizeof(int32_t),
                                    &_M) );
 
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 void clRfiInputSum::apply_config(const uint64_t& fpga_seq) {
@@ -47,9 +47,9 @@ void clRfiInputSum::build(device_interface &param_Device)
     apply_config(0);
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
+    restServer &rest_server = restServer::instance();
     string endpoint = "/rfi_input_sum_callback/" + std::to_string(param_Device.getGpuID());
-    rest_server->register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
             std::bind(&clRfiInputSum::rest_callback, this, _1, _2));
 
     gpu_command::build(param_Device);

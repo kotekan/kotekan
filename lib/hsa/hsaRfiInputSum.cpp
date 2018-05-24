@@ -28,9 +28,9 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     _M = (_num_elements - _num_bad_inputs)*_sk_step;
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
+    restServer &rest_server = restServer::instance();
     string endpoint = "/rfi_input_sum_callback/" + std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiInputSum::rest_callback, this, _1, _2));
 }
 
@@ -44,7 +44,7 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     _num_bad_inputs = json_request["num_bad_inputs"];
     _M = (_num_elements - _num_bad_inputs)*_sk_step;
 
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 

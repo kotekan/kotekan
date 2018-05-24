@@ -33,10 +33,11 @@ rfiRecord::rfiRecord(Config& config,
     register_consumer(rfi_buf, unique_name.c_str());
     //Intialize internal config
     apply_config(0);
+    //Initialize rest server endpoint
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
+    restServer &rest_server = restServer::instance();
     string endpoint = unique_name + "/rfi_record";
-    rest_server->register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
             std::bind(&rfiRecord::rest_callback, this, _1, _2));
 }
 
@@ -53,7 +54,7 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     write_to_disk = json_request["write_to_disk"];
     file_num = 0;
 
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
     rest_callback_mutex.unlock();
 }
 

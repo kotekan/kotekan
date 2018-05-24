@@ -24,17 +24,18 @@ rfiBroadcast::rfiBroadcast(Config& config,
                                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&rfiBroadcast::main_thread, this)){
+
     //Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     //Register process as consumer
     register_consumer(rfi_buf, unique_name.c_str());
     //Intialize internal config
     apply_config(0);
-
+    //Initialize rest server endpoint
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
+    restServer &rest_server = restServer::instance();
     string endpoint = unique_name + "/rfi_broadcast";
-    rest_server->register_json_callback(endpoint,
+    rest_server.register_post_callback(endpoint,
             std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
 }
 
@@ -48,7 +49,7 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
 
     frames_per_packet = json_request["frames_per_packet"];
 
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
     rest_callback_mutex.unlock();
 }
 
