@@ -81,6 +81,12 @@ private:
 
     /// Locks changes to @c frame_copy
     std::mutex frame_copy_lock;
+    
+    /// The REST server endpoint name
+    std::string endpoint;
+    
+    /// Has the REST server end point been registered?
+    bool registered;
 
     /// The length of the frame_copy array.
     uint32_t len;
