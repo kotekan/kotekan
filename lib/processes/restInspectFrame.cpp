@@ -12,7 +12,10 @@ restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
     register_consumer(in_buf, unique_name.c_str());
 
     len = config.get_int_default(unique_name, "len", 0);
-
+    
+    registered = false;
+    endpoint = "/inspect_frame/" + in_buf_config_name;
+      
     if (len == 0) {
         len = in_buf->frame_size;
     } else if (len > in_buf->frame_size) {
@@ -26,6 +29,9 @@ restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
 }
 
 restInspectFrame::~restInspectFrame() {
+    if (registered) {
+        restServer::instance().remove_get_callback(endpoint);
+    }
     free(frame_copy);
 }
 
@@ -41,7 +47,6 @@ void restInspectFrame::main_thread() {
 
     uint8_t * frame = NULL;
     uint32_t frame_id = 0;
-    bool registered = false;
 
     while(!stop_thread) {
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
@@ -56,9 +61,7 @@ void restInspectFrame::main_thread() {
         // Only register the callback once we have something to return
         if (!registered) {
             using namespace std::placeholders;
-            restServer * rest_server = get_rest_server();
-            std::string endpoint = "/inspect_frame/" + in_buf_config_name;
-            rest_server->register_get_callback(endpoint,
+            restServer::instance().register_get_callback(endpoint,
                 std::bind(&restInspectFrame::rest_callback, this, _1));
             registered = true;
         }
