@@ -33,7 +33,7 @@ class CommandLine:
         self.mode = 'chime'
         self.min_seq = -1
         self.max_seq = -1
-        self.config = {'frames_per_packet': 4, 'num_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
+        self.config = {'frames_per_packet': 4, 'num_global_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
                         'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'vdif_rfi_header_size': 21,
                         'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4}
         self.supportedModes = ['vdif', 'pathfinder', 'chime']
@@ -122,25 +122,25 @@ def chimeHeaderCheck(header,app):
         print("Chime Header Error: Only Combined RFI values are currently supported ")
         return False
     if(header['sk_step'] != app.config['sk_step']):
-        print("Chime Header Error: SK Step does not match config")
+        print("Chime Header Error: SK Step does not match config; Got value %d"%(header['sk_step']))
         return False
     if(header['num_elements'] != app.config['num_elements']):
-        print("Chime Header Error: Number of Elements does not match config")
+        print("Chime Header Error: Number of Elements does not match config; Got value %d"%(header['num_elements']))
         return False
     if(header['num_timesteps'] != app.config['samples_per_data_set']):
-        print("Chime Header Error: Samples per Dataset does not match config")
+        print("Chime Header Error: Samples per Dataset does not match config; Got value %d"%(header['num_timesteps']))
         return False
-    if(header['num_global_freq'] != app.config['num_freq']):
-        print("Chime Header Error: Number of Global Frequencies does not match config")
+    if(header['num_global_freq'] != app.config['num_global_freq']):
+        print("Chime Header Error: Number of Global Frequencies does not match config; Got value %d"%(header['num_global_freq']))
         return False
     if(header['num_local_freq'] != app.config['num_local_freq']):
-        print("Chime Header Error: Number of Local Frequencies does not match config")
+        print("Chime Header Error: Number of Local Frequencies does not match config; Got value %d"%(header['num_local_freq']))
         return False
     if(header['fpga_seq_num'] < 0):
-        print("Chime Header Error: Invalid FPGA sequenc Number")
+        print("Chime Header Error: Invalid FPGA sequence Number; Got value %d"%(header['fpga_seq_num']))
         return False
     if(header['frames_per_packet']  != app.config['frames_per_packet']):
-        print("Chime Header Error: Frames per Packet does not match config")
+        print("Chime Header Error: Frames per Packet does not match config; Got value %d"%(header['frames_per_packet']))
         return False
 
     print("First Packet Received, Valid Chime Header Confirmed.")
@@ -161,7 +161,7 @@ def VDIFHeaderCheck(header,app):
     if(header['num_times_per_frame'] != app.config['samples_per_data_set']):
         print("VDIF Header Error: Samples per Dataset does not match config")
         return False
-    if(header['num_freq'] != app.config['num_freq']):
+    if(header['num_freq'] != app.config['num_global_freq']):
         print("VDIF Header Error: Number of Frequencies does not match config")
         return False
     return True
@@ -176,7 +176,7 @@ def data_listener(thread_id, socket_udp):
     timesteps_per_frame = app.config['samples_per_data_set']
     timestep = app.config['timestep']
     bytesPerFreq = app.config['bytes_per_freq']
-    global_freq = app.config['num_freq']
+    global_freq = app.config['num_global_freq']
     sk_step = app.config['sk_step']
     vdifRFIHeaderSize = app.config['vdif_rfi_header_size']
     chimeRFIHeaderSize = app.config['chime_rfi_header_size']

@@ -3,8 +3,6 @@
  * @brief RFI input sum, computes spectral kurtosis estimates
  *  - hsaRfiInputSum : public hsaCommand
  */
-
-
 #ifndef HSA_RFI_INPUT_SUM_H
 #define HSA_RFI_INPUT_SUM_H
 
@@ -48,8 +46,6 @@
  * @author Jacob Taylor
  *
  */
-
-
 class hsaRfiInputSum: public hsaCommand
 {
 public:

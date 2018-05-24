@@ -3,7 +3,6 @@
  * @brief Copy RFI Output gpu to host
  *  - hsaRfiOutput : public hsaCommand
  */
-
 #ifndef HSA_RFI_OUTPUT_H
 #define HSA_RFI_OUTPUT_H
 
@@ -30,9 +29,6 @@
  * @author Jacob Taylor
  *
  */
-
-
-
 class hsaRfiOutput: public hsaCommand
 {
 public:

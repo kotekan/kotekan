@@ -138,6 +138,7 @@ static inline int port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 static void check_port_socket_assignment() {
 
     const uint8_t nb_ports = rte_eth_dev_count();
+    INFO("NUM_LINKS %d",nb_ports)
     assert(nb_ports == NUM_LINKS);
 
     /*
