@@ -9,4 +9,24 @@
 #define GIT_BRANCH "@GIT_BRANCH@"
 #define GIT_COMMIT_HASH "@GIT_COMMIT_HASH@"
 
+#define CMAKE_BUILD_SETTINGS \
+        " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"\
+        " CMAKE_CXX_COMPILER: @CMAKE_CXX_COMPILER@\n"\
+        " CMAKE_C_COMPILER: @CMAKE_C_COMPILER@\n"\
+        " USE_DPDK: @USE_DPDK@\n"\
+        " - RTE_SDK: @RTE_SDK@\n"\
+        " - RTE_TARGET: @RTE_TARGET@\n"\
+        " USE_HSA: @USE_HSA@\n"\
+        " USE_CLOC: @USE_CLOC@\n"\
+        " USE_PRECOMPILED_OPENCL: @USE_PRECOMPILED_OPENCL@\n"\
+        " USE_OPENCL: @USE_OPENCL@\n"\
+        " USE_HCC: @USE_HCC@\n"\
+        " DPDK_VDIF: @DPDK_VDIF@\n"\
+        " USE_HDF5: @USE_HDF5@\n"\
+        " - HIGHFIVE_PATH: @HIGHFIVE_PATH@\n"\
+        " USE_LAPACK: @USE_LAPACK@\n"\
+        " - OPENBLAS_PATH: @OPENBLAS_PATH@\n"\
+        " USE_AIRSPY: @USE_AIRSPY@\n"\
+        " USE_FFTW: @USE_FFTW@\n"\
+
 #endif

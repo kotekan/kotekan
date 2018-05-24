@@ -1,5 +1,6 @@
 #include "visFile.hpp"
 #include "errors.h"
+#include "version.h"
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -79,8 +80,7 @@ void visFile::create(const std::string& name,
     file->createAttribute<std::string>(
         "instrument_name", DataSpace::From(inst_name)).write(inst_name);
 
-    // TODO: get git version tag somehow
-    std::string git_version = "not set";
+    std::string git_version = GIT_COMMIT_HASH;
     file->createAttribute<std::string>(
         "git_version_tag", DataSpace::From(git_version)).write(git_version);
 
@@ -339,6 +339,13 @@ void visFileFast::setup_raw() {
     int * fhandle;
     H5Fget_vfd_handle(file->getId(), H5P_DEFAULT, (void**)(&fhandle));
     fd = *fhandle;
+
+#ifndef __APPLE__
+    struct stat st;
+    if((fstat(fd, &st) != 0) || (posix_fallocate(fd, 0, st.st_size) != 0)) {
+        ERROR("Couldn't preallocate file: %s", strerror(errno));
+    }
+#endif
 }
 
 template<typename T>
@@ -377,15 +384,73 @@ bool visFileFast::write_raw(off_t dset_base, int ind, size_t n,
     return true;
 }
 
+void visFileFast::flush_raw_async(off_t dset_base, int ind, size_t n) {
+#ifdef __linux__
+    sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#endif
+}
+
+void visFileFast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
+#ifdef __linux__
+    sync_file_range(fd, dset_base + ind * n, n,
+                    SYNC_FILE_RANGE_WAIT_BEFORE |
+                    SYNC_FILE_RANGE_WRITE |
+                    SYNC_FILE_RANGE_WAIT_AFTER);
+#endif
+    posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED); 
+}
+
 uint32_t visFileFast::extend_time(time_ctype new_time) {
 
     // Perform a raw write of the new time sample
     write_raw(time_offset, ntime, 1, &new_time);
 
+    // Start to flush out older dataset regions
+    uint delta_async = 2;
+    if(ntime > delta_async) {
+        flush_raw_async(vis_offset, ntime - delta_async, nfreq * nprod * sizeof(cfloat));
+        flush_raw_async(weight_offset, ntime - delta_async, nfreq * nprod * sizeof(float));
+        flush_raw_async(gcoeff_offset, ntime - delta_async, nfreq * ninput * sizeof(cfloat));
+        flush_raw_async(gexp_offset, ntime - delta_async, ninput * sizeof(int32_t));
+         
+        if(write_ev) {
+            flush_raw_async(eval_offset, ntime - delta_async, nfreq * nev * sizeof(float));
+            flush_raw_async(evec_offset, ntime - delta_async, nfreq * nev * ninput * sizeof(cfloat));
+            flush_raw_async(evec_offset, ntime - delta_async, nfreq * sizeof(float));
+        }
+    }
+
+    // Flush and clear out any really old parts of the datasets
+    uint delta_sync = 4;
+    if(ntime > delta_sync) {
+        flush_raw_sync(vis_offset, ntime - delta_sync, nfreq * nprod * sizeof(cfloat));
+        flush_raw_sync(weight_offset, ntime - delta_sync, nfreq * nprod * sizeof(float));
+        flush_raw_sync(gcoeff_offset, ntime - delta_sync, nfreq * ninput * sizeof(cfloat));
+        flush_raw_sync(gexp_offset, ntime - delta_sync, ninput * sizeof(int32_t));
+         
+        if(write_ev) {
+            flush_raw_sync(eval_offset, ntime - delta_sync, nfreq * nev * sizeof(float));
+            flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * nev * ninput * sizeof(cfloat));
+            flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * sizeof(float));
+        }
+    }
+
     // Increment the time count and return the index of the added sample
     return ntime++;
 }
 
+void visFileFast::deactivate_time(uint32_t time_ind) {
+    flush_raw_sync(vis_offset, time_ind, nfreq * nprod * sizeof(cfloat));
+    flush_raw_sync(weight_offset, time_ind, nfreq * nprod * sizeof(float));
+    flush_raw_sync(gcoeff_offset, time_ind, nfreq * ninput * sizeof(cfloat));
+    flush_raw_sync(gexp_offset, time_ind, ninput * sizeof(int32_t));
+     
+    if(write_ev) {
+        flush_raw_sync(eval_offset, time_ind, nfreq * nev * sizeof(float));
+        flush_raw_sync(evec_offset, time_ind, nfreq * nev * ninput * sizeof(cfloat));
+        flush_raw_sync(evec_offset, time_ind, nfreq * sizeof(float));
+    }
+}
 
 void visFileFast::write_sample(
     uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
@@ -453,6 +518,8 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
 
             // As we've added a new sample we need to delete the earliest sample
             if(vis_file_map.size() > window_size) {
+                std::tie(file, ind) = vis_file_map.begin()->second;  // Unpack the first entry
+                file->deactivate_time(ind); // Cleanup the sample
                 vis_file_map.erase(vis_file_map.begin());
             }
         }
