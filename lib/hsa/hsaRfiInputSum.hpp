@@ -3,8 +3,6 @@
  * @brief RFI input sum, computes spectral kurtosis estimates
  *  - hsaRfiInputSum : public hsaCommand
  */
-
-
 #ifndef HSA_RFI_INPUT_SUM_H
 #define HSA_RFI_INPUT_SUM_H
 
@@ -48,8 +46,6 @@
  * @author Jacob Taylor
  *
  */
-
-
 class hsaRfiInputSum: public hsaCommand
 {
 public:
@@ -59,6 +55,8 @@ public:
 
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiInputSum();
+
+    void rest_callback(connectionInstance& conn, json& json_request);
 
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
@@ -83,6 +81,7 @@ private:
     uint32_t _num_bad_inputs;
     /// The total integration length of the spectral kurtosis estimate
     uint32_t _M;
+    std::mutex rest_callback_mutex;
 };
 
 #endif

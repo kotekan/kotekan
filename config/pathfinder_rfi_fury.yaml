@@ -108,18 +108,18 @@ gpu:
   - name: clRfiInputSum
 #    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
     kernel: "../lib/opencl/kernels/rfi_chime_inputsum_private.cl"
-#  - name: beamform_phase_data
-#    kernel: ''
-#  - name: offset_accumulator
-#    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
-#  - name: preseed_multifreq
-#    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
-#  - name: pairwise_correlator
-#    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
-#  - name: beamform_kernel
-#    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
-#  - name: output_beamform_result
-#    kernel: ''
+  - name: beamform_phase_data
+    kernel: ''
+  - name: offset_accumulator
+    kernel: "../lib/opencl/kernels/offset_accumulator.cl"
+  - name: preseed_multifreq
+    kernel: "../lib/opencl/kernels/preseed_multifreq.cl"
+  - name: pairwise_correlator
+    kernel: "../lib/opencl/kernels/pairwise_correlator.cl"
+  - name: beamform_kernel
+    kernel: "../lib/opencl/kernels/beamform_tree_scale.cl"
+  - name: output_beamform_result
+    kernel: ''
   - name: clRfiOutput
     kernel: ''
   - name: output_data_result
@@ -128,7 +128,7 @@ gpu:
   ts_num_elem_to_shift: 0
   ts_samples_to_shift: 0
   use_timeshift: 0
-  enable_beamforming: false
+  enable_beamforming: true
   instrument_lat: 49.3203
   instrument_long: -119.6175
   ra: 53.5

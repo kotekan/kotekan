@@ -30,13 +30,11 @@ protected:
 
 private:
 
-    Config config_local;
     std::mutex rest_callback_mutex;
-    
     cl_mem mem_input_mask;
-    
     uint32_t _sk_step;
     uint32_t mask_len;
+    bool rebuildInputMask;
     uint8_t * Input_Mask;
     vector<int32_t> bad_inputs;
 

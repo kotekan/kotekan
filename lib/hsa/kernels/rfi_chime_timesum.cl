@@ -29,20 +29,20 @@ rfi_chime_timesum(
     //Declare Local Memory
     __local uint4 power_across_time[256];
     __local uint4 sq_power_across_time[256];
-         
+
     power_across_time[ly] = (uint4)0;
     sq_power_across_time[ly] = (uint4)0;
 
-    uint data; 
+    uint data;
     //Compute current index in input
     uint base_index = gx + gy*gx_size + gz*sk_step*gx_size;
-    
+
     uint4 temp;
     uint4 power;
 
     for(int i = 0; i < sk_step/ly_size; i++){
-	
-        //Retrieve Input (4 uint8's as 1 float) 
+
+        //Retrieve Input (4 uint8's as 1 float)
         data = input[base_index + i*gx_size*ly_size];
 
         //Decompose input (float) into 4 values (uint8)
