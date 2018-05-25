@@ -56,19 +56,19 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
 
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 
-    _num_freq = config.get_int(unique_name, "num_total_freq");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _num_elements = config.get_int(unique_name, "num_elements");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
 
-    _sk_step = config.get_int(unique_name, "sk_step");
-    COMBINED = config.get_bool(unique_name,"rfi_combined");
-    frames_per_packet = config.get_int(unique_name, "frames_per_packet");
+    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
+    COMBINED = config.get_bool_default(unique_name,"rfi_combined", true);
+    frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
 
-    total_links = config.get_int(unique_name, "total_links");
+    total_links = config.get_int_default(unique_name, "total_links",1);
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");
     dest_protocol = config.get_string(unique_name, "destination_protocol");
+    replay = config.get_bool_default(unique_name, "replay", false);
 }
 
 void rfiBroadcast::main_thread() {
@@ -79,6 +79,7 @@ void rfiBroadcast::main_thread() {
     uint8_t * frame = NULL;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
+    uint32_t fake_seq = 0;
     //Intialize empty packet header
     struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)COMBINED, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
                       .num_total_freq=1024, .num_local_freq=_num_local_freq, frames_per_packet=frames_per_packet};
@@ -125,7 +126,8 @@ void rfiBroadcast::main_thread() {
                 memcpy(rfi_data[link_id], frame, rfi_buf->frame_size);
                 if(f == 0){
                     //Adjust Header on initial frame
-                    rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id);
+                    if(replay){ rfi_header.seq_num = fake_seq; }
+                    else{ rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id); }
                 }
                 //Adjust Stream ID's
                 StreamIDs[link_id] = get_stream_id(rfi_buf, frame_id);
@@ -162,6 +164,7 @@ void rfiBroadcast::main_thread() {
                 //Check if packet sent properly
                 if (bytes_sent != packet_length){ ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");}
             }
+            fake_seq++;
             INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
             rest_callback_mutex.unlock();
         }

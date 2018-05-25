@@ -116,6 +116,7 @@ private:
     uint32_t  _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool COMBINED;
+    bool replay;
     /// Number of frames to average per UDP packet
     uint32_t frames_per_packet;
 

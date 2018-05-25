@@ -128,8 +128,7 @@ void rfiRecord::main_thread() {
         if (frame == NULL) break;
         DEBUG("Got frame %d", frame_id);
         if(file_num < total_links){
-            //Make Necessary Directories using timecode
-            //Create INFO file with metadata
+            //Make Necessary Directories using timecode and create info file with metadata
             DEBUG("Saving Meta Data")
             save_meta_data(get_stream_id(rfi_buf, frame_id), get_fpga_seq_num(rfi_buf, frame_id));
 //            save_meta_data((uint16_t)link_id, get_fpga_seq_num(rfi_buf, frame_id));
@@ -140,7 +139,7 @@ void rfiRecord::main_thread() {
             snprintf(file_name, sizeof(file_name), "%s/%d/%s/%07d.rfi",
                      write_to.c_str(),
                      get_stream_id(rfi_buf, frame_id),
- //                    link_id,
+//                     link_id,
                      time_dir,
                      file_num/1024);
             //Open that file
@@ -157,6 +156,7 @@ void rfiRecord::main_thread() {
             if (close(fd) == -1) {
                 ERROR("Cannot close file %s", file_name);
             }
+            INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, total_links, (e_time()-start_time)*1000);
         }
         //Mark Frame Empty
         mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
@@ -164,7 +164,6 @@ void rfiRecord::main_thread() {
 //        DEBUG("Stream ID commented out for testing")
         link_id = (link_id + 1) % total_links;
         file_num++;
-        DEBUG("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id, total_links, (e_time()-start_time)*1000);
         rest_callback_mutex.unlock();
     }
 }
