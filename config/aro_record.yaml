@@ -17,7 +17,7 @@ num_links: 8
 timesamples_per_packet: 2
 num_links: 4
 num_data_sets: 1
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [4,5,10,11]
 sizeof_float: 4
 sizeof_short: 2
 vdif_header_size: 32 
@@ -53,13 +53,41 @@ rfi_buffers:
         kotekan_buffer: standard
 
 #Processes
-file_read:
-    kotekan_process: nDiskFileRead
-    out_buf: vdif_buffer_0
-    disk_base: /mnt/
-    disk_set: D
-    capture: 20170805T155218Z_aro_vdif
-    starting_file_index: 0
+#test_data:
+#  type: const
+#  value: 255
+#  test_data_gen_0:
+#    kotekan_process: testDataGen
+#    network_out_buf: vdif_buffer_0 
+
+dpdk:
+   udp_packet_size: 4680
+   kotekan_process: dpdkWrapper
+   mode: vdif
+   num_lcores: 8
+   vdif_buf: vdif_buffer_0
+#   # These values shouldn't be needed!
+   num_data_sets: 1
+   num_gpu_frames: 1
+
+
+raw_capture:
+   kotekan_process: nDiskFileWrite
+#################################
+# THIS IS THE PLACE TO EDIT!!!  #
+#################################
+   note: B0329+20 test run
+#Change this if you want to record
+   write_to_disk: False
+   gain_files:
+   - /home/natasha/ch_acq/gains_slotNone.pkl
+   - /home/natasha/ch_acq/gains_noisy_slotNone.pkl
+   num_disks: 10
+   disk_base: /mnt/
+   disk_set: D
+   in_buf: vdif_buffer_0
+
+
 
 power_integration:
    kotekan_process: computeDualpolPower
@@ -69,10 +97,10 @@ power_integration:
    rfi_sensitivity: 0
    rfi_backfill: false
 
-#rfi_vdif:
-#   kotekan_process: rfiVDIF
-#   vdif_in: vdif_buffer_0
-#   rfi_out: rfi_buffer_0
+rfi_vdif:
+   kotekan_process: rfiVDIF
+   vdif_in: vdif_buffer_0
+   rfi_out: rfi_buffer_0
    
 
 power_stream:
@@ -84,18 +112,37 @@ power_stream:
    destination_ip: 127.0.0.1
    destination_protocol: TCP
 
-#rfi_broadcast:
-#   kotekan_process: rfiBroadcastVDIF
-#   rfi_in: rfi_buffer_0
-#   destination_port: 2055
-#   destination_ip: 192.168.52.35 
-#   destination_protocol: UDP
+power_stream:
+   kotekan_process: networkPowerStream
+   in_buf: power_buffer_0
+   freq: 600
+   sample_bw: 200
+   destination_port: 2055 
+   destination_ip: 127.0.0.1  
+   destination_protocol: TCP
+
+
+power_stream_boris:
+   kotekan_process: networkPowerStream
+   in_buf: power_buffer_0
+   freq: 600
+   sample_bw: 200
+   destination_port: 2055
+   destination_ip: 10.72.0.2
+   destination_protocol: TCP
+
+
+rfi_broadcast:
+   kotekan_process: rfiBroadcastVDIF
+   rfi_in: rfi_buffer_0
+   destination_port: 41215
+   destination_ip: 10.70.0.138 
+   destination_protocol: UDP
 
 #rfi viewer config
-frames_per_packet: 1
-waterfallX: 128
+frames_per_packet: 1 
+waterfallX: 256
 waterfallY: 1024
 num_receive_threads: 1
 vdif_rfi_header_size: 21
 waterfall_request_delay: 1 #seconds
-colorscale: 0.25
