@@ -3,7 +3,6 @@
  * @brief Contains RFI data broadcaster for SK estimates in kotekan.
  *  - rfiBroadcast : public KotekanProcess
  */
-
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
@@ -12,8 +11,8 @@
 #include "Config.hpp"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
 #include "chimeMetadata.h"
-
 
 /**
  * @class rfiBroadcast
@@ -29,7 +28,29 @@
  * @buffer rfi_in	The kotekan buffer containing spectral kurtosis estimates to be read by the process.
  * 	@buffer_format	Array of @c floats
  * 	@buffer_metadata chimeMetadata
-
+ *
+ * @struct RFIHeader
+ * @brief A structure that contains the header attached to each rfiBroadcast packet.
+ * @var RFIHeader::rfi_combined
+ * Member 'rfi_combined' contains a uint8_t indicating whether or not the SK value was summed over inputs.
+ * @var RFIHeader::sk_step
+ * Member 'sk_step' contains a uint32_t indicating the time intergration length of the SK values.
+ * @var RFIHeader::num_elements
+ * Member 'num_elements' contains a uint32_t indicating the number of inputs in the input data.
+ * @var RFIHeader::samples_per_data_set
+ * Member 'samples_per_data_set' contains a uint32_t indicating the number of timesteps in each frame.
+ * @var RFIHeader::num_total_freq
+ * Member 'num_total_freq' contains a uint32_t indicating the total number of frequencies under consideration (1024 by default).
+ * @var RFIHeader::num_local_freq
+ * Member 'num_local_freq' contains a uint32_t indicating the number of frequencies in the packet.
+ * @var RFIHeader::frames_per_packet
+ * Member 'frames_per_packet' contains a uint32_t indicating the number of frames which were averaged over.
+ * @var RFIHeader::seq_num
+ * Member 'seq_num' contains a int64_t containing the FPGA sequence number of the first packet in the average.
+ * @var RFIHeader::streamID
+ * Member 'streamID' contains a uint16_t holding the current stream ID value.
+ *
+ *
  * @conf   num_elements         Int (default 2048). Number of elements.
  * @conf   num_local_freq       Int (default 1). Number of local freq.
  * @conf   num_local_freq       Int (default 1024). Number of total freq.
@@ -46,6 +67,17 @@
  * @author Jacob Taylor
  */
 
+struct __attribute__ ((packed)) RFIHeader {
+    uint8_t rfi_combined;
+    uint32_t sk_step;
+    uint32_t num_elements;
+    uint32_t samples_per_data_set;
+    uint32_t num_total_freq;
+    uint32_t num_local_freq;
+    uint32_t frames_per_packet;
+    int64_t seq_num;
+    uint16_t streamID;
+};
 
 class rfiBroadcast : public KotekanProcess {
 public:
@@ -59,6 +91,8 @@ public:
 
     //Primary loop, reads buffer and sends out UDP stream
     void main_thread();
+
+    void rest_callback(connectionInstance& conn, json& json_request);
 
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
@@ -82,6 +116,7 @@ private:
     uint32_t  _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool COMBINED;
+    bool replay;
     /// Number of frames to average per UDP packet
     uint32_t frames_per_packet;
 
@@ -96,6 +131,7 @@ private:
     string dest_protocol;
     /// Internal socket error holder
     int socket_fd;
+    std::mutex rest_callback_mutex;
 };
 
 #endif

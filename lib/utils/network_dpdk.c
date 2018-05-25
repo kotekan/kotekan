@@ -138,6 +138,7 @@ static inline int port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 static void check_port_socket_assignment() {
 
     const uint8_t nb_ports = rte_eth_dev_count();
+    INFO("NUM_LINKS %d",nb_ports)
     assert(nb_ports == NUM_LINKS);
 
     /*
@@ -910,13 +911,12 @@ int lcore_recv_pkt(void *args)
         lcore = dpdk_net->args->lcore_port_mapping[lcore];
     }
 
-
     const int port_offset = dpdk_net->args->port_offset[lcore];
     for (port = port_offset;
          port < dpdk_net->args->num_links_per_lcore + port_offset;
          ++port) {
         setup_for_first_packet(dpdk_net, port);
-        INFO("port reached %d", port);
+        INFO("lcore: %d, port reached %d", rte_lcore_id(), port);
     }
 
     // Main DPDK lcore loop

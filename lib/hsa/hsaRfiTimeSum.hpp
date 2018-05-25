@@ -3,8 +3,6 @@
  * @brief RFI time sum, performs prallel sum of power, and square power of incoherent beam.
  *  - hsaRfiTimeSum : public hsaCommand
  */
-
-
 #ifndef HSA_RFI_TIME_SUM_H
 #define HSA_RFI_TIME_SUM_H
 
@@ -50,8 +48,6 @@
  * @author Jacob Taylor
  *
  */
-
-
 class hsaRfiTimeSum: public hsaCommand
 {
 
@@ -62,6 +58,8 @@ public:
 
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
+
+    void rest_callback(connectionInstance& conn, json& json_request);
 
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
@@ -87,11 +85,10 @@ private:
 
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
-    /// The total number of faulty inputs
-    uint32_t _num_bad_inputs;
 
     /// Boolean to hold whether or not the current kernel execution is the first or not.
-    bool first_pass;
+    bool rebuildInputMask;
+    vector<int32_t> bad_inputs;
 };
 
 #endif

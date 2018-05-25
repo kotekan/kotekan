@@ -47,6 +47,8 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
     factory = new hsaCommandFactory(config, unique_name, local_buffer_container, *device);
+
+    endpoint = "/gpu_profile/" + std::to_string(gpu_id);
 }
 
 void hsaProcess::apply_config(uint64_t fpga_seq) {
@@ -58,11 +60,13 @@ void hsaProcess::apply_config(uint64_t fpga_seq) {
 }
 
 hsaProcess::~hsaProcess() {
+    restServer::instance().remove_get_callback(endpoint);
+
     delete factory;
     delete device;
 }
 
-void hsaProcess::profile_callback(connectionInstance& conn, json& json_request) {
+void hsaProcess::profile_callback(connectionInstance& conn) {
 
     DEBUG("Profile call made.");
 
@@ -119,10 +123,9 @@ void hsaProcess::main_thread()
     vector<hsaCommand *> &commands = factory->get_commands();
 
 //    using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/gpu_profile/" + std::to_string(gpu_id);
-    rest_server->register_json_callback(endpoint,
-            std::bind(&hsaProcess::profile_callback, this, std::placeholders::_1, std::placeholders::_2));
+    restServer &rest_server = restServer::instance();
+    rest_server.register_get_callback(endpoint,
+            std::bind(&hsaProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
