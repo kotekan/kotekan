@@ -9,22 +9,8 @@
 #endif
 
 #include "Config.hpp"
-//#include "correlator_kernel.h"
-//#include "offset_kernel.h"
-//#include "preseed_kernel.h"
 #include "clDeviceInterface.hpp"
 #include "bufferContainer.hpp"
-//#include "input_data_stage.h"
-//#include "output_data_result.h"
-#include "callbackdata.h"
-//#include "beamform_kernel.h"
-//#include "beamform_phase_data.h"
-//#include "output_beamform_result.h"
-//#include "beamform_incoherent_kernel.h"
-//#include "output_beamform_incoh_result.h"
-//#include "rfi_kernel.h"
-//#include "output_rfi.h"
-#include "timer.hpp"
 
 
 class clCommand;
@@ -37,7 +23,7 @@ public:
 class clCommandFactory
 {
 public:
-    clCommandFactory(Config& config, const string& unique_name, bufferContainer &host_buffers_, clDeviceInterface & param_Device);
+    clCommandFactory(Config& config, const string& unique_name, bufferContainer &host_buffers_, clDeviceInterface &device);
     ~clCommandFactory();
     vector<clCommand *> &get_commands();
     //void initializeCommands(class device_interface & param_Device, Config& param_Config);

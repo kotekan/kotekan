@@ -1,19 +1,18 @@
 /**
- * @file beamform_phase_data.h
+ * @file clBeamformPhaseData.h
  * @brief class to calculate phase data for beamforming.
- *  - beamform_phase_data: public clCommand
+ *  - clBeamformPhaseData: public clCommand
  */ 
 
-#ifndef BEAMFORM_PHASE_DATA_H
-#define BEAMFORM_PHASE_DATA_H
+#ifndef CL_BEAMFORM_PHASE_DATA_H
+#define CL_BEAMFORM_PHASE_DATA_H
 
 #include "clCommand.hpp"
-#include "callbackdata.h"
 
 #include <vector>
 
 /**
- * @class beamform_phase_data
+ * @class clBeamformPhaseData
  * @brief This class is responsible for calculating phase shifts for every feed
  *        of a given telescope every duration set by a period.
  * 
@@ -42,23 +41,20 @@
  *
  */
 
-class beamform_phase_data: public clCommand
+class clBeamformPhaseData: public clCommand
 {
 public:
     /// Constructor, no logic added.
-    beamform_phase_data(const char* param_name, Config &config, const string &unique_name);
+    clBeamformPhaseData(Config& config, const string &unique_name,
+                    bufferContainer& host_buffers, clDeviceInterface& device);
     /// Destructor, cleans up memory allocations.
-    ~beamform_phase_data();
+    ~clBeamformPhaseData();
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
-    virtual void build(class device_interface &param_Device) override;
+    virtual void build() override;
     /// Enqueues a new array of phases on the gpu. Phases are updated every "phase period" (1 second) by referencing
     /// a "phase bank" array that stores two arrays of phases and enqueues either based on the fpga sequence number
     /// of the current buffer and buffer_ID. (Sequence number for CHIME is 2.56us).
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent) override;
-    /// Call base class cleanMe.
-    virtual void cleanMe(int param_BufferID) override;
-    /// Call base class freeMe.
-    virtual void freeMe() override;
+    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
 protected:
     /** The get_delays method is called in execute to determine the current phase delays to store in the "phase bank"
      * bank array. The phases are calculated per feed to a source defined by ra and dec relative to the instrument's
@@ -98,8 +94,13 @@ protected:
     /// Initialized to -1 and vary the value between 1 or 2 to pass either index 1 or 2 of the phase bank
     /// bank array when the duration of the phase period has elapsed.
     int64_t last_bankID;
+    /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
+    int32_t _num_elements;
+    int32_t _num_local_freq;
+    int32_t _samples_per_data_set;
+    Buffer * network_buf;
 };
 
-#endif
+#endif //CL_BEAMFORM_PHASE_DATA_H
 
 

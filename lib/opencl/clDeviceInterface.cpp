@@ -2,7 +2,6 @@
 
 #include "clDeviceInterface.hpp"
 #include "clCommand.hpp"
-#include "callbackdata.h"
 #include "math.h"
 #include <errno.h>
 

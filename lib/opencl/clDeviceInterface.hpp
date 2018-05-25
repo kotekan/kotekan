@@ -1,5 +1,5 @@
-#ifndef DEVICE_INTERFACE_H
-#define DEVICE_INTERFACE_H
+#ifndef CL_DEVICE_INTERFACE_H
+#define CL_DEVICE_INTERFACE_H
 
 #include <map>
 #include <sys/mman.h>
@@ -128,4 +128,4 @@ private:
 
 };
 
-#endif // DEVICE_INTERFACE_H
+#endif // CL_DEVICE_INTERFACE_H

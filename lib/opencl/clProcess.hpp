@@ -46,7 +46,6 @@ protected:
 
     uint32_t _gpu_buffer_depth;
 
-    vector<callBackData *> cb_data;
     std::thread mem_reconcil_thread_handle;
 
     uint32_t gpu_id;

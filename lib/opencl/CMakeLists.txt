@@ -13,11 +13,10 @@ include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 add_library ( kotekan_opencl
               clDeviceInterface.cpp
               clEventContainer.cpp
-              callbackdata.cpp
               clCommand.cpp
               clCommandFactory.cpp
               clProcess.cpp
-              timer.cpp
+#              timer.cpp
 
 # Copy-in & general-purpose:
               clInputData.cpp
@@ -31,9 +30,9 @@ add_library ( kotekan_opencl
               clOutputData.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
-#              beamform_phase_data.cpp
-#              beamform_kernel.cpp
-#              output_beamform_result.cpp
+              clBeamformPhaseData.cpp
+              clBeamformKernel.cpp
+              clOutputBeamformResult.cpp
 
 #RFI Kernels
 #              rfi_kernel.cpp

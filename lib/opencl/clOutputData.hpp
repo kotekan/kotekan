@@ -2,7 +2,6 @@
 #define CL_OUTPUT_DATA_H
 
 #include "clCommand.hpp"
-#include "callbackdata.h"
 
 class clOutputData: public clCommand
 {

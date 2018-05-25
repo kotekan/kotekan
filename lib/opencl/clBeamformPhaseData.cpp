@@ -1,4 +1,4 @@
-#include "beamform_phase_data.h"
+#include "clBeamformPhaseData.hpp"
 
 #include <math.h>
 #include <time.h>
@@ -9,19 +9,26 @@
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi
 
-beamform_phase_data::beamform_phase_data(const char* param_name, Config &param_config, const string &unique_name):
-    clCommand(param_name, param_config, unique_name)
+clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, clDeviceInterface& device) :
+    clCommand("","", config, unique_name, host_buffers, device)
 {
+    command_type = clCommandType::NOT_SET;
+
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    network_buf = host_buffers.get_buffer("network_buf");
 }
 
-beamform_phase_data::~beamform_phase_data()
+clBeamformPhaseData::~clBeamformPhaseData()
 {
     free(phases[0]);
     free(phases[1]);
     free(phases);
 }
 
-void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
+void clBeamformPhaseData::apply_config(const uint64_t& fpga_seq) {
     clCommand::apply_config(fpga_seq);
 
     beamforming_do_not_track = config.get_int(unique_name, "do_not_track");
@@ -33,10 +40,10 @@ void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
     feed_positions = config.get_float_array(unique_name, "element_positions");
 }
 
-void beamform_phase_data::build(class device_interface &param_Device)
+void clBeamformPhaseData::build()
 {
     apply_config(0);
-    clCommand::build(param_Device);
+    clCommand::build();
 
     last_bankID = -1;
 
@@ -47,9 +54,9 @@ void beamform_phase_data::build(class device_interface &param_Device)
     start_beamform_time = time(NULL); // Current time.
 }
 
-cl_event beamform_phase_data::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event clBeamformPhaseData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    clCommand::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    clCommand::execute(gpu_frame_id, 0, pre_event);
 
     time_t local_beamform_time;
     uint64_t current_seq;
@@ -58,8 +65,13 @@ cl_event beamform_phase_data::execute(int param_bufferID, const uint64_t& fpga_s
     const uint64_t phase_update_period = 390625;
 
     // Update the phases only every "phase_update_period"
-    current_seq = get_fpga_seq_num(param_Device.getInBuf(), param_bufferID);
+    uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
+    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+
+    current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
     int64_t bankID = (current_seq / phase_update_period) % 2;
+    cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
+
     if(bankID != last_bankID) {
 
         if (beamforming_do_not_track == 1) {
@@ -69,28 +81,28 @@ cl_event beamform_phase_data::execute(int param_bufferID, const uint64_t& fpga_s
                 local_beamform_time = start_beamform_time; // Current time.
             }
         } else {
-            local_beamform_time = get_first_packet_recv_time(param_Device.getInBuf(), param_bufferID).tv_sec;
+            local_beamform_time = get_first_packet_recv_time(network_buf, gpu_frame_id).tv_sec;
         }
 
         get_delays(phases[bankID], local_beamform_time);
 
-        CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),
-                                        param_Device.get_device_phases(bankID),
+        CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),
+                                        phase_memory,
                                         CL_FALSE,
                                         0,
                                         _num_elements * sizeof(float),
                                         (cl_float *)phases[bankID],
                                         1,
-                                        &param_PrecedeEvent,
-                                        &postEvent[param_bufferID]));
+                                        &pre_event,
+                                        &post_event[gpu_frame_id]));
 
         last_bankID = bankID;
-        return postEvent[param_bufferID];
+        return post_event[gpu_frame_id];
     }
-    return param_PrecedeEvent;
+    return pre_event;
 }
 
-void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
+void clBeamformPhaseData::get_delays(float * phases, time_t beamform_time)
 {
     //inverse speed of light in ns/m
     const double one_over_c = 3.3356;
@@ -139,14 +151,4 @@ void beamform_phase_data::get_delays(float * phases, time_t beamform_time)
 //            (int)beamform_time, inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
 
     return;
-}
-
-void beamform_phase_data::cleanMe(int param_BufferID)
-{
-    clCommand::cleanMe(param_BufferID);
-}
-
-void beamform_phase_data::freeMe()
-{
-    clCommand::freeMe();
 }
