@@ -6,6 +6,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <memory>
 
 
@@ -67,16 +68,18 @@ public:
      * @brief Tries to get the next dump request to process.
      *
      * @return a shared_ptr to the `BasebandDumpStatus` object if there is a
-     * request available, or nullptr if the request queue is empty.
+     * request available for the readout process handling frequency `freq_id`,
+     * or nullptr if the request queue is empty.
      */
-    std::shared_ptr<BasebandDumpStatus> get_next_request();
+    std::shared_ptr<BasebandDumpStatus> get_next_request(const uint32_t freq_id);
 
 private:
     /// Constructor, not used directly
     BasebandRequestManager() = default;
 
-    /// Queue of unprocessed baseband requests
-    std::deque<BasebandRequest> requests;
+    /// Queue of unprocessed baseband requests for each basebandReadout process,
+    /// indexed by `freq_id`
+    std::map<uint32_t, std::deque<BasebandRequest>> requests;
 
     /// Queue of baseband dumps in progress
     std::vector<std::shared_ptr<BasebandDumpStatus>> processing;

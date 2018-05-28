@@ -71,8 +71,8 @@ private:
     std::mutex manager_lock;
     std::queue<std::tuple<basebandDump, std::shared_ptr<BasebandDumpStatus>>> write_q;
 
-    void listen_thread();
     void write_thread();
+    void listen_thread(const uint32_t freq_id);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
@@ -81,7 +81,6 @@ private:
             int64_t trigger_start_fpga,
             int64_t trigger_length_fpga
             );
-
 };
 
 

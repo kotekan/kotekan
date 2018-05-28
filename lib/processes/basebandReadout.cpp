@@ -75,8 +75,8 @@ void basebandReadout::main_thread() {
     int frame_id = 0;
     int done_frame;
 
-    std::thread lt(&basebandReadout::listen_thread, this);
     std::thread wt(&basebandReadout::write_thread, this);
+    std::unique_ptr<std::thread> lt;
 
     while (!stop_thread) {
 
@@ -84,6 +84,17 @@ void basebandReadout::main_thread() {
                                 frame_id % buf->num_frames) == nullptr) {
             break;
         }
+
+        if (!lt) {
+            int buf_frame = frame_id % buf->num_frames;
+            auto first_meta = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
+
+            stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
+            uint32_t freq_id = bin_number_chime(&stream_id);
+            std::cout << "Startg request-listening thread for freq_id: " << freq_id << std::endl;
+            lt = std::make_unique<std::thread>(&basebandReadout::listen_thread, this, freq_id);
+        }
+
         done_frame = add_replace_frame(frame_id);
         if (done_frame >= 0) {
             mark_frame_empty(buf, unique_name.c_str(),
@@ -94,14 +105,13 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    lt.join();
+    if (lt) {
+        lt->join();
+    }
     wt.join();
 }
 
-void basebandReadout::listen_thread() {
-    int max_writes = 2;
-
-    // XXX Fake.
+void basebandReadout::listen_thread(const uint32_t freq_id) {
     uint64_t event_id=0;
 
     BasebandRequestManager& mgr = BasebandRequestManager::instance();
@@ -118,11 +128,7 @@ void basebandReadout::listen_thread() {
         // Code to run after getting a trigger.
 
         // For testing readout logic.
-        auto dump = mgr.get_next_request();
-        // Fake, for testing.
-        //auto dump =  std::make_shared<BasebandDumpStatus>(
-        //        BasebandDumpStatus{BasebandRequest{360000, 131079}});
-        //sleep(5);
+        auto dump = mgr.get_next_request(freq_id);
 
         if (dump) {
             std::cout << "Something to do!" << std::endl;
