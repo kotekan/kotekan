@@ -162,13 +162,6 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                 // TODO Report to the dump_request.
             }
 
-            // XXX Obsolete.
-            // Spawn thread to write out the data.
-            //dump->bytes_remaining -= 42;
-            //std::cout << "processing: " << dump
-            //          << ", saved: " << dump->bytes_remaining
-            //          << std::endl;
-
             // XXX Here we also want to limit the number of simultanious readout threads, mostly so
             // we don't run out of memory and crash everything. That will also prevent too
             // many calls to get_data and thus buffer deadlock.
@@ -177,8 +170,9 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
             // Wait for free space in the write queue. This prevents this thread from receiving any
             // more dump requests until the pipe clears out. Limits the memory use and buffer congestion.
+            const int max_writes_queued = 3;
             while (!stop_thread) {
-                if (write_q.size() < max_writes) {
+                if (write_q.size() < max_writes_queued) {
                     std::cout << "Adding write to queue. q len: " << write_q.size() << std::endl;
                     write_q.push(std::tuple<basebandDump, std::shared_ptr<BasebandDumpStatus>>(data, dump));
                     break;
@@ -193,11 +187,15 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
 void basebandReadout::write_thread() {
     while (!stop_thread) {
-        // Here we should use a call that times out, so kotekan can shut down if there
+        // TODO Here we should use a call that times out, so kotekan can shut down if there
         // is a write in progress.
-        auto dump_tup = write_q.pop();
+        auto dump_tup = write_q.front();
 
-        dump_tup.apply(&process_request);
+        auto dump = std::get<1>(dump_tup);
+        auto data = std::get<0>(dump_tup);
+
+        process_request(dump, data);
+        write_q.pop();
     }
 }
 
