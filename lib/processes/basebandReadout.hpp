@@ -1,3 +1,9 @@
+/*****************************************
+@file
+@brief Processes for triggered baseband recording
+- basebandDump
+- basebandReadout : public KotekanProcess
+*****************************************/
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
@@ -16,41 +22,64 @@
 
 
 
-/* A container for baseband data and metadata.
+/**
+ * @struct basebandDump
+ * @brief A container for baseband data and metadata.
  *
- * The use of a shared pointer to point to an array means that this class is copyable
- * without copying the underlying data buffer. However the memory for the underlying
- * buffer is managed and is deleted when the last copy of the container goes out of
- * scope.
+ * @note The use of a shared pointer to point to an array means that this class
+ *       is copyable without copying the underlying data buffer. However the
+ *       memory for the underlying buffer is managed and is deleted when the
+ *       last copy of the container goes out of scope.
  *
+ * @author Kiyoshi Masui
  */
-class basebandDump {
-public:
-    // Initializes the container with all parameters, and allocates memory for data
-    // but does not fill in the data.
-    basebandDump(
-            uint64_t event_id_,
-            uint32_t freq_id_,
-            uint32_t num_elements_,
-            int64_t data_start_fpga_,
-            int64_t data_length_fpga_
-            );
-    ~basebandDump();
+class basebandDump { public:
+    // Initializes the container with all parameters, and allocates memory for
+    // data but does not fill in the data.
+    basebandDump( uint64_t event_id_, uint32_t freq_id_, uint32_t
+            num_elements_, int64_t data_start_fpga_, int64_t
+            data_length_fpga_); ~basebandDump();
 
+    // Metadata.
     const uint64_t event_id;
     const uint32_t freq_id;
     const uint32_t num_elements;
     const int64_t data_start_fpga;
     const int64_t data_length_fpga;
-    // For keeping track of references.
-    std::shared_ptr<uint8_t> data_ref;
-    // Span used for data access.
+private:
+    // Keeps track of references to the underlying data array.
+    const std::shared_ptr<uint8_t> data_ref;
+public:
+    // For data access. Array has length `num_elements * data_length_fpga`.
     const gsl::span<uint8_t> data;
 
 };
 
 
-
+/**
+ * @class basebandReadout
+ * @brief Buffer baseband data and record it to disk upon request.
+ *
+ * This task manages a kotekan buffer, keeping it mostly full such that it subsets
+ * of the data can be written upon triggered request.
+ *
+ * @par Buffers
+ * @buffer in_buf buffer to manage and read. Must be several frames larger than
+ *                ``num_frames_buffer`` config parameter.
+ *         @buffer_format DPDK baseband ``samples_per_data_set x num_elements`` bytes
+ *         @buffer_metadata chimeMetadata
+ *
+ * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
+ *                              correlator data.
+ * @conf  samples_per_data_set  Int. The number of time samples in a frame.
+ * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
+ *                              full of data.
+ * @conf  base_dir              String. Directory for writing triggered dumps.
+ * @conf  file_ext              String. File extension for triggered dumps
+ *                              (including the '.').
+ *
+ * @author Kiyoshi Masui, Davor Cubranic
+ */
 class basebandReadout : public KotekanProcess {
 public:
     basebandReadout(Config& config, const string& unique_name,

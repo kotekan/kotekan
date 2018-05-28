@@ -48,9 +48,6 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
 
     register_consumer(buf, unique_name.c_str());
 
-    // XXX
-    std::cout << "BB constructor " << num_frames_buffer << " " << buf->num_frames << std::endl;
-
     // Ensure input buffer is long enough.
     if (buf->num_frames <= num_frames_buffer) {
         // This process of creating an error string is rediculous. Figure out what
@@ -91,7 +88,7 @@ void basebandReadout::main_thread() {
 
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
-            std::cout << "Startg request-listening thread for freq_id: " << freq_id << std::endl;
+            std::cout << "Starting request-listening thread for freq_id: " << freq_id << std::endl;
             lt = std::make_unique<std::thread>(&basebandReadout::listen_thread, this, freq_id);
         }
 
@@ -115,19 +112,12 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
     uint64_t event_id=0;
 
     BasebandRequestManager& mgr = BasebandRequestManager::instance();
-    // XXX I see you are using a singleton here. Note that there will be 4 copies of this running
-    // (for the 4 frequencies) in the same processess, so you will need some way to make sure the
-    // right requests go to the right frequencies. Based on the freq_id, which is in the incoming
-    // packet headers.
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
 
-        // Code to run after getting a trigger.
-
-        // For testing readout logic.
         auto dump = mgr.get_next_request(freq_id);
 
         if (dump) {
@@ -162,12 +152,6 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                 // TODO Report to the dump_request.
             }
 
-            // XXX Here we also want to limit the number of simultanious readout threads, mostly so
-            // we don't run out of memory and crash everything. That will also prevent too
-            // many calls to get_data and thus buffer deadlock.
-            //std::thread worker(process_request, dump);
-            //worker.detach();
-
             // Wait for free space in the write queue. This prevents this thread from receiving any
             // more dump requests until the pipe clears out. Limits the memory use and buffer congestion.
             const int max_writes_queued = 3;
@@ -187,15 +171,19 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
 void basebandReadout::write_thread() {
     while (!stop_thread) {
-        // TODO Here we should use a call that times out, so kotekan can shut down if there
-        // is a write in progress.
-        auto dump_tup = write_q.front();
+        if (write_q.empty) {
+            sleep(1);
+        } else {
+            auto dump_tup = write_q.front();
 
-        auto dump = std::get<1>(dump_tup);
-        auto data = std::get<0>(dump_tup);
+            auto dump = std::get<1>(dump_tup);
+            auto data = std::get<0>(dump_tup);
 
-        process_request(dump, data);
-        write_q.pop();
+            process_request(dump, data);
+            // pop at the end such that memory for `data` is released before queue slot
+            // becomes available.
+            write_q.pop();
+        }
     }
 }
 
@@ -355,7 +343,9 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 }
 
 
-/* Binds a span to an array, aligning it on a 16 byte boundary. Array should
+
+/* Helper for basebandDump constructor.
+ * Binds a span to an array, aligning it on a 16 byte boundary. Array should
  * be at least 15 bytes too long.
  */
 gsl::span<uint8_t> span_from_length_aligned(uint8_t* start, size_t length) {

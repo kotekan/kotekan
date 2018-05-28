@@ -25,7 +25,7 @@ struct BasebandRequest {
  */
 struct BasebandDumpStatus {
     const BasebandRequest request;
-    const size_t bytes_total = request.length_fpga * 17;
+    const size_t bytes_total = request.length_fpga * 17;   // XXX 17 is fake right? -km
     size_t bytes_remaining = bytes_total;
 };
 
