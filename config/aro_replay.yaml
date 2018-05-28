@@ -15,7 +15,6 @@ samples_per_data_set: 32768
 buffer_depth: 10
 num_links: 8
 timesamples_per_packet: 2
-num_links: 4
 num_data_sets: 1
 cpu_affinity: [2,3,8,9]
 sizeof_float: 4
@@ -62,34 +61,31 @@ file_read:
     capture: 20170805T155218Z_aro_vdif
     starting_file_index: 0
 
-power_integration:
-   kotekan_process: computeDualpolPower
-   vdif_in_buf: vdif_buffer_0
-   power_out_buf: power_buffer_0
-   rfi_removal: false
-   rfi_sensitivity: 0
-   rfi_backfill: false
+#power_integration:
+#   kotekan_process: computeDualpolPower
+#   vdif_in_buf: vdif_buffer_0
+#   power_out_buf: power_buffer_0
 
 rfi_vdif:
-   kotekan_process: rfiVDIF
+   kotekan_process: rfiAVXVDIF
    vdif_in: vdif_buffer_0
    rfi_out: rfi_buffer_0   
 
-power_stream:
-   kotekan_process: networkPowerStream
-   in_buf: power_buffer_0
-   freq: 600
-   sample_bw: 200
-   destination_port: 2054
-   destination_ip: 127.0.0.1
-   destination_protocol: TCP
+#power_stream:
+#   kotekan_process: networkPowerStream
+#   in_buf: power_buffer_0
+#   freq: 600
+#   sample_bw: 200
+#   destination_port: 2054
+#   destination_ip: 127.0.0.1
+#   destination_protocol: TCP
 
 rfi_broadcast:
    kotekan_process: rfiBroadcast
    rfi_in: rfi_buffer_0
    replay: true
    destination_port: 41215
-   destination_ip: 192.168.52.108 
+   destination_ip: 192.168.52.108
    destination_protocol: UDP
 
 #rfi viewer config

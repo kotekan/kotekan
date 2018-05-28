@@ -79,7 +79,7 @@ void rfiBroadcast::main_thread() {
     uint8_t * frame = NULL;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
-    uint32_t fake_seq = 0;
+    uint64_t fake_seq = 0;
     //Intialize empty packet header
     struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)COMBINED, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
                       .num_total_freq=1024, .num_local_freq=_num_local_freq, frames_per_packet=frames_per_packet};
@@ -126,11 +126,12 @@ void rfiBroadcast::main_thread() {
                 memcpy(rfi_data[link_id], frame, rfi_buf->frame_size);
                 if(f == 0){
                     //Adjust Header on initial frame
-                    if(replay){ rfi_header.seq_num = fake_seq; }
+                    if(replay){ rfi_header.seq_num = (int64_t)fake_seq; }
                     else{ rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id); }
                 }
                 //Adjust Stream ID's
-                StreamIDs[link_id] = get_stream_id(rfi_buf, frame_id);
+                if(replay){ StreamIDs[link_id] = link_id; }
+                else{ StreamIDs[link_id] = get_stream_id(rfi_buf, frame_id); }
                 //Sum over the whole frame
                 for(i = 0; i < _num_local_freq; i++){
                     for(j = 0; j < _samples_per_data_set/_sk_step; j++){
@@ -164,7 +165,7 @@ void rfiBroadcast::main_thread() {
                 //Check if packet sent properly
                 if (bytes_sent != packet_length){ ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");}
             }
-            fake_seq++;
+            fake_seq += _samples_per_data_set*frames_per_packet;
             INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
             rest_callback_mutex.unlock();
         }

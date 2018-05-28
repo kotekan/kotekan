@@ -75,9 +75,9 @@ private:
 
     //RFI config parameters
     //Flag for whether or not to combine inputs in kurtosis estimates
-    bool COMBINED;
+    bool rfi_combined;
     //Number of timesteps per kurtosis value
-    int SK_STEP;
+    int sk_step;
 };
 
 #endif
