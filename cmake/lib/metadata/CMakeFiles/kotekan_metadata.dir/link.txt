@@ -1,2 +1,0 @@
-/usr/bin/ar qc libkotekan_metadata.a  CMakeFiles/kotekan_metadata.dir/chimeMetadata.c.o
-/usr/bin/ranlib libkotekan_metadata.a
