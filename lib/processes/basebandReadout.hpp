@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Processes for triggered baseband recording
-- basebandDump
+- basebandDumpData
 - basebandReadout : public KotekanProcess
 *****************************************/
 #ifndef BASEBAND_READOUT_H
@@ -23,7 +23,7 @@
 
 
 /**
- * @struct basebandDump
+ * @struct basebandDumpData
  * @brief A container for baseband data and metadata.
  *
  * @note The use of a shared pointer to point to an array means that this class
@@ -33,12 +33,16 @@
  *
  * @author Kiyoshi Masui
  */
-class basebandDump { public:
+class basebandDumpData { public:
     // Initializes the container with all parameters, and allocates memory for
     // data but does not fill in the data.
-    basebandDump( uint64_t event_id_, uint32_t freq_id_, uint32_t
-            num_elements_, int64_t data_start_fpga_, int64_t
-            data_length_fpga_); ~basebandDump();
+    basebandDumpData(
+            uint64_t event_id_,
+            uint32_t freq_id_,
+            uint32_t num_elements_,
+            int64_t data_start_fpga_,
+            int64_t data_length_fpga_);
+    ~basebandDumpData();
 
     // Metadata.
     const uint64_t event_id;
@@ -98,14 +102,14 @@ private:
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
-    std::queue<std::tuple<basebandDump, std::shared_ptr<BasebandDumpStatus>>> write_q;
+    std::queue<std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>>> write_q;
 
     void write_thread();
     void listen_thread(const uint32_t freq_id);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
-    basebandDump get_data(
+    basebandDumpData get_data(
             uint64_t event_id,
             int64_t trigger_start_fpga,
             int64_t trigger_length_fpga

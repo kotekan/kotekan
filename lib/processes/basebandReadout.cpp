@@ -20,7 +20,7 @@ REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 /// Worker task that mocks the progress of a baseband dump
 // TODO: implement
-static void process_request(const std::shared_ptr<BasebandDumpStatus> dump, basebandDump data) {
+static void process_request(const std::shared_ptr<BasebandDumpStatus> dump, basebandDumpData data) {
     std::cout << "Started processing " << dump << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
     dump->bytes_remaining -= 51;
@@ -88,7 +88,7 @@ void basebandReadout::main_thread() {
 
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
-            std::cout << "Starting request-listening thread for freq_id: " << freq_id << std::endl;
+            INFO("Starting request-listening thread for freq_id: %d", freq_id);
             lt = std::make_unique<std::thread>(&basebandReadout::listen_thread, this, freq_id);
         }
 
@@ -98,6 +98,7 @@ void basebandReadout::main_thread() {
                              done_frame % buf->num_frames);
         }
 
+        // XXX Delete dev prints.
         std::cout << "Discard: " << done_frame << ", add " << frame_id << std::endl;
 
         frame_id++;
@@ -118,22 +119,22 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
 
-        auto dump = mgr.get_next_request(freq_id);
+        auto dump_status = mgr.get_next_request(freq_id);
 
-        if (dump) {
+        if (dump_status) {
             std::cout << "Something to do!" << std::endl;
-            std::time_t tt = std::chrono::system_clock::to_time_t(dump->request.received);
+            std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
             std::cout << "Received: " << std::put_time(std::localtime(&tt), "%F %T")
-                      << ", start: " << dump->request.start_fpga
-                      << ", length: " << dump->request.length_fpga << std::endl;
+                      << ", start: " << dump_status->request.start_fpga
+                      << ", length: " << dump_status->request.length_fpga << std::endl;
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by a new thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
-            basebandDump data = get_data(
-                    event_id,    // XXX need this from the request.
-                    dump->request.start_fpga,
-                    dump->request.length_fpga
+            basebandDumpData data = get_data(
+                    event_id,    // TODO need this from the request.
+                    dump_status->request.start_fpga,
+                    dump_status->request.length_fpga
                     );
 
             // At this point we know how much of the requested data we managed to read from the
@@ -157,8 +158,10 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             const int max_writes_queued = 3;
             while (!stop_thread) {
                 if (write_q.size() < max_writes_queued) {
+                    // XXX Delete dev prints.
                     std::cout << "Adding write to queue. q len: " << write_q.size() << std::endl;
-                    write_q.push(std::tuple<basebandDump, std::shared_ptr<BasebandDumpStatus>>(data, dump));
+                    write_q.push(std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>>(data,
+                                 dump_status));
                     break;
                 } else {
                     sleep(1);
@@ -171,15 +174,15 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
 void basebandReadout::write_thread() {
     while (!stop_thread) {
-        if (write_q.empty) {
+        if (write_q.empty()) {
             sleep(1);
         } else {
             auto dump_tup = write_q.front();
 
-            auto dump = std::get<1>(dump_tup);
+            auto dump_status = std::get<1>(dump_tup);
             auto data = std::get<0>(dump_tup);
 
-            process_request(dump, data);
+            process_request(dump_status, data);
             // pop at the end such that memory for `data` is released before queue slot
             // becomes available.
             write_q.pop();
@@ -207,7 +210,7 @@ int basebandReadout::add_replace_frame(int frame_id) {
     return replaced_frame;
 }
 
-basebandDump basebandReadout::get_data(
+basebandDumpData basebandReadout::get_data(
         uint64_t event_id,
         int64_t trigger_start_fpga,
         int64_t trigger_length_fpga
@@ -225,6 +228,7 @@ basebandDump basebandReadout::get_data(
         throw std::runtime_error("Baseband dump request too long");
     }
 
+    // XXX delete dev prints.
     std::cout << "Dump samples: " << trigger_start_fpga;
     std::cout << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
 
@@ -252,6 +256,8 @@ basebandDump basebandReadout::get_data(
         // it can continue to opperate.
         manager_lock.unlock();
 
+
+        // XXX delete dev prints.
         std::cout << "Frames in dump: " << dump_start_frame;
         std::cout << " : " << dump_end_frame << std::endl;
 
@@ -265,6 +271,7 @@ basebandDump basebandReadout::get_data(
             float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
+            // XXX delete dev prints.
             std::cout << "wait for: " << wait_time << std::endl;
             usleep(wait_time * 1e6);
         } else {
@@ -275,7 +282,7 @@ basebandDump basebandReadout::get_data(
 
     if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
-        return basebandDump(event_id, 0, 0, 0, 0);
+        return basebandDumpData(event_id, 0, 0, 0, 0);
     }
 
     int buf_frame = dump_start_frame % buf->num_frames;
@@ -290,7 +297,7 @@ basebandDump basebandReadout::get_data(
     // for it. Could be made to be more robust.
     int64_t data_end_fpga = trigger_end_fpga;
 
-    basebandDump dump(
+    basebandDumpData dump(
             event_id,
             freq_id,
             num_elements,
@@ -344,7 +351,7 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 
 
 
-/* Helper for basebandDump constructor.
+/* Helper for basebandDumpData constructor.
  * Binds a span to an array, aligning it on a 16 byte boundary. Array should
  * be at least 15 bytes too long.
  */
@@ -359,7 +366,7 @@ gsl::span<uint8_t> span_from_length_aligned(uint8_t* start, size_t length) {
 }
 
 
-basebandDump::basebandDump(
+basebandDumpData::basebandDumpData(
         uint64_t event_id_,
         uint32_t freq_id_,
         uint32_t num_elements_,
@@ -377,5 +384,5 @@ basebandDump::basebandDump(
 {
 }
 
-basebandDump::~basebandDump() {
+basebandDumpData::~basebandDumpData() {
 }
