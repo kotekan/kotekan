@@ -107,7 +107,7 @@ void visTranspose::main_thread() {
         //      Ensure they are coming in the right order
         // copy data
 
-        // Fastest varying is frequency
+        // Fastest varying is time
         // TODO: could this be streamlined upstream?
         //fi = frames_sofar % write_t;
         //ti = frames_sofar / write_t;
@@ -188,13 +188,23 @@ void visTranspose::transpose_write() {
     file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
     DEBUG("wrote eval");
 
+    size_t i_in, i_out;
     for (size_t f = 0; f < write_f; f++) {
-        n_val = f * write_t * num_ev * num_input;
+        //n_val = f * write_t * num_ev * num_input;
+        //blocked_transpose(&*(evec.begin() + n_val),
+        //                  &*(write_buf.begin() + n_val * sizeof(cfloat)),
+        //                  write_t, num_ev, ev_block_size, num_input * sizeof(cfloat));
         // TODO: need to stride over evals
-        //       for now just memcpy large elements. nope, doesn't work
-        blocked_transpose(&*(evec.begin() + n_val),
-                          &*(write_buf.begin() + n_val * sizeof(cfloat)),
-                          write_t, num_ev, ev_block_size, num_input * sizeof(cfloat));
+        //       for now just do the slow loop transpose.
+        for (size_t t = 0; t < write_t; t++) {
+            for (size_t e = 0; e < num_ev; e++) {
+                for (size_t i = 0; i < num_input; i++) {
+                    i_in = num_input * (num_ev * (f * write_t + t) + e) + i;
+                    i_out = write_t * (num_input * (f * num_ev + e) + i) + t;
+                    ((cfloat*) write_buf.data())[i_out] = evec[i_in];
+                }
+            }
+        }
     }
     DEBUG("transposed evec.");
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
