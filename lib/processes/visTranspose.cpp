@@ -81,9 +81,10 @@ visTranspose::~visTranspose() {
 void visTranspose::main_thread() {
 
     uint32_t frame_id = 0;
-    //uint32_t frames_sofar = 0;
+    // frequency and time indices within chunk
     uint32_t fi = 0;
     uint32_t ti = 0;
+    // offset for copying into buffer
     uint32_t offset = 0;
 
     // Create HDF5 file
@@ -93,7 +94,6 @@ void visTranspose::main_thread() {
         new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev)
     );
 
-    //while (!stop_thread && frames_sofar < num_time * num_freq) {
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
@@ -103,17 +103,12 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         // Collect frames until a chunk is filled
-        //      The number of frames is specified in the config
-        //      Ensure they are coming in the right order
-        // copy data
-
-        // Fastest varying is time
+        // Fastest varying is time (needs to be consistent with reader!)
         // TODO: could this be streamlined upstream?
-        //fi = frames_sofar % write_t;
-        //ti = frames_sofar / write_t;
         offset = fi * write_t + ti;
         std::copy(frame.vis.begin(), frame.vis.end(), vis.begin() + offset * num_prod);
         std::copy(frame.weight.begin(), frame.weight.end(), vis_weight.begin() + offset * num_prod);
+        // TODO: just fill until these are populated in the frames
         std::fill(gain_coeff.begin() + offset * num_prod,
                   gain_coeff.begin() + (offset+1) * num_prod, (cfloat) {1, 0});
         std::fill(gain_exp.begin() + offset * inputs.size(),
@@ -123,14 +118,12 @@ void visTranspose::main_thread() {
         std::copy(frame.evec.begin(), frame.evec.end(), evec.begin() + offset * num_input * num_ev);
         erms[offset] = frame.erms;
 
-        //frames_sofar++;
+        // Increment within a chunk
         ti = (ti + 1) % write_t;
         if (ti == 0)
             fi++;
-        //if (frames_sofar == write_t * write_f) {
         if (fi == write_f) {
             transpose_write();
-            //frames_sofar = 0;
             fi = 0;
             ti = 0;
         }
@@ -144,11 +137,12 @@ void visTranspose::main_thread() {
 void visTranspose::transpose_write() {
     DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
     DEBUG("Writing block of %d times and %d freqs", write_t, write_f);
-    // loop over frequency and transpose
     // adjust block size for small dimensions
     size_t block_size = std::min(BLOCK_SIZE, chunk_t);
     size_t ev_block_size = std::min(block_size, num_ev);
     size_t n_val;
+
+    // loop over frequency and transpose
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
         blocked_transpose(&*(vis.begin() + n_val),
@@ -236,9 +230,6 @@ void visTranspose::increment_chunk() {
         // Reached an incomplete chunk
         f_edge = true;
     }
-    // if (t_ind == 0) {
-    //     t_edge = false;  // reset incomplete chunk flag
-    // }
     // Determine size of next chunk
     write_f = f_edge ? num_freq - f_ind : chunk_f;
     write_t = t_edge ? num_time - t_ind : chunk_t;
