@@ -456,7 +456,7 @@ int main(int argc, char ** argv) {
     metrics.register_with_server(&rest_server);
 
     BasebandRequestManager &baseband = BasebandRequestManager::instance();
-    baseband.register_with_server(rest_server);
+    baseband.register_with_server(&rest_server);
 
     for(EVER){
         sleep(1);

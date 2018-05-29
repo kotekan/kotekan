@@ -25,7 +25,7 @@ void BasebandRequestManager::register_with_server(restServer* rest_server) {
   using namespace std::placeholders;
   rest_server->register_get_callback("/baseband",
                                      std::bind(&BasebandRequestManager::status_callback, this, _1));
-  rest_server->register_json_callback("/baseband",
+  rest_server->register_post_callback("/baseband",
                                       std::bind(&BasebandRequestManager::handle_request_callback, this, _1, _2));
 }
 
@@ -34,6 +34,7 @@ void BasebandRequestManager::status_callback(connectionInstance& conn){
     std::lock_guard<std::mutex> lock(requests_lock);
 
     for (auto& element : requests) {
+        // XXX Compiler complains that this isn't used.
         uint32_t freq_id = element.first;
         for (auto& req : element.second) {
             json j;
@@ -67,10 +68,10 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
             requests[freq_id].push_back({start_fpga, length_fpga, now});
         }
         requests_cv.notify_all();
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     }
     else {
-        conn.send_empty_reply(STATUS_BAD_REQUEST);
+        conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
     }
 }
 
