@@ -8,7 +8,7 @@ Welcome to Kotekan's documentation!
 
    overview
    overview_theory_of_operation
-   overview_compiling
+   compiling/general
 
 
 .. toctree::

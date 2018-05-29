@@ -1,6 +1,8 @@
 #include "visFile.hpp"
 #include "errors.h"
+#include "version.h"
 #include <time.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <iomanip>
 #include <algorithm>
@@ -15,16 +17,35 @@
 
 using namespace HighFive;
 
-visFile::visFile(const std::string& name,
-                 const std::string& acq_name,
-                 const std::string& root_path,
-                 const std::string& inst_name,
-                 const std::string& notes,
-                 const std::string& weights_type,
-                 const std::vector<freq_ctype>& freqs,
-                 const std::vector<input_ctype>& inputs,
-                 const std::vector<prod_ctype>& prods,
-                 size_t num_ev) {
+#if defined( __APPLE__ )
+// Taken from
+// https://android.googlesource.com/platform/system/core/+/master/base/include/android-base/macros.h
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(exp)            \
+  ({                                       \
+    decltype(exp) _rc;                     \
+    do {                                   \
+      _rc = (exp);                         \
+    } while (_rc == -1 && errno == EINTR); \
+    _rc;                                   \
+  })
+#endif
+#endif
+
+//
+// Implementation of standard HDF5 visibility data file
+//
+
+void visFile::create(const std::string& name,
+                     const std::string& acq_name,
+                     const std::string& root_path,
+                     const std::string& inst_name,
+                     const std::string& notes,
+                     const std::string& weights_type,
+                     const std::vector<freq_ctype>& freqs,
+                     const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods,
+                     size_t num_ev, size_t num_time) {
 
     std::string data_filename = root_path + "/" + acq_name + "/" + name;
 
@@ -37,7 +58,6 @@ visFile::visFile(const std::string& name,
 
     // Determine whether to write the eigensector or not...
     write_ev = (num_ev > 0);
-    size_t ninput = inputs.size();
 
     INFO("Creating new output file %s", name.c_str());
 
@@ -45,8 +65,11 @@ visFile::visFile(const std::string& name,
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
     );
 
-    create_index(freqs, inputs, prods, num_ev);
-    create_datasets(freqs.size(), ninput, prods.size(), num_ev, weights_type);
+    create_axes(freqs, inputs, prods, num_ev, num_time);
+    create_datasets();
+
+    dset("vis_weight").createAttribute<std::string>(
+        "type", DataSpace::From(weights_type)).write(weights_type);
 
     // === Set the required attributes for a valid file ===
     std::string version = "NT_3.1.0";
@@ -57,8 +80,7 @@ visFile::visFile(const std::string& name,
     file->createAttribute<std::string>(
         "instrument_name", DataSpace::From(inst_name)).write(inst_name);
 
-    // TODO: get git version tag somehow
-    std::string git_version = "not set";
+    std::string git_version = GIT_COMMIT_HASH;
     file->createAttribute<std::string>(
         "git_version_tag", DataSpace::From(git_version)).write(git_version);
 
@@ -77,221 +99,144 @@ visFile::visFile(const std::string& name,
 }
 
 visFile::~visFile() {
-
     file->flush();
     file.reset(nullptr);
     std::remove(lock_filename.c_str());
 }
 
-// TODO: will need to make prods an input to this method for baseline subsetting
-//       should make use of overloading so that previous calls don't break.
-//       this should propagate to Filebundle
-void visFile::create_index(const std::vector<freq_ctype>& freqs,
+void visFile::create_axes(const std::vector<freq_ctype>& freqs,
                           const std::vector<input_ctype>& inputs,
                           const std::vector<prod_ctype>& prods,
-                          size_t num_ev) {
+                          size_t num_ev, size_t num_time = 0) {
 
-    Group indexmap = file->createGroup("index_map");
+    create_time_axis(num_time);
 
-    DataSet time_imap = indexmap.createDataSet(
-      "time", DataSpace({0}, {DataSpace::UNLIMITED}),
-      create_datatype<time_ctype>(), std::vector<size_t>({1})
-    );
-
-    // Create and fill frequency dataset
-    DataSet freq_imap = indexmap.createDataSet<freq_ctype>("freq", DataSpace(freqs.size()));
-    freq_imap.write(freqs);
-
-
-    DataSet input_imap = indexmap.createDataSet<input_ctype>("input", DataSpace(inputs.size()));
-    input_imap.write(inputs);
-
-    DataSet prod_imap = indexmap.createDataSet<prod_ctype>(
-        "prod", DataSpace(prods.size())
-    );
-    prod_imap.write(prods);
+    // Create and fill other axes
+    create_axis("freq", freqs);
+    create_axis("input", inputs);
+    create_axis("prod", prods);
 
     if(write_ev) {
-
         std::vector<uint32_t> ev_vector(num_ev);
         std::iota(ev_vector.begin(), ev_vector.end(), 0);
-
-        DataSet ev_imap = indexmap.createDataSet<uint32_t>(
-            "ev", DataSpace(ev_vector.size())
-        );
-        ev_imap.write(ev_vector);
+        create_axis("ev", ev_vector);
     }
-
-    file->flush();
-
 }
 
-void visFile::create_datasets(size_t nfreq, size_t ninput, size_t nprod,
-                             size_t nev, std::string weights_type) {
+template<typename T>
+void visFile::create_axis(std::string name, const std::vector<T>& axis) {
 
-    // Create extensible spaces for the different types of spaces we have
-    DataSpace vis_space = DataSpace({0, nfreq, nprod},
-                                    {DataSpace::UNLIMITED, nfreq, nprod});
-    DataSpace gain_space = DataSpace({0, nfreq, ninput},
-                                    {DataSpace::UNLIMITED, nfreq, ninput});
-    DataSpace exp_space = DataSpace({0, ninput},
-                                    {DataSpace::UNLIMITED, ninput});
+    Group indexmap = file->exist("index_map") ?
+                     file->getGroup("index_map") :
+                     file->createGroup("index_map");
+    
+    DataSet index = indexmap.createDataSet<T>(name, DataSpace(axis.size()));
+    index.write(axis);
+}
 
-    DataSpace eval_space = DataSpace({0, nfreq, nev},
-                                    {DataSpace::UNLIMITED, nfreq, nev});
-    DataSpace evec_space = DataSpace({0, nfreq, nev, ninput},
-                                    {DataSpace::UNLIMITED, nfreq, nev, ninput});
-    DataSpace erms_space = DataSpace({0, nfreq},
-                                    {DataSpace::UNLIMITED, nfreq});
+void visFile::create_time_axis(size_t num_time) {
 
-    std::vector<std::string> vis_axes = {"time", "freq", "prod"};
-    std::vector<std::string> gain_axes = {"time", "freq", "input"};
-    std::vector<std::string> exp_axes = {"time", "input"};
-
-    std::vector<std::string> eval_axes = {"time", "freq", "ev"};
-    std::vector<std::string> evec_axes = {"time", "freq", "ev", "input"};
-    std::vector<std::string> erms_axes = {"time", "freq"};
-
-    std::vector<size_t> vis_dims = {1, 1, nprod};
-    std::vector<size_t> gain_dims = {1, 1, ninput};
-    std::vector<size_t> exp_dims = {1, ninput};
-
-    std::vector<size_t> eval_dims = {1, 1, nev};
-    std::vector<size_t> evec_dims = {1, 1, nev, ninput};
-    std::vector<size_t> erms_dims = {1, 1};
-
-    DataSet vis = file->createDataSet(
-        "vis", vis_space, create_datatype<cfloat>(), vis_dims
+    Group indexmap = file->exist("index_map") ?
+                     file->getGroup("index_map") :
+                     file->createGroup("index_map");
+    
+    DataSet time_axis = indexmap.createDataSet(
+      "time", DataSpace({0}, {num_time}),
+      create_datatype<time_ctype>(), std::vector<size_t>({1})
     );
-    vis.createAttribute<std::string>(
-        "axis", DataSpace::From(vis_axes)).write(vis_axes);
+}
 
+
+void visFile::create_datasets() {
 
     Group flags = file->createGroup("flags");
-    DataSet vis_weight = flags.createDataSet(
-        "vis_weight", vis_space, create_datatype<float>(), vis_dims
-    );
-    vis_weight.createAttribute<std::string>(
-        "axis", DataSpace::From(vis_axes)).write(vis_axes);
-    vis_weight.createAttribute<std::string>(
-        "type", DataSpace::From(weights_type)).write(weights_type);
 
-
-    DataSet gain_coeff = file->createDataSet(
-        "gain_coeff", gain_space, create_datatype<cfloat>(), gain_dims
-    );
-    gain_coeff.createAttribute<std::string>(
-        "axis", DataSpace::From(gain_axes)).write(gain_axes);
-
-
-    DataSet gain_exp = file->createDataSet(
-        "gain_exp", exp_space, create_datatype<int>(), exp_dims
-    );
-    gain_exp.createAttribute<std::string>(
-        "axis", DataSpace::From(exp_axes)).write(exp_axes);
+    create_dataset("vis", {"time", "freq", "prod"}, create_datatype<cfloat>());
+    create_dataset("flags/vis_weight", {"time", "freq", "prod"}, create_datatype<float>());
+    create_dataset("gain_coeff", {"time", "freq", "input"}, create_datatype<cfloat>());
+    create_dataset("gain_exp", {"time", "input"}, create_datatype<int>());
 
     // Only write the eigenvector datasets if there's going to be anything in
     // them
     if(write_ev) {
-        DataSet eval = file->createDataSet(
-            "eval", eval_space, create_datatype<float>(), eval_dims
-        );
-        eval.createAttribute<std::string>(
-            "axis", DataSpace::From(eval_axes)).write(eval_axes);
-
-        DataSet evec = file->createDataSet(
-            "evec", evec_space, create_datatype<cfloat>(), evec_dims
-        );
-        evec.createAttribute<std::string>(
-            "axis", DataSpace::From(evec_axes)).write(evec_axes);
-
-        DataSet erms = file->createDataSet(
-            "erms", erms_space, create_datatype<float>(), erms_dims
-        );
-        erms.createAttribute<std::string>(
-            "axis", DataSpace::From(erms_axes)).write(erms_axes);
+        create_dataset("eval", {"time", "freq", "ev"}, create_datatype<float>());
+        create_dataset("evec", {"time", "freq", "ev", "input"}, create_datatype<cfloat>());
+        create_dataset("erms", {"time", "freq"}, create_datatype<float>()); 
     }
 
     file->flush();
 
 }
 
+void visFile::create_dataset(const std::string& name, const std::vector<std::string>& axes,
+                             DataType type) {
+
+    size_t max_time = dset("index_map/time").getSpace().getMaxDimensions()[0];
+
+    // Mapping of axis names to sizes (start, max, chunk)
+    std::map<std::string, std::tuple<size_t, size_t, size_t>> size_map;
+    size_map["freq"] = std::make_tuple(length("freq"), length("freq"), 1);
+    size_map["input"] = std::make_tuple(length("input"), length("input"), length("input"));
+    size_map["prod"] = std::make_tuple(length("prod"), length("prod"), length("prod"));
+    size_map["ev"] = std::make_tuple(length("ev"), length("ev"), length("ev"));
+    size_map["time"] = std::make_tuple(0, max_time, 1);
+
+    std::vector<size_t> cur_dims, max_dims, chunk_dims;
+
+    for(auto axis : axes) {
+        auto cs = size_map[axis];
+        cur_dims.push_back(std::get<0>(cs));
+        max_dims.push_back(std::get<1>(cs));
+        chunk_dims.push_back(std::get<2>(cs));
+    }
+    
+    DataSpace space = DataSpace(cur_dims, max_dims);
+    DataSet dset = file->createDataSet(
+        name, space, type, max_dims
+    );
+    dset.createAttribute<std::string>(
+        "axis", DataSpace::From(axes)).write(axes);
+}
+
 // Quick functions for fetching datasets and dimensions
-DataSet visFile::vis() {
-    return file->getDataSet("vis");
+DataSet visFile::dset(const std::string& name) {
+    const std::string dset_name = name == "vis_weight" ? "flags/vis_weight" : name;
+    return file->getDataSet(dset_name);
 }
 
-DataSet visFile::vis_weight() {
-    return file->getDataSet("flags/vis_weight");
-}
-
-DataSet visFile::gain_coeff() {
-    return file->getDataSet("gain_coeff");
-}
-
-DataSet visFile::gain_exp() {
-    return file->getDataSet("gain_exp");
-}
-
-DataSet visFile::time() {
-    return file->getDataSet("index_map/time");
-}
-
-DataSet visFile::eval() {
-    return file->getDataSet("eval");
-}
-
-DataSet visFile::evec() {
-    return file->getDataSet("evec");
-}
-
-DataSet visFile::erms() {
-    return file->getDataSet("erms");
+size_t visFile::length(const std::string& axis_name) {
+    if(!write_ev && axis_name == "ev") return 0;
+    return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
 }
 
 size_t visFile::num_time() {
-    return time().getSpace().getDimensions()[0];
+    return length("time");
 }
 
-size_t visFile::num_prod() {
-    return vis().getSpace().getDimensions()[2];
-}
-
-size_t visFile::num_freq() {
-    return vis().getSpace().getDimensions()[1];
-}
-
-size_t visFile::num_input() {
-    return gain_exp().getSpace().getDimensions()[1];
-}
-
-size_t visFile::num_ev() {
-    return write_ev ? eval().getSpace().getDimensions()[2] : 0;
-}
 
 uint32_t visFile::extend_time(time_ctype new_time) {
 
     // Get the current dimensions
-    size_t ntime = num_time(), nprod = num_prod(),
-           ninput = num_input(), nfreq = num_freq(),
-           nev = num_ev();
+    size_t ntime = length("time"), nprod = length("prod"),
+           ninput = length("input"), nfreq = length("freq"),
+           nev = length("ev");
 
     INFO("Current size: %zd; new size: %zd", ntime, ntime + 1);
     // Add a new entry to the time axis
     ntime++;
-    time().resize({ntime});
-    time().select({ntime - 1}, {1}).write(&new_time);
+    dset("index_map/time").resize({ntime});
+    dset("index_map/time").select({ntime - 1}, {1}).write(&new_time);
 
     // Extend all other datasets
-    vis().resize({ntime, nfreq, nprod});
-    vis_weight().resize({ntime, nfreq, nprod});
-    gain_coeff().resize({ntime, nfreq, ninput});
-    gain_exp().resize({ntime, ninput});
+    dset("vis").resize({ntime, nfreq, nprod});
+    dset("vis_weight").resize({ntime, nfreq, nprod});
+    dset("gain_coeff").resize({ntime, nfreq, ninput});
+    dset("gain_exp").resize({ntime, ninput});
 
     if(write_ev) {
-        eval().resize({ntime, nfreq, nev});
-        evec().resize({ntime, nfreq, nev, ninput});
-        erms().resize({ntime, nfreq});
+        dset("eval").resize({ntime, nfreq, nev});
+        dset("evec").resize({ntime, nfreq, nev, ninput});
+        dset("erms").resize({ntime, nfreq});
     }
 
     // Flush the changes
@@ -309,20 +254,228 @@ void visFile::write_sample(
 ) {
 
     // Get the current dimensions
-    size_t nprod = num_prod(), ninput = num_input(), nev = num_ev();
+    size_t nprod = length("prod"), ninput = length("input"), nev = length("ev");
 
-    vis().select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
-    vis_weight().select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_weight);
-    gain_coeff().select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(new_gcoeff);
-    gain_exp().select({time_ind, 0}, {1, ninput}).write(new_gexp);
+    dset("vis").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_vis);
+    dset("vis_weight").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(new_weight);
+    dset("gain_coeff").select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(new_gcoeff);
+    dset("gain_exp").select({time_ind, 0}, {1, ninput}).write(new_gexp);
 
     if(write_ev) {
-        eval().select({time_ind, freq_ind, 0}, {1, 1, nev}).write(new_eval);
-        evec().select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}).write((const cfloat *)new_evec.data());
-        erms().select({time_ind, freq_ind}, {1, 1}).write(new_erms);
+        dset("eval").select({time_ind, freq_ind, 0}, {1, 1, nev}).write(new_eval);
+        dset("evec").select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}).write((const cfloat *)new_evec.data());
+        dset("erms").select({time_ind, freq_ind}, {1, 1}).write(new_erms);
     }
 
     file->flush();
+}
+
+
+//
+// Implementation of the fast HDF5 visibility data file
+//
+visFileFast::~visFileFast() {
+    // Save the number of samples added into the `num_time` attribute.
+    int nt = (size_t)num_time();
+    file->createAttribute<int>(
+        "num_time", DataSpace::From(nt)).write(nt);
+}
+
+
+void visFileFast::create_time_axis(size_t max_time) {
+    // Fill the time axis with zeros
+    std::vector<time_ctype> times(max_time, {0, 0.0});
+    create_axis("time", times);
+}
+
+
+void visFileFast::create_dataset(const std::string& name, const std::vector<std::string>& axes,
+                                 HighFive::DataType type) {
+
+    std::vector<size_t> dims;
+
+    for(auto axis : axes) {
+        dims.push_back(length(axis));
+    }
+
+    hid_t create_p = H5Pcreate(H5P_DATASET_CREATE);
+    H5Pset_layout(create_p, H5D_CONTIGUOUS);
+    H5Pset_alloc_time(create_p, H5D_ALLOC_TIME_EARLY);
+    H5Pset_fill_time(create_p, H5D_FILL_TIME_NEVER);
+
+    DataSpace space = DataSpace(dims);
+    DataSet dset = file->createDataSet(
+        name, space, type, create_p
+    );
+    dset.createAttribute<std::string>(
+        "axis", DataSpace::From(axes)).write(axes);
+}
+
+
+void visFileFast::setup_raw() {
+
+    // Get all the dataset lengths
+    ntime = 0;
+    nfreq = length("freq");
+    nprod = length("prod");
+    ninput = length("input");
+    nev = length("ev");
+
+    // Calculate all the dataset file offsets
+    time_offset = H5Dget_offset(dset("index_map/time").getId());
+    vis_offset = H5Dget_offset(dset("vis").getId());
+    weight_offset = H5Dget_offset(dset("vis_weight").getId());
+    gcoeff_offset = H5Dget_offset(dset("gain_coeff").getId());
+    gexp_offset = H5Dget_offset(dset("gain_exp").getId());
+
+    if(write_ev) {
+        eval_offset = H5Dget_offset(dset("eval").getId());
+        evec_offset = H5Dget_offset(dset("evec").getId());
+        erms_offset = H5Dget_offset(dset("erms").getId());
+    }
+
+    // WARNING: this is very much discouraged by the HDF5 folks. Only really
+    // works for the sec2 driver.
+    int * fhandle;
+    H5Fget_vfd_handle(file->getId(), H5P_DEFAULT, (void**)(&fhandle));
+    fd = *fhandle;
+
+#ifndef __APPLE__
+    struct stat st;
+    if((fstat(fd, &st) != 0) || (posix_fallocate(fd, 0, st.st_size) != 0)) {
+        ERROR("Couldn't preallocate file: %s", strerror(errno));
+    }
+#endif
+}
+
+template<typename T>
+bool visFileFast::write_raw(off_t dset_base, int ind, size_t n, 
+                            const std::vector<T>& vec) {
+
+
+    if(vec.size() < n) {
+        ERROR("Expected size of write (%i) exceeds vector length (%i)",
+              n, vec.size());
+        return false;
+    }
+
+    return write_raw(dset_base, ind, n, vec.data());
+}
+
+template<typename T>
+bool visFileFast::write_raw(off_t dset_base, int ind, size_t n, 
+                            const T* data) {
+
+
+    size_t nb = n * sizeof(T);
+    off_t offset = dset_base + ind * nb;
+
+    // Write in a retry macro loop incase the write was interrupted by a signal
+    int nbytes = TEMP_FAILURE_RETRY( 
+        pwrite(fd, (const void *)data, nb, offset)
+    );
+
+    if(nbytes < 0) {
+        ERROR("Write error attempting to write %i bytes at offset %i: %s",
+              nb, offset, strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+void visFileFast::flush_raw_async(off_t dset_base, int ind, size_t n) {
+#ifdef __linux__
+    sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#endif
+}
+
+void visFileFast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
+#ifdef __linux__
+    sync_file_range(fd, dset_base + ind * n, n,
+                    SYNC_FILE_RANGE_WAIT_BEFORE |
+                    SYNC_FILE_RANGE_WRITE |
+                    SYNC_FILE_RANGE_WAIT_AFTER);
+    posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED);
+#endif
+}
+
+uint32_t visFileFast::extend_time(time_ctype new_time) {
+
+    // Perform a raw write of the new time sample
+    write_raw(time_offset, ntime, 1, &new_time);
+
+    // Start to flush out older dataset regions
+    uint delta_async = 2;
+    if(ntime > delta_async) {
+        flush_raw_async(vis_offset, ntime - delta_async, nfreq * nprod * sizeof(cfloat));
+        flush_raw_async(weight_offset, ntime - delta_async, nfreq * nprod * sizeof(float));
+        flush_raw_async(gcoeff_offset, ntime - delta_async, nfreq * ninput * sizeof(cfloat));
+        flush_raw_async(gexp_offset, ntime - delta_async, ninput * sizeof(int32_t));
+         
+        if(write_ev) {
+            flush_raw_async(eval_offset, ntime - delta_async, nfreq * nev * sizeof(float));
+            flush_raw_async(evec_offset, ntime - delta_async, nfreq * nev * ninput * sizeof(cfloat));
+            flush_raw_async(evec_offset, ntime - delta_async, nfreq * sizeof(float));
+        }
+    }
+
+    // Flush and clear out any really old parts of the datasets
+    uint delta_sync = 4;
+    if(ntime > delta_sync) {
+        flush_raw_sync(vis_offset, ntime - delta_sync, nfreq * nprod * sizeof(cfloat));
+        flush_raw_sync(weight_offset, ntime - delta_sync, nfreq * nprod * sizeof(float));
+        flush_raw_sync(gcoeff_offset, ntime - delta_sync, nfreq * ninput * sizeof(cfloat));
+        flush_raw_sync(gexp_offset, ntime - delta_sync, ninput * sizeof(int32_t));
+         
+        if(write_ev) {
+            flush_raw_sync(eval_offset, ntime - delta_sync, nfreq * nev * sizeof(float));
+            flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * nev * ninput * sizeof(cfloat));
+            flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * sizeof(float));
+        }
+    }
+
+    // Increment the time count and return the index of the added sample
+    return ntime++;
+}
+
+void visFileFast::deactivate_time(uint32_t time_ind) {
+    flush_raw_sync(vis_offset, time_ind, nfreq * nprod * sizeof(cfloat));
+    flush_raw_sync(weight_offset, time_ind, nfreq * nprod * sizeof(float));
+    flush_raw_sync(gcoeff_offset, time_ind, nfreq * ninput * sizeof(cfloat));
+    flush_raw_sync(gexp_offset, time_ind, ninput * sizeof(int32_t));
+     
+    if(write_ev) {
+        flush_raw_sync(eval_offset, time_ind, nfreq * nev * sizeof(float));
+        flush_raw_sync(evec_offset, time_ind, nfreq * nev * ninput * sizeof(cfloat));
+        flush_raw_sync(evec_offset, time_ind, nfreq * sizeof(float));
+    }
+}
+
+void visFileFast::write_sample(
+    uint32_t time_ind, uint32_t freq_ind, std::vector<cfloat> new_vis,
+    std::vector<float> new_weight, std::vector<cfloat> new_gcoeff,
+    std::vector<int32_t> new_gexp, std::vector<float> new_eval,
+    std::vector<cfloat> new_evec, float new_erms
+) {
+
+    write_raw(vis_offset, time_ind * nfreq + freq_ind, nprod, new_vis);
+    write_raw(weight_offset, time_ind * nfreq + freq_ind, nprod, new_weight);
+    write_raw(gcoeff_offset, time_ind * nfreq + freq_ind, ninput, new_gcoeff);
+    write_raw(gexp_offset, time_ind, ninput, new_gexp);
+
+    if(write_ev) {
+        write_raw(eval_offset, time_ind * nfreq + freq_ind, nev, new_eval);
+        write_raw(evec_offset, time_ind * nfreq + freq_ind, nev * ninput, new_evec);
+        write_raw(erms_offset, time_ind * nfreq + freq_ind, 1, (const float*)&new_erms);
+    }
+
+    // Figure out what (if any) flushing or advising to do here.
+}
+
+
+size_t visFileFast::num_time() {
+    return ntime;
 }
 
 
@@ -351,7 +504,7 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
             // We've got a later time and so we need to add a new time sample,
             // if the current file does not need to rollover register the new
             // sample as being in the last file, otherwise create a new file
-            std::shared_ptr<visFile> file;
+            std::shared_ptr<filetype> file;
             uint32_t ind;
             std::tie(file, ind) = vis_file_map.rbegin()->second;  // Unpack the last entry
 
@@ -365,6 +518,8 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
 
             // As we've added a new sample we need to delete the earliest sample
             if(vis_file_map.size() > window_size) {
+                std::tie(file, ind) = vis_file_map.begin()->second;  // Unpack the first entry
+                file->deactivate_time(ind); // Cleanup the sample
                 vis_file_map.erase(vis_file_map.begin());
             }
         }

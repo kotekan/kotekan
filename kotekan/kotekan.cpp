@@ -71,6 +71,7 @@ extern "C" {
 #include "KotekanProcess.hpp"
 #include "prometheusMetrics.hpp"
 #include "baseband_request_manager.hpp"
+#include "processFactory.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -92,11 +93,31 @@ void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --config (-c) [file]        The local JSON config file to use.\n");
+    printf("    --config-daemon (-d) [file] Same as -c, but uses installed yaml->json script\n");
     printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
-    printf("    --syslog (-s)               Send a copy of the output to syslog.\n\n");
+    printf("    --syslog (-s)               Send a copy of the output to syslog.\n");
+    printf("    --no-stderr (-n)            Disables output to std error if syslog (-s) is enabled.\n");
+    printf("    --version (-v)              Prints the kotekan version and build details.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
+}
+
+void print_version() {
+    printf("Kotekan version %s\n", KOTEKAN_VERSION_STR);
+    printf("Build branch: %s\n", GIT_BRANCH);
+    printf("Git commit hash: %s\n\n", GIT_COMMIT_HASH);
+    printf("CMake build settings: \n%s\n", CMAKE_BUILD_SETTINGS);
+
+    printf("Available kotekan processes:\n");
+    std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
+    for (auto &process_maker : known_processes) {
+        if (process_maker.first != known_processes.rbegin()->first) {
+            printf("%s, ", process_maker.first.c_str());
+        } else {
+            printf("%s\n\n", process_maker.first.c_str());
+        }
+    }
 }
 
 #ifdef WITH_DPDK
@@ -181,7 +202,7 @@ void set_gps_time(Config &config) {
     }
 }
 
-int start_new_kotekan_mode(Config &config) {
+void start_new_kotekan_mode(Config &config) {
     config.dump_config();
     update_log_levels(config);
     set_gps_time(config);
@@ -191,19 +212,9 @@ int start_new_kotekan_mode(Config &config) {
     kotekan_mode->initalize_processes();
     kotekan_mode->start_processes();
     running = true;
-
-    return 0;
 }
 
 int main(int argc, char ** argv) {
-#ifdef WITH_DPDK
-    dpdk_setup();
-#endif
-
-#ifdef WITH_HSA
-    kotekan_hsa_start();
-#endif
-    json config_json;
 
     std::signal(SIGINT, signal_handler);
 
@@ -212,6 +223,7 @@ int main(int argc, char ** argv) {
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool opt_d_set = false;
     bool gps_time = false;
+    bool enable_stderr = true;
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
     // If --syslog is added, then output is to both syslog and stderr
@@ -222,16 +234,18 @@ int main(int argc, char ** argv) {
     for (;;) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
-            {"config-deamon", required_argument, 0, 'd'},
+            {"config-daemon", required_argument, 0, 'd'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
+            {"no-stderr", no_argument, 0, 'n'},
+            {"version", no_argument, 0, 'v'},
             {0, 0, 0, 0}
         };
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:d:s",
+        opt_val = getopt_long (argc, argv, "ghc:d:snv",
                                long_options, &option_index);
 
         // End of args
@@ -246,8 +260,6 @@ int main(int argc, char ** argv) {
                 break;
             case 'c':
                 config_file_name = strdup(optarg);
-                log_options |= LOG_PERROR;
-                openlog ("kotekan", log_options, LOG_LOCAL1);
                 break;
             case 'd':
                 config_file_name = strdup(optarg);
@@ -259,6 +271,13 @@ int main(int argc, char ** argv) {
             case 's':
                 __enable_syslog = 1;
                 break;
+            case 'n':
+                enable_stderr = false;
+                break;
+            case 'v':
+                print_version();
+                return 0;
+                break;
             default:
                 printf("Invalid option, run with -h to see options");
                 return -1;
@@ -266,11 +285,28 @@ int main(int argc, char ** argv) {
         }
     }
 
+#ifdef WITH_DPDK
+    dpdk_setup();
+#endif
+
+#ifdef WITH_HSA
+    kotekan_hsa_start();
+#endif
+
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
-        openlog ("kotekan", log_options, LOG_LOCAL1);
         fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
         fprintf(stderr, "Configuration should be provided via the `/start/` REST endpoint.\n");
+    }
+
+    if (string(config_file_name) != "none" && enable_stderr) {
+        log_options |= LOG_PERROR;
+    }
+
+    if (__enable_syslog == 1) {
+        openlog ("kotekan", log_options, LOG_LOCAL1);
+        if (!enable_stderr)
+            fprintf(stderr, "Kotekan logging to syslog only!");
     }
 
     // Load configuration file.
@@ -289,26 +325,25 @@ int main(int argc, char ** argv) {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO("Opening config file %s", config_file_name);
-        //config.parse_file(config_file_name, 0);
 
-        string exec_path;
+        string exec_script;
+        string exec_base;
         if (gps_time) {
             INFO("Getting GPS time from ch_master, this might take some time...");
-            exec_path = "python ../../scripts/gps_yaml_to_json.py " + std::string(config_file_name);
+            exec_script = "gps_yaml_to_json.py ";
         } else {
-            if (opt_d_set) {
-                exec_path = "python /usr/sbin/yaml_to_json.py " + std::string(config_file_name);
-            } else {
-                exec_path = "python ../../scripts/yaml_to_json.py " + std::string(config_file_name);
-            }
+            exec_script = "yaml_to_json.py ";
         }
-        std::string json_string = exec(exec_path.c_str());
-        config_json = json::parse(json_string.c_str());
+        if (opt_d_set) {
+            exec_base = "/usr/local/bin/";
+        } else {
+            exec_base = "../../scripts/";
+        }
+        string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
+        std::string json_string = exec(exec_command.c_str());
+        json config_json = json::parse(json_string.c_str());
         config.update_config(config_json, 0);
-        if (start_new_kotekan_mode(config) == -1) {
-            ERROR("Error with config file, exiting...");
-            return -1;
-        }
+        start_new_kotekan_mode(config);
     }
 
     // Main REST callbacks.
@@ -321,10 +356,7 @@ int main(int argc, char ** argv) {
         config.update_config(json_config, 0);
 
         try {
-            if (!start_new_kotekan_mode(config)) {
-                conn.send_error("Mode not supported", STATUS_BAD_REQUEST);
-                return;
-            }
+            start_new_kotekan_mode(config);
         } catch (std::out_of_range ex) {
             DEBUG("Out of range exception %s", ex.what());
             delete kotekan_mode;
@@ -360,6 +392,7 @@ int main(int argc, char ** argv) {
         kotekan_mode->join();
         delete kotekan_mode;
         kotekan_mode = nullptr;
+        running = false;
         conn.send_empty_reply(STATUS_OK);
     });
 

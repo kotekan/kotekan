@@ -1,5 +1,5 @@
 /**
- * @file frbNetworkprocess.hpp
+ * @file
  * @brief Network transmission process for FRB obs
  *  - frbNetworkProcess : public KotekanProcess
  */
