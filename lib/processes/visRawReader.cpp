@@ -57,6 +57,10 @@ visRawReader::visRawReader(Config &config,
     nfreq = _t["structure"]["nfreq"].get<size_t>();
     ntime = _t["structure"]["ntime"].get<size_t>();
 
+    // Special case if dimensions less than chunk size
+    chunk_f = std::min(chunk_f, nfreq);
+    chunk_t = std::min(chunk_t, ntime);
+
     // Number of elements in a chunked row
     row_size = (chunk_f * chunk_t) * (nfreq / chunk_f)
              + (nfreq % chunk_f) * chunk_t;
@@ -121,10 +125,11 @@ int visRawReader::position_map(int ind) {
         // edges case
         int f_width = std::min(nfreq - ci * chunk_f, chunk_f);
         // time and frequency indices
-        int ti = ri * chunk_t + ((ind % row_size) % 
-                 (t_width * f_width)) / f_width;
+        // time is fastest varying
         int fi = ci * chunk_f + ((ind % row_size) % 
-                 (t_width * f_width)) % f_width;
+                 (t_width * f_width)) / t_width;
+        int ti = ri * chunk_t + ((ind % row_size) % 
+                 (t_width * f_width)) % t_width;
 
         return ti * nfreq + fi;
     } else {
@@ -175,6 +180,7 @@ void visRawReader::main_thread() {
         madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
 
         DEBUG("ind %d", ind);
+        DEBUG("time ind %d freq ind %d", file_ind / nfreq, file_ind % nfreq);
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % out_buf->num_frames;
@@ -183,5 +189,5 @@ void visRawReader::main_thread() {
     }
 
     // Once we've read the file, we should exit kotekan
-    std::raise(SIGINT);
+    //std::raise(SIGINT);
 }

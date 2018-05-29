@@ -8,7 +8,7 @@ sys.path.append("../tests/")
 from kotekan_runner import KotekanRunner
 
 # (time, freq, prod) TODO: should maybe change this order
-DEFAULT_CHUNK = (16,16,16)
+DEFAULT_CHUNK = (3,2,16)
 ERR_SQ_LIM = 3. / 1000.
 FIXED_PREC = 1. / 1000.
 
@@ -45,22 +45,23 @@ def create_archive(infile, outfile, log_level):
                 'kotekan_process': 'visRawReader',
                 'filename': os.path.abspath(infile),
                 'chunk_size': DEFAULT_CHUNK,
-                'out_buf': 'read_buffer'
+                #'out_buf': 'read_buffer'
+                'out_buf': 'trunc_buffer'
             }
         }
     )
 
     # Truncate process
-    proc.update( {
-            'truncate': {
-                'kotekan_process': 'visTruncate',
-                'err_sq_lim': ERR_SQ_LIM,
-                'fixed_precision': FIXED_PREC,
-                'in_buf': 'read_buffer',
-                'out_buf': 'trunc_buffer'
-            }
-        }
-    )
+    #proc.update( {
+    #        'truncate': {
+    #            'kotekan_process': 'visTruncate',
+    #            'err_sq_lim': ERR_SQ_LIM,
+    #            'fixed_precision': FIXED_PREC,
+    #            'in_buf': 'read_buffer',
+    #            'out_buf': 'trunc_buffer'
+    #        }
+    #    }
+    #)
 
     # Transpose/write process
     proc.update( {

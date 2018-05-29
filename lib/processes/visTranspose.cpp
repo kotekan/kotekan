@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <sys/stat.h>
 #include <fstream>
+#include <csignal>
+#include <stdexcept>
+#include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
@@ -20,8 +23,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     // Chunk dimensions for write
     chunk_t = config.get_int(unique_name, "chunk_dim_time");
     chunk_f = config.get_int(unique_name, "chunk_dim_freq");
-    write_t = chunk_t;
-    write_f = chunk_f;
 
     // Get file path to write to
     // TODO: communicate this from reader
@@ -56,6 +57,10 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     num_prod = prods.size();
     num_ev = ev.size();
 
+    // Ensure chunk_size not too large
+    write_t = std::min(chunk_t, num_time);
+    write_f = std::min(chunk_f, num_freq);
+
     // Allocate the memory for write buffer
     write_buf.reserve(chunk_f * chunk_t * num_prod * sizeof(cfloat));
 
@@ -81,6 +86,7 @@ visTranspose::~visTranspose() {
 void visTranspose::main_thread() {
 
     uint32_t frame_id = 0;
+    uint32_t frames_so_far = 0;
     // frequency and time indices within chunk
     uint32_t fi = 0;
     uint32_t ti = 0;
@@ -101,6 +107,7 @@ void visTranspose::main_thread() {
             break;
         }
         auto frame = visFrameView(in_buf, frame_id);
+        DEBUG("Frames so far %d", frames_so_far);
 
         // Collect frames until a chunk is filled
         // Fastest varying is time (needs to be consistent with reader!)
@@ -111,8 +118,10 @@ void visTranspose::main_thread() {
         // TODO: just fill until these are populated in the frames
         std::fill(gain_coeff.begin() + offset * num_prod,
                   gain_coeff.begin() + (offset+1) * num_prod, (cfloat) {1, 0});
-        std::fill(gain_exp.begin() + offset * inputs.size(),
-                  gain_exp.begin() + (offset+1) * inputs.size(), 0);
+        if (fi == 0) {
+            std::fill(gain_exp.begin() + offset * inputs.size(),
+                      gain_exp.begin() + (offset+1) * inputs.size(), 0);
+        }
         // TODO: are sizes of eigenvectors always the number of inputs?
         std::copy(frame.eval.begin(), frame.eval.end(), eval.begin() + offset * num_ev);
         std::copy(frame.evec.begin(), frame.evec.end(), evec.begin() + offset * num_input * num_ev);
@@ -128,6 +137,11 @@ void visTranspose::main_thread() {
             ti = 0;
         }
 
+        frames_so_far++;
+        // Exit when all frames have been written
+        if (frames_so_far == num_time * num_freq)
+            std::raise(SIGINT);
+
         // move to next frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
@@ -138,26 +152,43 @@ void visTranspose::transpose_write() {
     DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
     DEBUG("Writing block of %d times and %d freqs", write_t, write_f);
     // adjust block size for small dimensions
-    size_t block_size = std::min(BLOCK_SIZE, chunk_t);
-    size_t ev_block_size = std::min(block_size, num_ev);
+    // TODO: Just use fixed size for now.
+    //size_t block_size = std::min(BLOCK_SIZE, write_t);
+    size_t block_size = BLOCK_SIZE;
+    size_t ev_block_size = num_ev % 4 == 0 ? std::min(block_size, num_ev) : block_size;
+
+    // Reused parameters for loops
     size_t n_val;
+    int err;
 
     // loop over frequency and transpose
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
-        blocked_transpose(&*(vis.begin() + n_val),
+        err = blocked_transpose(&*(vis.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_prod, block_size, sizeof(cfloat));
+        if (err != 0)
+            throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
+
+    //FILE * f = fopen("bit_Table_File", "wb");
+    //for (size_t i = 0; i < write_t * write_f * num_prod; i++) {
+    //    fprintf(f, "%f,", ((cfloat*) write_buf.data())[i].real());
+    //    fprintf(f, "%f\n", ((cfloat*) write_buf.data())[i].imag());
+    //}
+    //fclose(f);
+
     DEBUG("transposed vis");
     file->write_block("vis", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
     DEBUG("wrote vis.");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
-        blocked_transpose(&*(vis_weight.begin() + n_val),
+        err = blocked_transpose(&*(vis_weight.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(float)),
                           write_t, num_prod, block_size, sizeof(float));
+        if (err != 0)
+            throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
     file->write_block("vis_weight", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
     DEBUG("wrote vis_weight");
@@ -165,18 +196,22 @@ void visTranspose::transpose_write() {
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
         // TODO: for now should bypass this since we are just filling it with ones
-        blocked_transpose(&*(gain_coeff.begin() + n_val),
+        err = blocked_transpose(&*(gain_coeff.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_prod, block_size, sizeof(cfloat));
+        if (err != 0)
+            throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
     file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
     DEBUG("wrote gain_coeff");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_ev;
-        blocked_transpose(&*(eval.begin() + n_val),
+        err = blocked_transpose(&*(eval.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(float)),
                           write_t, num_ev, ev_block_size, sizeof(float));
+        if (err != 0)
+            throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
     DEBUG("transposed eval");
     file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
@@ -203,12 +238,16 @@ void visTranspose::transpose_write() {
     DEBUG("transposed evec.");
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
 
-    blocked_transpose(erms.data(), write_buf.data(), write_t, write_f,
+    err = blocked_transpose(erms.data(), write_buf.data(), write_t, write_f,
                       block_size, sizeof(float));
+    if (err != 0)
+        throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     file->write_block("erms", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
 
-    blocked_transpose(gain_exp.data(), write_buf.data(),
+    err = blocked_transpose(gain_exp.data(), write_buf.data(),
                       write_t, num_input, block_size, sizeof(int));
+    if (err != 0)
+        throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     file->write_block("gain_exp", f_ind, t_ind, write_f, write_t, (const int*) write_buf.data());
 
     DEBUG("wrote all");

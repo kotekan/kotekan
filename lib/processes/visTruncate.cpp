@@ -38,6 +38,11 @@ void visTruncate::main_thread() {
         }
         auto frame = visFrameView(in_buf, frame_id);
 
+        // Wait for empty frame
+        if((wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                 output_frame_id)) == nullptr) {
+            break;
+        }
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
