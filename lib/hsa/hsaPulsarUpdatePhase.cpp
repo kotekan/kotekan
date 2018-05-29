@@ -36,7 +36,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     psr_coord.ra = config.get_float_array(unique_name, "source_ra");
     psr_coord.dec = config.get_float_array(unique_name, "source_dec");
-    //Default scaling factor, can be changed via endpoint
     psr_coord.scaling = config.get_int_array(unique_name, "psr_scaling");
 
     //Just for metadata manipulation
@@ -79,7 +78,8 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
-    restServer::instance().remove_json_callback(endpoint);
+    restServer::instance().remove_json_callback(endpoint_psrcoord);
+    restServer::instance().remove_json_callback(endpoint_gains);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(host_gain);
