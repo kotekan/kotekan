@@ -20,14 +20,14 @@
  * @brief hsaCommand to beamform for FRB
  *
  * This is an hsaCommand that launches the kernel (unpack_shift_beamform_flip) for
- * FRB beamforming. The kernel unpacks the already reordered input data (shape @c 
- * n_samp x @c n_elem) and multiplies the conjugate of gains to it. We then apply 
- * an FFT beamforming along the N-S direction that is padded by 2. An array of 
- * clamping index is used to tell which of the 512 beams to clamp to, to form 256 
- * N-S beams. A brute force beamform along the E-W direction is calculated using an 
- * array of phase delays to form 4 E-W beams. The output is flipped in the N-S 
- * direction in order to following the L2/3 convention of south beams before north 
- * beams. The ordering of the output data is time-pol-beamEW-beamNS, where beamNS 
+ * FRB beamforming. The kernel unpacks the already reordered input data (shape @c
+ * n_samp x @c n_elem) and multiplies the conjugate of gains to it. We then apply
+ * an FFT beamforming along the N-S direction that is padded by 2. An array of
+ * clamping index is used to tell which of the 512 beams to clamp to, to form 256
+ * N-S beams. A brute force beamform along the E-W direction is calculated using an
+ * array of phase delays to form 4 E-W beams. The output is flipped in the N-S
+ * direction in order to following the L2/3 convention of south beams before north
+ * beams. The ordering of the output data is time-pol-beamEW-beamNS, where beamNS
  * is the fastest varying.
  *
  * @requires_kernel    unpack_shift_beamform_flip.hasco
@@ -53,7 +53,7 @@
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
- * 
+ *
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   num_local_freq       Int (default 1). Number of local freq.
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
@@ -70,8 +70,8 @@
 class hsaBeamformKernel: public hsaCommand
 {
 public:
-    ///Constructor, also initializes internal variables from config, allocates host_map, host_coeff and host_gain, get metadata buffer and register endpoint for gain path. 
-    hsaBeamformKernel(Config &config, const string &unique_name, 
+    ///Constructor, also initializes internal variables from config, allocates host_map, host_coeff and host_gain, get metadata buffer and register endpoint for gain path.
+    hsaBeamformKernel(Config &config, const string &unique_name,
                         bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     /// Destructor, cleans up local allocs.
@@ -87,7 +87,7 @@ public:
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 
-    /// Endpoint for providing new directory path for gain updates 
+    /// Endpoint for providing new directory path for gain updates
     void update_gains_callback(connectionInstance& conn, json& json_request);
 
 private:
@@ -134,9 +134,12 @@ private:
     /// Number of time samples, should be a multiple of 3x128 for FRB, currently set to 49152
     int32_t _samples_per_data_set;
     ///Flag to control gains to be only loaded on request.
-    bool update_gains; 
+    bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
-    bool first_pass; 
+    bool first_pass;
+
+    /// The endpoint name for the gain update call
+    std::string endpoint;
 };
 
 #endif

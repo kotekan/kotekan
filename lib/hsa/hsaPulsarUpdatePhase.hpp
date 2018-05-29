@@ -137,10 +137,15 @@ private:
     /// mutex lock prevent psr_coord to be read while it is being updated.
     std::mutex _pulsar_lock;
 
-    ///Flag to control gains to be only loaded on request.
+    /// Flag to control gains to be only loaded on request.
     bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
+
+    /// Endpoint for updating psr coordinates
+    std::string endpoint_psrcoord;
+    /// Endpoint for updating gains
+    std::string endpoint_gains;
 
 };
 

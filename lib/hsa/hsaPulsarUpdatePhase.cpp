@@ -75,18 +75,22 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_read_id = 8;
     bank_write = 0;
 
-    //Piggy-back on FRB to listen for gain updates
+    // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint,std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
+    restServer &rest_server = restServer::instance()
+    endpoint_psrcoord = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint_psrcoord,
+                                        std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
-    //Another endpoint for pointing updates
-    string endpoint2 = "/update_pulsar/"+std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint2,std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
+    //Piggy-back on FRB to listen for gain updates
+    endpoint_gain = unique_name + "/frb/update_gains/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint_gain,
+                                        std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
+
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
+    restServer::instance().remove_json_callback(endpoint);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(host_gain);
@@ -159,6 +163,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
 
 hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             hsa_signal_t precede_signal) {
+
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
@@ -227,13 +232,13 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
-    // Do the data copy. Now I am doing async everytime there is new data 
-    //(i.e., when main_thread is being called, in principle I just need to copy in 
+    // Do the data copy. Now I am doing async everytime there is new data
+    //(i.e., when main_thread is being called, in principle I just need to copy in
     //when there is an update, which is of slower cadence. Down the road optimization
 
-    // Get the gpu memory pointer. i will need multiple frame, 
+    // Get the gpu memory pointer. i will need multiple frame,
     //because while it has been sent away for async copy, the next update might be happening.
-    void * gpu_memory_frame = device.get_gpu_memory("beamform_phase", 
+    void * gpu_memory_frame = device.get_gpu_memory("beamform_phase",
                                                     phase_frame_len);
 
     {
@@ -260,17 +265,17 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id)
 }
 
 void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& json_request) {
-    //Some try statement here 
+    //Some try statement here
     int beam;
     try {
         beam = json_request["beam"];
     } catch (...) {
-        conn.send_error("could not parse new pulsar beam id", STATUS_BAD_REQUEST);
+        conn.send_error("could not parse new pulsar beam id", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //check beam within range
     if (beam >= _num_pulsar || beam <0) {
-        conn.send_error("num_pulsar out of range", STATUS_BAD_REQUEST);
+        conn.send_error("num_pulsar out of range", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //update ra and dec
@@ -279,7 +284,6 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord.ra[beam] = json_request["ra"];
         psr_coord.dec[beam] = json_request["dec"];
 	psr_coord.scaling[beam] = json_request["scaling"];
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     }
 }
-
