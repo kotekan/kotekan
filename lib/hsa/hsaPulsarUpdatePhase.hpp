@@ -95,13 +95,6 @@ private:
     /// Array of gains, float size of 2048*2
     float * host_gain;
 
-    /// One initial RA from config
-    float _source_ra;
-    /// One initial Dec from config
-    float _source_dec;
-    /// One initial scaling factor from config
-    uint32_t _psr_scaling;
-
     /// Number of elements, should be 2048
     int32_t _num_elements;
     /// Number of pulsar beams, should be 10

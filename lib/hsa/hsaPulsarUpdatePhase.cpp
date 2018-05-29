@@ -34,11 +34,10 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 
-    //Temporary solution: get ra and dec from config file
-    _source_ra = config.get_float(unique_name, "source_ra");
-    _source_dec = config.get_float(unique_name, "source_dec");
+    psr_coord.ra = config.get_float_array(unique_name, "source_ra");
+    psr_coord.dec = config.get_float_array(unique_name, "source_dec");
     //Default scaling factor, can be changed via endpoint
-    _psr_scaling = config.get_int(unique_name, "psr_scaling");
+    psr_coord.scaling = config.get_int_array(unique_name, "psr_scaling");
 
     //Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
@@ -62,16 +61,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
         host_phase_0[index++] = 0;
     }
 
-    //Temporay coordinate offset to form 10 beams around a default target
-    float offset_ra[10] = {0,-0.04,-0.006 ,0.03,-0.03,0.005,-0.02, 0.03 ,0.01 ,0.01  };
-    float offset_dec[10]= {0, 0.1 ,  0.135  ,0.1 ,  0  , 0.02  ,-0.05 , -0.1 ,-0.12 ,0.15 };
-
-    //Come up with an initial position, to be updated via endpoint
-    for (int i=0;i<_num_pulsar;i++){
-        psr_coord.ra[i]  = (_source_ra+offset_ra[i])*15.;
-        psr_coord.dec[i] = _source_dec+offset_dec[i];
-	psr_coord.scaling[i] = _psr_scaling;
-    }
     bank_read_id = 8;
     bank_write = 0;
 
