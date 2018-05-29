@@ -7,6 +7,8 @@
 #define HSA_RFI_TIME_SUM_H
 
 #include "hsaCommand.hpp"
+#include "restServer.hpp"
+#include <mutex>
 
 /**
  * @class hsaRfiTimeSum
@@ -89,6 +91,7 @@ private:
     /// Boolean to hold whether or not the current kernel execution is the first or not.
     bool rebuildInputMask;
     vector<int32_t> bad_inputs;
+    std::mutex rest_callback_mutex;
 };
 
 #endif

@@ -10,6 +10,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
+//    hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum_private.hsaco", config, unique_name, host_buffers, device) {
 
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
@@ -68,6 +69,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     kernelParams params;
+
     params.workgroup_size_x = 256;
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
@@ -77,6 +79,16 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     params.num_dims = 3;
     params.private_segment_size = 0;
     params.group_segment_size = 16384;
+
+/*    params.workgroup_size_x = _num_local_freq;
+    params.workgroup_size_y = 1;
+    params.workgroup_size_z = 1;
+    params.grid_size_x = _num_local_freq;
+    params.grid_size_y = (_samples_per_data_set/_sk_step)/24;
+    params.grid_size_z = 24;
+    params.num_dims = 3;
+    params.private_segment_size = 0;
+    params.group_segment_size = 16384;*/
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

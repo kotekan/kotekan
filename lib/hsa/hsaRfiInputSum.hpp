@@ -7,6 +7,8 @@
 #define HSA_RFI_INPUT_SUM_H
 
 #include "hsaCommand.hpp"
+#include "restServer.hpp"
+#include <mutex>
 
 /**
  * @class hsaRfiInputSum

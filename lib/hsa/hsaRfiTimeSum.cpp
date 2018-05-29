@@ -58,9 +58,9 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
         InputMask = (uint8_t *)hsa_host_malloc(mask_len); //Allocate memory
         uint32_t j = 0;
         for(uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
-            Input_Mask[i] = (uint8_t)0;
+            InputMask[i] = (uint8_t)0;
             if(bad_inputs.size() > 0 && (int32_t)i == bad_inputs[j]){
-                Input_Mask[i] = (uint8_t)1;
+                InputMask[i] = (uint8_t)1;
                 j++;
             }
         }

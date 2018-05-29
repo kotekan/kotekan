@@ -123,19 +123,19 @@ void rfiRecord::main_thread() {
     while (!stop_thread) {
         //Lock mutex
         rest_callback_mutex.lock();
-        //Reset Timer
-        double start_time = e_time();
         //Get Frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
-        //For each link
-        if(file_num < total_links){
-            //Make Necessary Directories using timecode and create info file with metadata
-            save_meta_data(get_stream_id(rfi_buf, frame_id), get_fpga_seq_num(rfi_buf, frame_id));
-//            save_meta_data((uint16_t)link_id, get_fpga_seq_num(rfi_buf, frame_id));
-        }
+        //Reset Timer
+        double start_time = e_time();
         //Only write if user specifilly asks (Just for caution)
         if(write_to_disk){
+            //For each link
+            if(file_num < total_links){
+                //Make Necessary Directories using timecode and create info file with metadata
+                save_meta_data(get_stream_id(rfi_buf, frame_id), get_fpga_seq_num(rfi_buf, frame_id));
+//                save_meta_data((uint16_t)link_id, get_fpga_seq_num(rfi_buf, frame_id));
+            }
             //Initialize file name
             char file_name[100];
             //Figure out which file (adjust file name every 1024 buffers)
