@@ -1,3 +1,13 @@
+##########################################
+#
+# aro_record.yaml
+#
+# A config used by ARO to record data to
+# disk and stream data for live-view
+#
+# Author: Jacob Taylor
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:
@@ -88,8 +98,8 @@ raw_capture:
    - /home/natasha/ch_acq/gains_slotNone.pkl
    - /home/natasha/ch_acq/gains_noisy_slotNone.pkl
    num_disks: 10
-   disk_base: /mnt/
-   disk_set: D
+   disk_base: /data/
+   disk_set: A
    in_buf: vdif_buffer_0
 
 power_integration:
@@ -98,7 +108,7 @@ power_integration:
    power_out_buf: power_buffer_0
 
 rfi_vdif:
-   kotekan_process: rfiVDIF
+   kotekan_process: rfiAVXVDIF
    vdif_in: vdif_buffer_0
    rfi_out: rfi_buffer_0
 

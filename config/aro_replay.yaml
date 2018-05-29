@@ -1,3 +1,13 @@
+##########################################
+#
+# aro_replay.yaml
+#
+# A config used by ARO to replay data from
+# disk and stream data for live-view
+#
+# Author: Jacob Taylor
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:

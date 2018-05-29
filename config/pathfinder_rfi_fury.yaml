@@ -1,9 +1,19 @@
+##########################################
+#
+# pathfinder_rfi_fury.yaml
+#
+# A config which contains all availiable 
+# rfi pipeline processes for PF
+#
+# Author: Jacob Taylor
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: INFO
+log_level: WARN
 
 instrument_name: pathfinder
 
@@ -44,11 +54,6 @@ sk_step: 256
 rfi_combined: True
 frames_per_packet: 1
 bad_inputs: []
-
-# Keeping and eye on status
-//buffer_status:
-//  kotekan_process: bufferStatus
-//  time_delay: 5000000 #microsec
 
 # Pool
 main_pool:
@@ -156,6 +161,14 @@ rfiBroadcast:
   destination_ip: 10.10.10.2
 #  destination_ip: 127.0.0.1
   destination_protocol: UDP
+
+rfi_record:
+  total_links: 8
+  write_to: /data/RFI
+  write_to_disk: false
+  kotekan_process: rfiRecord
+  rfi_in: gpu_rfi_output_buffer_0
+
 
 #RFI Live-view Paramters
 waterfallX: 512

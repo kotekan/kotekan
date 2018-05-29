@@ -135,6 +135,7 @@ inline void rfiAVXVDIF::fastSKVDIF(uint8_t * data, uint32_t * temp_buf, uint32_t
             for (uint32_t freq = 0; freq < _num_local_freq / 32; freq++) {
                 //Compute current index in data
                 uint32_t index = idx_header + freq*32 + VDIF_HEADER_LEN;
+		uint32_t out_index = pol * _num_local_freq + freq * 32;
                 __m256i ymm0, ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, sq0, sq1, sq2, sq3;
                 // Load 64 4 bit numbers
                 ymm0 = _mm256_loadu_si256((__m256i const *)&data[index]);
@@ -163,9 +164,7 @@ inline void rfiAVXVDIF::fastSKVDIF(uint8_t * data, uint32_t * temp_buf, uint32_t
                 ymm1 = _mm256_unpackhi_epi16(ymm5, ymm7);
                 ymm2 = _mm256_unpacklo_epi16(ymm6, ymm7);
                 ymm3 = _mm256_unpackhi_epi16(ymm6, ymm7);
-
-		uint32_t out_index = pol * _num_local_freq + freq * 32;
-                //Not the first packet
+                //If not the first packet
                 if (packet != 0){
                     //Load integrated power**2
                     ymm4 = _mm256_loadu_si256((__m256i const *)&sq_temp_buf[out_index + 0*8]);
@@ -224,7 +223,6 @@ inline void rfiAVXVDIF::fastSKVDIF(uint8_t * data, uint32_t * temp_buf, uint32_t
         }
 	//Calculate Kurtosis and output
  	out[i] = ((M+1)/(M-1))*(sq_power_across_element/M - 1);
-        //INFO("M: %f sq_power_across_element: %f",M,sq_power_across_element);
     }
 }
 #else
