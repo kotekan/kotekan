@@ -39,9 +39,9 @@
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
  * @conf   gain_dir             String - directory path where gain files are
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
- * @conf   source_ra            Float - one initial RA (in hr) to form beams on.
- * @conf   source_dec           Float - one initial Dec (in deg) to form beams on.
- * @conf   psr_scaling          Float - nominal scaling for all beams (can be changed on per beam basis via endpoint)
+ * @conf   source_ra            Float array - 10 initial RA (in hr) to form beams on.
+ * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
+ * @conf   psr_scaling          Int array - 10 nominal scaling for all beams (can be changed on per beam basis via endpoint)
  *
  * @todo change time_now from system time to gps time
  *
@@ -109,6 +109,9 @@ private:
 
     /// 10 pulsar RA, DEC and scaling factor
     struct psrCoord psr_coord;
+    vector<float> _source_ra;
+    vector<float> _source_dec;
+    vector<int> _source_scl;
     /// Time now in second
     struct timeval time_now;
 

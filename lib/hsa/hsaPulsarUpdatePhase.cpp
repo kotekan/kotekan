@@ -34,9 +34,15 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 
-    psr_coord.ra = config.get_float_array(unique_name, "source_ra");
-    psr_coord.dec = config.get_float_array(unique_name, "source_dec");
-    psr_coord.scaling = config.get_int_array(unique_name, "psr_scaling");
+    _source_ra = config.get_float_array(unique_name, "source_ra");
+    _source_dec = config.get_float_array(unique_name, "source_dec");
+    _source_scl = config.get_int_array(unique_name, "psr_scaling");
+
+    for (int i=0;i<_num_pulsar;i++){
+        psr_coord.ra[i] = _source_ra[i];
+	psr_coord.dec[i] = _source_dec[i];
+	psr_coord.scaling[i] = _source_scl[i];
+    }
 
     //Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
@@ -71,8 +77,8 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
     //Piggy-back on FRB to listen for gain updates
-    endpoint_gain = unique_name + "/frb/update_gains/"+std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(endpoint_gain,
+    endpoint_gains = unique_name + "/frb/update_gains/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint_gains,
                                         std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
 
 }
