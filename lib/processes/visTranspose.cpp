@@ -105,7 +105,7 @@ void visTranspose::main_thread() {
             break;
         }
         auto frame = visFrameView(in_buf, frame_id);
-        DEBUG("Frames so far %d", frames_so_far);
+        //DEBUG("Frames so far %d", frames_so_far);
 
         // Collect frames until a chunk is filled
         // Fastest varying is time (needs to be consistent with reader!)
@@ -148,7 +148,7 @@ void visTranspose::main_thread() {
 
 void visTranspose::transpose_write() {
     DEBUG("Writing at freq %d and time %d", f_ind, t_ind);
-    DEBUG("Writing block of %d times and %d freqs", write_t, write_f);
+    DEBUG("Writing block of %d freqs and %d times", write_f, write_t);
     // adjust block size for small dimensions
     // TODO: Just use fixed size for now.
     //size_t block_size = std::min(BLOCK_SIZE, write_t);
@@ -234,23 +234,23 @@ void visTranspose::transpose_write() {
     file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
     //DEBUG("wrote eval");
 
-    size_t i_in, i_out;
+    //size_t i_in, i_out;
     for (size_t f = 0; f < write_f; f++) {
-        //n_val = f * write_t * num_ev * num_input;
-        //blocked_transpose(&*(evec.begin() + n_val),
-        //                  &*(write_buf.begin() + n_val * sizeof(cfloat)),
-        //                  write_t, num_ev, ev_block_size, num_input * sizeof(cfloat));
-        // TODO: need to stride over evals
-        //       for now just do the slow loop transpose.
-        for (size_t t = 0; t < write_t; t++) {
-            for (size_t e = 0; e < num_ev; e++) {
-                for (size_t i = 0; i < num_input; i++) {
-                    i_in = num_input * (num_ev * (f * write_t + t) + e) + i;
-                    i_out = write_t * (num_input * (f * num_ev + e) + i) + t;
-                    ((cfloat*) write_buf.data())[i_out] = evec[i_in];
-                }
-            }
-        }
+        n_val = f * write_t * num_ev * num_input;
+        err = blocked_transpose(&*(evec.begin() + n_val),
+                          &*(write_buf.begin() + n_val * sizeof(cfloat)),
+                          write_t, num_ev * num_input, block_size, sizeof(cfloat));
+        if (err != 0)
+            throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
+        //for (size_t t = 0; t < write_t; t++) {
+        //    for (size_t e = 0; e < num_ev; e++) {
+        //        for (size_t i = 0; i < num_input; i++) {
+        //            i_in = num_input * (num_ev * (f * write_t + t) + e) + i;
+        //            i_out = write_t * (num_input * (f * num_ev + e) + i) + t;
+        //            ((cfloat*) write_buf.data())[i_out] = evec[i_in];
+        //        }
+        //    }
+        //}
     }
     //DEBUG("transposed evec.");
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());

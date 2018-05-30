@@ -64,7 +64,6 @@ visRawReader::visRawReader(Config &config,
     // Number of elements in a chunked row
     row_size = (chunk_f * chunk_t) * (nfreq / chunk_f)
              + (nfreq % chunk_f) * chunk_t;
-    DEBUG("row size %d", row_size);
 
     // Check metadata is the correct size 
     if(sizeof(visMetadata) != metadata_size) {
@@ -179,8 +178,8 @@ void visRawReader::main_thread() {
         // Try and clear out the cached data as we don't need it again
         madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
 
-        DEBUG("ind %d", ind);
-        DEBUG("time ind %d freq ind %d", file_ind / nfreq, file_ind % nfreq);
+        //DEBUG("ind %d", ind);
+        //DEBUG("time ind %d freq ind %d", file_ind / nfreq, file_ind % nfreq);
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % out_buf->num_frames;
