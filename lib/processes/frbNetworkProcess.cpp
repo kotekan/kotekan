@@ -41,10 +41,17 @@ std::bind(&frbNetworkProcess::main_thread, this))
   apply_config(0);
   my_host_name = (char*) malloc(sizeof(char)*100);
   CHECK_MEM(my_host_name);
+
+  using namespace std::placeholders;
+  restServer &rest_server = restServer::instance();
+  endpoint = unique_name + "/frb/update_beam_offset";
+  rest_server.register_post_callback(endpoint,
+      std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
 }
 
 frbNetworkProcess::~frbNetworkProcess()
 {
+  restServer::instance().remove_json_callback(endpoint);
   free(my_host_name);
 }
 
@@ -53,11 +60,12 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
     try {
         beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new beam_offset parameter.",
+                        HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     INFO("Updating beam_offset to %i",beam_offset);
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq)
@@ -152,13 +160,6 @@ void frbNetworkProcess::main_thread()
 {
   //parsing the host name
   parse_host_name();
-
-  using namespace std::placeholders;
-  restServer * rest_server = get_rest_server();
-  string endpoint = "/frb/update_beam_offset";
-  rest_server->register_json_callback(endpoint,
-      std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
-
 
   int frame_id = 0;
   uint8_t * packet_buffer = NULL;
