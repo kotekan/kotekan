@@ -29,6 +29,9 @@ struct chimeMetadata {
 // Helper functions to save lots of pointer work
 
 inline int64_t get_fpga_seq_num(struct Buffer * buf, int ID) {
+    assert(buf != NULL);
+    assert(buf->metadata != NULL);
+    assert(buf->metadata[ID]->metadata != NULL);
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->fpga_seq_num;

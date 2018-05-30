@@ -105,27 +105,6 @@ if (${USE_AIRSPY})
 endif ()
 MESSAGE("Input Modules Included: " ${INPUT_MODULES})
 
-
-if (${USE_DPDK})
-  # DPDK Includes
-  include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
-  link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-
-  set (DPDK_LIST
-          rte_ethdev   rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
-          rte_power    rte_timer        rte_ring    rte_sched     rte_table
-          rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000
-          rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
-          rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
-  )
-  set (DPDK_LIBS
-        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group -ldl )
-  add_definitions(-DWITH_DPDK)
-  MESSAGE("DPDK Enabled")
-else ()
-  MESSAGE("DPDK Disabled")
-endif ()
-
 if (${USE_HDF5})
   # HDF5 setup
   include_directories ( ${HIGHFIVE_PATH}/include )
@@ -171,7 +150,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O0")  # Reduce the optimisation for debugging
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
@@ -196,22 +175,6 @@ if (${USE_OPENCL})
 endif ()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
-
-# Required for some SSE/AVX intrinsics
-#add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
-
-
-#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
-#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
-#set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
-
-# Note C++11
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
-#set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
-#SET(CMAKE_INSTALL_PREFIX "/")
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)

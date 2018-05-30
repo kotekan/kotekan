@@ -31,32 +31,6 @@ extern "C" {
 #include <pthread.h>
 }
 
-// DPDK!
-#ifdef WITH_DPDK
-extern "C" {
-#include <rte_config.h>
-#include <rte_common.h>
-#include <rte_log.h>
-#include <rte_memory.h>
-#include <rte_memcpy.h>
-#include <rte_memzone.h>
-#include <rte_eal.h>
-#include <rte_per_lcore.h>
-#include <rte_launch.h>
-#include <rte_atomic.h>
-#include <rte_cycles.h>
-#include <rte_prefetch.h>
-#include <rte_lcore.h>
-#include <rte_per_lcore.h>
-#include <rte_branch_prediction.h>
-#include <rte_interrupts.h>
-#include <rte_pci.h>
-#include <rte_random.h>
-#include <rte_debug.h>
-#include <rte_ring.h>
-}
-#include "network_dpdk.h"
-#endif
 #include "errors.h"
 #include "buffer.h"
 
@@ -118,32 +92,6 @@ void print_version() {
         }
     }
 }
-
-#ifdef WITH_DPDK
-void dpdk_setup() {
-
-    char  arg0[] = "./kotekan";
-    char  arg1[] = "-n";
-    char  arg2[] = "4";
-    char  arg3[] = "-c";
-#ifdef WITH_OPENCL
-    char  arg4[] = "0xF";
-#else
-    // TODO This is a CHIME specific value with cores 0,1,6,7 active.
-    // This value should be made dynamic
-    char  arg4[] = "0xC3";
-#endif
-    char  arg5[] = "-m";
-    char  arg6[] = "256";
-    char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };
-    int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
-
-    /* Initialize the Environment Abstraction Layer (EAL). */
-    int ret2 = rte_eal_init(argc2, argv2);
-    if (ret2 < 0)
-        exit(EXIT_FAILURE);
-}
-#endif
 
 std::string exec(const std::string &cmd) {
     std::array<char, 256> buffer;
@@ -283,10 +231,6 @@ int main(int argc, char ** argv) {
                 break;
         }
     }
-
-#ifdef WITH_DPDK
-    dpdk_setup();
-#endif
 
 #ifdef WITH_HSA
     kotekan_hsa_start();

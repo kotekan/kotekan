@@ -15,10 +15,6 @@ set (KOTEKAN_UTIL_SOURCES
               visUtil.cpp
        )
 
-if (${USE_DPDK})
-       set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} network_dpdk.c)
-endif ()
-
 if (${USE_HDF5})
   set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFile.cpp)
 endif ()
