@@ -24,12 +24,13 @@ rack_list = ['cn0g', 'cn1g','cn2g', 'cn3g','cn4g','cn5g','cn6g','cn8g','cn9g','c
 for rack in rack_list:
     for node in range(10):
         for gpu in range(4):
+            uname = "gpu/gpu_"+str(gpu)
             if (mode == 'gain'):
-                sys.stdout.write("curl "+str(rack)+str(node)+":12048/frb/update_gains/"+str(gpu)+" -X POST -H \'Content-Type: application/json\' -d \'{\"gain_dir\":\""+str(gaindir)+"\"}\'\n")
-                os.system("curl "+str(rack)+str(node)+":12048/frb/update_gains/"+str(gpu)+" -X POST -H \'Content-Type: application/json\' -d \'{\"gain_dir\":\""+str(gaindir)+"\"}\'\n")
+                sys.stdout.write("curl "+str(rack)+str(node)+":12048/"+str(uname)+"/frb/update_gains/"+str(gpu)+" -X POST -H \'Content-Type: application/json\' -d \'{\"gain_dir\":\""+str(gaindir)+"\"}\'\n")
+                os.system("curl "+str(rack)+str(node)+":12048/"+str(uname)+"/frb/update_gains/"+str(gpu)+" -X POST -H \'Content-Type: application/json\' -d \'{\"gain_dir\":\""+str(gaindir)+"\"}\'\n")
             elif (mode == 'beam'):
-                sys.stdout.write("curl "+str(rack)+str(node)+":12048/frb/update_beam_offset -X POST -H \'Content-Type: application/json\' -d \'{\"beam_offset\":"+str(beamID)+"}\'\n")
-                os.system("curl "+str(rack)+str(node)+":12048/frb/update_beam_offset -X POST -H \'Content-Type: application/json\' -d \'{\"beam_offset\":"+str(beamID)+"}\'\n")
+                sys.stdout.write("curl "+str(rack)+str(node)+":12048/"+str(uname)+"/frb/update_beam_offset -X POST -H \'Content-Type: application/json\' -d \'{\"beam_offset\":"+str(beamID)+"}\'\n")
+                os.system("curl "+str(rack)+str(node)+":12048/"+str(uname)+"/frb/update_beam_offset -X POST -H \'Content-Type: application/json\' -d \'{\"beam_offset\":"+str(beamID)+"}\'\n")
             else :
                 print "Mode", mode, "Not recognised"
                 
