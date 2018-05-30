@@ -50,7 +50,7 @@ pulsarPostProcess625::~pulsarPostProcess625() {
 void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
                   struct VDIFHeader * vdif_header,
                   const uint64_t fpga_seq_num,
-		  struct timeval * time_now,
+		  struct timespec * time_now,
 		  struct psrCoord psr_coord,
 		  uint8_t freq_id){
     //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
@@ -58,7 +58,7 @@ void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
 	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
-	vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
+	vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (samples_in_frame*2.56e-6);
 	vdif_header->thread_id = freq_id;
 
 	for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
@@ -70,9 +70,9 @@ void pulsarPostProcess625::fill_headers(unsigned char * out_buf,
 	    memcpy(&out_buf[psr*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
 	} 
 	//Increment time for the next frame
-	time_now->tv_usec +=samples_in_frame*2.56;
-	if (time_now->tv_usec > 999999) {
-	    time_now->tv_usec = time_now->tv_usec % 1000000;
+	time_now->tv_nsec +=samples_in_frame*2560;
+	if (time_now->tv_nsec > 999999999) {
+	    time_now->tv_nsec = time_now->tv_nsec % 1000000000;
 	    time_now->tv_sec +=1;
 	}
     } //end packet
@@ -146,8 +146,8 @@ void pulsarPostProcess625::main_thread() {
 	psr_coord = get_psr_coord(in_buf[0], in_buffer_ID[0]);
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
-	//Get time, use system time for now, gps time requires ch_master
-	time_now = get_first_packet_recv_time(in_buf[0], in_buffer_ID[0]);
+	//GPS time, need ch_master
+	time_now = get_gps_time(metadata_buf, metadata_buffer_id);
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
 	    assert(first_seq_number ==
