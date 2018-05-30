@@ -37,7 +37,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
         value = config.get_int(unique_name, "value");
     _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
 
-    samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    samples_per_data_set = config.get_int_default(unique_name, "samples_per_data_set", 32768);
     stream_id = config.get_int_default(unique_name, "stream_id", 0);
     num_frames = config.get_int_default(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
