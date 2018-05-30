@@ -61,6 +61,42 @@ class OutputBuffer(object):
     name = None
 
 
+class FakeNetworkBuffer(InputBuffer):
+    """Create an input network format buffer and fill it using `testDataGen`.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        Parameters fed straight into the process config. `type` must be
+        supplied, as well as `value` for types other than "random".
+    """
+    _buf_ind = 0
+
+    def __init__(self, **kwargs):
+
+        self.name = 'fakegnetwork_buf%i' % self._buf_ind
+        process_name = 'fakenetwork%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'standard',
+                'metadata_pool': 'main_pool',
+                'num_frames': 'buffer_depth',
+                'frame_size': ('samples_per_data_set * num_elements'
+                               '* num_local_freq * num_data_sets'),
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'testDataGen',
+            'out_buf': self.name,
+        }
+        process_config.update(kwargs)
+
+        self.process_block = {process_name: process_config}
+
+
 class FakeGPUBuffer(InputBuffer):
     """Create an input GPU format buffer and fill it using `fakeGPUBuffer`.
 
