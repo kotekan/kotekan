@@ -61,6 +61,7 @@ visFileArchive::visFileArchive(const std::string& name,
 template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
+    //DEBUG("writing %d freq, %d times, at (%d,%d).", chunk_f, chunk_t, f_ind, t_ind);
     if (name == "gain_exp") {
         dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
     } else if (name == "evec") {
@@ -74,6 +75,7 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
     }
 
     file->flush();
+
 }
 
 // Instantiate for types that will get used to satisfy linker
@@ -128,7 +130,7 @@ void visFileArchive::create_datasets() {
     // Create transposed dataset shapes
     create_dataset("vis", {"freq", "prod", "time"}, create_datatype<cfloat>());
     create_dataset("flags/vis_weight", {"freq", "prod", "time"}, create_datatype<float>());
-    create_dataset("gain_coeff", {"freq", "prod", "time"}, create_datatype<cfloat>());
+    create_dataset("gain_coeff", {"freq", "input", "time"}, create_datatype<cfloat>());
     // TODO: should this use a fixed size?
     create_dataset("gain_exp", {"input", "time"}, create_datatype<int>());
 

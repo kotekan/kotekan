@@ -94,8 +94,6 @@ void visTranspose::main_thread() {
     uint32_t offset = 0;
 
     // Create HDF5 file
-    //      Create datasets and attributes
-    //      Should make a new class for transposed files or extend visFile
     file = std::unique_ptr<visFileArchive>(
         new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev)
     );
@@ -164,6 +162,13 @@ void visTranspose::transpose_write() {
     // loop over frequency and transpose
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
+        //cfloat * out_buf = (cfloat*) &*(write_buf.begin() + n_val * sizeof(cfloat));
+        //for (size_t t = 0; t < write_t; t++) {
+        //    for (size_t p = 0; p < num_prod; p++) {
+        //        //out_buf[p * write_t + t] = vis[n_val + t * num_prod + p];
+        //        out_buf[p * write_t + t] = {f_ind + f, t + t_ind};
+        //    }
+        //}
         err = blocked_transpose(&*(vis.begin() + n_val),
                           &*(write_buf.begin() + n_val * sizeof(cfloat)),
                           write_t, num_prod, block_size, sizeof(cfloat));
@@ -171,16 +176,28 @@ void visTranspose::transpose_write() {
             throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
 
-    //FILE * f = fopen("bit_Table_File", "wb");
+    //FILE * f = fopen("bit_Table_File", "w");
+    //size_t n = 0;
     //for (size_t i = 0; i < write_t * write_f * num_prod; i++) {
     //    fprintf(f, "%f,", ((cfloat*) write_buf.data())[i].real());
     //    fprintf(f, "%f\n", ((cfloat*) write_buf.data())[i].imag());
+    //    n++;
     //}
     //fclose(f);
+    //DEBUG("wrote %d lines", n);
+    //std::ofstream out("write_buf", std::ofstream::out | std::ofstream::binary);
+    //out.write(write_buf.data(), write_f * write_t * num_prod * sizeof(cfloat));
+    //out.close();
+    //for (size_t f = 0; f < write_f; f++) {
+    //    for (size_t t = 0; t < write_t; t++) {
+    //        std::cout << ((cfloat*) write_buf.data())[f * write_t * num_prod + t] << ', ';
+    //    }
+    //    std::cout << '\n';
+    //}
 
-    DEBUG("transposed vis");
+    //DEBUG("transposed vis");
     file->write_block("vis", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
-    DEBUG("wrote vis.");
+    //DEBUG("wrote vis.");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
@@ -191,7 +208,7 @@ void visTranspose::transpose_write() {
             throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
     file->write_block("vis_weight", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
-    DEBUG("wrote vis_weight");
+    //DEBUG("wrote vis_weight");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_prod;
@@ -203,7 +220,7 @@ void visTranspose::transpose_write() {
             throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
     file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
-    DEBUG("wrote gain_coeff");
+    //DEBUG("wrote gain_coeff");
 
     for (size_t f = 0; f < write_f; f++) {
         n_val = f * write_t * num_ev;
@@ -213,9 +230,9 @@ void visTranspose::transpose_write() {
         if (err != 0)
             throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     }
-    DEBUG("transposed eval");
+    //DEBUG("transposed eval");
     file->write_block("eval", f_ind, t_ind, write_f, write_t, (const float*) write_buf.data());
-    DEBUG("wrote eval");
+    //DEBUG("wrote eval");
 
     size_t i_in, i_out;
     for (size_t f = 0; f < write_f; f++) {
@@ -235,7 +252,7 @@ void visTranspose::transpose_write() {
             }
         }
     }
-    DEBUG("transposed evec.");
+    //DEBUG("transposed evec.");
     file->write_block("evec", f_ind, t_ind, write_f, write_t, (const cfloat*) write_buf.data());
 
     err = blocked_transpose(erms.data(), write_buf.data(), write_t, write_f,
@@ -250,7 +267,7 @@ void visTranspose::transpose_write() {
         throw std::runtime_error(fmt::format("Blocked transpose raised error code {}", err));
     file->write_block("gain_exp", f_ind, t_ind, write_f, write_t, (const int*) write_buf.data());
 
-    DEBUG("wrote all");
+    //DEBUG("wrote all");
     increment_chunk();
 }
 
