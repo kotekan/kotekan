@@ -21,7 +21,7 @@ def run_baseband(tdir_factory, params=None):
 
     fakevis_buffer = kotekan_runner.FakeNetworkBuffer(
             num_frames=params['total_frames'],
-            mode=params['mode'],
+            type=params['type'],
             )
 
     test = kotekan_runner.KotekanProcessTester(
