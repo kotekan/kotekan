@@ -43,8 +43,6 @@
  * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
  * @conf   psr_scaling          Int array - 10 nominal scaling for all beams (can be changed on per beam basis via endpoint)
  *
- * @todo change time_now from system time to gps time
- *
  * @author Cherry Ng
  *
  */
@@ -67,7 +65,7 @@ public:
     void update_gains_callback(connectionInstance& conn, json& json_request);
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays at each input
-    void calculate_phase(struct psrCoord psr_coord, timeval time_now, float freq_now, float *gain, float *output);
+    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gain, float *output);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
@@ -113,7 +111,7 @@ private:
     vector<float> _source_dec;
     vector<int> _source_scl;
     /// Time now in second
-    struct timeval time_now;
+    struct timespec time_now_gps;
 
     /// Freq bin index, where the 0th is at 800MHz
     int32_t freq_idx;

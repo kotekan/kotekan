@@ -111,7 +111,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
     return 0;
 }
 
-void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval time_now, float freq_now, float *gains, float *output) {
+void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gains, float *output) {
 
     float FREQ = freq_now;
     struct tm * timeinfo;
@@ -122,7 +122,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
     float JD = 2-int(year/100.)+int(int(year/100.)/4.)+int(365.25*year)+int(30.6001*(month+1))+day+1720994.5;
     double T= (JD-2451545.0)/36525.0;  //Works if time after year 2000, otherwise T is -ve and might break
     double T0=fmod((6.697374558 + (2400.051336*T) + (0.000025862*T*T)),24.);
-    double UT = (timeinfo->tm_hour) + (timeinfo->tm_min/60.) + (timeinfo->tm_sec+time_now.tv_usec/1.e6)/3600.;
+    double UT = (timeinfo->tm_hour) + (timeinfo->tm_min/60.) + (timeinfo->tm_sec+time_now.tv_nsec/1.e9)/3600.;
     double GST = fmod((T0 + UT*1.002737909),24.);
     double LST = GST + inst_long/15.;
     while (LST <0) {LST= LST+24;}
@@ -201,21 +201,17 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     }
 
     if(bankID == bank_write) {  //Time to update
-      /*
+
         //GPS time, need ch_master
-        struct timespec time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
-       time_now = get_gps_time(metadata_buf, metadata_buffer_id);
-       if (time_now.tv_sec == 0) {
-            //Sytstem time, not as accurate
-        INFO("!!!!!! Going to use system time");
-        time_now = get_first_packet_recv_time(metadata_buf, metadata_buffer_id);
-        }*/
-        time_now = get_first_packet_recv_time(metadata_buf, metadata_buffer_id);
+        time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
+	if (time_now_gps.tv_sec == 0) {
+	    ERROR("GPS time appears to be zero, bad news for pulsar timing!");
+	}
         if (bank_write == 0) {
-        calculate_phase(psr_coord, time_now, freq_MHz, host_gain, host_phase_0);
+	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
         }
         if (bank_write == 1) {
-        calculate_phase(psr_coord, time_now, freq_MHz, host_gain, host_phase_1);
+	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
         }
         {
             std::lock_guard<std::mutex> lock(mtx_read);
