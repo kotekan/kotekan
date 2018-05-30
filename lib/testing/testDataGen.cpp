@@ -1,15 +1,26 @@
 #include "testDataGen.hpp"
+
 #include <random>
-#include "errors.h"
-#include "chimeMetadata.h"
+#include <mutex>
 #include <unistd.h>
 #include <sys/time.h>
+
+#include "errors.h"
+#include "chimeMetadata.h"
 // Needed for a bunch of time utilities.
 #include "visUtil.hpp"
 #include "gpsTime.h"
 
 
+// Global lock
+std::once_flag callback_registered;
+std::once_flag callback_removed;
+int step_to_frame = 0;
+std::mutex rest_lock;
+
+
 REGISTER_KOTEKAN_PROCESS(testDataGen);
+
 
 testDataGen::testDataGen(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
@@ -38,13 +49,37 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
 }
 
-testDataGen::~testDataGen() {
 
+testDataGen::~testDataGen() {
 }
+
 
 void testDataGen::apply_config(uint64_t fpga_seq) {
-
 }
+
+
+bool testDataGen::can_i_go(int frame_id_abs) {
+    if (rest_mode == "none") return true;
+    if (step_to_frame > 0 && rest_mode == "start") return true;
+    // Yes, this is a race condition, but it is fine since don't need perfect synchorization.
+    if (frame_id_abs < step_to_frame) return true;
+    return false;
+}
+
+
+void callback(connectionInstance& conn, nlohmann::json& request) {
+    int num_frames;
+    try {
+        num_frames = request["num_frames"];
+    } catch (...) {
+        conn.send_error("Could not parse number of frames.", HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    std::lock_guard<std::mutex> lock(rest_lock);
+    step_to_frame += num_frames;
+}
+
 
 void testDataGen::main_thread() {
 
@@ -57,9 +92,17 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
+    std::call_once(callback_registered,
+            []{restServer::instance().register_post_callback("/testdata_gen/", callback);});
 
-    double start_time = current_time();
     while (!stop_thread) {
+        double start_time = current_time();
+
+        if (!can_i_go(frame_id_abs)) {
+            usleep(1e5);
+            continue;
+        }
+
         frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
@@ -117,9 +160,11 @@ void testDataGen::main_thread() {
         if (wait) {
             double time = current_time();
             double frame_end_time = (start_time + (float) samples_per_data_set
-                                     * frame_id_abs * FPGA_PERIOD_NS * 1e-9);
+                                     * FPGA_PERIOD_NS * 1e-9);
             if (time < frame_end_time) usleep((int) (1e6 * (frame_end_time - time)));
         }
     }
+    std::call_once(callback_removed,
+            []{restServer::instance().remove_json_callback("/testdata_gen/");});
 }
 

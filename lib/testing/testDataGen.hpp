@@ -3,6 +3,7 @@
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "restServer.hpp"
 
 // Type: one of "random", "const"
 // Value: the value of the constant
@@ -14,6 +15,7 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
+    bool can_i_go(int frame_id_abs);
     struct Buffer *buf;
     std::string type;
     int value;
