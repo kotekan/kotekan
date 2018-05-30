@@ -69,13 +69,6 @@ rfi_buffers:
         kotekan_buffer: standard
 
 #Processes
-#test_data:
-#  type: const
-#  value: 255
-#  test_data_gen_0:
-#    kotekan_process: testDataGen
-#    network_out_buf: vdif_buffer_0 
-
 dpdk:
    udp_packet_size: 4680
    kotekan_process: dpdkWrapper

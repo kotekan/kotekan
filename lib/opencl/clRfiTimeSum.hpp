@@ -19,13 +19,30 @@
  * This gpu command executes the rfi_chime_timsum_private.cl kernel. The kernel reads input data, computes power
  * and square power values. The kernel integrates those values and outputs a normalized sum of square power values.
  *
+ * @requires_kernel    rfi_chime_timesum_private.cl
+ *
  * @par GPU Memory
- * @gpu_mem InputBuffer The kotekan buffer containing input data to be read by the command.
- *      @gpu_mem_type              staging
- *      @gpu_mem_format            Array of @c uint8_t
- * @gpu_mem RfiTimeSumBuffer A gpu memory object which holds the normalized square power values
- *      @gpu_mem_type              static
- *      @gpu_mem_format            Array of @c float
+ * @gpu_mem InputBuffer         The kotekan buffer containing input data to be read by the command.
+ *      @gpu_mem_type           staging
+ *      @gpu_mem_format         Array of @c uint8_t
+ * @gpu_mem RfiTimeSumBuffer    A gpu memory object which holds the normalized square power values
+ *      @gpu_mem_type           static
+ *      @gpu_mem_format         Array of @c float
+ * @gpu_mem  InputMask          A mask of faulty inputs of size mask_len
+ *     @gpu_mem_type            static
+ *     @gpu_mem_format          Array of @c uint8_t
+ *     @gpu_mem_metadata        chimeMetadata
+ * @gpu_mem  sk_step            The time ingration length (samples)
+ *     @gpu_mem_type            static
+ *     @gpu_mem_format          Constant @c uint32_t
+ *     @gpu_mem_metadata        none
+ * @gpu_mem  num_elements       The total number of elements
+ *     @gpu_mem_type            static
+ *     @gpu_mem_format          Constant @c uint32_t
+ *     @gpu_mem_metadata        none
+ *
+ * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
+ * @conf   bad_inputs           Array of Int The inputs which are currently malfunctioning
  *
  * @author Jacob Taylor
  */

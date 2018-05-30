@@ -3,7 +3,7 @@
 # pathfinder_rfi_fury.yaml
 #
 # A config which contains all availiable 
-# rfi pipeline processes for PF
+# rfi pipeline processes for PF (fury nodes)
 #
 # Author: Jacob Taylor
 #
@@ -108,11 +108,9 @@ gpu:
   - name: input_data_stage
     kernel: ''
   - name: clRfiTimeSum
-#    kernel: "../lib/opencl/kernels/rfi_chime_timesum.cl"
     kernel: "../lib/opencl/kernels/rfi_chime_timesum_private.cl"
   - name: clRfiInputSum
-#    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
-    kernel: "../lib/opencl/kernels/rfi_chime_inputsum_private.cl"
+    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
   - name: beamform_phase_data
     kernel: ''
   - name: offset_accumulator
@@ -152,7 +150,6 @@ gpu:
     beam_out_buf: beam_output_buffer_0
     rfi_out_buf: gpu_rfi_output_buffer_0
 
-
 rfiBroadcast:
   kotekan_process: rfiBroadcast
   rfi_in: gpu_rfi_output_buffer_0
@@ -164,14 +161,13 @@ rfiBroadcast:
 
 rfi_record:
   total_links: 8
-  write_to: /data/RFI
+  write_to: /mnt/glock/RFI
   write_to_disk: false
   kotekan_process: rfiRecord
   rfi_in: gpu_rfi_output_buffer_0
 
-
 #RFI Live-view Paramters
-waterfallX: 512
-num_receive_threads: 1
+waterfallX: 1024
+num_receive_threads: 4
 colorscale: 0.5
 waterfall_request_delay: 60

@@ -86,10 +86,10 @@ void nDiskFileRead::file_read_thread(int disk_id) {
                                                 file_index);
 
         //Open current file for reading
-        FILE * in_file = fopen(file_name, "r"); 
+        FILE * in_file = fopen(file_name, "r");
 
         //Make Sure file is the right size
-        fseek(in_file, 0L, SEEK_END); 
+        fseek(in_file, 0L, SEEK_END);
         long sz = ftell(in_file);
         rewind(in_file);
 

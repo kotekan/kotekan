@@ -54,7 +54,6 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
     rest_callback_mutex.unlock();
 }
 
-
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
     //Standard Config parameters
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -74,7 +73,6 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 }
 
 void rfiBroadcast::main_thread() {
-
     //Intialize variables
     uint32_t frame_id = 0;
     uint32_t i, j, f;
@@ -178,4 +176,3 @@ void rfiBroadcast::main_thread() {
     }
     free(packet_buffer);
 }
-

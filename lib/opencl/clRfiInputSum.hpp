@@ -19,13 +19,26 @@
  * The kernel reads the output of clRfiTimeSum and integrates it across inputs. Then a kurtosis estimate is computed
  * and placed in the output buffer.
  *
+ * @requires_kernel    rfi_chime_inputsum_private.cl
+ *
  * @par GPU Memory
- * @gpu_mem RfiTimeSumBuffer A gpu memory object which holds the normalized squ$
- *      @gpu_mem_type              static
- *      @gpu_mem_format            Array of @c float
- * @gpu_mem RfiOutputBuffer The kotekan buffer containing output spectral kurtosis estimates
- *      @gpu_mem_type              staging
- *      @gpu_mem_format            Array of @c float
+ * @gpu_mem RfiTimeSumBuffer    A gpu memory object which holds the normalized squ$
+ *      @gpu_mem_type           static
+ *      @gpu_mem_format         Array of @c float
+ * @gpu_mem RfiOutputBuffer     The kotekan buffer containing output spectral kurtosis estimates
+ *      @gpu_mem_type           staging
+ *      @gpu_mem_format         Array of @c float
+ * @gpu_mem  num_elements       The total number of elements
+ *     @gpu_mem_type            static
+ *     @gpu_mem_format          Constant @c uint32_t
+ *     @gpu_mem_metadata        none
+ * @gpu_mem  M                  The total SK integration length
+ *     @gpu_mem_type            static
+ *     @gpu_mem_format          Constant @c uint32_t
+ *     @gpu_mem_metadata        none
+ *
+ * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
+ * @conf   bad_inputs           Array of Ints. Used to compute the number of faulty inputs
  *
  * @author Jacob Taylor
  */
@@ -56,6 +69,8 @@ private:
     uint32_t _num_bad_inputs;
     /// The total integration length of the spectral kurtosis estimate
     uint32_t _M;
+    /// Flag indicating whether or not the private or local input sum kernel is being used
+    bool _use_local_sum;
     /// Mutex for rest server callback
     std::mutex rest_callback_mutex;
 };
