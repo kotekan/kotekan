@@ -7,6 +7,35 @@
 
 // Type: one of "random", "const"
 // Value: the value of the constant
+//
+
+/**
+ * @class testDataGen
+ * @brief Generate test data as a standin for DPDK.
+ *
+ * @par Buffers
+ * @buffer network_out_buf Buffer to fill
+ *         @buffer_format any format
+ *         @buffer_metadata chimeMetadata
+ * @conf  type                  String. "const", "random", or "ramp"
+ * @conf  value                 Int.
+ * @conf  wait                  Bool, default True. Produce data a set cadence.
+ *                              Otherwise just as fast as possible.
+ * @conf  samples_per_data_set  Int. How often to produce data.
+ * @conf  stream_id             Int.
+ * @conf  num_frames            Int. How many frames to produce. Default inf.
+ * @conf  rest_mode             String. "none" (default), "start", or "step.
+ *                              How to interact with rest commands to trigger
+ *                              data production.
+ *
+ * If `rest_mode` is "start" or "step", data generation will not start right away
+ * but will wait for a rest trigger. The triggers are of the form
+ * json:{"num_frames" : `value`} posted to /testdata_gen/, where `value` is a
+ * positive integer. In "start" mode this will initiate the stream of data. In
+ * "step" mode this will trigger `value` frames to be generated.
+ *
+ * @author Andre Renard, Kiyoshi Masui
+ */
 class testDataGen : public KotekanProcess {
 public:
     testDataGen(Config& config, const string& unique_name,
