@@ -18,6 +18,11 @@ private:
     std::string type;
     int value;
     bool _pathfinder_test_mode;
+    int samples_per_data_set;
+    bool wait;
+    std::string rest_mode;
+    int num_frames;
+    int stream_id;
 };
 
 #endif
