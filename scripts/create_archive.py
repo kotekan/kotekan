@@ -8,7 +8,7 @@ test_dir = os.path.join(os.path.sep.join(os.path.realpath(__file__).split(os.pat
 sys.path.append(test_dir)
 from kotekan_runner import KotekanRunner
 
-# (time, freq, prod) TODO: should maybe change this order
+# (freq, prod, time)
 DEFAULT_CHUNK = (16,16,16)
 ERR_SQ_LIM = 3e-3
 DATA_FIXED_PREC = 1e-4
