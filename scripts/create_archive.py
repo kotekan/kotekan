@@ -9,16 +9,21 @@ sys.path.append(test_dir)
 from kotekan_runner import KotekanRunner
 
 # (time, freq, prod) TODO: should maybe change this order
-DEFAULT_CHUNK = (2,3,16)
+DEFAULT_CHUNK = (16,16,16)
 ERR_SQ_LIM = 3e-3
 DATA_FIXED_PREC = 1e-4
 WEIGHT_FIXED_PREC = 1e-3
 
 @click.command()
-@click.option("--log-level", default='info')
+@click.option("--log-level", default='info', help="default: info")
+@click.option("--chunk", nargs=3, type=int, default=DEFAULT_CHUNK,
+              help="[freq prod time] chunk. default: 16 16 16")
 @click.argument("infile")
 @click.argument("outfile")
 def create_archive(infile, outfile, log_level):
+    """ Transform kotekan receiver raw output file into transposed and bitshuffle
+        compressed archive file.
+    """
 
     bufs = {
         'read_buffer': {
@@ -37,8 +42,7 @@ def create_archive(infile, outfile, log_level):
         }
     }
 
-    # TODO: adapt to subsets
-    config = { 'num_elements': 2048, 'num_prod': 2098176, 'log_level': log_level }
+    config = { 'log_level': log_level }
 
     proc = {}
     # Reader process
@@ -46,7 +50,7 @@ def create_archive(infile, outfile, log_level):
             'read_raw': {
                 'kotekan_process': 'visRawReader',
                 'filename': os.path.abspath(infile),
-                'chunk_size': DEFAULT_CHUNK,
+                'chunk_size': chunk,
                 'out_buf': 'read_buffer'
             }
         }
@@ -70,8 +74,8 @@ def create_archive(infile, outfile, log_level):
             'transpose': {
                 'kotekan_process': 'visTranspose',
                 'in_buf': 'trunc_buffer',
-                'chunk_dim_time': DEFAULT_CHUNK[0],
-                'chunk_dim_freq': DEFAULT_CHUNK[1],
+                'chunk_dim_time': chunk[0],
+                'chunk_dim_freq': chunk[1],
                 'md_filename': os.path.abspath(infile) + '.meta',
                 'filename': os.path.abspath(outfile)
             }
