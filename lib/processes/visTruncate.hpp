@@ -20,7 +20,8 @@ private:
 
     // Truncation parameters
     float err_sq_lim;
-    float fix_prec;
+    float w_prec;
+    float vis_prec;
 
 };
 

@@ -16,7 +16,8 @@ visTruncate::visTruncate(Config &config, const string& unique_name, bufferContai
 
     // Get truncation parameters from config
     err_sq_lim = config.get_float(unique_name, "err_sq_lim");
-    fix_prec = config.get_float(unique_name, "fixed_precision");
+    w_prec = config.get_float(unique_name, "weight_fixed_precision");
+    vis_prec = config.get_float(unique_name, "data_fixed_precision");
 }
 
 void visTruncate::apply_config(uint64_t fpga_seq) {
@@ -28,7 +29,7 @@ void visTruncate::main_thread() {
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
     float err_r, err_i;
-    cfloat tr_vis;
+    cfloat tr_vis, tr_evec;
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -51,8 +52,9 @@ void visTruncate::main_thread() {
         for (size_t i = 0; i < frame.num_prod; i++) {
             // Get truncation precision from weights
             if (output_frame.weight[i] == 0.) {
-                err_r = fix_prec * output_frame.vis[i].real();
-                err_i = fix_prec * output_frame.vis[i].imag();
+                // TODO: should this raise a warning?
+                err_r = vis_prec * output_frame.vis[i].real();
+                err_i = vis_prec * output_frame.vis[i].imag();
             } else {
                 err_r = std::sqrt(0.5 / output_frame.weight[i] * err_sq_lim);
                 err_i = err_r;
@@ -63,9 +65,19 @@ void visTruncate::main_thread() {
             output_frame.vis[i] = tr_vis;
             // truncate weights to fixed precision
             output_frame.weight[i] = bit_truncate_float(output_frame.weight[i],
-                                                        fix_prec * output_frame.weight[i]);
+                    w_prec * output_frame.weight[i]);
         }
-        // TODO: truncate eigenvectors to yet undetermined precision
+        // truncate eigenvectors
+        for (size_t i = 0; i < output_frame.evec.size(); i++) {
+            // Truncate to fixed precision
+            tr_evec = {
+                bit_truncate_float(output_frame.evec[i].real(),
+                        std::abs(vis_prec * output_frame.evec[i].real())),
+                bit_truncate_float(output_frame.evec[i].imag(),
+                        std::abs(vis_prec * output_frame.evec[i].imag()))
+            };
+            output_frame.evec[i] = tr_evec;
+        }
 
         // mark as full
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

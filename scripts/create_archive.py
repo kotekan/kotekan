@@ -10,8 +10,9 @@ from kotekan_runner import KotekanRunner
 
 # (time, freq, prod) TODO: should maybe change this order
 DEFAULT_CHUNK = (2,3,16)
-ERR_SQ_LIM = 3. / 1000.
-FIXED_PREC = 1. / 1000.
+ERR_SQ_LIM = 3e-3
+DATA_FIXED_PREC = 1e-4
+WEIGHT_FIXED_PREC = 1e-3
 
 @click.command()
 @click.option("--log-level", default='info')
@@ -56,7 +57,8 @@ def create_archive(infile, outfile, log_level):
             'truncate': {
                 'kotekan_process': 'visTruncate',
                 'err_sq_lim': ERR_SQ_LIM,
-                'fixed_precision': FIXED_PREC,
+                'data_fixed_precision': DATA_FIXED_PREC,
+                'weight_fixed_precision': WEIGHT_FIXED_PREC,
                 'in_buf': 'read_buffer',
                 'out_buf': 'trunc_buffer'
             }
