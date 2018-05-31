@@ -36,15 +36,15 @@ protected:
     int lost_samples_frame_id = 0;
     int out_buf_frame_ids[shuffle_size] = {0};
 
-    // This is fixed by the FPGA design, so not exposed to the config
-    const uint32_t sub_sample_size = 512;
-
     // Error counter for each of the 16 lanes of the 2nd stage (within-crate) data shuffle.
-    uint64_t fpga_second_stage_shuffle_errors[16];
+    uint64_t fpga_second_stage_shuffle_errors[16] = {0};
 
     // Error counter for each of the 8 lanes of the 3rd stage (between-crate) data shuffle.
-    uint64_t fpga_third_stage_shuffle_errors[8];
+    uint64_t fpga_third_stage_shuffle_errors[8] {0};
 
+    // Tracks the number of times at least one of the flags in the second or
+    // thrid stage shuffle were set.
+    uint64_t rx_shuffle_flags_set = 0;
 };
 
 iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
@@ -64,6 +64,51 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
 
     lost_samples_buf = buffer_container.get_buffer(config.get_string(unique_name, "lost_samples_buf"));
     register_producer(lost_samples_buf, unique_name.c_str());
+    // We want to make sure the flag buffers are zeroed between uses.
+    zero_frames(lost_samples_buf);
+
+    std::string endpoint_name = unique_name + "/port_data";
+    restServer::instance().register_get_callback(endpoint_name, [&] (connectionInstance &conn) {
+        json info;
+
+        info["fpga_stream_id"] = {{"crate", port_stream_id.crate_id},
+                             {"slot", port_stream_id.slot_id},
+                             {"link", port_stream_id.link_id}};
+        info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
+        info["lost_samples"] = rx_lost_samples_total;
+        vector<uint64_t> second_stage_errors;
+        second_stage_errors.assign(fpga_second_stage_shuffle_errors, fpga_second_stage_shuffle_errors + 16);
+        info["fpga_second_stage_shuffle_errors"] = second_stage_errors;
+        vector<uint64_t> third_stage_errors;
+        third_stage_errors.assign(fpga_third_stage_shuffle_errors, fpga_third_stage_shuffle_errors + 8);
+        info["fpga_thrid_stage_shuffle_errors"] = third_stage_errors;
+
+        info["shuffle_flags_set"] = rx_shuffle_flags_set;
+
+        info["chksum_errors"] = rx_crc_errors_total;
+        info["out_of_order_errors"] = rx_out_of_order_errors_total;
+
+        // This is the total number of errors from all sources other than missed packets
+        // i.e. natural packet loss.
+        info["errors_total"] = rx_errors_total;
+
+        info["nic_port"] = port;
+
+        vector<uint32_t> freq_bins;
+        vector<float> freq_mhz;
+        stream_id_t temp_stream_id = port_stream_id;
+        temp_stream_id.crate_id = port_stream_id.crate_id % 2;
+        for (uint32_t i = 0; i < shuffle_size; ++i) {
+            temp_stream_id.unused = i;
+            freq_bins.push_back(bin_number_chime(&temp_stream_id));
+            freq_mhz.push_back(freq_from_bin(bin_number_chime(&temp_stream_id)));
+        }
+
+        info["freq_bins"] = freq_bins;
+        info["freq_mhz"] = freq_mhz;
+
+        conn.send_json_reply(info);
+    });
 
 }
 
@@ -81,6 +126,7 @@ inline void iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         // elsewhere.
         if (unlikely(lost_sample_location * sample_size == out_bufs[0]->frame_size)) {
             advance_frames(temp_seq);
+            lost_sample_location = 0;
         }
 
         // This sets the flag to zero this sample with the zeroSamples process.
@@ -94,6 +140,7 @@ inline void iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         // NOTE: This also introduces cache line contension since we are using one array
         // to for all 4 links, ideally we might use 4 arrays and a reduce operation to bring
         // it down to one on another core.
+        //WARN("port %d, adding lost packets at: %d", port, lost_sample_location);
         lost_samples_frame[lost_sample_location] = 1;
         lost_sample_location += 1;
         lost_samples -= 1;
@@ -103,7 +150,6 @@ inline void iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
 }
 
 inline void iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
-    WARN("port %d, called advance_frames!, first_time %d", port, (int)first_time);
     struct timeval now;
     gettimeofday(&now, NULL);
 
@@ -113,7 +159,6 @@ inline void iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
             // Advance frame ID
             out_buf_frame_ids[i] = (out_buf_frame_ids[i] + 1) % out_bufs[i]->num_frames;
-            WARN("port %d, out_buf_frame_ids[%d] = %d", port, i, out_buf_frame_ids[i]);
         }
 
         out_buf_frame[i] = wait_for_empty_frame(out_bufs[i], unique_name.c_str(), out_buf_frame_ids[i]);
@@ -153,27 +198,6 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf *mbuf) {
     // frames, but that should be proven carefully...
     int64_t sample_location;
 
-    // Check if we need to advance frames
-    /*for (uint32_t i = 0; i < shuffle_size; ++i) {
-        // This could be optimized to avoid this look up every time.
-        // i.e. save the base FPGA seq number for this frame.
-        // Note all 4 of these should be the same, maybe check this?
-        //fprintf(stderr, "port: %d, i: %d, sample_location: %p, out_bufs: %p, out_buf_frame_ids: %p, out_bufs[i]: %p, out_bufs_frame: %d\n",
-        //    port, i, sample_location, out_bufs, out_buf_frame_ids, out_bufs[i], out_buf_frame_ids[i]);
-        sample_location[i] = 0;
-        out_bufs[i];
-        out_buf_frame_ids[i];
-        //fprintf(stderr, "port: %d, metadata[%d]: %p\n", port, i, out_bufs[i]->metadata);
-        get_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i]);
-        sample_location[i] = cur_seq - get_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i]);
-
-        // We reached the end of the output frame
-        if (unlikely(sample_location[i] * sample_size == out_bufs[i]->frame_size)) {
-            advance_frames(cur_seq);
-            sample_location[i] = 0;
-        }
-    }*/
-
     sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
     assert(sample_location * sample_size <= out_bufs[0]->frame_size);
     if (unlikely(sample_location * sample_size == out_bufs[0]->frame_size)) {
@@ -191,14 +215,14 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf *mbuf) {
     // Copy the packet in packet memory order.
     for (uint32_t sample_id = 0; sample_id < samples_per_packet; ++sample_id) {
 
-        for (uint32_t sub_sample_id = 0; sub_sample_id < shuffle_size; ++sub_sample_id) {
+        for (uint32_t sub_sample_freq = 0; sub_sample_freq < shuffle_size; ++sub_sample_freq) {
             uint64_t copy_location = (sample_location + sample_id) * sample_size
                                      + sub_sample_pos * sub_sample_size;
 
-            /*copy_block(&mbuf,
-                       (uint8_t *) &out_buf_frame[copy_location],
+            copy_block(&mbuf,
+                       (uint8_t *) &out_buf_frame[sub_sample_freq][copy_location],
                        sub_sample_size,
-                       &pkt_offset);*/
+                       &pkt_offset);
         }
     }
 }
@@ -223,6 +247,7 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf *mbuf) {
     }
 
     // Check footers
+    //iceBoardShuffle::check_fpga_shuffle_flags(mbuf);
     if (unlikely(!iceBoardShuffle::check_fpga_shuffle_flags(mbuf)))
         return 0;
 
@@ -239,10 +264,12 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf *mbuf) {
     // because we don't update the last_seq number value if the
     // packet isn't accepted for any reason.
     if (unlikely(diff > samples_per_packet))
-        iceBoardShuffle::handle_lost_samples(diff);
+        iceBoardShuffle::handle_lost_samples(diff - samples_per_packet);
 
     // copy packet
     iceBoardShuffle::copy_packet_shuffle(mbuf);
+
+    last_seq = cur_seq;
 
     return 0;
 }
@@ -250,6 +277,7 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf *mbuf) {
 inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf *mbuf) {
 
     const int flag_len = 4; // 32-bits = 4 bytes
+    const int rounding_factor = 2;
 
     // Go to the last part of the packet
     // Note this assumes that the footer doesn't cross two mbuf
@@ -260,7 +288,9 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf *mbuf) {
 
     int cur_mbuf_len = mbuf->data_len;
     assert(cur_mbuf_len >= flag_len);
-    const uint8_t * mbuf_data = rte_pktmbuf_mtod_offset(mbuf, uint8_t *, cur_mbuf_len - flag_len);
+    int flag_location = cur_mbuf_len - flag_len - rounding_factor;
+    assert (2048 * 2 + flag_location == 4922); // Make sure the flag address is correct.
+    const uint8_t * mbuf_data = rte_pktmbuf_mtod_offset(mbuf, uint8_t *, cur_mbuf_len - flag_len - rounding_factor);
 
     uint32_t flag_value = *(uint32_t *)mbuf_data;
 
@@ -289,6 +319,9 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf *mbuf) {
     }
 
     // One of the flags was set, so let's not process this packet.
+    rx_shuffle_flags_set += 1;
+    rx_errors_total += 1;
+
     return false;
 }
 
