@@ -101,7 +101,7 @@ void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json&
     update_gains=true;
     INFO("Updating gains from %s", _gain_dir.c_str());
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    config.set_value(unique_name, "gain_dir", _gain_dir);
+    config.update_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
@@ -277,8 +277,8 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord.dec[beam] = json_request["dec"];
 	psr_coord.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-	config.set_value(unique_name, "source_ra/" + to_string(beam), psr_coord.ra[beam]);
-	config.set_value(unique_name, "source_dec/" + to_string(beam), psr_coord.dec[beam]);
-	config.set_value(unique_name, "psr_scaling/" + to_string(beam), psr_coord.scaling[beam]);
+	config.update_value(unique_name, "source_ra/" + to_string(beam), psr_coord.ra[beam]);
+	config.update_value(unique_name, "source_dec/" + to_string(beam), psr_coord.dec[beam]);
+	config.update_value(unique_name, "psr_scaling/" + to_string(beam), psr_coord.scaling[beam]);
     }
 }
