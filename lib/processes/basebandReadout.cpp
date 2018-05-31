@@ -45,6 +45,10 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         oldest_frame(-1),
         frame_locks(num_frames_buffer)
 {
+    // Memcopy byte alignments assume the following.
+    if (num_elements % 128) {
+        throw std::runtime_error("num_elements must be multiple of 128");
+    }
 
     register_consumer(buf, unique_name.c_str());
 
@@ -66,7 +70,6 @@ basebandReadout::~basebandReadout() {
 
 void basebandReadout::apply_config(uint64_t fpga_seq) {
 }
-
 
 void basebandReadout::main_thread() {
 
@@ -110,7 +113,6 @@ void basebandReadout::main_thread() {
     }
     wt.join();
 }
-
 
 void basebandReadout::listen_thread(const uint32_t freq_id) {
     uint64_t event_id=0;
@@ -174,7 +176,6 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
     }
 }
 
-
 void basebandReadout::write_thread() {
     while (!stop_thread) {
         if (write_q.empty()) {
@@ -192,7 +193,6 @@ void basebandReadout::write_thread() {
         }
     }
 }
-
 
 int basebandReadout::add_replace_frame(int frame_id) {
     std::lock_guard<std::mutex> lock(manager_lock);

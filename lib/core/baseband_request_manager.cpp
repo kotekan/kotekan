@@ -81,7 +81,7 @@ std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(con
     std::unique_lock<std::mutex> lock(requests_lock);
 
     using namespace std::chrono_literals;
-    if (requests_cv.wait_for(lock, 1s) == std::cv_status::no_timeout) {
+    if (requests_cv.wait_for(lock, 0.1s) == std::cv_status::no_timeout) {
         std::cout << "Notified\n";
     }
     else {
