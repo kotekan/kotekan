@@ -180,7 +180,7 @@ def data_listener(thread_id, socket_udp):
         if(packet != ''):
 
             if(packetCounter % 25*len(stream_dict) == 0):
-                print("Thread id %d: Receiving Packets from %d Streams"%(thread_id,len(stream_dict))
+                print("Thread id %d: Receiving Packets from %d Streams"%(thread_id,len(stream_dict)))
             packetCounter += 1
 
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)

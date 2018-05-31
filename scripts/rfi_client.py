@@ -31,7 +31,9 @@ class CommandLine:
         #Defaults
         self.TCP_IP = '127.0.0.1'
         self.TCP_PORT = 2901
-        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0}
+        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024,
+                       'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0,
+                       'sk_step': 256, 'num_elements': 2048}
         self.mode = 'pathfinder'
         self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
@@ -164,7 +166,10 @@ class Callback(object):
         f.close()
         print("Saved Data! Path: ./" + newDir)
 
-
+def to_confidence(app, ticks):
+    M = app.config["sk_step"]*app.config["num_elements"]
+    sigma = np.sqrt(4/M)
+    return np.round(np.abs(1-ticks)/(sigma),1)
 
 if( __name__ == '__main__'):
 
@@ -181,7 +186,9 @@ if( __name__ == '__main__'):
 
     x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
     im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
-    plt.colorbar(label = "SK Value")
+    ticks = np.linspace(1-app.config['colorscale'], 1+app.config['colorscale'], num = 10)
+    cbar = plt.colorbar(label = "Detection Confidence", ticks = ticks)
+    cbar.ax.set_yticklabels(to_confidence(app, ticks))
     plt.title("RFI Viewer (Mode: "+app.mode+")")
     plt.xlabel("Time")
     plt.ylabel("Frequency[MHz]")

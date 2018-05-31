@@ -98,4 +98,4 @@ waterfallX: 128
 waterfallY: 1024
 num_receive_threads: 1
 waterfall_request_delay: 1 #seconds
-colorscale: 0.25
+colorscale: 1.0
