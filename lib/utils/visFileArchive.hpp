@@ -47,7 +47,8 @@ protected:
     // Helper to create datasets
     virtual void create_dataset(const std::string& name,
                                 const std::vector<std::string>& axes,
-                                HighFive::DataType type);
+                                HighFive::DataType type,
+                                const bool& compress);
 
     // Helper function to create an axis
     template<typename T>

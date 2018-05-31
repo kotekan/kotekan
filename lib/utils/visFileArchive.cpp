@@ -137,21 +137,25 @@ void visFileArchive::create_datasets() {
 
     Group flags = file->createGroup("flags");
 
-    for (int i = 0; i < 3; i++)
-        DEBUG("chunk at %d: %d", i, chunk[i]);
-    // Create transposed dataset shapes
-    create_dataset("vis", {"freq", "prod", "time"}, create_datatype<cfloat>());
-    create_dataset("flags/vis_weight", {"freq", "prod", "time"}, create_datatype<float>());
-    create_dataset("gain_coeff", {"freq", "input", "time"}, create_datatype<cfloat>());
-    // TODO: should this use a fixed size?
-    create_dataset("gain_exp", {"input", "time"}, create_datatype<int>());
+    bool compress = true;
+    bool no_compress = false;
 
-    // Only write the eigenvector datasets if there's going to be anything in
-    // them
+    // Create transposed dataset shapes
+    create_dataset("vis", {"freq", "prod", "time"}, create_datatype<cfloat>(), compress);
+    create_dataset("flags/vis_weight", {"freq", "prod", "time"},
+                   create_datatype<float>(), compress);
+    create_dataset("gain_coeff", {"freq", "input", "time"},
+                   create_datatype<cfloat>(), compress);
+    create_dataset("gain_exp", {"input", "time"}, create_datatype<int>(), no_compress);
+
+    // Only write the eigenvector datasets if there's going to be anything in them
     if(write_ev) {
-        create_dataset("eval", {"freq", "ev", "time"}, create_datatype<float>());
-        create_dataset("evec", {"freq", "ev", "input", "time"}, create_datatype<cfloat>());
-        create_dataset("erms", {"freq", "time"}, create_datatype<float>()); 
+        create_dataset("eval", {"freq", "ev", "time"},
+                       create_datatype<float>(), no_compress);
+        create_dataset("evec", {"freq", "ev", "input", "time"},
+                       create_datatype<cfloat>(), compress);
+        create_dataset("erms", {"freq", "time"},
+                       create_datatype<float>(), no_compress); 
     }
 
     file->flush();
@@ -159,7 +163,7 @@ void visFileArchive::create_datasets() {
 }
 
 void visFileArchive::create_dataset(const std::string& name, const std::vector<std::string>& axes,
-                               DataType type) {
+                               DataType type, const bool& compress) {
 
     // Mapping of axis names to sizes (start, chunk)
     std::map<std::string, std::tuple<size_t, size_t>> size_map;
@@ -179,26 +183,31 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
 
     DataSpace space = DataSpace(cur_dims);
 
-    // Add chunking and bitshuffle filter to plist
-    // Pulled this out of HighFive createDataSet source
-    std::vector<hsize_t> real_chunk(chunk_dims.size());
-    std::copy(chunk_dims.begin(), chunk_dims.end(), real_chunk.begin());
-    // Set dataset creation properties to enable chunking
-    hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
-    if(H5Pset_chunk(plist, int(chunk_dims.size()), &(real_chunk.at(0))) < 0) {
-        HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to create chunk.");
-    }
-    // Set bitshuffle compression filter
-    if(H5Pset_filter(plist, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
-                BSHUF_CD.size(), BSHUF_CD.data()) < 0) {
-        HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to set bishuffle filter.");
+    if (compress) {
+        // Add chunking and bitshuffle filter to plist
+        // Pulled this out of HighFive createDataSet source
+        std::vector<hsize_t> real_chunk(chunk_dims.size());
+        std::copy(chunk_dims.begin(), chunk_dims.end(), real_chunk.begin());
+        // Set dataset creation properties to enable chunking
+        hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
+        if(H5Pset_chunk(plist, int(chunk_dims.size()), &(real_chunk.at(0))) < 0) {
+            HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to create chunk.");
+        }
+        // Set bitshuffle compression filter
+        if(H5Pset_filter(plist, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                    BSHUF_CD.size(), BSHUF_CD.data()) < 0) {
+            HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to set bishuffle filter.");
+        }
+
+        DataSet dset = file->createDataSet(name, space, type, plist);
+        dset.createAttribute<std::string>(
+            "axis", DataSpace::From(axes)).write(axes);
+    } else {
+        DataSet dset = file->createDataSet(name, space, type, chunk_dims);
+        dset.createAttribute<std::string>(
+            "axis", DataSpace::From(axes)).write(axes);
     }
 
-    DataSet dset = file->createDataSet(
-        name, space, type, plist
-    );
-    dset.createAttribute<std::string>(
-        "axis", DataSpace::From(axes)).write(axes);
 }
 
 // Quick functions for fetching datasets and dimensions
