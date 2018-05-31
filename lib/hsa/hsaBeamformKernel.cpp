@@ -71,6 +71,7 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     update_gains=true;
     INFO("Updating gains from %s", _gain_dir.c_str());
     conn.send_empty_reply(HTTP_RESPONSE::OK);
+    config.set_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
