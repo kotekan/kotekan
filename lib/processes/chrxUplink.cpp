@@ -36,9 +36,6 @@ void chrxUplink::apply_config(uint64_t fpga_seq) {
     char hostname[1024];
     string s_port;
 
-    if (!config.update_needed(fpga_seq))
-        return;
-
     _collection_server_ip = config.get_string(unique_name, "collection_server_ip");
     gethostname(hostname, 1024);
 

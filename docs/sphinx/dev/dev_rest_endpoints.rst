@@ -29,6 +29,10 @@ The kotekan framework registers a number of points
 ``/config`` ``[GET]``
     Returns the current system configuration.
 
+``/config_md5sum`` ``[GET]``
+    Returns an MD5 hash of the config file (based on the json string with no spaces).
+    Only exists if kotekan was build with OpenSSL support included
+
 ``/version`` ``[GET]``
     Returns the current kotekan version information; including build options.
 

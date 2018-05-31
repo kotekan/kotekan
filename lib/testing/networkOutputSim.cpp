@@ -43,9 +43,6 @@ networkOutputSim::~networkOutputSim() {
 }
 
 void networkOutputSim::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
-
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _num_elem = config.get_int(unique_name, "num_elements");
