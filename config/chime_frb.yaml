@@ -112,7 +112,6 @@ dpdk:
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
-  gain_dir: "../../kotekan/"
   commands:
   - name: hsaInputData
   - name: hsaPresumZero
@@ -134,6 +133,7 @@ gpu:
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
+    gain_dir: "../../kotekan/"
     kotekan_process: hsaProcess
     gpu_id: 0
     in_buffers:
@@ -142,6 +142,7 @@ gpu:
       output_buf: gpu_output_buffer_0
       beamform_output_buf: beamform_output_buffer_0
   gpu_1:
+    gain_dir: "../../kotekan/"
     kotekan_process: hsaProcess
     gpu_id: 1
     in_buffers:
@@ -150,6 +151,7 @@ gpu:
       output_buf: gpu_output_buffer_1
       beamform_output_buf: beamform_output_buffer_1
   gpu_2:
+    gain_dir: "../../kotekan/"
     kotekan_process: hsaProcess
     gpu_id: 2
     in_buffers:
@@ -158,6 +160,7 @@ gpu:
       output_buf: gpu_output_buffer_2
       beamform_output_buf: beamform_output_buffer_2
   gpu_3:
+    gain_dir: "../../kotekan/"
     kotekan_process: hsaProcess
     gpu_id: 3
     in_buffers:
