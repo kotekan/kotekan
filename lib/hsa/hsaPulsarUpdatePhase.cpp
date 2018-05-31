@@ -1,3 +1,4 @@
+#include <string>
 #include <math.h>
 #include <time.h>
 #include "hsaBase.h"
@@ -277,8 +278,8 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord.dec[beam] = json_request["dec"];
 	psr_coord.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-	config.update_value(unique_name, "source_ra/" + to_string(beam), psr_coord.ra[beam]);
-	config.update_value(unique_name, "source_dec/" + to_string(beam), psr_coord.dec[beam]);
-	config.update_value(unique_name, "psr_scaling/" + to_string(beam), psr_coord.scaling[beam]);
+	config.update_value(unique_name, "source_ra/" + std::to_string(beam), psr_coord.ra[beam]);
+	config.update_value(unique_name, "source_dec/" + std::to_string(beam), psr_coord.dec[beam]);
+	config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), psr_coord.scaling[beam]);
     }
 }
