@@ -136,7 +136,7 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char * data, uint * temp
                                     freq * 32 +
                                     VDIF_HEADER_LEN;
 
-                __m256i ymm0, ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, sq0, sq1, sq2, sq3;
+                __m256i ymm0, ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7;
 
                 // Load 64 4 bit numbers
                 ymm0 = _mm256_loadu_si256((__m256i const *)&data[index]);

@@ -198,7 +198,7 @@ void clProcess::main_thread()
         if(time_count == 10){
             for (int i = 0; i < factory->getNumCommands(); i++){
                 currentCommand = factory->getNextCommand();
-                tt.broadcast(currentCommand->get_name());
+                //tt.broadcast(currentCommand->get_name());
             }
             time_count = 0;
         }

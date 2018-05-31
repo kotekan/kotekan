@@ -28,8 +28,8 @@ void make_rfi_dirs(int streamID, const char * write_to, const char* time_dir){
         if (errno != EEXIST) {
             perror("Error creating data set directory.\n");
             printf("The directory was: %s/%d\n", write_to, streamID);
+            exit(errno);
         }
-        exit(errno);
     }
     //Create sub-sub-directory for current capture
     dir_name[0] = '\0';

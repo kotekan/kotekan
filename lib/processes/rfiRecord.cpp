@@ -16,6 +16,7 @@
 
 #include "rfiRecord.hpp"
 #include "util.h"
+#include "gpsTime.h"
 #include "errors.h"
 #include "chimeMetadata.h"
 
@@ -76,7 +77,7 @@ void rfiRecord::apply_config(uint64_t fpga_seq) {
     write_to_disk = config.get_bool_default(unique_name, "write_to_disk",false);
 }
 
-void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum) {
+void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts) {
     //Create Directories
     char data_time[50];
     time_t rawtime;
@@ -97,9 +98,13 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum) {
         ERROR("Error creating info file: %s\n", info_file_name);
     }
     //Populate Info file with information
+    fprintf(info_file, "utcTime=%s\n",data_time);
     fprintf(info_file, "streamID=%d\n", streamID);
     fprintf(info_file, "firstSeqNum=%lld\n",(long long)firstSeqNum);
-    fprintf(info_file, "utcTime=%s\n",data_time);
+    fprintf(info_file, "first_packet_gps_tv_sec=%ld\n",ts.tv_sec);
+    fprintf(info_file, "first_packet_gps_tv_nsec=%09ld\n",ts.tv_nsec);
+    fprintf(info_file, "first_packet_ntp_tv_sec=%ld\n",tv.tv_sec);
+    fprintf(info_file, "first_packet_ntp_tv_usec=%06ld\n",tv.tv_usec);
     fprintf(info_file, "num_elements=%d\n", _num_elements);
     fprintf(info_file, "num_total_freq=%d\n", _num_freq);
     fprintf(info_file, "num_local_freq=%d\n", _num_local_freq);
@@ -117,6 +122,7 @@ void rfiRecord::main_thread() {
     uint32_t frame_id = 0;
     uint8_t * frame = NULL;
     uint32_t link_id = 0;
+    int64_t fpga_seq_num;
     int fd = -1;
     file_num = 0;
     //Endless Loop
@@ -128,12 +134,15 @@ void rfiRecord::main_thread() {
         if (frame == NULL) break;
         //Reset Timer
         double start_time = e_time();
+        fpga_seq_num = get_fpga_seq_num(rfi_buf, frame_id);
         //Only write if user specifilly asks (Just for caution)
         if(write_to_disk){
             //For each link
             if(file_num < total_links){
+                INFO("ATTEMPTING TO CREATE METADATA");
                 //Make Necessary Directories using timecode and create info file with metadata
-                save_meta_data(get_stream_id(rfi_buf, frame_id), get_fpga_seq_num(rfi_buf, frame_id));
+                save_meta_data(get_stream_id(rfi_buf, frame_id), fpga_seq_num,
+                                    get_first_packet_recv_time(rfi_buf, frame_id), get_gps_time(rfi_buf, frame_id));
 //                save_meta_data((uint16_t)link_id, get_fpga_seq_num(rfi_buf, frame_id));
             }
             //Initialize file name
@@ -151,6 +160,7 @@ void rfiRecord::main_thread() {
                 ERROR("Cannot open file %s", file_name);
             }
             //Write buffer to that file
+            write(fd,&fpga_seq_num, sizeof(int64_t));
             ssize_t bytes_writen = write(fd, frame, rfi_buf->frame_size);
             if (bytes_writen != rfi_buf->frame_size) {
                 ERROR("Failed to write buffer to disk");

@@ -54,7 +54,7 @@ public:
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
     //Function to create relevant directories and info files
-    void save_meta_data(uint16_t streamID, int64_t firstSeqNum);
+    void save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts);
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 private:
