@@ -4,6 +4,7 @@
 #include <mutex>
 #include <unistd.h>
 #include <sys/time.h>
+#include <csignal>
 
 #include "errors.h"
 #include "chimeMetadata.h"
@@ -93,7 +94,7 @@ void testDataGen::main_thread() {
     int link_id = 0;
 
     std::call_once(callback_registered,
-            []{restServer::instance().register_post_callback("/testdata_gen/", callback);});
+            []{restServer::instance().register_post_callback("/testdata_gen", callback);});
 
     while (!stop_thread) {
         double start_time = current_time();
@@ -141,10 +142,13 @@ void testDataGen::main_thread() {
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         frame_id_abs +=1;
-        if (num_frames >=0 && frame_id_abs >= num_frames) break;
+        if (num_frames >=0 && frame_id_abs >= num_frames) {
+            std::raise(SIGINT);
+            break;
+        };
         frame_id = frame_id_abs % buf->num_frames;
 
-        if (_pathfinder_test_mode == true){
+        if (_pathfinder_test_mode == true) {
             //Test PF seq_num increment.
             if (link_id == 7){
                 link_id = 0;

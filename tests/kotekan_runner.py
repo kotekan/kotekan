@@ -2,6 +2,7 @@ import os
 import itertools
 import subprocess
 import tempfile
+import time
 
 import visbuffer
 
@@ -20,11 +21,14 @@ class KotekanRunner(object):
         Global configuration at the root level.
     """
 
-    def __init__(self, buffers=None, processes=None, config=None):
+    def __init__(self, buffers=None, processes=None, config=None,
+                 rest_commands=None):
 
         self._buffers = buffers if buffers is not None else {}
         self._processes = processes if processes is not None else {}
         self._config = config if config is not None else {}
+        self._rest_commands = (rest_commands if rest_commands is not None
+                               else [])
 
     def run(self):
         """Run kotekan.
@@ -33,6 +37,9 @@ class KotekanRunner(object):
         """
 
         import yaml
+
+        rest_header = {"content-type": "application/json"}
+        rest_addr = "http://localhost:12048/"
 
         config_dict = yaml.load(default_config)
         config_dict.update(self._config)
@@ -47,8 +54,24 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
-            subprocess.check_call(["./kotekan", "-c", fh.name],
-                                  cwd=kotekan_dir)
+            p = subprocess.Popen(
+                    ["./kotekan", "-c", fh.name], cwd=kotekan_dir)
+            if self._rest_commands:
+                import requests
+                import json
+                # Wait a moment for rest servers to start up.
+                time.sleep(0.5)
+                for rtype, endpoint, data in self._rest_commands:
+                    command = getattr(requests, rtype)
+                    command(rest_addr + endpoint,
+                            headers=rest_header,
+                            data=json.dumps(data),
+                            )
+            ret = p.wait()
+            print ret
+            # XXX Not checking call because of kotekan bug.
+            # if ret:
+            #    raise subprocess.CalledProcessError(ret)
 
 
 class InputBuffer(object):
@@ -74,7 +97,7 @@ class FakeNetworkBuffer(InputBuffer):
 
     def __init__(self, **kwargs):
 
-        self.name = 'fakegnetwork_buf%i' % self._buf_ind
+        self.name = 'fakenetwork_buf%i' % self._buf_ind
         process_name = 'fakenetwork%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
@@ -90,7 +113,7 @@ class FakeNetworkBuffer(InputBuffer):
 
         process_config = {
             'kotekan_process': 'testDataGen',
-            'out_buf': self.name,
+            'network_out_buf': self.name,
         }
         process_config.update(kwargs)
 
@@ -246,7 +269,7 @@ class KotekanProcessTester(KotekanRunner):
     """
 
     def __init__(self, process_type, process_config, buffers_in,
-                 buffers_out, global_config={}):
+                 buffers_out, global_config={}, rest_commands=None):
 
         config = process_config.copy()
 
@@ -276,7 +299,7 @@ class KotekanProcessTester(KotekanRunner):
             buffer_block.update(buf.buffer_block)
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
-                                                   global_config)
+                                                   global_config, rest_commands)
 
 
 default_config = """
@@ -285,6 +308,7 @@ type: config
 log_level: info
 num_elements: 10
 num_local_freq: 1
+num_data_sets: 1
 samples_per_data_set: 32768
 buffer_depth: 4
 num_gpu_frames: 64

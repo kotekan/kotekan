@@ -67,6 +67,7 @@ basebandReadout::~basebandReadout() {
 void basebandReadout::apply_config(uint64_t fpga_seq) {
 }
 
+
 void basebandReadout::main_thread() {
 
     int frame_id = 0;
@@ -103,11 +104,13 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
+
     if (lt) {
         lt->join();
     }
     wt.join();
 }
+
 
 void basebandReadout::listen_thread(const uint32_t freq_id) {
     uint64_t event_id=0;
