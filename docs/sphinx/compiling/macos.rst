@@ -29,6 +29,12 @@ To include **FFTW** processes:
     cd <kotekan_dir>/build
     cmake .. -DUSE_FFTW=ON
 
+To include **OpenSSL** support (for optional support of HASH functions, md5, etc.)
+
+.. code:: bash
+
+    brew install openssl
+    cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl ..
 
 With these installed, you should be able to build & run kotekan!
 
