@@ -147,7 +147,7 @@ void pulsarPostProcess625::main_thread() {
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
 	//GPS time, need ch_master
-	time_now = get_gps_time(metadata_buf, metadata_buffer_id);
+	time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
 	    assert(first_seq_number ==
