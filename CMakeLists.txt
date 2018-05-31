@@ -115,6 +115,13 @@ else ()
   MESSAGE("HDF5 disabled")
 endif ()
 
+# Optionally include OpenSSL for hash function support
+find_package( OpenSSL )
+if( OPENSSL_FOUND )
+    add_definitions(-DWITH_SSL)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+endif()
+
 # Get the current working branch
 execute_process(
   COMMAND git rev-parse --abbrev-ref HEAD

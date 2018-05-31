@@ -319,7 +319,7 @@ int main(int argc, char ** argv) {
         string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
         std::string json_string = exec(exec_command.c_str());
         json config_json = json::parse(json_string.c_str());
-        config.update_config(config_json, 0);
+        config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, gps_time);
         } catch (const std::exception &ex) {
@@ -337,7 +337,7 @@ int main(int argc, char ** argv) {
             conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
         }
 
-        config.update_config(json_config, 0);
+        config.update_config(json_config);
 
         try {
             start_new_kotekan_mode(config, false);

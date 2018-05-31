@@ -22,6 +22,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               streamSingleDishVDIF.cpp
               rfiVDIF.cpp
               rfiBroadcastVDIF.cpp
+              rfiBroadcast.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp

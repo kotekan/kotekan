@@ -60,7 +60,7 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
 	vdif_header->data_frame =  (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
-	
+
 	for (uint32_t f=0;f<_num_gpus;++f) { //4 freq
 	    vdif_header->thread_id = freq_ids[f];
 
@@ -82,9 +82,6 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 }
 
 void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
-
     _num_gpus = config.get_int(unique_name, "num_gpus");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
@@ -93,14 +90,13 @@ void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
     _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
     _udp_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
     _udp_header_size = config.get_int(unique_name, "udp_pulsar_header_size");
-      
 }
 
 void pulsarPostProcess::main_thread() {
 
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
     uint8_t * in_frame[_num_gpus];
-    int out_buffer_ID = 0;  
+    int out_buffer_ID = 0;
     int startup = 1; //related to the likely & unlikely
     uint freq_ids[_num_gpus] ;
 
