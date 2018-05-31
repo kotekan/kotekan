@@ -71,7 +71,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
-    restServer &rest_server = restServer::instance()
+    restServer &rest_server = restServer::instance();
     endpoint_psrcoord = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_psrcoord,
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
