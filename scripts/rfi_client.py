@@ -8,7 +8,6 @@
 * Help: Run "python3 rfi_client.py" -H (or --Help) for how to use.
 *********************************************************************************/
 """
-
 import threading
 import socket
 import numpy as np
@@ -228,5 +227,3 @@ if( __name__ == '__main__'):
 
 
     input()
-
-

@@ -16,7 +16,7 @@
 #else
     #ifdef WITH_OPENCL
         // Pathfinder mode
-        #define NUM_LINKS (4)
+        #define NUM_LINKS (8)
         #define NUM_FREQ (1)
         #define MAX_CORES (8)
     #else

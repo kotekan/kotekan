@@ -22,6 +22,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
               rfiVDIF.cpp
+              rfiAVXVDIF.cpp
               rfiBroadcast.cpp
               rfiRecord.cpp
               accumulate.cpp
@@ -37,7 +38,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp)# frbPostProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
 endif ()
 
 if (${USE_DPDK})

@@ -1,9 +1,19 @@
+##########################################
+#
+# pathfinder_rfi_fury.yaml
+#
+# A config which contains all availiable 
+# rfi pipeline processes for PF (fury nodes)
+#
+# Author: Jacob Taylor
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: INFO
+log_level: WARN
 
 instrument_name: pathfinder
 
@@ -44,11 +54,6 @@ sk_step: 256
 rfi_combined: True
 frames_per_packet: 1
 bad_inputs: []
-
-# Keeping and eye on status
-//buffer_status:
-//  kotekan_process: bufferStatus
-//  time_delay: 5000000 #microsec
 
 # Pool
 main_pool:
@@ -103,11 +108,9 @@ gpu:
   - name: input_data_stage
     kernel: ''
   - name: clRfiTimeSum
-#    kernel: "../lib/opencl/kernels/rfi_chime_timesum.cl"
     kernel: "../lib/opencl/kernels/rfi_chime_timesum_private.cl"
   - name: clRfiInputSum
-#    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
-    kernel: "../lib/opencl/kernels/rfi_chime_inputsum_private.cl"
+    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
   - name: beamform_phase_data
     kernel: ''
   - name: offset_accumulator
@@ -147,7 +150,6 @@ gpu:
     beam_out_buf: beam_output_buffer_0
     rfi_out_buf: gpu_rfi_output_buffer_0
 
-
 rfiBroadcast:
   kotekan_process: rfiBroadcast
   rfi_in: gpu_rfi_output_buffer_0
@@ -157,8 +159,15 @@ rfiBroadcast:
 #  destination_ip: 127.0.0.1
   destination_protocol: UDP
 
+rfi_record:
+  total_links: 8
+  write_to: /mnt/glock/RFI
+  write_to_disk: false
+  kotekan_process: rfiRecord
+  rfi_in: gpu_rfi_output_buffer_0
+
 #RFI Live-view Paramters
-waterfallX: 512
-num_receive_threads: 1
+waterfallX: 1024
+num_receive_threads: 4
 colorscale: 0.5
 waterfall_request_delay: 60

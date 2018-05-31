@@ -24,11 +24,9 @@ add_library ( kotekan_opencl
               gpu_command.cpp
               gpu_command_factory.cpp
               clProcess.cpp
-#              rfi_kernel.cpp
               clRfiTimeSum.cpp
               clRfiInputSum.cpp
               clRfiOutput.cpp
-#              output_rfi.cpp
               timer.cpp
               )
 

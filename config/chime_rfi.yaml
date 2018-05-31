@@ -13,7 +13,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: WARN
+log_level: INFO
 num_links: 4
 timesamples_per_packet: 2
 num_elements: 2048
@@ -121,8 +121,9 @@ file_output_buffers:
     file_output_buffer_3:
         kotekan_buffer: standard
 
+#Processes
 #gen_data:
-#  type: random
+#  type: const
 #  value: 255
 #  test_data_gen_0:
 #    kotekan_process: testDataGen
@@ -137,7 +138,6 @@ file_output_buffers:
 #    kotekan_process: testDataGen
 #    network_out_buf: gpu_input_buffer_3
 
-# Processes
 dpdk:
   udp_packet_size: 4928
   kotekan_process: dpdkWrapper
@@ -211,49 +211,46 @@ gpu:
       beamform_output_buf: beamform_output_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
 
-rfiBroadcast:
-  log_level: DEBUG
-  kotekan_process: rfiBroadcast
+rfi_broadcast:
+#  log_level: DEBUG
   total_links: 1
-  rfi_in: gpu_rfi_output_buffer_0
-  destination_port: 41215
+  destination_protocol: UDP
   destination_ip: 10.1.113.19
 #  destination_ip: 10.1.13.1
 #  destination_ip: 127.0.0.1
-  destination_protocol: UDP
+  gpu_0:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_0
+    destination_port: 41215
+  gpu_1:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_1
+    destination_port: 41216
+  gpu_2:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_2
+    destination_port: 41217
+  gpu_3:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_3
+    destination_port: 41218
 
-rfiBroadcast1:
-  log_level: DEBUG
-  kotekan_process: rfiBroadcast
+rfi_record:
   total_links: 1
-  rfi_in: gpu_rfi_output_buffer_1
-  destination_port: 41216
-  destination_ip: 10.1.113.19
-#  destination_ip: 10.1.13.1
-#  destination_ip: 127.0.0.1
-  destination_protocol: UDP
-
-rfiBroadcast2:
-  log_level: DEBUG
-  kotekan_process: rfiBroadcast
-  total_links: 1
-  rfi_in: gpu_rfi_output_buffer_2
-  destination_port: 41217
-  destination_ip: 10.1.113.19
-#  destination_ip: 10.1.13.1
-#  destination_ip: 127.0.0.1
-  destination_protocol: UDP
-
-rfiBroadcast3:
-  log_level: DEBUG
-  kotekan_process: rfiBroadcast
-  total_links: 1
-  rfi_in: gpu_rfi_output_buffer_3
-  destination_port: 41218
-  destination_ip: 10.1.113.19
-#  destination_ip: 10.1.13.1
-#  destination_ip: 127.0.0.1 
-  destination_protocol: UDP
+  write_to: /mnt/gong/RFI
+  write_to_disk: false
+  gpu_0:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_0
+  gpu_1:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_1
+  gpu_2:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_2
+  gpu_3:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_3
 
 #RFI Live-view Paramters
 waterfallX: 1024

@@ -1,3 +1,13 @@
+##########################################
+#
+# pathfinder_rfi_280x.yaml
+#
+# A config for pathfinder which uses
+# all availoiable rfi pipeline processes
+#
+# Author: Jacob Taylor
+#
+##########################################
 ---
 type: config
 # Logging level can be one of:
@@ -33,14 +43,10 @@ sizeof_float: 4
 num_links_fury: 8
 num_links_per_gpu: 1
 
-#num_links: 8
-#link_map: [0,0,1,1,1,2,2,2]
-#num_links_270: 2
-#num_links_280: 3
-num_links: 4
-link_map: [0,0,1,2]
+num_links: 8
+link_map: [0,0,1,1,1,2,2,2]
 num_links_270: 2
-num_links_280: 1
+num_links_280: 3
 
 #RFI stuff
 sk_step: 256
@@ -135,11 +141,9 @@ gpu:
   - name: input_data_stage
     kernel: ''
   - name: clRfiTimeSum
-#    kernel: "../lib/opencl/kernels/rfi_chime_timesum.cl"
     kernel: "../lib/opencl/kernels/rfi_chime_timesum_private.cl"
   - name: clRfiInputSum
-#    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
-    kernel: "../lib/opencl/kernels/rfi_chime_inputsum_private.cl"
+    kernel: "../lib/opencl/kernels/rfi_chime_inputsum.cl"
   - name: beamform_phase_data
     kernel: ''
   - name: offset_accumulator
@@ -193,8 +197,7 @@ gpu:
     beam_out_buf: beam_output_buffer_2
     rfi_out_buf: gpu_rfi_output_buffer_2
 
-
-rfiBroadcast:
+rfi_broadcast:
   destination_protocol: UDP
 #  destination_ip: 10.10.10.2
   destination_ip: 127.0.0.1
@@ -214,8 +217,23 @@ rfiBroadcast:
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_2
 
+rfi_record:
+  write_to: /mnt/glock/RFI
+  write_to_disk: false
+  gpu_0:
+    total_links: 2
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_0
+  gpu_1:
+    total_links: 3
+    rfi_in: gpu_rfi_output_buffer_1
+  gpu_2:
+    total_links: 3
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_2
+
 #RFI Live-view Paramters
 waterfallX: 1024
 num_receive_threads: 4
-colorscale: 1.0
+colorscale: 0.5
 waterfall_request_delay: 60

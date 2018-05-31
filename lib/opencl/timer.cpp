@@ -59,7 +59,7 @@ void timer::stop(string interval_name){
 
 void timer::broadcast(string interval_name){
     string msg;
-    for (uint32_t j = 0; j<1; j++){//j<time_list[interval_name].size(); j++){
+    for (uint32_t j = 0; j<time_list[interval_name].size(); j++){
         msg = interval_name + " - interval: " + std::to_string((time_list[interval_name][j]->stop_time - time_list[interval_name][j]->start_time)/(float)(CLOCKS_PER_SEC / 1000)) + " ms\n";
         INFO(msg.c_str());
     }

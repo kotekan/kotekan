@@ -25,13 +25,12 @@ Compiling **Kotekan**
 
 Required
 =========
-* pthreads
+* pthread
 * python and python-YAML
 
 Required for some options
 ==========================
 
-* pthread
 * `libevent <http://libevent.org/>`_
 * `DPDK dpdk-16.11.3 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
@@ -40,6 +39,7 @@ Required for some options
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
+* OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
 
 Hardware
 =========
@@ -105,6 +105,8 @@ Cmake build options
     Path to OpenBLAS installation, if not in the ``CMAKE_PREFIX_PATH``
 * ``-DCOMPILE_DOCS=ON``
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
+* ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
+    Location of the openssl libs and includes.
 
 Examples
 ---------
