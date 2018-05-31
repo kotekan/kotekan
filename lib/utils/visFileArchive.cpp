@@ -1,4 +1,3 @@
-
 #include "visFileArchive.hpp"
 #include "errors.h"
 #include <time.h>
@@ -19,6 +18,13 @@
 using namespace HighFive;
 
 
+// Bitshuffle parameters
+H5Z_filter_t H5Z_BITSHUFFLE = 32008;
+unsigned int BSHUF_H5_COMPRESS_LZ4 = 2;
+unsigned int BSHUF_BLOCK = 0;  // let bitshuffle choose
+const std::vector<unsigned int> BSHUF_CD = {BSHUF_BLOCK, BSHUF_H5_COMPRESS_LZ4};
+
+
 // Create an archive file with times as input
 visFileArchive::visFileArchive(const std::string& name,
                                const std::map<std::string, std::string>& metadata,
@@ -26,7 +32,8 @@ visFileArchive::visFileArchive(const std::string& name,
                                const std::vector<freq_ctype>& freqs,
                                const std::vector<input_ctype>& inputs,
                                const std::vector<prod_ctype>& prods,
-                               size_t num_ev) {
+                               size_t num_ev,
+                               std::vector<int> chunk_size) {
 
     std::string data_filename = name + ".h5";
 
@@ -34,6 +41,9 @@ visFileArchive::visFileArchive(const std::string& name,
 
     // Determine whether to write the eigensector or not...
     write_ev = (num_ev > 0);
+
+    // Set HDF5 chunk size
+    chunk = chunk_size;
 
     INFO("Creating new archive file %s", name.c_str());
 
@@ -127,6 +137,8 @@ void visFileArchive::create_datasets() {
 
     Group flags = file->createGroup("flags");
 
+    for (int i = 0; i < 3; i++)
+        DEBUG("chunk at %d: %d", i, chunk[i]);
     // Create transposed dataset shapes
     create_dataset("vis", {"freq", "prod", "time"}, create_datatype<cfloat>());
     create_dataset("flags/vis_weight", {"freq", "prod", "time"}, create_datatype<float>());
@@ -150,13 +162,12 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
                                DataType type) {
 
     // Mapping of axis names to sizes (start, chunk)
-    // TODO: set chunk size
     std::map<std::string, std::tuple<size_t, size_t>> size_map;
-    size_map["freq"] = std::make_tuple(length("freq"), 1);
+    size_map["freq"] = std::make_tuple(length("freq"), chunk[0]);
     size_map["input"] = std::make_tuple(length("input"), length("input"));
-    size_map["prod"] = std::make_tuple(length("prod"), length("prod"));
+    size_map["prod"] = std::make_tuple(length("prod"), chunk[1]);
     size_map["ev"] = std::make_tuple(length("ev"), length("ev"));
-    size_map["time"] = std::make_tuple(length("time"), 1);
+    size_map["time"] = std::make_tuple(length("time"), chunk[2]);
 
     std::vector<size_t> cur_dims, max_dims, chunk_dims;
 
@@ -167,8 +178,24 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
     }
 
     DataSpace space = DataSpace(cur_dims);
+
+    // Add chunking and bitshuffle filter to plist
+    // Pulled this out of HighFive createDataSet source
+    std::vector<hsize_t> real_chunk(chunk_dims.size());
+    std::copy(chunk_dims.begin(), chunk_dims.end(), real_chunk.begin());
+    // Set dataset creation properties to enable chunking
+    hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
+    if(H5Pset_chunk(plist, int(chunk_dims.size()), &(real_chunk.at(0))) < 0) {
+        HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to create chunk.");
+    }
+    // Set bitshuffle compression filter
+    if(H5Pset_filter(plist, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                BSHUF_CD.size(), BSHUF_CD.data()) < 0) {
+        HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to set bishuffle filter.");
+    }
+
     DataSet dset = file->createDataSet(
-        name, space, type, chunk_dims
+        name, space, type, plist
     );
     dset.createAttribute<std::string>(
         "axis", DataSpace::From(axes)).write(axes);

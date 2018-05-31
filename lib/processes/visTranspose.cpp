@@ -21,8 +21,11 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     register_consumer(in_buf, unique_name.c_str());
 
     // Chunk dimensions for write
-    chunk_t = config.get_int(unique_name, "chunk_dim_time");
-    chunk_f = config.get_int(unique_name, "chunk_dim_freq");
+    chunk = config.get_int_array(unique_name, "chunk_size");
+    if (chunk.size() != 3)
+        throw std::runtime_error("Chunk size needs exactly three elements.");
+    chunk_t = chunk[2];
+    chunk_f = chunk[0];
 
     // Get file path to write to
     // TODO: communicate this from reader
@@ -95,7 +98,7 @@ void visTranspose::main_thread() {
 
     // Create HDF5 file
     file = std::unique_ptr<visFileArchive>(
-        new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev)
+        new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk)
     );
 
     while (!stop_thread) {

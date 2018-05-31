@@ -21,8 +21,10 @@ visRawReader::visRawReader(Config &config,
     filename = config.get_string(unique_name, "filename");
 
     chunk_size = config.get_int_array(unique_name, "chunk_size");
-    chunk_t = chunk_size[0];
-    chunk_f = chunk_size[1];
+    if (chunk_size.size() != 3)
+        throw std::runtime_error("Chunk size needs exactly three elements.");
+    chunk_t = chunk_size[2];
+    chunk_f = chunk_size[0];
 
     // Get the list of buffers that this process shoud connect to
     out_buf = get_buffer("out_buf");

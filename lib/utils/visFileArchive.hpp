@@ -13,6 +13,7 @@
 #include "errors.h"
 #include "visFileH5.hpp"  // For HighFive types
 
+
 /** @brief A CHIME correlator archive file.
  * 
  * The class creates and manages writes to a CHIME style correlator archive
@@ -30,7 +31,8 @@ public:
                    const std::vector<freq_ctype>& freqs,
                    const std::vector<input_ctype>& inputs,
                    const std::vector<prod_ctype>& prods,
-                   size_t num_ev);
+                   size_t num_ev,
+                   std::vector<int> chunk_size);
 
     ~visFileArchive();
 
@@ -67,6 +69,9 @@ protected:
 
     // Whether to write eigenvalues or not
     bool write_ev;
+
+    // HDF5 chunk size
+    std::vector<int> chunk;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;

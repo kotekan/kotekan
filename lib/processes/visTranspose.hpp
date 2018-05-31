@@ -21,7 +21,8 @@ private:
     // Buffers
     Buffer * in_buf;
 
-    // Size of a chunk
+    // HDF5 chunk size
+    std::vector<int> chunk;
     size_t chunk_t;
     size_t chunk_f;
 

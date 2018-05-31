@@ -64,6 +64,7 @@ private:
     std::vector<input_ctype> _inputs;
     std::vector<uint32_t> _ev;
 
+    // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;
     size_t chunk_t;
     size_t chunk_f;
