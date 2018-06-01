@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processe for checking that FPGA conts are not older than 1h.
+@brief Processe for checking that FPGA counts are not older than 1h.
 - countCheck : public KotekanProcess
 
 *****************************************/
@@ -14,7 +14,7 @@
 
 /**
  * @class countCheck
- * @brief Processe for checking that FPGA conts are not older than 1h.
+ * @brief Processe for checking that FPGA counts are not older than 1h.
  *
  * This task checks that the current FPGA count is not more than 1 hour
  * older than the previous one.

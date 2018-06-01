@@ -44,15 +44,14 @@ void countCheck::main_thread() {
         // Create view to input frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
-        uint64_t fpga_seq = get_fpga_seq_num(in_buf, input_frame_id);
+        uint64_t fpga_seq = std::get<0>(input_frame.time);
 
-//        INFO("Prev seq num = %i, current seq num = %i, tolerance = %i", 
-//                prev_fpga_seq, 
-//                fpga_seq, 
-//                (int64_t)(fpga_seq-(counts_per_second*3600)) );
+        //INFO("Prev seq num = %i, current seq num = %i, tolerance = %i", 
+        //        prev_fpga_seq, 
+        //        fpga_seq, 
+        //        (fpga_seq+(counts_per_second*3600)) );
        
-        // Need to convert to signed int to prevent errors when value is negative
-        if((int64_t)prev_fpga_seq < (int64_t)(fpga_seq-(counts_per_second*3600))) {
+        if(prev_fpga_seq > fpga_seq + counts_per_second*3600) {
             INFO("Current frame has FPGA count more than 1 hour behind previous one. Stopping Kotekan.");
             // Shut Kotekan down:
             std::raise(SIGINT);
