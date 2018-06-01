@@ -33,12 +33,9 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               visProcess.cpp
               timeDownsample.cpp
-<<<<<<< HEAD
               visRawReader.cpp
               visWriter.cpp
-=======
               restInspectFrame.cpp
->>>>>>> master
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
