@@ -50,13 +50,14 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     first_pass=true;
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint,
+    restServer &rest_server = restServer::instance();
+    endpoint = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint,
             std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
+    restServer::instance().remove_json_callback(endpoint);
     hsa_host_free(host_map);
     hsa_host_free(host_coeff);
     hsa_host_free(host_gain);
@@ -70,13 +71,13 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     try {
         _gain_dir = json_request["gain_dir"];
     } catch (...) {
-        conn.send_error("Couldn't parse new gain_dir parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //nothing will happen until this gets changed.
     update_gains=true;
-    INFO("Updating gains from %s",_gain_dir);
-    conn.send_empty_reply(STATUS_OK);
+    INFO("Updating gains from %s", _gain_dir.c_str());
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {

@@ -58,8 +58,6 @@ void frbPostProcess::write_header(unsigned char * dest){
 }
 
 void frbPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
 
     _num_gpus = config.get_int(unique_name, "num_gpus");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");

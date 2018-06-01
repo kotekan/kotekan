@@ -31,7 +31,7 @@ using std::string;
 
 REGISTER_KOTEKAN_PROCESS(frbNetworkProcess);
 
-frbNetworkProcess::frbNetworkProcess(Config& config_, 
+frbNetworkProcess::frbNetworkProcess(Config& config_,
 const string& unique_name, bufferContainer &buffer_container) :
 KotekanProcess(config_, unique_name, buffer_container,
 std::bind(&frbNetworkProcess::main_thread, this))
@@ -39,12 +39,19 @@ std::bind(&frbNetworkProcess::main_thread, this))
   in_buf = get_buffer("in_buf");
   register_consumer(in_buf, unique_name.c_str());
   apply_config(0);
-  my_host_name = (char*) malloc(sizeof(char)*100); 
+  my_host_name = (char*) malloc(sizeof(char)*100);
   CHECK_MEM(my_host_name);
+
+  using namespace std::placeholders;
+  restServer &rest_server = restServer::instance();
+  endpoint = unique_name + "/frb/update_beam_offset";
+  rest_server.register_post_callback(endpoint,
+      std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
 }
 
 frbNetworkProcess::~frbNetworkProcess()
 {
+  restServer::instance().remove_json_callback(endpoint);
   free(my_host_name);
 }
 
@@ -53,14 +60,15 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
     try {
         beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new beam_offset parameter.",
+                        HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     INFO("Updating beam_offset to %i",beam_offset);
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
-void frbNetworkProcess::apply_config(uint64_t fpga_seq) 
+void frbNetworkProcess::apply_config(uint64_t fpga_seq)
 {
   udp_frb_packet_size = config.get_int_default(unique_name, "udp_frb_packet_size", 4264);
   udp_frb_port_number = config.get_int_default(unique_name, "udp_frb_port_number", 1313);
@@ -86,12 +94,12 @@ void frbNetworkProcess::parse_host_name()
   }
 
 
-  if(my_host_name[1] == 'n') 
+  if(my_host_name[1] == 'n')
   {
     nos =0;
     my_node_id = 0;
   }
-  else if(my_host_name[1] == 's') 
+  else if(my_host_name[1] == 's')
   {
     nos =100;
     my_node_id  = 128;
@@ -137,7 +145,7 @@ void frbNetworkProcess::parse_host_name()
 
   }
 
-  for(int i=0;i<number_of_subnets;i++) 
+  for(int i=0;i<number_of_subnets;i++)
   {
     temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<".1"<<node;
     my_ip_address[i] = temp_ip[i].str();
@@ -148,28 +156,21 @@ void frbNetworkProcess::parse_host_name()
 }
 
 
-void frbNetworkProcess::main_thread() 
+void frbNetworkProcess::main_thread()
 {
   //parsing the host name
-  parse_host_name(); 
-
-  using namespace std::placeholders;
-  restServer * rest_server = get_rest_server();
-  string endpoint = "/frb/update_beam_offset";
-  rest_server->register_json_callback(endpoint,
-      std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
-
+  parse_host_name();
 
   int frame_id = 0;
   uint8_t * packet_buffer = NULL;
 
   std::vector<std::string> link_ip = config.get_string_array(unique_name, "L1_node_ips");
   int number_of_l1_links = link_ip.size();
-  INFO("number_of_l1_links: %d",number_of_l1_links);  
+  INFO("number_of_l1_links: %d",number_of_l1_links);
 
   int *sock_fd = new int[number_of_subnets];
 
-  for(int i=0;i<number_of_subnets;i++) 
+  for(int i=0;i<number_of_subnets;i++)
   {
     sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -182,14 +183,14 @@ void frbNetworkProcess::main_thread()
 
   struct sockaddr_in server_address[number_of_l1_links], myaddr[number_of_subnets];
 
-  
-  for(int i=0;i<number_of_subnets;i++) 
+
+  for(int i=0;i<number_of_subnets;i++)
   {
     std::memset((char *)&myaddr[i], 0, sizeof(myaddr[i]));
 
     myaddr[i].sin_family = AF_INET;
     inet_pton(AF_INET, my_ip_address[i].c_str(), &myaddr[i].sin_addr);
-  
+
     myaddr[i].sin_port = htons(udp_frb_port_number);
 
     // Binding port to the socket
@@ -198,8 +199,8 @@ void frbNetworkProcess::main_thread()
          exit(0);
       }
   }
-  
-  
+
+
   for(int i=0;i<number_of_l1_links;i++)
   {
     memset(&server_address[i], 0, sizeof(server_address[i]));
@@ -207,10 +208,10 @@ void frbNetworkProcess::main_thread()
     inet_pton(AF_INET, link_ip[i].c_str(), &server_address[i].sin_addr);
     server_address[i].sin_port = htons(udp_frb_port_number);
   }
-  
+
   int n = 256* 1024 * 1024;
   for(int i=0;i<number_of_subnets;i++)
-  {  
+  {
     if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
     {
       ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
@@ -244,21 +245,21 @@ void frbNetworkProcess::main_thread()
 
   while(!stop_thread)
   {
-    long lock_miss=0; 
+    long lock_miss=0;
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
     unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
     unsigned long reminder = (abs_ns%time_interval);
     unsigned long wait_ns = time_interval-reminder + my_sequence_id*230; // analytically it must be 240.3173828125
 
-    t0.tv_nsec += wait_ns;
+    //t0.tv_nsec += wait_ns;
     if(t0.tv_nsec>=1000000000)
     {
       t0.tv_sec += 1;
       t0.tv_nsec -= 1000000000;
     }
 
-    // Checking with the NTP server    
+    // Checking with the NTP server
     if(count==0)
     {
       temp.tv_sec = t0.tv_sec;
@@ -272,7 +273,7 @@ void frbNetworkProcess::main_thread()
         temp.tv_sec += 1;
         temp.tv_nsec -= 1000000000;
       }
-      
+
       long sec = (long)temp.tv_sec - (long)t0.tv_sec;
       long nsec = (long)temp.tv_nsec - (long)t0.tv_nsec;
       nsec = sec*1e9+nsec;
@@ -297,13 +298,13 @@ void frbNetworkProcess::main_thread()
       else if(abs(nsec)!=0)
       {
         lock_miss++;
-        temp=t0;  
+        temp=t0;
       }
     }
 
     t1.tv_sec = t0.tv_sec;
     t1.tv_nsec = t0.tv_nsec;
-   
+
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
     if(packet_buffer==NULL)
       break;
@@ -327,14 +328,14 @@ void frbNetworkProcess::main_thread()
       {
         int e_stream = my_sequence_id + stream;
         if(e_stream>255) e_stream -= 256;
-        
+
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
-        
+
          //if(e_stream==(local_beam_offset/4)+link/4+(link%4)*64)
          //{
          //  int i = link%2;
-         //  sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
-         //          udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream])); 
+         //  sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
+         //          udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[e_stream] , sizeof(server_address[e_stream]));
          //
          //  link++;
          //  if(link==number_of_l1_links) link=0;
@@ -349,14 +350,14 @@ void frbNetworkProcess::main_thread()
            {
              int i = link%2;
              sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
-                    udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link])); 
+                    udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link]));
            }
          }
 */
          for(int link=0;link<number_of_l1_links;link++)
-         {    
-           //if (((column_mode) && (e_stream==local_beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(local_beam_offset/4)+(int)(link/4)+(int)(link%4)*64))) 
-           if (e_stream==local_beam_offset/4+link) 
+         {
+           //if (((column_mode) && (e_stream==local_beam_offset/4+link)) || ((!column_mode) && (e_stream==(int)(local_beam_offset/4)+(int)(link/4)+(int)(link%4)*64)))
+           if (e_stream==local_beam_offset/4+link)
            {
            //}
            //if(e_stream==(int)(local_beam_offset/4)+(int)(link/4)+(int)(link%4)*64)
@@ -364,16 +365,16 @@ void frbNetworkProcess::main_thread()
            //{
 
              int i = link%2;
-             sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size], 
-                     udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link])); 
+             sendto(sock_fd[i], &packet_buffer[(e_stream*packets_per_stream+frame)*udp_frb_packet_size],
+                     udp_frb_packet_size , 0 , (struct sockaddr *) &server_address[link] , sizeof(server_address[link]));
 
              //link++;
              //if(link==number_of_l1_links) link=0;
            }
          }
-         long wait_per_packet = (long)(58880); 
-         
-         //61521.25 is the theoretical seperation of packets in ns 
+         long wait_per_packet = (long)(50000);
+
+         //61521.25 is the theoretical seperation of packets in ns
          // I have used 58880 for convinence and also hope this will take care for
          // any clock glitches.
 
