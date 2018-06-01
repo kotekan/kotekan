@@ -146,7 +146,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             // buffer (which may be nothing if the request as recieved too late). Do we need to
             // report this?
             if (data.data_length_fpga == 0) {
-                INFO("Captured no data for event %d and freq ID %d.", data.event_id, data.freq_id);
+                INFO("Captured no data for event %d and freq ID %d.",
+                        data.event_id, data.freq_id);
                 // TODO Report to the request.
                 continue;
             } else {
@@ -158,8 +159,9 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                 // TODO Report to the dump_request.
             }
 
-            // Wait for free space in the write queue. This prevents this thread from receiving any
-            // more dump requests until the pipe clears out. Limits the memory use and buffer congestion.
+            // Wait for free space in the write queue. This prevents this thread from 
+            // receiving any more dump requests until the pipe clears out. Limits the 
+            // memory use and buffer congestion.
             const int max_writes_queued = 3;
             while (!stop_thread) {
                 if (write_q.size() < max_writes_queued) {
@@ -203,7 +205,9 @@ int basebandReadout::add_replace_frame(int frame_id) {
     frame_locks[frame_id % num_frames_buffer].lock();
     // Somehow in C `-1 % num_frames_buffer == -1` which makes no sence to me.
     // So add `num_frames_buffer` to `oldest_frame`.
-    if (frame_id % num_frames_buffer == (oldest_frame + num_frames_buffer) % num_frames_buffer) {
+    bool replace_oldest = (frame_id % num_frames_buffer
+                           == (oldest_frame + num_frames_buffer) % num_frames_buffer);
+    if (replace_oldest) {
         replaced_frame = oldest_frame;
         oldest_frame++;
     }
@@ -296,8 +300,8 @@ basebandDumpData basebandReadout::get_data(
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
-    // For now just assume that we have the last sample, because the locking logic currently waits
-    // for it. Could be made to be more robust.
+    // For now just assume that we have the last sample, because the locking logic
+    // currently waits for it. Could be made to be more robust.
     int64_t data_end_fpga = trigger_end_fpga;
 
     basebandDumpData dump(
@@ -316,7 +320,8 @@ basebandDumpData basebandReadout::get_data(
         uint8_t * buf_data = buf->frames[buf_frame];
         int64_t frame_fpga_seq = metadata->fpga_seq_num;
         int64_t frame_ind_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t) 0);
-        int64_t frame_ind_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t) samples_per_data_set);
+        int64_t frame_ind_end = std::min(data_end_fpga - frame_fpga_seq,
+                                         (int64_t) samples_per_data_set);
         int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
         // The following copy has 0 length unless there is a missing frame.
         nt_memset(

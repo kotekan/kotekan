@@ -50,9 +50,6 @@ gpuPostProcess::~gpuPostProcess() {
 }
 
 void gpuPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
-
     _num_elem = config.get_int(unique_name, "num_elements");
     _num_total_freq = config.get_int(unique_name, "num_total_freq");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
