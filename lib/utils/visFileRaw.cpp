@@ -129,6 +129,8 @@ uint32_t visFileRaw::extend_time(time_ctype new_time) {
     }
 
     times.push_back(new_time);
+
+    // TODO: use POSIX fallocate on Linux
     ftruncate(fd, frame_size * nfreq * num_time());
 
     return num_time() - 1;
