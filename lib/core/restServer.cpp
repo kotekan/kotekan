@@ -20,6 +20,7 @@ restServer &restServer::instance() {
 
 restServer::restServer() : main_thread() {
 
+    stop_thread = false;
     main_thread = std::thread(&restServer::mongoose_thread, this);
 
 #ifndef MAC_OSX
@@ -33,6 +34,8 @@ restServer::restServer() : main_thread() {
 }
 
 restServer::~restServer() {
+    stop_thread = true;
+    main_thread.join();
 }
 
 void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
@@ -224,7 +227,7 @@ void restServer::mongoose_thread() {
     INFO("restServer: started server on port %s", port);
 
     // run event loop
-    for (;;) mg_mgr_poll(&mgr, 1000);
+    while (!stop_thread) mg_mgr_poll(&mgr, 1000);
 
     mg_mgr_free(&mgr);
 }
