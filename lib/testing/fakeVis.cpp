@@ -142,7 +142,7 @@ void fakeVis::main_thread() {
                 int ind = 0;
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
-                        out_vis[ind] = {gauss(gen), 0.};
+                        out_vis[ind] = {gauss(gen), gauss(gen)};
                         ind++;
                     }
                 }
@@ -167,7 +167,7 @@ void fakeVis::main_thread() {
             if (mode == "gaussian") {
                 // generate vaguely realistic weights
                 std::default_random_engine gen;
-                std::normal_distribution<float> gauss(vis_std, 0.1 * vis_std);
+                std::normal_distribution<float> gauss(0.1 * vis_std, 0.1 * vis_std);
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
                         out_wei[ind] = 1. / pow(gauss(gen), 2);

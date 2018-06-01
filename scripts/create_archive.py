@@ -20,7 +20,7 @@ WEIGHT_FIXED_PREC = 1e-3
               help="[freq prod time] chunk. default: 16 16 16")
 @click.argument("infile")
 @click.argument("outfile")
-def create_archive(infile, outfile, log_level):
+def create_archive(infile, outfile, log_level, chunk):
     """ Transform kotekan receiver raw output file into transposed and bitshuffle
         compressed archive file.
     """
@@ -42,7 +42,7 @@ def create_archive(infile, outfile, log_level):
         }
     }
 
-    config = { 'log_level': log_level }
+    config = { 'log_level': log_level, 'num_elements': 2048 }
 
     proc = {}
     # Reader process
@@ -74,8 +74,7 @@ def create_archive(infile, outfile, log_level):
             'transpose': {
                 'kotekan_process': 'visTranspose',
                 'in_buf': 'trunc_buffer',
-                'chunk_dim_time': chunk[0],
-                'chunk_dim_freq': chunk[1],
+                'chunk_size': chunk,
                 'md_filename': os.path.abspath(infile) + '.meta',
                 'filename': os.path.abspath(outfile)
             }
