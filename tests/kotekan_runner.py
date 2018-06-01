@@ -68,10 +68,8 @@ class KotekanRunner(object):
                             data=json.dumps(data),
                             )
             ret = p.wait()
-            print ret
-            # XXX Not checking call because of kotekan bug.
-            # if ret:
-            #    raise subprocess.CalledProcessError(ret)
+            if ret:
+                raise subprocess.CalledProcessError(ret)
 
 
 class InputBuffer(object):
