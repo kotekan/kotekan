@@ -8,7 +8,8 @@ trunc_params = {
     'cadence': 2.,
     'total_frames': 10,
     'err_sq_lim': 0.003,
-    'fixed_precision': 0.001,
+    'weight_fixed_precision': 0.001,
+    'data_fixed_precision': 0.0001,
     'num_ev': 4,
     'num_elements': 4
 }
@@ -66,4 +67,8 @@ def test_truncation(vis_data_t, vis_data):
                       <= np.sqrt(trunc_params['err_sq_lim'] / vis_data[i].weight))
         assert np.any(frame.weight != vis_data[i].weight)
         assert np.all(np.abs(frame.weight - vis_data[i].weight) 
-                      <= vis_data[i].weight * trunc_params['fixed_precision'])
+                      <= vis_data[i].weight * trunc_params['weight_fixed_precision'])
+        assert np.all(np.abs(frame.evec.real - vis_data[i].evec.real) 
+                      <= vis_data[i].evec.real * trunc_params['data_fixed_precision'])
+        assert np.all(np.abs(frame.evec.imag - vis_data[i].evec.imag) 
+                      <= np.abs(vis_data[i].evec.imag) * trunc_params['data_fixed_precision'])
