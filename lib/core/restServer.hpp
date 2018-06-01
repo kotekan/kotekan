@@ -7,6 +7,7 @@
 #include <thread>
 #include <functional>
 #include <map>
+#include <atomic>
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -278,6 +279,9 @@ private:
 
     /// Main server thread handle
     std::thread main_thread;
+
+    /// Flag set to true when exit condition is reached
+    std::atomic<bool> stop_thread;
 };
 
 #endif /* REST_SERVER_HPP */

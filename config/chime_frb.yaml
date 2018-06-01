@@ -41,6 +41,7 @@ factor_upchan_out: 16
 num_frb_total_beams: 1024
 frb_missing_gains: [1.0,1.0]
 frb_scaling: 0.05 #1.0
+ew_spacing: [0,0,0,0] #For 2-mth run all Zenith beam
 
 # Pool
 main_pool:
