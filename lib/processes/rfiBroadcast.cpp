@@ -47,7 +47,7 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
     //Lock mutex
     rest_callback_mutex.lock();
     //Adjust parameters
-    frames_per_packet = json_request["frames_per_packet"];
+    frames_per_packet = json_request["frames_per_packet"].get<int>();
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
@@ -108,8 +108,6 @@ void rfiBroadcast::main_thread() {
         INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
         //Endless loop
         while (!stop_thread) {
-            //Lock callback mutex
-            rest_callback_mutex.lock();
             //Initialize arrays
             float rfi_data [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
             float rfi_avg[total_links][_num_local_freq];
@@ -141,6 +139,8 @@ void rfiBroadcast::main_thread() {
                 frame_id = (frame_id + 1) % rfi_buf->num_frames;
                 link_id = (link_id + 1) % total_links;
             }
+            //Lock callback mutex
+            rest_callback_mutex.lock();
             //Reset Timer (can't time previous loop due to wait for frame blocking call)
             double start_time = e_time();
             //Loop through each link to send data seperately

@@ -15,11 +15,11 @@ clRfiTimeSum::~clRfiTimeSum()
 void clRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) {
     //Lock mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
-    INFO("RFI Callback Received... Changing Parameters")
+    WARN("RFI Callback Received... Changing Parameters")
     //Update Paramters
     bad_inputs.clear();
     for(uint32_t i = 0; i < json_request["bad_inputs"].size(); i++){
-        bad_inputs.push_back(json_request["bad_inputs"][i]);
+        bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
     }
     //Flag for rebuilding of Input Mask buffer
     rebuildInputMask = true;

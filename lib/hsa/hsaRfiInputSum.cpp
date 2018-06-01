@@ -40,7 +40,7 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     INFO("RFI Input Sum Callback Received... Changing Parameters")
     //Change Parameters
-    _num_bad_inputs = json_request["num_bad_inputs"];
+    _num_bad_inputs = json_request["num_bad_inputs"].get<int>();
     //Update relevant variables
     _M = (_num_elements - _num_bad_inputs)*_sk_step;
     //Send reply

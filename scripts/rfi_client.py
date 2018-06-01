@@ -23,6 +23,16 @@ import os
 import argparse
 import yaml
 
+def parse_dict(cmd, _dict):
+    for key, value in _dict.items():
+        if(type(value) == dict):
+            parse_dict(cmd,value)
+        else:
+            if key in cmd.config.keys():
+                if(type(cmd.config[key]) == type(value)):
+                    print("Setting Config Paramter %s to %s" %(key,str(value)))
+                    cmd.config[key] = value
+
 class CommandLine:
 
     def __init__(self):
@@ -54,19 +64,7 @@ class CommandLine:
             status = True
         if argument.config:
             print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
-            for key, value in yaml.load(open(argument.config)).items():
-                if(type(value) == dict):
-                    if('kotekan_process' in value.keys() and value['kotekan_process'] == 'rfiBroadcast'):
-                        for k in value.keys():
-                            if k in self.config.keys():
-                                if(type(self.config[k]) == type(value[k])):
-                                    print("Setting Config Paramter %s to %s" %(k,str(value[k])))
-                                    self.config[k] = value[k]
-                else:
-                    if key in self.config.keys():
-                        if(type(self.config[key]) == type(value)):
-                            print("Setting Config Paramter %s to %s" %(key,str(value)))
-                            self.config[key] = value
+            parse_dict(self,yaml.load(open(argument.config)))
             print(self.config)
             status = True
         if argument.mode:

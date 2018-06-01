@@ -44,7 +44,7 @@ void hsaRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) 
     //Change internal parameters
     bad_inputs.clear();
     for(uint32_t i = 0; i < json_request["bad_inputs"].size(); i++){
-        bad_inputs.push_back(json_request["bad_inputs"][i]);
+        bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
     }
     //Flag for input mask rebuild
     rebuildInputMask = true;

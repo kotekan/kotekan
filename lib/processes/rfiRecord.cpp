@@ -46,13 +46,16 @@ rfiRecord::~rfiRecord() {
 
 void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     //Notify request was received
-    INFO("RFI Callback Received... Changing Parameters")
+    WARN("RFI Record Callback Received... Changing Parameters")
     //Lock callback mutex
     rest_callback_mutex.lock();
     //Update parameters
-    frames_per_packet = json_request["frames_per_packet"];
-    write_to = json_request["write_to"];
-    write_to_disk = json_request["write_to_disk"];
+    frames_per_packet = json_request["frames_per_packet"].get<int>();
+    WARN("frames_per_packet: %d",frames_per_packet)
+    write_to = json_request["write_to"].get<string>();
+    WARN("write_to %s",write_to.c_str())
+    write_to_disk = json_request["write_to_disk"].get<bool>();
+    WARN("write_to_disk: %d",write_to_disk)
     //This will trigger main process to update directories
     file_num = 0;
     //Send reply indicating success
@@ -127,11 +130,11 @@ void rfiRecord::main_thread() {
     file_num = 0;
     //Endless Loop
     while (!stop_thread) {
-        //Lock mutex
-        rest_callback_mutex.lock();
         //Get Frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
+        //Lock mutex
+        rest_callback_mutex.lock();
         //Reset Timer
         double start_time = e_time();
         fpga_seq_num = get_fpga_seq_num(rfi_buf, frame_id);
@@ -171,13 +174,13 @@ void rfiRecord::main_thread() {
             }
             INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, total_links, (e_time()-start_time)*1000);
         }
+        //Unlock callback mutex
+        rest_callback_mutex.unlock();
         //Mark Frame Empty
         mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
         //Move forward one frame/link/file
         frame_id = (frame_id + 1) % rfi_buf->num_frames;
         link_id = (link_id + 1) % total_links;
         file_num++;
-        //Unlock callback mutex
-        rest_callback_mutex.unlock();
     }
 }
