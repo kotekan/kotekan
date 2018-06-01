@@ -44,7 +44,7 @@ void visFileRaw::create_file(const std::string& name,
     nfreq = freqs.size();
     size_t ninput = inputs.size(), nprod = prods.size();
 
-    // Set the alignment
+    // Set the alignment (in kB)
     // TODO: find some way of getting this from config
     alignment = 4;  // Align on page boundaries
 

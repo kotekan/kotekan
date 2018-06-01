@@ -47,15 +47,15 @@ visWriter::visWriter(Config& config,
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
 
-    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
-    // the moment this either uses chime, or if set to use a per_node_instrument
-    // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
     // Calculate the set of products we are writing from the config
     prods = std::get<1>(parse_prod_subset(config, unique_name));
     num_prod = prods.size();
 
+    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
+    // the moment this either uses chime, or if set to use a per_node_instrument
+    // it uses the hostname of the current node
     if(node_mode) {
 
         // Set the instrument_name from the hostname
