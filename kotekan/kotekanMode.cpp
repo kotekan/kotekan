@@ -10,6 +10,12 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
         conn.send_json_reply(config.get_full_config_json());
     });
 
+#ifdef WITH_SSL
+    restServer::instance().register_get_callback("/config_md5sum", [&] (connectionInstance &conn) {
+        conn.send_text_reply(config.get_md5sum());
+    });
+#endif
+
     restServer::instance().add_aliases_from_config(config);
 }
 

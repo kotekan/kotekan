@@ -119,8 +119,7 @@ void testDataGen::main_thread() {
         //std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
-        // XXX Why sizeof(float) here? -km
-        for (uint j = 0; j < buf->frame_size/sizeof(float); ++j) {
+        for (uint j = 0; j < buf->frame_size/sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant) break;
                 frame[j] = value;
