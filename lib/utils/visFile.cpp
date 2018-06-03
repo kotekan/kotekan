@@ -396,8 +396,8 @@ void visFileFast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
                     SYNC_FILE_RANGE_WAIT_BEFORE |
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
-#endif
     posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED); 
+#endif
 }
 
 uint32_t visFileFast::extend_time(time_ctype new_time) {
