@@ -44,6 +44,9 @@ visFileArchive::visFileArchive(const std::string& name,
 
     // Set HDF5 chunk size
     chunk = chunk_size;
+    if (chunk[0] > freqs.size() || chunk[1] > prods.size() || chunk[2] > times.size()) {
+        throw std::runtime_error("Chunk dimensions cannot be greater than axes.");
+    }
 
     INFO("Creating new archive file %s", name.c_str());
 

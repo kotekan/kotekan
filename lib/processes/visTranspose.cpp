@@ -62,7 +62,9 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
 
     // Ensure chunk_size not too large
     write_t = std::min(chunk_t, num_time);
+    t_edge = (num_time < chunk_t);
     write_f = std::min(chunk_f, num_freq);
+    f_edge = (num_freq < chunk_f);
 
     // Allocate the memory for write buffer
     write_buf.reserve(chunk_f * chunk_t * num_prod * sizeof(cfloat));
@@ -279,7 +281,8 @@ void visTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
     if (f_ind == 0) {
-        f_edge = false;  // reset incomplete chunk flag
+        // set incomplete chunk flag
+        f_edge = (num_freq < chunk_f);
         t_ind += chunk_t;
         if (num_time - t_ind < chunk_t) {
             // Reached an incomplete chunk
