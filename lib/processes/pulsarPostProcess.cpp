@@ -54,14 +54,15 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
     uint freqloop;
-    for (int i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
-        uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
+    for (uint i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
+        uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
 	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
-	vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (samples_in_frame*2.56e-6);
+	vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (_timesamples_per_pulsar_packet*2.56e-6);
 	
 	if (_timesamples_per_pulsar_packet == 3125) {
 	    freqloop = 4;
+	}
 	else if (_timesamples_per_pulsar_packet == 625) {
 	    //For 625 format, 4freq in a packet, Encoding freq map goes from [0:256], using freq_bin_id from GPU0
 	    //The 10 pulsars assume to be the same across the 4freq and only parsing from psr_coord[0]
@@ -85,7 +86,7 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 	    }
 	} //end freq
 	//Increment time for the next frame
-	time_now->tv_nsec +=samples_in_frame*2560;
+	time_now->tv_nsec +=_timesamples_per_pulsar_packet*2560;
 	if (time_now->tv_nsec > 999999999) {
 	    time_now->tv_nsec = time_now->tv_nsec % 1000000000;
 	    time_now->tv_sec +=1;
@@ -192,7 +193,7 @@ void pulsarPostProcess::main_thread() {
         // This loop which takes data from the input buffer and formats the output.
         if (likely(startup == 0)) {
             for (uint i = current_input_location; i < _samples_per_data_set; ++i) {
-  	        if (in_frame_location == samples_in_frame) { //last sample
+  	        if (in_frame_location == _timesamples_per_pulsar_packet) { //last sample
                     in_frame_location = 0;
                     frame++;
                     if (frame == _num_packet_per_stream ) { //last frame
@@ -203,7 +204,7 @@ void pulsarPostProcess::main_thread() {
 			out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
 			if (out_frame == NULL) goto end_loop;
 			    // Fill the headers of the new buffer
-			    fpga_seq_num += samples_in_frame*_num_packet_per_stream;
+			    fpga_seq_num += _timesamples_per_pulsar_packet*_num_packet_per_stream;
 			    fill_headers((unsigned char*)out_frame,
 					 &vdif_header,
 					 fpga_seq_num,
