@@ -89,9 +89,14 @@ private:
     uint32_t _samples_per_data_set;
     uint32_t _num_pulsar;
     uint32_t _num_pol;
+    /// number of time samples per packet (3125 or 625)
     uint32_t _timesamples_per_pulsar_packet;
+    /// UDP packet size (6288 for 3125; 5032 for 625)
     uint32_t _udp_pulsar_packet_size;
+    /// number of packet per stream (16 for 3125; 80 for 625)
     uint32_t _num_packet_per_stream;
+    /// number of stream (40 for 3125; 10 for 625)
+    uint32_t _num_stream;
 
     /// Derived variables
     struct timespec time_now;

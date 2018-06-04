@@ -53,25 +53,17 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		  struct timespec * time_now,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
-    uint freqloop;
+    uint freqloop = _num_stream/_num_pulsar;
     for (uint i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
 	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
 	vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (_timesamples_per_pulsar_packet*2.56e-6);
 	
-	if (_timesamples_per_pulsar_packet == 3125) {
-	    freqloop = 4;
-	}
-	else if (_timesamples_per_pulsar_packet == 625) {
-	    //For 625 format, 4freq in a packet, Encoding freq map goes from [0:256], using freq_bin_id from GPU0
-	    //The 10 pulsars assume to be the same across the 4freq and only parsing from psr_coord[0]
-	    freqloop = 1;
-	}
 	for (uint f=0;f<freqloop;++f) { 
 	    vdif_header->thread_id = freq_ids[f];
 
-	    for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
+	    for (uint32_t psr=0;psr<_num_pulsar; ++psr) { 
 	        vdif_header->eud1 = psr; //beam id
 		vdif_header->eud2 = psr_coord[f].scaling[psr];
 		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
@@ -102,6 +94,7 @@ void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
     _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
     _udp_pulsar_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
     _num_packet_per_stream = config.get_int(unique_name, "num_packet_per_stream");
+    _num_stream = config.get_int(unique_name, "num_stream");
 }
 
 void pulsarPostProcess::main_thread() {
