@@ -146,7 +146,7 @@ void pulsarPostProcess::main_thread() {
 
 
     int frame = 0;
-    int in_frame_location = 0; //goes from 0 to 3125 or 625
+    uint in_frame_location = 0; //goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
     struct psrCoord psr_coord[_num_gpus];
@@ -219,15 +219,15 @@ void pulsarPostProcess::main_thread() {
 		    float * in_buf_data = (float *)in_frame[thread_id];
 		    for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
  		        for (uint32_t p=0;p<_num_pol; ++p) {
-
+			    uint32_t out_index;
 			    if (_timesamples_per_pulsar_packet == 3125) {
 			        //freq->beam->packets->[time-pol]
-			        uint32_t out_index = (thread_id*_num_pulsar+psr) *_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size 
+			        out_index = (thread_id*_num_pulsar+psr) *_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size 
 				                     + (in_frame_location*_num_pol + p ) + udp_pulsar_header_size ;
 			    }
 			    else if (_timesamples_per_pulsar_packet == 625) {
 			        //beam->packets->[time-freq-pol]
-			        uint32_t out_index = psr*_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size
+			        out_index = psr*_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size
 				                     + (in_frame_location*_num_gpus*_num_pol + thread_id*_num_pol + p) + udp_pulsar_header_size;
 			    }
 			    uint8_t real_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2  ])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
