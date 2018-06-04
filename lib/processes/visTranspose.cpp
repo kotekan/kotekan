@@ -61,10 +61,10 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     num_ev = ev.size();
 
     // Ensure chunk_size not too large
-    write_t = std::min(chunk_t, num_time);
-    t_edge = (num_time < chunk_t);
-    write_f = std::min(chunk_f, num_freq);
-    f_edge = (num_freq < chunk_f);
+    chunk_t = std::min(chunk_t, num_time);
+    write_t = chunk_t;
+    chunk_f = std::min(chunk_f, num_freq);
+    write_f = chunk_f;
 
     // Allocate the memory for write buffer
     write_buf.reserve(chunk_f * chunk_t * num_prod * sizeof(cfloat));
