@@ -11,8 +11,7 @@ using std::string;
 # define likely(x)      __builtin_expect(!!(x), 1)
 # define unlikely(x)    __builtin_expect(!!(x), 0)
 
-# define samples_in_frame 3125
-# define num_packet 16
+# define udp_pulsar_header_size 32
 
 #include "buffer.h"
 #include "pulsarPostProcess.hpp"
@@ -32,6 +31,7 @@ pulsarPostProcess::pulsarPostProcess(Config& config_,
                        std::bind(&pulsarPostProcess::main_thread, this)){
 
     apply_config(0);
+    assert(_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
@@ -53,14 +53,20 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		  struct timespec * time_now,
 		  struct psrCoord * psr_coord,
 		  uint16_t * freq_ids){
-    //    assert(sizeof(struct VDIFHeader) == _udp_header_size);
-    for (int i = 0; i < num_packet; ++i) {  //16 frames in a stream
+    for (int i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
 	vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
 	vdif_header->seconds = time_now->tv_sec;
 	vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (samples_in_frame*2.56e-6);
-
-	for (uint32_t f=0;f<_num_gpus;++f) { //4 freq
+	
+	if (_timesamples_per_pulsar_packet == 3125) {
+	    uint freqloop = 4;
+	else if (_timesamples_per_pulsar_packet == 625) {
+	    //For 625 format, 4freq in a packet, Encoding freq map goes from [0:256], using freq_bin_id from GPU0
+	    //The 10 pulsars assume to be the same across the 4freq and only parsing from psr_coord[0]
+	    uint freqloop = 1;
+	}
+	for (uint f=0;f<freqloop;++f) { 
 	    vdif_header->thread_id = freq_ids[f];
 
 	    for (uint32_t psr=0;psr<_num_pulsar; ++psr) { //10 streams
@@ -69,7 +75,12 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 		uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
 		uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
 		vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
-		memcpy(&out_buf[(f*_num_pulsar+psr)*num_packet*_udp_packet_size + i*_udp_packet_size], vdif_header, sizeof(struct VDIFHeader));
+		if (_timesamples_per_pulsar_packet == 3125) {
+		    memcpy(&out_buf[(f*_num_pulsar+psr)*_num_packet_per_stream*_udp_pulsar_packet_size + i*_udp_pulsar_packet_size], vdif_header, sizeof(struct VDIFHeader));
+		}
+		else if (_timesamples_per_pulsar_packet == 625) {
+		    memcpy(&out_buf[psr*_num_packet_per_stream*_udp_pulsar_packet_size + i*_udp_pulsar_packet_size], vdif_header, sizeof(struct VDIFHeader));
+		}
 	    }
 	} //end freq
 	//Increment time for the next frame
@@ -84,12 +95,11 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
     _num_gpus = config.get_int(unique_name, "num_gpus");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
     _num_pulsar = config.get_int(unique_name, "num_pulsar");
     _num_pol = config.get_int(unique_name, "num_pol");
     _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
-    _udp_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
-    _udp_header_size = config.get_int(unique_name, "udp_pulsar_header_size");
+    _udp_pulsar_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
+    _num_packet_per_stream = config.get_int(unique_name, "num_packet_per_stream");
 }
 
 void pulsarPostProcess::main_thread() {
@@ -98,7 +108,7 @@ void pulsarPostProcess::main_thread() {
     uint8_t * in_frame[_num_gpus];
     int out_buffer_ID = 0;
     int startup = 1; //related to the likely & unlikely
-    uint freq_ids[_num_gpus] ;
+    uint16_t freq_ids[_num_gpus] ;
 
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
@@ -112,8 +122,14 @@ void pulsarPostProcess::main_thread() {
     vdif_header.data_frame = 0 ;  //UD
     vdif_header.ref_epoch = 36; // First half of 2018. 
     vdif_header.unused = 0;
-    vdif_header.frame_len = 768; //(6250-B data + 6-B pad + 32-B header)
-    vdif_header.log_num_chan = 1; //2pol so ln2=1
+    if (_timesamples_per_pulsar_packet == 3125) {
+        vdif_header.frame_len = 768; //(6250-B data + 6-B pad + 32-B header)
+	vdif_header.log_num_chan = 1; //2pol so ln2=1
+    }
+    else if (_timesamples_per_pulsar_packet == 625) {
+        vdif_header.frame_len = 629; //5032-B
+	vdif_header.log_num_chan = 3; //ln8
+    }
     vdif_header.vdif_version = 1;
     char si[2]={'C','X'};
     vdif_header.station_id =  (si[0]<<8) + si[1]; //Need to fomrally ask the Vdif community
@@ -128,7 +144,7 @@ void pulsarPostProcess::main_thread() {
 
 
     int frame = 0;
-    int in_frame_location = 0; //goes from 0 to 3125
+    int in_frame_location = 0; //goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
     struct psrCoord psr_coord[_num_gpus];
@@ -154,8 +170,7 @@ void pulsarPostProcess::main_thread() {
 		   (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
 
 	    stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-            float freq_now = bin_number_chime(&stream_id);
-            freq_ids[i] = freq_now;
+            freq_ids[i] = bin_number_chime(&stream_id);
 	}
 
         // If this is the first time wait until we get the start of an interger second period.
@@ -202,9 +217,17 @@ void pulsarPostProcess::main_thread() {
 		    float * in_buf_data = (float *)in_frame[thread_id];
 		    for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
  		        for (uint32_t p=0;p<_num_pol; ++p) {
-			    //freq->beam->packets->[time-pol]
-			    uint32_t out_index = (thread_id*_num_pulsar+psr) *_udp_packet_size*num_packet + frame * _udp_packet_size 
-			                         + (in_frame_location*_num_pol + p ) + _udp_header_size ;
+
+			    if (_timesamples_per_pulsar_packet == 3125) {
+			        //freq->beam->packets->[time-pol]
+			        uint32_t out_index = (thread_id*_num_pulsar+psr) *_udp_pulsar_packet_size*num_packet + frame * _udp_pulsar_packet_size 
+				                     + (in_frame_location*_num_pol + p ) + udp_pulsar_header_size ;
+			    }
+			    else if (_timesamples_per_pulsar_packet == 625) {
+			        //beam->packets->[time-freq-pol]
+			        uint32_t out_index = psr*_udp_pulsar_packet_size*num_packet + frame * _udp_pulsar_packet_size
+				                     + (in_frame_location*_num_gpus*_num_pol + thread_id*_num_pol + p) + udp_pulsar_header_size;
+			    }
 			    uint8_t real_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2  ])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
                             uint8_t imag_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2+1])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
                             if (real_part > 15) real_part = 15;

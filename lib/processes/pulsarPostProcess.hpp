@@ -14,19 +14,23 @@ using std::vector;
 
 /**
  * @class pulsarPostProcess
- * @brief [deprecated] Post-processing engine for output of the CHIME/Pulsar kernel,
- *        makes packets with 3125 time samples.
+ * @brief Post-processing engine for output of the CHIME/Pulsar kernel,
+ *        makes packets with either 625 or 3125 time samples.
  *
- * This code is potentially deprecated and we should mainly be using pulsarPostProcess625 instead.
  * This engine gathers CHIME/Pulsar data from the 4 GPU streams in each CHIME node,
  * which are stored in the output buffer.
- * Each packet consists of 1 freq, 3125 time samples, 2 pol, and one beam (1f-3125t-2p-1b),
- * where freq is the fastest varying index. The header contains 32-B.
+ * There are two accepted configurations: 
+ * -- packet with 625 time samples: each packet consists of 4 freq, 2 pol, 
+ *    and one beam (4f-625t-2p-1b), where freq is the fastest varying index. 
+ *    All 4 freq are assumed to be observing the same 10 pulsars.
+ * -- packet with 3125 time samples: each packet consists of 1 freq, 2 pol, 
+ *    and one beam (1f-3125t-2p-1b), where freq is the fastest varying index. 
+ *    A padding of 6-B is required, making the 3125-format not strictly VDIF, hence undesirable. 
+ * In both cases, the header contains 32-B.
  * Prior to packing, the real and imag part of the (float) input values are scaled and
  * offset to 4-bit unsigned ints (i.e., 0-15) independently.
  * The scaling factor is an static input value provided by the scheduler,
  * and can be different on a per beam basis.
- * A padding of 6-B is required, making this format not strictly VDIF, hence undesirable. 
  *
  * @par Buffers
  * @buffer network_input_buffer_0 Kotekan buffer feeding data from GPU0.
@@ -47,12 +51,9 @@ using std::vector;
  *
  * @conf   num_gpus             Int. No. of GPUs.
  * @conf   samples_per_data_set Int. No. of baseband samples corresponding to each buffer.
- * @conf   nfreq_coarse         Int. No. of freq per GPU node, (should be 4).
  * @conf   num_pulsar           Int. No. of total pulsar beams (should be 10).
  * @conf   num_pol              Int. No. of polarization (should be 2).
- * @conf   timesamples_per_pulsar_packet    Int. Number of times that will go into each packet. (should be 3125)
- * @conf   udp_packet_size      Int. Size of packet, incl. header (should be 6288).
- * @conf   udp_header_size      Int. Size of header (should be 32).
+ * @conf   timesamples_per_pulsar_packet    Int. Number of times that will go into each packet. (should be 3125 or 625)
  *
  * @author Cherry Ng
  *
@@ -83,16 +84,18 @@ private:
     struct Buffer **in_buf;
     struct Buffer *pulsar_buf;
 
-    // Config variables
+    /// Config variables
     uint32_t _num_gpus;
     uint32_t _samples_per_data_set;
-    uint32_t _nfreq_coarse;
     uint32_t _num_pulsar;
     uint32_t _num_pol;
     uint32_t _timesamples_per_pulsar_packet;
-    uint32_t _udp_packet_size;
-    uint32_t _udp_header_size;
+    uint32_t _udp_pulsar_packet_size;
+    uint32_t _num_packet_per_stream;
+
+    /// Derived variables
     struct timespec time_now;
+
 };
 
 #endif
