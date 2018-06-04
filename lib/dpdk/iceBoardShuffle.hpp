@@ -175,8 +175,12 @@ inline void iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         // We take the stream ID only from the first pair of crates,
         // to avoid overwriting it on different ports.
         // This makes the stream ID unique for down stream processes.
-        if (port_stream_id.crate_id / 2 == 0)
-            set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], port_stream_id);
+        if (port_stream_id.crate_id / 2 == 0) {
+            stream_id_t tmp_stream_id = port_stream_id;
+            // Set the unused flag to store the post shuffle freq bin number.
+            tmp_stream_id.unused = i;
+            set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], tmp_stream_id);
+        }
 
         set_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i], new_seq);
     }
