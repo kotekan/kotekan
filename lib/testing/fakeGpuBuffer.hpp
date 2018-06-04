@@ -82,7 +82,7 @@ public:
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
-    void fill_mode_lostpackets(int32_t* data, int frame_num,
+    void fill_mode_lostsamples(int32_t* data, int frame_num,
                                chimeMetadata* metadata);
 
     /**

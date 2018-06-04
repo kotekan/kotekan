@@ -72,16 +72,16 @@ def gaussian_data(tmpdir_factory):
 
 
 @pytest.fixture(scope="module")
-def lostpackets_data(tmpdir_factory):
+def lostsamples_data(tmpdir_factory):
 
-    tmpdir = tmpdir_factory.mktemp("lostpackets")
+    tmpdir = tmpdir_factory.mktemp("lostsamples")
 
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
         'visAccumulate', {'num_ev': 4},
         kotekan_runner.FakeGPUBuffer(
-            mode='lostpackets',
+            mode='lostsamples',
             freq=accumulate_params['freq'],
             num_frames=accumulate_params['total_frames']
         ),
@@ -199,12 +199,12 @@ def test_int_time(time_data):
 
 
 # Test that we are correctly normalising for lost packets
-def test_lostpackets(lostpackets_data):
+def test_lostsamples(lostsamples_data):
 
     row, col = np.triu_indices(accumulate_params['num_elements'])
 
     pat = (row + 1.0J * col).astype(np.complex64)
 
-    for frame in lostpackets_data:
+    for frame in lostsamples_data:
 
         assert np.allclose(frame.vis, pat, rtol=1e-7, atol=1e-8)

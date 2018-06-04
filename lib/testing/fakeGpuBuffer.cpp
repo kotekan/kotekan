@@ -36,7 +36,7 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
 
     // Fill out the map with the fill modes
     fill_map["block"] = &fakeGpuBuffer::fill_mode_block;
-    fill_map["lostpackets"] = &fakeGpuBuffer::fill_mode_lostpackets;
+    fill_map["lostsamples"] = &fakeGpuBuffer::fill_mode_lostsamples;
     fill_map["accumulate"] = &fakeGpuBuffer::fill_mode_accumulate;
     fill_map["gaussian"] = &fakeGpuBuffer::fill_mode_gaussian;
 
@@ -149,7 +149,7 @@ void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number,
     }
 }
 
-void fakeGpuBuffer::fill_mode_lostpackets(int32_t* data, int frame_number,
+void fakeGpuBuffer::fill_mode_lostsamples(int32_t* data, int frame_number,
                                           chimeMetadata* metadata) {
 
     uint32_t norm = samples_per_data_set - frame_number;
