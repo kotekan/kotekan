@@ -321,7 +321,7 @@ void visFileH5Fast::setup_raw() {
 
 #ifndef __APPLE__
     struct stat st;
-    if((fstat(fd, &buffer) != 0) || (posix_fallocate(fd, 0, st.st_size) != 0)) {
+    if((fstat(fd, &st) != 0) || (posix_fallocate(fd, 0, st.st_size) != 0)) {
         ERROR("Couldn't preallocate file: %s", strerror(errno));
     }
 #endif

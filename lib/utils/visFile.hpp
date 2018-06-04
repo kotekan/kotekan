@@ -228,9 +228,9 @@ inline visFileBundle::visFileBundle(
     // Make a lambda function that creates a file. This is a little convoluted,
     // but is the easiest way of passing on the variadic arguments to the
     // constructor into the file creation.
-    mk_file = [instrument_name, type, metadata, args...](std::string file_name,
-                                                         std::string acq_name,
-                                                         std::string root_path) {
+    mk_file = [type, metadata, args...](std::string file_name,
+                                        std::string acq_name,
+                                        std::string root_path) {
         // Add the acq name to the metadata
         auto metadata_acq = metadata;
         metadata_acq["acquisition_name"] = acq_name;

@@ -24,6 +24,7 @@ bufferSend::bufferSend(Config& config,
     server_port = config.get_int_default(unique_name, "server_port", 11024);
 
     send_timeout = config.get_int_default(unique_name, "send_timeout", 20);
+    reconnect_time = config.get_int_default(unique_name, "reconnect_time", 5);
 
     dropped_frame_count = 0;
 
@@ -31,6 +32,8 @@ bufferSend::bufferSend(Config& config,
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
     server_addr.sin_port = htons(server_port);
+
+    socket_fd = -1;
 }
 
 bufferSend::~bufferSend() {
@@ -135,14 +138,15 @@ void bufferSend::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
-    // Stop thread will be set to true at this point.
-    connection_state_cv.notify_all();
+    close_connection();
     connect_thread.join();
 }
 
 void bufferSend::close_connection() {
-    close(socket_fd);
-    socket_fd = 0;
+    if (socket_fd >= 0)
+        close(socket_fd);
+
+    socket_fd = -1;
     {
         std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
         connected = false;
@@ -163,9 +167,12 @@ void bufferSend::connect_to_server() {
         }
 
         if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-            ERROR("Could not connect to server %s:%d, error: %d, waiting 5 seconds to retry...", server_ip.c_str(), server_port, errno);
+            ERROR("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
+                  server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
-            sleep(5);
+            // TODO Add a kotekanProcess level "breakable sleep" so this doesn't
+            // lock up the shutdown process for upto reconnect_time seconds.
+            sleep(reconnect_time);
             continue;
         }
 

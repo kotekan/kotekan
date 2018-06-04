@@ -20,6 +20,12 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 
+    _ew_spacing = config.get_float_array(unique_name, "ew_spacing");
+    _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float));
+    for (int i=0;i<4;i++){
+        _ew_spacing_c[i] = _ew_spacing[i];
+    }
+
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
 
@@ -44,16 +50,18 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     first_pass=true;
 
     using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    rest_server->register_json_callback(endpoint,
+    restServer &rest_server = restServer::instance();
+    endpoint = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint,
             std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
+    restServer::instance().remove_json_callback(endpoint);
     hsa_host_free(host_map);
     hsa_host_free(host_coeff);
     hsa_host_free(host_gain);
+    hsa_host_free(_ew_spacing_c);
     // TODO Free device memory allocations.
 }
 
@@ -63,13 +71,13 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     try {
         _gain_dir = json_request["gain_dir"];
     } catch (...) {
-        conn.send_error("Couldn't parse new gain_dir parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //nothing will happen until this gets changed.
     update_gains=true;
     INFO("Updating gains from %s", _gain_dir.c_str());
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
@@ -81,7 +89,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float *host_coeff) {
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float *host_coeff, float *_ew_spacing_c) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
@@ -107,7 +115,7 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
 
     //NOTE: EW BEAMFORMING SET TO 0 SPACING (ALL AT ZENITH) FOR 2-MONTH RUN!!!
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
-        float anglefrac = sin(0.0*angle_iter*PI/180.);   //EW beam separation 0.5 deg
+        float anglefrac = sin(_ew_spacing_c[angle_iter]*PI/180.);
         for (int cylinder=0; cylinder < 4; cylinder++) {
             host_coeff[angle_iter*4*2 + cylinder*2] = cos(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
             host_coeff[angle_iter*4*2 + cylinder*2 + 1] = sin(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
@@ -123,7 +131,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         freq_idx = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_idx);
 
-        calculate_cl_index(host_map, freq_MHz, host_coeff);
+        calculate_cl_index(host_map, freq_MHz, host_coeff, _ew_spacing_c);
         void * device_map = device.get_gpu_memory("beamform_map", map_len);
         device.sync_copy_host_to_gpu(device_map, (void *)host_map, map_len);
 

@@ -40,7 +40,7 @@ private:
     int32_t metadata_buffer_id;
     int32_t metadata_buffer_precondition_id;
     Buffer * metadata_buf;
-  
+
     struct psrCoord psr_coord;
     struct psrCoord * psr_coord2;
     struct timeval time_now;
@@ -50,12 +50,12 @@ private:
     float _feed_sep_NS;
     int32_t _feed_sep_EW;
 
-    std::thread phase_thread_handle;
-
     uint16_t bank_read_id;
     uint16_t bank_write;
     std::mutex mtx_read;
     std::mutex _pulsar_lock;
+
+    std::string endpoint;
 
 };
 

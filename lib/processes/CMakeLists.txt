@@ -23,6 +23,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               streamSingleDishVDIF.cpp
               rfiVDIF.cpp
               rfiBroadcastVDIF.cpp
+              rfiBroadcast.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
@@ -36,6 +37,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visTranspose.cpp
               visRawReader.cpp
               visWriter.cpp
+              restInspectFrame.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

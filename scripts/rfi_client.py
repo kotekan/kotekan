@@ -1,3 +1,4 @@
+"""
 /*********************************************************************************
 * RFI Documentation Header Block
 * File: rfi_client.py
@@ -6,6 +7,7 @@
 * Dependencies: Matplotlib, yaml, numpy, argparse
 * Help: Run "python3 rfi_client.py" -H (or --Help) for how to use.
 *********************************************************************************/
+"""
 
 import threading
 import socket
@@ -19,7 +21,7 @@ import time
 import matplotlib.dates as mdates
 import os
 import argparse
-import yaml 
+import yaml
 
 class CommandLine:
 
@@ -28,9 +30,9 @@ class CommandLine:
         #Defaults
         self.TCP_IP = '127.0.0.1'
         self.TCP_PORT = 2901
-        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 5}
+        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0}
         self.mode = 'pathfinder'
-        self.supportedModes = ['vdif','pathfinder']
+        self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
         parser.add_argument("-r", "--receive", help = "Example: 127.0.0.1:2900", required = False, default = "")
@@ -72,11 +74,12 @@ class CommandLine:
                 print("Setting mode to %s mode."%(argument.mode))
             else:
                 print("This mode in currently not supported, reverting to default")
+                print("Supported Modes Include:")
+                for mode in self.supportedModes:
+                    print("- ",mode)
             status = True
         if not status:
             print("Maybe you want to use -H or -s or -p or -p as arguments ?") 
-
-
 
 def init():
     im.set_data(waterfall)
@@ -129,8 +132,8 @@ def data_listener():
             break
 
         waterfall = np.fromstring(data).reshape(waterfall.shape)
-        if(app.mode == 'pathfinder'):
-            savewaterfall()
+        #if(app.mode == 'pathfinder'):
+        #    savewaterfall()
         print(waterfall)
 
         sock_tcp.send(TIMEMESSAGE.encode())
@@ -158,13 +161,13 @@ if( __name__ == '__main__'):
     waterfall = -1*np.ones([nx,ny])
 
     fig = plt.figure()
-    
+
     x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
-    im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=0,vmax=2.5)
-    plt.colorbar()
+    im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
+    plt.colorbar(label = "SK Value")
     plt.title("RFI Viewer (Mode: "+app.mode+")")
-    plt.xlabel("Time[s]")
-    plt.ylabel("Frequency")
+    plt.xlabel("Time")
+    plt.ylabel("Frequency[MHz]")
     ax = plt.gca()
     ax.xaxis_date()
     date_format = mdates.DateFormatter('%H:%M:%S')
@@ -189,7 +192,7 @@ if( __name__ == '__main__'):
         except:
             print("Could not connect to %s:%s Trying again in 5 seconds" %(addr[0],addr[1]))
             time.sleep(5)
-        
+
     thread = threading.Thread(target=data_listener)
     thread.daemon = True
     thread.start()

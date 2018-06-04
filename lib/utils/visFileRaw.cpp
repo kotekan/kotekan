@@ -44,7 +44,7 @@ void visFileRaw::create_file(const std::string& name,
     nfreq = freqs.size();
     size_t ninput = inputs.size(), nprod = prods.size();
 
-    // Set the alignment
+    // Set the alignment (in kB)
     // TODO: find some way of getting this from config
     alignment = 4;  // Align on page boundaries
 
@@ -97,18 +97,18 @@ size_t visFileRaw::num_time() {
 void visFileRaw::flush_raw_async(int ind) {
 #ifdef __linux__
     size_t n = nfreq * frame_size;
-    sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+    sync_file_range(fd, ind * n, n, SYNC_FILE_RANGE_WRITE);
 #endif
 }
 
 void visFileRaw::flush_raw_sync(int ind) {
 #ifdef __linux__
     size_t n = nfreq * frame_size;
-    sync_file_range(fd, dset_base + ind * n, n,
+    sync_file_range(fd, ind * n, n,
                     SYNC_FILE_RANGE_WAIT_BEFORE |
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
-    posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED); 
+    posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED); 
 #endif
 }
 
@@ -129,6 +129,8 @@ uint32_t visFileRaw::extend_time(time_ctype new_time) {
     }
 
     times.push_back(new_time);
+
+    // TODO: use POSIX fallocate on Linux
     ftruncate(fd, frame_size * nfreq * num_time());
 
     return num_time() - 1;

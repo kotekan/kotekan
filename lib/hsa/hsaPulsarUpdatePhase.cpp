@@ -6,7 +6,7 @@
 #include "restServer.hpp"
 #include "hsaPulsarUpdatePhase.hpp"
 //#include "buffer.h"
-//#include "bufferContainer.hpp" 
+//#include "bufferContainer.hpp"
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 
@@ -31,7 +31,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     for (int i = 0; i < _num_elements; ++i) {
         _elem_position_c[i] = i;
     }
-    
+
     //Now assume they are really regular
     _feed_sep_NS = config.get_float(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get_int(unique_name, "feed_sep_EW");
@@ -51,7 +51,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
         host_phase_0[index++] = 0;
         host_phase_0[index++] = 0;
     }
-    
+
     //Come up with an initial position, to be updated
     for (int i=0;i<_num_pulsar;i++){
         psr_coord.ra[i] = 53.51337;
@@ -61,16 +61,17 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_read_id = 8;
     bank_write = 0;
 
-    //Here launch a new thread to listen for updates
-    phase_thread_handle = std::thread(&hsaPulsarUpdatePhase::phase_thread, std::ref(*this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
-      CPU_SET(i, &cpuset);
-    pthread_setaffinity_np(phase_thread_handle.native_handle(), sizeof(cpu_set_t), &cpuset);
+    // Register function to listen for new pulsar, and update ra and dec
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    endpoint = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint,
+                                        std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
+
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
+    restServer::instance().remove_json_callback(endpoint);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     if (_elem_position_c != NULL) {
@@ -110,7 +111,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
         for(int i = 0; i < _num_elements; ++i){
             //Why does this not depend on the frequency? CHECK
             //Also, it seems taht elem_position has real& imag? why 2*i+1?
-            projection_angle = 90*D2R - atan2(_elem_position_c[2*i+1],_elem_position_c[2*i]); 
+            projection_angle = 90*D2R - atan2(_elem_position_c[2*i+1],_elem_position_c[2*i]);
             offset_distance  = cos(alt)*sqrt(pow(_elem_position_c[2*i],2) + pow(_elem_position_c[2*i+1],2));
             effective_angle  = projection_angle - az;
             output[(b*2048+i)*2] = TAU*cos(effective_angle)*offset_distance*one_over_c; //Real
@@ -139,7 +140,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     time_t temp_time = time_now.tv_sec;
     struct tm* l_time = gmtime(&temp_time);
     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", l_time);
-    
+
     INFO("####Frequency is %.2f; metadata_buffer_id=%d, gpu_frame_id=%d time stamp: %ld.%06ld (%s.%06ld) device.get_gpu_id=%d",
          freq_now, metadata_buffer_id,  gpu_frame_id, time_now.tv_sec, time_now.tv_usec, time_buf, device.get_gpu_id());
 
@@ -167,18 +168,18 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
 
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
-    // Do the data copy. Now I am doing async everytime there is new data 
-    //(i.e., when main_thread is being called, in principle I just need to copy in 
+    // Do the data copy. Now I am doing async everytime there is new data
+    //(i.e., when main_thread is being called, in principle I just need to copy in
     //when there is an update, which is of slower cadence. Down the road optimization
 
-    // Get the gpu memory pointer. i will need multiple frame, 
+    // Get the gpu memory pointer. i will need multiple frame,
     //because while it has been sent away for async copy, the next update might be happening.
-    void * gpu_memory_frame = device.get_gpu_memory("beamform_phase", 
+    void * gpu_memory_frame = device.get_gpu_memory("beamform_phase",
                                                     phase_frame_len);
-    
+
     {
         std::lock_guard<std::mutex> lock(mtx_read); //Prevent multiple read if read_id change during execut
-         
+
         //This is just for the beginning, and sending host_phase_0 which are all zeros.
         if (unlikely(bank_read_id==8)) {
             INFO("Waiting for bank_read, current id=%d",bank_read_id);
@@ -203,39 +204,25 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id)
 }
 
 void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& json_request) {
-    //Some try statement here 
+    //Some try statement here
     int beam;
     try {
         beam = json_request["beam"];
     } catch (...) {
-        conn.send_error("could not parse new pulsar beam id", STATUS_BAD_REQUEST);
+        conn.send_error("could not parse new pulsar beam id", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     //check beam within range
     if (beam >= _num_pulsar || beam <0) {
-        conn.send_error("num_pulsar out of range", STATUS_BAD_REQUEST);
+        conn.send_error("num_pulsar out of range", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
-    //update ra and dec 
+    //update ra and dec
     {
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         psr_coord.ra[beam] = json_request["ra"];
         psr_coord.dec[beam] = json_request["dec"];
-        conn.send_empty_reply(STATUS_OK);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
         INFO("=============!!![H8]!!-------Pulsar endpoint got beam=%d, ra=%.4f dec=%.4f gpu=%d",beam,psr_coord.ra[beam],psr_coord.dec[beam], device.get_gpu_id());
-    }
-}
-
-void hsaPulsarUpdatePhase::phase_thread() {
-
-    using namespace std::placeholders;
-    sleep(5);
-    for(;;) {
-        sleep(1);
-        //Listen to RestServer for new pulsar, and update ra and dec
-        restServer * rest_server = get_rest_server();
-        string endpoint = "/update_pulsar/"+std::to_string(device.get_gpu_id()); 
-        rest_server->register_json_callback(endpoint,
-                                            std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
     }
 }
