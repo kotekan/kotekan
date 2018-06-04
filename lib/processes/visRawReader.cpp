@@ -36,7 +36,6 @@ visRawReader::visRawReader(Config &config,
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
     metadata_file.read((char *)&packed_json[0], filesize);
-    std::cout << packed_json.size() << std::endl;
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 
@@ -161,7 +160,4 @@ void visRawReader::main_thread() {
         read_ind++;
         ind++;
     }
-
-    // Once we've read the file, we should exit kotekan
-    std::raise(SIGINT);
 }
