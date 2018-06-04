@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_frbscale.yaml
+# chime_psr.yaml
 #
 # CHIME config to exercise full GPU functionality (N2 + FRB + Pulsar).
 #
@@ -130,7 +130,6 @@ dpdk:
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
-  gain_dir: "../../kotekan/"
   commands:
   - name: hsaInputData
   - name: hsaPresumZero
@@ -156,6 +155,10 @@ gpu:
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [3.567558,2.967558,3.477558,4.017558,3.117558,3.642558,3.267558,4.017558,3.717558,3.717558]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     kotekan_process: hsaProcess
     gpu_id: 0
     in_buffers:
@@ -165,6 +168,10 @@ gpu:
       beamform_output_buf: beamform_output_buffer_0
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
   gpu_1:
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [3.567558,2.967558,3.477558,4.017558,3.117558,3.642558,3.267558,4.017558,3.717558,3.717558]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     kotekan_process: hsaProcess
     gpu_id: 1
     in_buffers:
@@ -174,6 +181,10 @@ gpu:
       beamform_output_buf: beamform_output_buffer_1
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
   gpu_2:
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [3.567558,2.967558,3.477558,4.017558,3.117558,3.642558,3.267558,4.017558,3.717558,3.717558]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     kotekan_process: hsaProcess
     gpu_id: 2
     in_buffers:
@@ -183,6 +194,10 @@ gpu:
       beamform_output_buf: beamform_output_buffer_2
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
   gpu_3:
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [3.567558,2.967558,3.477558,4.017558,3.117558,3.642558,3.267558,4.017558,3.717558,3.717558]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     kotekan_process: hsaProcess
     gpu_id: 3
     in_buffers:
@@ -261,3 +276,23 @@ frb:
       - 10.7.200.16
       - 10.6.200.17
       - 10.7.200.17
+
+pulsar:
+  timesamples_per_pulsar_packet: 625
+  udp_pulsar_packet_size: 5032
+  udp_pulsar_header_size: 32
+  num_packet_per_stream: 80
+  pulsar_output_buffer:
+    num_frames: buffer_depth
+    frame_size: udp_pulsar_packet_size * num_pulsar * num_packet_per_stream
+    metadata_pool: main_pool
+    kotekan_buffer: standard
+  postprocess:
+    log_level: info
+    cpu_affinity: [11]
+    kotekan_process: pulsarPostProcess625
+    network_input_buffer_0: beamform_pulsar_output_buffer_0
+    network_input_buffer_1: beamform_pulsar_output_buffer_1
+    network_input_buffer_2: beamform_pulsar_output_buffer_2
+    network_input_buffer_3: beamform_pulsar_output_buffer_3
+    pulsar_out_buf: pulsar_output_buffer
