@@ -28,7 +28,7 @@ pulsarPostProcess::pulsarPostProcess(Config& config_,
         const string& unique_name,
         bufferContainer &buffer_container) :
         KotekanProcess(config_, unique_name, buffer_container,
-                       std::bind(&pulsarPostProcess::main_thread, this)){
+        std::bind(&pulsarPostProcess::main_thread, this)){
 
     apply_config(0);
     assert(_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
