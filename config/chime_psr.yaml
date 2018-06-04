@@ -281,9 +281,10 @@ pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
   num_packet_per_stream: 80
+  num_stream: 10
   pulsar_output_buffer:
     num_frames: buffer_depth
-    frame_size: udp_pulsar_packet_size * num_pulsar * num_packet_per_stream
+    frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
