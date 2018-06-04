@@ -48,11 +48,11 @@ pulsarPostProcess::~pulsarPostProcess() {
 }
 
 void pulsarPostProcess::fill_headers(unsigned char * out_buf,
-                  struct VDIFHeader * vdif_header,
-                  const uint64_t fpga_seq_num,
-		  struct timespec * time_now,
-		  struct psrCoord * psr_coord,
-		  uint16_t * freq_ids){
+        struct VDIFHeader * vdif_header,
+        const uint64_t fpga_seq_num,
+	struct timespec * time_now,
+	struct psrCoord * psr_coord,
+	uint16_t * freq_ids){
     uint freqloop = _num_stream/_num_pulsar;
     for (uint i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
