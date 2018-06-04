@@ -89,7 +89,7 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 	time_now->tv_nsec +=_timesamples_per_pulsar_packet*2560;
 	if (time_now->tv_nsec > 999999999) {
 	    time_now->tv_nsec = time_now->tv_nsec % 1000000000;
-	    time_now->tv_sec +=1;
+	    time_now->tv_sec += (uint)(time_now->tv_nsec / 1000000000);
 	}
     } //end packet
 }
