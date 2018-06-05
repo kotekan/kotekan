@@ -49,6 +49,7 @@ void visTruncate::main_thread() {
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
 
         // truncate visibilities and weights
+        #pragma omp parallel for private(err_r, err_i, tr_vis)
         for (size_t i = 0; i < frame.num_prod; i++) {
             // Get truncation precision from weights
             if (output_frame.weight[i] == 0.) {
@@ -68,6 +69,7 @@ void visTruncate::main_thread() {
                     w_prec * output_frame.weight[i]);
         }
         // truncate eigenvectors
+        #pragma omp parallel for private(err_r, err_i, tr_evec)
         for (size_t i = 0; i < output_frame.evec.size(); i++) {
             // Truncate to fixed precision
             tr_evec = {
