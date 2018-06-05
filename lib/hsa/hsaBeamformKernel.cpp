@@ -115,7 +115,9 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
         conn.send_error("could not parse FRB N-S beam update", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
+    FREQ_REF = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
     update_NS_beam=true;
+
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "northmost_beam", _northmost_beam);
 }
