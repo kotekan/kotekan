@@ -18,14 +18,20 @@
  *
  * This is an hsaCommand that calculates phase delays for brute-form beamforming.
  * It forms 10 tracking beams with phases updated every second.
- * One nominal coordinates (RA & Dec) is provided by the config file.
- * This script calculates the phase delay of that source and 9 positions around it,
+ * Ten pairs of nominal coordinates (RA & Dec) is provided by the config file.
+ * This script calculates the phase delay of these 10 sources,
  * for each feed position. The gain of each input is multiplied into the same array,
  * to give an array of phase delay of size 2048*10*2 to be provided as input for
  * hsaBeamformPulsar.cpp and the kernel pulsar_beamformer.hsaco.
  * There are two banks of phases to alternate between to avoid read/write conflict.
- * Each of the 10 source position (and an associated scaling factor) can be changed/re-pointed
- * on a per beam basis via endpoint.
+ * Each of the 10 source position (and an associated scaling factor) can be 
+ * changed/re-pointed on a per beam basis via endpoint.
+ *
+ * @par REST Endpoints
+ * @endpoint_gains    /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
+ *                    specific beam at RA+Dec with a scaling factor.
+ * @endpoint_psrcoord /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain 
+ *                    at specific path for calibration purpose.
  *
  * @par GPU Memory
  * @gpu_mem  beamform_phase     Array of phase delays size 2048x10x2
