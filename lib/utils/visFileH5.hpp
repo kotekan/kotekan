@@ -1,3 +1,9 @@
+/*****************************************
+@file
+@brief HDF5 based visibility output files
+- visFileH5
+- visFile_H5Fast
+*****************************************/
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
