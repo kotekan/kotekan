@@ -188,6 +188,35 @@ class DumpVisBuffer(OutputBuffer):
                                               (self.output_dir, self.name))
 
 
+class ReadRawBuffer(InputBuffer):
+
+    _buf_ind = 0
+
+    def __init__(self, infile, chunk_size):
+
+        self.name = "read_raw_buf{:d}".format(self._buf_ind)
+        process_name = "read_raw{:d}".format(self._buf_ind)
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'visRawReader',
+            'filename': infile,
+            'out_buf': self.name,
+            'chunk_size': chunk_size
+        }
+
+        self.process_block = {process_name: process_config}
+
+
+
 class KotekanProcessTester(KotekanRunner):
     """Construct a test around a single Kotekan process.
 
