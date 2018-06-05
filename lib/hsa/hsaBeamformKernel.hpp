@@ -78,6 +78,9 @@
  *                              Zenith angle of the northmost beam (in deg).
  * @conf   ew_spacing           Float array - 4 sky angles for the columns of E-W beams (in deg).
  *
+ * @todo   Better handle of variables that gets updated via endpoint, prevent 
+ *         read/write conflicts.
+ * 
  * @author Cherry Ng
  *
  */
