@@ -3,8 +3,11 @@
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/frb/update_gains/3 -X POST -H 'Content-Type: application/json' -d '{"gain_dir":"/etc/kotekan/gains/"}'
-
+// curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_gains/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"gain_dir":"/etc/kotekan/gains/"}'
+// Update NS beam
+// curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
+// Update EW beam
+// curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_EW_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"ew_id":<value>,"ew_beam":<value>}'
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
                             hsaDeviceInterface& device) :
@@ -210,10 +213,10 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     }
 
     if (update_NS_beam) {
-	calculate_cl_index(host_map, freq_MHz, FREQ_REF);
+        calculate_cl_index(host_map, freq_MHz, FREQ_REF);
         void * device_map = device.get_gpu_memory("beamform_map", map_len);
         device.sync_copy_host_to_gpu(device_map, (void *)host_map, map_len);
-	update_NS_beam = false;
+        update_NS_beam = false;
     }
     if (update_EW_beam) {
         calculate_ew_phase(freq_MHz, host_coeff, _ew_spacing_c);
@@ -221,7 +224,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         device.sync_copy_host_to_gpu(device_coeff_map, (void*)host_coeff, coeff_len);
         update_EW_beam = false;
     }
-      
+
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *map_buffer;
