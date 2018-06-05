@@ -28,14 +28,14 @@
  * changed/re-pointed on a per beam basis via endpoint.
  *
  * @par REST Endpoints
- * @endpoint_psrcoord /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
- *                    specific beam at RA+Dec with a scaling factor.
- *                    requires json values      "beam", "ra", "dec", "scaling"
- *                    update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
- * @endpoint_gains    /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain 
- *                    at specific path for calibration purpose.
- *                    requires json values      "gain_dir"
- *                    update config             "gain_dir"
+ * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
+ *            specific beam at RA+Dec with a scaling factor.
+ *            requires json values      "beam", "ra", "dec", "scaling"
+ *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
+ * @endpoint  /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain 
+ *            at specific path for calibration purpose.
+ *            requires json values      "gain_dir"
+ *            update config             "gain_dir"
  *
  * @par GPU Memory
  * @gpu_mem  beamform_phase     Array of phase delays size 2048x10x2
