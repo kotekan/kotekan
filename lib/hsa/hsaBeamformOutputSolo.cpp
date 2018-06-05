@@ -12,7 +12,7 @@ hsaBeamformOutputSolo::hsaBeamformOutputSolo(Config& config, const string &uniqu
 
     network_buffer_id = 0;
     output_buffer_id = 0;
-    output_buffer_excute_id = 0;
+    output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
 }
 
@@ -35,13 +35,13 @@ hsa_signal_t hsaBeamformOutputSolo::execute(int gpu_frame_id, const uint64_t& fp
 
     void * gpu_output_ptr = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_buffer->frame_size);
 
-    void * host_output_ptr = (void *)output_buffer->frames[output_buffer_excute_id];
+    void * host_output_ptr = (void *)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_ptr,
             gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
 
-    output_buffer_excute_id = (output_buffer_excute_id + 1) % output_buffer->num_frames;
+    output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];
 }

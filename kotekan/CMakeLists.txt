@@ -45,8 +45,6 @@ endif ()
 
 add_dependencies( kotekan kotekan_libs )
 
-install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
-#install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
-install(PROGRAMS ../scripts/yaml_to_json.py DESTINATION /usr/sbin COMPONENT scripts)
+install(TARGETS kotekan DESTINATION /usr/local/bin COMPONENT binaries)
 
 add_definitions(/D__STDC_FORMAT_MACROS)

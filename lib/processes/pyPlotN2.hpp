@@ -52,7 +52,7 @@ public:
     pyPlotN2(Config& config, const string& unique_name,
                  bufferContainer &buffer_container);
 
-    ///Destructor, currently does nothing 
+    ///Destructor, currently does nothing
     virtual ~pyPlotN2();
 
     ///Applies the config parameters
@@ -64,19 +64,20 @@ public:
     /**
      * Function to receive and receive the request for a new plot.
      * Sets a flag informing the main loop to produce a plot of the next available buffer frame.
-     * @param conn         Connection object requesting the plot. Only used to reply `STATUS_OK`.
+     * @param conn         Connection object requesting the plot. Only used to reply `HTTP_RESPONSE::OK`.
      * @param json_request The contents of the REST json transmission. Ignored.
      *
      * @warning        Nobody should ever call this directly, it's only meant to service the
      *                 RESTful callback.
      */
-    void request_plot_callback(connectionInstance& conn, json& json_request);
+    void request_plot_callback(connectionInstance& conn);
 private:
     void make_plot(void);
 
     ///The kotekan buffer object the processes is producing for
     struct Buffer *buf;
     unsigned char *in_local;
+    std::string endpoint;
 
     int gpu_id=-1;
     bool dump_plot=false;

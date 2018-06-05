@@ -164,16 +164,16 @@ struct Buffer* create_buffer(int num_frames, int len,
         err = posix_memalign((void **) &(buf->frames[i]), PAGESIZE_MEM, buf->aligned_frame_size);
         CHECK_MEM(buf->frames[i]);
         if ( err != 0 ) {
-            ERROR("Error creating alligned memory");
-            return err;
+            ERROR("Error creating alligned memory: %d", err);
+            return NULL;
         }
 
         // Ask that all pages be kept in memory
         err = mlock((void *) buf->frames[i], len);
 
         if ( err == -1 ) {
-            ERROR("Error locking memory - check ulimit -a to check memlock limits");
-            return errno;
+            ERROR("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
+            return NULL;
         }
         #endif
     }
@@ -241,18 +241,18 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
             buf->last_arrival_time = e_time();
         }
         set_full = 1;
-    }
 
-    // If there are no consumers registered then we can just mark the buffer empty
-    if (private_consumers_done(buf, ID) == 1) {
-        INFO("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
-        buf->is_full[ID] = 0;
-        if (buf->metadata[ID] != NULL) {
-            decrement_metadata_ref_count(buf->metadata[ID]);
-            buf->metadata[ID] = NULL;
+        // If there are no consumers registered then we can just mark the buffer empty
+        if (private_consumers_done(buf, ID) == 1) {
+            INFO("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
+            buf->is_full[ID] = 0;
+            if (buf->metadata[ID] != NULL) {
+                decrement_metadata_ref_count(buf->metadata[ID]);
+                buf->metadata[ID] = NULL;
+            }
+            set_empty = 1;
+            private_reset_consumers(buf, ID);
         }
-        set_empty = 1;
-        private_reset_consumers(buf, ID);
     }
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
@@ -624,7 +624,7 @@ void print_all_buffer_info(struct Buffer * buf) {
 CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     DEBUG("Buffer \"%s\" full info:", buf->buffer_name);
-    /*
+
     DEBUG("Producers:");
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1) {
@@ -637,7 +637,6 @@ CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
             DEBUG("Consumer: %s", buf->consumers[i].name);
         }
     }
-    */
 
     char status_string[buf->num_frames + 1];
     status_string[buf->num_frames] = '\0';

@@ -41,6 +41,7 @@ factor_upchan_out: 16
 num_frb_total_beams: 1024
 frb_missing_gains: [1.0,1.0]
 frb_scaling: 0.05 #1.0
+ew_spacing: [0,0,0,0] #For 2-mth run all Zenith beam
 
 # Pool
 main_pool:
@@ -184,6 +185,26 @@ accumulate:
         kotekan_process: accumulate
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
+
+
+debug_plots:
+    plot_0:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_0
+        gpu_id: 0
+    plot_1:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_1
+        gpu_id: 1
+    plot_2:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_2
+        gpu_id: 2
+    plot_3:
+        kotekan_process: pyPlotN2
+        in_buf: gpu_output_buffer_3
+        gpu_id: 3
+
 
 frb:
   factor_upchan_out: 16

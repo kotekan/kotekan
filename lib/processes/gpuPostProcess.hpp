@@ -47,9 +47,6 @@ private:
     int32_t _gate_cadence;
     int32_t _num_gpus;
 
-    // REST server end point
-    complex_int_t * _rest_copy_vis = nullptr;
-    std::mutex _rest_copy_lock;
 };
 
 // A TCP frame contains this header followed by the visibilities, and flags.
