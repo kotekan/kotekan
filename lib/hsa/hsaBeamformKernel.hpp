@@ -80,8 +80,7 @@ public:
     /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
 
-    /// For a given freq, calculate N-S FFT clamping index (host_map) and E-W phase delays (host_coeff)
-    void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff);
+    void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff, float *_ew_spacing_c);
 
     /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
@@ -133,6 +132,10 @@ private:
     int32_t _num_local_freq;
     /// Number of time samples, should be a multiple of 3x128 for FRB, currently set to 49152
     int32_t _samples_per_data_set;
+
+    vector<float> _ew_spacing;
+    float * _ew_spacing_c;
+
     ///Flag to control gains to be only loaded on request.
     bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
@@ -140,6 +143,7 @@ private:
 
     /// The endpoint name for the gain update call
     std::string endpoint;
+
 };
 
 #endif
