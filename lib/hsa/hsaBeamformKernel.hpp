@@ -85,8 +85,6 @@
  *
  */
 
-
-
 class hsaBeamformKernel: public hsaCommand
 {
 public:
@@ -99,12 +97,6 @@ public:
 
     /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
-
-    /// Calculate clamping index for the N-S beams
-    void calculate_cl_index(uint32_t *host_map, float freq1, float FREQ_REF);
-
-    /// Calculate phase delays for the E-W beams
-    void calculate_ew_phase(float freq1, float *host_coeff, float *_ew_spacing_c);
 
     /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
@@ -119,6 +111,23 @@ public:
 
 
 private:
+
+    /** 
+     * @brief  Calculate clamping index for the N-S beams
+     * @param host_map    array of output clamping indices
+     * @param freq_now    freq of this gpu
+     * @param freq_ref    reference freq, which determines the N-S extent of the beams
+     */
+    void calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref);
+
+    /**
+     * @brief Calculate phase delays for the E-W beams
+     * @param freq_now       freq of this gpu
+     * @param host_coeff     phase offset 
+     * @param _ew_spacing_c  Float array size 4 - desired EW sky angles
+     */
+    void calculate_ew_phase(float freq_now, float *host_coeff, float *_ew_spacing_c);
+
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
     int32_t input_frame_len;
     /// Output length, should be nsamp x 2 pol x 1024 beams x 2 for complex
@@ -169,7 +178,7 @@ private:
     float * _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam 
-    float FREQ_REF;
+    float freq_ref;
 
     ///Flag to control gains to be only loaded on request.
     bool update_gains;

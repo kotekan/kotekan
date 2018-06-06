@@ -25,7 +25,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 
     _northmost_beam = config.get_float(unique_name, "northmost_beam");
-    FREQ_REF = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
+    freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
 
     _ew_spacing = config.get_float_array(unique_name, "ew_spacing");
     _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float));
@@ -94,8 +94,9 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     //nothing will happen until this gets changed.
     update_gains=true;
     INFO("Updating gains from %s", _gain_dir.c_str());
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "gain_dir", _gain_dir);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+
 }
 
 void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& json_request) {
@@ -108,8 +109,9 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     }
     _ew_spacing_c[ew_id] = json_request["ew_beam"];
     update_EW_beam=true;
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "ew_spacing/" + std::to_string(ew_id), _ew_spacing_c[ew_id]);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+
 }
 
 void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& json_request) {
@@ -119,11 +121,11 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
         conn.send_error("could not parse FRB N-S beam update", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
-    FREQ_REF = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
+    freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
     update_NS_beam=true;
 
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "northmost_beam", _northmost_beam);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
@@ -134,16 +136,16 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, float FREQ_REF) {
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
     int pad = 2 ;
 
     for (int b = 0; b < 256; ++b){
-        beam_ref = asin(LIGHT_SPEED*(b-256/2.) / (FREQ_REF*1.e6) / (256) /FEED_SEP) * 180./ PI;
-        t = 256*pad*(FREQ_REF*1.e6)*(FEED_SEP/LIGHT_SPEED*sin(beam_ref*D2R)) + 0.5;
-        delta_t = 256*pad*(FREQ1*1e6-FREQ_REF*1e6) * (FEED_SEP/LIGHT_SPEED*sin(beam_ref*D2R));
+        beam_ref = asin(LIGHT_SPEED*(b-256/2.) / (freq_ref*1.e6) / (256) /FEED_SEP) * 180./ PI;
+        t = 256*pad*(freq_ref*1.e6)*(FEED_SEP/LIGHT_SPEED*sin(beam_ref*D2R)) + 0.5;
+        delta_t = 256*pad*(freq_now*1e6-freq_ref*1e6) * (FEED_SEP/LIGHT_SPEED*sin(beam_ref*D2R));
         cl_index = (int) floor(t + delta_t) + 256*pad/2.;
 
         if (cl_index < 0)
@@ -159,12 +161,12 @@ void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float FREQ1, floa
     }
 }
 
-void hsaBeamformKernel::calculate_ew_phase(float FREQ1, float *host_coeff, float *_ew_spacing_c) {
+void hsaBeamformKernel::calculate_ew_phase(float freq_now, float *host_coeff, float *_ew_spacing_c) {
     for (int angle_iter=0; angle_iter < 4; angle_iter++){
         float anglefrac = sin(_ew_spacing_c[angle_iter]*PI/180.);
         for (int cylinder=0; cylinder < 4; cylinder++) {
-            host_coeff[angle_iter*4*2 + cylinder*2] = cos(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
-            host_coeff[angle_iter*4*2 + cylinder*2 + 1] = sin(2*PI*anglefrac*cylinder*22*FREQ1*1.e6/LIGHT_SPEED);
+            host_coeff[angle_iter*4*2 + cylinder*2] = cos(2*PI*anglefrac*cylinder*22*freq_now*1.e6/LIGHT_SPEED);
+            host_coeff[angle_iter*4*2 + cylinder*2 + 1] = sin(2*PI*anglefrac*cylinder*22*freq_now*1.e6/LIGHT_SPEED);
         }
     }
 }
@@ -214,7 +216,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     }
 
     if (update_NS_beam) {
-        calculate_cl_index(host_map, freq_MHz, FREQ_REF);
+        calculate_cl_index(host_map, freq_MHz, freq_ref);
         void * device_map = device.get_gpu_memory("beamform_map", map_len);
         device.sync_copy_host_to_gpu(device_map, (void *)host_map, map_len);
         update_NS_beam = false;
