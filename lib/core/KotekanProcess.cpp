@@ -15,8 +15,8 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
     stop_thread(false), config(config),
     unique_name(unique_name),
     this_thread(),
-    main_thread_fn(main_thread_ref),
-    buffer_container(buffer_container_) {
+    buffer_container(buffer_container_),
+    main_thread_fn(main_thread_ref) {
 
     set_cpu_affinity(config.get_int_array(unique_name, "cpu_affinity"));
 
@@ -57,7 +57,7 @@ void KotekanProcess::apply_cpu_affinity() {
 
 // TODO Enable this for MACOS Systems as well.
 #ifndef MAC_OSX
-    int err = 0
+    int err = 0;
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
