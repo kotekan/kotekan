@@ -287,7 +287,7 @@ int dpdkCore::lcore_rx(void * args) {
     const uint32_t * ports = port_list.ports;
     const uint32_t burst_size = core->burst_size;
 
-    for (;;) {
+    while (!core->stop_thread) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];
 
