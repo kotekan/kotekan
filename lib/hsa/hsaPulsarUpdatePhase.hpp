@@ -28,14 +28,14 @@
  * changed/re-pointed on a per beam basis via endpoint.
  *
  * @par REST Endpoints
- * @endpoint_gains    /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
- *                    specific beam at RA+Dec with a scaling factor.
- *                    requires json values      "beam", "ra", "dec", "scaling"
- *                    update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
- * @endpoint_psrcoord /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain 
- *                    at specific path for calibration purpose.
- *                    requires json values      "gain_dir"
- *                    update config             "gain_dir"
+ * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
+ *            specific beam at RA+Dec with a scaling factor.
+ *            requires json values      "beam", "ra", "dec", "scaling"
+ *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
+ * @endpoint  /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain 
+ *            at specific path for calibration purpose.
+ *            requires json values      "gain_dir"
+ *            update config             "gain_dir"
  *
  * @par GPU Memory
  * @gpu_mem  beamform_phase     Array of phase delays size 2048x10x2
@@ -49,7 +49,7 @@
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
  * @conf   gain_dir             String - directory path where gain files are
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
- * @conf   source_ra            Float array - 10 initial RA (in hr) to form beams on.
+ * @conf   source_ra            Float array - 10 initial RA (in deg) to form beams on.
  * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
  * @conf   psr_scaling          Int array - 10 nominal scaling for all beams (can be changed on per beam basis via endpoint)
  *
