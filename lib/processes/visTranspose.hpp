@@ -63,9 +63,8 @@ private:
     size_t num_freq;
     size_t num_ev;
 
-    // set up and write to files
-    void mk_file();
-    void transpose_write();
+    // write datasets to file
+    void write();
 
     std::shared_ptr<visFileArchive> file;
 
@@ -76,5 +75,13 @@ private:
     size_t t_ind = 0;
 
 };
+
+template<typename T>
+inline void strided_copy(T* in, T* out, size_t offset, size_t stride, size_t n_val) {
+    #pragma omp parallel for
+    for (size_t i = 0; i < n_val; i++) {
+        out[offset + i * stride] = in[i];
+    }
+}
 
 #endif
