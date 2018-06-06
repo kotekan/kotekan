@@ -1,11 +1,10 @@
 ##########################################
 #
-# chime_frbscale.yaml
+# chime_n2_frb_psr.yaml
 #
-# CHIME config to exercise full GPU functionality (N2 + FRB),
-# with FRB postprocessing and output.
+# CHIME config to exercise full GPU functionality (N2 + FRB + Pulsar).
 #
-# Author: Keith Vanderlinde
+# Author: Cherry Ng
 #
 ##########################################
 ---
@@ -42,6 +41,13 @@ num_frb_total_beams: 1024
 frb_missing_gains: [1.0,1.0]
 frb_scaling: 0.05 #1.0
 
+#Pulsar stuff
+feed_sep_NS : 0.3048
+feed_sep_EW : 22.0
+num_pulsar: 10
+num_pol: 2
+
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
@@ -72,6 +78,19 @@ beamform_output_buffers:
     beamform_output_buffer_2:
         kotekan_buffer: standard
     beamform_output_buffer_3:
+        kotekan_buffer: standard
+
+pulsar_output_buffers:
+    num_frames: buffer_depth
+    frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float *2
+    metadata_pool: main_pool
+    beamform_pulsar_output_buffer_0:
+        kotekan_buffer: standard
+    beamform_pulsar_output_buffer_1:
+        kotekan_buffer: standard
+    beamform_pulsar_output_buffer_2:
+        kotekan_buffer: standard
+    beamform_pulsar_output_buffer_3:
         kotekan_buffer: standard
 
 gpu_output_buffers:
@@ -116,6 +135,7 @@ gpu:
   - name: hsaInputData
   - name: hsaPresumZero
   - name: hsaOutputDataZero
+  - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
   - name: hsaPresumKernel
   - name: hsaCorrelatorKernel
@@ -123,6 +143,8 @@ gpu:
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
+  - name: hsaBeamformPulsar
+  - name: hsaBeamformPulsarOutput
   - name: hsaBeamformOutputData
   - name: hsaOutputData
   enable_delay: true
@@ -133,8 +155,11 @@ gpu:
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 0
@@ -143,9 +168,13 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer_0
       beamform_output_buf: beamform_output_buffer_0
+      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
   gpu_1:
-    gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 1
@@ -154,9 +183,13 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer_1
       beamform_output_buf: beamform_output_buffer_1
+      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
   gpu_2:
-    gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 2
@@ -165,9 +198,13 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer_2
       beamform_output_buf: beamform_output_buffer_2
+      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
   gpu_3:
-    gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    gain_dir: "/etc/kotekan/gains/tauA_03_09/"
+    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
+    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
+    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 3
@@ -176,6 +213,7 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer_3
       beamform_output_buf: beamform_output_buffer_3
+      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
 
 accumulate:
     cpu_affinity: [8]
@@ -196,26 +234,6 @@ accumulate:
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
 
-
-debug_plots:
-    plot_0:
-        kotekan_process: pyPlotN2
-        in_buf: gpu_output_buffer_0
-        gpu_id: 0
-    plot_1:
-        kotekan_process: pyPlotN2
-        in_buf: gpu_output_buffer_1
-        gpu_id: 1
-    plot_2:
-        kotekan_process: pyPlotN2
-        in_buf: gpu_output_buffer_2
-        gpu_id: 2
-    plot_3:
-        kotekan_process: pyPlotN2
-        in_buf: gpu_output_buffer_3
-        gpu_id: 3
-
-
 frb:
   factor_upchan_out: 16
   num_beams: 4
@@ -229,11 +247,11 @@ frb:
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
-    log_level: info
+    log_level: warn
     cpu_affinity: [11]
     kotekan_process: frbPostProcess
     incoherent_beams: [0]
-    #incoherent_truncation: 25.
+    #incoherent_truncation: 25.    
     network_input_buffer_0: beamform_output_buffer_0
     network_input_buffer_1: beamform_output_buffer_1
     network_input_buffer_2: beamform_output_buffer_2
@@ -272,3 +290,23 @@ frb:
       - 10.7.200.16
       - 10.6.200.17
       - 10.7.200.17
+
+pulsar:
+  timesamples_per_pulsar_packet: 625
+  udp_pulsar_packet_size: 5032
+  num_packet_per_stream: 80
+  num_stream: 10
+  pulsar_output_buffer:
+    num_frames: buffer_depth
+    frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
+    metadata_pool: main_pool
+    kotekan_buffer: standard
+  postprocess:
+    log_level: info
+    cpu_affinity: [11]
+    kotekan_process: pulsarPostProcess
+    network_input_buffer_0: beamform_pulsar_output_buffer_0
+    network_input_buffer_1: beamform_pulsar_output_buffer_1
+    network_input_buffer_2: beamform_pulsar_output_buffer_2
+    network_input_buffer_3: beamform_pulsar_output_buffer_3
+    pulsar_out_buf: pulsar_output_buffer
