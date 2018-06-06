@@ -88,9 +88,6 @@ private:
     uint32_t rx_ring_size;
     uint32_t tx_ring_size;
 
-    // Set to 1 if we should stop the lcores, and zero if running.
-    uint32_t stop_lcores;
-
     struct portList {
         uint32_t * ports;
         uint32_t num_ports;

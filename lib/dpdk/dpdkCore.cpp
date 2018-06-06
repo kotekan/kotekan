@@ -172,9 +172,6 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 
 void dpdkCore::main_thread() {
 
-    // Don't stop the lcores since we are just starting them.
-    stop_lcores = 0;
-
     // Start the packet receiving lcores (basically pthreads)
     rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void *) this, SKIP_MASTER);
 
@@ -191,8 +188,6 @@ void dpdkCore::main_thread() {
 
         // Check port status
     }
-
-    stop_lcores = 1;
 
     // Wait for the lcores to join
     rte_eal_mp_wait_lcore();
@@ -292,14 +287,6 @@ int dpdkCore::lcore_rx(void * args) {
             uint32_t port = ports[i];
 
             const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
-
-            // Stop lcore condition check
-            if (unlikely(core->stop_lcores != 0)) {
-                for (uint16_t i = 0; i < num_rx; ++i) {
-                    rte_pktmbuf_free(mbufs[i]);
-                }
-                return 0;
-            }
 
             for (uint16_t j = 0; j < num_rx; ++j) {
 
