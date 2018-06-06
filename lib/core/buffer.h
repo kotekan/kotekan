@@ -40,7 +40,6 @@ extern "C" {
 #endif
 
 #include "metadata.h"
-#include "movingStats.h"
 
 /// The system page size, this might become more dynamic someday
 #define PAGESIZE_MEM 4096
@@ -53,9 +52,6 @@ extern "C" {
 /// The maximum number of producers that can register on a buffer
 #define MAX_PRODUCERS 10
 
-/// The number of values to average.
-#define BUF_SAMPLE_WINDOW 100
-
 /**
  * @struct ProcessInfo
  * @brief Internal structure for tracking consumer and producer names.
@@ -66,9 +62,6 @@ struct ProcessInfo {
 
     /// The name of the process (consumer or producer)
     char name[MAX_PROCESS_NAME_LEN];
-
-    /// The service time stats
-    struct movingStats * service_time_stats;
 };
 
 /**
@@ -168,12 +161,6 @@ struct Buffer {
      */
     int ** consumers_done;
 
-    /**
-     * @brief The time at which a frame was acquired by a consumer
-     * Format is [frame_id][consumer];
-     */
-    double ** consumer_acquire_time;
-
     /// The list of consumer names registered to this buffer
     struct ProcessInfo consumers[MAX_CONSUMERS];
 
@@ -194,9 +181,6 @@ struct Buffer {
 
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
-
-    /// Track the average arrival rate, normally this is fixed by a clock.
-    struct movingStats * arrival_rate;
 
     /// Array of buffer info objects, for tracking information about each buffer.
     struct metadataContainer ** metadata;
@@ -351,10 +335,6 @@ double get_last_arrival_time(struct Buffer * buf);
  * @param[in] buf The buffer object
  */
 void print_buffer_status(struct Buffer * buf);
-
-void print_consumer_stats(struct Buffer * buf);
-
-void print_all_buffer_info(struct Buffer * buf);
 
 /**
  * @brief Allocates a new metadata object from the associated pool

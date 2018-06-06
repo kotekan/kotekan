@@ -5,6 +5,8 @@
 #include "errors.h"
 #include <time.h>
 
+REGISTER_KOTEKAN_PROCESS(chimeMetadataDump);
+
 chimeMetadataDump::chimeMetadataDump(Config& config,
                         const string& unique_name,
                         bufferContainer &buffer_container) :
@@ -14,8 +16,6 @@ chimeMetadataDump::chimeMetadataDump(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 }
-
-REGISTER_KOTEKAN_PROCESS(chimeMetadataDump);
 
 chimeMetadataDump::~chimeMetadataDump() {
 }

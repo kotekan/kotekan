@@ -84,7 +84,7 @@ class kotekanProcessMakerTemplate : public kotekanProcessMaker
             return new T(config, unique_name, host_buffers);
         }
 };
-
 #define REGISTER_KOTEKAN_PROCESS(T) static kotekanProcessMakerTemplate<T> maker##T(#T);
+
 
 #endif /* PROCESS_FACTORY_HPP */

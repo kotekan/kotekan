@@ -36,7 +36,7 @@ void monitorBuffer::main_thread() {
                       buf->buffer_name, (cur_time - last_arrival));
                 ERROR("Closing kotekan because of system timeout.");
                 for (auto &buf : buffer_container.get_buffer_map()) {
-                    print_all_buffer_info(buf.second);
+                    print_buffer_status(buf.second);
                 }
                 usleep(50000);
                 raise(SIGINT);

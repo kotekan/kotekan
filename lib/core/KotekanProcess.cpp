@@ -1,6 +1,9 @@
 #include <pthread.h>
 #include <sched.h>
 #include <syslog.h>
+#include <thread>
+#include <future>
+#include <cstdlib>
 
 #include "KotekanProcess.hpp"
 #include "errors.h"
@@ -21,6 +24,9 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
     string s_log_level = config.get_string(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
+
+    // Set the timeout for this process thread to exit
+    join_timeout = config.get_int_default(unique_name, "join_timeout", 60);
 }
 
 struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
@@ -42,7 +48,6 @@ std::vector<struct Buffer *> KotekanProcess::get_buffer_array(const std::string 
 }
 
 void KotekanProcess::apply_cpu_affinity() {
-    int err = 0;
 
     std::lock_guard<std::mutex> lock(cpu_affinity_lock);
 
@@ -52,6 +57,8 @@ void KotekanProcess::apply_cpu_affinity() {
 
 // TODO Enable this for MACOS Systems as well.
 #ifndef MAC_OSX
+    int err = 0
+
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     INFO("Setting thread affinity");
@@ -86,8 +93,17 @@ void KotekanProcess::start() {
 }
 
 void KotekanProcess::join() {
-    if (this_thread.joinable())
-        this_thread.join();
+    if (this_thread.joinable()) {
+        // This has the effect of creating a new thread for each thread join,
+        // this isn't exactly optimal, but give we are shutting down anyway it should be fine.
+        auto thread_joiner = std::async(std::launch::async, &std::thread::join, &this_thread);
+        if (thread_joiner.wait_for(std::chrono::seconds(join_timeout)) == std::future_status::timeout) {
+            ERROR("*** EXIT_FAILURE *** The process %s failed to exit (join thread timeout) after %d seconds.",
+                  unique_name.c_str(), join_timeout);
+            ERROR("If the process needs more time to exit, please set the config value `join_timeout` for that korekan_process");
+            std::exit(EXIT_FAILURE);
+        }
+    }
 }
 
 void KotekanProcess::stop() {
