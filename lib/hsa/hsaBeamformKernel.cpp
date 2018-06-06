@@ -8,6 +8,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
 // Update EW beam
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_EW_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"ew_id":<value>,"ew_beam":<value>}'
+
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
                             hsaDeviceInterface& device) :
@@ -258,4 +259,3 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
 
     return signals[gpu_frame_id];
 }
-
