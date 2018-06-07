@@ -24,12 +24,15 @@ visWriter::visWriter(Config& config,
                    std::bind(&visWriter::main_thread, this)) {
 
     // Fetch any simple configuration
-    // num_freq = config.get_int(unique_name, "num_freq");
     root_path = config.get_string_default(unique_name, "root_path", ".");
 
     // Get the list of buffers that this process shoud connect to
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
+
+    // Get the type of the file we are writing
+    // TODO: we may want to validate here rather than at creation time
+    file_type = config.get_string_default(unique_name, "file_type", "hdf5fast");
 
     // Get the input labels
     inputs = std::get<1>(parse_reorder_default(config, unique_name));
@@ -44,21 +47,20 @@ visWriter::visWriter(Config& config,
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
 
-    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
-    // the moment this either uses chime, or if set to use a per_node_instrument
-    // it uses the hostname of the current node
     node_mode = config.get_bool_default(unique_name, "node_mode", true);
 
     // Calculate the set of products we are writing from the config
     prods = std::get<1>(parse_prod_subset(config, unique_name));
     num_prod = prods.size();
 
+    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
+    // the moment this either uses chime, or if set to use a per_node_instrument
+    // it uses the hostname of the current node
     if(node_mode) {
 
         // Set the instrument_name from the hostname
-        char temp[256];
-        gethostname(temp, 256);
-        std::string t = temp;
+        std::string t(256, '\0');
+        gethostname(&t[0], 256);
         // Here we trim the hostname to the first alphanumeric segment only.
         instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
 
@@ -134,9 +136,7 @@ void visWriter::main_thread() {
 
             // Add all the new information to the file.
             double start = current_time();
-            bool error = file_bundle->add_sample(t, freq_ind, vis, vis_weight,
-                                                gain_coeff, gain_exp, eval,
-                                                evec, frame.erms);
+            bool error = file_bundle->add_sample(t, freq_ind, frame);
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);
@@ -185,14 +185,31 @@ void visWriter::init_acq() {
     // Use the per buffer info to setup the acqusition properties
     setup_freq(freq_ids);
 
+    // Get the current user
+    std::string user(256, '\0');
+    user = (getlogin_r(&user[0], 256) == 0) ? user.c_str() : "unknown";
+
+    // Get the current hostname of the system
+    std::string hostname(256, '\0');
+    gethostname(&hostname[0], 256);
+    hostname = hostname.c_str();
+
+    // Set the metadata that we want to save with the file
+    std::map<std::string, std::string> metadata;
+    metadata["weight_type"] = weights_type;
+    metadata["archive_version"] = "NT_3.1.0";
+    metadata["instrument_name"] = instrument_name;
+    metadata["notes"] = "";   // TODO: connect up notes
+    metadata["git_version_tag"] = "not set";
+    metadata["system_user"] = user;
+    metadata["collection_server"] = hostname;
+
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
-    // TODO: connect up notes
-    std::string notes = "";
     file_bundle = std::unique_ptr<visFileBundle>(
         new visFileBundle(
-            root_path, instrument_name, chunk_id, file_length, window,
-            notes, weights_type, freqs, inputs, prods, num_ev, file_length
+            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
+            freqs, inputs, prods, num_ev, file_length
         )
     );
 }
