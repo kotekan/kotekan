@@ -54,6 +54,11 @@ struct __attribute__ ((packed)) RFIHeader {
  * 	@buffer_format	Array of @c floats
  * 	@buffer_metadata chimeMetadata
  *
+ * @par REST Endpoints
+ * @endpoint    /rfi_broadcast ``POST`` Updates frames per broadcast packet
+ *              requires json values      "frames_per_packet"
+ *              update config             "frames_per_packet"
+ *
  * @conf   num_elements         Int . Number of elements.
  * @conf   num_local_freq       Int . Number of local freq.
  * @conf   num_local_freq       Int (default 1024). Number of total freq.
@@ -102,7 +107,7 @@ private:
     /// Flag to tell process whether or not to use FPGA seq nums
     bool replay;
     /// Number of frames to average per UDP packet
-    uint32_t frames_per_packet;
+    uint32_t _frames_per_packet;
     //Process specific config parameters
     /// The total number of links processed by gpu
     uint32_t total_links;
@@ -116,6 +121,8 @@ private:
     int socket_fd;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
+    /// String to hold endpoint
+    string endpoint;
 };
 
 #endif

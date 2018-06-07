@@ -33,12 +33,13 @@ rfiBroadcast::rfiBroadcast(Config& config,
     //Initialize rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/rfi_broadcast";
+    endpoint = unique_name + "/rfi_broadcast";
     rest_server.register_post_callback(endpoint,
             std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
 }
 
 rfiBroadcast::~rfiBroadcast() {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
@@ -47,7 +48,8 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
     //Lock mutex
     rest_callback_mutex.lock();
     //Adjust parameters
-    frames_per_packet = json_request["frames_per_packet"].get<int>();
+    _frames_per_packet = json_request["frames_per_packet"].get<int>();
+    config.update_value(unique_name, "frames_per_packet", _frames_per_packet);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
@@ -63,7 +65,7 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
     //Rfi paramters
     _sk_step = config.get_int_default(unique_name, "sk_step", 256);
     _rfi_combined = config.get_bool_default(unique_name,"rfi_combined", true);
-    frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
+    _frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
     //Process specific paramters
     total_links = config.get_int_default(unique_name, "total_links",1);
     dest_port = config.get_int(unique_name, "destination_port");
@@ -83,7 +85,7 @@ void rfiBroadcast::main_thread() {
     uint64_t fake_seq = 0;
     //Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)_rfi_combined, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
-                      .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, frames_per_packet=frames_per_packet};
+                      .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, .frames_per_packet=_frames_per_packet};
     //Intialize empty packet
     uint32_t packet_length = sizeof(rfi_header) + _num_local_freq*sizeof(float);
     char *packet_buffer = (char *)malloc(packet_length);
@@ -114,7 +116,7 @@ void rfiBroadcast::main_thread() {
             //Zero Average array
             memset(rfi_avg, (float)0, sizeof(rfi_avg));
             //Loop through all frames that should be averages together
-            for(f = 0; f < frames_per_packet*total_links; f++){
+            for(f = 0; f < _frames_per_packet*total_links; f++){
                 //Get Frame
                 frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
                 if (frame == NULL) break;
@@ -147,8 +149,8 @@ void rfiBroadcast::main_thread() {
             for(j = 0; j < total_links; j++){
                 //Normalize Sum (Take Average)
                 for(i = 0; i < _num_local_freq; i++){
-                    rfi_avg[j][i] /= frames_per_packet*(_samples_per_data_set/_sk_step);
-                    if(i == 0){ DEBUG("SK value %f for freq %d, stream %d", rfi_avg[j][i], i, StreamIDs[j])}
+                    rfi_avg[j][i] /= _frames_per_packet*(_samples_per_data_set/_sk_step);
+                    if(i == 0) DEBUG("SK value %f for freq %d, stream %d", rfi_avg[j][i], i, StreamIDs[j]);
                 }
                 //Add Stream ID to header
                 rfi_header.streamID = StreamIDs[j];
@@ -162,10 +164,10 @@ void rfiBroadcast::main_thread() {
                                  packet_length, 0,
                                  (struct sockaddr *) &saddr_remote, sizeof(sockaddr_in));
                 //Check if packet sent properly
-                if (bytes_sent != packet_length){ ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");}
+                if (bytes_sent != packet_length) ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
             }
             //Adjust fake_seq num (only for replay mode)
-            fake_seq += _samples_per_data_set*frames_per_packet;
+            fake_seq += _samples_per_data_set*_frames_per_packet;
             //Unlock callback mutex
             rest_callback_mutex.unlock();
             INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);

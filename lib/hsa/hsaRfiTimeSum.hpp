@@ -20,6 +20,11 @@
  *
  * @requires_kernel    rfi_chime_timesum_private.hasco
  *
+ * @par REST Endpoints
+ * @endpoint    /rfi_time_sum_callback/<gpu_id> ``POST`` Change kernel parameters
+ *              requires json values      "bad_inputs"
+ *              update config             "bad_inputs"
+ *
  * @par GPU Memory
  * @gpu_mem  input              Input data of size input_frame_len
  *     @gpu_mem_type            staging
@@ -81,12 +86,14 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
+    /// Vector to hold a list of inputs which are currently malfunctioning
+    vector<int32_t> _bad_inputs;
     /// Boolean to hold whether or not the current kernel execution is the first or not.
     bool rebuildInputMask;
-    /// Vector to hold a list of inputs which are currently malfunctioning
-    vector<int32_t> bad_inputs;
     /// Rest Server callback mutex
     std::mutex rest_callback_mutex;
+    /// String to hold endpoint name
+    string endpoint
 };
 
 #endif

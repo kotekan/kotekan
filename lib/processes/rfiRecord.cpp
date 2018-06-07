@@ -36,12 +36,13 @@ rfiRecord::rfiRecord(Config& config,
     //Initialize rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/rfi_record";
+    endpoint = unique_name + "/rfi_record";
     rest_server.register_post_callback(endpoint,
             std::bind(&rfiRecord::rest_callback, this, _1, _2));
 }
 
 rfiRecord::~rfiRecord() {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
@@ -50,14 +51,18 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     //Lock callback mutex
     rest_callback_mutex.lock();
     //Update parameters
-    frames_per_packet = json_request["frames_per_packet"].get<int>();
-    WARN("frames_per_packet: %d",frames_per_packet)
-    write_to = json_request["write_to"].get<string>();
-    WARN("write_to %s",write_to.c_str())
-    write_to_disk = json_request["write_to_disk"].get<bool>();
-    WARN("write_to_disk: %d",write_to_disk)
+    _frames_per_packet = json_request["frames_per_packet"].get<int>();
+    WARN("frames_per_packet: %d",_frames_per_packet)
+    _write_to = json_request["write_to"].get<string>();
+    WARN("write_to %s",_write_to.c_str())
+    _write_to_disk = json_request["write_to_disk"].get<bool>();
+    WARN("write_to_disk: %d",_write_to_disk)
     //This will trigger main process to update directories
     file_num = 0;
+    //Update Config Values
+    config.update_value(unique_name, "frames_per_packet", _frames_per_packet);
+    config.update_value(unique_name, "write_to", _write_to);
+    config.update_value(unique_name, "write_to_disk", _write_to_disk);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
@@ -73,11 +78,11 @@ void rfiRecord::apply_config(uint64_t fpga_seq) {
     //RFI config parameters
     _sk_step = config.get_int_default(unique_name, "sk_step",256);
     _rfi_combined = config.get_bool_default(unique_name,"rfi_combined", true);
-    frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
+    _frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
     //Process specific parameters
-    total_links = config.get_int_default(unique_name, "total_links",1);
-    write_to = config.get_string(unique_name, "write_to");
-    write_to_disk = config.get_bool_default(unique_name, "write_to_disk",false);
+    _total_links = config.get_int_default(unique_name, "total_links",1);
+    _write_to = config.get_string(unique_name, "write_to");
+    _write_to_disk = config.get_bool_default(unique_name, "write_to_disk",false);
 }
 
 void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts) {
@@ -91,11 +96,11 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
     snprintf(time_dir, sizeof(time_dir), "%s_rfi", data_time);
     //Call to utils to that actually makes the directories
-    make_rfi_dirs((int) streamID, write_to.c_str(), time_dir);
+    make_rfi_dirs((int) streamID, _write_to.c_str(), time_dir);
     //Create Info File
     char info_file_name[200];
     snprintf(info_file_name, sizeof(info_file_name), "%s/%d/%s/info.txt",
-                      write_to.c_str(), streamID, time_dir);
+                      _write_to.c_str(), streamID, time_dir);
     FILE * info_file = fopen(info_file_name, "w");
     if(!info_file) {
         ERROR("Error creating info file: %s\n", info_file_name);
@@ -114,8 +119,8 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     fprintf(info_file, "samples_per_data_set=%d\n", _samples_per_data_set);
     fprintf(info_file, "sk_step=%d\n", _sk_step);
     fprintf(info_file, "rfi_combined=%d\n", _rfi_combined);
-    fprintf(info_file, "frames_per_packet=%d\n", frames_per_packet);
-    fprintf(info_file, "total_links=%d\n", total_links);
+    fprintf(info_file, "frames_per_packet=%d\n", _frames_per_packet);
+    fprintf(info_file, "total_links=%d\n", _total_links);
     //Close Info file
     fclose(info_file);
     INFO("Created meta data file: %s\n", info_file_name);
@@ -139,9 +144,9 @@ void rfiRecord::main_thread() {
         double start_time = e_time();
         fpga_seq_num = get_fpga_seq_num(rfi_buf, frame_id);
         //Only write if user specifilly asks (Just for caution)
-        if(write_to_disk){
+        if(_write_to_disk){
             //For each link
-            if(file_num < total_links){
+            if(file_num < _total_links){
                 INFO("ATTEMPTING TO CREATE METADATA");
                 //Make Necessary Directories using timecode and create info file with metadata
                 save_meta_data(get_stream_id(rfi_buf, frame_id), fpga_seq_num,
@@ -152,7 +157,7 @@ void rfiRecord::main_thread() {
             char file_name[100];
             //Figure out which file (adjust file name every 1024 buffers)
             snprintf(file_name, sizeof(file_name), "%s/%d/%s/%07d.rfi",
-                     write_to.c_str(),
+                     _write_to.c_str(),
                      get_stream_id(rfi_buf, frame_id),
 //                     link_id,
                      time_dir,
@@ -172,7 +177,7 @@ void rfiRecord::main_thread() {
             if (close(fd) == -1) {
                 ERROR("Cannot close file %s", file_name);
             }
-            INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, total_links, (e_time()-start_time)*1000);
+            INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
         }
         //Unlock callback mutex
         rest_callback_mutex.unlock();
@@ -180,7 +185,7 @@ void rfiRecord::main_thread() {
         mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
         //Move forward one frame/link/file
         frame_id = (frame_id + 1) % rfi_buf->num_frames;
-        link_id = (link_id + 1) % total_links;
+        link_id = (link_id + 1) % _total_links;
         file_num++;
     }
 }

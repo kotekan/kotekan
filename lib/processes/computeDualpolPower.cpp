@@ -52,7 +52,7 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
     register_producer(buf_out, unique_name.c_str());
 
     timesteps_in = config.get_int(unique_name, "samples_per_data_set");
-    integration_length = config.get_int(unique_name, "integration_length");
+    integration_length = config.get_int(unique_name, "power_integration_length");
     timesteps_out = timesteps_in / integration_length;
     num_freq = config.get_int(unique_name, "num_freq");
     num_elem = config.get_int(unique_name, "num_elements");
@@ -104,7 +104,7 @@ void computeDualpolPower::main_thread() {
             this_thread[j].join();
 
         double stop_time = e_time();
-        INFO("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+        DEBUG("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
 
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);

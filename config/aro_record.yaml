@@ -17,7 +17,7 @@ log_level: DEBUG
 
 instrument_name: aro
 
-integration_length: 8192
+power_integration_length: 8192
 num_freq: 1024
 num_local_freq: 1024
 num_elements: 2

@@ -22,6 +22,11 @@
  *
  * @requires_kernel    rfi_chime_inputsum.hasco
  *
+ * @par REST Endpoints
+ * @endpoint    /rfi_input_sum_callback/<gpu_id> ``POST`` Change kernel parameters
+ *              requires json values      "num_bad_inputs"
+ *              update config             "num_bad_inputs"
+ *
  * @par GPU Memory
  * @gpu_mem  input              Input data of size input_frame_len
  *     @gpu_mem_type            static
@@ -80,6 +85,8 @@ private:
     uint32_t _M;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
+    /// Sring to hold endpoint name
+    string endpoint;
 };
 
 #endif
