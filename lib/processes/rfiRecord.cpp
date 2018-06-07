@@ -58,6 +58,7 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     WARN("write_to_disk: %d",write_to_disk)
     //This will trigger main process to update directories
     file_num = 0;
+//    file_num = 2048*(int)((file_num + 2048)/2048);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
