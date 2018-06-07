@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <csignal>
 #include "fmt.hpp"
+#include "visUtil.hpp"
 
 #include "visRawReader.hpp"
 
@@ -107,6 +108,11 @@ visRawReader::~visRawReader() {
     }
 
     close(fd);
+
+    double total_time = current_time() - start_time;
+    DEBUG("total time %f", total_time);
+    DEBUG("wait time %f", wait_time);
+    DEBUG("read time %f", read_time);
 }
 
 void visRawReader::apply_config(uint64_t fpga_seq) {
@@ -152,6 +158,8 @@ void visRawReader::main_thread() {
     int readahead_blocks = 4;
     size_t nframe = nfreq * ntime;
 
+    start_time = current_time();
+
     // Initial readahead for frames
     for(read_ind = 0; read_ind < readahead_blocks; read_ind++) {
         read_ahead(read_ind);
@@ -159,12 +167,15 @@ void visRawReader::main_thread() {
 
     while (!stop_thread && ind < nframe) {
 
+        last_time = current_time();
         // Wait for the buffer to be filled with data
         if((frame = wait_for_empty_frame(out_buf, unique_name.c_str(),
                                          frame_id)) == nullptr) {
             break;
         }
+        wait_time += current_time() - last_time;
 
+        last_time = current_time();
         // Issue the read ahead request
         if(read_ind < (ntime * nfreq)) {
             read_ahead(read_ind);
@@ -184,6 +195,8 @@ void visRawReader::main_thread() {
 
         // Try and clear out the cached data as we don't need it again
         madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
+
+        read_time += current_time() - last_time;
 
         //DEBUG("ind %d", ind);
         //DEBUG("time ind %d freq ind %d", file_ind / nfreq, file_ind % nfreq);

@@ -80,6 +80,12 @@ private:
 
     int fd;
     uint8_t * mapped_file;
+
+    // Timing
+    double start_time;;
+    double wait_time = 0.;
+    double read_time = 0.;
+    double last_time;
 };
 
 #endif
