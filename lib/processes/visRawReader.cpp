@@ -112,7 +112,9 @@ visRawReader::~visRawReader() {
     double total_time = current_time() - start_time;
     DEBUG("total time %f", total_time);
     DEBUG("wait time %f", wait_time);
+    DEBUG("read ahead time %f", read_ahead_time);
     DEBUG("read time %f", read_time);
+    DEBUG("clear time %f", clear_time);
 }
 
 void visRawReader::apply_config(uint64_t fpga_seq) {
@@ -180,6 +182,8 @@ void visRawReader::main_thread() {
         if(read_ind < (ntime * nfreq)) {
             read_ahead(read_ind);
         }
+        read_ahead_time += current_time() - last_time;
+        last_time = current_time();
 
         // Get the index into the file
         file_ind = position_map(ind);
@@ -193,10 +197,12 @@ void visRawReader::main_thread() {
         std::memcpy(frame,
                     mapped_file + file_ind * file_frame_size + metadata_size + 1, data_size);
 
+        read_time += current_time() - last_time;
+        last_time = current_time();
         // Try and clear out the cached data as we don't need it again
         madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
 
-        read_time += current_time() - last_time;
+        clear_time += current_time() - last_time;
 
         //DEBUG("ind %d", ind);
         //DEBUG("time ind %d freq ind %d", file_ind / nfreq, file_ind % nfreq);

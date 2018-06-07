@@ -85,6 +85,8 @@ private:
     double start_time;;
     double wait_time = 0.;
     double read_time = 0.;
+    double read_ahead_time = 0.;
+    double clear_time = 0.;
     double last_time;
 };
 
