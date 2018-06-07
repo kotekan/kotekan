@@ -27,7 +27,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = unique_name + "/rfi_input_sum_callback/" + std::to_string(device.get_gpu_id());
+    endpoint = unique_name + "/rfi_input_sum_callback/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiInputSum::rest_callback, this, _1, _2));
 }

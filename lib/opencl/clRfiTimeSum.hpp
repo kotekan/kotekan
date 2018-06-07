@@ -72,7 +72,7 @@ private:
     /// The kurtosis step (How many timesteps per kurtosis estimate)
     uint32_t _sk_step;
     /// A vector holding all of the bad inputs
-    vector<int32_t> bad_inputs;
+    vector<int32_t> _bad_inputs;
     /// Mutex for rest server callback
     std::mutex rest_callback_mutex;
     /// A open cl memory object for the input mask
