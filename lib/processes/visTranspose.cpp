@@ -7,6 +7,7 @@
 #include <csignal>
 #include <stdexcept>
 #include "fmt.hpp"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
@@ -74,6 +75,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     eval.reserve(chunk_t*chunk_f*num_ev);
     evec.reserve(chunk_t*chunk_f*num_ev*num_input);
     erms.reserve(chunk_t*chunk_f);
+
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
@@ -82,6 +84,11 @@ void visTranspose::apply_config(uint64_t fpga_seq) {
 
 visTranspose::~visTranspose() {
     // Flush up to frames_sofar
+    double total_time = current_time() - start_time;
+    DEBUG("total time %f", total_time);
+    DEBUG("wait time %f", wait_time);
+    DEBUG("copy time %f", copy_time);
+    DEBUG("write time %f", write_time);
 }
 
 void visTranspose::main_thread() {
@@ -94,18 +101,25 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
+    start_time = current_time();
+
     // Create HDF5 file
     file = std::unique_ptr<visFileArchive>(
         new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk)
     );
 
     while (!stop_thread) {
+        last_time = current_time();
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
             break;
         }
         auto frame = visFrameView(in_buf, frame_id);
+
+        wait_time += current_time() - last_time;
+        last_time = current_time();
+
         //DEBUG("Frames so far %d", frames_so_far);
 
         // Collect frames until a chunk is filled
@@ -127,12 +141,16 @@ void visTranspose::main_thread() {
                      write_t, num_ev*num_input);
         erms[offset + ti] = frame.erms;
 
+        copy_time += current_time() - last_time;
+
         // Increment within a chunk
         ti = (ti + 1) % write_t;
         if (ti == 0)
             fi++;
         if (fi == write_f) {
+            last_time = current_time();
             write();
+            write_time += current_time() - last_time;
             fi = 0;
             ti = 0;
         }

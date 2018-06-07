@@ -74,6 +74,13 @@ private:
     size_t f_ind = 0;
     size_t t_ind = 0;
 
+    // Timing
+    double start_time;;
+    double wait_time = 0.;
+    double write_time = 0.;
+    double copy_time = 0.;
+    double last_time;
+
 };
 
 template<typename T>
