@@ -92,13 +92,14 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
-    struct Buffer * buf;
-    std::string base_dir;
-    std::string file_ext;
-    int num_frames_buffer;
-    int num_elements;
-    int samples_per_data_set;
+    // settings from the config file
+    std::string _base_dir;
+    std::string _file_ext;
+    int _num_frames_buffer;
+    int _num_elements;
+    int _samples_per_data_set;
 
+    struct Buffer * buf;
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
