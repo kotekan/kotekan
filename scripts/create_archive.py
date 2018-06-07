@@ -18,31 +18,42 @@ WEIGHT_FIXED_PREC = 1e-3
 @click.option("--log-level", default='info', help="default: info")
 @click.option("--chunk", nargs=3, type=int, default=DEFAULT_CHUNK,
               help="[freq prod time] chunk. default: 16 16 16")
+@click.option("--buffer-depth", type=int, default=None, help="Specify buffer depth.")
 @click.argument("infile")
 @click.argument("outfile")
-def create_archive(infile, outfile, log_level, chunk):
+def create_archive(infile, outfile, log_level, chunk, buffer_depth):
     """ Transform kotekan receiver raw output file into transposed and bitshuffle
         compressed archive file.
     """
+
+    if buffer_depth is None:
+        buffer_depth = chunk[0] * chunk[2]
 
     bufs = {
         'read_buffer': {
             'kotekan_buffer': 'standard',
             'metadata_pool': 'vis_pool',
-            'num_frames': 'buffer_depth',
+            'num_frames': str(buffer_depth),
             'sizeof_int': 4,
             'frame_size': '2 * sizeof_int * num_local_freq * num_elements * num_elements'
         },
         'trunc_buffer': {
             'kotekan_buffer': 'standard',
             'metadata_pool': 'vis_pool',
-            'num_frames': 'buffer_depth',
+            'num_frames': str(buffer_depth),
             'sizeof_int': 4,
             'frame_size': '2 * sizeof_int * num_local_freq * num_elements * num_elements'
         }
     }
 
     config = { 'log_level': log_level, 'num_elements': 2048 }
+
+    config.update({
+        'vis_pool': {
+            'kotekan_metadata_pool': 'visMetadata',
+            'num_metadata_objects': '500 * buffer_depth'
+        }
+    })
 
     proc = {}
     # Reader process
