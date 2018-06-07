@@ -34,7 +34,7 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
         p.update(params)
 
     tmpdir = tdir_factory.mktemp("baseband")
-    p['base_dir'] = str(tmpdir)
+    p['base_dir'] = str(tmpdir) + '/'
 
     fakevis_buffer = kotekan_runner.FakeNetworkBuffer(
             num_frames=p['total_frames'],

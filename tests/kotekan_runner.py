@@ -54,8 +54,8 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
-            p = subprocess.Popen(
-                    ["./kotekan", "-c", fh.name], cwd=kotekan_dir)
+            cmd = ["./kotekan", "-c", fh.name]
+            p = subprocess.Popen(cmd, cwd=kotekan_dir)
             if self._rest_commands:
                 import requests
                 import json
@@ -69,7 +69,7 @@ class KotekanRunner(object):
                             )
             ret = p.wait()
             if ret:
-                raise subprocess.CalledProcessError(ret)
+                raise subprocess.CalledProcessError(ret, cmd)
 
 
 class InputBuffer(object):

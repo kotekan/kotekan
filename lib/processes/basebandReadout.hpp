@@ -14,12 +14,19 @@
 
 #include "gsl-lite.hpp"
 
+#include <highfive/H5File.hpp>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 #include "gpsTime.h"
 #include "baseband_request_manager.hpp"
+#include "visUtil.hpp"
 
+
+#define TARGET_CHUNK_SIZE 1024 * 1024
 
 
 /**
@@ -33,7 +40,8 @@
  *
  * @author Kiyoshi Masui
  */
-class basebandDumpData { public:
+class basebandDumpData {
+    public:
     // Initializes the container with all parameters, and allocates memory for
     // data but does not fill in the data.
     basebandDumpData(
@@ -98,6 +106,7 @@ private:
     int num_frames_buffer;
     int num_elements;
     int samples_per_data_set;
+    std::vector<input_ctype> inputs;
 
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;

@@ -2,6 +2,7 @@
 #include <thread>
 #include <assert.h>
 #include <algorithm>
+#include <iostream>
 #include <cstdint>
 
 #include "basebandReadout.hpp"
@@ -12,7 +13,7 @@
 #include "gpsTime.h"
 #include "nt_memcpy.h"
 #include "nt_memset.h"
-
+#include "visFile.hpp"
 
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
@@ -45,6 +46,15 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         oldest_frame(-1),
         frame_locks(num_frames_buffer)
 {
+    // Get the correlator input meanings, unreordered.
+    auto input_reorder = parse_reorder_default(config, unique_name);
+    inputs = std::get<1>(input_reorder);
+    auto inputs_copy = inputs;
+    auto order_inds = std::get<0>(input_reorder);
+    for (int i = 0; i < inputs.size(); i++) {
+        inputs[order_inds[i]] = inputs_copy[i];
+    }
+
     // Memcopy byte alignments assume the following.
     if (num_elements % 128) {
         throw std::runtime_error("num_elements must be multiple of 128");
@@ -63,6 +73,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
                  buf->num_frames, num_frames_buffer);
         throw std::runtime_error(msg);
     }
+
+    // TODO: Ensure the output directory is writable.
 }
 
 basebandReadout::~basebandReadout() {
@@ -115,7 +127,7 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::listen_thread(const uint32_t freq_id) {
-    uint64_t event_id=0;
+    uint64_t event_id=0; // XXX fake.
 
     BasebandRequestManager& mgr = BasebandRequestManager::instance();
 
@@ -145,18 +157,17 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late). Do we need to
             // report this?
+            dump_status->bytes_remaining = data.num_elements * data.data_length_fpga;
             if (data.data_length_fpga == 0) {
                 INFO("Captured no data for event %d and freq ID %d.",
                         data.event_id, data.freq_id);
-                // TODO Report to the request.
-                continue;
+                // continue;
             } else {
                 INFO("Captured %d samples for event %d and freq ID %d.",
                      data.data_length_fpga,
                      data.event_id,
                      data.freq_id
                      );
-                // TODO Report to the dump_request.
             }
 
             // Wait for free space in the write queue. This prevents this thread from 
@@ -174,6 +185,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                     sleep(1);
                 }
             }
+            event_id++; // XXX fake.
         }
     }
 }
@@ -188,7 +200,50 @@ void basebandReadout::write_thread() {
             auto dump_status = std::get<1>(dump_tup);
             auto data = std::get<0>(dump_tup);
 
-            process_request(dump_status, data);
+            char fname_base[100];
+            snprintf(fname_base, sizeof(fname_base), "%08d_%04d",
+                     (int) data.event_id, (int) data.freq_id);
+            std::string filename = base_dir + fname_base + file_ext;
+            std::cout << filename << std::endl;
+
+            // TODO some sort of file locking. (maybe use create_lockfile from visFile.hpp)
+
+            auto file = HighFive::File(
+                    filename,
+                    HighFive::File::ReadWrite |
+                    HighFive::File::Create |
+                    HighFive::File::Truncate
+                    );
+
+            size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
+
+            std::vector<size_t> cur_dims = {0, (size_t) num_elements};
+            std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) num_elements};
+            std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) num_elements};
+
+            auto index_map = file.createGroup("index_map");
+            index_map.createDataSet(
+                    "input",
+                    HighFive::DataSpace::From(inputs),
+                    HighFive::create_datatype<input_ctype>()
+                    ).write(inputs);
+
+
+            auto space = HighFive::DataSpace(cur_dims, max_dims);
+            //HighFive::DataSetCreateProps props;
+            //props.add(HighFive::Chunking(chunk_dims));
+            auto dataset = file.createDataSet(
+                    "baseband",
+                    space,
+                    HighFive::create_datatype<uint8_t>(),
+                    chunk_dims
+                    );
+
+            std::vector<std::string> axes = {"fpga_count", "input"};
+            dataset.createAttribute<std::string>(
+                    "axis", HighFive::DataSpace::From(axes)).write(axes);
+
+            //process_request(dump_status, data);
             // pop at the end such that memory for `data` is released before queue slot
             // becomes available.
             write_q.pop();
