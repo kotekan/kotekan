@@ -20,6 +20,14 @@ visTruncate::visTruncate(Config &config, const string& unique_name, bufferContai
     vis_prec = config.get_float(unique_name, "data_fixed_precision");
 }
 
+visTruncate::~visTruncate() {
+    double total_time = current_time() - start_time;
+    DEBUG("total time %f", total_time);
+    DEBUG("wait time %f", wait_time);
+    DEBUG("copy time %f", copy_time);
+    DEBUG("truncate time %f", truncate_time);
+}
+
 void visTruncate::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
 }
@@ -31,7 +39,10 @@ void visTruncate::main_thread() {
     float err_r, err_i;
     cfloat tr_vis, tr_evec;
 
+    start_time = current_time();
+
     while (!stop_thread) {
+        last_time = current_time();
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
@@ -44,10 +55,14 @@ void visTruncate::main_thread() {
                                  output_frame_id)) == nullptr) {
             break;
         }
+        wait_time += current_time() - last_time;
+        last_time = current_time();
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
+        copy_time += current_time() - last_time;
 
+        last_time = current_time();
         // truncate visibilities and weights
         #pragma omp parallel for private(err_r, err_i, tr_vis)
         for (size_t i = 0; i < frame.num_prod; i++) {
@@ -80,6 +95,7 @@ void visTruncate::main_thread() {
             };
             output_frame.evec[i] = tr_evec;
         }
+        truncate_time += current_time() - last_time;
 
         // mark as full
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
