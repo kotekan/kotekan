@@ -10,6 +10,7 @@ clRfiTimeSum::clRfiTimeSum(const char * param_gpuKernel, const char* param_name,
 
 clRfiTimeSum::~clRfiTimeSum()
 {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 void clRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) {
@@ -17,12 +18,13 @@ void clRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) {
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     WARN("RFI Callback Received... Changing Parameters")
     //Update Paramters
-    bad_inputs.clear();
+    _bad_inputs.clear();
     for(uint32_t i = 0; i < json_request["bad_inputs"].size(); i++){
-        bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
+        _bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
     }
     //Flag for rebuilding of Input Mask buffer
     rebuildInputMask = true;
+    config.update_value(unique_name, "bad_inputs", _bad_inputs);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
@@ -32,7 +34,7 @@ void clRfiTimeSum::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
     //RFI config parameters
     _sk_step  = config.get_int_default(unique_name, "sk_step", 256);
-    bad_inputs = config.get_int_array(unique_name, "bad_inputs");
+    _bad_inputs = config.get_int_array(unique_name, "bad_inputs");
     //Compute maske length
     mask_len = sizeof(uint8_t)*_num_elements;
 }
@@ -46,7 +48,7 @@ void clRfiTimeSum::build(device_interface &param_Device)
     //Register Rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = "/rfi_time_sum_callback/" + std::to_string(param_Device.getGpuID());
+    endpoint = unique_name + "/rfi_time_sum_callback/" + std::to_string(param_Device.getGpuID());
     rest_server.register_post_callback(endpoint,
             std::bind(&clRfiTimeSum::rest_callback, this, _1, _2));
     //Build device
@@ -75,7 +77,7 @@ void clRfiTimeSum::build(device_interface &param_Device)
     uint32_t j = 0;
     for(uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
         Input_Mask[i] = (uint8_t)0;
-        if(bad_inputs.size() > 0 && (int32_t)i == bad_inputs[j]){
+        if(_bad_inputs.size() > 0 && (int32_t)i == _bad_inputs[j]){
                 Input_Mask[i] = (uint8_t)1;
                 j++;
         }
@@ -107,7 +109,7 @@ cl_event clRfiTimeSum::execute(int param_bufferID, const uint64_t& fpga_seq, dev
         uint32_t j = 0;
         for(uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
             Input_Mask[i] = (uint8_t)0;
-            if(bad_inputs.size() > 0 && (int32_t)i == bad_inputs[j]){
+            if(_bad_inputs.size() > 0 && (int32_t)i == _bad_inputs[j]){
                     Input_Mask[i] = (uint8_t)1;
                     j++;
             }

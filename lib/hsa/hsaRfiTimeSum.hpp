@@ -93,7 +93,7 @@ private:
     /// Rest Server callback mutex
     std::mutex rest_callback_mutex;
     /// String to hold endpoint name
-    string endpoint
+    string endpoint;
 };
 
 #endif

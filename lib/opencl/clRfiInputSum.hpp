@@ -21,6 +21,11 @@
  *
  * @requires_kernel    rfi_chime_inputsum_private.cl
  *
+ * @par REST Endpoints
+ * @endpoint    /rfi_input_sum_callback/<gpu_id> ``POST`` Update kernel parameters
+ *              requires json values      "num_bad_inputs"
+ *              update config             "num_bad_inputs"
+ *
  * @par GPU Memory
  * @gpu_mem RfiTimeSumBuffer    A gpu memory object which holds the normalized squ$
  *      @gpu_mem_type           static
@@ -73,6 +78,8 @@ private:
     bool _use_local_sum;
     /// Mutex for rest server callback
     std::mutex rest_callback_mutex;
+    /// String to hold endpoint name
+    string endpoint;
 };
 
 #endif

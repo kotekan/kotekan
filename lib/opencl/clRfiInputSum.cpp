@@ -10,6 +10,7 @@ clRfiInputSum::clRfiInputSum(const char * param_gpuKernel, const char* param_nam
 
 clRfiInputSum::~clRfiInputSum()
 {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 void clRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) {
@@ -26,6 +27,7 @@ void clRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) 
                                    (cl_uint)3,
                                    sizeof(int32_t),
                                    &_M) );
+    config.update_value(unique_name, "num_bad_inputs", _num_bad_inputs);
     //Reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
@@ -51,7 +53,7 @@ void clRfiInputSum::build(device_interface &param_Device)
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = "/rfi_input_sum_callback/" + std::to_string(param_Device.getGpuID());
+    endpoint = unique_name + "/rfi_input_sum_callback/" + std::to_string(param_Device.getGpuID());
     rest_server.register_post_callback(endpoint,
             std::bind(&clRfiInputSum::rest_callback, this, _1, _2));
     //General command build

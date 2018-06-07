@@ -21,6 +21,11 @@
  *
  * @requires_kernel    rfi_chime_timesum_private.cl
  *
+ * @par REST Endpoints
+ * @endpoint    /rfi_time_sum_callback/<gpu_id> ``POST`` Update kernel parameters
+ *              requires json values      "bad_inputs"
+ *              update config             "bad_inputs"
+ *
  * @par GPU Memory
  * @gpu_mem InputBuffer         The kotekan buffer containing input data to be read by the command.
  *      @gpu_mem_type           staging
@@ -78,6 +83,8 @@ private:
     bool rebuildInputMask;
     /// The input mask array
     uint8_t * Input_Mask;
+    /// String to hold endpoint name
+    string endpoint;
 };
 
 #endif
