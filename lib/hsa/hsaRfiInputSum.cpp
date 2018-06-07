@@ -9,8 +9,8 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                        const string &unique_name,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
+    //Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
     hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
-//    hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum_private.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     //Data Parameters
@@ -27,12 +27,13 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = "/rfi_input_sum_callback/" + std::to_string(device.get_gpu_id());
+    string endpoint = unique_name + "/rfi_input_sum_callback/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiInputSum::rest_callback, this, _1, _2));
 }
 
 hsaRfiInputSum::~hsaRfiInputSum() {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) {
@@ -43,6 +44,8 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     _num_bad_inputs = json_request["num_bad_inputs"].get<int>();
     //Update relevant variables
     _M = (_num_elements - _num_bad_inputs)*_sk_step;
+    //Update Config Values
+    config.update_value(unique_name, "num_bad_inputs", _num_bad_inputs);
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }

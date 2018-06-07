@@ -17,7 +17,7 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     //RFI Config Parameters
     _sk_step = config.get_int_default(unique_name, "sk_step", 256);
-    bad_inputs = config.get_int_array(unique_name, "bad_inputs");
+    _bad_inputs = config.get_int_array(unique_name, "bad_inputs");
     //Compute Buffer lengths
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
     output_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
@@ -27,12 +27,13 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    string endpoint = "/rfi_time_sum_callback/" + std::to_string(device.get_gpu_id());
+    endpoint = unique_name + "/rfi_time_sum_callback/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiTimeSum::rest_callback, this, _1, _2));
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {
+    restServer::instance().remove_json_callback(endpoint);
     //Free allocated memory
     hsa_host_free(InputMask);
 }
@@ -42,12 +43,13 @@ void hsaRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) 
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     INFO("RFI Callbak Received... Changing Parameters")
     //Change internal parameters
-    bad_inputs.clear();
+    _bad_inputs.clear();
     for(uint32_t i = 0; i < json_request["bad_inputs"].size(); i++){
-        bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
+        _bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
     }
     //Flag for input mask rebuild
     rebuildInputMask = true;
+    config.update_value(unique_name, "bad_inputs", _bad_inputs);
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
@@ -63,7 +65,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
         uint32_t j = 0;
         for(uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
             InputMask[i] = (uint8_t)0;
-            if(bad_inputs.size() > 0 && (int32_t)i == bad_inputs[j]){
+            if(_bad_inputs.size() > 0 && (int32_t)i == _bad_inputs[j]){
                 InputMask[i] = (uint8_t)1;
                 j++;
             }

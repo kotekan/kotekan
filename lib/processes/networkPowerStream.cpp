@@ -26,7 +26,7 @@ networkPowerStream::networkPowerStream(Config& config,
 
     //PER BUFFER
     times = config.get_int(unique_name, "samples_per_data_set") /
-            config.get_int(unique_name, "integration_length");
+            config.get_int(unique_name, "power_integration_length");
     freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name, "num_elements");
 
@@ -46,7 +46,7 @@ networkPowerStream::networkPowerStream(Config& config,
     header.raw_cadence = 1 / (sample_bw / freqs);//2.56e-6;
     header.num_freqs = freqs;
     header.num_elems = elems;
-    header.samples_summed = config.get_int(unique_name, "integration_length");
+    header.samples_summed = config.get_int(unique_name, "power_integration_length");
     header.handshake_idx = -1;
     header.handshake_utc = -1;
 

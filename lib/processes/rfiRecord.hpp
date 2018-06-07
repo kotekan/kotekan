@@ -28,6 +28,12 @@
  *      @buffer_format  Array of @c floats
  *      @buffer_metadata chimeMetadata
  *
+ * @par REST Endpoints
+ * @endpoint    /rfi_record ``POST`` Updates write locaton, meteadat info, toggles writting to disk.
+ *                                   Note, calling this endpoint will start a new acquisition.
+ *              requires json values      "write_to", "write_to_disk", "frames_per_packet"
+ *              update config             "write_to", "write_to_disk", "frames_per_packet"
+ *
  * @conf   num_elements         Int . Number of elements.
  * @conf   num_local_freq       Int . Number of local freq.
  * @conf   num_total_freq       Int (default 1024). Number of total freq.
@@ -53,11 +59,17 @@ public:
     void main_thread();
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
-    //Function to create relevant directories and info files
-    void save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts);
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 private:
+    /*
+     * @brief  Creates acquisition folders and saves metadata file
+     * @param streamID    The unique id of the current stream
+     * @param firstSeqNum The first sequence number received by kotekan
+     * @param tv          Timeval of when the first packet was received
+     * @param ts          Timespec of gps time of when first packet was received
+     */
+    void save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts);
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer *rfi_buf;
     //General Config Parameters
@@ -75,20 +87,22 @@ private:
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
     /// Number of frames to average per UDP packet
-    uint32_t frames_per_packet;
+    uint32_t _frames_per_packet;
     //Process specific config parameters
     /// The total number of links processed by gpu
-    uint32_t total_links;
+    uint32_t _total_links;
     /// The current file index
     uint32_t file_num;
     /// Where to record the RFI data
-    string write_to;
+    string _write_to;
     /// Holder for time-code directory name
     char time_dir[50];
     /// Whether or not the process should write to the disk
-    bool write_to_disk;
+    bool _write_to_disk;
     /// A mutex to prevent the rest server callback from overwriting data currently in use
     std::mutex rest_callback_mutex;
+    /// String to hold endpoint name
+    string endpoint;
 };
 
 #endif
