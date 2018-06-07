@@ -20,11 +20,14 @@ visRawReader::visRawReader(Config &config,
 
     filename = config.get_string(unique_name, "filename");
 
-    chunk_size = config.get_int_array(unique_name, "chunk_size");
-    if (chunk_size.size() != 3)
-        throw std::runtime_error("Chunk size needs exactly three elements.");
-    chunk_t = chunk_size[2];
-    chunk_f = chunk_size[0];
+    time_ordered = config.get_bool_default(unique_name, "time_ordered", true);
+    if (time_ordered) {
+        chunk_size = config.get_int_array(unique_name, "chunk_size");
+        if (chunk_size.size() != 3)
+            throw std::runtime_error("Chunk size needs exactly three elements.");
+        chunk_t = chunk_size[2];
+        chunk_f = chunk_size[0];
+    }
 
     // Get the list of buffers that this process shoud connect to
     out_buf = get_buffer("out_buf");
@@ -59,13 +62,15 @@ visRawReader::visRawReader(Config &config,
     nfreq = _t["structure"]["nfreq"].get<size_t>();
     ntime = _t["structure"]["ntime"].get<size_t>();
 
-    // Special case if dimensions less than chunk size
-    chunk_f = std::min(chunk_f, nfreq);
-    chunk_t = std::min(chunk_t, ntime);
+    if (time_ordered) {
+        // Special case if dimensions less than chunk size
+        chunk_f = std::min(chunk_f, nfreq);
+        chunk_t = std::min(chunk_t, ntime);
 
-    // Number of elements in a chunked row
-    row_size = (chunk_f * chunk_t) * (nfreq / chunk_f)
-             + (nfreq % chunk_f) * chunk_t;
+        // Number of elements in a chunked row
+        row_size = (chunk_f * chunk_t) * (nfreq / chunk_f)
+                 + (nfreq % chunk_f) * chunk_t;
+    }
 
     // Check metadata is the correct size 
     if(sizeof(visMetadata) != metadata_size) {
