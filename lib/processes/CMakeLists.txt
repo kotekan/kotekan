@@ -14,6 +14,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               nDiskFileRead.cpp
               networkPowerStream.cpp
               integratePowerStream.cpp
+              monitorBuffer.cpp
               networkInputPowerStream.cpp
               pyPlotN2.cpp
               rawFileRead.cpp
