@@ -36,41 +36,41 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
                        std::bind(&basebandReadout::main_thread, this)),
+        _base_dir(config.get_string_default(unique_name, "base_dir", "./")),
+        _file_ext(config.get_string(unique_name, "file_ext")),
+        _num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
+        _num_elements(config.get_int(unique_name, "num_elements")),
+        _samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
         buf(get_buffer("in_buf")),
-        base_dir(config.get_string_default(unique_name, "base_dir", "./")),
-        file_ext(config.get_string(unique_name, "file_ext")),
-        num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
-        num_elements(config.get_int(unique_name, "num_elements")),
-        samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
         next_frame(0),
         oldest_frame(-1),
-        frame_locks(num_frames_buffer)
+        frame_locks(_num_frames_buffer)
 {
     // Get the correlator input meanings, unreordered.
     auto input_reorder = parse_reorder_default(config, unique_name);
-    inputs = std::get<1>(input_reorder);
-    auto inputs_copy = inputs;
+    _inputs = std::get<1>(input_reorder);
+    auto inputs_copy = _inputs;
     auto order_inds = std::get<0>(input_reorder);
-    for (int i = 0; i < inputs.size(); i++) {
-        inputs[order_inds[i]] = inputs_copy[i];
+    for (int i = 0; i < _inputs.size(); i++) {
+        _inputs[order_inds[i]] = inputs_copy[i];
     }
 
     // Memcopy byte alignments assume the following.
-    if (num_elements % 128) {
+    if (_num_elements % 128) {
         throw std::runtime_error("num_elements must be multiple of 128");
     }
 
     register_consumer(buf, unique_name.c_str());
 
     // Ensure input buffer is long enough.
-    if (buf->num_frames <= num_frames_buffer) {
+    if (buf->num_frames <= _num_frames_buffer) {
         // This process of creating an error string is rediculous. Figure out what
         // the std::string way to do this is.
         const int msg_len = 200;
         char msg[200];
         snprintf(msg, msg_len,
                  "Input buffer (%d frames) not large enough to buffer %d frames",
-                 buf->num_frames, num_frames_buffer);
+                 buf->num_frames, _num_frames_buffer);
         throw std::runtime_error(msg);
     }
 
@@ -203,7 +203,7 @@ void basebandReadout::write_thread() {
             char fname_base[100];
             snprintf(fname_base, sizeof(fname_base), "%08d_%04d",
                      (int) data.event_id, (int) data.freq_id);
-            std::string filename = base_dir + fname_base + file_ext;
+            std::string filename = _base_dir + fname_base + _file_ext;
             std::cout << filename << std::endl;
 
             // TODO some sort of file locking. (maybe use create_lockfile from visFile.hpp)
@@ -215,18 +215,18 @@ void basebandReadout::write_thread() {
                     HighFive::File::Truncate
                     );
 
-            size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
+            size_t ntime_chunk = TARGET_CHUNK_SIZE / _num_elements;
 
-            std::vector<size_t> cur_dims = {0, (size_t) num_elements};
-            std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) num_elements};
-            std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) num_elements};
+            std::vector<size_t> cur_dims = {0, (size_t) _num_elements};
+            std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) _num_elements};
+            std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) _num_elements};
 
             auto index_map = file.createGroup("index_map");
             index_map.createDataSet(
                     "input",
-                    HighFive::DataSpace::From(inputs),
+                    HighFive::DataSpace::From(_inputs),
                     HighFive::create_datatype<input_ctype>()
-                    ).write(inputs);
+                    ).write(_inputs);
 
 
             auto space = HighFive::DataSpace(cur_dims, max_dims);
@@ -257,16 +257,16 @@ int basebandReadout::add_replace_frame(int frame_id) {
     assert(frame_id == next_frame);
 
     // This will block if we are trying to replace a frame currenty being read out.
-    frame_locks[frame_id % num_frames_buffer].lock();
-    // Somehow in C `-1 % num_frames_buffer == -1` which makes no sence to me.
-    // So add `num_frames_buffer` to `oldest_frame`.
-    bool replace_oldest = (frame_id % num_frames_buffer
-                           == (oldest_frame + num_frames_buffer) % num_frames_buffer);
+    frame_locks[frame_id % _num_frames_buffer].lock();
+    // Somehow in C `-1 % _num_frames_buffer == -1` which makes no sence to me.
+    // So add `_num_frames_buffer` to `oldest_frame`.
+    bool replace_oldest = (frame_id % _num_frames_buffer
+                           == (oldest_frame + _num_frames_buffer) % _num_frames_buffer);
     if (replace_oldest) {
         replaced_frame = oldest_frame;
         oldest_frame++;
     }
-    frame_locks[frame_id % num_frames_buffer].unlock();
+    frame_locks[frame_id % _num_frames_buffer].unlock();
 
     next_frame++;
     return replaced_frame;
@@ -284,9 +284,9 @@ basebandDumpData basebandReadout::get_data(
     int dump_end_frame;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     float max_wait_time = 1.;
-    float min_wait_time = samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
+    float min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
 
-    if (trigger_length_fpga > samples_per_data_set * num_frames_buffer / 2) {
+    if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
         throw std::runtime_error("Baseband dump request too long");
     }
 
@@ -306,7 +306,7 @@ basebandDumpData basebandReadout::get_data(
             frame_fpga_seq = metadata->fpga_seq_num;
 
             if (trigger_end_fpga <= frame_fpga_seq) continue;
-            if (trigger_start_fpga >= frame_fpga_seq + samples_per_data_set) {
+            if (trigger_start_fpga >= frame_fpga_seq + _samples_per_data_set) {
                 dump_start_frame = frame_index + 1;
                 continue;
             }
@@ -325,11 +325,11 @@ basebandDumpData basebandReadout::get_data(
 
         // Check if the trigger is 'prescient'. That is, if any of the requested data has
         // not yet arrived.
-        int64_t last_sample_present = frame_fpga_seq + samples_per_data_set;
+        int64_t last_sample_present = frame_fpga_seq + _samples_per_data_set;
         if (last_sample_present <= trigger_start_fpga + trigger_length_fpga) {
             unlock_range(dump_start_frame, dump_end_frame);
             int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
-            time_to_wait_seq += samples_per_data_set;
+            time_to_wait_seq += _samples_per_data_set;
             float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
@@ -362,7 +362,7 @@ basebandDumpData basebandReadout::get_data(
     basebandDumpData dump(
             event_id,
             freq_id,
-            num_elements,
+            _num_elements,
             data_start_fpga,
             data_end_fpga - data_start_fpga
             );
@@ -376,24 +376,24 @@ basebandDumpData basebandReadout::get_data(
         int64_t frame_fpga_seq = metadata->fpga_seq_num;
         int64_t frame_ind_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t) 0);
         int64_t frame_ind_end = std::min(data_end_fpga - frame_fpga_seq,
-                                         (int64_t) samples_per_data_set);
+                                         (int64_t) _samples_per_data_set);
         int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
         // The following copy has 0 length unless there is a missing frame.
         nt_memset(
-                &dump.data[next_data_ind * num_elements],
+                &dump.data[next_data_ind * _num_elements],
                 0,
-                (data_ind_start - next_data_ind) * num_elements
+                (data_ind_start - next_data_ind) * _num_elements
                 );
         // Now copy in the frame data.
         nt_memcpy(
-                &dump.data[data_ind_start * num_elements],
-                &buf_data[frame_ind_start * num_elements],
-                (frame_ind_end - frame_ind_start) * num_elements
+                &dump.data[data_ind_start * _num_elements],
+                &buf_data[frame_ind_start * _num_elements],
+                (frame_ind_end - frame_ind_start) * _num_elements
                 );
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
         // Done with this frame. Allow it to participate in the ring buffer.
-        frame_locks[frame_index % num_frames_buffer].unlock();
+        frame_locks[frame_index % _num_frames_buffer].unlock();
     }
 
     unlock_range(dump_start_frame, dump_end_frame);
@@ -402,13 +402,13 @@ basebandDumpData basebandReadout::get_data(
 
 void basebandReadout::lock_range(int start_frame, int end_frame) {
     for (int frame_index = start_frame; frame_index < end_frame; frame_index++) {
-        frame_locks[frame_index % num_frames_buffer].lock();
+        frame_locks[frame_index % _num_frames_buffer].lock();
     }
 }
 
 void basebandReadout::unlock_range(int start_frame, int end_frame) {
     for (int frame_index = start_frame; frame_index < end_frame; frame_index++) {
-        frame_locks[frame_index % num_frames_buffer].unlock();
+        frame_locks[frame_index % _num_frames_buffer].unlock();
     }
 }
 
