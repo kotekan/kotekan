@@ -11,15 +11,17 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <functional>
 #include <string>
 
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
+#include <chrono>
 #include <fstream>
 #include <cmath>
-
 
 
 /** @brief parse the gethostname() return string to the IP address of the node
