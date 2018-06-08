@@ -95,6 +95,7 @@ void pulsarNetworkProcess::main_thread()
         {
             ERROR("network thread: socket() failed: ");
             raise(SIGINT);
+            return;
         }
     }
 
@@ -115,6 +116,7 @@ void pulsarNetworkProcess::main_thread()
         {
             ERROR("port binding failed");
             raise(SIGINT);
+            return;
         }
     }
   
@@ -135,6 +137,7 @@ void pulsarNetworkProcess::main_thread()
         {
             ERROR("network thread: setsockopt() failed \n");
             raise(SIGINT);
+            return;
         }
     }
 

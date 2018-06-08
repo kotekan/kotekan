@@ -118,6 +118,7 @@ void frbNetworkProcess::main_thread()
         {
             ERROR("Network Thread: socket() failed: %s", strerror(errno));
             raise(SIGINT);
+            return;
         }
     }
 
@@ -139,6 +140,7 @@ void frbNetworkProcess::main_thread()
         {
             ERROR("port binding failed");
             raise(SIGINT);
+            return;
         }
     
     }   
@@ -161,6 +163,7 @@ void frbNetworkProcess::main_thread()
         {
             ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
             raise(SIGINT);
+            return;
         }
     }
   
