@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_frbscale.yaml
+# chime_frb.yaml
 #
 # CHIME config to exercise full GPU functionality (N2 + FRB),
 # with FRB postprocessing and output.
@@ -134,7 +134,7 @@ gpu:
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 0
@@ -145,7 +145,7 @@ gpu:
       beamform_output_buf: beamform_output_buffer_0
   gpu_1:
     gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 1
@@ -156,7 +156,7 @@ gpu:
       beamform_output_buf: beamform_output_buffer_1
   gpu_2:
     gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 2
@@ -167,7 +167,7 @@ gpu:
       beamform_output_buf: beamform_output_buffer_2
   gpu_3:
     gain_dir: "../../kotekan/"
-    ew_spacing: [0,-0.1,0.1,0.2] 
+    ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
     kotekan_process: hsaProcess
     gpu_id: 3
