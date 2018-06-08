@@ -178,7 +178,7 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
         // i.e. natural packet loss.
         info["errors_total"] = rx_errors_total;
 
-        info["nic_port"] = port;
+        info["nic_port"] = this->port;
 
         vector<uint32_t> freq_bins;
         vector<float> freq_mhz;
