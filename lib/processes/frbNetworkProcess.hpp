@@ -59,9 +59,6 @@ public:
   ///parse config
   void apply_config(uint64_t fpga_seq) override;
 
-  /// parse hostname to derive the ip_address using gethosname() 
-  //void parse_host_name();
-
   /// Callback to update the beam offset
   void update_offset_callback(connectionInstance& conn, json& json_request);
 

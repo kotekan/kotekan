@@ -18,5 +18,4 @@ add_library ( kotekan_testing
               testDataGenFloat.cpp
               test_data_generation.c
               pulsarSimProcess.cpp
-              frbBufferWrite.cpp
               )
