@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Contains the handler for doing the final stage shuffle in a larger than 512 element system.
+ * - iceBoardShuffle : public iceBoardHandler
+ */
+
 #ifndef ICE_BOARD_SHUFFLE_HPP
 #define ICE_BOARD_SHUFFLE_HPP
 
@@ -9,14 +15,46 @@
 #include "gpsTime.h"
 #include "buffer.h"
 
+/**
+ * @brief DPDK Packet handler which adds a final stage shuffle for systems larger than 512 elements
+ *
+ * @par REST Endpoints
+ * @endpoint /<unique_name>/port_data ``[GET]`` Returns a large amount of stats about the port and FPGA flags
+ *
+ * @par Buffers
+ * @buffer out_bufs  Array of kotekan buffers of lenght shuffle_size
+ *       @buffer_format unit8_t array of FPGA packet contents
+ *       @buffer_metadata chimeMetadata
+ * @buffer lost_samples_buf Kotekan buffer of flags (one per time sample)
+ *       @buffer_format unit8_t array of flags
+ *       @buffer_metadata none
+ *
+ * @par Metrics
+ * @metric kotekan_dpdk_shuffle_fpga_third_stage_shuffle_errors_total
+ *         The total number of FPGA thrid stage shuffle errors seen
+ * @metric kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total
+ *         The total number of FPGA second stage shuffle errors seen
+ *
+ * @todo Some parts of the port_data endpoint could be refactored into the base classes
+ *
+ * @author Andre Renard
+ */
 class iceBoardShuffle : public iceBoardHandler {
 public:
 
+    /// Default constructor
     iceBoardShuffle(Config &config, const std::string &unique_name,
                     bufferContainer &buffer_container, int port);
 
+    /**
+     * @brief The packet processor, called each time there is a new packet
+     *
+     * @param mbuf The DPDK rte_mbuf containing the packet.
+     * @return -1 if there is a serious error requiring shutdown, 0 otherwise.
+     */
     virtual int handle_packet(struct rte_mbuf *mbuf);
 
+    /// Updates the prometheus metrics
     virtual void update_stats();
 
 protected:
@@ -34,28 +72,64 @@ protected:
      */
     bool advance_frames(uint64_t new_seq, bool first_time = false);
 
+    /**
+     * @brief Copies the given packet accounting for the last stage suffle.
+     *
+     * This means it copies the packet into 4 buffer frames, and can advance
+     * all 4 buffers.
+     *
+     * @param mbuf The rte_mbuf containing the packet
+     */
     void copy_packet_shuffle(struct rte_mbuf *mbuf);
 
+    /**
+     * @brief Processes lost samples
+     *
+     * @param lost_samples The number of lost samples to record
+     * @todo This could be make slightly more efficent, see notes in code
+     */
     void handle_lost_samples(int64_t lost_samples);
 
+    /**
+     * @brief Checks the FPGA shuffle flags in the footer.
+     *
+     * Also adds to the FPGA flag counters.
+     *
+     * @param mbuf The rte_mbuf containing the packet
+     * @return true if there are no flags set, and false if any flag is set.
+     */
     bool check_fpga_shuffle_flags(struct rte_mbuf *mbuf);
 
+    /// The size of the final full shuffle
+    /// This might be possible to change someday.
     static const uint32_t shuffle_size = 4;
+
+    /// The buffers which are filled by this port
     struct Buffer * out_bufs[shuffle_size];
+
+    /// The active frame for the buffers to fill
     uint8_t * out_buf_frame[shuffle_size];
+
+    /// The flag buffer tracking lost samples
     struct Buffer * lost_samples_buf;
+
+    /// The active lost sample frame
     uint8_t * lost_samples_frame;
+
+    /// Frame IDs
     int lost_samples_frame_id = 0;
+
+    /// Frame IDs
     int out_buf_frame_ids[shuffle_size] = {0};
 
-    // Error counter for each of the 16 lanes of the 2nd stage (within-crate) data shuffle.
+    /// Error counter for each of the 16 lanes of the 2nd stage (within-crate) data shuffle.
     uint64_t fpga_second_stage_shuffle_errors[16] = {0};
 
-    // Error counter for each of the 8 lanes of the 3rd stage (between-crate) data shuffle.
+    /// Error counter for each of the 8 lanes of the 3rd stage (between-crate) data shuffle.
     uint64_t fpga_third_stage_shuffle_errors[8] {0};
 
-    // Tracks the number of times at least one of the flags in the second or
-    // thrid stage shuffle were set.
+    /// Tracks the number of times at least one of the flags in the second or
+    /// thrid stage shuffle were set.
     uint64_t rx_shuffle_flags_set = 0;
 };
 
@@ -151,11 +225,11 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf *mbuf) {
 
     int64_t diff = iceBoardHandler::get_packet_diff();
 
-    if (unlikely(!iceBoardHandler::check_order(diff)))
-        return 0;
-
     if (unlikely(!iceBoardHandler::check_for_reset(diff)))
         return -1;
+
+    if (unlikely(!iceBoardHandler::check_order(diff)))
+        return 0;
 
     // Handle lost packets
     // Note this handles packets for all loss reasons,
