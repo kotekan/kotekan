@@ -130,7 +130,7 @@ protected:
      *
      * Should be called by every handler.
      *
-     * @param cur_mbuf
+     * @param cur_mbuf The rte_mbuf containing the packet
      * @return True if the packet doesn't have errors and false otherwise.
      */
     inline bool check_packet(struct rte_mbuf * cur_mbuf) {

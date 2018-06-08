@@ -171,7 +171,7 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
 
         info["shuffle_flags_set"] = rx_shuffle_flags_set;
 
-        info["chksum_errors"] = rx_crc_errors_total;
+        info["ip_cksum_errors"] = rx_ip_cksum_errors_total;
         info["out_of_order_errors"] = rx_out_of_order_errors_total;
 
         // This is the total number of errors from all sources other than missed packets
