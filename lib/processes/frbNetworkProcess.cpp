@@ -240,9 +240,9 @@ void frbNetworkProcess::main_thread()
              add_nsec(t0,time_interval);
       
              // discipline the monotonic clock with the fpga time stamps
-             if(t1.tv_sec*10e9 + t1.tv_nsec > t0.tv_sec*10e9 + t0.tv_nsec) add_nsec(t0,time_interval);     
-             uint64_t offset = (t0.tv_sec*10e9+t0.tv_nsec-initial_nsec) - (packet_buffer_uint64[1]-initial_fpga_count)*2560;
-             add_nsec(t0,-1*offset);    
+             //if(t1.tv_sec*10e9 + t1.tv_nsec > t0.tv_sec*10e9 + t0.tv_nsec) add_nsec(t0,time_interval);     
+             //uint64_t offset = (t0.tv_sec*10e9+t0.tv_nsec-initial_nsec) - (packet_buffer_uint64[1]-initial_fpga_count)*2560;
+             //add_nsec(t0,-1*offset);    
         }
 
         t1=t0;
