@@ -19,7 +19,7 @@ To build just the base framework:
 Cmake build options:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
-* `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` - Includes DPDK support.
+* `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` - Includes DPDK support.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries. Direct toolchain calls are used by default.
 * `-DUSE_PRECOMPILED_OPENCL=ON` - For HSA, use precompiled OpenCL .hsaco binaries.
@@ -37,11 +37,11 @@ Cmake build options:
 
 To build with HSA, DPDK and debug symbols:
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
 
 To install kotekan (only works on CentOS at the moment):
 

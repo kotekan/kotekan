@@ -31,10 +31,10 @@ void nDiskFileRead::apply_config(uint64_t fpga_seq) {
     buf = get_buffer("out_buf"); //Buffer
 
     //Data paramters
-    num_disks = config.get_int(unique_name,"num_disks"); 
+    num_disks = config.get_int(unique_name,"num_disks");
 
     //Data location parameters
-    disk_base = config.get_string(unique_name,"disk_base"); 
+    disk_base = config.get_string(unique_name,"disk_base");
     disk_set = config.get_string(unique_name,"disk_set");
     capture = config.get_string(unique_name,"capture");
     starting_index = config.get_int(unique_name,"starting_file_index");
@@ -66,50 +66,50 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
     unsigned int buf_id = disk_id;
     //Starting File index
-    unsigned int file_index = disk_id + starting_index; 
-    INFO("%s%s/%d/%s/%07d.vdif",disk_base.c_str(), disk_set.c_str(), 
+    unsigned int file_index = disk_id + starting_index;
+    INFO("%s%s/%d/%s/%07d.vdif",disk_base.c_str(), disk_set.c_str(),
                                                 disk_id,
                                                 capture.c_str(),
                                                 file_index)
     //Endless loop
-    while (!stop_thread) { 
+    while (!stop_thread) {
 
         unsigned char* buf_ptr = (unsigned char*) wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
         if (buf_ptr == NULL) break;
 
         char file_name[100]; //Find current file
-        snprintf(file_name, sizeof(file_name), "%s%s/%d/%s/%07d.vdif", 
-                                                disk_base.c_str(), 
-                                                disk_set.c_str(), 
+        snprintf(file_name, sizeof(file_name), "%s%s/%d/%s/%07d.vdif",
+                                                disk_base.c_str(),
+                                                disk_set.c_str(),
                                                 disk_id,
                                                 capture.c_str(),
                                                 file_index);
-        
+
         //Open current file for reading
-        FILE * in_file = fopen(file_name, "r"); 
+        FILE * in_file = fopen(file_name, "r");
 
         //Make Sure file is the right size
-        fseek(in_file, 0L, SEEK_END); 
+        fseek(in_file, 0L, SEEK_END);
         long sz = ftell(in_file);
         rewind(in_file);
 
         if(sz != buf->frame_size){
-            INFO("File size %ld Frame Size %d", sz, buf->frame_size);
+            ERROR("File size %ld Frame Size %d", sz, buf->frame_size);
         }
         assert(sz == buf->frame_size);
 
         //Read into buffer
-        if ((uint)buf->frame_size != fread(buf_ptr,buf->frame_size,1,in_file)){
+        if ((uint)buf->frame_size != fread(buf_ptr,1,sz,in_file)){
             ERROR("Error reading from file!");
         }
         fclose(in_file);
         INFO("%s Read Complete Marking Frame ID %d Full\n", file_name, buf_id);
-        
+
         mark_frame_full(buf, unique_name.c_str(), buf_id);
 
         //Go to next file
         buf_id = (buf_id + num_disks) % buf->num_frames;
         file_index += num_disks;
-        
+
     }
 }
