@@ -60,10 +60,10 @@ protected:
 };
 
 iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
-                    bufferContainer &buffer_container, int port) :
+                                 bufferContainer &buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
-    WARN("iceBoardHandler: %s", unique_name.c_str());
+    DEBUG("iceBoardHandler: %s", unique_name.c_str());
 
     std::vector<std::string> buffer_names = config.get_string_array(unique_name, "out_bufs");
     if (shuffle_size != buffer_names.size()) {
