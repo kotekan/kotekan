@@ -1,6 +1,6 @@
 #include "parse_host_name.hpp"
 
-void parse_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id)
+void parse_chime_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id)
 {
   int rack=0,node=0,nos=0;
   //std::stringstream temp_ip[number_of_subnets];
@@ -11,7 +11,8 @@ void parse_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id)
   if(my_host_name[0] != 'c' && my_host_name[3] != 'g')
   {
     //INFO("Not a valid name \n");
-    exit(0);
+    throw std::runtime_error("Invalid host name");
+    
   }
 
 
@@ -27,8 +28,7 @@ void parse_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id)
   }
   else
   {
-    //INFO("Not a valid name \n");
-    exit(0);
+    throw std::runtime_error("Invalid host name");
   }
 
   switch(my_host_name[2])
@@ -47,7 +47,7 @@ void parse_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id)
     case 'B': rack=11; break;
     case 'C': rack=12; break;
     case 'D': rack=13; break;
-    default: exit(0);
+    default: throw std::runtime_error("Invalid host name");
   }
 
   switch(my_host_name[4])
@@ -62,8 +62,7 @@ void parse_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id)
     case '7': node=7; break;
     case '8': node=8; break;
     case '9': node=9; break;
-    default: exit(0);
-
+    default: throw std::runtime_error("Invalid host name");
   }
 
   if(rack<7)my_node_id += rack*10+(9-node); //fix for the arrangment of nodes in the racks
@@ -92,7 +91,7 @@ void add_nsec(struct timespec &temp, long nsec)
   }
 }
 
-int parse_ip_address(const char *ip_address)
+int get_vlan_from_ip(const char *ip_address)
 {
    int len=0;
    int location = 0;

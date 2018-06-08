@@ -98,7 +98,10 @@ private:
 
   // time per buffer frame in ns
   unsigned long time_interval;
-
+  
+  // samples per packet
+  int samples_per_packet;
+  
   //Beam Configuration Mode
   bool column_mode;
 };

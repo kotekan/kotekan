@@ -46,22 +46,24 @@ std::bind(&frbNetworkProcess::main_thread, this))
 
 frbNetworkProcess::~frbNetworkProcess()
 {
+    restServer::instance().remove_json_callback("/frb/update_beam_offset");
     free(my_host_name);
 }
 
-/*
+
 void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& json_request) {
     //no need for a lock here, beam_offset copied into a local variable for use
     try {
         beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", STATUS_BAD_REQUEST);
+        conn.send_error("Couldn't parse new beam_offset parameter.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     INFO("Updating beam_offset to %i",beam_offset);
-    conn.send_empty_reply(STATUS_OK);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    config.update_value(unique_name, "beam_offset", beam_offset);
 }
-*/
+
 
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq)
@@ -74,6 +76,7 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
     beam_offset = config.get_int_default(unique_name, "beam_offset",0);
     time_interval = config.get_uint64_default(unique_name, "time_interval",125829120);
     column_mode = config.get_bool_default(unique_name, "column_mode", false);
+    samples_per_packet = config.get_int_default(unique_name, "timesamples_per_frb_packet",16);
 }
 
 
@@ -85,7 +88,7 @@ void frbNetworkProcess::main_thread()
   
     //parsing the host name
   
-    parse_host_name(rack, node, nos, my_node_id);
+    parse_chime_host_name(rack, node, nos, my_node_id);
     for(int i=0;i<number_of_subnets;i++)
     {
         temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<".1"<<node;
@@ -93,16 +96,6 @@ void frbNetworkProcess::main_thread()
         INFO("%s ",my_ip_address[i].c_str());
     }
   
-    /* 
-    //rest server
-    using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    string endpoint = "/frb/update_beam_offset";
-    rest_server->register_json_callback(endpoint,
-    std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
-  
-    */
-
     //declaring and initializing variables for the buffers
     int frame_id = 0;
     uint8_t * packet_buffer = NULL;
@@ -124,7 +117,7 @@ void frbNetworkProcess::main_thread()
         if (sock_fd[i] < 0)
         {
             ERROR("Network Thread: socket() failed: %s", strerror(errno));
-            exit(0);
+            raise(SIGINT);
         }
     }
 
@@ -145,7 +138,7 @@ void frbNetworkProcess::main_thread()
         if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) 
         {
             ERROR("port binding failed");
-            exit(0);
+            raise(SIGINT);
         }
     
     }   
@@ -157,7 +150,7 @@ void frbNetworkProcess::main_thread()
         server_address[i].sin_family = AF_INET;
         inet_pton(AF_INET, link_ip[i].c_str(), &server_address[i].sin_addr);
         server_address[i].sin_port = htons(udp_frb_port_number);
-        ip_socket[i] = parse_ip_address(link_ip[i].c_str())-6;
+        ip_socket[i] = get_vlan_from_ip(link_ip[i].c_str())-6;
     }
   
   
@@ -167,18 +160,27 @@ void frbNetworkProcess::main_thread()
         if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
         {
             ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
-            exit(0);
+            raise(SIGINT);
         }
     }
   
-
+     
+    //rest server
+    using namespace std::placeholders;
+    restServer &rest_server = restServer::instance();
+    string endpoint = "/frb/update_beam_offset";
+    rest_server.register_post_callback(endpoint,
+    std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
+  
+    //config.update_value(unique_name, "beam_offset", beam_offset);
 
     // declaring the timespec variables used mostly for the timing issues
-    struct timespec t0,t1,temp;
+    struct timespec t0,t1;
     t0.tv_sec = 0;
     t0.tv_nsec = 0; /*  nanoseconds */
 
-    unsigned long time_interval = 125829120; //time per buffer frame in ns
+    unsigned long time_interval = samples_per_packet*packets_per_stream*384*2560; //time per buffer frame in ns
+    // 384 is integration factor and 2560 fpga sampling time in ns
 
     long count=0;
   
@@ -242,11 +244,6 @@ void frbNetworkProcess::main_thread()
 
         t1=t0;
      
-        /*
-        uint16_t *packet = reinterpret_cast<uint16_t*>(packet_buffer);
-        INFO("Host name %s ip: %s node: %d sequence_id: %d beam_id %d lock_miss: %ld",my_host_name,my_ip_address[2].c_str(),my_node_id,my_sequence_id,packet[udp_frb_packet_size*4*253+12],lock_miss);
-        */
-
         int local_beam_offset = beam_offset;
         int beam_offset_upper_limit=512;
         if (local_beam_offset > beam_offset_upper_limit) 
@@ -260,7 +257,7 @@ void frbNetworkProcess::main_thread()
             local_beam_offset=0;
         }
         DEBUG("Beam offset: %i",local_beam_offset);
-        local_beam_offset=0;    
+            
         for(int frame=0; frame<packets_per_stream; frame++)
         {
             for(int stream=0; stream<256; stream++)

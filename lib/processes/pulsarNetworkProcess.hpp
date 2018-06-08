@@ -17,7 +17,7 @@ File Contents:
 #include "KotekanProcess.hpp"
 #include <string>
 #include "tx_utils.hpp"
-
+#include "restServer.hpp"
 
 /**
  * @class pulsarNetworkProcess
@@ -91,6 +91,12 @@ private:
 
   /// host name from the gethosename()
   char *my_host_name;
+  
+  /// samples per packet
+  int timesamples_per_pulsar_packet;
+
+  /// packets per stream in a buffer frame
+  int num_packet_per_stream; 
 };
  
 #endif
