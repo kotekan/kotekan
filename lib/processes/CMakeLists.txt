@@ -37,6 +37,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visRawReader.cpp
               visWriter.cpp
               restInspectFrame.cpp
+              frbNetworkProcess.cpp
+              pulsarNetworkProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
