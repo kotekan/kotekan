@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
@@ -42,10 +41,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
-endif ()
-
-if (${USE_DPDK})
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
 endif ()
 
 if (${USE_AIRSPY})
