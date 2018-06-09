@@ -196,8 +196,7 @@ void frbNetworkProcess::main_thread()
     int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
 
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-    frame_id = ( frame_id + 1 ) % in_buf->num_frames;
+    
   
   
     //waiting for atleast two frames for the buffer to fill up takes care of the random delay at the start.
@@ -225,7 +224,8 @@ void frbNetworkProcess::main_thread()
     clock_gettime(CLOCK_MONOTONIC, &t0);
     uint64_t *packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
     uint64_t initial_fpga_count = packet_buffer_uint64[1];
-    uint64_t initial_nsec= t0.tv_sec*10e9+t0.tv_nsec;
+    uint64_t initial_nsec= t0.tv_sec*1e9+t0.tv_nsec;
+     
     while(!stop_thread)
     {
     
@@ -235,14 +235,15 @@ void frbNetworkProcess::main_thread()
             packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
             if(packet_buffer==NULL)
               break;
+             packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
              clock_gettime(CLOCK_MONOTONIC, &t1);
       
              add_nsec(t0,time_interval);
       
              // discipline the monotonic clock with the fpga time stamps
-             //if(t1.tv_sec*10e9 + t1.tv_nsec > t0.tv_sec*10e9 + t0.tv_nsec) add_nsec(t0,time_interval);     
-             //uint64_t offset = (t0.tv_sec*10e9+t0.tv_nsec-initial_nsec) - (packet_buffer_uint64[1]-initial_fpga_count)*2560;
-             //add_nsec(t0,-1*offset);    
+             uint64_t offset = (t0.tv_sec*1e9+t0.tv_nsec-initial_nsec) - (packet_buffer_uint64[1]-initial_fpga_count)*2560;
+             if(offset!=0) WARN("OFFSET in not zero ");
+             add_nsec(t0,-1*offset);    
         }
 
         t1=t0;
