@@ -94,11 +94,11 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters
     kernelParams params;
-    params.workgroup_size_x = 64; //_num_elements/4;
+    params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
-    params.grid_size_x = 64; //_num_elements/4;
-    params.grid_size_y = 1; //_num_local_freq;
+    params.grid_size_x = _num_elements/4;
+    params.grid_size_y = _num_local_freq;
     params.grid_size_z = _samples_per_data_set/_sk_step;
     params.num_dims = 3;
     //Execute kernel
