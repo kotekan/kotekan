@@ -51,8 +51,6 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     //Lock callback mutex
     rest_callback_mutex.lock();
     //Update parameters
-    _frames_per_packet = json_request["frames_per_packet"].get<int>();
-    WARN("frames_per_packet: %d",_frames_per_packet)
     _write_to = json_request["write_to"].get<string>();
     WARN("write_to %s",_write_to.c_str())
     _write_to_disk = json_request["write_to_disk"].get<bool>();
@@ -61,9 +59,8 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     file_num = 0;
 //    file_num = 2048*(int)((file_num + 2048)/2048);
     //Update Config Values
-    config.update_value("", "frames_per_packet", _frames_per_packet);
-    config.update_value("/rfi_record", "write_to", _write_to);
-    config.update_value("/rfi_record", "write_to_disk", _write_to_disk);
+    config.update_value(unique_name, "write_to", _write_to);
+    config.update_value(unique_name, "write_to_disk", _write_to_disk);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
@@ -79,7 +76,6 @@ void rfiRecord::apply_config(uint64_t fpga_seq) {
     //RFI config parameters
     _sk_step = config.get_int_default(unique_name, "sk_step",256);
     _rfi_combined = config.get_bool_default(unique_name,"rfi_combined", true);
-    _frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
     //Process specific parameters
     _total_links = config.get_int_default(unique_name, "total_links",1);
     _write_to = config.get_string(unique_name, "write_to");
@@ -120,7 +116,6 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     fprintf(info_file, "samples_per_data_set=%d\n", _samples_per_data_set);
     fprintf(info_file, "sk_step=%d\n", _sk_step);
     fprintf(info_file, "rfi_combined=%d\n", _rfi_combined);
-    fprintf(info_file, "frames_per_packet=%d\n", _frames_per_packet);
     fprintf(info_file, "total_links=%d\n", _total_links);
     //Close Info file
     fclose(info_file);

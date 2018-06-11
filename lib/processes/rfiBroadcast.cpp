@@ -49,7 +49,7 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
     rest_callback_mutex.lock();
     //Adjust parameters
     _frames_per_packet = json_request["frames_per_packet"].get<int>();
-    config.update_value("", "frames_per_packet", _frames_per_packet);
+    config.update_value(unique_name, "frames_per_packet", _frames_per_packet);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
