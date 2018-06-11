@@ -1,3 +1,9 @@
+import glob
+
+
+import numpy as np
+import h5py
+
 import kotekan_runner
 
 
@@ -51,10 +57,14 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
 
     test.run()
 
+    dump_files = glob.glob(str(tmpdir) + '/*.h5')
+    return dump_files
+
 
 def test_basic(tmpdir_factory):
 
     params = {'rest_mode': 'step'}
+
     rest_commands = [
             command_rest_frames(1),
             command_trigger(5000, 3000),
@@ -62,4 +72,12 @@ def test_basic(tmpdir_factory):
             command_trigger(200000, 7000),
             command_rest_frames(60),
             ]
-    run_baseband(tmpdir_factory, params, rest_commands)
+    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
+
+    num_elements = default_params['num_elements']
+    for ii, f in enumerate(sorted(dump_files)):
+        f = h5py.File(f, 'r')
+        print dict(f.attrs)
+        assert f['baseband'].shape == (rest_commands[1 + ii][2]['length'], num_elements)
+        assert np.all(f['index_map/input'][:]['chan_id']
+                      == np.arange(num_elements))

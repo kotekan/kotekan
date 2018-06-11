@@ -49,7 +49,9 @@ class basebandDumpData {
             uint32_t freq_id_,
             uint32_t num_elements_,
             int64_t data_start_fpga_,
-            int64_t data_length_fpga_);
+            int64_t data_length_fpga_,
+            timespec data_start_ctime_
+            );
     ~basebandDumpData();
 
     // Metadata.
@@ -58,6 +60,7 @@ class basebandDumpData {
     const uint32_t num_elements;
     const int64_t data_start_fpga;
     const int64_t data_length_fpga;
+    const timespec data_start_ctime;
 private:
     // Keeps track of references to the underlying data array.
     const std::shared_ptr<uint8_t> data_ref;
@@ -114,8 +117,10 @@ private:
     std::mutex manager_lock;
     std::queue<std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>>> write_q;
 
-    void write_thread();
     void listen_thread(const uint32_t freq_id);
+    void write_thread();
+    void write_dump(basebandDumpData data,
+            std::shared_ptr<BasebandDumpStatus> dump_status);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
@@ -125,7 +130,5 @@ private:
             int64_t trigger_length_fpga
             );
 };
-
-
 
 #endif

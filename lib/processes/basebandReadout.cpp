@@ -8,11 +8,13 @@
 #include "basebandReadout.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "version.h"
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
 #include "nt_memcpy.h"
 #include "nt_memset.h"
+#include "visUtil.hpp"
 #include "visFile.hpp"
 
 
@@ -155,7 +157,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                     );
 
             // At this point we know how much of the requested data we managed to read from the
-            // buffer (which may be nothing if the request as recieved too late). Do we need to
+            // buffer (which may be nothing if the request as recieved too late). XXX Do we need to
             // report this?
             dump_status->bytes_remaining = data.num_elements * data.data_length_fpga;
             if (data.data_length_fpga == 0) {
@@ -193,55 +195,14 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 void basebandReadout::write_thread() {
     while (!stop_thread) {
         if (write_q.empty()) {
-            sleep(1);
+            usleep(1e5);
         } else {
             auto dump_tup = write_q.front();
 
             auto dump_status = std::get<1>(dump_tup);
             auto data = std::get<0>(dump_tup);
 
-            char fname_base[100];
-            snprintf(fname_base, sizeof(fname_base), "%08d_%04d",
-                     (int) data.event_id, (int) data.freq_id);
-            std::string filename = _base_dir + fname_base + _file_ext;
-            std::cout << filename << std::endl;
-
-            // TODO some sort of file locking. (maybe use create_lockfile from visFile.hpp)
-
-            auto file = HighFive::File(
-                    filename,
-                    HighFive::File::ReadWrite |
-                    HighFive::File::Create |
-                    HighFive::File::Truncate
-                    );
-
-            size_t ntime_chunk = TARGET_CHUNK_SIZE / _num_elements;
-
-            std::vector<size_t> cur_dims = {0, (size_t) _num_elements};
-            std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) _num_elements};
-            std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) _num_elements};
-
-            auto index_map = file.createGroup("index_map");
-            index_map.createDataSet(
-                    "input",
-                    HighFive::DataSpace::From(_inputs),
-                    HighFive::create_datatype<input_ctype>()
-                    ).write(_inputs);
-
-
-            auto space = HighFive::DataSpace(cur_dims, max_dims);
-            //HighFive::DataSetCreateProps props;
-            //props.add(HighFive::Chunking(chunk_dims));
-            auto dataset = file.createDataSet(
-                    "baseband",
-                    space,
-                    HighFive::create_datatype<uint8_t>(),
-                    chunk_dims
-                    );
-
-            std::vector<std::string> axes = {"fpga_count", "input"};
-            dataset.createAttribute<std::string>(
-                    "axis", HighFive::DataSpace::From(axes)).write(axes);
+            write_dump(data, dump_status);
 
             //process_request(dump_status, data);
             // pop at the end such that memory for `data` is released before queue slot
@@ -344,7 +305,7 @@ basebandDumpData basebandReadout::get_data(
 
     if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
-        return basebandDumpData(event_id, 0, 0, 0, 0);
+        return basebandDumpData(event_id, 0, 0, 0, 0, {0, 0});
     }
 
     int buf_frame = dump_start_frame % buf->num_frames;
@@ -359,12 +320,19 @@ basebandDumpData basebandReadout::get_data(
     // currently waits for it. Could be made to be more robust.
     int64_t data_end_fpga = trigger_end_fpga;
 
+    timeval tmp, delta;
+    delta.tv_sec = 0;
+    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * FPGA_PERIOD_NS / 1000;
+    timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
+    timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
+
     basebandDumpData dump(
             event_id,
             freq_id,
             _num_elements,
             data_start_fpga,
-            data_end_fpga - data_start_fpga
+            data_end_fpga - data_start_fpga,
+            packet_time0
             );
 
     // Fill in the data.
@@ -412,6 +380,118 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
     }
 }
 
+void basebandReadout::write_dump(basebandDumpData data,
+        std::shared_ptr<BasebandDumpStatus> dump_status) {
+
+    // TODO Create parent directories.
+    char fname_base[100];
+    snprintf(fname_base, sizeof(fname_base), "%08d_%04d",
+             (int) data.event_id, (int) data.freq_id);
+    std::string filename = _base_dir + fname_base + _file_ext;
+    std::cout << filename << std::endl;
+
+    // TODO some sort of file locking. (maybe use create_lockfile from visFile.hpp)
+
+    auto file = HighFive::File(
+            filename,
+            HighFive::File::ReadWrite |
+            HighFive::File::Create |
+            HighFive::File::Truncate
+            );
+
+    std::string version = "NT_3.1.0";
+    file.createAttribute<std::string>(
+            "archive_version", HighFive::DataSpace::From(version)).write(version);
+
+    std::string git_version = GIT_COMMIT_HASH;
+    file.createAttribute<std::string>(
+            "git_version_tag", HighFive::DataSpace::From(git_version)
+            ).write(git_version);
+
+    char temp[256];
+    std::string username = (getlogin_r(temp, 256) == 0) ? temp : "unknown";
+    file.createAttribute<std::string>(
+            "system_user", HighFive::DataSpace::From(username)).write(username);
+
+    gethostname(temp, 256);
+    std::string hostname = temp;
+    file.createAttribute<std::string>(
+            "collection_server", HighFive::DataSpace::From(hostname)).write(hostname);
+
+    file.createAttribute<uint64_t>(
+            "event_id", HighFive::DataSpace::From(data.event_id)).write(data.event_id);
+
+    file.createAttribute<uint32_t>(
+            "freq_id", HighFive::DataSpace::From(data.freq_id)).write(data.freq_id);
+
+    double freq = freq_from_bin(data.freq_id);
+    file.createAttribute<double>(
+            "freq", HighFive::DataSpace::From(freq)).write(freq);
+
+    file.createAttribute<uint64_t>(
+            "time0_fpga_count", HighFive::DataSpace::From(data.data_start_fpga)
+            ).write(data.data_start_fpga);
+
+    double ptime = ts_to_double(data.data_start_ctime);
+    file.createAttribute<double>(
+            "first_packet_recv_time",
+            HighFive::DataSpace::From(ptime)
+            ).write(ptime);
+
+    timespec time0;
+    std::string time0_type;
+    if (is_gps_global_time_set()) {
+        time0 = compute_gps_time(data.data_start_fpga);
+        time0_type = "GPS";
+    } else {
+        time0 = data.data_start_ctime;
+        time0_type = "PACKET_RECV";
+    }
+    double ftime0 = ts_to_double(time0);
+    double ftime0_offset = (time0.tv_nsec - fmod(ftime0, 1.) * 1e9) / 1e9;
+    file.createAttribute<double>(
+            "time0_ctime",
+            HighFive::DataSpace::From(ftime0)
+            ).write(ftime0);
+    file.createAttribute<double>(
+            "time0_ctime_offset",
+            HighFive::DataSpace::From(ftime0_offset)
+            ).write(ftime0_offset);
+    file.createAttribute<std::string>(
+            "type_time0_ctime", HighFive::DataSpace::From(time0_type)
+            ).write(time0_type);
+    double delta_t = (double) FPGA_PERIOD_NS / 1e9;
+    file.createAttribute<double>(
+            "delta_time", HighFive::DataSpace::From(delta_t)
+            ).write(delta_t);
+
+    size_t ntime_chunk = TARGET_CHUNK_SIZE / _num_elements;
+
+    std::vector<size_t> cur_dims = {0, (size_t) _num_elements};
+    std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) _num_elements};
+    std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) _num_elements};
+
+    auto index_map = file.createGroup("index_map");
+    index_map.createDataSet(
+            "input",
+            HighFive::DataSpace::From(_inputs),
+            HighFive::create_datatype<input_ctype>()
+            ).write(_inputs);
+
+    auto space = HighFive::DataSpace(cur_dims, max_dims);
+    //HighFive::DataSetCreateProps props;
+    //props.add(HighFive::Chunking(chunk_dims));
+    auto dataset = file.createDataSet(
+            "baseband",
+            space,
+            HighFive::create_datatype<uint8_t>(),
+            chunk_dims
+            );
+
+    std::vector<std::string> axes = {"time", "input"};
+    dataset.createAttribute<std::string>(
+            "axis", HighFive::DataSpace::From(axes)).write(axes);
+}
 
 
 /* Helper for basebandDumpData constructor.
@@ -434,13 +514,15 @@ basebandDumpData::basebandDumpData(
         uint32_t freq_id_,
         uint32_t num_elements_,
         int64_t data_start_fpga_,
-        int64_t data_length_fpga_
+        int64_t data_length_fpga_,
+        timespec data_start_ctime_
         ) :
         event_id(event_id_),
         freq_id(freq_id_),
         num_elements(num_elements_),
         data_start_fpga(data_start_fpga_),
         data_length_fpga(data_length_fpga_),
+        data_start_ctime(data_start_ctime_),
         // Over allocate so we can align the memory.
         data_ref(new uint8_t[num_elements_ * data_length_fpga_ + 15]),
         data(span_from_length_aligned(data_ref.get(), num_elements_ * data_length_fpga_))
@@ -449,3 +531,5 @@ basebandDumpData::basebandDumpData(
 
 basebandDumpData::~basebandDumpData() {
 }
+
+
