@@ -49,7 +49,7 @@ void hsaRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) 
     }
     //Flag for input mask rebuild
     rebuildInputMask = true;
-    config.update_value(unique_name, "bad_inputs", _bad_inputs);
+    config.update_value("", "bad_inputs", _bad_inputs);
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }

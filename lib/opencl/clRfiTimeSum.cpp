@@ -24,7 +24,7 @@ void clRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) {
     }
     //Flag for rebuilding of Input Mask buffer
     rebuildInputMask = true;
-    config.update_value(unique_name, "bad_inputs", _bad_inputs);
+    config.update_value("", "bad_inputs", _bad_inputs);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
