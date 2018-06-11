@@ -62,8 +62,8 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     file_num = 2048*(int)((file_num + 2048)/2048);
     //Update Config Values
     config.update_value("", "frames_per_packet", _frames_per_packet);
-    config.update_value(unique_name, "write_to", _write_to);
-    config.update_value(unique_name, "write_to_disk", _write_to_disk);
+    config.update_value("/rfi_record", "write_to", _write_to);
+    config.update_value("/rfi_record", "write_to_disk", _write_to_disk);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
