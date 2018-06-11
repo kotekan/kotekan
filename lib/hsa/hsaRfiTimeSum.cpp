@@ -98,9 +98,13 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
     params.grid_size_x = _num_elements/4;
-    params.grid_size_y = _num_local_freq;
-    params.grid_size_z = _samples_per_data_set/_sk_step;
-    params.num_dims = 3;
+    params.grid_size_y = _samples_per_data_set/_sk_step;
+    params.grid_size_z = 1;
+    params.num_dims = 2;
+    // Should this be zero?
+    params.private_segment_size = 0;
+    params.group_segment_size = 0;
+
     //Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
     //return signal
