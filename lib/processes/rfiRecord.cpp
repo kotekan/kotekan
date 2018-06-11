@@ -58,8 +58,8 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     _write_to_disk = json_request["write_to_disk"].get<bool>();
     WARN("write_to_disk: %d",_write_to_disk)
     //This will trigger main process to update directories
-//    file_num = 0;
-    file_num = 2048*(int)((file_num + 2048)/2048);
+    file_num = 0;
+//    file_num = 2048*(int)((file_num + 2048)/2048);
     //Update Config Values
     config.update_value("", "frames_per_packet", _frames_per_packet);
     config.update_value("/rfi_record", "write_to", _write_to);
