@@ -19,10 +19,8 @@ rfi_chime_timesum(
     //Get work id's
     short gx = get_global_id(0);
     short gy = get_global_id(1);
-    short gz = get_global_id(2);
     short gx_size = get_global_size(0); //num_elements/4
     short gy_size = get_global_size(1); //num_local_freq
-    short gz_size = get_global_size(2); //samples_per_dataset/sk_step
     //Declare Local Memory
     uint4 power_across_time;
     uint4 sq_power_across_time;
@@ -30,16 +28,16 @@ rfi_chime_timesum(
     power_across_time = (uint4)(0u,0u,0u,0u);
     sq_power_across_time = (uint4)(0u,0u,0u,0u);
     //Compute current address in data
-    uint address = gx + gy*gx_size + gz*gx_size*gy_size*sk_step;
+    uint address = gx + gy*gx_size*sk_step;
     //Compute current element
-    uint current_element = (4*gx + gy*4*gx_size)%num_elements;
+    uint current_element = (4*gx)%num_elements;
     uint data; 
     uint4 temp;
     uint4 power;
     //Sum across time
     for(int i = 0; i < sk_step; i++){
         //Read input data
-        data = input[address + i*gx_size*gy_size];
+        data = input[address + i*gx_size];
         //Compute power
         temp.s0 = ((data & 0x000000f0) << 12u) | ((data & 0x0000000f) >>   0u);
         temp.s1 = ((data & 0x0000f000) <<  4u) | ((data & 0x00000f00) >>   8u);
@@ -54,7 +52,7 @@ rfi_chime_timesum(
     float4 mean = convert_float4(power_across_time)/sk_step + (float4)0.00000001;
     float4 tmp = convert_float4(sq_power_across_time)/(mean*mean);
     //Compute address in output data and add sum to output array
-    address = 4*gx + gy*4*gx_size + gz*4*gx_size*gy_size;
+    address = 4*gx + gy*4*gx_size;
     output[0 + address] = (1-InputMask[0 + current_element])*tmp.s0;
     output[1 + address] = (1-InputMask[1 + current_element])*tmp.s1;
     output[2 + address] = (1-InputMask[2 + current_element])*tmp.s2;
