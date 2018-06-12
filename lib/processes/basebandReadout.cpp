@@ -15,7 +15,7 @@
 #include "nt_memcpy.h"
 #include "nt_memset.h"
 #include "visUtil.hpp"
-#include "visFile.hpp"
+#include "visFileH5.hpp"
 
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
