@@ -73,6 +73,7 @@ def test_basic(tmpdir_factory):
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
+    trigger_starts = [rest_commands[i][2]['start'] for i in range(1, 4)]
 
     num_elements = default_params['num_elements']
     for ii, f in enumerate(sorted(dump_files)):
@@ -86,3 +87,4 @@ def test_basic(tmpdir_factory):
         edata = edata[:, None] + np.arange(shape[1], dtype=int)
         edata = edata % 256
         assert np.all(f['baseband'][:] == edata)
+        assert f['time0_fpga_count'] in trigger_starts
