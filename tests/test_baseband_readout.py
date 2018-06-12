@@ -81,3 +81,4 @@ def test_basic(tmpdir_factory):
         assert f['baseband'].shape == (rest_commands[1 + ii][2]['length'], num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
+        assert np.all(f['baseband'][:] == default_params['value'])
