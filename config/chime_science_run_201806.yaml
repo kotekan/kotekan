@@ -80,7 +80,7 @@ main_pool:
 
 # Buffers
 network_buffers:
-  num_frames: buffer_depth
+  num_frames: 2 * buffer_depth
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
   network_buffer_0:
@@ -209,7 +209,7 @@ gpu_rfi_output_buffers:
 
 lost_samples_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: 2 * buffer_depth
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
@@ -255,6 +255,16 @@ zero_samples:
     zero_3:
         kotekan_process: zeroSamples
         out_buf: network_buffer_3
+
+monitor:
+    kotekan_process: monitorBuffer
+    bufs:
+      - network_buffer_0
+      - network_buffer_1
+      - network_buffer_2
+      - network_buffer_3
+    timeout: 5
+    fill_threshold: 0.8
 
 gpu:
   kernel_path: "/root/andre/science_run/ch_gpu/build/lib/hsa/kernels/"
@@ -489,10 +499,6 @@ frb:
       - 10.7.207.18
       - 10.6.207.19
       - 10.7.207.19
-      - 10.8.210.14
-      - 10.9.210.14
-      - 10.8.210.15
-      - 10.9.210.15
       - 10.6.211.10
       - 10.7.211.10
       - 10.6.211.11
