@@ -63,6 +63,9 @@ class KotekanRunner(object):
                 # Wait a moment for rest servers to start up.
                 time.sleep(0.5)
                 for rtype, endpoint, data in self._rest_commands:
+                    if rtype == 'wait':
+                        time.sleep(endpoint)
+                        continue
                     command = getattr(requests, rtype)
                     command(rest_addr + endpoint,
                             headers=rest_header,

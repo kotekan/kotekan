@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cstdint>
+#include <chrono>
 
 #include "basebandReadout.hpp"
 #include "buffer.h"
@@ -21,6 +22,7 @@
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 
+
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
@@ -30,6 +32,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         _num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
         _num_elements(config.get_int(unique_name, "num_elements")),
         _samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
+        _write_throttle(config.get_float_default(unique_name, "write_throttle", 0.)),
         buf(get_buffer("in_buf")),
         next_frame(0),
         oldest_frame(-1),
@@ -126,28 +129,29 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
         if (dump_status) {
             //std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
-            INFO("Received baseband dump request for %d samples starting at %d.",
-                 dump_status->request.length_fpga, dump_status->request.start_fpga);
+            INFO("Received baseband dump request for event %d: %d samples starting at count %d.",
+                 event_id, dump_status->request.length_fpga, dump_status->request.start_fpga);
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
-            // out is done by a new thread. This keeps the number of threads that can lock out
+            // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
             basebandDumpData data = get_data(
                     event_id,    // TODO need this from the request.
                     dump_status->request.start_fpga,
                     dump_status->request.length_fpga
                     );
+            event_id++; // XXX fake.
 
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late). XXX Do we need to
             // report this?
             dump_status->bytes_remaining = data.num_elements * data.data_length_fpga;
             if (data.data_length_fpga == 0) {
-                INFO("Captured no data for event %d and freq ID %d.",
+                INFO("Captured no data for event %d and freq %d.",
                         data.event_id, data.freq_id);
-                // continue;
+                continue;
             } else {
-                INFO("Captured %d samples for event %d and freq ID %d.",
+                INFO("Captured %d samples for event %d and freq %d.",
                      data.data_length_fpga,
                      data.event_id,
                      data.freq_id
@@ -160,14 +164,12 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             const int max_writes_queued = 3;
             while (!stop_thread) {
                 if (write_q.size() < max_writes_queued) {
-                    write_q.push(std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>>(data,
-                                 dump_status));
+                    write_q.push(dump_data_status(data, dump_status));
                     break;
                 } else {
-                    sleep(1);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
             }
-            event_id++; // XXX fake.
         }
     }
 }
@@ -175,7 +177,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 void basebandReadout::write_thread() {
     while (!stop_thread) {
         if (write_q.empty()) {
-            usleep(1e5);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         } else {
             auto dump_tup = write_q.front();
 
@@ -228,7 +230,8 @@ basebandDumpData basebandReadout::get_data(
     float min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
-        throw std::runtime_error("Baseband dump request too long");
+        // Too long, I won't allow it.
+        return basebandDumpData();
     }
 
     while (!stop_thread) {
@@ -259,22 +262,25 @@ basebandDumpData basebandReadout::get_data(
         // not yet arrived.
         int64_t last_sample_present = frame_fpga_seq + _samples_per_data_set;
         if (last_sample_present <= trigger_start_fpga + trigger_length_fpga) {
-            unlock_range(dump_start_frame, dump_end_frame);
             int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
             time_to_wait_seq += _samples_per_data_set;
-            float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
+            float wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
-            usleep(wait_time * 1e6);
+            std::this_thread::sleep_for(std::chrono::nanoseconds((int) wait_time));
         } else {
             // We have the data we need, break from the loop and copy it out.
             break;
         }
+        unlock_range(dump_start_frame, dump_end_frame);
+    }
+    if (stop_thread) {
+        return basebandDumpData();
     }
 
     if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
-        return basebandDumpData(event_id, 0, 0, 0, 0, {0, 0});
+        return basebandDumpData();
     }
 
     int buf_frame = dump_start_frame % buf->num_frames;
@@ -332,8 +338,9 @@ basebandDumpData basebandReadout::get_data(
         // Done with this frame. Allow it to participate in the ring buffer.
         frame_locks[frame_index % _num_frames_buffer].unlock();
     }
-
     unlock_range(dump_start_frame, dump_end_frame);
+
+    if (stop_thread) return basebandDumpData();
     return dump;
 }
 
@@ -464,7 +471,6 @@ void basebandReadout::write_dump(basebandDumpData data,
     dump_status->bytes_remaining = data.data_length_fpga * num_elements;
     size_t ii_samp = 0;
     while (!stop_thread) {
-
         size_t to_write = std::min((size_t) data.data_length_fpga - ii_samp, ntime_chunk);
         dataset.resize({ii_samp + to_write, num_elements});
         dataset.select(
@@ -476,13 +482,16 @@ void basebandReadout::write_dump(basebandDumpData data,
         dump_status->bytes_remaining -= to_write * num_elements;
         ii_samp += ntime_chunk;
         if (ii_samp > data.data_length_fpga) break;
+        // Add intentional throttling.
+        float stime = _write_throttle * to_write * FPGA_PERIOD_NS;
+        std::this_thread::sleep_for(std::chrono::nanoseconds((int) stime));
     }
     std::remove(lock_filename.c_str());
 
     if (ii_samp > data.data_length_fpga) {
-        INFO("Baseband dump complete");
+        INFO("Baseband dump for event %d, freq %d complete.", data.event_id, data.freq_id);
     } else {
-        INFO("Baseband dump incomplete");
+        INFO("Baseband dump for event %d, freq %d incomplete.", data.event_id, data.freq_id);
     }
     // H5 file goes out of scope and is closed automatically.
 }
@@ -523,7 +532,8 @@ basebandDumpData::basebandDumpData(
 {
 }
 
-basebandDumpData::~basebandDumpData() {
-}
+basebandDumpData::basebandDumpData() : basebandDumpData(0, 0, 0, 0, 0, {0, 0}) {}
+
+basebandDumpData::~basebandDumpData() {}
 
 

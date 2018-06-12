@@ -42,6 +42,7 @@
  */
 class basebandDumpData {
     public:
+    basebandDumpData();
     // Initializes the container with all parameters, and allocates memory for
     // data but does not fill in the data.
     basebandDumpData(
@@ -71,6 +72,9 @@ public:
 };
 
 
+typedef std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>> dump_data_status;
+
+
 /**
  * @class basebandReadout
  * @brief Buffer baseband data and record it to disk upon request.
@@ -92,6 +96,8 @@ public:
  * @conf  base_dir              String. Directory for writing triggered dumps.
  * @conf  file_ext              String. File extension for triggered dumps
  *                              (including the '.').
+ * @conf  write_throttle        Float, default 0. Add sleep time while writing dumps
+ *                              equal to this factor times real time.
  *
  * @author Kiyoshi Masui, Davor Cubranic
  */
@@ -109,13 +115,14 @@ private:
     int _num_frames_buffer;
     int _num_elements;
     int _samples_per_data_set;
+    double _write_throttle;
     std::vector<input_ctype> _inputs;
 
     struct Buffer * buf;
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
-    std::queue<std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>>> write_q;
+    std::queue<dump_data_status> write_q;
 
     void listen_thread(const uint32_t freq_id);
     void write_thread();
