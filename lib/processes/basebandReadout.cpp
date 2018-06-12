@@ -21,19 +21,6 @@
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 
-/// Worker task that mocks the progress of a baseband dump
-// TODO: implement
-static void process_request(const std::shared_ptr<BasebandDumpStatus> dump, basebandDumpData data) {
-    std::cout << "Started processing " << dump << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(10));
-    dump->bytes_remaining -= 51;
-    std::cout << "Half way processing " << dump << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(10));
-    dump->bytes_remaining = 0;
-    std::cout << "Finished processing " << dump << std::endl;
-}
-
-
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
@@ -465,11 +452,12 @@ void basebandReadout::write_dump(basebandDumpData data,
             "delta_time", HighFive::DataSpace::From(delta_t)
             ).write(delta_t);
 
-    size_t ntime_chunk = TARGET_CHUNK_SIZE / _num_elements;
+    size_t num_elements = data.num_elements;
+    size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
 
-    std::vector<size_t> cur_dims = {0, (size_t) _num_elements};
-    std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) _num_elements};
-    std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) _num_elements};
+    std::vector<size_t> cur_dims = {0, (size_t) num_elements};
+    std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) num_elements};
+    std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) num_elements};
 
     auto index_map = file.createGroup("index_map");
     index_map.createDataSet(
@@ -491,6 +479,26 @@ void basebandReadout::write_dump(basebandDumpData data,
     std::vector<std::string> axes = {"time", "input"};
     dataset.createAttribute<std::string>(
             "axis", HighFive::DataSpace::From(axes)).write(axes);
+
+    dump_status->bytes_remaining = data.data_length_fpga * num_elements;
+    size_t ii_samp = 0;
+    while (!stop_thread) {
+
+        size_t to_write = std::min((size_t) data.data_length_fpga - ii_samp, ntime_chunk);
+        dataset.resize({ii_samp + to_write, num_elements});
+        dataset.select(
+                {ii_samp, 0, 0},
+                {to_write, num_elements}
+                ).write((uint8_t **) &(data.data[ii_samp * num_elements]));
+        file.flush();
+
+        dump_status->bytes_remaining -= to_write * num_elements;
+        ii_samp += ntime_chunk;
+        if (ii_samp > data.data_length_fpga) break;
+    }
+
+    // File goes out of scope and is closed automatically.
+    // XXX delete lockfile.
 }
 
 
