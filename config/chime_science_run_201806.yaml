@@ -257,7 +257,7 @@ zero_samples:
         out_buf: network_buffer_3
 
 gpu:
-  kernel_path: "../lib/hsa/kernels/"
+  kernel_path: "/root/andre/science_run/ch_gpu/build/lib/hsa/kernels/"
   commands:
   - name: hsaInputData
   - name: hsaPresumZero
@@ -789,8 +789,8 @@ rfi_broadcast:
   log_level: WARN
   total_links: 1
   destination_protocol: UDP
-  destination_ip: 10.1.113.19
-#  destination_ip: 10.1.13.1
+#  destination_ip: 10.1.113.19
+  destination_ip: 10.1.13.1
 #  destination_ip: 127.0.0.1
   gpu_0:
     kotekan_process: rfiBroadcast
