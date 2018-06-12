@@ -30,7 +30,7 @@
  *     @buffer_metadata none
  *
  * @conf   samples_per_data_set   Int. Number of time samples to sum.
- * @conf   integration_length     Int. Number of time samples to sum.
+ * @conf   power_integration_length     Int. Number of time samples to sum.
  * @conf   num_freq               Int. Number of time samples to sum.
  * @conf   num_elements           Int. Number of time samples to sum.
  * @conf   freq0                  Float (default 1420.0).

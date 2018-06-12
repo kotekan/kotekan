@@ -439,6 +439,11 @@ int main(int argc, char ** argv) {
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
+    rest_server.register_get_callback("/kill", [&](connectionInstance &conn) {
+        raise(SIGINT);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
+    });
+
     rest_server.register_get_callback("/status", [&](connectionInstance &conn){
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         json reply;

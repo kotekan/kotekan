@@ -14,6 +14,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               nDiskFileRead.cpp
               networkPowerStream.cpp
               integratePowerStream.cpp
+              monitorBuffer.cpp
               networkInputPowerStream.cpp
               pyPlotN2.cpp
               rawFileRead.cpp
@@ -22,8 +23,9 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
               rfiVDIF.cpp
-              rfiBroadcastVDIF.cpp
+              rfiAVXVDIF.cpp
               rfiBroadcast.cpp
+              rfiRecord.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
@@ -33,6 +35,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               visProcess.cpp
               timeDownsample.cpp
+              visRawReader.cpp
+              visWriter.cpp
               restInspectFrame.cpp
               )
 
@@ -52,14 +56,11 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
-# This is temporarily disabled because it requires a newer version of hdf5
-# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp basebandReadout.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
+  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp)
 endif ()
 
 if (${USE_LAPACK})
