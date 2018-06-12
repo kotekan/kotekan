@@ -17,8 +17,8 @@
  * @buffer network_out_buf Buffer to fill
  *         @buffer_format any format
  *         @buffer_metadata chimeMetadata
- * @conf  type                  String. "const", "random", or "ramp"
- * @conf  value                 Int.
+ * @conf  type                  String. "const", "random", "ramp", or "tpluse".
+ * @conf  value                 Int. Required for type "const" and "ramp".
  * @conf  wait                  Bool, default True. Produce data a set cadence.
  *                              Otherwise just as fast as possible.
  * @conf  samples_per_data_set  Int. How often to produce data.

@@ -13,7 +13,7 @@ default_params = {
     'stream_id': 0,
     'buffer_depth': 20,
     'num_frames_buffer': 18,
-    'type': 'const',
+    'type': 'tpluse',
     'value': 153,
     'file_ext': '.h5',
     'samples_per_data_set': 4096,
@@ -67,9 +67,9 @@ def test_basic(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            command_trigger(5000, 3000),
-            command_trigger(15000, 11000),
-            command_trigger(200000, 7000),
+            command_trigger(5437, 3839),
+            command_trigger(159457, 11237),
+            command_trigger(201039, 7091),
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
@@ -78,7 +78,11 @@ def test_basic(tmpdir_factory):
     for ii, f in enumerate(sorted(dump_files)):
         f = h5py.File(f, 'r')
         print dict(f.attrs)
-        assert f['baseband'].shape == (rest_commands[1 + ii][2]['length'], num_elements)
+        shape = f['baseband'].shape
+        assert shape == (rest_commands[1 + ii][2]['length'], num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
-        assert np.all(f['baseband'][:] == default_params['value'])
+        edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)
+        edata = edata[:, None] + np.arange(shape[1], dtype=int)
+        edata = edata % 256
+        assert np.all(f['baseband'][:] == edata)

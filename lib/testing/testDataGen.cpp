@@ -31,7 +31,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get_string(unique_name, "type");
-    assert(type == "const" || type == "random" || type=="ramp");
+    assert(type == "const" || type == "random" || type=="ramp" || type=="tpluse");
     if (type == "const")
         value = config.get_int(unique_name, "value");
     if (type=="ramp")
@@ -120,6 +120,7 @@ void testDataGen::main_thread() {
         //std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
+        int num_elements = buf->frame_size/sizeof(uint8_t) / samples_per_data_set;
         for (uint j = 0; j < buf->frame_size/sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant) break;
@@ -134,6 +135,8 @@ void testDataGen::main_thread() {
                 new_imaginary = rand()%16;
                 temp_output = ((new_real<<4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
+            } else if (type == "tpluse") {
+                frame[j] = seq_num + j / num_elements + j % num_elements;
             }
         }
         DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
