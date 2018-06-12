@@ -103,9 +103,6 @@ void basebandReadout::main_thread() {
                              done_frame % buf->num_frames);
         }
 
-        // XXX Delete dev prints.
-        std::cout << "Discard: " << done_frame << ", add " << frame_id << std::endl;
-
         frame_id++;
     }
 
@@ -128,11 +125,9 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
         auto dump_status = mgr.get_next_request(freq_id);
 
         if (dump_status) {
-            std::cout << "Something to do!" << std::endl;
-            std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
-            std::cout << "Received: " << std::put_time(std::localtime(&tt), "%F %T")
-                      << ", start: " << dump_status->request.start_fpga
-                      << ", length: " << dump_status->request.length_fpga << std::endl;
+            //std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
+            INFO("Received baseband dump request for %d samples starting at %d.",
+                 dump_status->request.length_fpga, dump_status->request.start_fpga);
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by a new thread. This keeps the number of threads that can lock out
@@ -165,8 +160,6 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             const int max_writes_queued = 3;
             while (!stop_thread) {
                 if (write_q.size() < max_writes_queued) {
-                    // XXX Delete dev prints.
-                    std::cout << "Adding write to queue. q len: " << write_q.size() << std::endl;
                     write_q.push(std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>>(data,
                                  dump_status));
                     break;
@@ -238,10 +231,6 @@ basebandDumpData basebandReadout::get_data(
         throw std::runtime_error("Baseband dump request too long");
     }
 
-    // XXX delete dev prints.
-    std::cout << "Dump samples: " << trigger_start_fpga;
-    std::cout << " : " << trigger_start_fpga + trigger_length_fpga << std::endl;
-
     while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
         manager_lock.lock();
@@ -266,11 +255,6 @@ basebandDumpData basebandReadout::get_data(
         // it can continue to opperate.
         manager_lock.unlock();
 
-
-        // XXX delete dev prints.
-        std::cout << "Frames in dump: " << dump_start_frame;
-        std::cout << " : " << dump_end_frame << std::endl;
-
         // Check if the trigger is 'prescient'. That is, if any of the requested data has
         // not yet arrived.
         int64_t last_sample_present = frame_fpga_seq + _samples_per_data_set;
@@ -281,8 +265,6 @@ basebandDumpData basebandReadout::get_data(
             float wait_time = time_to_wait_seq * FPGA_PERIOD_NS * 1e-9;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
-            // XXX delete dev prints.
-            std::cout << "wait for: " << wait_time << std::endl;
             usleep(wait_time * 1e6);
         } else {
             // We have the data we need, break from the loop and copy it out.
@@ -375,9 +357,8 @@ void basebandReadout::write_dump(basebandDumpData data,
     snprintf(fname_base, sizeof(fname_base), "%08d_%04d",
              (int) data.event_id, (int) data.freq_id);
     std::string filename = _base_dir + fname_base + _file_ext;
-    std::cout << filename << std::endl;
-
-    // TODO some sort of file locking. (maybe use create_lockfile from visFile.hpp)
+    std::string lock_filename = create_lockfile(filename);
+    INFO(("Writing baseband dump to " + filename).c_str());
 
     auto file = HighFive::File(
             filename,
@@ -496,9 +477,14 @@ void basebandReadout::write_dump(basebandDumpData data,
         ii_samp += ntime_chunk;
         if (ii_samp > data.data_length_fpga) break;
     }
+    std::remove(lock_filename.c_str());
 
-    // File goes out of scope and is closed automatically.
-    // XXX delete lockfile.
+    if (ii_samp > data.data_length_fpga) {
+        INFO("Baseband dump complete");
+    } else {
+        INFO("Baseband dump incomplete");
+    }
+    // H5 file goes out of scope and is closed automatically.
 }
 
 
