@@ -53,7 +53,7 @@ while (1):
                     for node in range(10):
                         for gpu in range(4):
                             send_post("http://"+str(rack)+str(node)+":12048/gpu/gpu_"+str(gpu)+"/update_pulsar/"+str(gpu), json_data={"beam":int(Plan[i][5]),"ra":float(Plan[i][3]),"dec":float(Plan[i][4]),"scaling":int(Plan[i][6])})
-                            lastline = i+1
+                lastline = i+1
         else:
             break
     time.sleep(1)
