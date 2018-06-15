@@ -1,4 +1,6 @@
-#include <math.h>
+
+// 2**31 + 2**30
+const uint32_t HIGH_BITS = 3221225472;
 
 /**
  *  @brief Truncate the precision of *val* by rounding to a multiple of a power of
@@ -52,6 +54,19 @@ inline int32_t count_zeros(int32_t x) {
 
 
 /**
+ * @brief Fast power of two float.
+ */
+inline float fast_pow(int8_t e) {
+    float * out_f;
+    // Construct float bitwise
+    uint32_t out_i = ((uint32_t)(127 + e) << 23);
+    // Cast into float
+    out_f = (float*) &out_i;
+    return * out_f;
+}
+
+
+/**
  *  @brief Truncate precision of a floating point number by applying the algorithm of
  *         `bit_truncate` to the mantissa.
  *
@@ -71,9 +86,11 @@ inline float bit_truncate_float(float val, float err) {
     // extract mantissa. mask is 2**23 - 1. Add back the implicit 24th bit
     int32_t val_man = (cast_val_ptr[0] & 8388607) + 8388608;
     // scale the error to the integer representation of the mantissa
-    int32_t int_err = (int32_t) (err * pow(2, 150 - val_pow));
+    // scale by 2**(23 + 127 - pow)
+    int32_t int_err = (int32_t) (err * fast_pow(150 - val_pow));
     // make sure hasn't overflowed. if set to 2**30-1, will surely round to 0.
-    int_err = ((int_err >= 0 && int_err <= 1073741823) ? int_err : 1073741823);
+    // must keep err < 2**30 for bit_truncate to work
+    int_err = (int_err & HIGH_BITS) ? 1073741823 : int_err;
 
     // truncate
     int32_t tr_man = bit_truncate(val_man, int_err);
