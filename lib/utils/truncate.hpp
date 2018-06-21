@@ -1,5 +1,6 @@
+#include <cstdint>
 
-// 2**31 + 2**30
+// 2**31 + 2**30 will be used to check for overflow
 const uint32_t HIGH_BITS = 3221225472;
 
 /**
