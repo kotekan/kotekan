@@ -100,7 +100,7 @@ private:
 
     /// Derived variables
     struct timespec time_now;
-
+    uint32_t unix_offset;
 };
 
 #endif
