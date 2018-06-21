@@ -196,8 +196,8 @@ for j in range(len(PSRnames)): #Loop through each pulsars from the input file
                     Sche_PSR.append(str(PSRnames[j])+"_cp")
                     Sche_Type.append(Type[j])
                     Sche_ID.append(Pindex[j])
-                    Sche_RA.append(RA[j])
-                    Sche_DEC.append(DEC[j])
+                    Sche_RA.append(RAapp)
+                    Sche_DEC.append(180-DEC[j])
                     Sche_Priori.append( Priorities[j] + bonus - penalty_gal_cir)
                 # "Corner case", force the transit to be the day before
                 rc = (GST_rise_app - T0) *0.9972695663
@@ -208,8 +208,8 @@ for j in range(len(PSRnames)): #Loop through each pulsars from the input file
             Sche_PSR.append(str(PSRnames[j])+"_cp")
             Sche_Type.append(Type[j])
             Sche_ID.append(Pindex[j])
-            Sche_RA.append(RA[j])
-            Sche_DEC.append(DEC[j])
+            Sche_RA.append(RAapp)
+            Sche_DEC.append(180-DEC[j])
             Sche_Priori.append( Priorities[j] + bonus - penalty_gal_cir)
 
         Sche_ALT.append(90 - LAT + DEC[j])
