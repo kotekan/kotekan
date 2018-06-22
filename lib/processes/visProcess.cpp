@@ -15,6 +15,7 @@ REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 REGISTER_KOTEKAN_PROCESS(visMerge);
+REGISTER_KOTEKAN_PROCESS(visCheckTestPattern);
 
 
 visTransform::visTransform(Config& config,
@@ -438,4 +439,148 @@ void visMerge::main_thread() {
 
     }
 
+}
+
+
+visCheckTestPattern::visCheckTestPattern(Config& config,
+                   const string& unique_name,
+                   bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&visCheckTestPattern::main_thread, this)) {
+
+    // Setup the input vector
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+
+    // get config
+    tolerance = config.get_float(unique_name, "tolerance");
+    report_freq = config.get_int(unique_name, "report_freq");
+    expected_val = {config.get_float(unique_name, "expected_val_real"),
+                    config.get_float(unique_name, "expected_val_imag")};
+
+    outfile_name = config.get_string(unique_name, "out_file");
+    outfile.open (outfile_name);
+    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
+    outfile.close();
+}
+
+void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
+
+}
+
+void visCheckTestPattern::main_thread() {
+
+    unsigned int frame_id = 0;
+
+    // number of bad elements in frame and totally
+    size_t num_bad, num_bad_tot = 0;
+
+    // norm of the difference of a visibility and its expected value
+    float error;
+
+    // average error of the bad values in frame and totally
+    float avg_err, avg_err_tot = 0;
+
+    // greatest errors in frame and totally
+    float min_err, max_err;
+    float min_err_tot = 0;
+    float max_err_tot = 0;
+
+    // timestamp of frame
+    uint64_t fpga_count;
+    timespec time;
+
+    // frequency ID of frame
+    uint32_t freq_id;
+
+    uint64_t i_frame = 0;
+
+    while (!stop_thread) {
+
+        // Wait for the buffer to be filled with data
+        if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                               frame_id) == nullptr) {
+            break;
+        }
+
+        // Print out debug information from the buffer
+         auto frame = visFrameView(in_buf, frame_id);
+         //INFO("%s", frame.summary().c_str());
+
+        num_bad = 0;
+        avg_err = 0;
+        min_err = 0;
+        max_err = 0;
+
+	    // Iterate over covariance matrix
+	    for (size_t i = 0; i < frame.num_elements; i++) {
+            error = std::abs(frame.vis[i] - expected_val);
+
+            // check for bad values
+            if (std::abs(error) > tolerance) {
+                num_bad++;
+                avg_err += error;
+
+                if (error > max_err)
+                    max_err = error;
+                if (error < min_err || min_err == 0)
+                    min_err = error;
+            }
+        }
+
+        if (num_bad)
+            avg_err /= (float)num_bad;
+        time = std::get<1>(frame.time);
+        fpga_count = std::get<0>(frame.time);
+        freq_id = frame.freq_id;
+
+        // write frame report to outfile
+        outfile.open(outfile_name, std::ios_base::app);
+        outfile << fpga_count << ",";
+        outfile << time.tv_sec << "." << time.tv_nsec << ",";
+        outfile << freq_id << ",";
+        outfile << num_bad << ",";
+        outfile << avg_err << ",";
+        outfile << min_err << ",";
+        outfile << max_err << std::endl;
+        outfile.close();
+
+        if (num_bad) {
+            // report errors in this frame
+            DEBUG2("%d bad elements", num_bad);
+            DEBUG2("mean error: %f", avg_err);
+            DEBUG2("min error: %f", min_err);
+            DEBUG2("max error: %f", max_err);
+            DEBUG2("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
+            DEBUG2("freq id: %d", freq_id);
+
+            // gather data for report after many frames
+            num_bad_tot += num_bad;
+            avg_err_tot += avg_err * (float)num_bad;
+            if (min_err < min_err_tot || min_err_tot == 0)
+                min_err_tot = min_err;
+            if (max_err > max_err_tot)
+                max_err_tot = max_err;
+        }
+
+        // print report
+        if (++i_frame == report_freq) {
+            i_frame = 0;
+
+            avg_err_tot /= (float)num_bad_tot;
+            INFO("Summary from last %d frames: num bad values: %d, mean error: %f, " \
+                    "min error: %f, max error: %f", report_freq, num_bad_tot,
+                    avg_err_tot, min_err_tot, max_err_tot);
+            avg_err_tot = 0.0;
+            num_bad_tot = 0;
+            min_err_tot = std::numeric_limits<float>::max();
+            max_err_tot = std::numeric_limits<float>::min();
+        }
+
+        // Mark the buffers and move on
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+
+        // Advance the current frame ids
+        frame_id = (frame_id + 1) % in_buf->num_frames;
+    }
 }
