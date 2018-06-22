@@ -310,7 +310,7 @@ void visAccumulate::main_thread() {
         }
 
         // Perform primary accumulation
-        for(int i = 0; i < nprod_gpu; i++) {
+        for(size_t i = 0; i < nprod_gpu; i++) {
             cfloat t = {(float)input[2*i+1], (float)input[2*i]};
             vis1[i] += t;
         }
