@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <csignal>
 
+
 REGISTER_KOTEKAN_PROCESS(countCheck);
 
 
@@ -18,8 +19,8 @@ countCheck::countCheck(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    // Initiate the previous FPGA seuqnce count to zero:
-    prev_fpga_seq = 0;
+    // Initialize the start_time to zero:
+    start_time = 0;
 
 }
 
@@ -43,21 +44,20 @@ void countCheck::main_thread() {
         // Create view to input frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
-        uint64_t fpga_seq = std::get<0>(input_frame.time);
+        int64_t fpga_seq = std::get<0>(input_frame.time);
+        int64_t utime = std::get<1>(input_frame.time).tv_sec;
+        int64_t new_start_time = utime - fpga_seq/counts_per_second;
 
-        //INFO("Prev seq num = %i, current seq num = %i, tolerance = %i", 
-        //        prev_fpga_seq, 
-        //        fpga_seq, 
-        //        (fpga_seq+(counts_per_second*3600)) );
-       
-        if(prev_fpga_seq > fpga_seq + counts_per_second*3600) {
-            INFO("Current frame has FPGA count more than 1 hour behind previous one. Stopping Kotekan.");
+        // If this is the first frame, store start time
+        if (start_time == 0) {
+            start_time = new_start_time;
+        // Else, test that start time is still the same
+        } else if ( llabs(start_time - new_start_time) > 3 ) {
+            INFO("Found wrong start time. Possible acquisition re-start occurred.");
+            INFO("Stopping Kotekan.");
             // Shut Kotekan down:
             std::raise(SIGINT);
         }
-
-        // Update value for the previous FPGA sequence count: 
-        prev_fpga_seq = fpga_seq;
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
@@ -67,5 +67,3 @@ void countCheck::main_thread() {
     }
 
 }
-
-

@@ -14,11 +14,14 @@
 
 /**
  * @class countCheck
- * @brief Processe for checking that FPGA counts are not older than 1h.
+ * @brief Processe that checks for acquisition re-start.
  *
- * This task checks that the current FPGA count is not more than 1 hour
- * older than the previous one.
- * It raises SIGINT in case it is.
+ * This task finds the unix time at the start of the acquisition from 
+ * the FPGA counts and the current unix time, assuming 390625 FPGA 
+ * counts per second. 
+ * It stores this value and checks each frame to look for changes.
+ * If the initial time changes by more than 3 seconds, the process
+ * raises SIGINT.
  *
  * @par Buffers
  * @buffer in_buf The buffer whose fpga count will be checked
@@ -42,8 +45,8 @@ public:
     void main_thread();
 
 private:
-    // Store the value of previous FPGA sequence count:
-    uint64_t prev_fpga_seq;
+    // Store the unix time at start of correlation:
+    uint64_t start_time;
     Buffer * in_buf;
 };
 

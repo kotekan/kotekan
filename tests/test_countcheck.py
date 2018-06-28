@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import time
 
 import kotekan_runner
 import visbuffer
@@ -22,7 +23,7 @@ count_params = {}
 def kotekan_output(tmpdir_factory):
 
     counts_per_second = 390625
-    tol = 3600 * counts_per_second
+    start_time = time.time()
 
     tmpdir = tmpdir_factory.mktemp("countcheck")
 
@@ -34,11 +35,12 @@ def kotekan_output(tmpdir_factory):
                                         root_params['num_prod'],
                                         root_params['num_ev']))
         frame_list[ii].metadata.fpga_seq = (
-                        2 * tol + int(root_params['cadence']) * ii)
+               counts_per_second * int(root_params['cadence']) * ii)
+        frame_list[ii].metadata.ctime.tv = (
+                 int(start_time + int(root_params['cadence']) * ii))
 
-    # Set last frame to be more than 'tol' before the previous one:
-    frame_list[-1].metadata.fpga_seq = (
-                        frame_list[-2].metadata.fpga_seq - (tol + 10))
+    # Have the last frame restart FPGA counts:
+    frame_list[-1].metadata.fpga_seq = 0
 
     # ReadVisBuffer receives a list of frames and writes them down to disk.
     read_buffer = kotekan_runner.ReadVisBuffer(str(tmpdir), frame_list)
@@ -61,5 +63,5 @@ def test_countcheck(kotekan_output):
     # So I can't check the return code to test 'countcheck'.
     # For now, I parse the output for specific messages from 'countcheck'
     # and for a SIGINT message. Not very elegant...
-    msg = 'Current frame has FPGA count more than 1 hour behind previous one'
+    msg = 'Found wrong start time'
     assert ((msg in kotekan_output) and ('SIGINT' in kotekan_output))

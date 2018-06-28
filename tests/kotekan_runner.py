@@ -141,14 +141,13 @@ class FakeVisBuffer(InputBuffer):
 
 
 class ReadVisBuffer(InputBuffer):
-    """Write down a visBuffer and reads it with rawFileRead?.
+    """Write down a visBuffer and reads it with rawFileRead.
 
     """
     _buf_ind = 0
 
     def __init__(self, input_dir, buffer_list):
 
-        #self.name = 'rawfileread_buf_%07d' % self._buf_ind
         self.name = 'rawfileread_buf'
         process_name = 'rawfileread%i' % self._buf_ind
         self.__class__._buf_ind += 1
@@ -166,7 +165,7 @@ class ReadVisBuffer(InputBuffer):
 
         process_config = {
             'kotekan_process': 'rawFileRead',
-            # I thought this would have been renamed to out_buf by now:
+            # TODO: I thought this would have been renamed to out_buf by now:
             # 'out_buf': self.name, 
             'buf': self.name,
             'base_dir': input_dir,
