@@ -25,7 +25,7 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @author Mateus Fandino
+ * @author Mateus A Fandino
  */
 class countCheck : public KotekanProcess {
 

@@ -31,7 +31,6 @@ void countCheck::main_thread() {
 
     unsigned int input_frame_id = 0;
     uint64_t counts_per_second = 390625;
-    //uint64_t counts_per_second = 3;
 
     while (!stop_thread) {
 
@@ -46,10 +45,10 @@ void countCheck::main_thread() {
 
         uint64_t fpga_seq = std::get<0>(input_frame.time);
 
-        INFO("Prev seq num = %i, current seq num = %i, tolerance = %i", 
-                prev_fpga_seq, 
-                fpga_seq, 
-                (fpga_seq+(counts_per_second*3600)) );
+        //INFO("Prev seq num = %i, current seq num = %i, tolerance = %i", 
+        //        prev_fpga_seq, 
+        //        fpga_seq, 
+        //        (fpga_seq+(counts_per_second*3600)) );
        
         if(prev_fpga_seq > fpga_seq + counts_per_second*3600) {
             INFO("Current frame has FPGA count more than 1 hour behind previous one. Stopping Kotekan.");

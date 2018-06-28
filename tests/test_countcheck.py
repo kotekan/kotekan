@@ -4,7 +4,7 @@ import numpy as np
 import kotekan_runner
 import visbuffer
 
-subset_params = {
+root_params = {
     'num_elements': 16,
     'num_prod': 136,
     'num_ev': 2,
@@ -19,22 +19,22 @@ count_params = {}
 
 
 @pytest.fixture(scope="module")
-def subset_data(tmpdir_factory):
+def kotekan_output(tmpdir_factory):
 
     counts_per_second = 390625
     tol = 3600 * counts_per_second
 
-    tmpdir = tmpdir_factory.mktemp("subset")
+    tmpdir = tmpdir_factory.mktemp("countcheck")
 
     # Generate a list of 'VisBuffer' objects.
     frame_list = []
-    for ii in range(subset_params['buffer_depth']):
+    for ii in range(root_params['buffer_depth']):
         frame_list.append(visbuffer.VisBuffer.new_from_params(
-                                        subset_params['num_elements'],
-                                        subset_params['num_prod'],
-                                        subset_params['num_ev']))
+                                        root_params['num_elements'],
+                                        root_params['num_prod'],
+                                        root_params['num_ev']))
         frame_list[ii].metadata.fpga_seq = (
-                        2 * tol + int(subset_params['cadence']) * ii)
+                        2 * tol + int(root_params['cadence']) * ii)
 
     # Set last frame to be more than 'tol' before the previous one:
     frame_list[-1].metadata.fpga_seq = (
@@ -47,19 +47,19 @@ def subset_data(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'countCheck', count_params,
         read_buffer,
-        None, # buffers_out is None
-        #dump_buffer,
-        subset_params
+        None,  # buffers_out is None
+        root_params
     )
 
     test.run()
 
-    yield 1
-#    yield dump_buffer.load()
+    yield test.output
 
 
-def test_subset(subset_data):
-
-#    for frame in subset_data:
-#        print frame.metadata.freq_id, frame.metadata.fpga_seq
-    pass
+def test_countcheck(kotekan_output):
+    # Kotekan returns 0 whether 'countcheck' raises SIGINT or not.
+    # So I can't check the return code to test 'countcheck'.
+    # For now, I parse the output for specific messages from 'countcheck'
+    # and for a SIGINT message. Not very elegant...
+    msg = 'Current frame has FPGA count more than 1 hour behind previous one'
+    assert ((msg in kotekan_output) and ('SIGINT' in kotekan_output))

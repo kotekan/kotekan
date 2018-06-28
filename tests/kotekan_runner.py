@@ -48,8 +48,11 @@ class KotekanRunner(object):
             yaml.dump(config_dict, fh)
             fh.flush()
             print config_dict
-            subprocess.check_call(["./kotekan", "-c", fh.name],
-                                  cwd=kotekan_dir)
+            # Capture output and print it out
+            self.output = subprocess.check_output(["./kotekan", "-c", fh.name],
+                                                  cwd=kotekan_dir, 
+                                                  stderr=subprocess.STDOUT)
+            print self.output
 
 
 class InputBuffer(object):
