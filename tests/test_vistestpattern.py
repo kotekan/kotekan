@@ -1,4 +1,3 @@
-
 import pytest
 import numpy as np
 import csv
@@ -8,10 +7,10 @@ import kotekan_runner
 
 
 params = {
-    'num_elements': 16,
+    'num_elements': 200,
     'num_ev': 0,
     'total_frames': 128,
-    'cadence': 5.0,
+    'cadence': 10.0,
     'mode': 'test_pattern',
     'buffer_depth': 5,
     'tolerance': 0.001,
@@ -36,7 +35,7 @@ def test_pattern(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         fakevis_buffer,
-        None,
+        dump_buffer,
         params
     )
 
@@ -59,16 +58,16 @@ def test_no_noise(test_pattern):
 
     for row in test_pattern:
         assert (float(row['avg_err']) == 0.0)
-        assert (float(row['min_err']) == 0)
-        assert (float(row['max_err']) == 0)
+        assert (float(row['min_err']) == 0.0)
+        assert (float(row['max_err']) == 0.0)
 
 noise_params = {
-    'num_elements': 16,
+    'num_elements': 200,
     'num_ev': 0,
     'total_frames': 128,
     'cadence': 5.0,
     'mode': 'test_pattern_noise',
-    'buffer_depth': 5,
+    'buffer_depth': 2,
     'tolerance': 0.001,
     'report_freq': 1000,
     'expected_val_real': 1.0,
@@ -90,7 +89,7 @@ def test_pattern_noise(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         fakevis_buffer,
-        None,
+        dump_buffer,
         noise_params
     )
 
@@ -102,24 +101,35 @@ def test_pattern_noise(tmpdir_factory):
         for row in reader:
             out_data.append(row)
 
-    yield out_data
+
+    yield (out_data, dump_buffer.load())
 
 
 def test_noise(test_pattern_noise):
 
-    # for frame in replace_data:
-    #     print frame.metadata.freq_id, frame.metadata.fpga_seq
-    #     print frame.vis
+    report = test_pattern_noise[0]
+    vis_in = test_pattern_noise[1]
 
-    # norm of 0.01 + j0.01
-    max_noise = math.sqrt(pow(0.01,2)+pow(0.01,2))
+    for frame,row in zip(vis_in,report):
+        _errors = frame.vis - np.complex64(noise_params['expected_val_real'] +
+            noise_params['expected_val_imag'] * 1j)
+        _errors = np.absolute(_errors)
 
-    for row in test_pattern_noise:
-        assert (float(row['avg_err']) <= max_noise)
-        assert (float(row['avg_err']) >= 0)
-        assert (float(row['min_err']) <= max_noise)
-        assert (float(row['min_err']) >= 0)
-        assert (float(row['max_err']) <= max_noise)
-        assert (float(row['max_err']) >= 0)
-        assert (float(row['max_err']) >= float(row['min_err']))
+        num_bad = 0
+        avg_error = 0.0
+        errors = []
+        for e in _errors:
+            if e <= noise_params['tolerance']:
+                e = 0.0
+            else:
+                avg_error += e
+                num_bad += 1
+                errors.append(e)
+        max_error = max(errors)
+        min_error = min(errors)
+        avg_error /= num_bad
 
+        assert (float(row['avg_err']) == pytest.approx(avg_error, abs=1e-5))
+        assert (float(row['min_err']) == pytest.approx(min_error, abs=1e-5))
+        assert (float(row['max_err']) == pytest.approx(max_error, abs=1e-5))
+        assert (int(row['num_bad']) == num_bad)

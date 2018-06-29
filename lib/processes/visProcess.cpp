@@ -512,22 +512,22 @@ void visCheckTestPattern::main_thread() {
          //INFO("%s", frame.summary().c_str());
 
         num_bad = 0;
-        avg_err = 0;
-        min_err = 0;
-        max_err = 0;
+        avg_err = 0.0;
+        min_err = 0.0;
+        max_err = 0.0;
 
 	    // Iterate over covariance matrix
 	    for (size_t i = 0; i < frame.num_prod; i++) {
             error = std::abs(frame.vis[i] - expected_val);
 
             // check for bad values
-            if (std::abs(error) > tolerance) {
+            if (error > tolerance) {
                 num_bad++;
                 avg_err += error;
 
                 if (error > max_err)
                     max_err = error;
-                if (error < min_err || min_err == 0)
+                if (error < min_err || min_err == 0.0)
                     min_err = error;
             }
         }
@@ -572,13 +572,16 @@ void visCheckTestPattern::main_thread() {
             i_frame = 0;
 
             avg_err_tot /= (float)num_bad_tot;
+            if (num_bad_tot == 0)
+                avg_err_tot = 0;
+
             INFO("Summary from last %d frames: num bad values: %d, mean error: %f, " \
                     "min error: %f, max error: %f", report_freq, num_bad_tot,
                     avg_err_tot, min_err_tot, max_err_tot);
             avg_err_tot = 0.0;
             num_bad_tot = 0;
-            min_err_tot = std::numeric_limits<float>::max();
-            max_err_tot = std::numeric_limits<float>::min();
+            min_err_tot = 0;
+            max_err_tot = 0;
         }
 
         // Wait for free space in output buffer
