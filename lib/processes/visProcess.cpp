@@ -452,6 +452,9 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
+
     // get config
     tolerance = config.get_float(unique_name, "tolerance");
     report_freq = config.get_int(unique_name, "report_freq");
@@ -471,6 +474,7 @@ void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
 void visCheckTestPattern::main_thread() {
 
     unsigned int frame_id = 0;
+    unsigned int output_frame_id = 0;
 
     // number of bad elements in frame and totally
     size_t num_bad, num_bad_tot = 0;
@@ -577,10 +581,27 @@ void visCheckTestPattern::main_thread() {
             max_err_tot = std::numeric_limits<float>::min();
         }
 
+        // Wait for free space in output buffer
+        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                output_frame_id) == nullptr) {
+            break;
+        }
+
+        // Transfer metadata
+        pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
+
+        // Copy the frame data here:
+        std::memcpy(out_buf->frames[output_frame_id],
+                    in_buf->frames[frame_id], 
+                    in_buf->frame_size);
+
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        mark_frame_full(out_buf, unique_name.c_str(),
+                        output_frame_id);
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
+        output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
     }
 }

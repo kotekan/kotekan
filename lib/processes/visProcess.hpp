@@ -251,6 +251,7 @@ public:
 
 private:
     Buffer * in_buf;
+    Buffer * out_buf;
 
     // A (freq_id, dataset_id) pair
     using fd_pair = typename std::pair<uint32_t, uint32_t>;
