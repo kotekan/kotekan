@@ -40,11 +40,11 @@ class CommandLine:
         #Defaults
         self.TCP_IP = '127.0.0.1'
         self.TCP_PORT = 2901
-        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024,
-                       'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0,
-                       'sk_step': 256, 'num_elements': 2048}
+        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'num_elements': 2048,
+                       'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0, 'num_global_freq': 1024,
+                       'sk_step': 256, 'num_elements': 2048, 'bi_frames_per_packet': 10}
         self.mode = 'pathfinder'
-        self.supportedModes = ['vdif','pathfinder', 'chime']
+        self.supportedModes = ['vdif','pathfinder', 'chime', 'badinput']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
         parser.add_argument("-r", "--receive", help = "Example: 127.0.0.1:2900", required = False, default = "")
@@ -86,8 +86,9 @@ def init():
 
 def animate(i):
     im.set_data(waterfall)
-    x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
-    im.set_extent([x_lims[0],x_lims[1],400,800])
+    if(app.mode != 'badinput'):
+        x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
+        im.set_extent([x_lims[0],x_lims[1],400,800])
     return im
 
 def recvall(sock, n):
@@ -100,16 +101,6 @@ def recvall(sock, n):
         data += packet
     return data
 
-def savewaterfall():
-
-    global  waterfall, t_min
-
-    if not os.path.exists("PathfinderLiveData"):
-        os.makedirs("PathfinderLiveData")
-
-    np.save("PathfinderLiveData/" + t_min.strftime("%d%m%YT%H%M%SZ") ,waterfall)
-    return
-
 def data_listener():
 
     global sock_tcp, waterfall, addr, t_min, app
@@ -121,19 +112,21 @@ def data_listener():
     waterfallsize = 8*waterfall.size #Bytes
     delay = app.config['waterfall_request_delay']
 
+    if(app.mode == 'badinput'):
+        WATERFALLMESSAGE = "BW"
+        TIMEMESSAGE = "BT"
+        waterfallsize = 1*waterfall.size #Bytes
+
     while True:
 
         sock_tcp.send(WATERFALLMESSAGE.encode())
 
         data = recvall(sock_tcp, waterfallsize)
-        #data = sock_tcp.recv(waterfallsize)
         if(data == None):
             print("Connection to %s:%s Broken... Exiting"%(addr[0],str(addr[1])))
             break
 
         waterfall = np.fromstring(data).reshape(waterfall.shape)
-        #if(app.mode == 'pathfinder'):
-        #    savewaterfall()
         print(waterfall)
 
         sock_tcp.send(TIMEMESSAGE.encode())
@@ -151,7 +144,7 @@ def data_listener():
 
 class Callback(object):
 
-    def SaveData(self, event): 
+    def SaveData(self, event):
         if not os.path.exists("RFIData"):
             os.makedirs("RFIData")
         newDir = "RFIData/" + datetime.datetime.utcnow().strftime('%Y%m%dT%H:%M:%S') #Create New Folder
@@ -177,23 +170,32 @@ if( __name__ == '__main__'):
     #Initialize Plot
     nx, ny = app.config['waterfallY'], app.config['waterfallX']
     t_min = datetime.datetime.utcnow()
-    waterfall = -1*np.ones([nx,ny])
+    if(app.mode == 'badinput'):
+        waterfall = -1*np.ones([app.config['num_global_freq'], app.config['num_elements']])
+    else:
+        waterfall = -1*np.ones([nx,ny])
 
     fig = plt.figure()
+    if(app.mode == 'badinput'):
+        x_lims = [0, app.config['num_elements']]
+        im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=0,vmax=app.config['bi_frames_per_packet'])
+        cbar = plt.colorbar(label = "Median Faulty Frames")
+        plt.xlabel("Input")
+    else:
+        x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
+        im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
+        ticks = np.linspace(1-app.config['colorscale'], 1+app.config['colorscale'], num = 10)
+        cbar = plt.colorbar(label = "Detection Confidence", ticks = ticks)
+        cbar.ax.set_yticklabels(to_confidence(app, ticks))
+        plt.xlabel("Time")
+        ax = plt.gca()
+        ax.xaxis_date()
+        date_format = mdates.DateFormatter('%H:%M:%S')
+        ax.xaxis.set_major_formatter(date_format)
+        fig.autofmt_xdate()
 
-    x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
-    im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
-    ticks = np.linspace(1-app.config['colorscale'], 1+app.config['colorscale'], num = 10)
-    cbar = plt.colorbar(label = "Detection Confidence", ticks = ticks)
-    cbar.ax.set_yticklabels(to_confidence(app, ticks))
-    plt.title("RFI Viewer (Mode: "+app.mode+")")
-    plt.xlabel("Time")
     plt.ylabel("Frequency[MHz]")
-    ax = plt.gca()
-    ax.xaxis_date()
-    date_format = mdates.DateFormatter('%H:%M:%S')
-    ax.xaxis.set_major_formatter(date_format)
-    fig.autofmt_xdate()
+    plt.title("RFI Viewer (Mode: "+app.mode+")")
     anim = animation.FuncAnimation(fig, animate, init_func=init, frames=waterfall.size, interval=50)
 
     time.sleep(1)
@@ -222,6 +224,5 @@ if( __name__ == '__main__'):
     buttonLocation = plt.axes([0.81, 0.05, 0.1, 0.075])
     saveButton = Button(buttonLocation, 'Save')
     saveButton.on_clicked(callback.SaveData)
-
 
     input()

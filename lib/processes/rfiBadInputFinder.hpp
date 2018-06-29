@@ -1,7 +1,7 @@
 /*
- * @file rfiBroadcast.hpp
+ * @file rfiBadInputFinder.hpp
  * @brief Contains RFI data broadcaster for SK estimates in kotekan.
- *  - rfiBroadcast : public KotekanProcess
+ *  - rfiBadInputFinder : public KotekanProcess
  */
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
@@ -14,33 +14,9 @@
 #include "restServer.hpp"
 #include "chimeMetadata.h"
 #include "rfi_functions.h"
-/*
- * @struct RFIHeader
- * @brief A structure that contains the header attached to each rfiBroadcast packet.
- */
-/*struct __attribute__ ((packed)) RFIHeader {
-    /// uint8_t indicating whether or not the SK value was summed over inputs.
-    uint8_t rfi_combined;
-    /// uint32_t indicating the time intergration length of the SK values.
-    uint32_t sk_step;
-    /// uint32_t indicating the number of inputs in the input data.
-    uint32_t num_elements;
-    /// uint32_t indicating the number of timesteps in each frame.
-    uint32_t samples_per_data_set;
-    /// uint32_t indicating the total number of frequencies under consideration (1024 by default).
-    uint32_t num_total_freq;
-    /// uint32_t indicating the number of frequencies in the packet.
-    uint32_t num_local_freq;
-    /// uint32_t indicating the number of frames which were averaged over.
-    uint32_t frames_per_packet;
-    /// int64_t containing the FPGA sequence number of the first packet in the average.
-    int64_t seq_num;
-    /// uint16_t holding the current stream ID value.
-    uint16_t streamID;
-};*/
 
 /*
- * @class rfiBroadcast
+ * @class rfiBadInputFinder
  * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with spectral kurtosis estimates.
  *
  * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and sending them 
@@ -64,23 +40,17 @@
  * @conf   num_local_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
- * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending each UDP pack$
- * @conf   rfi_combined         Bool (default true). Whether or not the kurtosis measurements include an input sum.
- * @conf   total_links          Int (default 1). Number of FPGA links per buffer
- * @conf   dest_port            Int, The port number for the stream destination (Example: 41214)
- * @conf   dest_server_ip       String, The IP address of the stream destination (Example: 192.168.52.174)
- * @conf   dest_protocol        String, Currently only supports 'UDP'
  *
  * @author Jacob Taylor
  */
-class rfiBroadcast : public KotekanProcess {
+class rfiBadInputFinder : public KotekanProcess {
 public:
     //Constructor, intializes config variables via apply_config
-    rfiBroadcast(Config& config,
+    rfiBadInputFinder(Config& config,
                        const string& unique_name,
                        bufferContainer& buffer_container);
     //Deconstructor, cleans up / does nothing
-    virtual ~rfiBroadcast();
+    virtual ~rfiBadInputFinder();
     //Primary loop, reads buffer and sends out UDP stream
     void main_thread();
     //Callback function called by rest server
@@ -104,13 +74,9 @@ private:
     uint32_t  _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
-    /// Flag to tell process whether or not to use FPGA seq nums
-    bool replay;
     /// Number of frames to average per UDP packet
     uint32_t _frames_per_packet;
     //Process specific config parameters
-    /// The total number of links processed by gpu
-    uint32_t total_links;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to
