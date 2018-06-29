@@ -513,7 +513,7 @@ void visCheckTestPattern::main_thread() {
         max_err = 0;
 
 	    // Iterate over covariance matrix
-	    for (size_t i = 0; i < frame.num_elements; i++) {
+	    for (size_t i = 0; i < frame.num_prod; i++) {
             error = std::abs(frame.vis[i] - expected_val);
 
             // check for bad values
