@@ -62,7 +62,8 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
                 'kotekan_process': 'visRawReader',
                 'filename': os.path.abspath(infile),
                 'chunk_size': chunk,
-                'out_buf': 'read_buffer'
+                'out_buf': 'read_buffer',
+                'readahead_blocks': 4
             }
         }
     )

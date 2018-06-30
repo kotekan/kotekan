@@ -20,6 +20,7 @@ visRawReader::visRawReader(Config &config,
                    std::bind(&visRawReader::main_thread, this)) {
 
     filename = config.get_string(unique_name, "filename");
+    readahead_blocks = config.get_int(unique_name, "readahead_blocks");
 
     time_ordered = config.get_bool_default(unique_name, "time_ordered", true);
     if (time_ordered) {
@@ -41,6 +42,8 @@ visRawReader::visRawReader(Config &config,
     stat(md_filename.c_str(), &st);
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
+
+    mbytes_read = 0.0;
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
     metadata_file.read((char *)&packed_json[0], filesize);
@@ -109,12 +112,7 @@ visRawReader::~visRawReader() {
 
     close(fd);
 
-    double total_time = current_time() - start_time;
-    DEBUG("total time %f", total_time);
-    DEBUG("wait time %f", wait_time);
-    DEBUG("read ahead time %f", read_ahead_time);
-    DEBUG("read time %f", read_time);
-    DEBUG("clear time %f", clear_time);
+    INFO("Read %.2f MBytes at %.2f MBytes/s", mbytes_read, float(mbytes_read/read_time));
 }
 
 void visRawReader::apply_config(uint64_t fpga_seq) {
@@ -153,14 +151,12 @@ int visRawReader::position_map(int ind) {
 
 void visRawReader::main_thread() {
 
-    unsigned int frame_id = 0;
+    size_t frame_id = 0;
     uint8_t * frame;
 
-    int ind = 0, read_ind = 0, file_ind;
-    int readahead_blocks = 4;
-    size_t nframe = nfreq * ntime;
+    size_t ind = 0, read_ind = 0, file_ind;
 
-    start_time = current_time();
+    size_t nframe = nfreq * ntime;
 
     // Initial readahead for frames
     for(read_ind = 0; read_ind < readahead_blocks; read_ind++) {
@@ -168,21 +164,18 @@ void visRawReader::main_thread() {
     }
 
     while (!stop_thread && ind < nframe) {
-
-        last_time = current_time();
         // Wait for the buffer to be filled with data
         if((frame = wait_for_empty_frame(out_buf, unique_name.c_str(),
                                          frame_id)) == nullptr) {
             break;
         }
-        wait_time += current_time() - last_time;
 
-        last_time = current_time();
         // Issue the read ahead request
         if(read_ind < (ntime * nfreq)) {
             read_ahead(read_ind);
         }
-        read_ahead_time += current_time() - last_time;
+
+        // measure start time of read
         last_time = current_time();
 
         // Get the index into the file
@@ -197,15 +190,15 @@ void visRawReader::main_thread() {
         std::memcpy(frame,
                     mapped_file + file_ind * file_frame_size + metadata_size + 1, data_size);
 
+        // count read data
+        mbytes_read += float(data_size/(1024*1024)) + float(metadata_size / (1024*1024));
+
+        // measure reading time
         read_time += current_time() - last_time;
-        last_time = current_time();
+
         // Try and clear out the cached data as we don't need it again
         madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
 
-        clear_time += current_time() - last_time;
-
-        //DEBUG("ind %d", ind);
-        //DEBUG("time ind %d freq ind %d", file_ind / nfreq, file_ind % nfreq);
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % out_buf->num_frames;
