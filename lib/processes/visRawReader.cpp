@@ -83,7 +83,7 @@ visRawReader::visRawReader(Config &config,
     }
 
     // Check that buffer is large enough
-    if(out_buf->frame_size < data_size) {
+    if((unsigned int)(out_buf->frame_size) < data_size || out_buf->frame_size < 0) {
         std::string msg = fmt::format(
             "Data in file {} is larger ({} bytes) than buffer size ({} bytes).",
             filename, data_size, out_buf->frame_size
