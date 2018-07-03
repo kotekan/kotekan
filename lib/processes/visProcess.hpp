@@ -229,6 +229,9 @@ private:
  * @buffer in_buf               The buffer to debug
  *         @buffer_format       visBuffer structured
  *         @buffer_metadata     visMetadata
+ * @buffer out_buf              Forwarded from in_buf for further debugging/testing
+ *         @buffer_format       visBuffer structured
+ *         @buffer_metadata     visMetadata
  *
  * @conf  out_file              String. Path to the file to dump all output in.
  * @conf  report_freq           Int. Number of frames to print a summary for.
