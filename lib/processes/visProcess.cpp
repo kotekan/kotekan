@@ -462,9 +462,17 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
                     config.get_float(unique_name, "expected_val_imag")};
 
     outfile_name = config.get_string(unique_name, "out_file");
+
+    if (tolerance < 0)
+        throw std::invalid_argument("visCheckTestPattern: tolerance has to be" \
+               " positive (is " + std::to_string(tolerance) + ").");
+    if (report_freq < 0)
+        throw std::invalid_argument("visCheckTestPattern: report_freq has to " \
+                "be positive (is " + std::to_string(report_freq) + ").");
+
     outfile.open (outfile_name);
-    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
-    outfile.close();
+    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" 
+        << std::endl;
 }
 
 void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
@@ -539,7 +547,6 @@ void visCheckTestPattern::main_thread() {
         freq_id = frame.freq_id;
 
         // write frame report to outfile
-        outfile.open(outfile_name, std::ios_base::app);
         outfile << fpga_count << ",";
         outfile << time.tv_sec << "." << time.tv_nsec << ",";
         outfile << freq_id << ",";
@@ -547,7 +554,6 @@ void visCheckTestPattern::main_thread() {
         outfile << avg_err << ",";
         outfile << min_err << ",";
         outfile << max_err << std::endl;
-        outfile.close();
 
         if (num_bad) {
             // report errors in this frame
@@ -555,7 +561,8 @@ void visCheckTestPattern::main_thread() {
             DEBUG2("mean error: %f", avg_err);
             DEBUG2("min error: %f", min_err);
             DEBUG2("max error: %f", max_err);
-            DEBUG2("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
+            DEBUG2("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, 
+                    time.tv_nsec);
             DEBUG2("freq id: %d", freq_id);
 
             // gather data for report after many frames
@@ -575,9 +582,9 @@ void visCheckTestPattern::main_thread() {
             if (num_bad_tot == 0)
                 avg_err_tot = 0;
 
-            INFO("Summary from last %d frames: num bad values: %d, mean error: %f, " \
-                    "min error: %f, max error: %f", report_freq, num_bad_tot,
-                    avg_err_tot, min_err_tot, max_err_tot);
+            INFO("Summary from last %d frames: num bad values: %d, mean " \
+                    "error: %f, min error: %f, max error: %f", report_freq, 
+                    num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
             avg_err_tot = 0.0;
             num_bad_tot = 0;
             min_err_tot = 0;
