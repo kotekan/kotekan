@@ -10,9 +10,28 @@
 
 using json = nlohmann::json;
 
+/**
+ * @class visRawReader
+ * @brief Reads recorded data from .data and .meta files.
+ *
+ * Data file is mmaped to memory for performance reasons.
+ *
+ * @par Buffers
+ * @buffer out_buf The output stream as read from file.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ *
+ * @conf   readahead_blocks		Int. Number of blocks to advise OS to read ahead of current read.
+ * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time).
+ * @conf   filename				String. Path to the files to read (e.g. "/path/to/0000_000", without .data or .meta).
+ * @conf   time_ordered			Bool.
+ *
+ * @author Tristan Pinsonneault-Marotte
+ */
 class visRawReader : public KotekanProcess {
 
 public:
+    // default constructor
     visRawReader(Config &config,
                  const string& unique_name,
                  bufferContainer &buffer_container);
@@ -23,12 +42,46 @@ public:
 
     void main_thread();
 
+    /**
+     * @brief Get time values from the metadata.
+     *
+     * @returns A vector of time values from the metadata.
+     **/
     const std::vector<time_ctype>& times() { return _times; }
+
+    /**
+     * @brief Get freq values from the metadata.
+     *
+     * @returns A vector of freq values from the metadata.
+     **/
     const std::vector<freq_ctype>& freqs() { return _freqs; }
+
+    /**
+     * @brief Get prod values from the metadata.
+     *
+     * @returns A vector of prod values from the metadata.
+     **/
     const std::vector<prod_ctype>& prods() { return _prods; }
+
+    /**
+     * @brief Get input values from the metadata.
+     *
+     * @returns A vector of input values from the metadata.
+     **/
     const std::vector<input_ctype>& inputs() { return _inputs; }
+
+    /**
+     * @brief Get ev values from the metadata.
+     *
+     * @returns A vector of ev values from the metadata.
+     **/
     const std::vector<uint32_t>& ev() { return _ev; }
 
+    /**
+     * @brief Get the metadata.
+     *
+     * @returns All metadata as a reference to a json object.
+     **/
     const json& metadata() { return _metadata; }
 
 private:
@@ -56,8 +109,8 @@ private:
 
     Buffer * out_buf;
 
+    // The metadata
     json _metadata;
-
     std::vector<time_ctype> _times;
     std::vector<freq_ctype> _freqs;
     std::vector<prod_ctype> _prods;
@@ -66,7 +119,9 @@ private:
 
     // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;
+    // time chunk size
     size_t chunk_t;
+    // freq chunk size
     size_t chunk_f;
 
     // Number of elements in a chunked row
@@ -74,20 +129,19 @@ private:
 
     bool time_ordered = true;
 
+    // the input file
     std::string filename;
-
-    size_t file_frame_size, metadata_size, data_size, nfreq, ntime;
-
     int fd;
     uint8_t * mapped_file;
+
+    size_t file_frame_size, metadata_size, data_size, nfreq, ntime;
 
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
 
-    // Timing
+    // Timing to measure I/O read speed
     double read_time = 0.;
     double last_time;
-
     // count read data size
     float mbytes_read;
 };
