@@ -13,8 +13,10 @@ REGISTER_KOTEKAN_PROCESS(visTranspose);
 
 const size_t BLOCK_SIZE = 32;
 
-visTranspose::visTranspose(Config &config, const string& unique_name, bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&visTranspose::main_thread, this)) {
+visTranspose::visTranspose(Config &config, const string& unique_name,
+        bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+            std::bind(&visTranspose::main_thread, this)) {
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
@@ -108,8 +110,8 @@ void visTranspose::main_thread() {
     start_time = current_time();
 
     // Create HDF5 file
-    file = std::unique_ptr<visFileArchive>(
-        new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk)
+    file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
+                metadata, times, freqs, inputs, prods, num_ev, chunk)
     );
 
     while (!stop_thread) {
@@ -130,19 +132,22 @@ void visTranspose::main_thread() {
         // Time-transpose as frames come in
         // Fastest varying is time (needs to be consistent with reader!)
         offset = fi * write_t;
-        strided_copy(frame.vis.data(), vis.data(), offset*num_prod + ti, write_t, num_prod);
-        strided_copy(frame.weight.data(), vis_weight.data(), offset*num_prod + ti, write_t, num_prod);
+        strided_copy(frame.vis.data(), vis.data(), offset*num_prod + ti,
+                write_t, num_prod);
+        strided_copy(frame.weight.data(), vis_weight.data(),
+                offset*num_prod + ti, write_t, num_prod);
         // TODO: just fill until these are populated in the frames
         std::fill(gain_coeff.begin() + (offset+ti) * num_prod,
-                  gain_coeff.begin() + (offset+ti+1) * num_prod, (cfloat) {1, 0});
+                gain_coeff.begin() + (offset+ti+1) * num_prod, (cfloat) {1, 0});
         if (fi == 0) {
             std::fill(gain_exp.begin() + (offset+ti) * inputs.size(),
                       gain_exp.begin() + (offset+ti+1) * inputs.size(), 0);
         }
         // TODO: are sizes of eigenvectors always the number of inputs?
-        strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti, write_t, num_ev);
-        strided_copy(frame.evec.data(), evec.data(), fi*num_ev*num_input*write_t + ti,
-                     write_t, num_ev*num_input);
+        strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti,
+                write_t, num_ev);
+        strided_copy(frame.evec.data(), evec.data(),
+                fi*num_ev*num_input*write_t + ti, write_t, num_ev*num_input);
         erms[offset + ti] = frame.erms;
 
         copy_time += current_time() - last_time;
@@ -177,10 +182,12 @@ void visTranspose::write() {
     file->write_block("vis", f_ind, t_ind, write_f, write_t, vis.data());
     //DEBUG("wrote vis.");
 
-    file->write_block("vis_weight", f_ind, t_ind, write_f, write_t, vis_weight.data());
+    file->write_block("vis_weight", f_ind, t_ind, write_f, write_t,
+            vis_weight.data());
     //DEBUG("wrote vis_weight");
 
-    file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t, gain_coeff.data());
+    file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t,
+            gain_coeff.data());
     //DEBUG("wrote gain_coeff");
 
     file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
@@ -190,7 +197,8 @@ void visTranspose::write() {
 
     file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
 
-    file->write_block("gain_exp", f_ind, t_ind, write_f, write_t, gain_exp.data());
+    file->write_block("gain_exp", f_ind, t_ind, write_f, write_t,
+            gain_exp.data());
 
     //DEBUG("wrote all");
     increment_chunk();

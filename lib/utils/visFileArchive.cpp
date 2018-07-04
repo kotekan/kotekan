@@ -49,8 +49,8 @@ visFileArchive::visFileArchive(const std::string& name,
         throw std::runtime_error("Chunk dimensions (" + std::to_string(chunk[0])
                 + ", " + std::to_string(chunk[1]) + ", "
                 + std::to_string(chunk[2]) + ") cannot be greater than axes ("
-                + std::to_string(freqs.size()) + ", " 
-                + std::to_string(prods.size()) + ", " 
+                + std::to_string(freqs.size()) + ", "
+                + std::to_string(prods.size()) + ", "
                 + std::to_string(times.size()) + ").");
     }
 

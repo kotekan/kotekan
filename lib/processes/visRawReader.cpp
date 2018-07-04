@@ -89,17 +89,18 @@ visRawReader::visRawReader(Config &config,
                  + (nfreq % chunk_f) * chunk_t;
     }
 
-    // Check metadata is the correct size 
+    // Check metadata is the correct size
     if(sizeof(visMetadata) != metadata_size) {
-        std::string msg = fmt::format(
-            "Metadata in file {} is larger ({} bytes) than visMetadata ({} bytes).",
+        std::string msg = fmt::format("Metadata in file {} is larger " \
+                "({} bytes) than visMetadata ({} bytes).",
             filename, metadata_size, sizeof(visMetadata)
         );
         throw std::runtime_error(msg);
     }
 
     // Check that buffer is large enough
-    if((unsigned int)(out_buf->frame_size) < data_size || out_buf->frame_size < 0) {
+    if((unsigned int)(out_buf->frame_size) < data_size
+            || out_buf->frame_size < 0) {
         std::string msg = fmt::format(
             "Data in file {} is larger ({} bytes) than buffer size ({} bytes).",
             filename, data_size, out_buf->frame_size
@@ -117,7 +118,7 @@ visRawReader::visRawReader(Config &config,
                                   PROT_READ, MAP_SHARED, fd, 0);
     if (mapped_file == MAP_FAILED)
         throw std::runtime_error(fmt::format(
-                    "Failed to map file {} to memory: {}.", filename + ".data", 
+                    "Failed to map file {} to memory: {}.", filename + ".data",
                     strerror(errno)));
 }
 
@@ -129,7 +130,7 @@ visRawReader::~visRawReader() {
 
     close(fd);
 
-    DEBUG("Read %.2f MBytes at %.2f MBytes/s", mbytes_read, 
+    DEBUG("Read %.2f MBytes at %.2f MBytes/s", mbytes_read,
             float(mbytes_read/read_time));
 }
 
@@ -157,9 +158,9 @@ int visRawReader::position_map(int ind) {
         int f_width = std::min(nfreq - ci * chunk_f, chunk_f);
         // time and frequency indices
         // time is fastest varying
-        int fi = ci * chunk_f + ((ind % row_size) % 
+        int fi = ci * chunk_f + ((ind % row_size) %
                  (t_width * f_width)) / t_width;
-        int ti = ri * chunk_t + ((ind % row_size) % 
+        int ti = ri * chunk_t + ((ind % row_size) %
                  (t_width * f_width)) % t_width;
 
         return ti * nfreq + fi;
@@ -202,21 +203,22 @@ void visRawReader::main_thread() {
 
         // Allocate the metadata space and copy it from the file
         allocate_new_metadata_object(out_buf, frame_id);
-        std::memcpy(out_buf->metadata[frame_id]->metadata,
-                    mapped_file + file_ind * file_frame_size + 1, metadata_size);
+        std::memcpy(out_buf->metadata[frame_id]->metadata, mapped_file
+                + file_ind * file_frame_size + 1, metadata_size);
 
         // Copy the data from the file
-        std::memcpy(frame,
-                    mapped_file + file_ind * file_frame_size + metadata_size + 1, data_size);
+        std::memcpy(frame, mapped_file + file_ind * file_frame_size
+                + metadata_size + 1, data_size);
 
         // count read data
-        mbytes_read += float(data_size/(1024*1024)) + float(metadata_size / (1024*1024));
+        mbytes_read += float(data_size / 1048576) //(1024*1024))
+            + float(metadata_size / 1048576); //(1024*1024));
 
         // measure reading time
         read_time += current_time() - last_time;
 
         // Try and clear out the cached data as we don't need it again
-        if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, 
+        if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size,
                     MADV_DONTNEED) == -1)
             DEBUG("madvise failed: %s", strerror(errno));
 

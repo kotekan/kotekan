@@ -35,20 +35,20 @@ private:
 
     /**
      * @brief Read the next frame.
-     * 
+     *
      * The exact frame read is dependent on whether the reads are time ordered
      * or not.
-     * 
+     *
      * @param ind The frame index to read.
      **/
     void read_ahead(int ind);
 
     /**
      * @brief Map the index into a frame position in the file.
-     * 
+     *
      * The exact frame read dependent on whether the reads are time ordered
      * or not.
-     * 
+     *
      * @param ind The frame index.
      * @returns The frame index into the file.
      **/
