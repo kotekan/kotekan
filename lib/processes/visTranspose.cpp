@@ -23,7 +23,11 @@ visTranspose::visTranspose(Config &config, const string& unique_name, bufferCont
     // Chunk dimensions for write
     chunk = config.get_int_array(unique_name, "chunk_size");
     if (chunk.size() != 3)
-        throw std::runtime_error("Chunk size needs exactly three elements.");
+        throw std::invalid_argument("Chunk size needs exactly three elements " \
+                "(has " + std::to_string(chunk.size()) + ").");
+    if (chunk[0] < 0 || chunk[1] < 0 || chunk[2] < 0)
+        throw std::invalid_argument("visTranspose: Config: Chunk size needs " \
+                "to be equall or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
 

@@ -21,14 +21,24 @@ visRawReader::visRawReader(Config &config,
 
     filename = config.get_string(unique_name, "filename");
     readahead_blocks = config.get_int(unique_name, "readahead_blocks");
+    if (config.get_int(unique_name, "readahead_blocks") < 0) {
+        throw std::invalid_argument("visRawReader: config: readahead_blocks" \
+                "should be positive (is " + std::to_string(config.get_int(
+                                unique_name, "readahead_blocks")) + ").");
+    }
 
     time_ordered = config.get_bool_default(unique_name, "time_ordered", true);
     if (time_ordered) {
         chunk_size = config.get_int_array(unique_name, "chunk_size");
         if (chunk_size.size() != 3)
-            throw std::runtime_error("Chunk size needs exactly three elements.");
+            throw std::invalid_argument("Chunk size needs exactly three " \
+                    "elements (has " +
+                    std::to_string(chunk_size.size()) + ").");
         chunk_t = chunk_size[2];
         chunk_f = chunk_size[0];
+        if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
+            throw std::invalid_argument("visRawReader: config: Chunk size " \
+                    "needs to be greater or equal to 1.");
     }
 
     // Get the list of buffers that this process shoud connect to
