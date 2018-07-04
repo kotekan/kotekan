@@ -280,7 +280,6 @@ def bad_input_listener(thread_id, socket_udp):
             fq = stream_dict[header['encoded_stream_ID'][0]].bins
             t = int((header['fpga_seq_num'][0]-bi_min_seq)/(timesteps_per_frame*frames_per_packet)) % bi_waterfall.shape[2]
             if(t > max_t_pos):
-                print(t)
                 max_t_pos = t
             bi_waterfall[fq, :, t] = data
 
@@ -308,11 +307,11 @@ def TCP_stream():
                 print("Sending Time Data ...")
                 print(len(t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
                 conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
-            elif MESSAGE == "BW":
+            elif MESSAGE == "w":
                 temp_bi_waterfall = np.median(bi_waterfall[:,:,:max_t_pos], axis = 2)
-                print("Sending Bad Input Watefall Data %d ..."%(len(bi_waterfall.tostring())))
-                conn.send(bi_waterfall.tostring())  #Send Watefall
-            elif MESSAGE == "BT":
+                print("Sending Bad Input Watefall Data %d ..."%(len(temp_bi_waterfall.tostring())))
+                conn.send(temp_bi_waterfall.tostring())  #Send Watefall
+            elif MESSAGE == "t":
                 print("Sending Bad Input Time Data ...")
                 print(len(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
                 conn.send(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())

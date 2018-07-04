@@ -240,28 +240,28 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
 
-#rfi_broadcast:
-#  total_links: 1
-#  destination_protocol: UDP
-#  destination_ip: 10.1.113.18
-##  destination_ip: 10.1.13.1
-##  destination_ip: 127.0.0.1
-#  gpu_0:
-#    kotekan_process: rfiBroadcast
-#    rfi_in: gpu_rfi_output_buffer_0
-#    destination_port: 41215
-#  gpu_1:
-#    kotekan_process: rfiBroadcast
-#    rfi_in: gpu_rfi_output_buffer_1
-#    destination_port: 41216
-#  gpu_2:
-#    kotekan_process: rfiBroadcast
-#    rfi_in: gpu_rfi_output_buffer_2
-#    destination_port: 41217
-#  gpu_3:
-#    kotekan_process: rfiBroadcast
-#    rfi_in: gpu_rfi_output_buffer_3
-#    destination_port: 41218
+rfi_broadcast:
+  total_links: 1
+  destination_protocol: UDP
+  destination_ip: 10.1.113.19
+#  destination_ip: 10.1.13.1
+#  destination_ip: 127.0.0.1
+  gpu_0:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_0
+    destination_port: 41215
+  gpu_1:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_1
+    destination_port: 41216
+  gpu_2:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_2
+    destination_port: 41217
+  gpu_3:
+    kotekan_process: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_3
+    destination_port: 41218
 
 rfi_bad_input_finder:
   log_level: DEBUG
