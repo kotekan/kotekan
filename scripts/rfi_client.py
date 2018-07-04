@@ -83,12 +83,26 @@ class CommandLine:
 
 def init():
     im.set_data(waterfall)
+    if(app.mode == 'badinput'):
+        med_plot.set_ydata(np.nanmean(100.0*waterfall/float(app.config['bi_frames_per_packet']),axis = 0))
+        med_plot_input.set_xdata(np.nanmean(waterfall,axis = 1))
+    else:
+        med_plot.set_xdata(np.linspace(x_lims[0],x_lims[1],num=waterfall.shape[1]))
+        med_plot.set_ydata(np.nanmedian(waterfall,axis = 0))
+        med_plot_input.set_xdata(np.nanmedian(waterfall,axis = 1))
 
 def animate(i):
     im.set_data(waterfall)
     if(app.mode != 'badinput'):
         x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
         im.set_extent([x_lims[0],x_lims[1],400,800])
+        med_plot.set_xdata(np.linspace(x_lims[0],x_lims[1],num=waterfall.shape[1]))
+        med_plot.set_ydata(np.nanmedian(waterfall,axis = 0))
+        ax[1,0].set_xlim([x_lims[0],x_lims[1]])
+        med_plot_input.set_xdata(np.nanmedian(waterfall,axis = 1))
+    else:
+        med_plot.set_ydata(np.nanmean(100.0*waterfall/float(app.config['bi_frames_per_packet']),axis = 0))
+        med_plot_input.set_xdata(np.nanmean(waterfall,axis = 1))
     return im
 
 def recvall(sock, n):
@@ -113,21 +127,22 @@ def data_listener():
     delay = app.config['waterfall_request_delay']
 
     if(app.mode == 'badinput'):
-        WATERFALLMESSAGE = "BW"
-        TIMEMESSAGE = "BT"
-        waterfallsize = 1*waterfall.size #Bytes
+        WATERFALLMESSAGE = "w"
+        TIMEMESSAGE = "t"
 
     while True:
 
         sock_tcp.send(WATERFALLMESSAGE.encode())
-
+        print("Trying to receive waterfall of size: %d"%(waterfallsize))
         data = recvall(sock_tcp, waterfallsize)
         if(data == None):
             print("Connection to %s:%s Broken... Exiting"%(addr[0],str(addr[1])))
             break
 
         waterfall = np.fromstring(data).reshape(waterfall.shape)
-        print(waterfall)
+        waterfall[waterfall<0] = np.nan
+        if(app.mode == 'badinput'):
+            print(waterfall, np.where(np.nanmean(100.0*waterfall/float(app.config['bi_frames_per_packet']),axis = 0) > 5)[0].size)
 
         sock_tcp.send(TIMEMESSAGE.encode())
 
@@ -175,28 +190,53 @@ if( __name__ == '__main__'):
     else:
         waterfall = -1*np.ones([nx,ny])
 
-    fig = plt.figure()
+#    fig = plt.figure()
+    fig, ax = plt.subplots(2,2, figsize=(12,8),
+                           gridspec_kw = {'height_ratios':[4, 1], 'width_ratios':[4, 1]})
     if(app.mode == 'badinput'):
         x_lims = [0, app.config['num_elements']]
-        im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=0,vmax=app.config['bi_frames_per_packet'])
-        cbar = plt.colorbar(label = "Median Faulty Frames")
-        plt.xlabel("Input")
+        im = ax[0,0].imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=0,
+                          vmax=app.config['bi_frames_per_packet'])
+        cbar_ax = fig.add_axes([0.915, 0.32, 0.03, 0.58])
+        cbar = fig.colorbar(im, cax=cbar_ax, label = "Median Faulty Frames")
+        med_plot, = ax[1,0].plot(np.arange(waterfall.shape[1]),np.nanmedian(waterfall,axis = 0))
+        med_plot_input, = ax[0,1].plot(np.nanmean(waterfall,axis = 1),800- 400.0/1024.0*np.arange(waterfall.shape[0]), 'o')
+        ax[1,0].set_xlabel("Input")
+        ax[1,0].set_xlim([0,waterfall.shape[1]])
+        ax[1,0].set_ylim([0,100])
+        ax[1,0].set_ylabel("Likelyhood of Faultiness")
+        ax[0,1].set_xlabel("Median Across Inputs")
+        ax[0,1].set_xlim([0,10])
     else:
         x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
-        im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
+        im = ax[0,0].imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
         ticks = np.linspace(1-app.config['colorscale'], 1+app.config['colorscale'], num = 10)
-        cbar = plt.colorbar(label = "Detection Confidence", ticks = ticks)
-        cbar.ax.set_yticklabels(to_confidence(app, ticks))
-        plt.xlabel("Time")
-        ax = plt.gca()
-        ax.xaxis_date()
+        cbar_ax = fig.add_axes([0.913, 0.32, 0.03, 0.58])
+        cbar = fig.colorbar(im, cax=cbar_ax, label = "SK Value", ticks = ticks)
+        #cbar = fig.colorbar(im, cax=cbar_ax, label = "Detection Confidence", ticks = ticks)
+        #cbar.ax.set_yticklabels(to_confidence(app, ticks))
+        ax[0,0].xaxis_date()
         date_format = mdates.DateFormatter('%H:%M:%S')
-        ax.xaxis.set_major_formatter(date_format)
+        ax[0,0].xaxis.set_major_formatter(date_format)
+        ax[1,0].xaxis.set_major_formatter(date_format)
         fig.autofmt_xdate()
+        med_plot, = ax[1,0].plot(np.linspace(x_lims[0],x_lims[1],num=waterfall.shape[1]),np.nanmedian(waterfall,axis = 0))
+        med_plot_input, = ax[0,1].plot(np.nanmean(waterfall,axis = 1),800- 400.0/1024.0*np.arange(waterfall.shape[0]))
+        ax[1,0].set_xlabel("Time")
+        ax[1,0].set_xlim([x_lims[0],x_lims[1]])
+        ax[1,0].set_ylim([1-app.config['colorscale']/2.0,1+app.config['colorscale']/2.0])
+        ax[1,0].set_ylabel("Median SK Value")
+        ax[0,1].set_xlabel("Median SK Value")
+        ax[0,1].set_xlim([1-app.config['colorscale'],1+app.config['colorscale']])
 
-    plt.ylabel("Frequency[MHz]")
-    plt.title("RFI Viewer (Mode: "+app.mode+")")
+    ax[0,0].set_ylabel("Frequency[MHz]")
+    ax[0,0].set_title("RFI Viewer (Mode: "+app.mode+")")
+    ax[0,1].set_ylim([400,800])
+    ax[1, 1].axis('off')
+
     anim = animation.FuncAnimation(fig, animate, init_func=init, frames=waterfall.size, interval=50)
+
+    np.warnings.filterwarnings('ignore')
 
     time.sleep(1)
 
@@ -221,7 +261,7 @@ if( __name__ == '__main__'):
     thread.start()
 
     callback = Callback()
-    buttonLocation = plt.axes([0.81, 0.05, 0.1, 0.075])
+    buttonLocation = plt.axes([0.75, 0.1, 0.2, 0.15])
     saveButton = Button(buttonLocation, 'Save')
     saveButton.on_clicked(callback.SaveData)
 
