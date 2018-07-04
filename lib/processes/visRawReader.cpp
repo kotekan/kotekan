@@ -56,8 +56,11 @@ visRawReader::visRawReader(Config &config,
     mbytes_read = 0.0;
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
-    metadata_file.read((char *)&packed_json[0], filesize);
-    std::cout << packed_json.size() << std::endl;
+    if (metadata_file)
+        metadata_file.read((char *)&packed_json[0], filesize);
+    if (!metadata_file)
+        throw std::ios_base::failure("visRawReader: Error reading from " \
+                "metadata file: " + md_filename);
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 
@@ -107,11 +110,15 @@ visRawReader::visRawReader(Config &config,
     // Open up the data file and mmap it
     INFO("Opening data file: %s", (filename + ".data").c_str());
     if((fd = open((filename + ".data").c_str(), O_RDONLY)) == -1) {
-        std::runtime_error(fmt::format("Failed to open file {}: {}.",
+        throw std::runtime_error(fmt::format("Failed to open file {}: {}.",
                                        filename + ".data", strerror(errno)));
     }
     mapped_file = (uint8_t *)mmap(NULL, ntime * nfreq * file_frame_size,
                                   PROT_READ, MAP_SHARED, fd, 0);
+    if (mapped_file == MAP_FAILED)
+        throw std::runtime_error(fmt::format(
+                    "Failed to map file {} to memory: {}.", filename + ".data", 
+                    strerror(errno)));
 }
 
 visRawReader::~visRawReader() {
@@ -122,7 +129,8 @@ visRawReader::~visRawReader() {
 
     close(fd);
 
-    INFO("Read %.2f MBytes at %.2f MBytes/s", mbytes_read, float(mbytes_read/read_time));
+    DEBUG("Read %.2f MBytes at %.2f MBytes/s", mbytes_read, 
+            float(mbytes_read/read_time));
 }
 
 void visRawReader::apply_config(uint64_t fpga_seq) {
@@ -133,7 +141,8 @@ void visRawReader::read_ahead(int ind) {
 
     off_t offset = position_map(ind) * file_frame_size;
 
-    madvise(mapped_file + offset, file_frame_size, MADV_WILLNEED);
+    if (madvise(mapped_file + offset, file_frame_size, MADV_WILLNEED) == -1)
+        DEBUG("madvise failed: %s", strerror(errno));
 }
 
 int visRawReader::position_map(int ind) {
@@ -207,7 +216,9 @@ void visRawReader::main_thread() {
         read_time += current_time() - last_time;
 
         // Try and clear out the cached data as we don't need it again
-        madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED);
+        if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, 
+                    MADV_DONTNEED) == -1)
+            DEBUG("madvise failed: %s", strerror(errno));
 
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);
