@@ -48,7 +48,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
     metadata_file.read((char *)&packed_json[0], filesize);
-    std::cout << packed_json.size() << std::endl;
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 
