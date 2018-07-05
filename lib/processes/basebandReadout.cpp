@@ -362,6 +362,8 @@ void basebandReadout::write_dump(basebandDumpData data,
     std::string lock_filename = create_lockfile(filename);
     INFO(("Writing baseband dump to " + filename).c_str());
 
+    dump_status->state = BasebandRequestState::INPROGRESS;
+
     auto file = HighFive::File(
             filename,
             HighFive::File::ReadWrite |
@@ -480,6 +482,9 @@ void basebandReadout::write_dump(basebandDumpData data,
         // Add intentional throttling.
         float stime = _write_throttle * to_write * FPGA_PERIOD_NS;
         std::this_thread::sleep_for(std::chrono::nanoseconds((int) stime));
+    }
+    if (dump_status->bytes_remaining == 0) {
+        dump_status->state = BasebandRequestState::DONE;
     }
     std::remove(lock_filename.c_str());
 

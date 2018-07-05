@@ -19,6 +19,20 @@ static void to_json(json& j, uint32_t freq_id, const BasebandRequest& r) {
 
 static void to_json(json& j, const BasebandDumpStatus& d) {
     j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
+    switch(d.state) {
+    case BasebandRequestState::WAITING:
+        j["status"] = "waiting"; break;
+    case BasebandRequestState::INPROGRESS:
+        j["status"] = "inprogress"; break;
+    case BasebandRequestState::DONE:
+        j["status"] = "done"; break;
+    case BasebandRequestState::ERROR:
+        j["status"] = "error";
+        j["reason"] = d.reason;
+    default:
+        j["status"] = "error";
+        j["reason"] = "Internal: Unknown status code";
+    }
 }
 
 BasebandRequestManager& BasebandRequestManager::instance() {
