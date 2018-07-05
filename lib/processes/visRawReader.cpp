@@ -231,7 +231,4 @@ void visRawReader::main_thread() {
         read_ind++;
         ind++;
     }
-
-    // Once we've read the file, we should exit kotekan
-    std::raise(SIGINT);
 }
