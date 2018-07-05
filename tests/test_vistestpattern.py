@@ -30,9 +30,6 @@ def test_pattern(tmpdir_factory):
         num_frames=params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(output_dir=str(tmpdir),
-            in_buf=fakevis_buffer.name)
-
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         fakevis_buffer,
@@ -56,7 +53,7 @@ def test_no_noise(test_pattern):
     # for frame in replace_data:
     #     print frame.metadata.freq_id, frame.metadata.fpga_seq
     #     print frame.vis
-
+    assert (len(test_pattern) != 0)
     for row in test_pattern:
         assert (float(row['avg_err']) == 0.0)
         assert (float(row['min_err']) == 0.0)
@@ -90,9 +87,10 @@ def test_pattern_noise(tmpdir_factory):
 
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
-        fakevis_buffer,
-        None,
-        noise_params
+        buffers_in = fakevis_buffer,
+        buffers_out = None,
+        global_config = noise_params,
+        buffers_extra = dump_buffer
     )
 
     test.run()
@@ -111,6 +109,8 @@ def test_noise(test_pattern_noise):
 
     report = test_pattern_noise[0]
     vis_in = test_pattern_noise[1]
+
+    assert(len(report) == len(vis_in))
 
     for frame,row in zip(vis_in,report):
         _errors = frame.vis - np.complex64(noise_params['expected_val_real'] +

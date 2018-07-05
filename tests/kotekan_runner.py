@@ -169,6 +169,7 @@ class DumpVisBuffer(OutputBuffer):
             buf_name = self.name
         else:
             buf_name = in_buf
+            self.buffer_block = {}
 
         process_config = {
             'kotekan_process': 'rawFileWrite',
@@ -215,7 +216,7 @@ class KotekanProcessTester(KotekanRunner):
     """
 
     def __init__(self, process_type, process_config, buffers_in,
-                 buffers_out, global_config={}):
+                 buffers_out, global_config={}, buffers_extra=None):
 
         config = process_config.copy()
 
@@ -235,12 +236,17 @@ class KotekanProcessTester(KotekanRunner):
             config['out_buf'] = buffers_out.name
             buffers_out = [buffers_out]
 
+        if buffers_extra is None:
+            buffers_extra = []
+        elif not isinstance(buffers_extra, (list, tuple)):
+            buffers_extra = [buffers_extra]
+
         config['kotekan_process'] = process_type
 
         process_block = {(process_type + "_test"): config}
         buffer_block = {}
 
-        for buf in itertools.chain(buffers_in, buffers_out):
+        for buf in itertools.chain(buffers_in, buffers_out, buffers_extra):
             process_block.update(buf.process_block)
             buffer_block.update(buf.buffer_block)
 
