@@ -74,16 +74,16 @@ def test_basic(tmpdir_factory):
             command_trigger(1437, 1839, "file1.h5"),
             command_trigger(40457, 3237, "file2.h5"),
             command_trigger(51039, 2091, "file3.h5"),
+            wait(0.1),
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
-    print(dump_files)
-    trigger_starts = [rest_commands[i][2]['start'] for i in range(1, 4)]
 
     num_elements = default_params['num_elements']
     for ii, f in enumerate(sorted(dump_files)):
         f = h5py.File(f, 'r')
         shape = f['baseband'].shape
+        assert f.attrs['time0_fpga_count'] == rest_commands[1 + ii][2]['start']
         assert shape == (rest_commands[1 + ii][2]['length'], num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
@@ -91,7 +91,6 @@ def test_basic(tmpdir_factory):
         edata = edata[:, None] + np.arange(shape[1], dtype=int)
         edata = edata % 256
         assert np.all(f['baseband'][:] == edata)
-        assert f.attrs['time0_fpga_count'] in trigger_starts
 
 
 def test_missed(tmpdir_factory):
