@@ -38,10 +38,10 @@ visRawReader::visRawReader(Config &config,
         chunk_f = chunk_size[0];
         if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
             throw std::invalid_argument("visRawReader: config: Chunk size " \
-                                        "needs to be greater or equal to " \
-                                        "(1,1,1) (is (" + chunk_size[0] + ","
-                                        + chunk_size[1] + "," + chunk_size[2]
-                                        + ")).");
+                    "needs to be greater or equal to (1,1,1) (is ("
+                    + std::to_string(chunk_size[0]) + ","
+                    + std::to_string(chunk_size[1]) + ","
+                    + std::to_string(chunk_size[2]) + ")).");
     }
 
     // Get the list of buffers that this process shoud connect to
