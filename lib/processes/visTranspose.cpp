@@ -49,7 +49,11 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     std::vector<uint8_t> packed_json(filesize);
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
-    metadata_file.read((char *)&packed_json[0], filesize);
+    if (metadata_file) // read only if no error
+        metadata_file.read((char *)&packed_json[0], filesize);
+    if (!metadata_file) // check if open and read successful
+        throw std::ios_base::failure("visRawReader: Error reading from " \
+                                "metadata file: " + md_filename);
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 

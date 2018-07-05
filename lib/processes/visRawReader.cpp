@@ -59,9 +59,9 @@ visRawReader::visRawReader(Config &config,
     mbytes_read = 0.0;
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
-    if (metadata_file)
+    if (metadata_file) // only read if no error
         metadata_file.read((char *)&packed_json[0], filesize);
-    if (!metadata_file)
+    if (!metadata_file) // check if open and read successful
         throw std::ios_base::failure("visRawReader: Error reading from " \
                 "metadata file: " + md_filename);
     json _t = json::from_msgpack(packed_json);
