@@ -14,8 +14,10 @@
  * Helper structure to capture a baseband dump request.
  */
 struct BasebandRequest {
+    uint64_t event_id;
     int64_t start_fpga;
     int64_t length_fpga;
+    std::string file_name;
     std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
 };
 

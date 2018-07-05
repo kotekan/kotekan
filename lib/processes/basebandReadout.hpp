@@ -111,7 +111,6 @@ public:
 private:
     // settings from the config file
     std::string _base_dir;
-    std::string _file_ext;
     int _num_frames_buffer;
     int _num_elements;
     int _samples_per_data_set;

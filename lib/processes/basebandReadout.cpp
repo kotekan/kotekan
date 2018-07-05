@@ -28,7 +28,6 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         KotekanProcess(config, unique_name, buffer_container,
                        std::bind(&basebandReadout::main_thread, this)),
         _base_dir(config.get_string_default(unique_name, "base_dir", "./")),
-        _file_ext(config.get_string(unique_name, "file_ext")),
         _num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
         _num_elements(config.get_int(unique_name, "num_elements")),
         _samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
@@ -116,7 +115,6 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::listen_thread(const uint32_t freq_id) {
-    uint64_t event_id=0; // XXX fake.
 
     BasebandRequestManager& mgr = BasebandRequestManager::instance();
 
@@ -129,6 +127,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
         if (dump_status) {
             //std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
+            uint64_t event_id = dump_status->request.event_id;
             INFO("Received baseband dump request for event %d: %d samples starting at count %d.",
                  event_id, dump_status->request.length_fpga, dump_status->request.start_fpga);
 
@@ -136,11 +135,10 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
             basebandDumpData data = get_data(
-                    event_id,    // TODO need this from the request.
+                    event_id,
                     dump_status->request.start_fpga,
                     dump_status->request.length_fpga
                     );
-            event_id++; // XXX fake.
 
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late). XXX Do we need to
@@ -360,10 +358,7 @@ void basebandReadout::write_dump(basebandDumpData data,
         std::shared_ptr<BasebandDumpStatus> dump_status) {
 
     // TODO Create parent directories.
-    char fname_base[100];
-    snprintf(fname_base, sizeof(fname_base), "%08d_%04d",
-             (int) data.event_id, (int) data.freq_id);
-    std::string filename = _base_dir + fname_base + _file_ext;
+    std::string filename = _base_dir + dump_status->request.file_name;
     std::string lock_filename = create_lockfile(filename);
     INFO(("Writing baseband dump to " + filename).c_str());
 

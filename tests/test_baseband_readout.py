@@ -15,7 +15,6 @@ default_params = {
     'num_frames_buffer': 18,
     'type': 'tpluse',
     'value': 153,
-    'file_ext': '.h5',
     'samples_per_data_set': 1024,
     'rest_mode': 'step',
      }
@@ -25,10 +24,12 @@ def command_rest_frames(num_frames):
     return ('post', 'testdata_gen', {'num_frames': num_frames})
 
 
-def command_trigger(start, length, freq_id=0):
+def command_trigger(start, length, file_name, event_id=123456, freq_id=0):
     data = {
+            "event_id": event_id,
             "start": start,
             "length": length,
+            "file_name": file_name,
             "freq_id": freq_id,
             }
     return ('post', 'baseband', data)
@@ -70,12 +71,13 @@ def test_basic(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            command_trigger(1437, 1839),
-            command_trigger(40457, 3237),
-            command_trigger(51039, 2091),
+            command_trigger(1437, 1839, "file1.h5"),
+            command_trigger(40457, 3237, "file2.h5"),
+            command_trigger(51039, 2091, "file3.h5"),
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
+    print(dump_files)
     trigger_starts = [rest_commands[i][2]['start'] for i in range(1, 4)]
 
     num_elements = default_params['num_elements']
@@ -94,16 +96,16 @@ def test_basic(tmpdir_factory):
 
 def test_missed(tmpdir_factory):
 
-    good_trigger = (2437, 3123)
+    good_trigger = (2437, 3123, "file1.h5")
     rest_commands = [
             command_rest_frames(21),
             wait(.5),
             command_trigger(*good_trigger),  # Catch part of this one.
             command_rest_frames(30),
-            command_trigger(100, 100),       # Miss this one.
-            command_trigger(1002, 112),      # Miss this one.
-            command_trigger(1001, 300),      # Miss this one.
-            command_trigger(81039, 7091),    # This one never arrives.
+            command_trigger(100, 100, "file2.h5"),       # Miss this one.
+            command_trigger(1002, 112, "file3.h5"),      # Miss this one.
+            command_trigger(1001, 300, "file4.h5"),      # Miss this one.
+            command_trigger(81039, 7091, "file5.h5"),    # This one never arrives.
             command_rest_frames(10),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
@@ -122,7 +124,7 @@ def test_bigdump(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            command_trigger(5437, 25423),    # Bigger than ring buffer.
+            command_trigger(5437, 25423, "file1.h5"),    # Bigger than ring buffer.
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
@@ -147,7 +149,7 @@ def test_overload_no_crash(tmpdir_factory):
     for ii in range(n):
         start = random.randrange(1, (ii * tf / n + 20) * spd)
         lenth = random.randrange(1, spd * 5)
-        rest_commands += [command_trigger(start, lenth)]
+        rest_commands += [command_trigger(start, lenth, "file" + str(ii+1) + ".h5")]
     rest_commands += [command_rest_frames(params['total_frames'])]
 
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
