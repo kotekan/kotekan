@@ -452,9 +452,6 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
-
     // get config
     tolerance = config.get_float(unique_name, "tolerance");
     report_freq = config.get_int(unique_name, "report_freq");
@@ -471,7 +468,7 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
                 "be positive (is " + std::to_string(report_freq) + ").");
 
     outfile.open (outfile_name);
-    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" 
+    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err"
         << std::endl;
 }
 
@@ -482,7 +479,6 @@ void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
 void visCheckTestPattern::main_thread() {
 
     unsigned int frame_id = 0;
-    unsigned int output_frame_id = 0;
 
     // number of bad elements in frame and totally
     size_t num_bad, num_bad_tot = 0;
@@ -561,7 +557,7 @@ void visCheckTestPattern::main_thread() {
             DEBUG2("mean error: %f", avg_err);
             DEBUG2("min error: %f", min_err);
             DEBUG2("max error: %f", max_err);
-            DEBUG2("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, 
+            DEBUG2("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
                     time.tv_nsec);
             DEBUG2("freq id: %d", freq_id);
 
@@ -583,7 +579,7 @@ void visCheckTestPattern::main_thread() {
                 avg_err_tot = 0;
 
             INFO("Summary from last %d frames: num bad values: %d, mean " \
-                    "error: %f, min error: %f, max error: %f", report_freq, 
+                    "error: %f, min error: %f, max error: %f", report_freq,
                     num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
             avg_err_tot = 0.0;
             num_bad_tot = 0;
@@ -591,27 +587,10 @@ void visCheckTestPattern::main_thread() {
             max_err_tot = 0;
         }
 
-        // Wait for free space in output buffer
-        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                output_frame_id) == nullptr) {
-            break;
-        }
-
-        // Transfer metadata
-        pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
-
-        // Copy the frame data here:
-        std::memcpy(out_buf->frames[output_frame_id],
-                    in_buf->frames[frame_id], 
-                    in_buf->frame_size);
-
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-        mark_frame_full(out_buf, unique_name.c_str(),
-                        output_frame_id);
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
-        output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
     }
 }

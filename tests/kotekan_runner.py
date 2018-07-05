@@ -150,7 +150,7 @@ class DumpVisBuffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, in_buf=None):
 
         self.name = 'dumpvis_buf%i' % self._buf_ind
         process_name = 'dump%i' % self._buf_ind
@@ -158,17 +158,21 @@ class DumpVisBuffer(OutputBuffer):
 
         self.output_dir = output_dir
 
-        self.buffer_block = {
-            self.name: {
-                'kotekan_buffer': 'vis',
-                'metadata_pool': 'vis_pool',
-                'num_frames': 'buffer_depth',
+        if in_buf is None:
+            self.buffer_block = {
+                self.name: {
+                    'kotekan_buffer': 'vis',
+                    'metadata_pool': 'vis_pool',
+                    'num_frames': 'buffer_depth',
+                }
             }
-        }
+            buf_name = self.name
+        else:
+            buf_name = in_buf
 
         process_config = {
             'kotekan_process': 'rawFileWrite',
-            'in_buf': self.name,
+            'in_buf': buf_name,
             'file_name': self.name,
             'file_ext': 'dump',
             'base_dir': output_dir

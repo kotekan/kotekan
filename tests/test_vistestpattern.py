@@ -30,12 +30,13 @@ def test_pattern(tmpdir_factory):
         num_frames=params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = kotekan_runner.DumpVisBuffer(output_dir=str(tmpdir),
+            in_buf=fakevis_buffer.name)
 
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         fakevis_buffer,
-        dump_buffer,
+        None,
         params
     )
 
@@ -84,12 +85,13 @@ def test_pattern_noise(tmpdir_factory):
         num_frames=noise_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = kotekan_runner.DumpVisBuffer(output_dir=str(tmpdir),
+            in_buf=fakevis_buffer.name)
 
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         fakevis_buffer,
-        dump_buffer,
+        None,
         noise_params
     )
 
