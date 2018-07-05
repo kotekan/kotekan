@@ -60,7 +60,7 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
     proc.update( {
             'read_raw': {
                 'kotekan_process': 'visRawReader',
-                'filename': os.path.abspath(infile),
+                'infile': os.path.abspath(infile),
                 'chunk_size': chunk,
                 'out_buf': 'read_buffer',
                 'readahead_blocks': 4
@@ -87,8 +87,8 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
                 'kotekan_process': 'visTranspose',
                 'in_buf': 'trunc_buffer',
                 'chunk_size': chunk,
-                'md_filename': os.path.abspath(infile) + '.meta',
-                'filename': os.path.abspath(outfile)
+                'infile': os.path.abspath(infile),
+                'outfile': os.path.abspath(outfile)
             }
         }
     )

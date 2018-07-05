@@ -23,7 +23,7 @@ using json = nlohmann::json;
  *
  * @conf   readahead_blocks		Int. Number of blocks to advise OS to read ahead of current read.
  * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time).
- * @conf   filename				String. Path to the files to read (e.g. "/path/to/0000_000", without .data or .meta).
+ * @conf   infile				String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
  * @conf   time_ordered			Bool.
  *
  * @author Tristan Pinsonneault-Marotte

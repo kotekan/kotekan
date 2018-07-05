@@ -19,7 +19,7 @@ visRawReader::visRawReader(Config &config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&visRawReader::main_thread, this)) {
 
-    filename = config.get_string(unique_name, "filename");
+    filename = config.get_string(unique_name, "infile");
     readahead_blocks = config.get_int(unique_name, "readahead_blocks");
     if (config.get_int(unique_name, "readahead_blocks") < 0) {
         throw std::invalid_argument("visRawReader: config: readahead_blocks" \
@@ -38,7 +38,10 @@ visRawReader::visRawReader(Config &config,
         chunk_f = chunk_size[0];
         if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
             throw std::invalid_argument("visRawReader: config: Chunk size " \
-                    "needs to be greater or equal to 1.");
+                                        "needs to be greater or equal to " \
+                                        "(1,1,1) (is (" + chunk_size[0] + ","
+                                        + chunk_size[1] + "," + chunk_size[2]
+                                        + ")).");
     }
 
     // Get the list of buffers that this process shoud connect to
