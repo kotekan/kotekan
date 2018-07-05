@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cstdint>
 #include <chrono>
+#include <unistd.h>
 
 #include "basebandReadout.hpp"
 #include "buffer.h"
@@ -65,7 +66,11 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         throw std::runtime_error(msg);
     }
 
-    // TODO: Ensure the output directory is writable.
+    // Make sure output directory is writable.
+    if (access(_base_dir.c_str(), W_OK) == 0) {
+    } else {
+        throw std::runtime_error("Baseband dump directory not writable.");
+    }
 }
 
 basebandReadout::~basebandReadout() {

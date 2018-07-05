@@ -1,5 +1,6 @@
 import glob
 import random
+import pytest
 
 import numpy as np
 import h5py
@@ -42,11 +43,11 @@ def wait(wait_time):
 def run_baseband(tdir_factory, params=None, rest_commands=None):
 
     p = dict(default_params)
-    if params:
-        p.update(params)
-
     tmpdir = tdir_factory.mktemp("baseband")
     p['base_dir'] = str(tmpdir) + '/'
+
+    if params:
+        p.update(params)
 
     fakevis_buffer = kotekan_runner.FakeNetworkBuffer(
             num_frames=p['total_frames'],
@@ -67,13 +68,25 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
     return dump_files
 
 
+def test_fails_nonwritable(tmpdir_factory):
+
+    params = {
+            "base_dir": "/not/an/actual/directory",
+            "rest_mode": "none",
+            }
+
+    import subprocess
+    with pytest.raises(subprocess.CalledProcessError):
+        run_baseband(tmpdir_factory, params)
+
+
 def test_basic(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            command_trigger(1437, 1839, "file1.h5"),
-            command_trigger(40457, 3237, "file2.h5"),
-            command_trigger(51039, 2091, "file3.h5"),
+            command_trigger(1437, 1839, "file1.h5", 10),
+            command_trigger(40457, 3237, "file2.h5", 31),
+            command_trigger(51039, 2091, "file3.h5", 17),
             wait(0.1),
             command_rest_frames(60),
             ]
@@ -84,6 +97,8 @@ def test_basic(tmpdir_factory):
         f = h5py.File(f, 'r')
         shape = f['baseband'].shape
         assert f.attrs['time0_fpga_count'] == rest_commands[1 + ii][2]['start']
+        assert f.attrs['event_id'] == rest_commands[1 + ii][2]['event_id']
+        assert f.attrs['freq_id'] == 0
         assert shape == (rest_commands[1 + ii][2]['length'], num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))

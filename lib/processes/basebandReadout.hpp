@@ -93,9 +93,8 @@ typedef std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>> dump_d
  * @conf  samples_per_data_set  Int. The number of time samples in a frame.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data.
- * @conf  base_dir              String. Directory for writing triggered dumps.
- * @conf  file_ext              String. File extension for triggered dumps
- *                              (including the '.').
+ * @conf  base_dir              String. Directory name (including trailing '/')
+ *                              for writing triggered dumps.
  * @conf  write_throttle        Float, default 0. Add sleep time while writing dumps
  *                              equal to this factor times real time.
  *
