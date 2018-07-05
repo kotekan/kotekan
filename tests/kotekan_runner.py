@@ -208,9 +208,10 @@ class ReadRawBuffer(InputBuffer):
 
         process_config = {
             'kotekan_process': 'visRawReader',
-            'filename': infile,
+            'infile': infile,
             'out_buf': self.name,
-            'chunk_size': chunk_size
+            'chunk_size': chunk_size,
+            'readahead_blocks': 4
         }
 
         self.process_block = {process_name: process_config}

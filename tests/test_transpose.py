@@ -51,7 +51,7 @@ def transposed_data(request, tmpdir_factory):
     outfile = tmpdir + "/transposed"
     transposer = kotekan_runner.KotekanProcessTester(
         'visTranspose',
-        {'filename': outfile, 'md_filename': infile + '.meta', 
+        {'outfile': outfile, 'infile': infile,
             'chunk_size': writer_params['chunk_size']},
         raw_buf,
         None,
