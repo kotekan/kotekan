@@ -22,6 +22,8 @@ struct BasebandRequest {
 };
 
 
+enum class BasebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
+
 /**
  * Helper structure to track the progress of a dump request's processing.
  */
@@ -29,6 +31,8 @@ struct BasebandDumpStatus {
     const BasebandRequest request;
     const size_t bytes_total = request.length_fpga * 17;   // XXX 17 is fake right? 17 -> num_elements from config -km
     size_t bytes_remaining = bytes_total;
+    BasebandRequestState state = BasebandRequestState::WAITING;
+    std::string reason = "";
 };
 
 
