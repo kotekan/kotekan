@@ -135,6 +135,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             uint64_t event_id = dump_status->request.event_id;
             INFO("Received baseband dump request for event %d: %d samples starting at count %d.",
                  event_id, dump_status->request.length_fpga, dump_status->request.start_fpga);
+            dump_status->state = BasebandRequestState::INPROGRESS;
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
@@ -146,12 +147,13 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                     );
 
             // At this point we know how much of the requested data we managed to read from the
-            // buffer (which may be nothing if the request as recieved too late). XXX Do we need to
-            // report this?
+            // buffer (which may be nothing if the request as recieved too late).
             dump_status->bytes_remaining = data.num_elements * data.data_length_fpga;
             if (data.data_length_fpga == 0) {
                 INFO("Captured no data for event %d and freq %d.",
                         data.event_id, data.freq_id);
+                dump_status->state = BasebandRequestState::ERROR;
+                dump_status->reason = "No data captured.";
                 continue;
             } else {
                 INFO("Captured %d samples for event %d and freq %d.",
@@ -187,7 +189,13 @@ void basebandReadout::write_thread() {
             auto dump_status = std::get<1>(dump_tup);
             auto data = std::get<0>(dump_tup);
 
-            write_dump(data, dump_status);
+            try {
+                write_dump(data, dump_status);
+            } catch (HighFive::FileException& e) {
+                INFO("Writing Baseband dump file failed with hdf5 error.");
+                dump_status->state = BasebandRequestState::ERROR;
+                dump_status->reason = e.what();
+            }
 
             //process_request(dump_status, data);
             // pop at the end such that memory for `data` is released before queue slot
@@ -483,19 +491,19 @@ void basebandReadout::write_dump(basebandDumpData data,
 
         dump_status->bytes_remaining -= to_write * num_elements;
         ii_samp += ntime_chunk;
-        if (ii_samp > data.data_length_fpga) break;
+        if (ii_samp >= data.data_length_fpga) break;
         // Add intentional throttling.
         float stime = _write_throttle * to_write * FPGA_PERIOD_NS;
         std::this_thread::sleep_for(std::chrono::nanoseconds((int) stime));
     }
-    if (dump_status->bytes_remaining == 0) {
-        dump_status->state = BasebandRequestState::DONE;
-    }
     std::remove(lock_filename.c_str());
 
     if (ii_samp > data.data_length_fpga) {
+        dump_status->state = BasebandRequestState::DONE;
         INFO("Baseband dump for event %d, freq %d complete.", data.event_id, data.freq_id);
     } else {
+        dump_status->state = BasebandRequestState::ERROR;
+        dump_status->reason = "Kotekan exit before write complete.";
         INFO("Baseband dump for event %d, freq %d incomplete.", data.event_id, data.freq_id);
     }
     // H5 file goes out of scope and is closed automatically.

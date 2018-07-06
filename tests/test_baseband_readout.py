@@ -80,6 +80,20 @@ def test_fails_nonwritable(tmpdir_factory):
         run_baseband(tmpdir_factory, params)
 
 
+def test_io_errors(tmpdir_factory):
+
+    rest_commands = [
+            command_rest_frames(1),
+            command_trigger(1437, 1839, "doesnt_exist/file1.h5", 10),
+            command_trigger(20457, 3237, "file2.h5", 31),
+            command_trigger(31039, 2091, "file3.h5", 17),
+            wait(0.1),
+            command_rest_frames(60),
+            ]
+    dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
+    assert len(dump_files) == 2
+
+
 def test_basic(tmpdir_factory):
 
     rest_commands = [
