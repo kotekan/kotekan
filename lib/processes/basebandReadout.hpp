@@ -91,8 +91,11 @@ typedef std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>> dump_d
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  samples_per_data_set  Int. The number of time samples in a frame.
+ * @conf  max_dump_samples      Int, default 2^30. Maximum number of samples in
+ *                              baseband dump. Memory used for dumps limited to
+ *                              3 x num_elements x this_numer.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
- *                              full of data.
+ *                              full of data. Should be few less than in_buf length.
  * @conf  base_dir              String. Directory name (including trailing '/')
  *                              for writing triggered dumps.
  * @conf  write_throttle        Float, default 0. Add sleep time while writing dumps
@@ -113,6 +116,7 @@ private:
     int _num_frames_buffer;
     int _num_elements;
     int _samples_per_data_set;
+    int64_t _max_dump_samples;
     double _write_throttle;
     std::vector<input_ctype> _inputs;
 

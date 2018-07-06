@@ -32,6 +32,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         _num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
         _num_elements(config.get_int(unique_name, "num_elements")),
         _samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
+        _max_dump_samples(config.get_int_default(unique_name, "max_dump_samples", 1 << 30)),
         _write_throttle(config.get_float_default(unique_name, "write_throttle", 0.)),
         buf(get_buffer("in_buf")),
         next_frame(0),
@@ -143,7 +144,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             basebandDumpData data = get_data(
                     event_id,
                     dump_status->request.start_fpga,
-                    dump_status->request.length_fpga
+                    std::min((int64_t) dump_status->request.length_fpga, _max_dump_samples)
                     );
 
             // At this point we know how much of the requested data we managed to read from the
