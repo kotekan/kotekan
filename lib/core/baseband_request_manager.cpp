@@ -93,10 +93,10 @@ std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(con
 
     using namespace std::chrono_literals;
     if (requests_cv.wait_for(lock, 0.1s) == std::cv_status::no_timeout) {
-        std::cout << "Notified\n";
+        // std::cout << "Notified\n";
     }
     else {
-        std::cout << "Expired\n";
+        // std::cout << "Expired\n";
     }
 
     if (!requests[freq_id].empty()) {
