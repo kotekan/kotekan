@@ -3,6 +3,8 @@
 
 #include "KotekanProcess.hpp"
 #include "buffer.h"
+#include <xmmintrin.h>
+#include <immintrin.h>
 
 class visTruncate : public KotekanProcess {
 public:

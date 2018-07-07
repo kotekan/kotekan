@@ -148,7 +148,7 @@ void visTranspose::main_thread() {
             std::fill(gain_exp.begin() + (offset+ti) * inputs.size(),
                       gain_exp.begin() + (offset+ti+1) * inputs.size(), 0);
         }
-        // TODO: are sizes of eigenvectors always the number of inputs?
+        // TODO: are sizes of eigenvectors always the number of inputs? Answer: they never are
         strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti,
                 write_t, num_ev);
         strided_copy(frame.evec.data(), evec.data(),

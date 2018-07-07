@@ -4,6 +4,9 @@
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "visFileArchive.hpp"
+#include "errors.h"
+#include "visBuffer.hpp"
+#include "truncate.hpp"
 
 using json = nlohmann::json;
 
