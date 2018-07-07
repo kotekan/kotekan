@@ -28,6 +28,10 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @conf  test_nframes  int. The number of frames to run before raising SIGINT.
++*                              Useful for testing.
+ *                              Default is -1 which doesn't raise SIGINT if no count
+ *                              failure is found
  * @author Mateus A Fandino
  */
 class countCheck : public KotekanProcess {
@@ -48,6 +52,9 @@ private:
     // Store the unix time at start of correlation:
     uint64_t start_time;
     Buffer * in_buf;
+
+    /// Parameters saved from the config files
+    int test_nframes;
 };
 
 #endif
