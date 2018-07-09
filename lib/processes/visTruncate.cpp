@@ -47,6 +47,7 @@ void visTruncate::main_thread() {
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
     const float err_init = 0.5 * err_sq_lim;
+
     float *err_r_all;
     float err_r, err_i;
     cfloat tr_vis, tr_evec;
@@ -85,12 +86,14 @@ void visTruncate::main_thread() {
         }
         wait_time += current_time() - last_time;
         last_time = current_time();
+
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
         copy_time += current_time() - last_time;
 
         last_time = current_time();
+
         // truncate visibilities and weights
         for (i_vec = 0; i_vec < frame.num_prod; i_vec += 8) {
             err_vec = _mm256_broadcast_ss(&err_init);
