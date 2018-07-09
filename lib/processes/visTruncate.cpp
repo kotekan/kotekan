@@ -1,4 +1,7 @@
 #include "visTruncate.hpp"
+#include "errors.h"
+#include "visBuffer.hpp"
+#include "truncate.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTruncate);
 
