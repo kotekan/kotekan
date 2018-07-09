@@ -51,11 +51,11 @@ void visTruncate::main_thread() {
     unsigned int output_frame_id = 0;
     const float err_init = 0.5 * err_sq_lim;
 
-    float *err_r_all;
     float err_r, err_i;
     cfloat tr_vis, tr_evec;
     __m256 err_vec, wgt_vec;
     size_t i_vec;
+    float *err_all;
 
     start_time = current_time();
 
@@ -66,10 +66,8 @@ void visTruncate::main_thread() {
 
     // reserve enough memory for all err_r to be computed per frame
     // round up by to the next muliple of 8
-    err_r_all = (float *)std::malloc(sizeof(float) * (frame.num_prod + 8));// - frame.num_prod % 8));
-    if (err_r_all == nullptr)
-        throw std::runtime_error("visTruncate: malloc");
-    std::memset(err_r_all, 0, sizeof(float) * (frame.num_prod + 8));// - frame.num_prod % 8));
+    err_all = (float *)_mm_malloc(sizeof(float) * frame.num_prod, 32);
+    std::memset(err_all, 0, sizeof(float) * (frame.num_prod));
 
     while (!stop_thread) {
         last_time = current_time();
@@ -95,18 +93,17 @@ void visTruncate::main_thread() {
 
         last_time = current_time();
 
-        /*
         // truncate visibilities and weights
-        for (i_vec = 0; i_vec < frame.num_prod; i_vec += 8) {
+        for (i_vec = 0; i_vec < frame.num_prod - 7; i_vec += 8) {
             err_vec = _mm256_broadcast_ss(&err_init);
             wgt_vec = _mm256_load_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_vec, wgt_vec);
             err_vec = _mm256_sqrt_ps(err_vec);
-            _mm256_store_ps(err_r_all + i_vec, err_vec);
+            _mm256_store_ps(err_all + i_vec, err_vec);
         }
+        // use std::sqrt for the last few (less than 8)
         for (i_vec -= 8; i_vec < frame.num_prod; i_vec++)
-            err_r_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec] * err_sq_lim);
-        */
+            err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec] * err_sq_lim);
 
         #pragma omp parallel for private(err_r, err_i, tr_vis)
         for (size_t i = 0; i < frame.num_prod; i++) {
@@ -116,7 +113,7 @@ void visTruncate::main_thread() {
                 err_r = vis_prec * output_frame.vis[i].real();
                 err_i = vis_prec * output_frame.vis[i].imag();
             } else {
-                err_r = std::sqrt(err_init / output_frame.weight[i]);//err_r_all[i];
+                err_r = err_all[i];
                 err_i = err_r;
             }
             // truncate vis using weights
@@ -148,6 +145,6 @@ void visTruncate::main_thread() {
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
-    std::free(err_r_all);
+    _mm_free(err_all);
 }
 
