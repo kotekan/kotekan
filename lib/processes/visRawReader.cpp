@@ -6,9 +6,9 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <csignal>
+
 #include "fmt.hpp"
 #include "visUtil.hpp"
-
 #include "visRawReader.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visRawReader);

@@ -1,13 +1,14 @@
-#include "visTranspose.hpp"
-#include "errors.h"
-#include "visBuffer.hpp"
 #include <algorithm>
 #include <sys/stat.h>
 #include <fstream>
 #include <csignal>
 #include <stdexcept>
+
+#include "errors.h"
+#include "visBuffer.hpp"
 #include "fmt.hpp"
 #include "visUtil.hpp"
+#include "visTranspose.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 

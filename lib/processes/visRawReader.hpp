@@ -2,7 +2,6 @@
 #define _VIS_RAW_READER_HPP
 
 #include "json.hpp"
-
 #include "buffer.h"
 #include "visUtil.hpp"
 #include "visBuffer.hpp"
