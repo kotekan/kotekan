@@ -163,6 +163,8 @@ void visTranspose::main_thread() {
             // chunk is complete
             last_time = current_time();
             write();
+            // increment within write chunk
+            increment_chunk();
             write_time += current_time() - last_time;
             fi = 0;
             ti = 0;
@@ -203,9 +205,6 @@ void visTranspose::write() {
 
     file->write_block("gain_exp", f_ind, t_ind, write_f, write_t,
             gain_exp.data());
-
-    //DEBUG("wrote all");
-    increment_chunk();
 }
 
 // TODO: might be better to include same function as used by Reader
