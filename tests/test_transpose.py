@@ -73,5 +73,8 @@ def test_transpose(transposed_data):
     f_tr = transposed_data
 
     nt = writer_params['total_frames']
+    nf = len(writer_params['freq'])
 
     assert f_tr['index_map/time'].shape[0] == nt
+    assert f_tr['index_map/freq'].shape[0] == nf
+    assert f_tr['vis'].shape == (nf, nt, nt)
