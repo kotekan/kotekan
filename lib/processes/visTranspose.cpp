@@ -23,7 +23,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    // Chunk dimensions for write
+    // get chunk dimensions for write from config file
     chunk = config.get_int_array(unique_name, "chunk_size");
     if (chunk.size() != 3)
         throw std::invalid_argument("Chunk size needs exactly three elements " \
@@ -58,7 +58,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 
-    // Extract the attributes and index maps
+    // Extract the attributes and index maps from metadata
     metadata = _t["attributes"];
     times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
     freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
@@ -122,7 +122,8 @@ void visTranspose::main_thread() {
 
     while (!stop_thread) {
         last_time = current_time();
-        // Wait for the buffer to be filled with data
+
+        // Wait for a full frame in the input buffer
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
             break;
@@ -131,8 +132,6 @@ void visTranspose::main_thread() {
 
         wait_time += current_time() - last_time;
         last_time = current_time();
-
-        //DEBUG("Frames so far %d", frames_so_far);
 
         // Collect frames until a chunk is filled
         // Time-transpose as frames come in
@@ -149,7 +148,7 @@ void visTranspose::main_thread() {
             std::fill(gain_exp.begin() + (offset+ti) * inputs.size(),
                       gain_exp.begin() + (offset+ti+1) * inputs.size(), 0);
         }
-        // TODO: are sizes of eigenvectors always the number of inputs? Answer: they never are
+        // TODO: are sizes of eigenvectors always the number of inputs?
         strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti,
                 write_t, num_ev);
         strided_copy(frame.evec.data(), evec.data(),
@@ -158,11 +157,12 @@ void visTranspose::main_thread() {
 
         copy_time += current_time() - last_time;
 
-        // Increment within a chunk
+        // Increment within read chunk
         ti = (ti + 1) % write_t;
         if (ti == 0)
             fi++;
         if (fi == write_f) {
+            // chunk is complete
             last_time = current_time();
             write();
             write_time += current_time() - last_time;
@@ -211,6 +211,7 @@ void visTranspose::write() {
 }
 
 // TODO: might be better to include same function as used by Reader
+// increment within write chunk
 void visTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;

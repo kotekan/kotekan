@@ -10,6 +10,30 @@
 
 using json = nlohmann::json;
 
+/**
+ * @class visTranspose
+ * @brief Transposes the data to make time the fastest varying value, compresses
+ * it and writes it to a file.
+ *
+ * The data (vis, weight, eval and evac) is received as one-dimensional arrays
+ * that represent flattened-out time-X-frequency matrices. These are transposed
+ * and flattened out again to be written to a file. In other words,
+ * the transposition makes time the fastest-varying for the data values,
+ * where it was frequency before.
+ * This process expects the data to be ordered like visRawReader does.
+ * Other processes might not guarentee this same order.
+ *
+ * @par Buffers
+ * @buffer in_buf The input stream.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ *
+ * @conf   chunk_size			Array of [int, int, int]. Chunk size of the data (freq, prod, time).
+ * @conf   infile				String. Path to the metadata files to read (e.g. "/path/to/0000_000", without .meta).
+ * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .data or .meta).
+ *
+ * @author Tristan Pinsonneault-Marotte, Rick Nitsche
+ */
 class visTranspose : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
@@ -26,7 +50,9 @@ private:
 
     // HDF5 chunk size
     std::vector<int> chunk;
+    //size of time dimension of chunk
     size_t chunk_t;
+    //size of frequency dimension of chunk
     size_t chunk_f;
 
     std::string filename;
@@ -42,7 +68,9 @@ private:
     std::vector<float> erms;
 
     // Keep track of the size to write out
+    // size of frequencz and time dimension of chunk when written to file
     size_t write_f, write_t;
+    // flags to indicate incomplete chunks
     bool t_edge = false;
     bool f_edge = false;
     void increment_chunk();

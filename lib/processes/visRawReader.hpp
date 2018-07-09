@@ -25,12 +25,12 @@ using json = nlohmann::json;
  * @conf   infile				String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
  * @conf   time_ordered			Bool.
  *
- * @author Tristan Pinsonneault-Marotte
+ * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class visRawReader : public KotekanProcess {
 
 public:
-    // default constructor
+    /// default constructor
     visRawReader(Config &config,
                  const string& unique_name,
                  bufferContainer &buffer_container);
@@ -39,6 +39,7 @@ public:
 
     void apply_config(uint64_t fpga_seq);
 
+    /// Main loop over buffer frames
     void main_thread();
 
     /**

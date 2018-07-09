@@ -6,6 +6,28 @@
 #include <xmmintrin.h>
 #include <immintrin.h>
 
+/**
+ * @class visTruncate
+ * @brief Truncates visibility, eigenvalue and weight values.
+ *
+ * eigenvalues and weights are truncated with a fixed precision that is set in
+ * the config. visibility values are truncated to a precision based on their
+ * weight.
+ *
+ * @par Buffers
+ * @buffer in_buf The input stream.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ * @buffer out_buf The output stream with truncated values.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ *
+ * @conf   err_sq_lim               Limit for the error of visibility truncation.
+ * @conf   weight_fixed_precision   Fixed precision for weight truncation.
+ * @conf   data_fixed_precision     Fixed precision for visibility truncation (only used if weights are zero).
+ *
+ * @author Tristan Pinsonneault-Marotte, Rick Nitsche
+ */
 class visTruncate : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
