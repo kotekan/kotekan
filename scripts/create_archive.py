@@ -2,11 +2,9 @@
 import click
 import os
 import sys
-
-# TODO: set up proper package
-test_dir = os.path.join(os.path.sep.join(os.path.realpath(__file__).split(os.path.sep)[:-2]), "tests/")
-sys.path.append(test_dir)
-from kotekan_runner import KotekanRunner
+import subprocess
+import tempfile
+import yaml
 
 # (freq, prod, time)
 DEFAULT_CHUNK = (16,16,16)
@@ -19,9 +17,11 @@ WEIGHT_FIXED_PREC = 1e-3
 @click.option("--chunk", nargs=3, type=int, default=DEFAULT_CHUNK,
               help="[freq prod time] chunk. default: 16 16 16")
 @click.option("--buffer-depth", type=int, default=None, help="Specify buffer depth.")
+@click.option("--system-kotekan", type=bool, default=False,
+              help="Use the kotekan executable in the system path.")
 @click.argument("infile")
 @click.argument("outfile")
-def create_archive(infile, outfile, log_level, chunk, buffer_depth):
+def create_archive(infile, outfile, log_level, chunk, buffer_depth, system_kotekan):
     """ Transform kotekan receiver raw output file into transposed and bitshuffle
         compressed archive file.
     """
@@ -29,7 +29,12 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
     if buffer_depth is None:
         buffer_depth = chunk[0] * chunk[2]
 
-    bufs = {
+    # Base config
+    # TODO: Should num_element be fixed?
+    config = { 'log_level': log_level, 'num_elements': 2048, "num_local_freq": 1, "cpu_affinity": [] }
+
+    # Buffers
+    config.update( {
         'read_buffer': {
             'kotekan_buffer': 'standard',
             'metadata_pool': 'vis_pool',
@@ -44,20 +49,18 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
             'sizeof_int': 4,
             'frame_size': '2 * sizeof_int * num_local_freq * num_elements * num_elements'
         }
-    }
+    })
 
-    config = { 'log_level': log_level, 'num_elements': 2048 }
-
+    # Metadata pool
     config.update({
         'vis_pool': {
             'kotekan_metadata_pool': 'visMetadata',
-            'num_metadata_objects': '500 * buffer_depth'
+            'num_metadata_objects': str(20 * buffer_depth)
         }
     })
 
-    proc = {}
     # Reader process
-    proc.update( {
+    config.update( {
             'read_raw': {
                 'kotekan_process': 'visRawReader',
                 'infile': os.path.abspath(infile),
@@ -69,7 +72,7 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
     )
 
     # Truncate process
-    proc.update( {
+    config.update( {
             'truncate': {
                 'kotekan_process': 'visTruncate',
                 'err_sq_lim': ERR_SQ_LIM,
@@ -82,7 +85,7 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
     )
 
     # Transpose/write process
-    proc.update( {
+    config.update( {
             'transpose': {
                 'kotekan_process': 'visTranspose',
                 'in_buf': 'trunc_buffer',
@@ -93,8 +96,22 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth):
         }
     )
 
-    runner = KotekanRunner(buffers=bufs, processes=proc, config=config)
-    runner.run()
+    # emulate KotekanRunner
+    if system_kotekan:
+        kotekan_dir = "./"
+        kotekan_cmd = "kotekan"
+    else:
+        kotekan_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
+                                                    "..", "build", "kotekan"))
+        kotekan_cmd = "./kotekan"
+
+    with tempfile.NamedTemporaryFile() as fh:
+        yaml.dump(config, fh)
+        fh.flush()
+        print config
+        subprocess.check_call([kotekan_cmd, "-c", fh.name],
+                              cwd=kotekan_dir)
+
 
 if __name__ == '__main__':
     create_archive()

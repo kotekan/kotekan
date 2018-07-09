@@ -70,6 +70,9 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     num_prod = prods.size();
     num_ev = ev.size();
 
+    DEBUG("File has %d times, %d frequencies, %d products",
+                  num_time, num_freq, num_prod);
+
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
     write_t = chunk_t;
