@@ -150,7 +150,7 @@ class DumpVisBuffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, in_buf=None):
 
         self.name = 'dumpvis_buf%i' % self._buf_ind
         process_name = 'dump%i' % self._buf_ind
@@ -158,17 +158,22 @@ class DumpVisBuffer(OutputBuffer):
 
         self.output_dir = output_dir
 
-        self.buffer_block = {
-            self.name: {
-                'kotekan_buffer': 'vis',
-                'metadata_pool': 'vis_pool',
-                'num_frames': 'buffer_depth',
+        if in_buf is None:
+            self.buffer_block = {
+                self.name: {
+                    'kotekan_buffer': 'vis',
+                    'metadata_pool': 'vis_pool',
+                    'num_frames': 'buffer_depth',
+                }
             }
-        }
+            buf_name = self.name
+        else:
+            buf_name = in_buf
+            self.buffer_block = {}
 
         process_config = {
             'kotekan_process': 'rawFileWrite',
-            'in_buf': self.name,
+            'in_buf': buf_name,
             'file_name': self.name,
             'file_ext': 'dump',
             'base_dir': output_dir
@@ -241,7 +246,7 @@ class KotekanProcessTester(KotekanRunner):
     """
 
     def __init__(self, process_type, process_config, buffers_in,
-                 buffers_out, global_config={}):
+                 buffers_out, global_config={}, buffers_extra=None):
 
         config = process_config.copy()
 
@@ -261,12 +266,17 @@ class KotekanProcessTester(KotekanRunner):
             config['out_buf'] = buffers_out.name
             buffers_out = [buffers_out]
 
+        if buffers_extra is None:
+            buffers_extra = []
+        elif not isinstance(buffers_extra, (list, tuple)):
+            buffers_extra = [buffers_extra]
+
         config['kotekan_process'] = process_type
 
         process_block = {(process_type + "_test"): config}
         buffer_block = {}
 
-        for buf in itertools.chain(buffers_in, buffers_out):
+        for buf in itertools.chain(buffers_in, buffers_out, buffers_extra):
             process_block.update(buf.process_block)
             buffer_block.update(buf.buffer_block)
 

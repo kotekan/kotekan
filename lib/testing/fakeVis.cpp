@@ -146,6 +146,28 @@ void fakeVis::main_thread() {
                         ind++;
                     }
                 }
+            } else if(mode == "test_pattern") {
+                int ind = 0;
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_vis[ind] = {(float)1.0, (float)0.0};
+                        ind++;
+                    }
+                }
+            } else if(mode == "test_pattern_noise") {
+                int ind = 0;
+                float noise_real, noise_imag;
+
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        noise_real = static_cast <float> (rand()) /
+                            static_cast <float> (RAND_MAX/0.02) - 0.01;
+                        noise_imag = static_cast <float> (rand()) /
+                            static_cast <float> (RAND_MAX/0.02) - 0.01;
+                        out_vis[ind] = {(float)1.0 + noise_real, (float)noise_imag};
+                        ind++;
+                    }
+                }
             } else {
                 ERROR("Invalid visibility filling mode: %s.", mode.c_str());
                 break;
