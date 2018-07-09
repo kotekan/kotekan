@@ -52,9 +52,6 @@ private:
     // Store the unix time at start of correlation:
     uint64_t start_time;
     Buffer * in_buf;
-
-    /// Parameters saved from the config files
-    int test_nframes;
 };
 
 #endif

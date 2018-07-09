@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <csignal>
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -124,6 +125,10 @@ visDebug::visDebug(Config& config,
     // Setup the input vector
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
+
+    // Fetch any simple configuration
+    interrupt_nframes = config.get_int_default(unique_name, "interrupt_nframes", -1);
+
 }
 
 void visDebug::apply_config(uint64_t fpga_seq) {
@@ -133,6 +138,7 @@ void visDebug::apply_config(uint64_t fpga_seq) {
 void visDebug::main_thread() {
 
     unsigned int frame_id = 0;
+    unsigned int interrupt_frame_count = 0;
 
     while (!stop_thread) {
 
@@ -154,6 +160,16 @@ void visDebug::main_thread() {
         prometheusMetrics::instance().add_process_metric(
             "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels
         );
+
+        // Shutdown if reached max number of frames
+        if ((interrupt_nframes != -1) && (interrupt_frame_count >= interrupt_nframes)) {
+            INFO("visDebug was set to shutdown after %d frames.", interrupt_nframes);
+            INFO("Shutting down Kotekan.");
+            std::raise(SIGINT);
+        }
+        // Advance interrupt_frame_count 
+        interrupt_frame_count++;
+            
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);

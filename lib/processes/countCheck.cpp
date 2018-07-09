@@ -22,9 +22,6 @@ countCheck::countCheck(Config& config,
     // Initialize the start_time to zero:
     start_time = 0;
 
-    // Fetch any simple configuration
-    test_nframes = config.get_int_default(unique_name, "test_nframes", -1);
-
 }
 
 void countCheck::apply_config(uint64_t fpga_seq) {
@@ -67,15 +64,6 @@ void countCheck::main_thread() {
 
         // Advance the current frame ids
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-
-        // In case it's a test run
-        if((test_nframes != -1) && (test_nframes==input_frame_id)) {
-            INFO("This is a counteCheck test run. Shutting down Kotekan!");
-            // Shut Kotekan down
-            std::raise(SIGINT);
-        }
-
-        
 
     }
 
