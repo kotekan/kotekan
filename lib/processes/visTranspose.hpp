@@ -26,8 +26,8 @@ using json = nlohmann::json;
  *         @buffer_metadata visMetadata
  *
  * @conf   chunk_size			Array of [int, int, int]. Chunk size of the data (freq, prod, time).
- * @conf   infile				String. Path to the metadata files to read (e.g. "/path/to/0000_000", without .meta).
- * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .data or .meta).
+ * @conf   infile				String. Path to the data files to read (e.g. "/path/to/0000_000", without .data/meta).
+ * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
