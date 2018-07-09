@@ -26,9 +26,9 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     if (chunk.size() != 3)
         throw std::invalid_argument("Chunk size needs exactly three elements " \
                 "(has " + std::to_string(chunk.size()) + ").");
-    if (chunk[0] < 0 || chunk[1] < 0 || chunk[2] < 0)
+    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
         throw std::invalid_argument("visTranspose: Config: Chunk size needs " \
-                "to be equall or greater than one.");
+                "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
 
