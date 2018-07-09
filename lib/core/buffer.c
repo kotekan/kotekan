@@ -2,6 +2,7 @@
 #include "metadata.h"
 #include "errors.h"
 #include "nt_memset.h"
+#include "util.h"
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
@@ -136,6 +137,8 @@ struct Buffer* create_buffer(int num_frames, int len,
     // By default don't zero buffers at the end of their use.
     buf->zero_frames = 0;
 
+    buf->last_arrival_time = 0;
+
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
 
@@ -209,6 +212,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     if (private_producers_done(buf, ID) == 1) {
         private_reset_producers(buf, ID);
         buf->is_full[ID] = 1;
+        buf->last_arrival_time = e_time();
         set_full = 1;
 
         // If there are no consumers registered then we can just mark the buffer empty
@@ -288,6 +292,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
         private_mark_consumer_done(buf, consumer_name, ID);
+
         if (private_consumers_done(buf, ID) == 1) {
 
             if (buf->zero_frames == 1) {
@@ -564,7 +569,7 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-    INFO("Buffer %s status: %s", buf->buffer_name, status_string);
+    INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
@@ -624,6 +629,10 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID) {
     assert(ID < buf->num_frames);
 
     return buf->metadata[ID];
+}
+
+double get_last_arrival_time(struct Buffer * buf) {
+    return buf->last_arrival_time;
 }
 
 void send_shutdown_signal(struct Buffer* buf) {

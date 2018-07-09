@@ -72,7 +72,10 @@ void visFileRaw::create_file(const std::string& name,
                                        name + ".data", strerror(errno)));
     }
 
-    // TODO: Preallocate data file (without increasing the length)
+    // Preallocate data file (without increasing the length)
+#ifdef __linux__
+    fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * num_time);
+#endif
 }
 
 visFileRaw::~visFileRaw() {
@@ -130,8 +133,12 @@ uint32_t visFileRaw::extend_time(time_ctype new_time) {
 
     times.push_back(new_time);
 
-    // TODO: use POSIX fallocate on Linux
+    // Extend the file length for the new time
+#ifdef __linux__
+    fallocate(fd, 0, 0, frame_size * nfreq * num_time());
+#else
     ftruncate(fd, frame_size * nfreq * num_time());
+#endif
 
     return num_time() - 1;
 }

@@ -1,3 +1,9 @@
+/*****************************************
+@file
+@brief Base classes for visibility output files
+- visFile
+- visFileBundle
+*****************************************/
 #ifndef VIS_FILE_HPP
 #define VIS_FILE_HPP
 

@@ -231,6 +231,4 @@ void visRawReader::main_thread() {
         read_ind++;
         ind++;
     }
-        std::raise(SIGINT);
-
 }

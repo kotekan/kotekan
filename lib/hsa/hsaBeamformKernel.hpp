@@ -10,7 +10,6 @@
 #include "hsaCommand.hpp"
 #include "restServer.hpp"
 
-#define FREQ_REF 492.125984252
 #define LIGHT_SPEED 3.e8
 #define FEED_SEP 0.3048
 #define PI 3.14159265
@@ -25,13 +24,28 @@
  * an FFT beamforming along the N-S direction that is padded by 2. An array of
  * clamping index is used to tell which of the 512 beams to clamp to, to form 256
  * N-S beams. A brute force beamform along the E-W direction is calculated using an
- * array of phase delays to form 4 E-W beams. The output is flipped in the N-S
+ * array of phase delays to form 4 E-W beams. The N-S beam extent and the 4 E-W beam 
+ * positions are both tunable via endpoints. The output is flipped in the N-S
  * direction in order to following the L2/3 convention of south beams before north
  * beams. The ordering of the output data is time-pol-beamEW-beamNS, where beamNS
  * is the fastest varying.
  *
  * @requires_kernel    unpack_shift_beamform_flip.hasco
  *
+ * @par REST Endpoints
+ * @endpoint    /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain
+ *              at specific path for calibration purpose.
+ *              requires json values      "gain_dir"
+ *              update config             "gain_dir"
+ * @endpoint    /frb/update_NS_beam/<gpu id> ``POST`` Trigger re-set of 
+ *              FFT beam spacing in N-S
+ *              requires json values      northmost_beam
+ *              update config             northmost_beam
+ * @endpoint    /frb/update_EW_beam/<gpu id> ``POST`` Trigger re-calculate 
+ *              of phase delay for the 4 E-W brute-force formed beams
+ *              requires json values      ew_id, ew_beam
+ *              update config             ew_spacing[ew_id]
+ * 
  * @par GPU Memory
  * @gpu_mem  input              Input data of size input_frame_len
  *     @gpu_mem_type            staging
@@ -60,12 +74,16 @@
  * @conf   gain_dir             String - directory path where gain files are
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
+ * @conf   northmost_beam       Float - Setting the extent in NS of the FFT formed beams. 
+ *                              Zenith angle of the northmost beam (in deg).
+ * @conf   ew_spacing           Float array - 4 sky angles for the columns of E-W beams (in deg).
  *
+ * @todo   Better handle of variables that gets updated via endpoint, prevent 
+ *         read/write conflicts.
+ * 
  * @author Cherry Ng
  *
  */
-
-
 
 class hsaBeamformKernel: public hsaCommand
 {
@@ -80,16 +98,36 @@ public:
     /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
 
-    void calculate_cl_index(uint32_t *host_map, float freq1, float *host_coeff, float *_ew_spacing_c);
-
     /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates
     void update_gains_callback(connectionInstance& conn, json& json_request);
+    /// Endpoint for setting N-S beam extent
+    void update_NS_beam_callback(connectionInstance& conn, json& json_request);
+    /// Endpoint for setting E-W beam sky angle
+    void update_EW_beam_callback(connectionInstance& conn, json& json_request);
+
 
 private:
+
+    /** 
+     * @brief  Calculate clamping index for the N-S beams
+     * @param host_map    array of output clamping indices
+     * @param freq_now    freq of this gpu
+     * @param freq_ref    reference freq, which determines the N-S extent of the beams
+     */
+    void calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref);
+
+    /**
+     * @brief Calculate phase delays for the E-W beams
+     * @param freq_now       freq of this gpu
+     * @param host_coeff     phase offset 
+     * @param _ew_spacing_c  Float array size 4 - desired EW sky angles
+     */
+    void calculate_ew_phase(float freq_now, float *host_coeff, float *_ew_spacing_c);
+
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
     int32_t input_frame_len;
     /// Output length, should be nsamp x 2 pol x 1024 beams x 2 for complex
@@ -133,16 +171,30 @@ private:
     /// Number of time samples, should be a multiple of 3x128 for FRB, currently set to 49152
     int32_t _samples_per_data_set;
 
+    /// The desired extent (e.g. 90, 60, 45) of the Northmost beam in degree
+    float _northmost_beam;
+    /// The sky angle of the 4 EW beams in degree
     vector<float> _ew_spacing;
     float * _ew_spacing_c;
+
+    /// The reference freq for calcating beam spacing, a function of the input _northmost_beam 
+    float freq_ref;
 
     ///Flag to control gains to be only loaded on request.
     bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
+    ///Flag to update NS beam
+    bool update_NS_beam;
+    ///Flag to update EW beam
+    bool update_EW_beam;
 
     /// The endpoint name for the gain update call
-    std::string endpoint;
+    std::string endpoint_gains;
+    /// Endpoint for updating NS beams
+    std::string endpoint_NS_beam;
+    /// Endpoint for updating EW beams
+    std::string endpoint_EW_beam;
 
 };
 

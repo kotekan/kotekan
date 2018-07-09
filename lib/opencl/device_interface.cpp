@@ -29,7 +29,7 @@ config(param_Config)
     num_data_sets = config.get_int(unique_name, "num_data_sets");
     num_elements = config.get_int(unique_name, "num_elements");
     num_blocks = config.get_int(unique_name, "num_blocks");
-//    sk_step = config.get_int(unique_name, "sk_step");
+    sk_step = config.get_int(unique_name, "sk_step");
     samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");    
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
@@ -38,7 +38,7 @@ config(param_Config)
 
     // Get a platform.
     CHECK_CL_ERROR( clGetPlatformIDs( 1, &platform_id, NULL ) );
-    INFO("MAX_GPUS %d\n",MAX_GPUS);
+    //INFO("MAX_GPUS %d\n",MAX_GPUS);
     // Find a GPU device..
     CHECK_CL_ERROR( clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, MAX_GPUS, device_id, NULL) );
 
@@ -179,12 +179,20 @@ void device_interface::allocateMemory()
     }
 
     // Setup RFI buffers
-    //device_rfi_count_buffer = (cl_mem *) malloc(in_buf->num_buffers * sizeof(cl_mem) * num_links_per_gpu) ;
-    //CHECK_MEM(device_rfi_count_buffer);
-//    for (int i = 0; i < in_buf->num_frames; ++i) {
-//	device_rfi_count_buffer.push_back(clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq*(samples_per_data_set/sk_step)*sizeof(unsigned int), NULL, &err));
-//	CHECK_CL_ERROR(err);
-//    }
+    device_rfi_time_sum_buf = (cl_mem *) malloc(in_buf->num_frames * sizeof(cl_mem)) ;
+    CHECK_MEM(device_rfi_time_sum_buf);
+    for (int i = 0; i < out_buf->num_frames; ++i) {
+        device_rfi_time_sum_buf[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq * num_elements * (samples_per_data_set/sk_step) * sizeof(float), NULL, &err);
+        CHECK_CL_ERROR(err);
+    }
+
+    // Setup RFI buffers
+    device_rfi_output_buf = (cl_mem *) malloc(in_buf->num_frames * sizeof(cl_mem)) ;
+    CHECK_MEM(device_rfi_output_buf);
+    for (int i = 0; i < out_buf->num_frames; ++i) {
+        device_rfi_output_buf[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, num_local_freq * (samples_per_data_set/sk_step) * sizeof(float), NULL, &err);
+        CHECK_CL_ERROR(err);
+    }
 
     // Setup beamforming output buffers.
     if (enable_beamforming) {
@@ -226,9 +234,13 @@ cl_mem device_interface::getOutputBuffer(int param_BufferID)
 {
     return device_output_buffer[param_BufferID];
 }
-cl_mem device_interface::getRfiCountBuffer(int param_BufferID)
+cl_mem device_interface::getRfiTimeSumBuffer(int param_BufferID)
 {
-    return device_rfi_count_buffer[param_BufferID];
+    return device_rfi_time_sum_buf[param_BufferID];
+}
+cl_mem device_interface::getRfiOutputBuffer(int param_BufferID)
+{
+    return device_rfi_output_buf[param_BufferID];
 }
 cl_mem device_interface::getAccumulateBuffer(int param_BufferID)
 {
@@ -295,11 +307,15 @@ void device_interface::deallocateResources()
     }
     free(device_output_buffer);
 
-//    for (int i = 0; i < out_buf->num_frames; ++i) {
-//        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_count_buffer[i]) );
-//    }
-    //free(device_rfi_count_buffer);
+    for (int i = 0; i < out_buf->num_frames; ++i) {
+        CHECK_CL_ERROR( clReleaseMemObject(device_rfi_time_sum_buf[i]) );
+    }
+    free(device_rfi_time_sum_buf);
 
+    for (int i = 0; i < out_buf->num_frames; ++i) {
+       	CHECK_CL_ERROR( clReleaseMemObject(device_rfi_output_buf[i]) );
+    }
+    free(device_rfi_output_buf);
 
     if (enable_beamforming) {
 

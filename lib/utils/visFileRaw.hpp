@@ -1,3 +1,8 @@
+/*****************************************
+@file
+@brief Raw dump based visibility output files
+- visFileRaw
+*****************************************/
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
