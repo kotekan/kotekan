@@ -12,8 +12,6 @@
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
-const size_t BLOCK_SIZE = 32;
-
 visTranspose::visTranspose(Config &config, const string& unique_name,
         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,

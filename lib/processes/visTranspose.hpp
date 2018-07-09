@@ -112,6 +112,7 @@ private:
     double copy_time = 0.;
     double last_time;
 
+    const size_t BLOCK_SIZE = 32;
 };
 
 template<typename T>
