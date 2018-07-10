@@ -1,6 +1,6 @@
 /*
  * @file
- * @brief RFI time sum, performs prallel sum of power, and square power of incoherent beam.
+ * @brief Computes and averages single input kurtosis values to detect faulty inputs
  *  - hsaRfiBadInput : public hsaCommand
  */
 #ifndef HSA_RFI_BAD_INPUT_H
@@ -12,18 +12,18 @@
 
 /*
  * @class hsaRfiBadInput
- * @brief hsaCommand to performs prallel sum of power and square power across time.
+ * @brief hsaCommand to average single input kurtosis values across a packet.
  *
- * This is an hsaCommand that launches the kernel (rfi_chime_timesum.hsaco) to perform 
- * a parallel sum of power and square power estimates across time. The sum is then normalized 
- * by the mean power and sent to the hsaRfiIputSum command. 
+ * This is an hsaCommand that launches the kernel (rfi_bad_input.hsaco) to compute and average 
+ * spectral kurtosis estimates from individual inputs. These values are then used to determine  
+ * which inputs are not functioning properly.
  *
  * @requires_kernel    rfi_bad_input.hasco
  *
  * @par REST Endpoints
  * @endpoint    /rfi_bad_input_callback/<gpu_id> ``POST`` Change kernel parameters
- *              requires json values
- *              update config
+ *              requires json values N/A
+ *              update config N/A
  *
  * @par GPU Memory
  * @gpu_mem  input              Input data of size input_frame_len
@@ -34,11 +34,11 @@
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  sk_step            The time ingration length (samples)
+ * @gpu_mem  M                  The time integration length (samples)
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Constant @c uint32_t
  *     @gpu_mem_metadata        none
- * @gpu_mem  num_elements       The total number of elements
+ * @gpu_mem  num_sk             The total number of SK estimates to be averaged
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Constant @c uint32_t
  *     @gpu_mem_metadata        none
@@ -61,18 +61,14 @@ public:
     virtual ~hsaRfiBadInput();
     /// Rest Server callback function
     void rest_callback(connectionInstance& conn, json& json_request);
-    /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
+    /// Executes rfi_bad_input.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 private:
-    /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
+    /// Length of the input frame
     uint32_t input_frame_len;
-    /// Length of the output frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
+    /// Length of the output frame
     uint32_t output_frame_len;
-    /// Length of the input mask, should be sizeof_uchar x n_elem
-    uint32_t mask_len;
-    /// Array to hold the input mask (which inputs are currently functioning)
-    uint8_t *InputMask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

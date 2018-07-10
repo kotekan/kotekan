@@ -1,6 +1,6 @@
 /*
  * @file
- * @brief Copy RFI Output gpu to host
+ * @brief Copy RFI bad input kernel output from gpu to host
  *  - hsaRfiBadInputOutput : public hsaCommand
  */
 #ifndef HSA_RFI_BAD_INPUT_OUTPUT_H
@@ -10,17 +10,14 @@
 
 /*
  * @class hsaRfiBadInputOutput
- * @brief hsaCommand for copying RFI output gpu to host.
+ * @brief hsaCommand for copying RFI bad input kernel output gpu to host.
  *
- * This is an hsaCommand that async copy RFI output buffer from GPU 
- * to CPU. It marks the RFI output buffer to be full when done so that 
- * it can be reused. This code also passes metadata along. The finalize_frame 
- * function has been hacked by not marking _network_buf empty, for 
- * concurrent run with N2, because the equivalent output code from the N2 
- * side is already marking network buffer empty.
+ * This is an hsaCommand that async copy RFI bad input kernel output buffer from GPU 
+ * to CPU. It marks the output buffer to be full when done so that it can be reused. 
+ * This code also passes metadata along.
  *
  * @par GPU Memory
- * @gpu_mem  rfi_output      Output of SK estimates, size: sizeof_float x nfreqs x nsamps / sk_step
+ * @gpu_mem  rfi_bad_input   Output of averaged SK estimates for individual inputs.
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     chimeMetadata

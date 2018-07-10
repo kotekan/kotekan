@@ -46,7 +46,6 @@ frb_scaling: 0.05 #1.0
 #RFI stuff
 sk_step: 256
 rfi_combined: True
-frames_per_packet: 1
 bad_inputs: []
 
 # Pool
@@ -247,37 +246,43 @@ rfi_broadcast:
 #  destination_ip: 10.1.13.1
 #  destination_ip: 127.0.0.1
   gpu_0:
+    frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_0
     destination_port: 41215
   gpu_1:
+    frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_1
     destination_port: 41216
   gpu_2:
+    frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_2
     destination_port: 41217
   gpu_3:
+    frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_3
     destination_port: 41218
 
 rfi_bad_input_finder:
-  log_level: DEBUG
   destination_ip: 10.1.113.19
   destination_port: 41219
-  bi_frames_per_packet: 10
   gpu_0:
+    bi_frames_per_packet: 10
     kotekan_process: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_0
   gpu_1:
+    bi_frames_per_packet: 10
     kotekan_process: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_1
   gpu_2:
+    bi_frames_per_packet: 10
     kotekan_process: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_2
   gpu_3:
+    bi_frames_per_packet: 10
     kotekan_process: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_3
 

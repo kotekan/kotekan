@@ -49,6 +49,8 @@ void rfiBadInputFinder::rest_callback(connectionInstance& conn, json& json_reque
     //Lock mutex
     rest_callback_mutex.lock();
     //Adjust parameters
+    _frames_per_packet = json_request["frames_per_packet"].get<int>();
+    config.update_value(unique_name, "bi_frames_per_packet", _frames_per_packet);
     //Send reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
@@ -171,6 +173,7 @@ void rfiBadInputFinder::main_thread() {
         //Adjust frame counter
         frame_counter++;
         //After 10 frames
+        rest_callback_mutex.lock();
         if(frame_counter == _frames_per_packet){
             //Reset counter
             frame_counter = 0;
@@ -189,6 +192,7 @@ void rfiBadInputFinder::main_thread() {
             //Reset Counter
             memset(faulty_counter, (uint8_t)0,sizeof(faulty_counter));
         }
+        rest_callback_mutex.unlock();
     }
     free(packet_buffer);
 }

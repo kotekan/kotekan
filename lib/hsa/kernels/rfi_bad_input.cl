@@ -1,12 +1,12 @@
-/*********************************************************************************
+/**********************************************************************************************
 Kotekan RFI Documentation Block:
 By: Jacob Taylor
-Date: January 2018
-File Purpose: OpenCL Kernel for kurtosis calculation
+Date: July 2018
+File Purpose: OpenCL Kernel for single input kurtosis calculation and subsequent time averaging
 Details:
-        Sums square power across inputs
-        Computes Kurtosis value
-**********************************************************************************/
+    Computes Single Input Kurtosis value
+    Averages across frame
+***********************************************************************************************/
 __kernel void
 rfi_bad_input(
      __global float *input,

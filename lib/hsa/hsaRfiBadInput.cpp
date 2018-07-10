@@ -11,7 +11,7 @@ hsaRfiBadInput::hsaRfiBadInput(Config& config,const string &unique_name,
                          hsaDeviceInterface& device):
     hsaCommand("rfi_bad_input", "rfi_bad_input.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
-    //Retrieve parameters from kotekan confint(unique_name, "num_elements");
+    //Retrieve parameters from kotekan config
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
