@@ -35,7 +35,7 @@ Required for some options
 * `DPDK dpdk-16.11.3 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
-* `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and `HighFive <https://github.com/jrs65/HighFive>`_
+* `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
