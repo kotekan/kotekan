@@ -29,7 +29,7 @@ enum class BasebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
  */
 struct BasebandDumpStatus {
     const BasebandRequest request;
-    const size_t bytes_total = request.length_fpga * 17;   // XXX 17 is fake right? 17 -> num_elements from config -km
+    size_t bytes_total = 0;
     size_t bytes_remaining = bytes_total;
     BasebandRequestState state = BasebandRequestState::WAITING;
     std::string reason = "";

@@ -136,6 +136,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             uint64_t event_id = dump_status->request.event_id;
             INFO("Received baseband dump request for event %d: %d samples starting at count %d.",
                  event_id, dump_status->request.length_fpga, dump_status->request.start_fpga);
+            dump_status->bytes_total = dump_status->request.length_fpga * _num_elements;
+            dump_status->bytes_remaining = dump_status->bytes_total;
             dump_status->state = BasebandRequestState::INPROGRESS;
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
@@ -149,7 +151,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
 
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late).
-            dump_status->bytes_remaining = data.num_elements * data.data_length_fpga;
+            dump_status->bytes_total = data.num_elements * data.data_length_fpga;
+            dump_status->bytes_remaining = dump_status->bytes_total;
             if (data.data_length_fpga == 0) {
                 INFO("Captured no data for event %d and freq %d.",
                         data.event_id, data.freq_id);
@@ -235,8 +238,8 @@ basebandDumpData basebandReadout::get_data(
     // This assumes that the frame's timestamps are in order, but not that they
     // are nessisarily contiguous.
 
-    int dump_start_frame;
-    int dump_end_frame;
+    int dump_start_frame = 0;
+    int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     float max_wait_time = 1.;
     float min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;

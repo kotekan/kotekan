@@ -93,7 +93,7 @@ typedef std::tuple<basebandDumpData, std::shared_ptr<BasebandDumpStatus>> dump_d
  * @conf  samples_per_data_set  Int. The number of time samples in a frame.
  * @conf  max_dump_samples      Int, default 2^30. Maximum number of samples in
  *                              baseband dump. Memory used for dumps limited to
- *                              3 x num_elements x this_numer.
+ *                              3 x num_elements x this_number.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
  * @conf  base_dir              String. Directory name (including trailing '/')
