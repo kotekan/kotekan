@@ -24,7 +24,7 @@
  *
  * @conf   err_sq_lim               Limit for the error of visibility truncation.
  * @conf   weight_fixed_precision   Fixed precision for weight truncation.
- * @conf   data_fixed_precision     Fixed precision for visibility truncation (only used if weights are zero).
+ * @conf   data_fixed_precision     Fixed precision for eigenvector and visibility truncation (if weights are zero).
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */

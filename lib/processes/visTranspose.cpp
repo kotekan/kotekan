@@ -95,7 +95,7 @@ void visTranspose::apply_config(uint64_t fpga_seq) {
 }
 
 visTranspose::~visTranspose() {
-    // Flush up to frames_sofar
+    // Print recorded timing
     double total_time = current_time() - start_time;
     DEBUG("total time %f", total_time);
     DEBUG("wait time %f", wait_time);
@@ -165,7 +165,7 @@ void visTranspose::main_thread() {
             // chunk is complete
             last_time = current_time();
             write();
-            // increment within write chunk
+            // increment between chunks
             increment_chunk();
             write_time += current_time() - last_time;
             fi = 0;
@@ -209,8 +209,7 @@ void visTranspose::write() {
             gain_exp.data());
 }
 
-// TODO: might be better to include same function as used by Reader
-// increment within write chunk
+// increment between chunks
 void visTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;

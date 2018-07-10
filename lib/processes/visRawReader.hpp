@@ -20,16 +20,15 @@ using json = nlohmann::json;
  *
  * This will divide the file up into time-frequency chunks of set size and
  * stream out the frames with time as the *fastest* index.
- * 
+ *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
  * @conf   readahead_blocks		Int. Number of blocks to advise OS to read ahead of current read.
- * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time).
+ * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time). If not specified will read file contiguously.
  * @conf   infile				String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
- * @conf   time_ordered			Bool.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -47,7 +46,7 @@ public:
 
     /// Main loop over buffer frames
     void main_thread();
-    
+
     /**
      * @brief Get the times in the file.
      **/
@@ -111,6 +110,9 @@ private:
     std::vector<input_ctype> _inputs;
     std::vector<uint32_t> _ev;
 
+    // whether to read in chunks
+    bool chunked;
+
     // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;
     // time chunk size
@@ -120,8 +122,6 @@ private:
 
     // Number of elements in a chunked row
     size_t row_size;
-
-    bool time_ordered = true;
 
     // the input file
     std::string filename;

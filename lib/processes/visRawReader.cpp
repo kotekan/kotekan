@@ -27,8 +27,8 @@ visRawReader::visRawReader(Config &config,
                                 unique_name, "readahead_blocks")) + ").");
     }
 
-    time_ordered = config.get_bool_default(unique_name, "time_ordered", true);
-    if (time_ordered) {
+    chunked = config.exists(unique_name, "chunk_size");
+    if (chunked) {
         chunk_size = config.get_int_array(unique_name, "chunk_size");
         if (chunk_size.size() != 3)
             throw std::invalid_argument("Chunk size needs exactly three " \
@@ -82,7 +82,7 @@ visRawReader::visRawReader(Config &config,
     nfreq = _t["structure"]["nfreq"].get<size_t>();
     ntime = _t["structure"]["ntime"].get<size_t>();
 
-    if (time_ordered) {
+    if (chunked) {
         // Special case if dimensions less than chunk size
         chunk_f = std::min(chunk_f, nfreq);
         chunk_t = std::min(chunk_t, ntime);
@@ -150,7 +150,7 @@ void visRawReader::read_ahead(int ind) {
 }
 
 int visRawReader::position_map(int ind) {
-    if(time_ordered) {
+    if(chunked) {
         // chunked row index
         int ri = ind / row_size;
         // Special case at edges of time*freq array
