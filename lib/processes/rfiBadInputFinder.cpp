@@ -73,13 +73,7 @@ void rfiBadInputFinder::apply_config(uint64_t fpga_seq) {
     dest_protocol = config.get_string_default(unique_name, "destination_protocol", "UDP");
 }
 
-float mean(float array[], uint32_t num){
-    float total = 0;
-    for(uint32_t x = 0; x < num; x++) total += array[x];
-    return total/num;
-}
-
-float median(float array[], uint32_t num){
+float rfiBadInputFinder::median(float array[], uint32_t num){
     float new_array[num];
     for(uint32_t x = 0; x < num; x++){
         new_array[x] = array[x];
@@ -98,7 +92,7 @@ float median(float array[], uint32_t num){
     else return (new_array[(num/2)-1] + new_array[num/2])/2;
 }
 
-float deviation(float array[], uint32_t num, float outliercut)
+float rfiBadInputFinder::deviation(float array[], uint32_t num, float outliercut)
 {
     float total = 0;
     uint32_t N = 0;
@@ -144,7 +138,7 @@ void rfiBadInputFinder::main_thread() {
     }
     //Connection succesful
     INFO("UDP Connection: %i %s",dest_port, dest_server_ip.c_str());
-
+    //Main while loop
     while (!stop_thread) {
         //Get a frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);

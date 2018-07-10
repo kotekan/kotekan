@@ -77,10 +77,6 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
-    /// Rest Server callback mutex
-    std::mutex rest_callback_mutex;
-    /// String to hold endpoint name
-    string endpoint;
 };
 
 #endif

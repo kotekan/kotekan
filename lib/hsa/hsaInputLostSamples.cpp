@@ -10,10 +10,8 @@ hsaInputLostSamples::hsaInputLostSamples( Config& config, const string &unique_n
     hsaCommand("", "", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_IN;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    input_frame_len = _num_local_freq * _samples_per_data_set * sizeof(uint8_t);
+    input_frame_len = _samples_per_data_set * sizeof(uint8_t);
 
     lost_samples_buf = host_buffers.get_buffer("lost_samples_buf");
     lost_samples_buffer_id = 0;

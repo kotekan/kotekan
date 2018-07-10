@@ -12,9 +12,9 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    multiply_ls_buffer = config.get_bool_default(unique_name, "multiply_ls_buffer", false);
+    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", false);
     //Register as producer for all desired multiplied lost samples buffers
-    if(multiply_ls_buffer){
+    if(_duplicate_ls_buffer){
         INFO("REGISTERING PRODUCERS")
         json in_bufs = config.get_value(unique_name, "out_lost_sample_buffers");
         for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
@@ -58,7 +58,7 @@ void zeroSamples::main_thread() {
                 lost_samples++;
             }
         }
-        if(multiply_ls_buffer){
+        if(_duplicate_ls_buffer){
             for(size_t i = 0; i < out_lost_sample_bufs.size(); i++){
                 uint8_t * new_flag_frame = wait_for_empty_frame(out_lost_sample_bufs[i],
                                                    unique_name.c_str(), lost_samples_buf_frame_id);

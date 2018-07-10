@@ -329,22 +329,22 @@ rfi_bad_input_finder:
     kotekan_process: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_3
 
-#rfi_record:
-#  total_links: 1
-#  write_to: /mnt/gong/RFI
-#  write_to_disk: false
-#  gpu_0:
-#    kotekan_process: rfiRecord
-#    rfi_in: gpu_rfi_output_buffer_0
-#  gpu_1:
-#    kotekan_process: rfiRecord
-#    rfi_in: gpu_rfi_output_buffer_1
-#  gpu_2:
-#    kotekan_process: rfiRecord
-#    rfi_in: gpu_rfi_output_buffer_2
-#  gpu_3:
-#    kotekan_process: rfiRecord
-#    rfi_in: gpu_rfi_output_buffer_3
+rfi_record:
+  total_links: 1
+  write_to: /mnt/gong/RFI
+  write_to_disk: false
+  gpu_0:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_0
+  gpu_1:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_1
+  gpu_2:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_2
+  gpu_3:
+    kotekan_process: rfiRecord
+    rfi_in: gpu_rfi_output_buffer_3
 
 #RFI Live-view Paramters
 waterfallX: 1024

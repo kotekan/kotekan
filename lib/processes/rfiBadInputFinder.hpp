@@ -64,6 +64,11 @@ public:
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 private:
+    ///Private functions
+    //Functon to compute median of an array
+    float median(float array[], uint32_t num);
+    //Functon to compute standard deviation of an array, not including wild outliers
+    float deviation(float array[], uint32_t num, float outliercut);
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer *rfi_buf;
     //General Config Parameters

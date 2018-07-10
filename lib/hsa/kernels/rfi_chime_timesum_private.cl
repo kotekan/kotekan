@@ -1,7 +1,7 @@
 /***********************************************
 Kotekan RFI Documentation Block:
 By: Jacob Taylor
-Date: January 2018
+Date: July 2018
 File Purpose: OpenCL Kernel for kurtosis presum
 Details:
         Sums power and square power across time
