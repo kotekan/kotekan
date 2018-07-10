@@ -101,7 +101,7 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
 
 
 std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(const uint32_t freq_id) {
-    std::cout << "Waiting for notification\n";
+    // std::cout << "Waiting for notification\n";
     std::unique_lock<std::mutex> lock(requests_lock);
 
     using namespace std::chrono_literals;
