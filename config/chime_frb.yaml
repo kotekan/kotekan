@@ -113,8 +113,9 @@ dpdk:
 
 baseband:
     max_dump_samples: 100000
-    num_frames_buffer: baseband_buffer_depth - 4
-    base_dir: /mnt/gong/rawdump/
+    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
+    num_frames_buffer: 116
+    base_dir: /mnt/gong/rawdump/   # For now. FRB archiver eventually.
     write_throttle: 0
     baseband0:
       kotekan_process: basebandReadout
