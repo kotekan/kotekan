@@ -137,6 +137,60 @@ class FakeVisBuffer(InputBuffer):
         self.process_block = {process_name: process_config}
 
 
+class VisWriterBuffer(OutputBuffer):
+    """Consume a visBuffer and provide its contents as raw or hdf5 file.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    file_type : string
+        File type to write into (see visWriter documentation)
+    freq_ids : Array of Int.
+        Frequency IDs
+    in_buf : string
+        Optionally specify the name of an input buffer instead of creating one.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(self, output_dir, file_type, freq_ids, in_buf=None):
+
+        self.name = 'viswriter_buf%i' % self._buf_ind
+        process_name = 'write%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+
+        if in_buf is None:
+            self.buffer_block = {
+                self.name: {
+                    'kotekan_buffer': 'vis',
+                    'metadata_pool': 'vis_pool',
+                    'num_frames': 'buffer_depth',
+                }
+            }
+            buf_name = self.name
+        else:
+            buf_name = in_buf
+            self.buffer_block = {}
+
+        process_config = {
+            'kotekan_process': 'visWriter',
+            'in_buf': buf_name,
+            'file_name': self.name,
+            'file_type': file_type,
+            'root_path': output_dir,
+            'write_ev': True,
+            'node_mode': False,
+            'freq_ids': freq_ids
+        }
+
+        self.process_block = {process_name: process_config}
+
+
 class DumpVisBuffer(OutputBuffer):
     """Consume a visBuffer and provide its contents at `VisBuffer` objects.
 
@@ -144,6 +198,8 @@ class DumpVisBuffer(OutputBuffer):
     ----------
     output_dir : string
         Temporary directory to output to. The dumped files are not removed.
+    in_buf : string
+        Optionally specify the name of an input buffer instead of creating one.
     """
 
     _buf_ind = 0

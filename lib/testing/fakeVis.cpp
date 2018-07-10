@@ -37,7 +37,7 @@ fakeVis::fakeVis(Config &config,
 
     // Get fill type
     mode = config.get_string_default(unique_name, "mode", "default");
-    if (mode == "gaussian") {
+    if (mode == "gaussian" || mode == "gaussian_random") {
         vis_mean = config.get_float_default(unique_name, "vis_mean", 0.);
         vis_std = config.get_float_default(unique_name, "vis_std", 1.);
     }
