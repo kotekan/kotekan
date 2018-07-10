@@ -53,7 +53,6 @@ void BasebandRequestManager::status_callback(connectionInstance& conn){
     std::lock_guard<std::mutex> lock(requests_lock);
 
     for (auto& element : requests) {
-        // XXX Compiler complains that this isn't used.
         uint32_t freq_id = element.first;
         for (auto& req : element.second) {
             json j;
@@ -115,7 +114,8 @@ std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(con
 
     if (!requests[freq_id].empty()) {
         BasebandRequest req = requests[freq_id].front();
-        auto task = std::make_shared<BasebandDumpStatus>(BasebandDumpStatus{req});
+        BasebandDumpStatus stat{req};
+        auto task = std::make_shared<BasebandDumpStatus>(stat);
         requests[freq_id].pop_front();
         processing.push_back(task);
         return task;
