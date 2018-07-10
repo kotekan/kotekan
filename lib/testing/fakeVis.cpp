@@ -136,8 +136,12 @@ void fakeVis::main_thread() {
                         ind++;
                     }
                 }
-            } else if (mode == "gaussian") {
+            } else if (mode == "gaussian" || mode == "gaussian_random") {
                 std::default_random_engine gen;
+                if (mode == "gaussian_random") {
+                    std::random_device rd;
+                    gen.seed(rd());
+                }
                 std::normal_distribution<float> gauss(vis_mean, vis_std);
                 int ind = 0;
                 for(uint32_t i = 0; i < num_elements; i++) {
@@ -152,8 +156,12 @@ void fakeVis::main_thread() {
             }
 
             // Insert values into eigenvectors, eigenvalues and rms
-            if (mode == "gaussian") {
+            if (mode == "gaussian" || mode == "gaussian_random") {
                 std::default_random_engine gen;
+                if (mode == "gaussian_random") {
+                    std::random_device rd;
+                    gen.seed(rd());
+                }
                 std::normal_distribution<float> gauss(vis_mean, vis_std);
                 for (uint32_t i = 0; i < num_eigenvectors; i++) {
                     for (uint32_t j = 0; j < num_elements; j++) {
@@ -177,9 +185,13 @@ void fakeVis::main_thread() {
             // weights
             auto out_wei = output_frame.weight;
             int ind = 0;
-            if (mode == "gaussian") {
-                // generate vaguely realistic weights
+            if (mode == "gaussian" || mode == "gaussian_random") {
                 std::default_random_engine gen;
+                if (mode == "gaussian_random") {
+                    std::random_device rd;
+                    gen.seed(rd());
+                }
+                // generate vaguely realistic weights
                 std::normal_distribution<float> gauss(0.1 * vis_std, 0.1 * vis_std);
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
