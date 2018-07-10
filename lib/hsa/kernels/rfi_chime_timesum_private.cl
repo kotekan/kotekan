@@ -12,6 +12,8 @@ rfi_chime_timesum(
      __global uint *input,
      __global float *output,
      __constant uchar *InputMask,
+     __constant uchar *LostSamples,
+     __global uint *LostSamplesCorrection,
      const uint sk_step,
      const uint num_elements
 )
@@ -34,6 +36,7 @@ rfi_chime_timesum(
     uint data; 
     uint4 temp;
     uint4 power;
+    uint lost_sample_counter = 0;
     //Sum across time
     for(int i = 0; i < sk_step; i++){
         //Read input data
@@ -47,7 +50,9 @@ rfi_chime_timesum(
         //Integrate
         power_across_time += power;
         sq_power_across_time += power*power;
+        lost_sample_counter += LostSamples[i + gy*sk_step];
     }
+    LostSamplesCorrection[gy] = lost_sample_counter;
     //Compute mean of power sum and normalize square power sum
     float4 mean = convert_float4(power_across_time)/sk_step + (float4)0.00000001;
     float4 tmp = convert_float4(sq_power_across_time)/(mean*mean);

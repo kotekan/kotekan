@@ -126,6 +126,19 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
+duplicate_samples_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_local_freq * num_data_sets
+    metadata_pool: main_pool
+    lost_samples_buffer_0:
+        kotekan_buffer: standard
+    lost_samples_buffer_1:
+        kotekan_buffer: standard
+    lost_samples_buffer_2:
+        kotekan_buffer: standard
+    lost_samples_buffer_3:
+        kotekan_buffer: standard
+
 #Processes
 #gen_data:
 #  type: const
@@ -171,11 +184,36 @@ dpdk:
         - network_buffer_3
     lost_samples_buf: lost_samples_buffer
 
+zero_samples:
+    multiply_ls_buffer: True
+    lost_samples_buf: lost_samples_buffer
+    zero_0:
+        kotekan_process: zeroSamples
+        out_buf: network_buffer_0
+        out_lost_sample_buffers:
+            - lost_samples_buffer_0
+    zero_1:
+        kotekan_process: zeroSamples
+        out_buf: network_buffer_1
+        out_lost_sample_buffers:
+            - lost_samples_buffer_1
+    zero_2:
+        kotekan_process: zeroSamples
+        out_buf: network_buffer_2
+        out_lost_sample_buffers:
+            - lost_samples_buffer_2
+    zero_3:
+        kotekan_process: zeroSamples
+        out_buf: network_buffer_3
+        out_lost_sample_buffers:
+            - lost_samples_buffer_3
+
 gpu:
   kernel_path: "../lib/hsa/kernels/"
   gain_dir: "../../kotekan/"
   commands:
   - name: hsaInputData
+  - name: hsaInputLostSamples
   - name: hsaPresumZero
   - name: hsaOutputDataZero
   - name: hsaBarrier
@@ -204,6 +242,7 @@ gpu:
     gpu_id: 0
     in_buffers:
       network_buf: network_buffer_0
+      lost_samples_buf: lost_samples_buffer_0
     out_buffers:
       output_buf: gpu_output_buffer_0
       beamform_output_buf: beamform_output_buffer_0
@@ -214,6 +253,7 @@ gpu:
     gpu_id: 1
     in_buffers:
       network_buf: network_buffer_1
+      lost_samples_buf: lost_samples_buffer_1
     out_buffers:
       output_buf: gpu_output_buffer_1
       beamform_output_buf: beamform_output_buffer_1
@@ -224,6 +264,7 @@ gpu:
     gpu_id: 2
     in_buffers:
       network_buf: network_buffer_2
+      lost_samples_buf: lost_samples_buffer_2
     out_buffers:
       output_buf: gpu_output_buffer_2
       beamform_output_buf: beamform_output_buffer_2
@@ -234,6 +275,7 @@ gpu:
     gpu_id: 3
     in_buffers:
       network_buf: network_buffer_3
+      lost_samples_buf: lost_samples_buffer_3
     out_buffers:
       output_buf: gpu_output_buffer_3
       beamform_output_buf: beamform_output_buffer_3
@@ -241,6 +283,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_3
 
 rfi_broadcast:
+  log_level: DEBUG
   total_links: 1
   destination_protocol: UDP
   destination_ip: 10.1.113.19
@@ -301,5 +344,5 @@ rfi_bad_input_finder:
 #RFI Live-view Paramters
 waterfallX: 1024
 num_receive_threads: 4
-colorscale: 1.0
+colorscale: 0.03
 waterfall_request_delay: 60

@@ -11,8 +11,10 @@ __kernel void
 rfi_chime_inputsum(
      __global float *input,
      __global float *output,
+     __global uint *LostSampleCorrection,
      const uint num_elements,
-     const uint M
+     const uint num_bad_inputs,
+     const uint sk_step
 )
 {
     //Get work ID's
@@ -43,6 +45,7 @@ rfi_chime_inputsum(
     }
     //Compute spectral kurtosis estimate and add to output
     if(lx == 0){
+        uint M = (num_elements-num_bad_inputs)*(sk_step-LostSampleCorrection[gz]);
         output[gy + gz*gy_size] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1);
     }
 }
