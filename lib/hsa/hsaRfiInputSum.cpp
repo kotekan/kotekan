@@ -22,8 +22,8 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     //Compute Buffer lengths
     input_frame_len = sizeof(float)*_num_elements*_num_local_freq*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;
+    correction_frame_len = sizeof(uint32_t)*_samples_per_data_set/_sk_step;
     _num_bad_inputs = config.get_int_array(unique_name, "bad_inputs").size();
-    _M = (_num_elements - _num_bad_inputs)*_sk_step;
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -43,7 +43,6 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     //Change Parameters
     _num_bad_inputs = json_request["num_bad_inputs"].get<int>();
     //Update relevant variables
-    _M = (_num_elements - _num_bad_inputs)*_sk_step;
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
@@ -55,16 +54,21 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     struct __attribute__ ((aligned(16))) args_t {
 	void *input;
 	void *output;
+        void *LostSampleCorrection;
 	uint32_t num_elements;
-	uint32_t M;
+	uint32_t num_bad_inputs;
+        uint32_t sk_step;
+
     } args;
     //Initialize arguments
     memset(&args, 0, sizeof(args));
     //Set arguments
     args.input = device.get_gpu_memory("timesum", input_frame_len);
     args.output = device.get_gpu_memory_array("rfi_output",gpu_frame_id, output_frame_len);
+    args.LostSampleCorrection = device.get_gpu_memory("lost_sample_correction", correction_frame_len);
     args.num_elements = _num_elements;
-    args.M = _M;
+    args.num_bad_inputs = _num_bad_inputs;
+    args.sk_step = _sk_step;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     //Set kernel execution parameters

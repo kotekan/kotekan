@@ -76,6 +76,10 @@ private:
     uint32_t output_frame_len;
     /// Length of the input mask, should be sizeof_uchar x n_elem
     uint32_t mask_len;
+    /// Length of the lost sample frame
+    uint32_t lost_samples_frame_len;
+     /// Length of the lost sample correction frame
+    uint32_t lost_samples_correction_len;
     /// Array to hold the input mask (which inputs are currently functioning)
     uint8_t *InputMask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)

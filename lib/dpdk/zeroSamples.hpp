@@ -2,7 +2,8 @@
 #define ZERO_SAMPLES_HPP
 
 #include "KotekanProcess.hpp"
-
+#include "json.hpp"
+#include <vector>
 /**
  * @brief Zeros samples in the @c out_buf based on flags in the @lost_samples_buf
  *
@@ -56,6 +57,11 @@ private:
 
     /// The size of the time samples in @c out_buf
     uint32_t sample_size;
+
+    /// Whether or not to multiply the lost samples buffer
+    bool multiply_ls_buffer;
+
+    vector<Buffer*> out_lost_sample_bufs;
 };
 
 #endif /* ZERO_SAMPLES_HPP */
