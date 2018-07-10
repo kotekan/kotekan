@@ -188,7 +188,7 @@ void fakeVis::main_thread() {
                 for (uint32_t i = 0; i < num_eigenvectors; i++) {
                     for (uint32_t j = 0; j < num_elements; j++) {
                         int k = i * num_elements + j;
-                        output_frame.evec[k] = {i, gauss(gen)};
+                        output_frame.evec[k] = {(float)i, gauss(gen)};
                     }
                     output_frame.eval[i] = i;
                 }
