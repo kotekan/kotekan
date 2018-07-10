@@ -1,8 +1,12 @@
+/*****************************************
+@file
+@brief Read visFileRaw data.
+- visRawReader : public KotekanProcess
+*****************************************/
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
 #include "json.hpp"
-
 #include "buffer.h"
 #include "visUtil.hpp"
 #include "visBuffer.hpp"
@@ -12,26 +16,26 @@ using json = nlohmann::json;
 
 /**
  * @class visRawReader
- * @brief Reads recorded data from .data and .meta files.
+ * @brief Read and stream a raw visibility file.
  *
- * Data file is mmaped to memory for performance reasons.
+ * This will divide the file up into time-frequency chunks of set size and
+ * stream out the frames with time as the *fastest* index.
  *
  * @par Buffers
- * @buffer out_buf The output stream as read from file.
- *         @buffer_format visBuffer.
+ * @buffer out_buf The data read from the raw file.
+ *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
  * @conf   readahead_blocks		Int. Number of blocks to advise OS to read ahead of current read.
- * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time).
+ * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time). If not specified will read file contiguously.
  * @conf   infile				String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
- * @conf   time_ordered			Bool.
  *
- * @author Tristan Pinsonneault-Marotte
+ * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class visRawReader : public KotekanProcess {
 
 public:
-    // default constructor
+    /// default constructor
     visRawReader(Config &config,
                  const string& unique_name,
                  bufferContainer &buffer_container);
@@ -40,47 +44,36 @@ public:
 
     void apply_config(uint64_t fpga_seq);
 
+    /// Main loop over buffer frames
     void main_thread();
 
     /**
-     * @brief Get time values from the metadata.
-     *
-     * @returns A vector of time values from the metadata.
+     * @brief Get the times in the file.
      **/
     const std::vector<time_ctype>& times() { return _times; }
 
     /**
-     * @brief Get freq values from the metadata.
-     *
-     * @returns A vector of freq values from the metadata.
+     * @brief Get the frequencies in the file.
      **/
     const std::vector<freq_ctype>& freqs() { return _freqs; }
 
     /**
-     * @brief Get prod values from the metadata.
-     *
-     * @returns A vector of prod values from the metadata.
+     * @brief Get the products in the file.
      **/
     const std::vector<prod_ctype>& prods() { return _prods; }
 
     /**
-     * @brief Get input values from the metadata.
-     *
-     * @returns A vector of input values from the metadata.
+     * @brief Get the inputs in the file.
      **/
     const std::vector<input_ctype>& inputs() { return _inputs; }
 
     /**
-     * @brief Get ev values from the metadata.
-     *
-     * @returns A vector of ev values from the metadata.
+     * @brief Get the ev axis in the file.
      **/
     const std::vector<uint32_t>& ev() { return _ev; }
 
     /**
-     * @brief Get the metadata.
-     *
-     * @returns All metadata as a reference to a json object.
+     * @brief Get the metadata saved into the file.
      **/
     const json& metadata() { return _metadata; }
 
@@ -117,6 +110,9 @@ private:
     std::vector<input_ctype> _inputs;
     std::vector<uint32_t> _ev;
 
+    // whether to read in chunks
+    bool chunked;
+
     // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;
     // time chunk size
@@ -126,8 +122,6 @@ private:
 
     // Number of elements in a chunked row
     size_t row_size;
-
-    bool time_ordered = true;
 
     // the input file
     std::string filename;

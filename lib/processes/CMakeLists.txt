@@ -14,6 +14,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               nDiskFileRead.cpp
               networkPowerStream.cpp
               integratePowerStream.cpp
+              monitorBuffer.cpp
               networkInputPowerStream.cpp
               pyPlotN2.cpp
               rawFileRead.cpp
@@ -22,8 +23,9 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
               rfiVDIF.cpp
-              rfiBroadcastVDIF.cpp
+              rfiAVXVDIF.cpp
               rfiBroadcast.cpp
+              rfiRecord.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp

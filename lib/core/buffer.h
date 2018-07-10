@@ -57,7 +57,6 @@ extern "C" {
  * @brief Internal structure for tracking consumer and producer names.
  */
 struct ProcessInfo {
-
     /// Set to 1 if the process is active
     int in_use;
 
@@ -179,6 +178,9 @@ struct Buffer {
      * A 0 at index I means the frame at index I is not full, one means it is full.
      */
     int * is_full;
+
+    /// The last time a frame was marked as full (used for arrival rate)
+    double last_arrival_time;
 
     /// Array of buffer info objects, for tracking information about each buffer.
     struct metadataContainer ** metadata;
@@ -319,6 +321,13 @@ int is_frame_empty(struct Buffer * buf, const int frame_id);
  * @returns The number of currently full frames in the buffer
  */
 int get_num_full_frames(struct Buffer * buf);
+
+/**
+ * @brief Returns the last time a frame was marked as full
+ * @param buf The buffer to get the last arrival time for.
+ * @return A double (with units: seconds) containing the unix time of the last frame arrival
+ */
+double get_last_arrival_time(struct Buffer * buf);
 
 /**
  * @brief Prints a picture of the frames which are currently full.

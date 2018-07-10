@@ -1,17 +1,16 @@
-#include "visTranspose.hpp"
-#include "errors.h"
-#include "visBuffer.hpp"
 #include <algorithm>
 #include <sys/stat.h>
 #include <fstream>
 #include <csignal>
 #include <stdexcept>
+
+#include "errors.h"
+#include "visBuffer.hpp"
 #include "fmt.hpp"
 #include "visUtil.hpp"
+#include "visTranspose.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
-
-const size_t BLOCK_SIZE = 32;
 
 visTranspose::visTranspose(Config &config, const string& unique_name,
         bufferContainer &buffer_container) :
@@ -22,14 +21,14 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    // Chunk dimensions for write
+    // get chunk dimensions for write from config file
     chunk = config.get_int_array(unique_name, "chunk_size");
     if (chunk.size() != 3)
         throw std::invalid_argument("Chunk size needs exactly three elements " \
                 "(has " + std::to_string(chunk.size()) + ").");
-    if (chunk[0] < 0 || chunk[1] < 0 || chunk[2] < 0)
+    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
         throw std::invalid_argument("visTranspose: Config: Chunk size needs " \
-                "to be equall or greater than one.");
+                "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
 
@@ -57,7 +56,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 
-    // Extract the attributes and index maps
+    // Extract the attributes and index maps from metadata
     metadata = _t["attributes"];
     times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
     freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
@@ -89,7 +88,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     eval.reserve(chunk_t*chunk_f*num_ev);
     evec.reserve(chunk_t*chunk_f*num_ev*num_input);
     erms.reserve(chunk_t*chunk_f);
-
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
@@ -97,7 +95,7 @@ void visTranspose::apply_config(uint64_t fpga_seq) {
 }
 
 visTranspose::~visTranspose() {
-    // Flush up to frames_sofar
+    // Print recorded timing
     double total_time = current_time() - start_time;
     DEBUG("total time %f", total_time);
     DEBUG("wait time %f", wait_time);
@@ -124,7 +122,8 @@ void visTranspose::main_thread() {
 
     while (!stop_thread) {
         last_time = current_time();
-        // Wait for the buffer to be filled with data
+
+        // Wait for a full frame in the input buffer
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
             break;
@@ -133,8 +132,6 @@ void visTranspose::main_thread() {
 
         wait_time += current_time() - last_time;
         last_time = current_time();
-
-        //DEBUG("Frames so far %d", frames_so_far);
 
         // Collect frames until a chunk is filled
         // Time-transpose as frames come in
@@ -160,13 +157,16 @@ void visTranspose::main_thread() {
 
         copy_time += current_time() - last_time;
 
-        // Increment within a chunk
+        // Increment within read chunk
         ti = (ti + 1) % write_t;
         if (ti == 0)
             fi++;
         if (fi == write_f) {
+            // chunk is complete
             last_time = current_time();
             write();
+            // increment between chunks
+            increment_chunk();
             write_time += current_time() - last_time;
             fi = 0;
             ti = 0;
@@ -207,12 +207,9 @@ void visTranspose::write() {
 
     file->write_block("gain_exp", f_ind, t_ind, write_f, write_t,
             gain_exp.data());
-
-    //DEBUG("wrote all");
-    increment_chunk();
 }
 
-// TODO: might be better to include same function as used by Reader
+// increment between chunks
 void visTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;

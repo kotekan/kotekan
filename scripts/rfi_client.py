@@ -8,12 +8,12 @@
 * Help: Run "python3 rfi_client.py" -H (or --Help) for how to use.
 *********************************************************************************/
 """
-
 import threading
 import socket
 import numpy as np
 import matplotlib.animation as animation
 import matplotlib.dates as md
+from matplotlib.widgets import Button
 import datetime
 import matplotlib.pyplot as plt
 import random
@@ -23,6 +23,16 @@ import os
 import argparse
 import yaml
 
+def parse_dict(cmd, _dict):
+    for key, value in _dict.items():
+        if(type(value) == dict):
+            parse_dict(cmd,value)
+        else:
+            if key in cmd.config.keys():
+                if(type(cmd.config[key]) == type(value)):
+                    print("Setting Config Paramter %s to %s" %(key,str(value)))
+                    cmd.config[key] = value
+
 class CommandLine:
 
     def __init__(self):
@@ -30,7 +40,9 @@ class CommandLine:
         #Defaults
         self.TCP_IP = '127.0.0.1'
         self.TCP_PORT = 2901
-        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024, 'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0}
+        self.config = {'samples_per_data_set':32768, 'timestep':2.56e-6, 'waterfallX': 1024,
+                       'waterfallY': 1024, 'waterfall_request_delay': 10, 'colorscale': 1.0,
+                       'sk_step': 256, 'num_elements': 2048}
         self.mode = 'pathfinder'
         self.supportedModes = ['vdif','pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
@@ -52,19 +64,7 @@ class CommandLine:
             status = True
         if argument.config:
             print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
-            for key, value in yaml.load(open(argument.config)).items():
-                if(type(value) == dict):
-                    if('kotekan_process' in value.keys() and value['kotekan_process'] == 'rfiBroadcast'):
-                        for k in value.keys():
-                            if k in self.config.keys():
-                                if(type(self.config[k]) == type(value[k])):
-                                    print("Setting Config Paramter %s to %s" %(k,str(value[k])))
-                                    self.config[k] = value[k]
-                else:
-                    if key in self.config.keys():
-                        if(type(self.config[key]) == type(value)):
-                            print("Setting Config Paramter %s to %s" %(key,str(value)))
-                            self.config[key] = value
+            parse_dict(self,yaml.load(open(argument.config)))
             print(self.config)
             status = True
         if argument.mode:
@@ -149,6 +149,25 @@ def data_listener():
 
         time.sleep(delay)
 
+class Callback(object):
+
+    def SaveData(self, event): 
+        if not os.path.exists("RFIData"):
+            os.makedirs("RFIData")
+        newDir = "RFIData/" + datetime.datetime.utcnow().strftime('%Y%m%dT%H:%M:%S') #Create New Folder
+        os.makedirs(newDir)
+        np.save(newDir + '/data.npy', waterfall)
+        plt.savefig(newDir + '/image.png')
+        f = open(newDir + '/info.txt',"w") #Create Info Text File
+        f.write("X Lims: %f - %f\n"%(x_lims[0], x_lims[1]))
+        f.close()
+        print("Saved Data! Path: ./" + newDir)
+
+def to_confidence(app, ticks):
+    M = app.config["sk_step"]*app.config["num_elements"]
+    sigma = np.sqrt(4/M)
+    return np.round(np.abs(1-ticks)/(sigma),1)
+
 if( __name__ == '__main__'):
 
     app = CommandLine()
@@ -164,7 +183,9 @@ if( __name__ == '__main__'):
 
     x_lims = mdates.date2num([t_min,t_min + datetime.timedelta(seconds=waterfall.shape[1]*app.config['samples_per_data_set']*app.config['timestep'])])
     im = plt.imshow(waterfall, aspect = 'auto',cmap='viridis',extent=[x_lims[0],x_lims[1],400,800], vmin=1-app.config['colorscale'],vmax=1+app.config['colorscale'])
-    plt.colorbar(label = "SK Value")
+    ticks = np.linspace(1-app.config['colorscale'], 1+app.config['colorscale'], num = 10)
+    cbar = plt.colorbar(label = "Detection Confidence", ticks = ticks)
+    cbar.ax.set_yticklabels(to_confidence(app, ticks))
     plt.title("RFI Viewer (Mode: "+app.mode+")")
     plt.xlabel("Time")
     plt.ylabel("Frequency[MHz]")
@@ -197,6 +218,10 @@ if( __name__ == '__main__'):
     thread.daemon = True
     thread.start()
 
+    callback = Callback()
+    buttonLocation = plt.axes([0.81, 0.05, 0.1, 0.075])
+    saveButton = Button(buttonLocation, 'Save')
+    saveButton.on_clicked(callback.SaveData)
+
+
     input()
-
-
