@@ -28,6 +28,9 @@ def transposed_data(request, tmpdir_factory):
         cadence=writer_params['cadence'],
     )
 
+    dump_buffer = kotekan_runner.DumpVisBuffer(output_dir=str(tmpdir),
+            in_buf = fakevis_buffer.name)
+
     params = writer_params.copy()
     params['root_path'] = tmpdir
 
@@ -37,7 +40,8 @@ def transposed_data(request, tmpdir_factory):
             'file_length': writer_params['total_frames']},
         fakevis_buffer,
         None,
-        params
+        params,
+        dump_buffer
     )
 
     writer.run()
@@ -62,7 +66,7 @@ def transposed_data(request, tmpdir_factory):
 
     fh = h5py.File(outfile + '.h5', 'r')
 
-    yield fh
+    yield (fh, dump_buffer.load())
 
     fh.close()
 
@@ -70,11 +74,48 @@ def transposed_data(request, tmpdir_factory):
 def test_transpose(transposed_data):
 
     # The transposed file
-    f_tr = transposed_data
+    f_tr = transposed_data[0]
+    f = transposed_data[1]
 
-    nt = writer_params['total_frames']
-    nf = len(writer_params['freq'])
+    n_t = writer_params['total_frames']
+    n_f = len(writer_params['freq'])
+    n_elems = writer_params['num_elements']
+    n_prod = n_elems * (n_elems + 1) / 2
+    n_ev = writer_params['num_ev'];
 
-    assert f_tr['index_map/time'].shape[0] == nt
-    assert f_tr['index_map/freq'].shape[0] == nf
-    assert f_tr['vis'].shape == (nf, nt, nt)
+    assert f_tr['index_map/time'].shape[0] == n_t
+    assert f_tr['index_map/freq'].shape[0] == n_f
+    assert f_tr['vis'].shape == (n_f, n_prod, n_t)
+    assert f_tr['flags/vis_weight'].shape == (n_f, n_prod, n_t)
+    assert f_tr['eval'].shape == (n_f, writer_params['num_ev'], n_t)
+    assert f_tr['evec'].shape == (n_f, writer_params['num_ev'], writer_params['num_elements'], n_t)
+    assert f_tr['erms'].shape == (n_f, n_t)
+
+    i = 0
+    i_f = 0
+    for frame in f:
+        # compare vis
+        assert frame.vis.shape == (n_prod,)
+        m_in = frame.vis
+        m_tr = f_tr['vis'].value[:,:,i_f]
+        assert np.all(m_tr[i,:] == m_in)
+
+        # compare weight
+        assert np.all(frame.weight == f_tr['flags/vis_weight'].value[:,:,i_f])
+
+        #compare eigenvalues
+        assert np.all(frame.eval == f_tr['eval'].value[:,:,i_f])
+
+        # compare eigenvectors
+        for i_ev in range(0, n_ev):
+            ev_in = f_tr['evec'].value[i,i_ev,:,i_f]
+            ev_out = frame.evec[i_ev * n_elems : i_ev * n_elems + n_elems]
+            assert np.all(ev_in == ev_out)
+
+        # compare erms
+        assert np.all(frame.erms == f_tr['erms'].value)
+
+        i = i + 1
+        if i == n_f:
+            i_f  = i_f + 1
+            i = 0

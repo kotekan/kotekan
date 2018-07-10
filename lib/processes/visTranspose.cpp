@@ -88,7 +88,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     eval.reserve(chunk_t*chunk_f*num_ev);
     evec.reserve(chunk_t*chunk_f*num_ev*num_input);
     erms.reserve(chunk_t*chunk_f);
-
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
