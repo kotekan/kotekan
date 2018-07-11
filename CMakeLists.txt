@@ -16,6 +16,7 @@ option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
+option(BOOST_TESTS "Compile Boost C++ unit tests" ON)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -229,3 +230,28 @@ add_subdirectory(kotekan)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
+
+
+# Testing with boost
+if (${BOOST_TESTS})
+    # Prep ourselves for compiling boost
+    find_package(Boost COMPONENTS unit_test_framework REQUIRED)
+    include_directories (${Boost_INCLUDE_DIRS})
+
+    # test source files are located in tests/boost/
+    file(GLOB TEST_SRCS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/boost/*.cpp)
+
+    # Run through each source
+    foreach(testSrc ${TEST_SRCS})
+            get_filename_component(testName ${testSrc} NAME_WE)
+            add_executable(${testName} ${testSrc})
+
+            # add kotekan targets and dependencies here
+            target_link_libraries(${testName} ${Boost_LIBRARIES} )
+
+            # testing binaries are located in /tests and executed by pytest
+            # if pytest-cpp is installed
+            set_target_properties(${testName} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    endforeach(testSrc)
+endif()
