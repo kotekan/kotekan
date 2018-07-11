@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 
+import visbuffer
 import kotekan_runner
 
 trunc_params = {
@@ -26,8 +27,10 @@ def vis_data(tmpdir_factory):
             mode=trunc_params['fakevis_mode'],
             cadence=trunc_params['cadence']);
 
-    in_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir),
-            in_buf=fakevis_buffer.name)
+    in_dump_config = trunc_params.copy()
+    in_dump_config['base_dir'] = str(tmpdir)
+    in_dump_config['file_name'] = 'fakevis'
+    in_dump_config['file_ext'] = 'dump'
 
     out_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
@@ -36,12 +39,14 @@ def vis_data(tmpdir_factory):
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
         global_config = trunc_params,
-        buffers_extra = in_dump_buffer
+        parallel_process_type = 'rawFileWrite',
+        parallel_process_config = in_dump_config
     )
 
     test.run()
 
-    yield (out_dump_buffer.load(), in_dump_buffer.load())
+    yield (out_dump_buffer.load(), visbuffer.VisBuffer.load_files(
+        "%s/*fakevis*.dump" % str(tmpdir)))
 
 @pytest.fixture(scope="module")
 def vis_data_zero_weights(tmpdir_factory):
@@ -55,8 +60,10 @@ def vis_data_zero_weights(tmpdir_factory):
             cadence=trunc_params['cadence'],
             zero_weight=True);
 
-    in_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir),
-            in_buf=fakevis_buffer.name)
+    in_dump_config = trunc_params.copy()
+    in_dump_config['base_dir'] = str(tmpdir)
+    in_dump_config['file_name'] = 'fakevis'
+    in_dump_config['file_ext'] = 'dump'
 
     out_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
@@ -65,12 +72,14 @@ def vis_data_zero_weights(tmpdir_factory):
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
         global_config = trunc_params,
-        buffers_extra = in_dump_buffer
+        parallel_process_type = 'rawFileWrite',
+        parallel_process_config = in_dump_config
     )
 
     test.run()
 
-    yield (out_dump_buffer.load(), in_dump_buffer.load())
+    yield (out_dump_buffer.load(), visbuffer.VisBuffer.load_files(
+        "%s/*fakevis*.dump" % str(dir)))
 
 def test_truncation(vis_data):
     n = trunc_params['num_elements']
