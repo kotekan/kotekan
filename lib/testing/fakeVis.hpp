@@ -56,6 +56,7 @@
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If
  *                          less than zero, no limit is applied. Default is `-1`.
+ * @conf  zero_weight       Bool. Set all weights to zero, if this is True. Default is False.
  *
  * @todo  It might be useful eventually to produce realistic looking mock visibilities.
  *
@@ -92,6 +93,9 @@ private:
     // Visibility filling mode
     std::string mode;
     float vis_mean, vis_std;
+
+    // Test mode that sets all weights to zero
+    bool zero_weight;
 
     bool wait;
     int32_t num_frames;

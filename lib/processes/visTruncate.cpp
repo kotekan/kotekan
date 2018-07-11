@@ -103,15 +103,16 @@ void visTruncate::main_thread() {
         }
         // use std::sqrt for the last few (less than 8)
         for (i_vec -= 8; i_vec < frame.num_prod; i_vec++)
-            err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec] * err_sq_lim);
+            err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec]
+                    * err_sq_lim);
 
         #pragma omp parallel for private(err_r, err_i, tr_vis)
         for (size_t i = 0; i < frame.num_prod; i++) {
             // Get truncation precision from weights
             if (output_frame.weight[i] == 0.) {
                 // TODO: should this raise a warning?
-                err_r = vis_prec * output_frame.vis[i].real();
-                err_i = vis_prec * output_frame.vis[i].imag();
+                err_r = vis_prec * std::abs(output_frame.vis[i].real());
+                err_i = vis_prec * std::abs(output_frame.vis[i].imag());
             } else {
                 err_r = err_all[i];
                 err_i = err_r;

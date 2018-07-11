@@ -19,7 +19,7 @@ writer_params = {
 }
 
 @pytest.fixture(scope="module")
-def transposed_data(request, tmpdir_factory):
+def transpose(tmpdir_factory):
 
     writer_params['file_length'] = writer_params['total_frames']
 
@@ -29,7 +29,7 @@ def transposed_data(request, tmpdir_factory):
         freq_ids=writer_params['freq'],
         num_frames=writer_params['total_frames'],
         cadence=writer_params['cadence'],
-        mode=writer_params['mode']
+        mode=writer_params['mode'],
     )
 
     # Write fake data in hdf5 format
@@ -86,11 +86,11 @@ def transposed_data(request, tmpdir_factory):
     fh_t.close()
 
 
-def test_transpose(transposed_data):
+def test_transpose(transpose):
 
     # The transposed and untransposed files
-    f_tr = transposed_data[0]
-    f = transposed_data[1]
+    f_tr = transpose[0]
+    f = transpose[1]
 
     # some useful params
     n_t = writer_params['total_frames']

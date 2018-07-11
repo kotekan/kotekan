@@ -46,6 +46,9 @@ fakeVis::fakeVis(Config &config,
     cadence = config.get_float(unique_name, "cadence");
     num_frames = config.get_int_default(unique_name, "num_frames", -1);
     wait = config.get_bool_default(unique_name, "wait", true);
+
+    // Get zero_weight option
+    zero_weight = config.get_bool_default(unique_name, "zero_weight", false);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -207,7 +210,14 @@ void fakeVis::main_thread() {
             // weights
             auto out_wei = output_frame.weight;
             int ind = 0;
-            if (mode == "gaussian" || mode == "gaussian_random") {
+            if (zero_weight) {
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_wei[ind] = 0.;
+                        ind++;
+                    }
+                }
+            } else if (mode == "gaussian" || mode == "gaussian_random") {
                 std::default_random_engine gen;
                 if (mode == "gaussian_random") {
                     std::random_device rd;
