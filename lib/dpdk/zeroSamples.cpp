@@ -12,7 +12,7 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", false);
+    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", true);
     //Register as producer for all desired multiplied lost samples buffers
     if(_duplicate_ls_buffer){
         INFO("REGISTERING PRODUCERS")

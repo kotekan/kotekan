@@ -21,7 +21,7 @@ rfi_chime_timesum(
     //Get work id's
     short gx = get_global_id(0);
     short gy = get_global_id(1);
-    short gx_size = get_global_size(0); //num_elements/4
+    short gx_size = get_global_size(0); //_samples_per_data_set/_sk_step
     short gy_size = get_global_size(1); //num_local_freq
     //Declare Local Memory
     uint4 power_across_time;
@@ -54,8 +54,14 @@ rfi_chime_timesum(
     }
     LostSamplesCorrection[gy] = lost_sample_counter;
     //Compute mean of power sum and normalize square power sum
-    float4 mean = convert_float4(power_across_time)/sk_step + (float4)0.00000001;
-    float4 tmp = convert_float4(sq_power_across_time)/(mean*mean);
+    float4 tmp;
+    if(lost_sample_counter < sk_step){
+        float4 mean = convert_float4(power_across_time)/(sk_step-lost_sample_counter) + (float4)0.00000001;
+        tmp = convert_float4(sq_power_across_time)/(mean*mean);
+    }
+    else{
+        tmp = (float4)(0.0);
+    }      
     //Compute address in output data and add sum to output array
     address = 4*gx + gy*4*gx_size;
     output[0 + address] = (1-InputMask[0 + current_element])*tmp.s0;

@@ -46,7 +46,7 @@ rfi_chime_inputsum(
     //Compute spectral kurtosis estimate and add to output
     if(lx == 0){
         uint M = (num_elements-num_bad_inputs)*(sk_step-LostSampleCorrection[gz]);
-        if(M == 0){ output[gy + gz*gy_size] = -1; }
-        else{ output[gy + gz*gy_size] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1); }
+        if(M == 0) output[gy + gz*gy_size] = -1.0; 
+        else output[gy + gz*gy_size] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1); 
     }
 }

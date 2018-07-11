@@ -52,11 +52,11 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Struct for hsa arguments
     struct __attribute__ ((aligned(16))) args_t {
-	void *input;
-	void *output;
+        void *input;
+        void *output;
         void *LostSampleCorrection;
-	uint32_t num_elements;
-	uint32_t num_bad_inputs;
+        uint32_t num_elements;
+        uint32_t num_bad_inputs;
         uint32_t sk_step;
 
     } args;

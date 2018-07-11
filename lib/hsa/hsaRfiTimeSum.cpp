@@ -78,12 +78,12 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     }
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {
-	void *input;
-	void *output;
-	void *InputMask;
+        void *input;
+        void *output;
+        void *InputMask;
         void *LostSamples;
         void *LostSamplesCorrection;
-	uint32_t sk_step;
+        uint32_t sk_step;
         uint32_t num_elements;
     } args;
     //Initialize arguments
