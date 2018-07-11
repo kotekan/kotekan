@@ -122,14 +122,42 @@ protected:
     /// Frame IDs
     int out_buf_frame_ids[shuffle_size] = {0};
 
+    // ** FPGA Second stage error counters **
+
     /// Error counter for each of the 16 lanes of the 2nd stage (within-crate) data shuffle.
     uint64_t fpga_second_stage_shuffle_errors[16] = {0};
 
+    /// Counter for flag if there is a CRC error in ANY of the second stage input lanes
+    uint64_t fpga_second_stage_crc_errors = 0;
+
+    /// Counter for flag if the packet was missing or was too short on ANY second stage input lane
+    uint64_t fpga_second_stage_missing_short_errors = 0;
+
+    /// Counter for flag if the packet was too long on ANY second stage input lane
+    uint64_t fpga_second_stage_long_errors = 0;
+
+    /// Counter for flag if the data or frame fifo has overflowed on ANY second stage input lane (sticky)
+    uint64_t fpga_second_stage_fifo_overflow_errors = 0;
+
+    // ** FPGA Third stage error counters **
+
     /// Error counter for each of the 8 lanes of the 3rd stage (between-crate) data shuffle.
-    uint64_t fpga_third_stage_shuffle_errors[8] {0};
+    uint64_t fpga_third_stage_shuffle_errors[8] = {0};
+
+    /// Counter for flag if there is a CRC error in ANY of the third stage input lanes
+    uint64_t fpga_third_stage_crc_errors = 0;
+
+    /// Counter for flag if the packet was missing or was too short on ANY third stage input lane
+    uint64_t fpga_third_stage_missing_short_errors = 0;
+
+    /// Counter for flag if the packet was too long on ANY third stage input lane
+    uint64_t fpga_third_stage_long_errors = 0;
+
+    /// Counter for flag if the data or frame fifo has overflowed on ANY third stage input lane (sticky)
+    uint64_t fpga_third_stage_fifo_overflow_errors = 0;
 
     /// Tracks the number of times at least one of the flags in the second or
-    /// thrid stage shuffle were set.
+    /// thrid stage shuffle were set.  Not including the sticky flags.
     uint64_t rx_shuffle_flags_set = 0;
 };
 
@@ -392,9 +420,17 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf *mbuf) {
 
     uint32_t flag_value = *(uint32_t *)mbuf_data;
 
-    // If no flags are set then we hvae no errors to check,
-    // so we accept the packet
-    if (flag_value == 0) {
+    // If no flags (excluding the FIFO overflow flags) are set then
+    // we hvae no errors to check, so we accept the packet.
+    // The FIFO overflow errors are sticky bits, so we exclude them
+    // in testing if a packet is valid.  However even if the packet is showing as
+    // valid after excluding the sticky flags, then we should still count that the
+    // sticky flag is being set.
+    if ((flag_value & 0x70000700) == 0) {
+
+        fpga_third_stage_fifo_overflow_errors += (flag_value >> 11) & 1;
+        fpga_second_stage_fifo_overflow_errors += (flag_value >> 31) & 1;
+
         return true;
     }
 
@@ -412,9 +448,19 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf *mbuf) {
         fpga_third_stage_shuffle_errors[i] += (flag_value >> i) & 1;
     }
 
+    fpga_third_stage_crc_errors += (flag_value >> 8) & 1;
+    fpga_third_stage_missing_short_errors += (flag_value >> 9) & 1;
+    fpga_third_stage_long_errors += (flag_value >> 10) & 1;
+    fpga_third_stage_fifo_overflow_errors += (flag_value >> 11) & 1;
+
     for (i = 0; i < 16; ++i) {
-        fpga_second_stage_shuffle_errors[i] += (flag_value >> (16 + i)) & 1;
+        fpga_second_stage_shuffle_errors[i] += (flag_value >> (12 + i)) & 1;
     }
+
+    fpga_second_stage_crc_errors += (flag_value >> 28) & 1;
+    fpga_second_stage_missing_short_errors += (flag_value >> 29) & 1;
+    fpga_second_stage_long_errors += (flag_value >> 30) & 1;
+    fpga_second_stage_fifo_overflow_errors += (flag_value >> 31) & 1;
 
     // One of the flags was set, so let's not process this packet.
     rx_shuffle_flags_set += 1;
@@ -436,12 +482,47 @@ void iceBoardShuffle::update_stats() {
                                     fpga_third_stage_shuffle_errors[i],
                                     tags + ",fpga_lane=\"" + std::to_string(i) + "\"");
     }
+
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_crc_errors_total",
+                                unique_name,
+                                fpga_third_stage_crc_errors,
+                                tags);
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_missing_short_errors_total",
+                                unique_name,
+                                fpga_third_stage_missing_short_errors,
+                                tags);
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_long_errors_total",
+                                unique_name,
+                                fpga_third_stage_long_errors,
+                                tags);
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_fifo_overflow_errors_total",
+                                unique_name,
+                                fpga_third_stage_fifo_overflow_errors,
+                                tags);
+
     for (int i = 0; i < 16; ++i) {
         metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total",
                                     unique_name,
                                     fpga_second_stage_shuffle_errors[i],
                                     tags + ",fpga_lane=\"" + std::to_string(i) + "\"");
     }
+
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_crc_errors_total",
+                                unique_name,
+                                fpga_second_stage_crc_errors,
+                                tags);
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_missing_short_errors_total",
+                                unique_name,
+                                fpga_second_stage_missing_short_errors,
+                                tags);
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total",
+                                unique_name,
+                                fpga_second_stage_long_errors,
+                                tags);
+    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total",
+                                unique_name,
+                                fpga_second_stage_fifo_overflow_errors,
+                                tags);
 }
 
 #endif
