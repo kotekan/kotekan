@@ -335,7 +335,7 @@ class KotekanProcessTester(KotekanRunner):
         if parallel_process_type is not None:
             parallel_config['kotekan_process'] = parallel_process_type
             process_block.update(
-                {(parallel_process_type + "_test"): parallel_config})
+                {(parallel_process_type + "_test_parallel"): parallel_config})
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
                                                    global_config)

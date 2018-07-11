@@ -33,11 +33,13 @@ def transpose(tmpdir_factory):
     )
 
     # Write fake data in hdf5 format
-    tmpdir_h5 = str(tmpdir_factory.mktemp("writer"))
-    dump_h5 = kotekan_runner.VisWriterBuffer(output_dir=str(tmpdir_h5),
-            file_type=writer_params['file_type'],
-            freq_ids=writer_params['freq'],
-            in_buf=fakevis_buffer.name)
+    tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
+    dumph5_conf = writer_params.copy()
+    dumph5_conf['freq_ids'] = dumph5_conf['freq']
+    dumph5_conf['root_path'] = str(tmpdir_h5)
+    dumph5_conf['file_name'] = 'dumph5'
+    dumph5_conf['write_ev'] = True
+    dumph5_conf['node_mode'] = False
 
     params = writer_params.copy()
     params['root_path'] = tmpdir
@@ -48,7 +50,8 @@ def transpose(tmpdir_factory):
         fakevis_buffer,
         None,
         params,
-        dump_h5
+        parallel_process_type = 'visWriter',
+        parallel_process_config = dumph5_conf
     )
 
     writer.run()
