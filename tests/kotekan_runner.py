@@ -5,7 +5,6 @@ import tempfile
 
 import visbuffer
 
-
 class KotekanRunner(object):
     """A lightweight class for running Kotekan from Python.
 
@@ -47,6 +46,7 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
+
             print config_dict
             # Capture output and print it out
             self.output = subprocess.check_output(["./kotekan", "-c", fh.name],
@@ -168,7 +168,8 @@ class ReadVisBuffer(InputBuffer):
             'buf': self.name,
             'base_dir': input_dir,
             'file_ext': 'dump',
-            'file_name': self.name
+            'file_name': self.name,
+            'end_interrupt': True
         }
 
         self.process_block = {process_name: process_config}
@@ -231,44 +232,6 @@ class DumpVisBuffer(OutputBuffer):
                                               (self.output_dir, self.name))
 
 
-class VisDebugBuffer(OutputBuffer):
-    """visDebug.
-
-    Parameters
-    ----------
-    interrupt_nframes  : int
-        Passed directly to visDebug.
-    """
-
-    _buf_ind = 0
-
-    name = None
-
-    def __init__(self, interrupt_nframes=-1):
-
-        self.name = 'visdebug_buf%i' % self._buf_ind
-        process_name = 'visdebug%i' % self._buf_ind
-        self.__class__._buf_ind += 1
-
-        self.interrupt_nframes = interrupt_nframes
-
-        self.buffer_block = {
-            self.name: {
-                'kotekan_buffer': 'vis',
-                'metadata_pool': 'vis_pool',
-                'num_frames': 'buffer_depth',
-            }
-        }
-
-        process_config = {
-            'kotekan_process': 'visDebug',
-            'in_buf': self.name,
-            'interrupt_nframes': self.interrupt_nframes
-        }
-
-        self.process_block = {process_name: process_config}
-
-
 class KotekanProcessTester(KotekanRunner):
     """Construct a test around a single Kotekan process.
 
@@ -292,20 +255,16 @@ class KotekanProcessTester(KotekanRunner):
     """
 
     def __init__(self, process_type, process_config, buffers_in,
-                 buffers_out, global_config={}, parallel_process_type=None,
-                 parallel_process_config={}):
+                 buffers_out, global_config={}):
 
         config = process_config.copy()
-        parallel_config = parallel_process_config.copy()
 
         if buffers_in is None:
             buffers_in = []
         elif isinstance(buffers_in, (list, tuple)):
             config['in_bufs'] = [buf.name for buf in buffers_in]
-            parallel_config['in_bufs'] = [buf.name for buf in buffers_in]
         else:
             config['in_buf'] = buffers_in.name
-            parallel_config['in_buf'] = buffers_in.name
             buffers_in = [buffers_in]
 
         if buffers_out is None:
@@ -324,11 +283,6 @@ class KotekanProcessTester(KotekanRunner):
         for buf in itertools.chain(buffers_in, buffers_out):
             process_block.update(buf.process_block)
             buffer_block.update(buf.buffer_block)
-
-        if parallel_process_type is not None:
-            parallel_config['kotekan_process'] = parallel_process_type
-            process_block.update(
-                {(parallel_process_type + "_test"): parallel_config})
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
                                                    global_config)

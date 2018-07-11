@@ -42,10 +42,6 @@ def kotekan_output(tmpdir_factory):
         if restartcount:
             # Have the last frame restart FPGA counts:
             frame_list[-1].metadata.fpga_seq = 0
-            interrupt_nframes = -1
-        else:
-            # Stop Kotekan after 4 frames:
-            interrupt_nframes = 4
 
         # ReadVisBuffer receives a list of frames and writes them down to disk.
         read_buffer = kotekan_runner.ReadVisBuffer(str(tmpdir), frame_list)
@@ -55,9 +51,7 @@ def kotekan_output(tmpdir_factory):
             'countCheck', count_params,
             read_buffer,
             None,  # buffers_out is None
-            root_params,
-            parallel_process_type='visDebug',
-            parallel_process_config={'interrupt_nframes': interrupt_nframes}
+            root_params
         )
 
         test.run()

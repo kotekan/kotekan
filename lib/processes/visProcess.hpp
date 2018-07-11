@@ -110,9 +110,6 @@ private:
 
     // Count the number of frames receiver for every {freq_id, dataset_id}
     std::map<fd_pair, uint64_t> frame_counts;
-
-    // Interrupt Kotekan after number of frames passed
-    int interrupt_nframes;
 };
 
 
