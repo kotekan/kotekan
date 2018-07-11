@@ -65,7 +65,7 @@ void visTruncate::main_thread() {
     auto frame = visFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame
-    // round up by to the next muliple of 8
+    // 32byte-aligned memory allocation (_m256_store_ps() asks for it)
     err_all = (float *)_mm_malloc(sizeof(float) * frame.num_prod, 32);
     std::memset(err_all, 0, sizeof(float) * (frame.num_prod));
 
