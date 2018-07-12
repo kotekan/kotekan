@@ -172,7 +172,9 @@ void pulsarPostProcess::main_thread() {
         if (unlikely(startup == 1)) {
             // testing sync code
             startup = 0;
-            current_input_location = 0;
+	    uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+	    current_input_location = seq_number_offset;
+	    first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
 
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;

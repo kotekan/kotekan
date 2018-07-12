@@ -23,7 +23,6 @@
 #include <fstream>
 #include <cmath>
 
-
 /** @brief parse the gethostname() return string to the IP address of the node
 * 
 *  @reference my_rack rack number of the node
@@ -33,7 +32,6 @@
 **/
 
 void parse_chime_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id);
-
 
 
 /** @brief adds nsec to a give timespec structure.
@@ -51,5 +49,12 @@ void add_nsec(struct timespec &temp, long nsec);
 **/
 int get_vlan_from_ip(const char *ip_address);
 
+
+#ifdef MAC_OSX
+    void osx_clock_abs_nanosleep(clockid_t clock, struct timespec ts);
+    #define CLOCK_ABS_NANOSLEEP(clock, ts) osx_clock_abs_nanosleep(clock, ts)
+#else
+    #define CLOCK_ABS_NANOSLEEP(clock, ts) clock_nanosleep(clock, TIMER_ABSTIME, &ts, NULL)
 #endif
 
+#endif
