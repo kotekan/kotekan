@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
@@ -36,18 +35,14 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visProcess.cpp
               timeDownsample.cpp
               visTruncate.cpp
-              visTranspose.cpp
               visRawReader.cpp
-              visWriter.cpp
               restInspectFrame.cpp
+              frbNetworkProcess.cpp
+              pulsarNetworkProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
-endif ()
-
-if (${USE_DPDK})
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
 endif ()
 
 if (${USE_AIRSPY})
@@ -58,12 +53,11 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
-# This is temporarily disabled because it requires a newer version of hdf5
-# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5
+  # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp visWriter.cpp)
 endif ()
 
 if (${USE_LAPACK})

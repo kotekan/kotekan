@@ -56,6 +56,12 @@ inline int32_t count_zeros(int32_t x) {
 
 /**
  * @brief Fast power of two float.
+ *
+ * Result is undefined for e < -126.
+ *
+ * @param   e   Exponent
+ *
+ * @returns The result of 2^e
  */
 inline float fast_pow(int8_t e) {
     float * out_f;

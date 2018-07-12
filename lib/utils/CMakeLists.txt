@@ -17,15 +17,11 @@ set (KOTEKAN_UTIL_SOURCES
               visFileRaw.cpp
               transpose.c
               truncate.hpp
-              visFileArchive.cpp
+              tx_utils.cpp
        )
 
-if (${USE_DPDK})
-       set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} network_dpdk.c)
-endif ()
-
 if (${USE_HDF5})
-  set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp)
+    set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp visFileArchive.cpp)
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -40,5 +36,6 @@ if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   include_directories (/kotekan/HighFive/include/)
   target_link_libraries ( kotekan_utils ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+  add_dependencies (kotekan_utils highfive)
 endif ()
 

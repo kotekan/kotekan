@@ -198,15 +198,13 @@ class DumpVisBuffer(OutputBuffer):
     ----------
     output_dir : string
         Temporary directory to output to. The dumped files are not removed.
-    in_buf : string
-        Optionally specify the name of an input buffer instead of creating one.
     """
 
     _buf_ind = 0
 
     name = None
 
-    def __init__(self, output_dir, in_buf=None):
+    def __init__(self, output_dir):
 
         self.name = 'dumpvis_buf%i' % self._buf_ind
         process_name = 'dump%i' % self._buf_ind
@@ -214,22 +212,17 @@ class DumpVisBuffer(OutputBuffer):
 
         self.output_dir = output_dir
 
-        if in_buf is None:
-            self.buffer_block = {
-                self.name: {
-                    'kotekan_buffer': 'vis',
-                    'metadata_pool': 'vis_pool',
-                    'num_frames': 'buffer_depth',
-                }
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
             }
-            buf_name = self.name
-        else:
-            buf_name = in_buf
-            self.buffer_block = {}
+        }
 
         process_config = {
             'kotekan_process': 'rawFileWrite',
-            'in_buf': buf_name,
+            'in_buf': self.name,
             'file_name': self.name,
             'file_ext': 'dump',
             'base_dir': output_dir
@@ -299,19 +292,27 @@ class KotekanProcessTester(KotekanRunner):
         Output buffers (and consumers processes) to connect.
     global_config : dict
         Any global configuration to run with.
+    parallel_process_type : str
+        Name of the process to be run in parallel with the process under test (It will use the same in buffers).
+    parallel_process_config : dict
+        any configurations to the parallel process
     """
 
     def __init__(self, process_type, process_config, buffers_in,
-                 buffers_out, global_config={}, buffers_extra=None):
+                 buffers_out, global_config={}, parallel_process_type=None,
+                 parallel_process_config={}):
 
         config = process_config.copy()
+        parallel_config = parallel_process_config.copy()
 
         if buffers_in is None:
             buffers_in = []
         elif isinstance(buffers_in, (list, tuple)):
             config['in_bufs'] = [buf.name for buf in buffers_in]
+            parallel_config['in_bufs'] = [buf.name for buf in buffers_in]
         else:
             config['in_buf'] = buffers_in.name
+            parallel_config['in_buf'] = buffers_in.name
             buffers_in = [buffers_in]
 
         if buffers_out is None:
@@ -322,19 +323,19 @@ class KotekanProcessTester(KotekanRunner):
             config['out_buf'] = buffers_out.name
             buffers_out = [buffers_out]
 
-        if buffers_extra is None:
-            buffers_extra = []
-        elif not isinstance(buffers_extra, (list, tuple)):
-            buffers_extra = [buffers_extra]
-
         config['kotekan_process'] = process_type
 
         process_block = {(process_type + "_test"): config}
         buffer_block = {}
 
-        for buf in itertools.chain(buffers_in, buffers_out, buffers_extra):
+        for buf in itertools.chain(buffers_in, buffers_out):
             process_block.update(buf.process_block)
             buffer_block.update(buf.buffer_block)
+
+        if parallel_process_type is not None:
+            parallel_config['kotekan_process'] = parallel_process_type
+            process_block.update(
+                {(parallel_process_type + "_test_parallel"): parallel_config})
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
                                                    global_config)
