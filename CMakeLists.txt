@@ -13,7 +13,7 @@ option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
-option(USE_HDF5 "Build HDF5 output processes" ON)
+option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 
