@@ -44,10 +44,12 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
+    void rest_callback(connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
     struct Buffer *buf;
     std::string type;
     int value;
+    int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;
     bool wait;
