@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 
+#include "kotekanLogging.hpp"
 
 static void to_json(json& j, uint32_t freq_id, const BasebandRequest& r) {
     std::time_t received_c = std::chrono::system_clock::to_time_t(r.received - std::chrono::hours(24));
@@ -101,15 +102,15 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
 
 
 std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(const uint32_t freq_id) {
-    // std::cout << "Waiting for notification\n";
+    DEBUG("Waiting for notification");
     std::unique_lock<std::mutex> lock(requests_lock);
 
     using namespace std::chrono_literals;
     if (requests_cv.wait_for(lock, 0.1s) == std::cv_status::no_timeout) {
-        // std::cout << "Notified\n";
+        DEBUG("Notified");
     }
     else {
-        // std::cout << "Expired\n";
+        DEBUG("Expired");
     }
 
     if (!requests[freq_id].empty()) {
