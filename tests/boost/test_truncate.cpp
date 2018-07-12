@@ -2,7 +2,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 
-#include "../../lib/utils/truncate.hpp"
+#include "truncate.hpp"
 
 BOOST_AUTO_TEST_CASE( _fast_pow)
 {
@@ -43,6 +43,9 @@ float truncate(float v, int err)
 BOOST_AUTO_TEST_CASE( _bit_truncate_float)
 {
     //float bit_truncate_float(float val, float err)
+    BOOST_CHECK_SMALL(bit_truncate_float(0.11, 0.01) - 0.11, 0.01);
+    BOOST_CHECK(bit_truncate_float(0.11, 0.01) < 0.11);
+
     BOOST_CHECK_SMALL(bit_truncate_float(0.11, 0.01) - 0.11, 0.01);
     BOOST_CHECK(bit_truncate_float(0.11, 0.01) < 0.11);
 
