@@ -1,3 +1,4 @@
+#include <string>
 #include <math.h>
 #include <time.h>
 #include "hsaBase.h"
@@ -5,13 +6,13 @@
 #include "bufferContainer.hpp"
 #include "restServer.hpp"
 #include "hsaPulsarUpdatePhase.hpp"
-//#include "buffer.h"
-//#include "bufferContainer.hpp"
+
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 
 #define PI 3.14159265
 #define light 3.e8
+#define one_over_c 0.0033356
 #define R2D 180./PI
 #define D2R PI/180.
 #define TAU 2*PI
@@ -26,21 +27,35 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _num_gpus = config.get_int(unique_name, "num_gpus");
-    _elem_position_c = new int32_t[_num_elements];
-    for (int i = 0; i < _num_elements; ++i) {
-        _elem_position_c[i] = i;
-    }
 
-    //Now assume they are really regular
     _feed_sep_NS = config.get_float(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get_int(unique_name, "feed_sep_EW");
+
+    _gain_dir = config.get_string(unique_name, "gain_dir");
+    vector<float> dg = {0.0,0.0}; //re,im
+    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
+
+    _source_ra = config.get_float_array(unique_name, "source_ra");
+    _source_dec = config.get_float_array(unique_name, "source_dec");
+    _source_scl = config.get_int_array(unique_name, "psr_scaling");
+
+    for (int i=0;i<_num_pulsar;i++){
+        psr_coord.ra[i] = _source_ra[i];
+	psr_coord.dec[i] = _source_dec[i];
+	psr_coord.scaling[i] = _source_scl[i];
+    }
 
     //Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    freq_now = 0;
+    freq_idx = -1;
+    freq_MHz = -1;
+
+    update_gains=true;
+    first_pass=true;
+    gain_len = 2*_num_elements*sizeof(float);
+    host_gain = (float *)hsa_host_malloc(gain_len);
 
     phase_frame_len = _num_elements*_num_pulsar*2*sizeof(float);
     //Two alternating banks
@@ -52,31 +67,42 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
         host_phase_0[index++] = 0;
     }
 
-    //Come up with an initial position, to be updated
-    for (int i=0;i<_num_pulsar;i++){
-        psr_coord.ra[i] = 53.51337;
-        psr_coord.dec[i] = 54.6248916;
-    }
-
     bank_read_id = 8;
     bank_write = 0;
 
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(endpoint,
+    endpoint_psrcoord = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint_psrcoord,
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
+
+    //Piggy-back on FRB to listen for gain updates
+    endpoint_gains = unique_name + "/frb/update_gains/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint_gains,
+                                        std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
 
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
-    restServer::instance().remove_json_callback(endpoint);
+    restServer::instance().remove_json_callback(endpoint_psrcoord);
+    restServer::instance().remove_json_callback(endpoint_gains);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
-    if (_elem_position_c != NULL) {
-        delete _elem_position_c;
+    hsa_host_free(host_gain);
+}
+
+void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json& json_request) {
+    try {
+        _gain_dir = json_request["gain_dir"];
+    } catch (...) {
+	conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
+    return;
     }
+    update_gains=true;
+    INFO("Updating gains from %s", _gain_dir.c_str());
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    config.update_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
@@ -87,35 +113,47 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
     return 0;
 }
 
-void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval time_now, float freq_now, float *output) {
-  //Mostly copied from get_delays in beamform_phase_data.cpp
+void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gains, float *output) {
 
+    float FREQ = freq_now;
+    struct tm * timeinfo;
+    timeinfo = localtime (&time_now.tv_sec);
+    uint year = timeinfo->tm_year+1900;
+    uint month = timeinfo->tm_mon+1;
+    uint day = timeinfo->tm_mday;
+    float JD = 2-int(year/100.)+int(int(year/100.)/4.)+int(365.25*year)+int(30.6001*(month+1))+day+1720994.5;
+    double T= (JD-2451545.0)/36525.0;  //Works if time after year 2000, otherwise T is -ve and might break
+    double T0=fmod((6.697374558 + (2400.051336*T) + (0.000025862*T*T)),24.);
+    double UT = (timeinfo->tm_hour) + (timeinfo->tm_min/60.) + (timeinfo->tm_sec+time_now.tv_nsec/1.e9)/3600.;
+    double GST = fmod((T0 + UT*1.002737909),24.);
+    double LST = GST + inst_long/15.;
+    while (LST <0) {LST= LST+24;}
+    LST = fmod(LST,24);
     for (int b=0; b < _num_pulsar; b++){
-        const double one_over_c = 3.3356;
-        const double phi_0 = 280.46;  //This is a PF value, using as placeholder
-        const double LST_rate = 360./86164.09054;
-        const double j2000_unix = 946728000; //unix timestamp
-        double time = time_now.tv_sec + time_now.tv_usec/1.e6;
-        //INFO("[calculate_phase] time=%.6f",time);
-        double precession_offset = (time - j2000_unix) * 0.012791 / (365 * 24 * 3600);
-        double LST = phi_0 + inst_long + LST_rate*(time - j2000_unix) - precession_offset;
-        LST = fmod(LST, 360.);
-        double hour_angle = LST - psr_coord.ra[b];
+        double hour_angle = LST*15. - psr_coord.ra[b];
         double alt = sin(psr_coord.dec[b]*D2R)*sin(inst_lat*D2R)+cos(psr_coord.dec[b]*D2R)*cos(inst_lat*D2R)*cos(hour_angle*D2R);
         alt = asin(alt);
         double az = (sin(psr_coord.dec[b]*D2R) - sin(alt)*sin(inst_lat*D2R))/(cos(alt)*cos(inst_lat*D2R));
         az = acos(az);
         if(sin(hour_angle*D2R) >= 0){az = TAU - az;}
-
         double projection_angle, effective_angle, offset_distance;
-        for(int i = 0; i < _num_elements; ++i){
-            //Why does this not depend on the frequency? CHECK
-            //Also, it seems taht elem_position has real& imag? why 2*i+1?
-            projection_angle = 90*D2R - atan2(_elem_position_c[2*i+1],_elem_position_c[2*i]);
-            offset_distance  = cos(alt)*sqrt(pow(_elem_position_c[2*i],2) + pow(_elem_position_c[2*i+1],2));
-            effective_angle  = projection_angle - az;
-            output[(b*2048+i)*2] = TAU*cos(effective_angle)*offset_distance*one_over_c; //Real
-            output[(b*2048+i)*2+1] = TAU*cos(effective_angle)*offset_distance*one_over_c; //Imag
+
+        for (int i=0;i<4;i++){ //loop 4 cylinders
+            for (int j=0;j<256;j++) { //loop 256 feeds
+                float dist_y = j*_feed_sep_NS;
+                float dist_x = i*_feed_sep_EW;
+                projection_angle = 90*D2R - atan2(dist_y, dist_x); 
+                offset_distance  = sqrt( pow(dist_y,2) + pow(dist_x,2) ) ;
+                effective_angle  = projection_angle - az; 
+                float delay_real = cos(TAU*cos(effective_angle)*cos(alt)*offset_distance*FREQ*one_over_c);
+                float delay_imag = -sin(TAU*cos(effective_angle)*cos(-alt)*offset_distance*FREQ*one_over_c);
+                for (int p=0;p<2;p++){ //loop 2 pol
+                    uint elem_id = p*1024+i*256+j;
+                    //Not scrembled, assume reordering kernel has been run
+                    output[(b*_num_elements+elem_id)*2  ] = delay_real*gains[elem_id*2  ] - delay_imag*gains[elem_id*2+1];
+                    output[(b*_num_elements+elem_id)*2+1] = delay_real*gains[elem_id*2+1] + delay_imag*gains[elem_id*2  ];
+                }
+            }
         }
     }
 }
@@ -123,38 +161,59 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timeval ti
 hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             hsa_signal_t precede_signal) {
 
-    //From the metadata, figure out the frequency
-    stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-    freq_now = bin_number_chime(&stream_id);
-
-    //GPS time, need ch_master
-    /*struct timespec time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
-    time_now = get_gps_time(metadata_buf, metadata_buffer_id);
-    if (time_now.tv_sec == 0) {
-        //Sytstem time, not as accurate
-        time_now = get_first_packet_recv_time(metadata_buf, metadata_buffer_id);
-    }*/
-    time_now = get_first_packet_recv_time(metadata_buf, metadata_buffer_id);
-
-    char time_buf[64];
-    time_t temp_time = time_now.tv_sec;
-    struct tm* l_time = gmtime(&temp_time);
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", l_time);
-
-    INFO("####Frequency is %.2f; metadata_buffer_id=%d, gpu_frame_id=%d time stamp: %ld.%06ld (%s.%06ld) device.get_gpu_id=%d",
-         freq_now, metadata_buffer_id,  gpu_frame_id, time_now.tv_sec, time_now.tv_usec, time_buf, device.get_gpu_id());
-
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
     uint bankID = (current_seq / phase_update_period) % 2;
 
+    if (first_pass) {
+        first_pass = false;
+        //From the metadata, figure out the frequency
+        stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
+        freq_idx = bin_number_chime(&stream_id);
+        freq_MHz = freq_from_bin(freq_idx);
+        bankID = bank_write;
+    }
+
+    if (update_gains) {
+        //brute force wait to make sure we don't clobber memory
+        if (hsa_signal_wait_scacquire(precede_signal, HSA_SIGNAL_CONDITION_LT, 1,
+                      UINT64_MAX, HSA_WAIT_STATE_BLOCKED) != 0) {
+        ERROR("***** ERROR **** Unexpected signal value **** ERROR **** ");
+        }
+        update_gains=false;
+        FILE *ptr_myfile;
+        char filename[256];
+        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(),freq_idx);
+        INFO("Loading gains from %s",filename);
+        ptr_myfile=fopen(filename,"rb");
+        if (ptr_myfile == NULL) {
+            ERROR("GPU Cannot open gain file %s", filename);
+            for (int i=0;i<2048;i++){
+                host_gain[i*2  ] = default_gains[0];
+                host_gain[i*2+1] = default_gains[1];
+            }
+        }
+        else {
+            if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
+                ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
+            }
+            fclose(ptr_myfile);
+        }
+    }
+
     if(bankID == bank_write) {  //Time to update
+
+        //GPS time, need ch_master
+        time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
+	if (time_now_gps.tv_sec == 0) {
+	    ERROR("GPS time appears to be zero, bad news for pulsar timing!");
+	}
         if (bank_write == 0) {
-            calculate_phase(psr_coord, time_now, freq_now, host_phase_0);
+	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
         }
         if (bank_write == 1) {
-            calculate_phase(psr_coord, time_now, freq_now, host_phase_1);
+	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
         }
         {
             std::lock_guard<std::mutex> lock(mtx_read);
@@ -164,8 +223,6 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     }
 
     set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
-    INFO("Updating H8 to be RA[0]=%f Dec[0]=%f for  metadata_buffer_id=%d gpu_frame_id=%d", psr_coord.ra[0], psr_coord.dec[0],  metadata_buffer_id, gpu_frame_id);
-
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     // Do the data copy. Now I am doing async everytime there is new data
@@ -182,16 +239,13 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
 
         //This is just for the beginning, and sending host_phase_0 which are all zeros.
         if (unlikely(bank_read_id==8)) {
-            INFO("Waiting for bank_read, current id=%d",bank_read_id);
             device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_0, phase_frame_len, precede_signal, signals[gpu_frame_id]);
         }
         //as soon as it start updating bank_read_id will be either 0 or 1
         if (likely(bank_read_id == 0)) {
-            INFO("Reading phase from CPU bank id=0");
             device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_0, phase_frame_len, precede_signal, signals[gpu_frame_id]);
         }
         if (likely(bank_read_id == 1)) {
-            INFO("Reading phase from CPU bank id=1");
             device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_1, phase_frame_len, precede_signal, signals[gpu_frame_id]);
         }
     }
@@ -222,7 +276,10 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         psr_coord.ra[beam] = json_request["ra"];
         psr_coord.dec[beam] = json_request["dec"];
+	psr_coord.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-        INFO("=============!!![H8]!!-------Pulsar endpoint got beam=%d, ra=%.4f dec=%.4f gpu=%d",beam,psr_coord.ra[beam],psr_coord.dec[beam], device.get_gpu_id());
+	config.update_value(unique_name, "source_ra/" + std::to_string(beam), psr_coord.ra[beam]);
+	config.update_value(unique_name, "source_dec/" + std::to_string(beam), psr_coord.dec[beam]);
+	config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), psr_coord.scaling[beam]);
     }
 }

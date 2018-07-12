@@ -28,6 +28,8 @@
  *
  * @conf timeout       Int, default 60. Time to wait in seconds for new frame
  *                     before exiting.   Must be > 1
+ * @conf fill_threshold  Float, default 2.0 (disabled)  The ratio of full to total frames,
+ *                       which if exceeded with trigger an exit.
  */
 class monitorBuffer : public KotekanProcess {
 public:
@@ -50,6 +52,11 @@ private:
 
     /// The timeout after which kotekan exits.
     int timeout;
+
+    /// The maximum fraction of full buffers before the system exits
+    /// If set above 1 then this check is disabled
+    float fill_threshold;
+
 };
 
 #endif

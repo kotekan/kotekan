@@ -27,7 +27,6 @@ void clRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) 
                                    (cl_uint)3,
                                    sizeof(int32_t),
                                    &_M) );
-    config.update_value(unique_name, "num_bad_inputs", _num_bad_inputs);
     //Reply indicating success
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }

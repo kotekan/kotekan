@@ -126,6 +126,7 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
 
     config.update_value(unique_name, "northmost_beam", _northmost_beam);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
+    config.update_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
