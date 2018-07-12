@@ -2,9 +2,10 @@
 
 #include <boost/test/included/unit_test.hpp>
 
+// the code to test:
 #include "truncate.hpp"
 
-BOOST_AUTO_TEST_CASE( _fast_pow)
+BOOST_AUTO_TEST_CASE( _fast_pow )
 {
     // results for fast_pow(e < -126) are not defined
     BOOST_CHECK_EQUAL(fast_pow(0), 1);
@@ -25,7 +26,7 @@ BOOST_AUTO_TEST_CASE( _fast_pow)
             -1.0 * std::numeric_limits<float>::infinity());
 }
 
-BOOST_AUTO_TEST_CASE( _count_zeros)
+BOOST_AUTO_TEST_CASE( _count_zeros )
 {
     //int32_t count_zeros(int32_t x)
     BOOST_CHECK_EQUAL(count_zeros(0), 32);
@@ -36,11 +37,7 @@ BOOST_AUTO_TEST_CASE( _count_zeros)
     BOOST_CHECK_EQUAL(count_zeros(INT32_MIN), 0);
 }
 
-float truncate(float v, int err)
-{
-    return v - err;
-}
-BOOST_AUTO_TEST_CASE( _bit_truncate_float)
+BOOST_AUTO_TEST_CASE( _bit_truncate_float )
 {
     //float bit_truncate_float(float val, float err)
     BOOST_CHECK_SMALL(bit_truncate_float(0.11, 0.01) - 0.11, 0.01);
@@ -49,8 +46,16 @@ BOOST_AUTO_TEST_CASE( _bit_truncate_float)
     BOOST_CHECK_SMALL(bit_truncate_float(0.11, 0.01) - 0.11, 0.01);
     BOOST_CHECK(bit_truncate_float(0.11, 0.01) < 0.11);
 
-    BOOST_CHECK(bit_truncate_float(0.11, 0.0) == 0.11);
     BOOST_CHECK(bit_truncate_float(0.0, 0.0) == 0.0);
+    BOOST_CHECK_SMALL(bit_truncate_float(0.11, 0.0) - 0.11, 0.0001);
+    BOOST_CHECK_SMALL(bit_truncate_float(1.11, 0.0) - 1.11, 0.0001);
     BOOST_CHECK(bit_truncate_float(0.0, 0.1) == 0.0);
-    BOOST_CHECK(bit_truncate_float(1.11, 0.0) == 0.0);
+
+    BOOST_CHECK_SMALL(bit_truncate_float(-0.11, 0.0) + 0.11, 0.0001);
+    BOOST_CHECK_SMALL(bit_truncate_float(-1.11, 0.0) + 1.11, 0.0001);
+
+    BOOST_CHECK_EQUAL(bit_truncate_float(std::numeric_limits<float>::max(),
+                0.01), std::numeric_limits<float>::max());
+    BOOST_CHECK_EQUAL(bit_truncate_float(std::numeric_limits<float>::min(),
+                0.01), std::numeric_limits<float>::min());
 }
