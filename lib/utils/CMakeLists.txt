@@ -17,7 +17,6 @@ set (KOTEKAN_UTIL_SOURCES
               visFileRaw.cpp
               transpose.c
               truncate.hpp
-              visFileArchive.cpp
        )
 
 if (${USE_DPDK})
@@ -25,7 +24,7 @@ if (${USE_DPDK})
 endif ()
 
 if (${USE_HDF5})
-  set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp)
+    set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp visFileArchive.cpp)
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

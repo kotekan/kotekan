@@ -36,9 +36,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visProcess.cpp
               timeDownsample.cpp
               visTruncate.cpp
-              visTranspose.cpp
               visRawReader.cpp
-              visWriter.cpp
               restInspectFrame.cpp
               )
 
@@ -58,12 +56,11 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
-# This is temporarily disabled because it requires a newer version of hdf5
-# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5
+  # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp visWriter.cpp)
 endif ()
 
 if (${USE_LAPACK})
