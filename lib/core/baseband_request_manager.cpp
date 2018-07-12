@@ -5,21 +5,22 @@
 
 #include "kotekanLogging.hpp"
 
-static void to_json(json& j, uint32_t freq_id, const BasebandRequest& r) {
+static json to_json(uint32_t freq_id, const BasebandRequest& r) {
     std::time_t received_c = std::chrono::system_clock::to_time_t(r.received - std::chrono::hours(24));
     std::stringstream received;
     received << std::put_time(std::localtime(&received_c), "%F %T");
 
-    j = json{{"freq_id", freq_id},
+    json j = json{{"freq_id", freq_id},
              {"event_id", r.event_id},
              {"start", r.start_fpga},
              {"length", r.length_fpga},
              {"file_name", r.file_name},
              {"received", received.str()}};
+    return j;
 }
 
-static void to_json(json& j, const BasebandDumpStatus& d) {
-    j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
+static json to_json(const BasebandDumpStatus& d) {
+    json j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
     switch(d.state) {
     case BasebandRequestState::WAITING:
         j["status"] = "waiting"; break;
@@ -34,6 +35,7 @@ static void to_json(json& j, const BasebandDumpStatus& d) {
         j["status"] = "error";
         j["reason"] = "Internal: Unknown status code";
     }
+    return j;
 }
 
 BasebandRequestManager& BasebandRequestManager::instance() {
@@ -56,15 +58,13 @@ void BasebandRequestManager::status_callback(connectionInstance& conn){
     for (auto& element : requests) {
         uint32_t freq_id = element.first;
         for (auto& req : element.second) {
-            json j;
-            to_json(j, freq_id, req);
+            json j = to_json(freq_id, req);
             requests_json.push_back(j);
         }
     }
 
     for (const auto& d : processing) {
-        json j;
-        to_json(j, *d);
+        json j = to_json(*d);
         requests_json.push_back(j);
     }
 

@@ -47,10 +47,14 @@ enum class BasebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
 struct BasebandDumpStatus {
     /// The request that is being tracked
     const BasebandRequest request;
-    /// Amount of the data to dump, in bytes
+    /**
+     * Amount of the data to dump, in bytes. It can change once the writer
+     * thread gets the actual buffer data locked.
+     */
     size_t bytes_total = 0;
     /// Remaining data to write, in bytes
     size_t bytes_remaining = bytes_total;
+    /// Current state of the request
     BasebandRequestState state = BasebandRequestState::WAITING;
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
