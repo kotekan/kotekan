@@ -41,6 +41,11 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     rest_mode = config.get_string_default(unique_name, "rest_mode", "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
+
+    std::string endpoint = unique_name + "/generate_test_data/";
+    using namespace std::placeholders;
+    restServer::instance().register_post_callback(endpoint,
+            std::bind(&testDataGen::rest_callback, this, _1, _2));
 }
 
 
@@ -84,12 +89,6 @@ void testDataGen::main_thread() {
     static struct timeval now;
 
     int link_id = 0;
-
-    std::string endpoint = unique_name + "/generate_test_data/";
-
-    using namespace std::placeholders;
-    restServer::instance().register_post_callback(endpoint,
-            std::bind(&testDataGen::rest_callback, this, _1, _2));
 
     while (!stop_thread) {
         double start_time = current_time();
