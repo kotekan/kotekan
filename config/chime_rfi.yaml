@@ -125,7 +125,7 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
-duplicate_samples_buffers:
+duplicate_lost_samples_buffers:
     num_frames: buffer_depth
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
@@ -331,19 +331,25 @@ rfi_bad_input_finder:
 
 rfi_record:
   total_links: 1
-  write_to: /mnt/gong/RFI
-  write_to_disk: false
   gpu_0:
     kotekan_process: rfiRecord
+    write_to: /mnt/gong/RFI
+    write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_0
   gpu_1:
     kotekan_process: rfiRecord
+    write_to: /mnt/gong/RFI
+    write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_1
   gpu_2:
     kotekan_process: rfiRecord
+    write_to: /mnt/gong/RFI
+    write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_2
   gpu_3:
     kotekan_process: rfiRecord
+    write_to: /mnt/gong/RFI
+    write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_3
 
 #RFI Live-view Paramters
