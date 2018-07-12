@@ -215,27 +215,9 @@ add_subdirectory(include)
 
 # Testing with boost
 if (${BOOST_TESTS})
-    # Prep ourselves for compiling boost
-    find_package(Boost COMPONENTS unit_test_framework REQUIRED)
     set(BOOST_TESTS_DIR tests/boost/ CACHE INTERNAL "Path to boost test sources")
-    include_directories (${Boost_INCLUDE_DIRS} $BOOST_TESTS_DIR)
-    include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
-
-    # test source files are located in tests/boost/
-    file(GLOB TEST_SRCS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${BOOST_TESTS_DIR}*.cpp)
-
-    # Run through each source
-    foreach(testSrc ${TEST_SRCS})
-            get_filename_component(testName ${testSrc} NAME_WE)
-            add_executable(${testName} ${testSrc})
-
-            # add kotekan targets and dependencies here
-            target_link_libraries(${testName} ${Boost_LIBRARIES} kotekan_utils kotekan_processes)
-
-            # testing binaries are located in /tests and executed by pytest
-            # if pytest-cpp is installed
-            set_target_properties(${testName} PROPERTIES
-                RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-    endforeach(testSrc)
     MESSAGE("BOOST_TESTS enabled: building tests in " ${BOOST_TESTS_DIR})
+    add_subdirectory(${BOOST_TESTS_DIR})
+else()
+    MESSAGE("BOOST_TESTS disabled")
 endif()
