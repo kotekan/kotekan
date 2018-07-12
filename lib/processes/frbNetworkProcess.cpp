@@ -27,6 +27,8 @@ using std::string;
 #include "fpga_header_functions.h"
 #include "tx_utils.hpp"
 
+
+
 //Update beam_offset parameter with:
 //curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d '{"beam_offset":108}'
 
@@ -203,7 +205,7 @@ void frbNetworkProcess::main_thread()
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
     add_nsec(t0,2*time_interval);  // time_interval is delay for each frame
-    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t0, NULL);
+    CLOCK_ABS_NANOSLEEP(t0);
   
   
 
@@ -219,7 +221,7 @@ void frbNetworkProcess::main_thread()
 
     add_nsec(t0,wait_ns);
   
-    clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t0, NULL);
+    CLOCK_ABS_NANOSLEEP(t0);
   
     clock_gettime(CLOCK_MONOTONIC, &t0);
     uint64_t *packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
@@ -268,7 +270,7 @@ void frbNetworkProcess::main_thread()
             {
                 int e_stream = my_sequence_id + stream; // making sure no two nodes send packets to same L1 node
                 if(e_stream>255) e_stream -= 256;
-                clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
+                CLOCK_ABS_NANOSLEEP(t1);
 
                 for(int link=0;link<number_of_l1_links;link++)
                 {

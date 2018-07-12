@@ -23,7 +23,6 @@
 #include <fstream>
 #include <cmath>
 
-
 /** @brief parse the gethostname() return string to the IP address of the node
 * 
 *  @reference my_rack rack number of the node
@@ -50,6 +49,16 @@ void add_nsec(struct timespec &temp, long nsec);
 *  @param ip_address IP addrees for frb or pulsar network.
 **/
 int get_vlan_from_ip(const char *ip_address);
+
+
+#ifdef MAC_OSX
+    void osx_clock_abs_nanosleep(struct timespec ts);
+    #define CLOCK_ABS_NANOSLEEP(ts) osx_clock_abs_nanosleep(ts)
+#else
+    #define CLOCK_ABS_NANOSLEEP(ts) clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL)
+#endif
+
+
 
 #endif
 
