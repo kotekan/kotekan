@@ -27,7 +27,8 @@
  * each frame, counts the number of fails for each input, packages the results into a packet (header + data), 
  * and sends the packets to a user defined IP address via UDP.
  *
- * Data is packaged in blocks (header + data) where the data is of size num_elements*num_local_freq. 
+ * UDP packets are packaged in blocks (header + data) where the data is of size num_elements*num_local_freq. 
+ * The data is the number of statistically un-favourable frames seen from each input in the given time interval. 
  * See lib/utils/rfi_functions.h for information regarding packet header.
  *
  * @par Buffers
@@ -45,9 +46,9 @@
  * @conf   num_local_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
- * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sendin$
+ * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending a packet
  * @conf   dest_port            Int, The port number for the stream destination (Example: 41214)
- * @conf   dest_server_ip       String, The IP address of the stream destination (Example: 192.168.$
+ * @conf   dest_server_ip       String, The IP address of the stream destination (Example: 192.168.52.35
  * @conf   dest_protocol        String, Currently only supports 'UDP'
  *
  * @author Jacob Taylor
