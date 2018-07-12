@@ -128,9 +128,9 @@ int get_vlan_from_ip(const char *ip_address)
 
 #ifdef MAC_OSX
 
-void osx_clock_abs_nanosleep(struct timespec ts) {
+void osx_clock_abs_nanosleep(clockid_t clock, struct timespec ts) {
     timespec t0;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
+    clock_gettime(clock, &t0);
     long sec = ts.tv_sec - t0.tv_sec;
     long nsec = ts.tv_nsec - t0.tv_nsec;
     if (nsec < 0) {
