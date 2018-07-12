@@ -40,5 +40,6 @@ if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   include_directories (/kotekan/HighFive/include/)
   target_link_libraries ( kotekan_utils ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+  add_dependencies (kotekan_utils highfive)
 endif ()
 

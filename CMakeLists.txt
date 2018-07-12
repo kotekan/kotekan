@@ -13,7 +13,7 @@ option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
-option(USE_HDF5 "Build HDF5 output processes" OFF)
+option(USE_HDF5 "Build HDF5 output processes" ON)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 
@@ -128,6 +128,24 @@ endif ()
 
 if (${USE_HDF5})
   # HDF5 setup
+  include(ExternalProject)
+  find_package(Git REQUIRED)
+  ExternalProject_Add(
+    highfive
+    PREFIX ${CMAKE_BINARY_DIR}/ext
+    GIT_REPOSITORY https://github.com/jrs65/HighFive.git
+	GIT_TAG extensible-datasets
+    TIMEOUT 10
+    UPDATE_COMMAND ${GIT_EXECUTABLE} pull
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+    LOG_DOWNLOAD ON
+  )
+
+  ExternalProject_Get_Property(highfive source_dir)
+  set(HIGHFIVE_PATH ${source_dir} CACHE INTERNAL "Path to HighFive")
+
   include_directories ( ${HIGHFIVE_PATH}/include )
   find_package(HDF5 REQUIRED)
   add_definitions(-DWITH_HDF5)
