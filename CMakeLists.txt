@@ -238,6 +238,7 @@ if (${BOOST_TESTS})
     find_package(Boost COMPONENTS unit_test_framework REQUIRED)
     set(BOOST_TESTS_DIR tests/boost/ CACHE INTERNAL "Path to boost test sources")
     include_directories (${Boost_INCLUDE_DIRS} $BOOST_TESTS_DIR)
+    include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
 
     # test source files are located in tests/boost/
     file(GLOB TEST_SRCS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${BOOST_TESTS_DIR}*.cpp)
