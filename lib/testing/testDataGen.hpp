@@ -53,6 +53,7 @@ private:
     bool can_i_go(int frame_id_abs);
     struct Buffer *buf;
     std::string type;
+    std::string endpoint;
     int value;
     int step_to_frame;
     bool _pathfinder_test_mode;

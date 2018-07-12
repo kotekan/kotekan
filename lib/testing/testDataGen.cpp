@@ -42,7 +42,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
 
-    std::string endpoint = unique_name + "/generate_test_data/";
+    endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
     restServer::instance().register_post_callback(endpoint,
             std::bind(&testDataGen::rest_callback, this, _1, _2));
@@ -50,6 +50,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
 
 
 testDataGen::~testDataGen() {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 
@@ -157,6 +158,5 @@ void testDataGen::main_thread() {
             if (time < frame_end_time) usleep((int) (1e6 * (frame_end_time - time)));
         }
     }
-    restServer::instance().remove_json_callback(endpoint);
 }
 
