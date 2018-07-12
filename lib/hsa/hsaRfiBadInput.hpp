@@ -20,11 +20,6 @@
  *
  * @requires_kernel    rfi_bad_input.hasco
  *
- * @par REST Endpoints
- * @endpoint    /rfi_bad_input_callback/<gpu_id> ``POST`` Change kernel parameters
- *              requires json values N/A
- *              update config N/A
- *
  * @par GPU Memory
  * @gpu_mem  input              Input data of size input_frame_len
  *     @gpu_mem_type            staging

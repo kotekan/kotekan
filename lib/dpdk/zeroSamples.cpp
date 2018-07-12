@@ -12,10 +12,9 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", true);
+    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", false);
     //Register as producer for all desired multiplied lost samples buffers
     if(_duplicate_ls_buffer){
-        INFO("REGISTERING PRODUCERS")
         json in_bufs = config.get_value(unique_name, "out_lost_sample_buffers");
         for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
             struct Buffer * buf = buffer_container.get_buffer(it.value());

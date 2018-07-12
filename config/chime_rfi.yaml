@@ -217,7 +217,7 @@ gpu:
   - name: hsaOutputDataZero
   - name: hsaBarrier
   - name: hsaPresumKernel
-#  - name: hsaCorrelatorKernel
+  - name: hsaCorrelatorKernel
 #  - name: hsaBeamformReorder
 #  - name: hsaBeamformKernel
 #  - name: hsaBeamformTranspose

@@ -27,6 +27,9 @@
  * each frame, counts the number of fails for each input, packages the results into a packet (header + data), 
  * and sends the packets to a user defined IP address via UDP.
  *
+ * Data is packaged in blocks (header + data) where the data is of size num_elements*num_local_freq. 
+ * See lib/utils/rfi_functions.h for information regarding packet header.
+ *
  * @par Buffers
  * @buffer rfi_in        The kotekan buffer containing spectral kurtosis estimates to be read by the process.
  * 	@buffer_format   Array of @c floats
