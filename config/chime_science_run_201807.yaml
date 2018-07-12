@@ -227,7 +227,7 @@ lost_samples_buffer:
     metadata_pool: main_pool
 
 duplicate_lost_samples_buffers:
-    num_frames: buffer_depth
+    num_frames: 2 * buffer_depth
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
     lost_samples_buffer_0:
@@ -238,6 +238,7 @@ duplicate_lost_samples_buffers:
         kotekan_buffer: standard
     lost_samples_buffer_3:
         kotekan_buffer: standard
+
 cpu_affinity: [2,3,8,9]
 dpdk:
     kotekan_process: dpdkCore
@@ -835,12 +836,9 @@ buffer_status:
 
 
 rfi_broadcast:
-  log_level: WARN
   total_links: 1
   destination_protocol: UDP
-#  destination_ip: 10.1.113.19
   destination_ip: 10.1.13.1
-#  destination_ip: 127.0.0.1
   gpu_0:
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_0
@@ -861,6 +859,26 @@ rfi_broadcast:
     rfi_in: gpu_rfi_output_buffer_3
     destination_port: 41218
     frames_per_packet: 1
+
+rfi_bad_input_finder:
+  destination_ip: 10.1.13.1
+  destination_port: 41219
+  gpu_0:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_0
+  gpu_1:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_1
+  gpu_2:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_2
+  gpu_3:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_3
 
 rfi_record:
   total_links: 1

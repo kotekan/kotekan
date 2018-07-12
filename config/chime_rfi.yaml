@@ -121,12 +121,12 @@ gpu_rfi_bad_input_buffers:
 
 lost_samples_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: 2 * buffer_depth
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
 duplicate_lost_samples_buffers:
-    num_frames: buffer_depth
+    num_frames: 2* buffer_depth
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
     lost_samples_buffer_0:
