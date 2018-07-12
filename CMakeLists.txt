@@ -16,7 +16,7 @@ option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
-option(BOOST_TESTS "Compile Boost C++ unit tests" ON)
+option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
