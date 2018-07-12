@@ -148,7 +148,8 @@ struct Buffer* create_buffer(int num_frames, int len,
         buf->frames[i] = hsa_host_malloc(buf->aligned_frame_size);
         //DEBUG("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->frames[i], buf->aligned_frame_size);
 
-        memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
+        //memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
+        memset(buf->frames[i], 0x0, buf->aligned_frame_size);
 
         #else
         // Create a page alligned block of memory for the buffer
@@ -250,14 +251,14 @@ void *private_zero_frames(void * args) {
     assert (ID <= buf->num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
-    //int div_256 = 256*(buf->frame_size / 256);
-    //nt_memset((void *)buf->frames[ID], 0x00, div_256);
-    //memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
+    int div_256 = 256*(buf->frame_size / 256);
+    nt_memset((void *)buf->frames[ID], 0x00, div_256);
+    memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
 
     // HACK: Just zero the first two words of the VDIF header
-    for (int i = 0; i < buf->frame_size/1056; ++i) {
-        *((uint64_t*)&buf->frames[ID][i*1056]) = 0;
-    }
+    //for (int i = 0; i < buf->frame_size/1056; ++i) {
+    //    *((uint64_t*)&buf->frames[ID][i*1056]) = 0;
+    //}
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
@@ -391,7 +392,7 @@ void register_consumer(struct Buffer * buf, const char *name) {
 
 void register_producer(struct Buffer * buf, const char *name) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
-
+    DEBUG("Buffer: %s Registering producer: %s", buf->buffer_name, name);
     if (private_get_producer_id(buf, name) != -1) {
         ERROR("You cannot register two consumers with the same name!");
         assert(0); // Optional

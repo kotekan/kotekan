@@ -209,7 +209,7 @@ class KotekanProcessTester(KotekanRunner):
     global_config : dict
         Any global configuration to run with.
     parallel_process_type : str
-        Name of the process to be run in parallel with the process under test
+        Name of the process to be run in parallel with the process under test (It will use the same in buffers).
     parallel_process_config : dict
         any configurations to the parallel process
     """
@@ -251,7 +251,7 @@ class KotekanProcessTester(KotekanRunner):
         if parallel_process_type is not None:
             parallel_config['kotekan_process'] = parallel_process_type
             process_block.update(
-                {(parallel_process_type + "_test"): parallel_config})
+                {(parallel_process_type + "_test_parallel"): parallel_config})
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
                                                    global_config)
