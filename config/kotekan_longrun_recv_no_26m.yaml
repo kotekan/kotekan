@@ -212,13 +212,14 @@ hdf5_writers:
     freq_ids: *allfreq
     instrument_name: chimecal
     file_length: 256
-  26m:
-    kotekan_process: visWriter
-    in_buf: visbuf_5s_26m
-    prod_subset_type: have_inputs
-    input_list: [1225, 1521]
-    freq_ids: *allfreq
-    instrument_name: chime26m
+### No 26m writing ###
+#  26m:
+#    kotekan_process: visWriter
+#    in_buf: visbuf_5s_26m
+#    prod_subset_type: have_inputs
+#    input_list: [1225, 1521]
+#    freq_ids: *allfreq
+#    instrument_name: chime26m
   pathb:
     kotekan_process: visWriter
     in_buf: visbuf_20s_pb

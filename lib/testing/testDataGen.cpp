@@ -13,13 +13,6 @@
 #include "gpsTime.h"
 
 
-// Global lock
-std::once_flag callback_registered;
-std::once_flag callback_removed;
-int step_to_frame = 0;
-std::mutex rest_lock;
-
-
 REGISTER_KOTEKAN_PROCESS(testDataGen);
 
 
@@ -48,10 +41,17 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     // that must interact rest commands. Valid modes are "start", "step", and "none".
     rest_mode = config.get_string_default(unique_name, "rest_mode", "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
+    step_to_frame = 0;
+
+    endpoint = unique_name + "/generate_test_data";
+    using namespace std::placeholders;
+    restServer::instance().register_post_callback(endpoint,
+            std::bind(&testDataGen::rest_callback, this, _1, _2));
 }
 
 
 testDataGen::~testDataGen() {
+    restServer::instance().remove_json_callback(endpoint);
 }
 
 
@@ -68,7 +68,7 @@ bool testDataGen::can_i_go(int frame_id_abs) {
 }
 
 
-void callback(connectionInstance& conn, nlohmann::json& request) {
+void testDataGen::rest_callback(connectionInstance& conn, nlohmann::json& request) {
     int num_frames;
     try {
         num_frames = request["num_frames"];
@@ -77,7 +77,6 @@ void callback(connectionInstance& conn, nlohmann::json& request) {
         return;
     }
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    std::lock_guard<std::mutex> lock(rest_lock);
     step_to_frame += num_frames;
 }
 
@@ -93,9 +92,6 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
-    std::call_once(callback_registered,
-            []{restServer::instance().register_post_callback("/testdata_gen", callback);});
-
     while (!stop_thread) {
         double start_time = current_time();
 
@@ -109,7 +105,6 @@ void testDataGen::main_thread() {
 
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
-        // TODO This should be dynamic/config controlled.
         set_stream_id(buf, frame_id, stream_id);
 
         gettimeofday(&now, NULL);
@@ -170,7 +165,5 @@ void testDataGen::main_thread() {
             if (time < frame_end_time) usleep((int) (1e6 * (frame_end_time - time)));
         }
     }
-    std::call_once(callback_removed,
-            []{restServer::instance().remove_json_callback("/testdata_gen/");});
 }
 

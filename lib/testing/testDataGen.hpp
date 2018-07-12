@@ -17,6 +17,7 @@
  * @buffer network_out_buf Buffer to fill
  *         @buffer_format any format
  *         @buffer_metadata chimeMetadata
+ *
  * @conf  type                  String. "const", "random", "ramp", or "tpluse".
  * @conf  value                 Int. Required for type "const" and "ramp".
  * @conf  wait                  Bool, default True. Produce data a set cadence.
@@ -28,11 +29,15 @@
  *                              How to interact with rest commands to trigger
  *                              data production.
  *
+ * @par REST Endpoints
+ * @endpoint <unique_name>/generate_test_data
+ *             ``POST`` Triggers the generation of data.
+ *              Requires json values  `num_frames` (integer)
+ *
  * If `rest_mode` is "start" or "step", data generation will not start right away
- * but will wait for a rest trigger. The triggers are of the form
- * json:{"num_frames" : `value`} posted to /testdata_gen/, where `value` is a
- * positive integer. In "start" mode this will initiate the stream of data. In
- * "step" mode this will trigger `value` frames to be generated.
+ * but will wait for a rest trigger providing `num_frames`. In "start" mode this
+ * will initiate the stream of data. In "step" mode this will trigger `num_frames`
+ * frames to be generated.
  *
  * @author Andre Renard, Kiyoshi Masui
  */
@@ -44,10 +49,13 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
+    void rest_callback(connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
     struct Buffer *buf;
     std::string type;
+    std::string endpoint;
     int value;
+    int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;
     bool wait;

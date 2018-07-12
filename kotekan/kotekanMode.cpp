@@ -4,6 +4,7 @@
 #include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
 #include "restServer.hpp"
+#include "json.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
     restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
@@ -12,7 +13,9 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
 #ifdef WITH_SSL
     restServer::instance().register_get_callback("/config_md5sum", [&] (connectionInstance &conn) {
-        conn.send_text_reply(config.get_md5sum());
+        nlohmann::json reply;
+        reply["md5sum"] = config.get_md5sum();
+        conn.send_json_reply(reply);
     });
 #endif
 
