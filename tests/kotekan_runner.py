@@ -293,7 +293,7 @@ class KotekanProcessTester(KotekanRunner):
     global_config : dict
         Any global configuration to run with.
     parallel_process_type : str
-        Name of the process to be run in parallel with the process under test
+        Name of the process to be run in parallel with the process under test (It will use the same in buffers).
     parallel_process_config : dict
         any configurations to the parallel process
     """

@@ -31,15 +31,14 @@
  * @par REST Endpoints
  * @endpoint    /rfi_record ``POST`` Updates write locaton, meteadat info, toggles writting to disk.
  *                                   Note, calling this endpoint will start a new acquisition.
- *              requires json values      "write_to", "write_to_disk", "frames_per_packet"
- *              update config             "write_to", "write_to_disk", "frames_per_packet"
+ *              requires json values      "write_to", "write_to_disk"
+ *              update config             "write_to", "write_to_disk"
  *
  * @conf   num_elements         Int . Number of elements.
  * @conf   num_local_freq       Int . Number of local freq.
  * @conf   num_total_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
- * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending each UDP packet.
  * @conf   rfi_combined         Bool (default true). Whether or not the kurtosis measurements include an input sum.
  * @conf   total_links          Int (default 1). Number of FPGA links per buffer.
  * @conf   write_to             String . Path to directory where the process will record data.
@@ -86,8 +85,6 @@ private:
     uint32_t  _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
-    /// Number of frames to average per UDP packet
-    uint32_t _frames_per_packet;
     //Process specific config parameters
     /// The total number of links processed by gpu
     uint32_t _total_links;
