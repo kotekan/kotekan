@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Manager for tracking baseband buffer writeout requests
+ *  - airspyInput : public KotekanProcess
+ */
+
 #ifndef BASEBAND_REQUEST_MANAGER_HPP
 #define BASEBAND_REQUEST_MANAGER_HPP
 
@@ -11,31 +17,61 @@
 
 
 /**
- * Helper structure to capture a baseband dump request.
+ * @class BasebandRequest
+ * @brief Helper structure to capture a baseband dump request.
  */
 struct BasebandRequest {
+    /// FRB internal unique event ID
     uint64_t event_id;
+    /// Starting FPGA frame of the dump
     int64_t start_fpga;
+    /// Length of the dump in FPGA frames
     int64_t length_fpga;
+    /// destination file (relative to ``base_dir`` from the configuration.)
     std::string file_name;
+    /// Time when the request was received
     std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
 };
 
 
+/**
+ * @class BasebandRequestState
+ * @brief State of the request
+ */
 enum class BasebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
 
 /**
- * Helper structure to track the progress of a dump request's processing.
+ * @class BasebandDumpStatus
+ * @brief Helper structure to track the progress of a dump request's processing.
  */
 struct BasebandDumpStatus {
+    /// The request that is being tracked
     const BasebandRequest request;
+    /// Amount of the data to dump, in bytes
     size_t bytes_total = 0;
+    /// Remaining data to write, in bytes
     size_t bytes_remaining = bytes_total;
     BasebandRequestState state = BasebandRequestState::WAITING;
+    /// Description of the failure, when the state is ERROR
     std::string reason = "";
 };
 
 
+/**
+ * @class BasebandRequestManager
+ * @brief Class for receiving baseband dump requests and sending request status
+ *
+ * This class must be registered with a kotekan REST server instance,
+ * using the @c register_with_server() function.
+ *
+ * This class is a singleton, and can be accessed with @c instance(). The normal
+ * use is for the @c basebandReadout process to call @get_next_request in a
+ * loop, and when the result is non-null, use the returned @BasebandDumpStatus
+ * to keep track of the data written so far. Once the writing of the data file
+ * is completed, the ``state`` of the request should be set to ``DONE``.
+ *
+ * @author Davor Cubranic
+ */
 class BasebandRequestManager {
 public:
     /**
