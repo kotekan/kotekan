@@ -27,8 +27,6 @@ using std::string;
 #include "fpga_header_functions.h"
 #include "tx_utils.hpp"
 
-
-
 //Update beam_offset parameter with:
 //curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d '{"beam_offset":108}'
 

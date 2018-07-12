@@ -27,8 +27,6 @@ using std::string;
 #include "fpga_header_functions.h"
 #include "tx_utils.hpp"
 
-
-
 REGISTER_KOTEKAN_PROCESS(pulsarNetworkProcess);
 
 pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, 

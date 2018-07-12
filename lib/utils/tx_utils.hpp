@@ -34,7 +34,6 @@
 void parse_chime_host_name(int &my_rack, int &my_node, int &my_nos, int &my_node_id);
 
 
-
 /** @brief adds nsec to a give timespec structure.
 * 
 *  @param temp timespec structure which must be incremented.
@@ -58,7 +57,4 @@ int get_vlan_from_ip(const char *ip_address);
     #define CLOCK_ABS_NANOSLEEP(ts) clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL)
 #endif
 
-
-
 #endif
-
