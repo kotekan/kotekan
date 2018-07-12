@@ -302,7 +302,7 @@ monitor:
     fill_threshold: 0.8
 
 gpu:
-  kernel_path: "/root/jacotay7/kotekan/build/lib/hsa/kernels/"
+  kernel_path: "/root/andre/science_run/ch_gpu/build/lib/hsa/kernels/"
   commands:
   - name: hsaInputData
   - name: hsaInputLostSamples

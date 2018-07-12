@@ -165,7 +165,7 @@ void pulsarNetworkProcess::main_thread()
 
     add_nsec(t0,wait_ns);
 
-    clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t0, NULL);
+    CLOCK_ABS_NANOSLEEP(CLOCK_REALTIME, t0);
   
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -187,7 +187,7 @@ void pulsarNetworkProcess::main_thread()
                 int e_beam = my_sequence_id + beam;
                 e_beam =  e_beam%10;
         
-                clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t1, NULL);
+                CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
 
                 if(e_beam<number_of_pulsar_links)
                 {
