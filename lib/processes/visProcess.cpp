@@ -215,8 +215,9 @@ void visAccumulate::main_thread() {
     int in_frame_id = 0;
     int out_frame_id = 0;
 
-    uint last_frame_count = 0;
-    uint frames_in_this_cycle = 0;
+    uint32_t last_frame_count = 0;
+    uint32_t frames_in_this_cycle = 0;
+    uint32_t total_samples = 0;
 
     size_t nb = num_elements / block_size;
     size_t nprod_gpu = nb * (nb + 1) * block_size * block_size / 2;
@@ -247,8 +248,10 @@ void visAccumulate::main_thread() {
         if (init && wrapped) {
             auto output_frame = visFrameView(out_buf, out_frame_id);
 
+            DEBUG("Total samples accumulate %i", total_samples);
+
             // Unpack the main visibilities
-            float w1 = 1.0 / (num_gpu_frames * samples_per_data_set);
+            float w1 = 1.0 / total_samples;
 
             map_vis_triangle(input_remap, block_size, num_elements,
                 [&](int32_t pi, int32_t bi, bool conj) {
@@ -267,12 +270,13 @@ void visAccumulate::main_thread() {
             );
 
             // Set the actual amount of time we accumulated for 
-            output_frame.fpga_seq_total = frames_in_this_cycle * samples_per_data_set;
+            output_frame.fpga_seq_total = total_samples;
 
             mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
             init = false;
             frames_in_this_cycle = 0;
+            total_samples = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -319,6 +323,8 @@ void visAccumulate::main_thread() {
         // ... every odd sample we accumulate the squared differences into the weight dataset
         // NOTE: this incrementally calculates the variance, but eventually
         // output_frame.weight will hold the *inverse* variance
+        // TODO: we might need to account for packet loss in here too, but it
+        // would require some awkward rescalings
         else {
             for(size_t i = 0; i < nprod_gpu; i++) {
                 // NOTE: avoid using the slow std::complex routines in here
@@ -328,7 +334,8 @@ void visAccumulate::main_thread() {
             }
         }
 
-        // TODO: do something with the lost packet counts
+        // Accumulate the total number of samples, accounting for lost ones
+        total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
 
         // TODO: gating should go in here. Gates much be created such that the
         // squared sum of the weights is equal to 1.

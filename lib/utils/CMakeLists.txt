@@ -13,14 +13,13 @@ set (KOTEKAN_UTIL_SOURCES
               util.c
               visBuffer.cpp
               visUtil.cpp
+              visFile.cpp
+              visFileRaw.cpp
+              tx_utils.cpp
        )
 
-if (${USE_DPDK})
-       set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} network_dpdk.c)
-endif ()
-
 if (${USE_HDF5})
-  set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFile.cpp)
+  set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp)
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
