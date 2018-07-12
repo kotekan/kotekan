@@ -1,4 +1,4 @@
-#define BOOST_TEST_MODULE "visTruncate"
+#define BOOST_TEST_MODULE "test_truncate"
 
 #include <boost/test/included/unit_test.hpp>
 
