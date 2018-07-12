@@ -19,6 +19,9 @@ countCheck::countCheck(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
+    // Fetch tolerance from config.
+    start_time_tolerance = config.get_int_default(unique_name, "start_time_tolerance", 3);
+
     // Initialize the start_time to zero:
     start_time = 0;
 
@@ -52,11 +55,12 @@ void countCheck::main_thread() {
         if (start_time == 0) {
             start_time = new_start_time;
         // Else, test that start time is still the same
-        } else if ( llabs(start_time - new_start_time) > 3 ) {
-            INFO("Found wrong start time. Possible acquisition re-start occurred.");
-            INFO("Stopping Kotekan.");
+        } else if ( llabs(start_time - new_start_time) > start_time_tolerance ) {
+            WARN("Found wrong start time. Possible acquisition re-start occurred.");
+            WARN("Stopping Kotekan.");
             // Shut Kotekan down
             std::raise(SIGINT);
+            break;
         }
 
         // Mark the buffers and move on

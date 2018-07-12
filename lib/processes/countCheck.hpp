@@ -20,18 +20,14 @@
  * the FPGA counts and the current unix time, assuming 390625 FPGA 
  * counts per second. 
  * It stores this value and checks each frame to look for changes.
- * If the initial time changes by more than 3 seconds, the process
- * raises SIGINT.
+ * If the initial time changes by more than 'start_time_tolerance' (default=3) 
+ * seconds, the process raises SIGINT.
  *
  * @par Buffers
  * @buffer in_buf The buffer whose fpga count will be checked
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf  test_nframes  int. The number of frames to run before raising SIGINT.
-+*                              Useful for testing.
- *                              Default is -1 which doesn't raise SIGINT if no count
- *                              failure is found
  * @author Mateus A Fandino
  */
 class countCheck : public KotekanProcess {
@@ -52,6 +48,8 @@ private:
     // Store the unix time at start of correlation:
     uint64_t start_time;
     Buffer * in_buf;
+    // Tolerance for start time variability
+    int start_time_tolerance;
 };
 
 #endif
