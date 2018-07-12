@@ -47,6 +47,7 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
+            print config_dict
             subprocess.check_call(["./kotekan", "-c", fh.name],
                                   cwd=kotekan_dir)
 

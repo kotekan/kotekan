@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( kotekan_libs )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
@@ -14,6 +13,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               nDiskFileRead.cpp
               networkPowerStream.cpp
               integratePowerStream.cpp
+              monitorBuffer.cpp
               networkInputPowerStream.cpp
               pyPlotN2.cpp
               rawFileRead.cpp
@@ -22,8 +22,9 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
               rfiVDIF.cpp
-              rfiBroadcastVDIF.cpp
+              rfiAVXVDIF.cpp
               rfiBroadcast.cpp
+              rfiRecord.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
@@ -33,15 +34,15 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               visProcess.cpp
               timeDownsample.cpp
+              visRawReader.cpp
+              visWriter.cpp
               restInspectFrame.cpp
+              frbNetworkProcess.cpp
+              pulsarNetworkProcess.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
-endif ()
-
-if (${USE_DPDK})
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} dpdkWrapper.cpp)
 endif ()
 
 if (${USE_AIRSPY})
@@ -57,8 +58,7 @@ endif ()
 # HDF5 stuff
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
+  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
 endif ()
 
 if (${USE_LAPACK})

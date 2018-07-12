@@ -166,16 +166,28 @@ public:
      */
      void fill_chime_metadata(const chimeMetadata * chime_metadata);
 
+    /**
+     * @brief Read only access to the metadata.
+     * @returns The metadata.
+     **/
+    const visMetadata * metadata() const { return _metadata; }
+
+    /**
+     * @brief Read only access to the frame data.
+     * @returns The data.
+     **/
+    const uint8_t * data() const { return _frame; }
+
 private:
 
     // References to the buffer and metadata we are viewing
     Buffer * const buffer;
     const int id;
-    visMetadata * const metadata;
+    visMetadata * const _metadata;
 
     // Pointer to frame data. In theory this is redundant as it can be derived
     // from buffer and id, but it's nice for brevity
-    uint8_t * const frame;
+    uint8_t * const _frame;
 
     // The calculated layout of the buffer
     struct_layout buffer_layout;

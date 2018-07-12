@@ -21,10 +21,11 @@ def send_get(url):
     return r
 
 
-def send_put(url, json_data=""):
+def send_post(url, json_data=""):
     """ Send a put request and JSON content to the specified URL. """
+    header = {'Content-type': 'application/json'}
     try:
-        r = requests.put(url, timeout=TIMEOUT, json=json_data)
+        r = requests.post(url, timeout=TIMEOUT, json=json_data, headers=header)
     except requests.exceptions.ReadTimeout:
         print("Server response timed out.")
         return
@@ -48,7 +49,7 @@ def start(config, url):
     """ Start kotekan with yaml CONFIG. """
     with open(config, 'r') as stream:
         cfg_yaml = yaml.load(stream)
-    send_put(urljoin(url, "start"), json_data=cfg_yaml)
+    send_post(urljoin(url, "start"), json_data=cfg_yaml)
 
 
 @cli.command()
@@ -56,7 +57,7 @@ def start(config, url):
               help="The URL where the kotekan server can be reached.")
 def stop(url):
     """ Stop kotekan. """
-    send_put(urljoin(url, "stop"))
+    send_get(urljoin(url, "stop"))
 
 
 @cli.command()
@@ -64,8 +65,7 @@ def stop(url):
               help="The URL where the kotekan server can be reached.")
 def status(url):
     """ Query kotekan status. """
-    # Right now status uses PUT
-    r = send_put(urljoin(url, "status"))
+    r = send_get(urljoin(url, "status"))
     if r.status_code == 200:
         host_addr = urlsplit(url).netloc
         state = "running" if r.json()['running'] else "idle"
