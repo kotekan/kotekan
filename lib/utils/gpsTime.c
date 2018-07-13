@@ -17,7 +17,7 @@ int is_gps_global_time_set() {
 struct timespec compute_gps_time(uint64_t fpga_seq_num) {
     struct timespec ts;
     // The current time is time0 + N * 2.56 ms.
-    uint64_t current_time = frame0_time + fpga_seq_num * 2560;
+    uint64_t current_time = frame0_time + fpga_seq_num * FPGA_PERIOD_NS;
     ts.tv_sec = current_time / 1000000000;
     ts.tv_nsec = current_time % 1000000000;
 

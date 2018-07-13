@@ -124,3 +124,28 @@ int get_vlan_from_ip(const char *ip_address)
    vlan = atoi(temp);
    return vlan;
 }
+
+
+#ifdef MAC_OSX
+
+void osx_clock_abs_nanosleep(clockid_t clock, struct timespec ts) {
+    timespec t0;
+    clock_gettime(clock, &t0);
+    long sec = ts.tv_sec - t0.tv_sec;
+    long nsec = ts.tv_nsec - t0.tv_nsec;
+    if (nsec < 0) {
+        nsec += 1000000000;
+        sec -= 1;
+    }
+    if (sec < 0) {
+        return;
+    } else {
+        timespec waittime;
+        waittime.tv_sec = sec;
+        waittime.tv_nsec = nsec;
+        nanosleep(&waittime, NULL);
+    }
+    return;
+}
+
+#endif

@@ -57,7 +57,7 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
     for (uint i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
         vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
-        vdif_header->seconds = time_now->tv_sec;
+        vdif_header->seconds = time_now->tv_sec - unix_offset;
         vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (_timesamples_per_pulsar_packet*2.56e-6);
 
         for (uint f=0;f<freqloop;++f) {
@@ -116,6 +116,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.invalid = 0;
     vdif_header.data_frame = 0 ;  //UD
     vdif_header.ref_epoch = 36; // First half of 2018.
+    unix_offset = 1514764800;  //corresponds to 2018.01.01.0:0:0 in UTC
     vdif_header.unused = 0;
     if (_timesamples_per_pulsar_packet == 3125) {
         vdif_header.frame_len = 768; //(6250-B data + 6-B pad + 32-B header)
@@ -171,7 +172,9 @@ void pulsarPostProcess::main_thread() {
         if (unlikely(startup == 1)) {
             // testing sync code
             startup = 0;
-            current_input_location = 0;
+	    uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+	    current_input_location = seq_number_offset;
+	    first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
 
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
