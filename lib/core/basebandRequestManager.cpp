@@ -74,16 +74,7 @@ void basebandRequestManager::status_callback(connectionInstance& conn){
 
 void basebandRequestManager::handle_request_callback(connectionInstance& conn, json& request){
     auto now = std::chrono::system_clock::now();
-    json event_id_json = request["event_id"];
-    json start_json = request["start"];
-    json length_json = request["length"];
-    json file_name_json = request["file_name"];
-    json freq_id_json = request["freq_id"];
-    if (event_id_json.is_number_integer() &&
-        start_json.is_number_integer() &&
-        length_json.is_number_integer() &&
-        file_name_json.is_string() &&
-        freq_id_json.is_number_integer()) {
+    try {
         uint64_t event_id = request["event_id"];
         int64_t start_fpga = request["start"];
         int64_t length_fpga = request["length"];
@@ -93,12 +84,12 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
             std::lock_guard<std::mutex> lock(requests_lock);
             requests[freq_id].push_back({event_id, start_fpga, length_fpga, file_name, now});
         }
-        requests_cv.notify_all();
-        conn.send_empty_reply(HTTP_RESPONSE::OK);
-    }
-    else {
+    } catch (const std::exception &ex) {
+        INFO("Bad baseband request: %s", ex.what());
         conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
     }
+    requests_cv.notify_all();
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 
