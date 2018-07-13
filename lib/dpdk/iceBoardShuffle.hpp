@@ -190,12 +190,22 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
                              {"link", port_stream_id.link_id}};
         info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
         info["lost_samples"] = rx_lost_samples_total;
+
         vector<uint64_t> second_stage_errors;
         second_stage_errors.assign(fpga_second_stage_shuffle_errors, fpga_second_stage_shuffle_errors + 16);
         info["fpga_second_stage_shuffle_errors"] = second_stage_errors;
+        info["fpga_second_stage_crc_errors"] = fpga_second_stage_crc_errors;
+        info["fpga_second_stage_missing_short_errors"] = fpga_second_stage_missing_short_errors;
+        info["fpga_second_stage_long_errors"] = fpga_second_stage_long_errors;
+        info["fpga_second_stage_fifo_overflow_errors"] = fpga_second_stage_fifo_overflow_errors;
+
         vector<uint64_t> third_stage_errors;
         third_stage_errors.assign(fpga_third_stage_shuffle_errors, fpga_third_stage_shuffle_errors + 8);
         info["fpga_thrid_stage_shuffle_errors"] = third_stage_errors;
+        info["fpga_third_stage_crc_errors"] = fpga_third_stage_crc_errors;
+        info["fpga_third_stage_missing_short_errors"] = fpga_third_stage_missing_short_errors;
+        info["fpga_third_stage_long_errors"] = fpga_third_stage_long_errors;
+        info["fpga_third_stage_fifo_overflow_errors"] = fpga_third_stage_fifo_overflow_errors;
 
         info["shuffle_flags_set"] = rx_shuffle_flags_set;
 
