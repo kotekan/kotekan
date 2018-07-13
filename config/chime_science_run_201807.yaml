@@ -28,6 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
+baseband_buffer_depth: 120    # 48Gb, 15s buffer.
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -76,11 +77,11 @@ waterfall_request_delay: 60
 # Pool
 main_pool:
   kotekan_metadata_pool: chimeMetadata
-  num_metadata_objects: 30 * buffer_depth
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 # Buffers
 network_buffers:
-  num_frames: 2 * buffer_depth
+  num_frames: baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
   network_buffer_0:
@@ -255,6 +256,25 @@ zero_samples:
     zero_3:
         kotekan_process: zeroSamples
         out_buf: network_buffer_3
+
+baseband:
+    max_dump_samples: 100000
+    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
+    num_frames_buffer: 116
+    base_dir: /mnt/gong/rawdump/   # For now. FRB archiver eventually.
+    write_throttle: 0
+    baseband0:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_0
+    baseband1:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_1
+    baseband2:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_2
+    baseband3:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_3
 
 monitor:
     kotekan_process: monitorBuffer
