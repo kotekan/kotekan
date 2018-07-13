@@ -3,17 +3,25 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
+        stage('Build kotekan without hardware specific options') {
+          steps {
+            sh '''cd build/
+                  cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON ..
+                  make'''
+          }
+        }
         stage('Build CHIME kotekan') {
           steps {
-            sh '''mkdir build-chime
-                  cd build-chime/
+            sh '''mkdir build_chime
+                  cd build_chime/
                   cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON ..
                   make'''
           }
         }
         stage('Build base kotekan') {
           steps {
-            sh '''cd build
+            sh '''mkdir build_base
+                  cd build_base
                   cmake ..
                   make'''
           }
@@ -28,6 +36,12 @@ pipeline {
                   make'''
           }
         }
+      }
+    }
+    stage('Unit Tests') {
+      steps {
+        sh '''cd tests/
+pytest'''
       }
     }
   }

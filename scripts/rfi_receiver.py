@@ -21,6 +21,16 @@ import yaml
 import json
 import sys
 
+def parse_dict(cmd, _dict):
+    for key, value in _dict.items():
+        if(type(value) == dict):
+            parse_dict(cmd,value)
+        else:
+            if key in cmd.config.keys():
+                if(type(cmd.config[key]) == type(value)):
+                    print("Setting Config Paramter %s to %s" %(key,str(value)))
+                    cmd.config[key] = value
+
 class CommandLine:
 
     def __init__(self):
@@ -34,7 +44,7 @@ class CommandLine:
         self.min_seq = -1
         self.max_seq = -1
         self.config = {'frames_per_packet': 4, 'num_global_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
-                        'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024,
+                        'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'bi_frames_per_packet': 10,
                         'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4}
         self.supportedModes = ['vdif', 'pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
@@ -63,19 +73,7 @@ class CommandLine:
             status = True
         if argument.config:
             print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
-            for key, value in yaml.load(open(argument.config)).items():
-                if(type(value) == dict):
-                    if('kotekan_process' in value.keys() and value['kotekan_process'] == 'rfiBroadcast'):
-                        for k in value.keys():
-                            if k in self.config.keys():
-                                if(type(self.config[k]) == type(value[k])):
-                                    print("Setting Config Paramter %s to %s" %(k,str(value[k])))
-                                    self.config[k] = value[k]
-                else:
-                    if key in self.config.keys():
-                        if(type(self.config[key]) == type(value)):
-                            print("Setting Config Paramter %s to %s" %(key,str(value)))
-                            self.config[key] = value
+            parse_dict(self,yaml.load(open(argument.config)))
             print(self.config)
             status = True
         if argument.mode:
@@ -99,7 +97,7 @@ class Stream:
         encoded_stream_id = header['encoded_stream_ID'][0]
         if(encoded_stream_id not in known_streams):
             known_streams.append(encoded_stream_id)
-            self.link_id = encoded_stream_id & 0x000F 
+            self.link_id = encoded_stream_id & 0x000F
             self.slot_id = (encoded_stream_id & 0x00F0) >> 4
             self.crate = (encoded_stream_id & 0x0F00) >> 8
             self.unused = (encoded_stream_id & 0xF000) >> 12
@@ -141,7 +139,7 @@ def HeaderCheck(header,app):
     if(header['fpga_seq_num'] < 0):
         print("Header Error: Invalid FPGA sequence Number; Got value %d"%(header['fpga_seq_num']))
         return False
-    if(header['frames_per_packet']  != app.config['frames_per_packet']):
+    if(header['frames_per_packet']  != app.config['frames_per_packet'] and header['frames_per_packet']  != app.config['bi_frames_per_packet']):
         print("Header Error: Frames per Packet does not match config; Got value %d"%(header['frames_per_packet']))
         return False
 
@@ -179,7 +177,7 @@ def data_listener(thread_id, socket_udp):
 
         if(packet != ''):
 
-            if(packetCounter % 25*len(stream_dict) == 0):
+            if(packetCounter % (25*len(stream_dict) + 1) == 0):
                 print("Thread id %d: Receiving Packets from %d Streams"%(thread_id,len(stream_dict)))
             packetCounter += 1
 
@@ -188,7 +186,6 @@ def data_listener(thread_id, socket_udp):
 
             #Create a new stream object each time a new stream connects
             if(header['encoded_stream_ID'][0] not in known_streams):
-                #known_streams.append(header['encoded_stream_ID'][0])
                 #Check that the new stream is providing the correct data
                 if(HeaderCheck(header,app) == False):
                     break
@@ -228,9 +225,67 @@ def data_listener(thread_id, socket_udp):
                 #print(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
             waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-app.min_seq)/(timesteps_per_frame*frames_per_packet))] = data
 
+def bad_input_listener(thread_id, socket_udp):
+
+    global bi_waterfall, bi_t_min, max_t_pos, app
+
+    #Config Variables
+    frames_per_packet = app.config['bi_frames_per_packet']
+    local_freq = app.config['num_local_freq']
+    num_elements = app.config['num_elements']
+    timesteps_per_frame = app.config['samples_per_data_set']
+    timestep = app.config['timestep']
+    bytesPerFreq = app.config['bytes_per_freq']
+    global_freq = app.config['num_global_freq']
+    sk_step = app.config['sk_step']
+    RFIHeaderSize = app.config['chime_rfi_header_size']
+    mode = app.mode
+    firstPacket = True
+    PacketSize = RFIHeaderSize + 4*local_freq*num_elements
+    HeaderDataType = np.dtype([('combined_flag',np.uint8,1),('sk_step',np.uint32,1),('num_elements',np.uint32,1),
+        ('num_timesteps',np.uint32,1),('num_global_freq',np.uint32,1),('num_local_freq',np.uint32,1),
+        ('frames_per_packet',np.uint32,1),('fpga_seq_num',np.int64,1),('encoded_stream_ID',np.uint16,1)])
+    stream_dict = dict()
+    known_streams = []
+    packetCounter = 0;
+
+    while True:
+        #Receive packet from port
+        packet, addr = socket_udp.recvfrom(PacketSize)
+        #If we get something not empty
+        if(packet != ''):
+            #Every so often print that we are receiving packets
+            if(packetCounter % (25*len(stream_dict) + 1) == 0):
+                print("Bad Input Thread (id %d): Receiving Packets from %d Streams"%(thread_id,len(stream_dict)))
+            packetCounter += 1
+            #Read the header
+            header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
+            #Read the data
+            data = np.fromstring(packet[RFIHeaderSize:], dtype=np.uint8)
+            #Create a new stream object each time a new stream connects
+            if(header['encoded_stream_ID'][0] not in known_streams):
+                print("New Stream Detected")
+                #Check that the new stream is providing the correct data
+                if(HeaderCheck(header,app) == False):
+                    break
+                #Add to the dictionary of Streams
+                stream_dict[header['encoded_stream_ID'][0]] = Stream(thread_id, mode, header, known_streams)
+            #On first packet received by any stream
+            if(firstPacket):
+                #Set up waterfall parameters
+                bi_t_min = datetime.datetime.utcnow()
+                bi_min_seq = header['fpga_seq_num'][0]
+                firstPacket = False
+            #Add data to waterfall
+            fq = stream_dict[header['encoded_stream_ID'][0]].bins
+            t = int((header['fpga_seq_num'][0]-bi_min_seq)/(timesteps_per_frame*frames_per_packet)) % bi_waterfall.shape[2]
+            if(t > max_t_pos):
+                max_t_pos = t
+            bi_waterfall[fq, :, t] = data
+
 def TCP_stream():
 
-    global sock_tcp, waterfall, t_min
+    global sock_tcp, waterfall, t_min, max_t_pos
 
     sock_tcp.listen(1)
 
@@ -251,8 +306,15 @@ def TCP_stream():
             elif MESSAGE == "T":
                 print("Sending Time Data ...")
                 print(len(t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
-                conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())  #Send Watefall
-            print(MESSAGE)
+                conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
+            elif MESSAGE == "w":
+                temp_bi_waterfall = np.median(bi_waterfall[:,:,:max_t_pos], axis = 2)
+                print("Sending Bad Input Watefall Data %d ..."%(len(temp_bi_waterfall.tostring())))
+                conn.send(temp_bi_waterfall.tostring())  #Send Watefall
+            elif MESSAGE == "t":
+                print("Sending Bad Input Time Data ...")
+                print(len(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
+                conn.send(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
         print("Closing Connection to %s:%s ..."%(addr[0],str(addr[1])))
         conn.close()
 
@@ -268,11 +330,12 @@ if( __name__ == '__main__'):
 
     #Intialize Time
     t_min = datetime.datetime.utcnow()
-
+    bi_t_min = t_min
+    max_t_pos = 0
     #Initialize Plot
     nx, ny = app.config['waterfallY'], app.config['waterfallX']
     waterfall = -1*np.ones([nx,ny],dtype=float)
-
+    bi_waterfall = -1*np.ones([app.config['num_global_freq'], app.config['num_elements'], 128],dtype=np.uint8)
     time.sleep(1)
 
     receive_threads = []
@@ -283,6 +346,13 @@ if( __name__ == '__main__'):
         receive_threads.append(threading.Thread(target=data_listener, args = (i, sock_udp,)))
         receive_threads[i].daemon = True
         receive_threads[i].start()
+
+    UDP_PORT = app.UDP_PORT + app.config['num_receive_threads']
+    sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock_udp.bind((app.UDP_IP, UDP_PORT))
+    bi_thread = threading.Thread(target=bad_input_listener, args = (app.config['num_receive_threads'], sock_udp,))
+    bi_thread.daemon = True
+    bi_thread.start()
 
     thread2 = threading.Thread(target=TCP_stream)
     thread2.daemon = True

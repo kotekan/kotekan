@@ -1,7 +1,7 @@
 /*
- * @file rfiBroadcast.hpp
- * @brief Contains RFI data broadcaster for SK estimates in kotekan.
- *  - rfiBroadcast : public KotekanProcess
+ * @file rfiBadInputFinder.hpp
+ * @brief Clssifies broken inputs using statistics of SK values from individual inputs.
+ *  - rfiBadInputFinder : public KotekanProcess
  */
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
@@ -16,47 +16,51 @@
 #include "rfi_functions.h"
 
 /*
- * @class rfiBroadcast
- * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with spectral kurtosis estimates.
+ * @class rfiBadInputFinder
+ * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with averaged, individual input spectral 
+ * kurtosis estimates.
  *
  * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and sending them 
  * to a user defined IP address. Each packet is fitted with a header which can be read by the server to ensure 
- * that the config parameters of the packet match the server config. This process simply reads the spectral 
- * kurtosis estimates, averages them for a single frame, averages frames_per_packet frames toegther, packages 
- * the results into a packet (header + data), and sends the packets to a user defined IP address via UDP.
+ * that the config parameters of the packet match the server config. This process simply reads the spectral kurtosis 
+ * estimates, finds outlier inputs based on the statistics of the estimates, assigns each input a pass or fail for 
+ * each frame, counts the number of fails for each input, packages the results into a packet (header + data), 
+ * and sends the packets to a user defined IP address via UDP.
+ *
+ * UDP packets are packaged in blocks (header + data) where the data is of size num_elements*num_local_freq. 
+ * The data is the number of statistically un-favourable frames seen from each input in the given time interval. 
+ * See lib/utils/rfi_functions.h for information regarding packet header.
  *
  * @par Buffers
- * @buffer rfi_in	The kotekan buffer containing spectral kurtosis estimates to be read by the process.
- * 	@buffer_format	Array of @c floats
+ * @buffer rfi_in        The kotekan buffer containing spectral kurtosis estimates to be read by the process.
+ * 	@buffer_format   Array of @c floats
  * 	@buffer_metadata chimeMetadata
  *
  * @par REST Endpoints
  * @endpoint    /rfi_broadcast ``POST`` Updates frames per broadcast packet
- *              requires json values      "frames_per_packet"
- *              update config             "frames_per_packet"
+ *              requires json values      "bi_frames_per_packet"
+ *              update config             "bi_frames_per_packet"
  *
  * @conf   num_elements         Int . Number of elements.
  * @conf   num_local_freq       Int . Number of local freq.
  * @conf   num_local_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
- * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending each UDP pack$
- * @conf   rfi_combined         Bool (default true). Whether or not the kurtosis measurements include an input sum.
- * @conf   total_links          Int (default 1). Number of FPGA links per buffer
+ * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending a packet
  * @conf   dest_port            Int, The port number for the stream destination (Example: 41214)
- * @conf   dest_server_ip       String, The IP address of the stream destination (Example: 192.168.52.174)
+ * @conf   dest_server_ip       String, The IP address of the stream destination (Example: 192.168.52.35
  * @conf   dest_protocol        String, Currently only supports 'UDP'
  *
  * @author Jacob Taylor
  */
-class rfiBroadcast : public KotekanProcess {
+class rfiBadInputFinder : public KotekanProcess {
 public:
     //Constructor, intializes config variables via apply_config
-    rfiBroadcast(Config& config,
+    rfiBadInputFinder(Config& config,
                        const string& unique_name,
                        bufferContainer& buffer_container);
     //Deconstructor, cleans up / does nothing
-    virtual ~rfiBroadcast();
+    virtual ~rfiBadInputFinder();
     //Primary loop, reads buffer and sends out UDP stream
     void main_thread();
     //Callback function called by rest server
@@ -64,6 +68,11 @@ public:
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 private:
+    ///Private functions
+    //Functon to compute median of an array
+    float median(float array[], uint32_t num);
+    //Functon to compute standard deviation of an array, not including wild outliers
+    float deviation(float array[], uint32_t num, float outliercut);
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer *rfi_buf;
     //General Config Parameters
@@ -80,13 +89,9 @@ private:
     uint32_t  _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
-    /// Flag to tell process whether or not to use FPGA seq nums
-    bool replay;
     /// Number of frames to average per UDP packet
     uint32_t _frames_per_packet;
     //Process specific config parameters
-    /// The total number of links processed by gpu
-    uint32_t total_links;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to

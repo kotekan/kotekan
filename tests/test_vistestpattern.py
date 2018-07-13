@@ -3,6 +3,7 @@ import numpy as np
 import csv
 import math
 
+import visbuffer
 import kotekan_runner
 
 
@@ -82,15 +83,18 @@ def test_pattern_noise(tmpdir_factory):
         num_frames=noise_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(output_dir=str(tmpdir),
-            in_buf=fakevis_buffer.name)
+    fakevis_dump_conf = noise_params.copy()
+    fakevis_dump_conf['file_name'] = 'fakevis_dump'
+    fakevis_dump_conf['file_ext'] = 'dump'
+    fakevis_dump_conf['base_dir'] = str(tmpdir)
 
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         buffers_in = fakevis_buffer,
         buffers_out = None,
         global_config = noise_params,
-        buffers_extra = dump_buffer
+        parallel_process_type = 'rawFileWrite',
+        parallel_process_config = fakevis_dump_conf
     )
 
     test.run()
@@ -102,7 +106,7 @@ def test_pattern_noise(tmpdir_factory):
             out_data.append(row)
 
 
-    yield (out_data, dump_buffer.load())
+    yield (out_data, visbuffer.VisBuffer.load_files("%s/*fakevis_dump*.dump" % str(tmpdir)))
 
 
 def test_noise(test_pattern_noise):

@@ -468,6 +468,10 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
                 "be positive (is " + std::to_string(report_freq) + ").");
 
     outfile.open (outfile_name);
+    if (!outfile.is_open()) {
+        throw std::ios_base::failure("visCheckTestPattern: Failed to open " \
+                                     "out file " + outfile_name);
+    }
     outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err"
         << std::endl;
 }
