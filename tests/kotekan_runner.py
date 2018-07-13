@@ -100,7 +100,10 @@ class FakeNetworkBuffer(InputBuffer):
     def __init__(self, **kwargs):
 
         self.name = 'fakenetwork_buf%i' % self._buf_ind
-        process_name = 'fakenetwork%i' % self._buf_ind
+        if "process_name" in kwargs:
+            process_name = kwargs['process_name']
+        else:
+            process_name = 'fakenetwork%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.buffer_block = {

@@ -21,8 +21,11 @@ default_params = {
      }
 
 
+DATAGEN_PNAME = 'fakenetwork'
+
+
 def command_rest_frames(num_frames):
-    return ('post', 'testdata_gen', {'num_frames': num_frames})
+    return ('post', DATAGEN_PNAME + '/generate_test_data', {'num_frames': num_frames})
 
 
 def command_trigger(start, length, file_name, event_id=123456, freq_id=0):
@@ -49,14 +52,15 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
     if params:
         p.update(params)
 
-    fakevis_buffer = kotekan_runner.FakeNetworkBuffer(
+    fake_buffer = kotekan_runner.FakeNetworkBuffer(
+            process_name=DATAGEN_PNAME,
             num_frames=p['total_frames'],
             type=p['type'],
             )
 
     test = kotekan_runner.KotekanProcessTester(
         'basebandReadout', {},
-        fakevis_buffer,
+        fake_buffer,
         None,
         p,
         rest_commands,
@@ -186,5 +190,4 @@ def test_overload_no_crash(tmpdir_factory):
         rest_commands += [command_trigger(start, lenth, "file" + str(ii+1) + ".h5")]
     rest_commands += [command_rest_frames(params['total_frames'])]
 
-    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
-    print dump_files
+    run_baseband(tmpdir_factory, params, rest_commands)
