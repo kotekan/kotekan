@@ -134,8 +134,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
         if (dump_status) {
             //std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
             uint64_t event_id = dump_status->request.event_id;
-            INFO("Received baseband dump request for event %d: %d samples starting at count %d.",
-                 event_id, dump_status->request.length_fpga, dump_status->request.start_fpga);
+            INFO("Received baseband dump request for event %d: %d samples starting at count %d. (next_frame: %d)",
+                 event_id, dump_status->request.length_fpga, dump_status->request.start_fpga, next_frame);
             dump_status->bytes_total = dump_status->request.length_fpga * _num_elements;
             dump_status->bytes_remaining = dump_status->bytes_total;
             dump_status->state = basebandRequestState::INPROGRESS;
