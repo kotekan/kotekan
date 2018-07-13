@@ -31,6 +31,7 @@ static json to_json(const basebandDumpStatus& d) {
     case basebandRequestState::ERROR:
         j["status"] = "error";
         j["reason"] = d.reason;
+        break;
     default:
         j["status"] = "error";
         j["reason"] = "Internal: Unknown status code";
