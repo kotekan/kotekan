@@ -25,6 +25,20 @@ class visFileArchive {
 
 public:
 
+    /**
+     * @brief Creates a visFileArchive object.
+     *
+     * @param name Path of the file to write into (without file extension).
+     * @param metadata Metadata attributes.
+     * @param times Vector of time indices.
+     * @param freqs Vector of frequency indices.
+     * @param inputs Vector of input indices.
+     * @param prods Vector of product indices.
+     * @param num_ev Number of eigenvectors.
+     * @param chunk_size HDF5 chunk size (frequencies * products * times).
+     *
+     * @return Instance of visFileArchive.
+     **/
     visFileArchive(const std::string& name,
                    const std::map<std::string, std::string>& metadata,
                    const std::vector<time_ctype>& times,
@@ -34,9 +48,21 @@ public:
                    size_t num_ev,
                    std::vector<int> chunk_size);
 
+    /**
+     * @brief Destructor.
+     **/
     ~visFileArchive();
 
-    // Write a block in time/freq
+    /**
+     * @brief Write a block in time/freq.
+     *
+     * @param name Path of the file to write into (without file extension).
+     * @param f_ind Frequency index.
+     * @param t_inf Time index.
+     * @param chunk_f Size of chunk in frequency dimension.
+     * @param chunk_t Size of chunk in time dimension.
+     * @param data Pointer to the data.
+     **/
     template<typename T>
     void write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                      size_t chunk_t, const T* data);
