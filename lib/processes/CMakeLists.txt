@@ -34,7 +34,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               visProcess.cpp
               timeDownsample.cpp
-              visTruncate.cpp
               visRawReader.cpp
               restInspectFrame.cpp
               frbNetworkProcess.cpp
@@ -57,8 +56,18 @@ endif ()
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp visWriter.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
 endif ()
+
+# HDF5 and OpenMP
+if (${USE_HDF5} AND ${USE_OMP})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp)
+endif()
+
+# OpenMP
+if (${USE_OMP})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTruncate.cpp)
+endif()
 
 if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)

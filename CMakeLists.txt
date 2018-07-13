@@ -15,6 +15,7 @@ option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
+option(USE_OMP "Enable OpenMP" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
@@ -177,7 +178,13 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # Required for some SSE/AVX intrinsics
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -fopenmp -I/opt/rocm/include")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+
+# OpenMP flag
+if(${USE_OMP})
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
+endif()
+
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
