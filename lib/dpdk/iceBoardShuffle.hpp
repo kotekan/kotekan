@@ -458,18 +458,18 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf *mbuf) {
         fpga_third_stage_shuffle_errors[i] += (flag_value >> i) & 1;
     }
 
-    fpga_third_stage_crc_errors += (flag_value >> 8) & 1;
-    fpga_third_stage_missing_short_errors += (flag_value >> 9) & 1;
-    fpga_third_stage_long_errors += (flag_value >> 10) & 1;
+    fpga_third_stage_missing_short_errors += (flag_value >> 8) & 1;
+    fpga_third_stage_long_errors += (flag_value >> 9) & 1;
+    fpga_third_stage_crc_errors += (flag_value >> 10) & 1;
     fpga_third_stage_fifo_overflow_errors += (flag_value >> 11) & 1;
 
     for (i = 0; i < 16; ++i) {
         fpga_second_stage_shuffle_errors[i] += (flag_value >> (12 + i)) & 1;
     }
 
-    fpga_second_stage_crc_errors += (flag_value >> 28) & 1;
-    fpga_second_stage_missing_short_errors += (flag_value >> 29) & 1;
-    fpga_second_stage_long_errors += (flag_value >> 30) & 1;
+    fpga_second_stage_missing_short_errors += (flag_value >> 28) & 1;
+    fpga_second_stage_long_errors += (flag_value >> 29) & 1;
+    fpga_second_stage_crc_errors += (flag_value >> 30) & 1;
     fpga_second_stage_fifo_overflow_errors += (flag_value >> 31) & 1;
 
     // One of the flags was set, so let's not process this packet.
