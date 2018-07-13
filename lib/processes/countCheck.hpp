@@ -28,6 +28,9 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @conf  start_time_tolerance  int. Tolerance for the start time error in 
+ *                                   seconds. Default is 3.
+ * 
  * @author Mateus A Fandino
  */
 class countCheck : public KotekanProcess {
