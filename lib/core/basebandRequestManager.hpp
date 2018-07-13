@@ -17,10 +17,10 @@
 
 
 /**
- * @class BasebandRequest
+ * @class basebandRequest
  * @brief Helper structure to capture a baseband dump request.
  */
-struct BasebandRequest {
+struct basebandRequest {
     /// FRB internal unique event ID
     uint64_t event_id;
     /// Starting FPGA frame of the dump
@@ -35,18 +35,18 @@ struct BasebandRequest {
 
 
 /**
- * @class BasebandRequestState
+ * @class basebandRequestState
  * @brief State of the request
  */
-enum class BasebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
+enum class basebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
 
 /**
- * @class BasebandDumpStatus
+ * @class basebandDumpStatus
  * @brief Helper structure to track the progress of a dump request's processing.
  */
-struct BasebandDumpStatus {
+struct basebandDumpStatus {
     /// The request that is being tracked
-    const BasebandRequest request;
+    const basebandRequest request;
     /**
      * Amount of the data to dump, in bytes. It can change once the writer
      * thread gets the actual buffer data locked.
@@ -55,14 +55,14 @@ struct BasebandDumpStatus {
     /// Remaining data to write, in bytes
     size_t bytes_remaining = bytes_total;
     /// Current state of the request
-    BasebandRequestState state = BasebandRequestState::WAITING;
+    basebandRequestState state = basebandRequestState::WAITING;
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
 };
 
 
 /**
- * @class BasebandRequestManager
+ * @class basebandRequestManager
  * @brief Class for receiving baseband dump requests and sending request status
  *
  * This class must be registered with a kotekan REST server instance,
@@ -70,23 +70,23 @@ struct BasebandDumpStatus {
  *
  * This class is a singleton, and can be accessed with @c instance(). The normal
  * use is for the @c basebandReadout process to call @get_next_request in a
- * loop, and when the result is non-null, use the returned @BasebandDumpStatus
+ * loop, and when the result is non-null, use the returned @c basebandDumpStatus
  * to keep track of the data written so far. Once the writing of the data file
  * is completed, the ``state`` of the request should be set to ``DONE``.
  *
  * @author Davor Cubranic
  */
-class BasebandRequestManager {
+class basebandRequestManager {
 public:
     /**
-     * @brief Returns the singleton instance of the BasebandRequestManager object.
-     * @return A pointer to the BasebandRequestManager object
+     * @brief Returns the singleton instance of the ``basebandRequestManager`` object.
+     * @return A pointer to the ``basebandRequestManager`` object
      */
-    static BasebandRequestManager& instance();
+    static basebandRequestManager& instance();
 
     /**
      * @brief Registers this class with the REST server, creating the
-     *        /baseband end point
+     *        ``/baseband`` end point
      * @param rest_server The server to register with.
      */
     void register_with_server(restServer * rest_server);
@@ -113,22 +113,22 @@ public:
     /**
      * @brief Tries to get the next dump request to process.
      *
-     * @return a shared_ptr to the `BasebandDumpStatus` object if there is a
+     * @return a shared_ptr to the `basebandDumpStatus` object if there is a
      * request available for the readout process handling frequency `freq_id`,
      * or nullptr if the request queue is empty.
      */
-    std::shared_ptr<BasebandDumpStatus> get_next_request(const uint32_t freq_id);
+    std::shared_ptr<basebandDumpStatus> get_next_request(const uint32_t freq_id);
 
 private:
     /// Constructor, not used directly
-    BasebandRequestManager() = default;
+    basebandRequestManager() = default;
 
     /// Queue of unprocessed baseband requests for each basebandReadout process,
     /// indexed by `freq_id`
-    std::map<uint32_t, std::deque<BasebandRequest>> requests;
+    std::map<uint32_t, std::deque<basebandRequest>> requests;
 
     /// Queue of baseband dumps in progress
-    std::vector<std::shared_ptr<BasebandDumpStatus>> processing;
+    std::vector<std::shared_ptr<basebandDumpStatus>> processing;
 
     /// request updating lock
     std::mutex requests_lock;

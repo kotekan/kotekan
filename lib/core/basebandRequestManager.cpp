@@ -1,11 +1,11 @@
-#include "baseband_request_manager.hpp"
+#include "basebandRequestManager.hpp"
 
 #include <iostream>
 #include <sstream>
 
 #include "kotekanLogging.hpp"
 
-static json to_json(uint32_t freq_id, const BasebandRequest& r) {
+static json to_json(uint32_t freq_id, const basebandRequest& r) {
     std::time_t received_c = std::chrono::system_clock::to_time_t(r.received - std::chrono::hours(24));
     std::stringstream received;
     received << std::put_time(std::localtime(&received_c), "%F %T");
@@ -19,16 +19,16 @@ static json to_json(uint32_t freq_id, const BasebandRequest& r) {
     return j;
 }
 
-static json to_json(const BasebandDumpStatus& d) {
+static json to_json(const basebandDumpStatus& d) {
     json j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
     switch(d.state) {
-    case BasebandRequestState::WAITING:
+    case basebandRequestState::WAITING:
         j["status"] = "waiting"; break;
-    case BasebandRequestState::INPROGRESS:
+    case basebandRequestState::INPROGRESS:
         j["status"] = "inprogress"; break;
-    case BasebandRequestState::DONE:
+    case basebandRequestState::DONE:
         j["status"] = "done"; break;
-    case BasebandRequestState::ERROR:
+    case basebandRequestState::ERROR:
         j["status"] = "error";
         j["reason"] = d.reason;
     default:
@@ -38,20 +38,20 @@ static json to_json(const BasebandDumpStatus& d) {
     return j;
 }
 
-BasebandRequestManager& BasebandRequestManager::instance() {
-    static BasebandRequestManager _instance;
+basebandRequestManager& basebandRequestManager::instance() {
+    static basebandRequestManager _instance;
     return _instance;
 }
 
-void BasebandRequestManager::register_with_server(restServer* rest_server) {
+void basebandRequestManager::register_with_server(restServer* rest_server) {
   using namespace std::placeholders;
   rest_server->register_get_callback("/baseband",
-                                     std::bind(&BasebandRequestManager::status_callback, this, _1));
+                                     std::bind(&basebandRequestManager::status_callback, this, _1));
   rest_server->register_post_callback("/baseband",
-                                      std::bind(&BasebandRequestManager::handle_request_callback, this, _1, _2));
+                                      std::bind(&basebandRequestManager::handle_request_callback, this, _1, _2));
 }
 
-void BasebandRequestManager::status_callback(connectionInstance& conn){
+void basebandRequestManager::status_callback(connectionInstance& conn){
     json requests_json = json::array();
     std::lock_guard<std::mutex> lock(requests_lock);
 
@@ -71,7 +71,7 @@ void BasebandRequestManager::status_callback(connectionInstance& conn){
     conn.send_text_reply(requests_json.dump());
 }
 
-void BasebandRequestManager::handle_request_callback(connectionInstance& conn, json& request){
+void basebandRequestManager::handle_request_callback(connectionInstance& conn, json& request){
     auto now = std::chrono::system_clock::now();
     json event_id_json = request["event_id"];
     json start_json = request["start"];
@@ -101,7 +101,7 @@ void BasebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(const uint32_t freq_id) {
+std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(const uint32_t freq_id) {
     DEBUG("Waiting for notification");
     std::unique_lock<std::mutex> lock(requests_lock);
 
@@ -114,9 +114,9 @@ std::shared_ptr<BasebandDumpStatus> BasebandRequestManager::get_next_request(con
     }
 
     if (!requests[freq_id].empty()) {
-        BasebandRequest req = requests[freq_id].front();
-        BasebandDumpStatus stat{req};
-        auto task = std::make_shared<BasebandDumpStatus>(stat);
+        basebandRequest req = requests[freq_id].front();
+        basebandDumpStatus stat{req};
+        auto task = std::make_shared<basebandDumpStatus>(stat);
         requests[freq_id].pop_front();
         processing.push_back(task);
         return task;
