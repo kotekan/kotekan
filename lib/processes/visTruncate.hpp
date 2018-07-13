@@ -14,6 +14,10 @@
  * the config. visibility values are truncated to a precision based on their
  * weight.
  *
+ * @warning Don't run this anywhere but on the transpose (gossec) node.
+ * The OpenMP calls could cause issues on systems using kotekan pin
+ * priority threads (likely the GPU nodes).
+ *
  * @par Buffers
  * @buffer in_buf The input stream.
  *         @buffer_format visBuffer.
