@@ -63,7 +63,7 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
         fake_buffer,
         None,
         p,
-        rest_commands,
+        rest_commands=rest_commands,
     )
 
     test.run()
