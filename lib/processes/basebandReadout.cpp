@@ -528,6 +528,11 @@ gsl::span<uint8_t> span_from_length_aligned(uint8_t* start, size_t length) {
     return gsl::span<uint8_t>(span_start, span_end);
 }
 
+std::shared_ptr<uint8_t> allocate_dump_memory(size_t length) {
+    auto out = std::shared_ptr<uint8_t>(new uint8_t[length]);
+    CHECK_MEM(out.get());
+    return out;
+}
 
 basebandDumpData::basebandDumpData(
         uint64_t event_id_,
@@ -544,7 +549,7 @@ basebandDumpData::basebandDumpData(
         data_length_fpga(data_length_fpga_),
         data_start_ctime(data_start_ctime_),
         // Over allocate so we can align the memory.
-        data_ref(new uint8_t[num_elements_ * data_length_fpga_ + 15]),
+        data_ref(allocate_dump_memory(num_elements_ * data_length_fpga_ + 15)),
         data(span_from_length_aligned(data_ref.get(), num_elements_ * data_length_fpga_))
 {
 }
