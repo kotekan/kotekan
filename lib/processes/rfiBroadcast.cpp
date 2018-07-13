@@ -170,7 +170,7 @@ void rfiBroadcast::main_thread() {
             fake_seq += _samples_per_data_set*_frames_per_packet;
             //Unlock callback mutex
             rest_callback_mutex.unlock();
-            INFO("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
+            DEBUG("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
         }
     }
     else{

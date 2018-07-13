@@ -17,12 +17,15 @@ add_library ( kotekan_hsa
 
 # Copy-in & general-purpose:
               hsaInputData.cpp
+              hsaInputLostSamples.cpp
               hsaBarrier.cpp
 
-# RFI Kernels:
+# RFI Kernels & copy-out:
               hsaRfiVdif.cpp
               hsaRfiTimeSum.cpp
               hsaRfiInputSum.cpp
+              hsaRfiBadInput.cpp
+              hsaRfiBadInputOutput.cpp
               hsaRfiOutput.cpp
 
 # CHIME N2 Kernels & copy-out:

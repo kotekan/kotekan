@@ -21,10 +21,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               vdifStream.cpp
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
-              rfiVDIF.cpp
-              rfiAVXVDIF.cpp
-              rfiBroadcast.cpp
-              rfiRecord.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
@@ -39,6 +35,12 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               restInspectFrame.cpp
               frbNetworkProcess.cpp
               pulsarNetworkProcess.cpp
+              #RFI Pipeline Processes
+              rfiVDIF.cpp
+              rfiAVXVDIF.cpp
+              rfiBroadcast.cpp
+              rfiRecord.cpp
+              rfiBadInputFinder.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
