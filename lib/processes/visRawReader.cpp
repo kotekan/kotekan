@@ -204,18 +204,38 @@ void visRawReader::main_thread() {
         // Get the index into the file
         file_ind = position_map(ind);
 
-        // Allocate the metadata space and copy it from the file
+        // Allocate the metadata space
         allocate_new_metadata_object(out_buf, frame_id);
-        std::memcpy(out_buf->metadata[frame_id]->metadata, mapped_file
-                + file_ind * file_frame_size + 1, metadata_size);
 
-        // Copy the data from the file
-        std::memcpy(frame, mapped_file + file_ind * file_frame_size
-                + metadata_size + 1, data_size);
+        // Check first byte indicating empty frame
+        if (*(mapped_file + file_ind * file_frame_size) != 0) {
+            // Copy the metadata from the file
+            std::memcpy(out_buf->metadata[frame_id]->metadata, mapped_file
+                    + file_ind * file_frame_size + 1, metadata_size);
 
-        // count read data
-        mbytes_read += float(data_size / 1048576) //(1024*1024))
-            + float(metadata_size / 1048576); //(1024*1024));
+            // Copy the data from the file
+            std::memcpy(frame, mapped_file + file_ind * file_frame_size
+                    + metadata_size + 1, data_size);
+
+            // count read data
+            mbytes_read += float(data_size / 1048576) //(1024*1024))
+                + float(metadata_size / 1048576); //(1024*1024));
+        } else {
+            // Set metadata if file contained an empty frame
+			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
+			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
+			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_elements = _inputs.size();
+            // Fill data with zeros
+            auto frame = visFrameView(out_buf, frame_id);
+            std::memset(frame.vis.data(), 0, sizeof(cfloat) * frame.num_prod);
+            std::memset(frame.weight.data(), 0, sizeof(float) * frame.num_prod);
+            std::memset(frame.eval.data(), 0, sizeof(float) * frame.num_ev);
+            std::memset(frame.evec.data(), 0, sizeof(cfloat) * frame.num_ev * frame.num_elements);
+			frame.freq_id = 0;
+			frame.dataset_id = 0;
+			frame.erms = 0;
+			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
+        }
 
         // measure reading time
         read_time += current_time() - last_time;

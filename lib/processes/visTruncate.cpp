@@ -54,7 +54,7 @@ void visTruncate::main_thread() {
     float err_r, err_i;
     cfloat tr_vis, tr_evec;
     __m256 err_vec, wgt_vec;
-    size_t i_vec;
+    int32_t i_vec;
     float *err_all;
 
     start_time = current_time();
@@ -93,8 +93,8 @@ void visTruncate::main_thread() {
 
         last_time = current_time();
 
-        // truncate visibilities and weights
-        for (i_vec = 0; i_vec < frame.num_prod - 7; i_vec += 8) {
+		// truncate visibilities and weights (8 at a time)
+        for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
             err_vec = _mm256_broadcast_ss(&err_init);
             wgt_vec = _mm256_load_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_vec, wgt_vec);
@@ -102,7 +102,8 @@ void visTruncate::main_thread() {
             _mm256_store_ps(err_all + i_vec, err_vec);
         }
         // use std::sqrt for the last few (less than 8)
-        for (i_vec -= 8; i_vec < frame.num_prod; i_vec++)
+        for (i_vec = (frame.num_prod < 8) ? 0 : i_vec - 8;
+                i_vec < frame.num_prod; i_vec++)
             err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec]
                     * err_sq_lim);
 
