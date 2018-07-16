@@ -260,7 +260,7 @@ zero_samples:
 baseband:
     max_dump_samples: 100000
     #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
-    num_frames_buffer: 116
+    num_frames_buffer: 110
     base_dir: /mnt/frb-archiver/
     write_throttle: 0
     baseband0:
@@ -284,7 +284,7 @@ monitor:
       - network_buffer_2
       - network_buffer_3
     timeout: 5
-    fill_threshold: 0.8
+    fill_threshold: 0.97
 
 gpu:
   kernel_path: "/root/andre/science_run/ch_gpu/build/lib/hsa/kernels/"
