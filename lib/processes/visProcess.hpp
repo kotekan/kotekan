@@ -10,6 +10,7 @@
 #define VIS_PROCESS_HPP
 
 #include <cstdint>
+#include <fstream>
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -206,5 +207,64 @@ private:
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<Buffer*, unsigned int>> in_bufs;
     Buffer * out_buf;
+};
+
+
+/**
+ * @class visCheckTestPattern
+ * @brief Checks if the visibility data matches a given expected pattern.
+ *
+ * Errors are calculated as the norm of the difference between the expected and the actual (complex) visibility value.
+ * Writes out to a csv file specified in the configuration and prints a report
+ * in a configured interval. The columns have the following meaning:
+ * fpga_count:  FPGA counter for the frame
+ * time:        the frames timestamp
+ * freq_id:     the frames frequency ID
+ * num_bad:     number of values that have an error higher then the threshold
+ * avg_err:     average error of bad values
+ * min_err:     minimum error of bad values
+ * max_err:     maximum error of bad balues
+ *
+ * @par Buffers
+ * @buffer in_buf               The buffer to debug
+ *         @buffer_format       visBuffer structured
+ *         @buffer_metadata     visMetadata
+ *
+ * @conf  out_file              String. Path to the file to dump all output in.
+ * @conf  report_freq           Int. Number of frames to print a summary for.
+ * @conf  expected_val_real     Float. Real part of the expected visibility value.
+ * @conf  expected_val_imag     Float. Imaginary part of the expected visibility value.
+ * @conf  tolerance             Float. Defines what difference to the expected value is an error.
+ *
+ * @author Rick Nitsche
+ */
+class visCheckTestPattern : public KotekanProcess {
+
+public:
+    visCheckTestPattern(Config &config,
+             const string& unique_name,
+             bufferContainer &buffer_container);
+
+    void apply_config(uint64_t fpga_seq);
+
+    void main_thread();
+
+private:
+    Buffer * in_buf;
+
+    // A (freq_id, dataset_id) pair
+    using fd_pair = typename std::pair<uint32_t, uint32_t>;
+
+    // Count the number of frames receiver for every {freq_id, dataset_id}
+    std::map<fd_pair, uint64_t> frame_counts;
+
+    // Config parameters
+    float tolerance;
+    size_t report_freq;
+    cfloat expected_val;
+
+    // file to dump all info in
+    std::ofstream outfile;
+    std::string outfile_name;
 };
 #endif

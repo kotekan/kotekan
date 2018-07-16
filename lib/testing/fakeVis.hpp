@@ -13,6 +13,7 @@
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
+#include "visUtil.hpp"
 
 /**
  * @class fakeVis
@@ -50,7 +51,8 @@
  *                              deviation with additional parameters. Will use the same
  *                              distribution to set the weights. Note that the seed for
  *                              the generator is not random.
- * @conf  vis_mean          When used with mode="gaussian", the mean of the distribution.
+ * @conf  vis_mean_real     When used with mode="gaussian", the real part of the mean of the distribution.
+ * @conf  vis_mean_imag     When used with mode="gaussian", the imaginary part of the mean of the distribution.
  * @conf  vis_std           When used with mode="gaussian", the std dev of the distribution.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
@@ -92,7 +94,13 @@ private:
 
     // Visibility filling mode
     std::string mode;
-    float vis_mean, vis_std;
+
+    // for gaussian modes
+    // config values
+    cfloat vis_mean;
+    float vis_std;
+    // random number generation
+    std::default_random_engine gen;
 
     // Test mode that sets all weights to zero
     bool zero_weight;

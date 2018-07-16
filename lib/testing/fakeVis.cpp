@@ -38,8 +38,15 @@ fakeVis::fakeVis(Config &config,
     // Get fill type
     mode = config.get_string_default(unique_name, "mode", "default");
     if (mode == "gaussian" || mode == "gaussian_random") {
-        vis_mean = config.get_float_default(unique_name, "vis_mean", 0.);
+        vis_mean = {config.get_float_default(unique_name, "vis_mean_real", 0.),
+            config.get_float_default(unique_name, "vis_mean_imag", 0.)};
         vis_std = config.get_float_default(unique_name, "vis_std", 1.);
+
+        // initialize random number generation
+        if (mode == "gaussian_random") {
+            std::random_device rd;
+            gen.seed(rd());
+        }
     }
 
     // Get timing and frame params
@@ -67,6 +74,9 @@ void fakeVis::main_thread() {
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
+    // random number generation for gaussian modes
+    std::normal_distribution<float> gauss_real{vis_mean.real(), vis_std};
+    std::normal_distribution<float> gauss_imag{vis_mean.imag(), vis_std};
 
     while (!stop_thread) {
 
@@ -140,16 +150,10 @@ void fakeVis::main_thread() {
                     }
                 }
             } else if (mode == "gaussian" || mode == "gaussian_random") {
-                std::default_random_engine gen;
-                if (mode == "gaussian_random") {
-                    std::random_device rd;
-                    gen.seed(rd());
-                }
-                std::normal_distribution<float> gauss(vis_mean, vis_std);
                 int ind = 0;
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
-                        out_vis[ind] = {gauss(gen), gauss(gen)};
+                        out_vis[ind] = {gauss_real(gen), gauss_imag(gen)};
                         ind++;
                     }
                 }
@@ -160,20 +164,14 @@ void fakeVis::main_thread() {
 
             // Insert values into eigenvectors, eigenvalues and rms
             if (mode == "gaussian" || mode == "gaussian_random") {
-                std::default_random_engine gen;
-                if (mode == "gaussian_random") {
-                    std::random_device rd;
-                    gen.seed(rd());
-                }
-                std::normal_distribution<float> gauss(vis_mean, vis_std);
                 for (uint32_t i = 0; i < num_eigenvectors; i++) {
                     for (uint32_t j = 0; j < num_elements; j++) {
                         int k = i * num_elements + j;
-                        output_frame.evec[k] = {(float)i, gauss(gen)};
+                        output_frame.evec[k] = {(float)i, gauss_real(gen)};
                     }
                     output_frame.eval[i] = i;
                 }
-                output_frame.erms = gauss(gen);
+                output_frame.erms = gauss_real(gen);
             } else {
                 for (uint32_t i = 0; i < num_eigenvectors; i++) {
                     for (uint32_t j = 0; j < num_elements; j++) {

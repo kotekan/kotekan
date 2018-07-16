@@ -101,6 +101,8 @@ Cmake build options
     Build an FFTW-based F-engine. Requires FFTW3.
 * ``-DUSE_LAPACK=ON``
     Build processes depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
+* ``-DUSE_OMP=ON``
+    Build processes using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
 * ``-DOPENBLAS_PATH=<openblas_prefix>``
     Path to OpenBLAS installation, if not in the ``CMAKE_PREFIX_PATH``
 * ``-DCOMPILE_DOCS=ON``

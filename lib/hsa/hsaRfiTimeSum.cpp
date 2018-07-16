@@ -22,6 +22,8 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
     output_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
     mask_len = sizeof(uint8_t)*_num_elements;
+    lost_samples_frame_len = sizeof(uint8_t)*_samples_per_data_set;
+    lost_samples_correction_len = sizeof(uint32_t)*_samples_per_data_set/_sk_step;
     //Local Parameters
     rebuildInputMask = true;
     //Register rest server endpoint
@@ -76,10 +78,12 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     }
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {
-	void *input;
-	void *output;
-	void *InputMask;
-	uint32_t sk_step;
+        void *input;
+        void *output;
+        void *InputMask;
+        void *LostSamples;
+        void *LostSamplesCorrection;
+        uint32_t sk_step;
         uint32_t num_elements;
     } args;
     //Initialize arguments
@@ -88,6 +92,8 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, 
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
     args.InputMask = device.get_gpu_memory("input_mask", mask_len);
+    args.LostSamples = device.get_gpu_memory_array("lost_samples", gpu_frame_id, lost_samples_frame_len);
+    args.LostSamplesCorrection = device.get_gpu_memory("lost_sample_correction", lost_samples_correction_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
     // Allocate the kernel argument buffer from the correct region.

@@ -15,8 +15,6 @@ set (KOTEKAN_UTIL_SOURCES
               visUtil.cpp
               visFile.cpp
               visFileRaw.cpp
-              transpose.c
-              truncate.hpp
               tx_utils.cpp
        )
 
