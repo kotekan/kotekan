@@ -222,15 +222,19 @@ void visRawReader::main_thread() {
                 + float(metadata_size / 1048576); //(1024*1024));
         } else {
             // Set metadata if file contained an empty frame
-			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
-			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
-			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_elements = _inputs.size();
+			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_prod
+                = _prods.size();
+			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_ev
+                = _ev.size();
+			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->
+                num_elements = _inputs.size();
             // Fill data with zeros
             auto frame = visFrameView(out_buf, frame_id);
             std::memset(frame.vis.data(), 0, sizeof(cfloat) * frame.num_prod);
             std::memset(frame.weight.data(), 0, sizeof(float) * frame.num_prod);
             std::memset(frame.eval.data(), 0, sizeof(float) * frame.num_ev);
-            std::memset(frame.evec.data(), 0, sizeof(cfloat) * frame.num_ev * frame.num_elements);
+            std::memset(frame.evec.data(), 0, sizeof(cfloat) * frame.num_ev
+                    * frame.num_elements);
 			frame.freq_id = 0;
 			frame.dataset_id = 0;
 			frame.erms = 0;
