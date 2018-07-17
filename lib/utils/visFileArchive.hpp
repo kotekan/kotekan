@@ -46,7 +46,7 @@ public:
                    const std::vector<input_ctype>& inputs,
                    const std::vector<prod_ctype>& prods,
                    size_t num_ev,
-                   std::vector<size_t> chunk_size);
+                   std::vector<int> chunk_size);
 
     /**
      * @brief Destructor.
@@ -98,7 +98,7 @@ protected:
     bool write_ev;
 
     // HDF5 chunk size
-    std::vector<size_t> chunk;
+    std::vector<int> chunk;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;

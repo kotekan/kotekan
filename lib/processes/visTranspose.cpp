@@ -22,9 +22,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     register_consumer(in_buf, unique_name.c_str());
 
     // get chunk dimensions for write from config file
-    std::vector<int> chunk_config_int = config.get_int_array(unique_name,
-            "chunk_size");
-    std::vector<size_t> chunk(chunk_config_int.begin(), chunk_config_int.end());
+    chunk = config.get_int_array(unique_name, "chunk_size");
     if (chunk.size() != 3)
         throw std::invalid_argument("Chunk size needs exactly three elements " \
                 "(has " + std::to_string(chunk.size()) + ").");
