@@ -50,7 +50,7 @@ private:
     Buffer * in_buf;
 
     // HDF5 chunk size
-    std::vector<int> chunk;
+    std::vector<size_t> chunk;
     //size of time dimension of chunk
     size_t chunk_t;
     //size of frequency dimension of chunk

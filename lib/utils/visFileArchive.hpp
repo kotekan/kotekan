@@ -15,10 +15,10 @@
 
 
 /** @brief A CHIME correlator archive file.
- * 
+ *
  * The class creates and manages writes to a CHIME style correlator archive
  * file in the standard HDF5 format. It also manages the lock file.
- * 
+ *
  * @author Richard Shaw
  **/
 class visFileArchive {
@@ -98,7 +98,7 @@ protected:
     bool write_ev;
 
     // HDF5 chunk size
-    std::vector<int> chunk;
+    std::vector<size_t> chunk;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;
