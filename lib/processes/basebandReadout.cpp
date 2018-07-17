@@ -143,41 +143,49 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
-            basebandDumpData data = get_data(
+            try {
+                basebandDumpData data = get_data(
                     event_id,
                     dump_status->request.start_fpga,
                     std::min((int64_t) dump_status->request.length_fpga, _max_dump_samples)
                     );
 
-            // At this point we know how much of the requested data we managed to read from the
-            // buffer (which may be nothing if the request as recieved too late).
-            dump_status->bytes_total = data.num_elements * data.data_length_fpga;
-            dump_status->bytes_remaining = dump_status->bytes_total;
-            if (data.data_length_fpga == 0) {
-                INFO("Captured no data for event %d and freq %d.",
-                        data.event_id, data.freq_id);
-                dump_status->state = basebandRequestState::ERROR;
-                dump_status->reason = "No data captured.";
-                continue;
-            } else {
-                INFO("Captured %d samples for event %d and freq %d.",
-                     data.data_length_fpga,
-                     data.event_id,
-                     data.freq_id
-                     );
-            }
 
-            // Wait for free space in the write queue. This prevents this thread from 
-            // receiving any more dump requests until the pipe clears out. Limits the 
-            // memory use and buffer congestion.
-            const int max_writes_queued = 3;
-            while (!stop_thread) {
-                if (write_q.size() < max_writes_queued) {
-                    write_q.push(dump_data_status(data, dump_status));
-                    break;
+
+                // At this point we know how much of the requested data we managed to read from the
+                // buffer (which may be nothing if the request as recieved too late).
+                dump_status->bytes_total = data.num_elements * data.data_length_fpga;
+                dump_status->bytes_remaining = dump_status->bytes_total;
+                if (data.data_length_fpga == 0) {
+                    INFO("Captured no data for event %d and freq %d.",
+                         data.event_id, data.freq_id);
+                    dump_status->state = basebandRequestState::ERROR;
+                    dump_status->reason = "No data captured.";
+                    continue;
                 } else {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    INFO("Captured %d samples for event %d and freq %d.",
+                         data.data_length_fpga,
+                         data.event_id,
+                         data.freq_id
+                        );
                 }
+
+                // Wait for free space in the write queue. This prevents this thread from 
+                // receiving any more dump requests until the pipe clears out. Limits the 
+                // memory use and buffer congestion.
+                const int max_writes_queued = 3;
+                while (!stop_thread) {
+                    if (write_q.size() < max_writes_queued) {
+                        write_q.push(dump_data_status(data, dump_status));
+                        break;
+                    } else {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                }
+            } catch (const std::bad_alloc) {
+                dump_status->state = basebandRequestState::ERROR;
+                dump_status->reason = "Not enough free memory for the request.";
+                continue;
             }
         }
     }
