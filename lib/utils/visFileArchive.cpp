@@ -33,7 +33,7 @@ visFileArchive::visFileArchive(const std::string& name,
                                const std::vector<input_ctype>& inputs,
                                const std::vector<prod_ctype>& prods,
                                size_t num_ev,
-                               std::vector<int> chunk_size) {
+                               std::vector<size_t> chunk_size) {
 
     std::string data_filename = name + ".h5";
 
