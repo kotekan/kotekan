@@ -46,7 +46,7 @@ public:
                    const std::vector<input_ctype>& inputs,
                    const std::vector<prod_ctype>& prods,
                    size_t num_ev,
-                   std::vector<int> chunk_size);
+                   std::vector<size_t> chunk_size);
 
     /**
      * @brief Destructor.
