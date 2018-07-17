@@ -59,6 +59,8 @@ private:
     double copy_time = 0.;
     double last_time;
 
+    // Flag for frame with a zero weight
+    bool zero_weight_found;
 };
 
 #endif

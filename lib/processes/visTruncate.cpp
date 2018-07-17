@@ -111,7 +111,7 @@ void visTruncate::main_thread() {
         for (size_t i = 0; i < frame.num_prod; i++) {
             // Get truncation precision from weights
             if (output_frame.weight[i] == 0.) {
-                // TODO: should this raise a warning?
+                zero_weight_found = true;
                 err_r = vis_prec * std::abs(output_frame.vis[i].real());
                 err_i = vis_prec * std::abs(output_frame.vis[i].imag());
             } else {
@@ -139,6 +139,12 @@ void visTruncate::main_thread() {
             output_frame.evec[i] = tr_evec;
         }
         truncate_time += current_time() - last_time;
+
+        if (zero_weight_found) {
+            DEBUG("visTruncate: Frame %d has at least one weight value " \
+                    "being zero.", frame_id);
+            zero_weight_found = false;
+        }
 
         // mark as full
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
