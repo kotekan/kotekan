@@ -103,7 +103,7 @@ void visTruncate::main_thread() {
         }
         // use std::sqrt for the last few (less than 8)
         for (i_vec = (frame.num_prod < 8) ? 0 : i_vec - 8;
-                i_vec < frame.num_prod; i_vec++)
+                i_vec < int32_t(frame.num_prod); i_vec++)
             err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec]
                     * err_sq_lim);
 
