@@ -103,9 +103,6 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
         dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
     }
-
-    file->flush();
-
 }
 
 // Instantiate for types that will get used to satisfy linker
