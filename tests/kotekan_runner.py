@@ -6,7 +6,6 @@ import time
 
 import visbuffer
 
-
 class KotekanRunner(object):
     """A lightweight class for running Kotekan from Python.
 
@@ -19,6 +18,8 @@ class KotekanRunner(object):
         Dictionary with all the process definitions.
     config : dict
         Global configuration at the root level.
+    rest_commands : list
+        REST commands to run packed as `(request_type, endpoint, json_data)`.
     """
 
     def __init__(self, buffers=None, processes=None, config=None,
@@ -54,9 +55,12 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
-            print config_dict
+
             cmd = ["./kotekan", "-c", fh.name]
-            p = subprocess.Popen(cmd, cwd=kotekan_dir)
+            p = subprocess.Popen(cmd, cwd=kotekan_dir,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            # Run any requested REST commands
             if self._rest_commands:
                 import requests
                 import json
@@ -66,14 +70,25 @@ class KotekanRunner(object):
                     if rtype == 'wait':
                         time.sleep(endpoint)
                         continue
-                    command = getattr(requests, rtype)
+
+                    try:
+                        command = getattr(requests, rtype)
+                    except AttributeError:
+                        raise ValueError('REST command not found')
+
                     command(rest_addr + endpoint,
                             headers=rest_header,
-                            data=json.dumps(data),
-                            )
-            ret = p.wait()
-            if ret:
-                raise subprocess.CalledProcessError(ret, cmd)
+                            data=json.dumps(data))
+
+            # Wait for kotekan to finish and capture the output
+            self.output, _ = p.communicate()
+
+            # Print out the output from Kotekan for debugging
+            print self.output
+
+            # Throw an exception if we don't exit cleanly
+            if p.returncode:
+                raise subprocess.CalledProcessError(p.returncode, cmd)
 
 
 class InputBuffer(object):
@@ -198,6 +213,47 @@ class FakeVisBuffer(InputBuffer):
         process_config.update(kwargs)
 
         self.process_block = {process_name: process_config}
+
+
+class ReadVisBuffer(InputBuffer):
+    """Write down a visBuffer and reads it with rawFileRead.
+
+    """
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = 'rawfileread_buf'
+        process_name = 'rawfileread%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'rawFileRead',
+            'buf': self.name,
+            'base_dir': input_dir,
+            'file_ext': 'dump',
+            'file_name': self.name,
+            'end_interrupt': True
+        }
+
+        self.process_block = {process_name: process_config}
+
+    def write(self):
+        """Write a list of VisBuffer objects to disk.
+        """
+        visbuffer.VisBuffer.to_files(self.buffer_list,
+                                     self.input_dir + '/' + self.name)
 
 
 class DumpVisBuffer(OutputBuffer):

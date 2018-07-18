@@ -2,6 +2,8 @@
 #define ZERO_SAMPLES_HPP
 
 #include "KotekanProcess.hpp"
+#include "json.hpp"
+#include <vector>
 
 /**
  * @brief Zeros samples in the @c out_buf based on flags in the @lost_samples_buf
@@ -20,7 +22,16 @@
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chimeMetadata
  *
- * @config  sample_size   Int. Default 2048.  The size of the time samples in @c out_buf
+ * @config  sample_size               Int. Default 2048.  The size of the time samples in @c out_buf
+ *
+ * @config  duplicate_ls_buffer       Bool. Default False. Whether or not to dupliate the lost samples buf
+ *
+ * @config  out_lost_sample_buffers   Buffers to hold the duplicated lost samples buffer. For example:
+ *                                    out_lost_sample_buffers:
+ *                                        - lost_samples_buffer_0
+ *                                        - lost_samples_buffer_1
+ *                                        - lost_samples_buffer_2
+ *                                        - lost_samples_buffer_3
  *
  * @author Andre Renard
  */
@@ -56,6 +67,12 @@ private:
 
     /// The size of the time samples in @c out_buf
     uint32_t sample_size;
+
+    /// Whether or not to duplicate the lost samples buffer
+    bool _duplicate_ls_buffer;
+
+    /// Vector to hold all duplicate lost sample buffers
+    vector<Buffer*> out_lost_sample_bufs;
 };
 
 #endif /* ZERO_SAMPLES_HPP */

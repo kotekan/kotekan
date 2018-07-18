@@ -71,6 +71,8 @@ private:
     uint32_t input_frame_len;
     /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
     uint32_t output_frame_len;
+    /// Length of lost sample correction frame
+    uint32_t correction_frame_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
