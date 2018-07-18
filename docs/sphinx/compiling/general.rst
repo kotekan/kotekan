@@ -36,6 +36,8 @@ Required for some options
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
+* `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_
+* `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
@@ -91,6 +93,7 @@ Cmake build options
 * ``-DDPDK_VDIF=ON``
     Adjusts DPDK defines to optimize for single dish VDIF capture mode.
 * ``-DUSE_HDF5=ON``
+    Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
 * ``-DHIGHFIVE_PATH=<path>``
     To enable the HDF5 writer
 * ``-DUSE_AIRSPY=ON``

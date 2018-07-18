@@ -33,14 +33,6 @@ visTruncate::visTruncate(Config &config, const string& unique_name,
                 + std::to_string(vis_prec) + ").");
 }
 
-visTruncate::~visTruncate() {
-    double total_time = current_time() - start_time;
-    DEBUG("total time %f", total_time);
-    DEBUG("wait time %f", wait_time);
-    DEBUG("copy time %f", copy_time);
-    DEBUG("truncate time %f", truncate_time);
-}
-
 void visTruncate::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
 }
@@ -54,10 +46,8 @@ void visTruncate::main_thread() {
     float err_r, err_i;
     cfloat tr_vis, tr_evec;
     __m256 err_vec, wgt_vec;
-    size_t i_vec;
+    int32_t i_vec;
     float *err_all;
-
-    start_time = current_time();
 
     // get the first frame (just to find out about num_prod)
     // (we don't mark it empty, so it's read again in the main loop)
@@ -70,7 +60,6 @@ void visTruncate::main_thread() {
     std::memset(err_all, 0, sizeof(float) * (frame.num_prod));
 
     while (!stop_thread) {
-        last_time = current_time();
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
@@ -83,18 +72,13 @@ void visTruncate::main_thread() {
                                  output_frame_id)) == nullptr) {
             break;
         }
-        wait_time += current_time() - last_time;
-        last_time = current_time();
 
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
-        copy_time += current_time() - last_time;
 
-        last_time = current_time();
-
-        // truncate visibilities and weights
-        for (i_vec = 0; i_vec < frame.num_prod - 7; i_vec += 8) {
+		// truncate visibilities and weights (8 at a time)
+        for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
             err_vec = _mm256_broadcast_ss(&err_init);
             wgt_vec = _mm256_load_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_vec, wgt_vec);
@@ -102,7 +86,8 @@ void visTruncate::main_thread() {
             _mm256_store_ps(err_all + i_vec, err_vec);
         }
         // use std::sqrt for the last few (less than 8)
-        for (i_vec -= 8; i_vec < frame.num_prod; i_vec++)
+        for (i_vec = (frame.num_prod < 8) ? 0 : i_vec - 8;
+                i_vec < int32_t(frame.num_prod); i_vec++)
             err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec]
                     * err_sq_lim);
 
@@ -110,7 +95,7 @@ void visTruncate::main_thread() {
         for (size_t i = 0; i < frame.num_prod; i++) {
             // Get truncation precision from weights
             if (output_frame.weight[i] == 0.) {
-                // TODO: should this raise a warning?
+                zero_weight_found = true;
                 err_r = vis_prec * std::abs(output_frame.vis[i].real());
                 err_i = vis_prec * std::abs(output_frame.vis[i].imag());
             } else {
@@ -137,7 +122,12 @@ void visTruncate::main_thread() {
             };
             output_frame.evec[i] = tr_evec;
         }
-        truncate_time += current_time() - last_time;
+
+        if (zero_weight_found) {
+            DEBUG("visTruncate: Frame %d has at least one weight value " \
+                    "being zero.", frame_id);
+            zero_weight_found = false;
+        }
 
         // mark as full
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

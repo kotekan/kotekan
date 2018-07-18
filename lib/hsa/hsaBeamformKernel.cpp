@@ -109,7 +109,7 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     }
     _ew_spacing_c[ew_id] = json_request["ew_beam"];
     update_EW_beam=true;
-    config.update_value(unique_name, "ew_spacing/" + std::to_string(ew_id), _ew_spacing_c[ew_id]);
+    config.update_value(unique_name, "ew_spacing/" + std::to_string(ew_id), json_request["ew_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 
 }
@@ -124,7 +124,7 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
     update_NS_beam=true;
 
-    config.update_value(unique_name, "northmost_beam", _northmost_beam);
+    config.update_value(unique_name, "northmost_beam", json_request["northmost_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "gain_dir", _gain_dir);
 }

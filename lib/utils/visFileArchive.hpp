@@ -15,10 +15,10 @@
 
 
 /** @brief A CHIME correlator archive file.
- * 
+ *
  * The class creates and manages writes to a CHIME style correlator archive
  * file in the standard HDF5 format. It also manages the lock file.
- * 
+ *
  * @author Richard Shaw
  **/
 class visFileArchive {

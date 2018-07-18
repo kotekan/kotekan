@@ -80,27 +80,18 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     write_f = chunk_f;
 
     // Allocate memory for collecting frames
-    vis.reserve(chunk_t*chunk_f*num_prod);
-    vis_weight.reserve(chunk_t*chunk_f*num_prod);
+    vis.resize(chunk_t*chunk_f*num_prod);
+    vis_weight.resize(chunk_t*chunk_f*num_prod);
     // TODO: fill these at this point?
-    gain_coeff.reserve(chunk_t*chunk_f*num_prod);
-    gain_exp.reserve(chunk_t*num_input);
-    eval.reserve(chunk_t*chunk_f*num_ev);
-    evec.reserve(chunk_t*chunk_f*num_ev*num_input);
-    erms.reserve(chunk_t*chunk_f);
+    gain_coeff.resize(chunk_t*chunk_f*num_input);
+    gain_exp.resize(chunk_t*num_input);
+    eval.resize(chunk_t*chunk_f*num_ev);
+    evec.resize(chunk_t*chunk_f*num_ev*num_input);
+    erms.resize(chunk_t*chunk_f);
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-}
-
-visTranspose::~visTranspose() {
-    // Print recorded timing
-    double total_time = current_time() - start_time;
-    DEBUG("total time %f", total_time);
-    DEBUG("wait time %f", wait_time);
-    DEBUG("copy time %f", copy_time);
-    DEBUG("write time %f", write_time);
 }
 
 void visTranspose::main_thread() {
@@ -113,25 +104,18 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
-    start_time = current_time();
-
     // Create HDF5 file
     file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
                 metadata, times, freqs, inputs, prods, num_ev, chunk)
     );
 
     while (!stop_thread) {
-        last_time = current_time();
-
         // Wait for a full frame in the input buffer
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
             break;
         }
         auto frame = visFrameView(in_buf, frame_id);
-
-        wait_time += current_time() - last_time;
-        last_time = current_time();
 
         // Collect frames until a chunk is filled
         // Time-transpose as frames come in
@@ -142,8 +126,8 @@ void visTranspose::main_thread() {
         strided_copy(frame.weight.data(), vis_weight.data(),
                 offset*num_prod + ti, write_t, num_prod);
         // TODO: just fill until these are populated in the frames
-        std::fill(gain_coeff.begin() + (offset+ti) * num_prod,
-                gain_coeff.begin() + (offset+ti+1) * num_prod, (cfloat) {1, 0});
+        std::fill(gain_coeff.begin() + (offset+ti) * num_input,
+                gain_coeff.begin() + (offset+ti+1) * num_input, (cfloat) {1, 0});
         if (fi == 0) {
             std::fill(gain_exp.begin() + (offset+ti) * inputs.size(),
                       gain_exp.begin() + (offset+ti+1) * inputs.size(), 0);
@@ -155,19 +139,15 @@ void visTranspose::main_thread() {
                 fi*num_ev*num_input*write_t + ti, write_t, num_ev*num_input);
         erms[offset + ti] = frame.erms;
 
-        copy_time += current_time() - last_time;
-
         // Increment within read chunk
         ti = (ti + 1) % write_t;
         if (ti == 0)
             fi++;
         if (fi == write_f) {
             // chunk is complete
-            last_time = current_time();
             write();
             // increment between chunks
             increment_chunk();
-            write_time += current_time() - last_time;
             fi = 0;
             ti = 0;
         }

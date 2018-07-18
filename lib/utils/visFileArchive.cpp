@@ -44,14 +44,25 @@ visFileArchive::visFileArchive(const std::string& name,
 
     // Set HDF5 chunk size
     chunk = chunk_size;
-    if (chunk[0] > freqs.size() || chunk[1] > prods.size()
-            || chunk[2] > times.size()) {
-        throw std::runtime_error("Chunk dimensions (" + std::to_string(chunk[0])
-                + ", " + std::to_string(chunk[1]) + ", "
-                + std::to_string(chunk[2]) + ") cannot be greater than axes ("
-                + std::to_string(freqs.size()) + ", "
-                + std::to_string(prods.size()) + ", "
-                + std::to_string(times.size()) + ").");
+    // Check chunk size
+	// Check chunk size
+    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
+        throw std::invalid_argument("visRawReader: config: Chunk size " \
+            "needs to be greater or equal to (1,1,1) (is ("
+            + std::to_string(chunk[0]) + ","
+            + std::to_string(chunk[1]) + ","
+            + std::to_string(chunk[2]) + ")).");
+    if (chunk[0] > (int)freqs.size()) {
+        chunk[0] = freqs.size();
+        INFO("visFileArchive: Chunk frequency dimension greater than axes. Will use a smaller chunk.")
+    }
+    if (chunk[1] > (int)prods.size()) {
+        chunk[1] = prods.size();
+        INFO("visFileArchive: Chunk product dimension greater than axes. Will use a smaller chunk.")
+    }
+    if (chunk[2] > (int)times.size()) {
+        chunk[2] = times.size();
+        INFO("visFileArchive: Chunk time dimension greater than axes. Will use a smaller chunk.")
     }
 
     INFO("Creating new archive file %s", name.c_str());
@@ -92,9 +103,6 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
         dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
     }
-
-    file->flush();
-
 }
 
 // Instantiate for types that will get used to satisfy linker
