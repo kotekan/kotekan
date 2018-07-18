@@ -31,6 +31,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               countCheck.cpp
               visProcess.cpp
               timeDownsample.cpp
+              visWriter.cpp
               visRawReader.cpp
               restInspectFrame.cpp
               frbNetworkProcess.cpp
@@ -59,7 +60,7 @@ endif ()
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visWriter.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp)
 endif ()
 
 # HDF5 and OpenMP

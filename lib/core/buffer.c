@@ -570,7 +570,12 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
+//TODO: temporary solution to not print buffer status on gossec
+#ifndef _GOSSEC
     INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
+#else
+    DEBUG("Buffer %s, status: %s", buf->buffer_name, status_string);
+#endif
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
