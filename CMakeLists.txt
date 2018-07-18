@@ -17,6 +17,12 @@ option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
+option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
+
+if(${_GOSSEC})
+    add_definitions(-D_GOSSEC=1)
+    MESSAGE("_GOSSEC enabled: Set buffer status messages to DEBUG log level")
+endif()
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
