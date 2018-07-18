@@ -13,6 +13,7 @@
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
+#include "visUtil.hpp"
 
 /**
  * @class fakeVis
@@ -45,10 +46,19 @@
  *                              of feed i and the imaginary part with the index of j.
  *                            - phase_ij: Fill with unit amplitude numbers with phase
  *                              ``i - j`` radians.
+ *                            - gaussian: Fill real and imaginary parts with normally
+ *                              distributed random numbers. Specify mean and standard
+ *                              deviation with additional parameters. Will use the same
+ *                              distribution to set the weights. Note that the seed for
+ *                              the generator is not random.
+ * @conf  vis_mean_real     When used with mode="gaussian", the real part of the mean of the distribution.
+ * @conf  vis_mean_imag     When used with mode="gaussian", the imaginary part of the mean of the distribution.
+ * @conf  vis_std           When used with mode="gaussian", the std dev of the distribution.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If
  *                          less than zero, no limit is applied. Default is `-1`.
+ * @conf  zero_weight       Bool. Set all weights to zero, if this is True. Default is False.
  *
  * @todo  It might be useful eventually to produce realistic looking mock visibilities.
  *
@@ -84,6 +94,16 @@ private:
 
     // Visibility filling mode
     std::string mode;
+
+    // for gaussian modes
+    // config values
+    cfloat vis_mean;
+    float vis_std;
+    // random number generation
+    std::default_random_engine gen;
+
+    // Test mode that sets all weights to zero
+    bool zero_weight;
 
     bool wait;
     int32_t num_frames;
