@@ -9,6 +9,7 @@
 *********************************************************************************/
 """
 
+from prometheus_client import start_http_server, Gauge
 import threading
 import socket
 import numpy as np
@@ -210,13 +211,13 @@ def data_listener(thread_id, socket_udp):
                     if(-1*roll_amount > waterfall.shape[1]):
                         #Reset Waterfall
                         t_min = datetime.datetime.utcnow()
-                        waterfall[:,:] = -1
+                        waterfall[:,:] = -1#np.nan
                         app.min_seq = header['fpga_seq_num'][0]
                         app.max_seq = app.min_seq + (waterfall.shape[1] - 1)*timesteps_per_frame*frames_per_packet
                     else:
                         #DO THE ROLL, Note: Roll Amount is negative
                         waterfall = np.roll(waterfall,roll_amount,axis=1)
-                        waterfall[:,roll_amount:] = -1
+                        waterfall[:,roll_amount:] = -1#np.nan
                         app.min_seq -= roll_amount*timesteps_per_frame*frames_per_packet
                         app.max_seq -= roll_amount*timesteps_per_frame*frames_per_packet
                         #Adjust Time
@@ -308,7 +309,7 @@ def TCP_stream():
                 print(len(t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
                 conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
             elif MESSAGE == "w":
-                temp_bi_waterfall = np.median(bi_waterfall[:,:,:max_t_pos], axis = 2)
+                temp_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
                 print("Sending Bad Input Watefall Data %d ..."%(len(temp_bi_waterfall.tostring())))
                 conn.send(temp_bi_waterfall.tostring())  #Send Watefall
             elif MESSAGE == "t":
@@ -317,6 +318,64 @@ def TCP_stream():
                 conn.send(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
         print("Closing Connection to %s:%s ..."%(addr[0],str(addr[1])))
         conn.close()
+
+def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
+
+    max_pos = np.where(np.sum(waterfall,axis=0) == -1*waterfall.shape[0])[0][0]
+    print('max_pos', max_pos)
+    band = np.median(waterfall[:,:max_pos], axis = 1)
+    print("Band Computed", np.nanmin(band), np.nanmax(band))
+    mean_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
+    mean_bi_waterfall[mean_bi_waterfall==-1] = np.nan
+    print("mean_bi_waterfall", np.nanmin(mean_bi_waterfall), np.nanmax(mean_bi_waterfall))
+    bad_input_band = 100.0*np.nanmedian(mean_bi_waterfall, axis = 0)/float(app.config['bi_frames_per_packet'])
+    print("Bad Input Band Computed", np.nanmin(bad_input_band), np.nanmax(bad_input_band))
+    fbins = np.array([800.0 - float(b) * 400.0/1024.0 for b in np.arange(band.size)])
+    for i in range(band.size):
+        if(np.isnan(band[i])):
+            metric_dict['rfi_band'].labels(fbins[i]).set(-1)
+        else:
+            metric_dict['rfi_band'].labels(fbins[i]).set(band[i])
+    for i in range(bad_input_band.size):
+        if(np.isnan(bad_input_band[i])):
+            metric_dict['rfi_input_mask'].labels(i).set(-1)
+        else:
+            metric_dict['rfi_input_mask'].labels(i).set(bad_input_band[i])
+            #print(bad_input_band[i])
+    num_bad_inputs = bad_input_band[bad_input_band>10.0].size
+    print('num_bad_inputs',num_bad_inputs)
+    n = app.config['sk_step']
+    M = float(n*(app.config['num_elements'] - num_bad_inputs))
+    med = np.median(band[band != -1])#((M+1)/(M-1))*(2.0*n**2/((n-2)*(n-1)) - 8.0/n - 1)
+    std = 2.0/np.sqrt(M)
+    print('Expectation of SK', med, 'Deviation of SK', std)
+    confidence = np.abs(waterfall[waterfall != -1]-med)/std
+    print("Confidence", np.nanmin(confidence), np.nanmax(confidence))
+    overall_rfi = 100.0*confidence[confidence>3.0].size/float(confidence.size)
+    print("Overall RFI", overall_rfi)
+    metric_dict['overall_rfi_sk'].set(overall_rfi)
+    metric_dict['overall_rfi_bad_input'].set(num_bad_inputs)
+
+def metric_thread():
+
+    global bi_waterfall, waterfall, max_t_pos, app
+    print("Starting Metrics Thread")
+    metric_dict = dict()
+    # Create Metrics:
+    metric_dict['overall_rfi_sk'] = Gauge('overall_rfi_sk', 'percent_masked')
+    metric_dict['overall_rfi_bad_input'] = Gauge('overall_rfi_bad_input', 'number_of_bad_inputs')
+    metric_dict['rfi_band'] = Gauge('rfi_band', 'med_sk', ['freq_bin'])
+    metric_dict['rfi_input_mask'] = Gauge('rfi_input_mask', 'defect_likelihood', ['input_num'])
+    print("Starting HTTP Server")
+    # Start up the server to expose the metrics.
+#    start_http_server(7341) #RFI1
+    # Generate some requests.
+    while True:
+        if(waterfall[waterfall==-1].size < waterfall.size):
+            time.sleep(10)
+            print("Computing Metrics")
+            compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app)
+
 
 if( __name__ == '__main__'):
 
@@ -334,8 +393,10 @@ if( __name__ == '__main__'):
     max_t_pos = 0
     #Initialize Plot
     nx, ny = app.config['waterfallY'], app.config['waterfallX']
-    waterfall = -1*np.ones([nx,ny],dtype=float)
-    bi_waterfall = -1*np.ones([app.config['num_global_freq'], app.config['num_elements'], 128],dtype=np.uint8)
+    waterfall = np.empty([nx,ny],dtype=float)
+    waterfall[:,:] = -1#np.nan
+    bi_waterfall = np.empty([app.config['num_global_freq'], app.config['num_elements'], 64],dtype=np.int8)
+    bi_waterfall[:,:,:] = -1#np.nan
     time.sleep(1)
 
     receive_threads = []
@@ -357,6 +418,10 @@ if( __name__ == '__main__'):
     thread2 = threading.Thread(target=TCP_stream)
     thread2.daemon = True
     thread2.start()
+
+    metricsThread = threading.Thread(target=metric_thread)
+    metricsThread.daemon = True
+    metricsThread.start()
 
     input()
 
