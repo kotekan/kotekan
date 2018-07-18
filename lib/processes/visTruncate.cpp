@@ -33,14 +33,6 @@ visTruncate::visTruncate(Config &config, const string& unique_name,
                 + std::to_string(vis_prec) + ").");
 }
 
-visTruncate::~visTruncate() {
-    double total_time = current_time() - start_time;
-    DEBUG("total time %f", total_time);
-    DEBUG("wait time %f", wait_time);
-    DEBUG("copy time %f", copy_time);
-    DEBUG("truncate time %f", truncate_time);
-}
-
 void visTruncate::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
 }
@@ -57,8 +49,6 @@ void visTruncate::main_thread() {
     int32_t i_vec;
     float *err_all;
 
-    start_time = current_time();
-
     // get the first frame (just to find out about num_prod)
     // (we don't mark it empty, so it's read again in the main loop)
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
@@ -70,7 +60,6 @@ void visTruncate::main_thread() {
     std::memset(err_all, 0, sizeof(float) * (frame.num_prod));
 
     while (!stop_thread) {
-        last_time = current_time();
         // Wait for the buffer to be filled with data
         if((wait_for_full_frame(in_buf, unique_name.c_str(),
                                         frame_id)) == nullptr) {
@@ -83,15 +72,10 @@ void visTruncate::main_thread() {
                                  output_frame_id)) == nullptr) {
             break;
         }
-        wait_time += current_time() - last_time;
-        last_time = current_time();
 
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
-        copy_time += current_time() - last_time;
-
-        last_time = current_time();
 
 		// truncate visibilities and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
@@ -138,7 +122,6 @@ void visTruncate::main_thread() {
             };
             output_frame.evec[i] = tr_evec;
         }
-        truncate_time += current_time() - last_time;
 
         if (zero_weight_found) {
             DEBUG("visTruncate: Frame %d has at least one weight value " \

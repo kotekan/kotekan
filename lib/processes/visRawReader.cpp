@@ -56,8 +56,6 @@ visRawReader::visRawReader(Config &config,
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
 
-    mbytes_read = 0.0;
-
     std::ifstream metadata_file(md_filename, std::ios::binary);
     if (metadata_file) // only read if no error
         metadata_file.read((char *)&packed_json[0], filesize);
@@ -132,9 +130,6 @@ visRawReader::~visRawReader() {
     }
 
     close(fd);
-
-    DEBUG("Read %.2f MBytes at %.2f MBytes/s", mbytes_read,
-            float(mbytes_read/read_time));
 }
 
 void visRawReader::apply_config(uint64_t fpga_seq) {
@@ -198,9 +193,6 @@ void visRawReader::main_thread() {
             read_ahead(read_ind);
         }
 
-        // measure start time of read
-        last_time = current_time();
-
         // Get the index into the file
         file_ind = position_map(ind);
 
@@ -216,10 +208,6 @@ void visRawReader::main_thread() {
             // Copy the data from the file
             std::memcpy(frame, mapped_file + file_ind * file_frame_size
                     + metadata_size + 1, data_size);
-
-            // count read data
-            mbytes_read += float(data_size / 1048576) //(1024*1024))
-                + float(metadata_size / 1048576); //(1024*1024));
         } else {
             // Set metadata if file contained an empty frame
 			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_prod
@@ -240,9 +228,6 @@ void visRawReader::main_thread() {
 			frame.erms = 0;
 			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
         }
-
-        // measure reading time
-        read_time += current_time() - last_time;
 
         // Try and clear out the cached data as we don't need it again
         if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size,
