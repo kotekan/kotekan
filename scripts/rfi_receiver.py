@@ -42,6 +42,7 @@ class CommandLine:
         self.TCP_IP = '10.10.10.2'
         self.TCP_PORT = 41214
         self.mode = 'chime'
+        self.debug = False
         self.min_seq = -1
         self.max_seq = -1
         self.config = {'frames_per_packet': 4, 'num_global_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
@@ -54,11 +55,17 @@ class CommandLine:
         parser.add_argument("-s", "--send", help = "Example: 10.10.10.2:41214", required = False, default = "")
         parser.add_argument("-c", "--config", help = "Example: ../kotekan/kotekan_opencl_rfi.yaml", required = False, default = "")
         parser.add_argument("-m", "--mode", help = "Example: vdif, chime", required = False, default = "")
+        parser.add_argument("-d", "--debug", help = "Launch with warnings", required = False, default = "", action='store_true')
+
         argument = parser.parse_args()
         status = False
 
         if argument.Help:
             print("You have used '-H' or '--Help' with argument: {0}".format(argument.Help))
+            status = True
+        if argument.debug:
+            print("You have used '-d' , Enabling debug mode")
+            self.debug = True
             status = True
         if argument.send:
             print("You have used '-s' or '--send' with argument: {0}".format(argument.send))
@@ -286,7 +293,7 @@ def bad_input_listener(thread_id, socket_udp):
 
 def TCP_stream():
 
-    global sock_tcp, waterfall, t_min, max_t_pos
+    global sock_tcp, waterfall, t_min, max_t_pos, app
 
     sock_tcp.listen(1)
 
@@ -302,40 +309,36 @@ def TCP_stream():
             if not MESSAGE: break
 
             elif MESSAGE == "W":
-                print("Sending Watefall Data %d ..."%(len(waterfall.tostring())))
+                if(app.debug):
+                    print("Sending Watefall Data %d ..."%(len(waterfall.tostring())))
                 conn.send(waterfall.tostring())  #Send Watefall
             elif MESSAGE == "T":
-                print("Sending Time Data ...")
-                print(len(t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
+                if(app.debug):
+                    print("Sending Time Data ...",len(t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
                 conn.send(t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
             elif MESSAGE == "w":
                 temp_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
-                print("Sending Bad Input Watefall Data %d ..."%(len(temp_bi_waterfall.tostring())))
+                if(app.debug):
+                    print("Sending Bad Input Watefall Data %d ..."%(len(temp_bi_waterfall.tostring())))
                 conn.send(temp_bi_waterfall.tostring())  #Send Watefall
             elif MESSAGE == "t":
-                print("Sending Bad Input Time Data ...")
-                print(len(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
+                if(app.debug):
+                    print("Sending Bad Input Time Data ..." , len(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f')))
                 conn.send(bi_t_min.strftime('%d-%m-%YT%H:%M:%S:%f').encode())
         print("Closing Connection to %s:%s ..."%(addr[0],str(addr[1])))
         conn.close()
 
 def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
 
-    max_pos = np.where(np.sum(waterfall,axis=0) == -1*waterfall.shape[0])[0][0]
-    print('max_pos', max_pos)
-    band = np.median(waterfall[:,:max_pos], axis = 1)
-    print("Band Computed", np.nanmin(band), np.nanmax(band))
+    if(not app.debug):
+        np.warnings.filterwarnings('ignore', r'All-NaN (slice|axis) encountered')
+        np.warnings.filterwarnings('ignore', r'Mean of empty slice')
+        np.warnings.filterwarnings('ignore', r'invalid value encountered in (greater|true_divide|double_scalars)')
+
+    #Bad Input Metrics
     mean_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
     mean_bi_waterfall[mean_bi_waterfall==-1] = np.nan
-    print("mean_bi_waterfall", np.nanmin(mean_bi_waterfall), np.nanmax(mean_bi_waterfall))
     bad_input_band = 100.0*np.nanmedian(mean_bi_waterfall, axis = 0)/float(app.config['bi_frames_per_packet'])
-    print("Bad Input Band Computed", np.nanmin(bad_input_band), np.nanmax(bad_input_band))
-    fbins = np.array([800.0 - float(b) * 400.0/1024.0 for b in np.arange(band.size)])
-    for i in range(band.size):
-        if(np.isnan(band[i])):
-            metric_dict['rfi_band'].labels(fbins[i]).set(-1)
-        else:
-            metric_dict['rfi_band'].labels(fbins[i]).set(band[i])
     for i in range(bad_input_band.size):
         if(np.isnan(bad_input_band[i])):
             metric_dict['rfi_input_mask'].labels(i).set(-1)
@@ -343,18 +346,47 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
             metric_dict['rfi_input_mask'].labels(i).set(bad_input_band[i])
             #print(bad_input_band[i])
     num_bad_inputs = bad_input_band[bad_input_band>10.0].size
-    print('num_bad_inputs',num_bad_inputs)
     n = app.config['sk_step']
     M = float(n*(app.config['num_elements'] - num_bad_inputs))
-    med = np.median(band[band != -1])#((M+1)/(M-1))*(2.0*n**2/((n-2)*(n-1)) - 8.0/n - 1)
-    std = 2.0/np.sqrt(M)
-    print('Expectation of SK', med, 'Deviation of SK', std)
-    confidence = np.abs(waterfall[waterfall != -1]-med)/std
-    print("Confidence", np.nanmin(confidence), np.nanmax(confidence))
-    overall_rfi = 100.0*confidence[confidence>3.0].size/float(confidence.size)
-    print("Overall RFI", overall_rfi)
-    metric_dict['overall_rfi_sk'].set(overall_rfi)
+    if(np.isnan(num_bad_inputs)):
+        num_bad_inputs = -1
+        M = float(n*(app.config['num_elements']))
     metric_dict['overall_rfi_bad_input'].set(num_bad_inputs)
+
+    #RFI metrics
+    bad_locs = np.where(np.sum(waterfall,axis=0) == -1*waterfall.shape[0])[0]
+    if(bad_locs.size > 0):
+        max_pos = bad_locs[0]
+    else:
+        max_pos = waterfall.shape[1]
+    band = np.nanmedian(waterfall[:,:max_pos], axis = 1)
+    med = np.nanmedian(band[band != -1])#((M+1)/(M-1))*(2.0*n**2/((n-2)*(n-1)) - 8.0/n - 1)
+    std = 2.0/np.sqrt(M)
+    confidence = np.abs(waterfall[:,:max_pos]-med)/std
+    rfi_mask = np.zeros_like(confidence)
+    rfi_mask[confidence > 3.0] = 1.0
+    band_perc = np.sum(rfi_mask, axis = 1)/float(rfi_mask.shape[1])
+    #fbins = np.array([800.0 - float(b) * 400.0/1024.0 for b in np.arange(band.size)])
+    fbins = np.arange(band_perc.size)
+    for i in range(band_perc.size):
+        if(np.isnan(band[i])):
+            metric_dict['rfi_band'].labels(fbins[i]).set(-1)
+        else:
+            metric_dict['rfi_band'].labels(fbins[i]).set(band_perc[i])
+    overall_rfi = 100.0*np.sum(rfi_mask)/float(rfi_mask.size)
+    if(np.isnan(overall_rfi)):
+        overall_rfi = -1
+    metric_dict['overall_rfi_sk'].set(overall_rfi)
+    if(app.debug):
+        print("Metrics Log:")
+        print("mean_bi_waterfall", np.nanmin(mean_bi_waterfall), np.nanmax(mean_bi_waterfall))
+        print("Bad Input Band Computed", np.nanmin(bad_input_band), np.nanmax(bad_input_band))
+        print('num_bad_inputs',num_bad_inputs)
+        print('max_pos', max_pos)
+        print("Band Computed", np.nanmin(band), np.nanmax(band))
+        print('Expectation of SK', med, 'Deviation of SK', std)
+        print("Band Computed", np.nanmin(band_perc), np.nanmax(band_perc))
+        print("Overall RFI", overall_rfi)
 
 def metric_thread():
 
@@ -368,13 +400,11 @@ def metric_thread():
     metric_dict['rfi_input_mask'] = Gauge('rfi_input_mask', 'defect_likelihood', ['input_num'])
     print("Starting HTTP Server")
     # Start up the server to expose the metrics.
-#    start_http_server(7341) #RFI1
+    start_http_server(7341) #RFI1
     # Generate some requests.
     while True:
-        if(waterfall[waterfall==-1].size < waterfall.size):
-            time.sleep(10)
-            print("Computing Metrics")
-            compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app)
+        compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app)
+        time.sleep(10)
 
 
 if( __name__ == '__main__'):
