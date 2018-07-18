@@ -15,6 +15,7 @@ option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
+option(USE_OMP "Enable OpenMP" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
@@ -106,13 +107,34 @@ endif ()
 MESSAGE("Input Modules Included: " ${INPUT_MODULES})
 
 if (${USE_HDF5})
-  # HDF5 setup
-  include_directories ( ${HIGHFIVE_PATH}/include )
-  find_package(HDF5 REQUIRED)
-  add_definitions(-DWITH_HDF5)
-  MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
-else ()
-  MESSAGE("HDF5 disabled")
+    # only clone highfive if HIGHFIVE_PATH is not specified nor cached
+    if (NOT DEFINED HIGHFIVE_PATH)
+        MESSAGE("HIGHFIVE_PATH not specified: Cloning HighFive repository")
+        include(ExternalProject)
+        find_package(Git REQUIRED)
+        ExternalProject_Add(
+            highfive
+            PREFIX ${CMAKE_BINARY_DIR}/ext
+            GIT_REPOSITORY https://github.com/jrs65/HighFive.git
+	        GIT_TAG extensible-datasets
+            TIMEOUT 10
+            UPDATE_COMMAND ${GIT_EXECUTABLE} pull
+            CONFIGURE_COMMAND ""
+            BUILD_COMMAND ""
+            INSTALL_COMMAND ""
+            LOG_DOWNLOAD ON
+        )
+        ExternalProject_Get_Property(highfive source_dir)
+        set(HIGHFIVE_PATH ${source_dir} CACHE INTERNAL "Path to HighFive")
+    else()
+        # just to satisfy dependencies (dependencies on highfive are needed
+        # to make sure it is cloned before attempting to build kotekan)
+        add_custom_target(highfive)
+    endif()
+    MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
+    include_directories ( ${HIGHFIVE_PATH}/include )
+    find_package(HDF5 REQUIRED)
+    add_definitions(-DWITH_HDF5)
 endif ()
 
 # Optionally include OpenSSL for hash function support
@@ -157,6 +179,13 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+
+# OpenMP flag
+if(${USE_OMP})
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+endif()
+
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")

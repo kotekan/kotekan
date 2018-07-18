@@ -6,6 +6,7 @@ import time
 
 import visbuffer
 
+
 class KotekanRunner(object):
     """A lightweight class for running Kotekan from Python.
 
@@ -215,6 +216,60 @@ class FakeVisBuffer(InputBuffer):
         self.process_block = {process_name: process_config}
 
 
+class VisWriterBuffer(OutputBuffer):
+    """Consume a visBuffer and provide its contents as raw or hdf5 file.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    file_type : string
+        File type to write into (see visWriter documentation)
+    freq_ids : Array of Int.
+        Frequency IDs
+    in_buf : string
+        Optionally specify the name of an input buffer instead of creating one.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(self, output_dir, file_type, freq_ids, in_buf=None):
+
+        self.name = 'viswriter_buf%i' % self._buf_ind
+        process_name = 'write%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+
+        if in_buf is None:
+            self.buffer_block = {
+                self.name: {
+                    'kotekan_buffer': 'vis',
+                    'metadata_pool': 'vis_pool',
+                    'num_frames': 'buffer_depth',
+                }
+            }
+            buf_name = self.name
+        else:
+            buf_name = in_buf
+            self.buffer_block = {}
+
+        process_config = {
+            'kotekan_process': 'visWriter',
+            'in_buf': buf_name,
+            'file_name': self.name,
+            'file_type': file_type,
+            'root_path': output_dir,
+            'write_ev': True,
+            'node_mode': False,
+            'freq_ids': freq_ids
+        }
+
+        self.process_block = {process_name: process_config}
+
+
 class ReadVisBuffer(InputBuffer):
     """Write down a visBuffer and reads it with rawFileRead.
 
@@ -305,6 +360,36 @@ class DumpVisBuffer(OutputBuffer):
         """
         return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
                                               (self.output_dir, self.name))
+
+
+class ReadRawBuffer(InputBuffer):
+
+    _buf_ind = 0
+
+    def __init__(self, infile, chunk_size):
+
+        self.name = "read_raw_buf{:d}".format(self._buf_ind)
+        process_name = "read_raw{:d}".format(self._buf_ind)
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'visRawReader',
+            'infile': infile,
+            'out_buf': self.name,
+            'chunk_size': chunk_size,
+            'readahead_blocks': 4
+        }
+
+        self.process_block = {process_name: process_config}
+
 
 
 class KotekanProcessTester(KotekanRunner):
