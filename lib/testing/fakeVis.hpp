@@ -8,6 +8,7 @@
 #define FAKE_VIS
 
 #include <unistd.h>
+#include <random>
 #include <string>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
