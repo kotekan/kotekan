@@ -28,6 +28,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               simpleAutocorr.cpp
               freqSlicer.cpp
               prodSubset.cpp
+              countCheck.cpp
               visProcess.cpp
               timeDownsample.cpp
               visRawReader.cpp

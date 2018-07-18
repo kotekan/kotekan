@@ -5,7 +5,6 @@ import tempfile
 
 import visbuffer
 
-
 class KotekanRunner(object):
     """A lightweight class for running Kotekan from Python.
 
@@ -47,9 +46,13 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
+
             print config_dict
-            subprocess.check_call(["./kotekan", "-c", fh.name],
-                                  cwd=kotekan_dir)
+            # Capture output and print it out
+            self.output = subprocess.check_output(["./kotekan", "-c", fh.name],
+                                                  cwd=kotekan_dir,
+                                                  stderr=subprocess.STDOUT)
+            print self.output
 
 
 class InputBuffer(object):
@@ -135,6 +138,47 @@ class FakeVisBuffer(InputBuffer):
         process_config.update(kwargs)
 
         self.process_block = {process_name: process_config}
+
+
+class ReadVisBuffer(InputBuffer):
+    """Write down a visBuffer and reads it with rawFileRead.
+
+    """
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = 'rawfileread_buf'
+        process_name = 'rawfileread%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'rawFileRead',
+            'buf': self.name,
+            'base_dir': input_dir,
+            'file_ext': 'dump',
+            'file_name': self.name,
+            'end_interrupt': True
+        }
+
+        self.process_block = {process_name: process_config}
+
+    def write(self):
+        """Write a list of VisBuffer objects to disk.
+        """
+        visbuffer.VisBuffer.to_files(self.buffer_list,
+                                     self.input_dir + '/' + self.name)
 
 
 class DumpVisBuffer(OutputBuffer):
