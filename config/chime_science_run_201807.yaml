@@ -314,12 +314,12 @@ baseband:
 monitor:
     kotekan_process: monitorBuffer
     bufs:
-      - network_buffer_0
-      - network_buffer_1
-      - network_buffer_2
-      - network_buffer_3
+      - lost_samples_buffer_0
+      - lost_samples_buffer_1
+      - lost_samples_buffer_2
+      - lost_samples_buffer_3
     timeout: 5
-    fill_threshold: 0.97
+    fill_threshold: 0.8
 
 gpu:
   kernel_path: "hsa_kernels/"
