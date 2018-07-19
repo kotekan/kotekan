@@ -171,6 +171,20 @@ vis_debug:
     kotekan_process: visDebug
     in_buf: visbuf_20s_highfreq
 
+count_check:
+  4freq:
+    kotekan_process: countCheck
+    in_buf: visbuf_10s_4freq
+  cal:
+    kotekan_process: countCheck
+    in_buf: visbuf_10s_cal
+  26m:
+    kotekan_process: countCheck
+    in_buf: visbuf_5s_26m
+  highfreq:
+    kotekan_process: countCheck
+    in_buf: visbuf_20s_highfreq
+
 timing_subset_params: &timing_subset_params
   prod_subset_type: only_inputs
   input_list: [206, 1166]
@@ -194,7 +208,7 @@ pathfinder_subset:
 
 hdf5_writers:
   file_length: 512
-  file_type: hdf5fast
+  file_type: raw
   node_mode: false
   root_path: /data/untransposed/
   write_ev: True
