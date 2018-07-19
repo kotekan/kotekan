@@ -185,7 +185,8 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
     // Mapping of axis names to sizes (start, chunk)
     std::map<std::string, std::tuple<size_t, size_t>> size_map;
     size_map["freq"] = std::make_tuple(length("freq"), chunk[0]);
-    size_map["input"] = std::make_tuple(length("input"), length("input"));
+    size_map["input"] = std::make_tuple(length("input"),
+            std::min((size_t)(chunk[1]), length("input")));
     size_map["prod"] = std::make_tuple(length("prod"), chunk[1]);
     size_map["ev"] = std::make_tuple(length("ev"), length("ev"));
     size_map["time"] = std::make_tuple(length("time"), chunk[2]);
