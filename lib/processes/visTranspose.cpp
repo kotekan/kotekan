@@ -43,7 +43,9 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
 
     INFO("Reading metadata file: %s", md_filename.c_str());
     struct stat st;
-    stat(md_filename.c_str(), &st);
+    if (stat(md_filename.c_str(), &st) == -1)
+        throw std::ios_base::failure("visRawReader: Error reading from " \
+                                "metadata file: " + md_filename);
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
     std::string version;
