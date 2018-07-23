@@ -78,10 +78,12 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
             metadata["archive_version"] = version.erase(0, 3);
         else
             DEBUG("visTranspose: NT_ prefix not found in archive_version" \
-                   " attribute in metadata file: %s", md_filename.c_str());
+                   " attribute (%s) in metadata file: %s", version.c_str(),
+                   md_filename.c_str());
     } else
-            DEBUG("visTranspose: NT_ prefix not found in archive_version" \
-                   " attribute in metadata file: %s", md_filename.c_str());
+            DEBUG("visTranspose: found a very short archive_version" \
+                   " attribute (%s) in metadata file: %s", version.c_str(),
+                   md_filename.c_str());
 
     DEBUG("File has %d times, %d frequencies, %d products",
                   num_time, num_freq, num_prod);
