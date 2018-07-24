@@ -43,9 +43,12 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
 
     INFO("Reading metadata file: %s", md_filename.c_str());
     struct stat st;
-    stat(md_filename.c_str(), &st);
+    if (stat(md_filename.c_str(), &st) == -1)
+        throw std::ios_base::failure("visRawReader: Error reading from " \
+                                "metadata file: " + md_filename);
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
+    std::string version;
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
     if (metadata_file) // read only if no error
@@ -69,6 +72,20 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     num_input = inputs.size();
     num_prod = prods.size();
     num_ev = ev.size();
+
+    // change archive version: remove "NT_" prefix (not transposed)
+    version = metadata["archive_version"];
+    if (version.length() > 3) {
+        if (version.substr(0, 3) == "NT_")
+            metadata["archive_version"] = version.erase(0, 3);
+        else
+            DEBUG("visTranspose: NT_ prefix not found in archive_version" \
+                   " attribute (%s) in metadata file: %s", version.c_str(),
+                   md_filename.c_str());
+    } else
+            DEBUG("visTranspose: found a very short archive_version" \
+                   " attribute (%s) in metadata file: %s", version.c_str(),
+                   md_filename.c_str());
 
     DEBUG("File has %d times, %d frequencies, %d products",
                   num_time, num_freq, num_prod);
