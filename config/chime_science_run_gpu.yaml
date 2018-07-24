@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_science_run_201807.yaml
+# chime_science_run_gpu.yaml
 #
 # Config to support the CHIME project with 2048 elements, and 1024 frequencies.
 #
