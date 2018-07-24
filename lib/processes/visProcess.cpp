@@ -560,13 +560,13 @@ void visCheckTestPattern::main_thread() {
             outfile << max_err << std::endl;
 
             // report errors in this frame
-            DEBUG2("%d bad elements", num_bad);
-            DEBUG2("mean error: %f", avg_err);
-            DEBUG2("min error: %f", min_err);
-            DEBUG2("max error: %f", max_err);
-            DEBUG2("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
+            DEBUG("%d bad elements", num_bad);
+            DEBUG("mean error: %f", avg_err);
+            DEBUG("min error: %f", min_err);
+            DEBUG("max error: %f", max_err);
+            DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
                     time.tv_nsec);
-            DEBUG2("freq id: %d", freq_id);
+            DEBUG("freq id: %d", freq_id);
 
             // gather data for report after many frames
             num_bad_tot += num_bad;
