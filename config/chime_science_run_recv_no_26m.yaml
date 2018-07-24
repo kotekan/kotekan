@@ -1,8 +1,9 @@
 ##########################################
 #
-# kotekan_longrun_recv.yaml
+# chime_science_run_recv_no_26m.yaml
 #
-# CHIME receiver node configuration used in the June 2018 run.
+# CHIME receiver node configuration used in the July 2018 run.
+# This configuration disables saving of the 26m datasets.
 #
 # For the N2 data it includes 5 second 26m baselines,
 # 10 second calibration data, full triangles for 4 frequencies
