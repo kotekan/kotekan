@@ -453,10 +453,10 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_consumer(in_buf, unique_name.c_str());
 
     // get config
-    tolerance = config.get_float(unique_name, "tolerance");
-    report_freq = config.get_int(unique_name, "report_freq");
-    expected_val = {config.get_float(unique_name, "expected_val_real"),
-                    config.get_float(unique_name, "expected_val_imag")};
+    tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
+    report_freq = config.get_int_default(unique_name, "report_freq", 1000);
+    expected_val = {config.get_float_default(unique_name, "expected_val_real", 1.),
+                    config.get_float_default(unique_name, "expected_val_imag", 0.)};
 
     outfile_name = config.get_string(unique_name, "out_file");
 
