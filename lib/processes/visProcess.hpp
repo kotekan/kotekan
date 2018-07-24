@@ -229,6 +229,9 @@ private:
  * @buffer in_buf               The buffer to debug
  *         @buffer_format       visBuffer structured
  *         @buffer_metadata     visMetadata
+ * @buffer out_buf              All frames found to contain errors
+ *         @buffer_format       visBuffer structured
+ *         @buffer_metadata     visMetadata
  *
  * @conf  out_file              String. Path to the file to dump all output in.
  * @conf  report_freq           Int. Number of frames to print a summary for.
@@ -251,6 +254,7 @@ public:
 
 private:
     Buffer * in_buf;
+    Buffer * out_buf;
 
     // A (freq_id, dataset_id) pair
     using fd_pair = typename std::pair<uint32_t, uint32_t>;

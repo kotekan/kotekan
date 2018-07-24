@@ -31,10 +31,13 @@ def test_pattern(tmpdir_factory):
         num_frames=params['total_frames']
     )
 
+    dump_buffer = kotekan_runner.DumpVisBuffer(
+            str(tmpdir))
+
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         fakevis_buffer,
-        None,
+        dump_buffer,
         params
     )
 
@@ -46,19 +49,12 @@ def test_pattern(tmpdir_factory):
         for row in reader:
             out_data.append(row)
 
-    yield out_data
+    yield (out_data, dump_buffer.load())
 
 
 def test_no_noise(test_pattern):
-
-    # for frame in replace_data:
-    #     print frame.metadata.freq_id, frame.metadata.fpga_seq
-    #     print frame.vis
-    assert (len(test_pattern) != 0)
-    for row in test_pattern:
-        assert (float(row['avg_err']) == 0.0)
-        assert (float(row['min_err']) == 0.0)
-        assert (float(row['max_err']) == 0.0)
+    assert (len(test_pattern[0]) == 0)
+    assert (len(test_pattern[1]) == 0)
 
 noise_params = {
     'num_elements': 200,
@@ -67,7 +63,7 @@ noise_params = {
     'cadence': 5.0,
     'mode': 'test_pattern_noise',
     'buffer_depth': 2,
-    'tolerance': 0.001,
+    'tolerance': 0.01,
     'report_freq': 1000,
     'expected_val_real': 1.0,
     'expected_val_imag': 0.0,
@@ -83,6 +79,9 @@ def test_pattern_noise(tmpdir_factory):
         num_frames=noise_params['total_frames']
     )
 
+    dump_buffer = kotekan_runner.DumpVisBuffer(
+            str(tmpdir))
+
     fakevis_dump_conf = noise_params.copy()
     fakevis_dump_conf['file_name'] = 'fakevis_dump'
     fakevis_dump_conf['file_ext'] = 'dump'
@@ -91,7 +90,7 @@ def test_pattern_noise(tmpdir_factory):
     test = kotekan_runner.KotekanProcessTester(
         'visCheckTestPattern', {},
         buffers_in = fakevis_buffer,
-        buffers_out = None,
+        buffers_out = dump_buffer,
         global_config = noise_params,
         parallel_process_type = 'rawFileWrite',
         parallel_process_config = fakevis_dump_conf
@@ -106,17 +105,17 @@ def test_pattern_noise(tmpdir_factory):
             out_data.append(row)
 
 
-    yield (out_data, visbuffer.VisBuffer.load_files("%s/*fakevis_dump*.dump" % str(tmpdir)))
+    yield [out_data, visbuffer.VisBuffer.load_files("%s/*fakevis_dump*.dump"
+        % str(tmpdir)), dump_buffer.load()]
 
 
 def test_noise(test_pattern_noise):
 
     report = test_pattern_noise[0]
     vis_in = test_pattern_noise[1]
+    vis_out = test_pattern_noise[2]
 
-    assert(len(report) == len(vis_in))
-
-    for frame,row in zip(vis_in,report):
+    for frame, row in zip(vis_in, report):
         _errors = frame.vis - np.complex64(noise_params['expected_val_real'] +
             noise_params['expected_val_imag'] * 1j)
         _errors = np.absolute(_errors)
@@ -131,6 +130,11 @@ def test_noise(test_pattern_noise):
                 avg_error += e
                 num_bad += 1
                 errors.append(e)
+
+        if num_bad:
+            # if the frame was bad, it should also be in the output buffer
+            assert np.all(frame.vis == vis_out.pop(0).vis)
+
         max_error = max(errors)
         min_error = min(errors)
         avg_error /= num_bad
@@ -139,3 +143,6 @@ def test_noise(test_pattern_noise):
         assert (float(row['min_err']) == pytest.approx(min_error, abs=1e-5))
         assert (float(row['max_err']) == pytest.approx(max_error, abs=1e-5))
         assert (int(row['num_bad']) == num_bad)
+
+    # we should have popped all frames from the output buffer now
+    assert (len(vis_out) == 0)

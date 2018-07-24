@@ -448,9 +448,11 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&visCheckTestPattern::main_thread, this)) {
 
-    // Setup the input vector
+    // Setup the buffers
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
 
     // get config
     tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
@@ -483,6 +485,7 @@ void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
 void visCheckTestPattern::main_thread() {
 
     unsigned int frame_id = 0;
+    unsigned int output_frame_id = 0;
 
     // number of bad elements in frame and totally
     size_t num_bad, num_bad_tot = 0;
@@ -540,22 +543,22 @@ void visCheckTestPattern::main_thread() {
             }
         }
 
-        if (num_bad)
-            avg_err /= (float)num_bad;
-        time = std::get<1>(frame.time);
-        fpga_count = std::get<0>(frame.time);
-        freq_id = frame.freq_id;
-
-        // write frame report to outfile
-        outfile << fpga_count << ",";
-        outfile << time.tv_sec << "." << time.tv_nsec << ",";
-        outfile << freq_id << ",";
-        outfile << num_bad << ",";
-        outfile << avg_err << ",";
-        outfile << min_err << ",";
-        outfile << max_err << std::endl;
 
         if (num_bad) {
+            avg_err /= (float)num_bad;
+            time = std::get<1>(frame.time);
+            fpga_count = std::get<0>(frame.time);
+            freq_id = frame.freq_id;
+
+            // write frame report to outfile
+            outfile << fpga_count << ",";
+            outfile << time.tv_sec << "." << time.tv_nsec << ",";
+            outfile << freq_id << ",";
+            outfile << num_bad << ",";
+            outfile << avg_err << ",";
+            outfile << min_err << ",";
+            outfile << max_err << std::endl;
+
             // report errors in this frame
             DEBUG2("%d bad elements", num_bad);
             DEBUG2("mean error: %f", avg_err);
@@ -572,9 +575,33 @@ void visCheckTestPattern::main_thread() {
                 min_err_tot = min_err;
             if (max_err > max_err_tot)
                 max_err_tot = max_err;
+
+
+            // pass this bad frame to the output buffer:
+
+            // Wait for an empty frame in the output buffer
+            if(wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                    output_frame_id) == nullptr) {
+                break;
+            }
+
+            // Transfer metadata
+            pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
+
+            // Copy the frame data here:
+            std::memcpy(out_buf->frames[output_frame_id],
+                        in_buf->frames[frame_id],
+                        in_buf->frame_size);
+
+
+            mark_frame_full(out_buf, unique_name.c_str(),
+                                output_frame_id);
+
+            // Advance output frame id
+            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
         }
 
-        // print report
+        // print report some times
         if (++i_frame == report_freq) {
             i_frame = 0;
 
@@ -591,10 +618,9 @@ void visCheckTestPattern::main_thread() {
             max_err_tot = 0;
         }
 
-        // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
 
-        // Advance the current frame ids
+        // Advance input frame id
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
 }
