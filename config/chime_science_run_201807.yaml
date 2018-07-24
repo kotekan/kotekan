@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_science_run_201806.yaml
+# chime_science_run_201807.yaml
 #
 # Config to support the CHIME project with 2048 elements, and 1024 frequencies.
 #
@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 120    # 48Gb, 15s buffer.
+baseband_buffer_depth: 12    # was 120, 48Gb, 15s buffer.
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -292,32 +292,32 @@ zero_samples:
         out_lost_sample_buffers:
             - lost_samples_buffer_3
 
-baseband:
-    max_dump_samples: 100000
-    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
-    num_frames_buffer: 110
-    base_dir: /mnt/frb-archiver/
-    write_throttle: 0
-    baseband0:
-      kotekan_process: basebandReadout
-      in_buf: network_buffer_0
-    baseband1:
-      kotekan_process: basebandReadout
-      in_buf: network_buffer_1
-    baseband2:
-      kotekan_process: basebandReadout
-      in_buf: network_buffer_2
-    baseband3:
-      kotekan_process: basebandReadout
-      in_buf: network_buffer_3
+#baseband:
+#    max_dump_samples: 100000
+#    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
+#    num_frames_buffer: 110
+#    base_dir: /mnt/frb-archiver/
+#    write_throttle: 0
+#    baseband0:
+#      kotekan_process: basebandReadout
+#      in_buf: network_buffer_0
+#    baseband1:
+#      kotekan_process: basebandReadout
+#      in_buf: network_buffer_1
+#    baseband2:
+#      kotekan_process: basebandReadout
+#      in_buf: network_buffer_2
+#    baseband3:
+#      kotekan_process: basebandReadout
+#      in_buf: network_buffer_3
 
 monitor:
     kotekan_process: monitorBuffer
     bufs:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
-      - lost_samples_buffer_3
+      - network_buffer_0
+      - network_buffer_1
+      - network_buffer_2
+      - network_buffer_3
     timeout: 5
     fill_threshold: 0.8
 
