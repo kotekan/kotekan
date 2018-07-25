@@ -17,7 +17,7 @@ Example
 
 ``tests/test_<name>.py``
 
-.. literalinclude:: example_test.py
+.. literalinclude:: examples/example_test.py
 
 * You can run your test with ``pytest tests/test_<name>.py``
 
@@ -34,7 +34,7 @@ Example
 
 ``tests/boost/test_<name>.cpp``
 
-.. literalinclude:: example_test.cpp
+.. literalinclude:: examples/example_test.cpp
 
 * Add ``test_<name>.cpp`` to ``/tests/boost/CMakeLists.txt``.
 

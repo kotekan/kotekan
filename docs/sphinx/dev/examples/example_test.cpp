@@ -5,7 +5,7 @@
 // include the code you want to test:
 #include "<name>.hpp"
 
-# Split your tests into test cases
+// Split your tests into test cases
 BOOST_AUTO_TEST_CASE( _some_useful_test_case_name )
 {
     BOOST_CHECK_EQUAL(function(1), 1);
