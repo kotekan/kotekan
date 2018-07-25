@@ -365,7 +365,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     confidence = np.abs(waterfall[:,:max_pos]-med)/std
     rfi_mask = np.zeros_like(confidence)
     rfi_mask[confidence > 3.0] = 1.0
-    band_perc = np.sum(rfi_mask, axis = 1)/float(rfi_mask.shape[1])
+    band_perc = 100.0*np.sum(rfi_mask, axis = 1)/float(rfi_mask.shape[1])
     #fbins = np.array([800.0 - float(b) * 400.0/1024.0 for b in np.arange(band.size)])
     fbins = np.arange(band_perc.size)
     for i in range(band_perc.size):
@@ -373,7 +373,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
             metric_dict['rfi_band'].labels(fbins[i]).set(-1)
         else:
             metric_dict['rfi_band'].labels(fbins[i]).set(band_perc[i])
-    overall_rfi = 100.0*np.sum(rfi_mask)/float(rfi_mask.size)
+    overall_rfi = 100.0*np.sum(rfi_mask[waterfall[:,:max_pos] != -1])/float(rfi_mask[waterfall[:,:max_pos] != -1].size)
     if(np.isnan(overall_rfi)):
         overall_rfi = -1
     metric_dict['overall_rfi_sk'].set(overall_rfi)
@@ -385,7 +385,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         print('max_pos', max_pos)
         print("Band Computed", np.nanmin(band), np.nanmax(band))
         print('Expectation of SK', med, 'Deviation of SK', std)
-        print("Band Computed", np.nanmin(band_perc), np.nanmax(band_perc))
+        print("Band Percent Computed", np.nanmin(band_perc), np.nanmax(band_perc))
         print("Overall RFI", overall_rfi)
 
 def metric_thread():
@@ -402,6 +402,7 @@ def metric_thread():
     # Start up the server to expose the metrics.
     start_http_server(7341) #RFI1
     # Generate some requests.
+    time.sleep(5)
     while True:
         compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app)
         time.sleep(10)
