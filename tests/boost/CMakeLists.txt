@@ -16,7 +16,7 @@ set(KOTEKAN_BOOST_TEST_SOURCES
 
 # list test source files that need HDF5 here:
 if(${USE_HDF5})
-    set(KOTEKAN_BOOST_TEST_SOURCES ${KOTEKAN_BOOST_TEST_COURCES} test_transpose.cpp)
+    set(KOTEKAN_BOOST_TEST_SOURCES ${KOTEKAN_BOOST_TEST_SOURCES} test_transpose.cpp)
 endif()
 
 # Run through each source

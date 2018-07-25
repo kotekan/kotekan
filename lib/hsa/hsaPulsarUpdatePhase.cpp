@@ -142,9 +142,9 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
             for (int j=0;j<256;j++) { //loop 256 feeds
                 float dist_y = j*_feed_sep_NS;
                 float dist_x = i*_feed_sep_EW;
-                projection_angle = 90*D2R - atan2(dist_y, dist_x); 
+                projection_angle = 90*D2R - atan2(dist_y, dist_x);
                 offset_distance  = sqrt( pow(dist_y,2) + pow(dist_x,2) ) ;
-                effective_angle  = projection_angle - az; 
+                effective_angle  = projection_angle - az;
                 float delay_real = cos(TAU*cos(effective_angle)*cos(alt)*offset_distance*FREQ*one_over_c);
                 float delay_imag = -sin(TAU*cos(effective_angle)*cos(-alt)*offset_distance*FREQ*one_over_c);
                 for (int p=0;p<2;p++){ //loop 2 pol
@@ -278,8 +278,8 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord.dec[beam] = json_request["dec"];
 	psr_coord.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-	config.update_value(unique_name, "source_ra/" + std::to_string(beam), psr_coord.ra[beam]);
-	config.update_value(unique_name, "source_dec/" + std::to_string(beam), psr_coord.dec[beam]);
-	config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), psr_coord.scaling[beam]);
+	config.update_value(unique_name, "source_ra/" + std::to_string(beam), json_request["ra"]);
+	config.update_value(unique_name, "source_dec/" + std::to_string(beam), json_request["dec"]);
+	config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
     }
 }

@@ -132,12 +132,6 @@ private:
 
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
-
-    // Timing to measure I/O read speed
-    double read_time = 0.;
-    double last_time;
-    // count read data size
-    float mbytes_read;
 };
 
 #endif

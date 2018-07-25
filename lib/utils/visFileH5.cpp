@@ -459,7 +459,7 @@ size_t visFileH5Fast::num_time() {
 
 
 // Add support for all our custom types to HighFive
-template <> inline DataType HighFive::create_datatype<freq_ctype>() {
+template <> DataType HighFive::create_datatype<freq_ctype>() {
     CompoundType f;
     f.addMember("centre", H5T_IEEE_F64LE);
     f.addMember("width", H5T_IEEE_F64LE);
@@ -467,7 +467,7 @@ template <> inline DataType HighFive::create_datatype<freq_ctype>() {
     return f;
 }
 
-template <> inline DataType HighFive::create_datatype<time_ctype>() {
+template <> DataType HighFive::create_datatype<time_ctype>() {
     CompoundType t;
     t.addMember("fpga_count", H5T_STD_U64LE);
     t.addMember("ctime", H5T_IEEE_F64LE);
@@ -475,7 +475,7 @@ template <> inline DataType HighFive::create_datatype<time_ctype>() {
     return t;
 }
 
-template <> inline DataType HighFive::create_datatype<input_ctype>() {
+template <> DataType HighFive::create_datatype<input_ctype>() {
 
     CompoundType i;
     hid_t s32 = H5Tcopy(H5T_C_S1);
@@ -488,7 +488,7 @@ template <> inline DataType HighFive::create_datatype<input_ctype>() {
     return i;
 }
 
-template <> inline DataType HighFive::create_datatype<prod_ctype>() {
+template <> DataType HighFive::create_datatype<prod_ctype>() {
 
     CompoundType p;
     p.addMember("input_a", H5T_STD_U16LE);
@@ -497,7 +497,7 @@ template <> inline DataType HighFive::create_datatype<prod_ctype>() {
     return p;
 }
 
-template <> inline DataType HighFive::create_datatype<cfloat>() {
+template <> DataType HighFive::create_datatype<cfloat>() {
     CompoundType c;
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);

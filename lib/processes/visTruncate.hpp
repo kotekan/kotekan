@@ -36,7 +36,7 @@ class visTruncate : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
     visTruncate(Config &config, const string& unique_name, bufferContainer &buffer_container);
-    ~visTruncate();
+    ~visTruncate() = default;
 
     /// Main loop over buffer frames
     void main_thread() override;
@@ -52,13 +52,8 @@ private:
     float w_prec;
     float vis_prec;
 
-    // Timing
-    double start_time;;
-    double wait_time = 0.;
-    double truncate_time = 0.;
-    double copy_time = 0.;
-    double last_time;
-
+    // Flag for frame with a zero weight
+    bool zero_weight_found;
 };
 
 #endif

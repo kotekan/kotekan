@@ -36,10 +36,13 @@ Required for some options
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
+* `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_
+* `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
+* `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_
 
 Hardware
 =========
@@ -91,6 +94,7 @@ Cmake build options
 * ``-DDPDK_VDIF=ON``
     Adjusts DPDK defines to optimize for single dish VDIF capture mode.
 * ``-DUSE_HDF5=ON``
+    Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
 * ``-DHIGHFIVE_PATH=<path>``
     To enable the HDF5 writer
 * ``-DUSE_AIRSPY=ON``
@@ -109,6 +113,8 @@ Cmake build options
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
     Location of the openssl libs and includes.
+* ``-DBOOST_TESTS=ON``
+    Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
 
 Examples
 ---------

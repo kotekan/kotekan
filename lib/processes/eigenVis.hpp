@@ -1,3 +1,8 @@
+/*****************************************
+@file
+@brief Processes for eigen-factoring the visibilities
+- eigenVis : public KotekanProcess
+*****************************************/
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
 

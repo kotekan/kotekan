@@ -39,7 +39,7 @@ class visTranspose : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
     visTranspose(Config &config, const string& unique_name, bufferContainer &buffer_container);
-    ~visTranspose();
+    ~visTranspose() = default;
 
     /// Main loop over buffer frames
     void main_thread() override;
@@ -105,13 +105,6 @@ private:
 
     size_t f_ind = 0;
     size_t t_ind = 0;
-
-    // Timing
-    double start_time;;
-    double wait_time = 0.;
-    double write_time = 0.;
-    double copy_time = 0.;
-    double last_time;
 
     const size_t BLOCK_SIZE = 32;
 };
