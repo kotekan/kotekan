@@ -15,7 +15,7 @@ like in the following example.
 Example
 -------
 
-``tests/test_<name>.py``
+Example test ``tests/test_<name>.py``:
 
 .. literalinclude:: examples/example_test.py
 
@@ -32,7 +32,7 @@ Example
 
 * Write a test like this one (Replace ``<name>`` with what you are testing):
 
-``tests/boost/test_<name>.cpp``
+Example test ``tests/boost/test_<name>.cpp``:
 
 .. literalinclude:: examples/example_test.cpp
 
