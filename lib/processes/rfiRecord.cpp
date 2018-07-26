@@ -164,8 +164,8 @@ void rfiRecord::main_thread() {
                 ERROR("Cannot open file %s", file_name);
             }
             //Write buffer to that file
-            write(fd,&fpga_seq_num, sizeof(int64_t));
-            ssize_t bytes_writen = write(fd, frame, rfi_buf->frame_size);
+            ssize_t bytes_writen = write(fd,&fpga_seq_num, sizeof(int64_t));
+            bytes_writen = write(fd, frame, rfi_buf->frame_size);
             if (bytes_writen != rfi_buf->frame_size) {
                 ERROR("Failed to write buffer to disk");
             }
