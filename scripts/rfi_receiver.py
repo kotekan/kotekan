@@ -118,7 +118,7 @@ class Stream:
             self.freqs = [800.0 - float(b) * 400.0/1024.0 for b in self.bins]
             self.bins = np.array(self.bins).astype(int)
             self.freqs = np.array(self.freqs)
-            print("Thread id %d Stream Created %d %d %d %d %d"%(thread_id, encoded_stream_id, self.slot_id, self.link_id, self.crate, self.unused))
+            #print("Thread id %d Stream Created %d %d %d %d %d"%(thread_id, encoded_stream_id, self.slot_id, self.link_id, self.crate, self.unused))
             #print(self.bins, self.freqs)
         else:
             print("Stream Creation Warning: Known Stream Creation Attempt")
@@ -151,12 +151,17 @@ def HeaderCheck(header,app):
         print("Header Error: Frames per Packet does not match config; Got value %d"%(header['frames_per_packet']))
         return False
 
-    print("First Packet Received, Valid Chime Header Confirmed.")
+    #print("First Packet Received, Valid Chime Header Confirmed.")
     return True
 
-def data_listener(thread_id, socket_udp):
+def data_listener(thread_id):
 
-    global waterfall, t_min, app
+    global waterfall, t_min, app, sk_receive_watchdogs, InitialKotekanConnection
+
+    UDP_PORT = app.UDP_PORT + thread_id
+    socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    socket_udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    socket_udp.bind((app.UDP_IP, UDP_PORT))
 
     #Config Variables
     frames_per_packet = app.config['frames_per_packet']
@@ -180,12 +185,17 @@ def data_listener(thread_id, socket_udp):
 
     while True:
 
+        #sk_receive_watchdog = datetime.datetime.now()
         #Receive packet from port
         packet, addr = socket_udp.recvfrom(chimePacketSize)
 
+        if(not InitialKotekanConnection):
+            InitialKotekanConnection=True
+            print("Connected to Kotekan")
+
         if(packet != ''):
 
-            if(packetCounter % (25*len(stream_dict) + 1) == 0):
+            if(packetCounter % (50*len(stream_dict) + 1) == 0):
                 print("Thread id %d: Receiving Packets from %d Streams"%(thread_id,len(stream_dict)))
             packetCounter += 1
 
@@ -231,11 +241,21 @@ def data_listener(thread_id, socket_udp):
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame*frames_per_packet)
             #if(thread_id == 1):
                 #print(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
-            waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,int((header['fpga_seq_num'][0]-app.min_seq)/(timesteps_per_frame*frames_per_packet))] = data
+            idx = int((header['fpga_seq_num'][0]-app.min_seq)/(timesteps_per_frame*frames_per_packet))
+            if(idx >= 0 and idx < waterfall.shape[1]): 
+                waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,idx] = data
+                sk_receive_watchdogs[thread_id] = datetime.datetime.now()
+            else:
+                print(idx, header['fpga_seq_num'][0], app.min_seq, timesteps_per_frame, frames_per_packet)
 
-def bad_input_listener(thread_id, socket_udp):
+def bad_input_listener(thread_id):
 
-    global bi_waterfall, bi_t_min, max_t_pos, app
+    global bi_waterfall, bi_t_min, max_t_pos, app, bi_receive_watchdog, InitialKotekanConnection
+
+    UDP_PORT = app.UDP_PORT + app.config['num_receive_threads']
+    socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    socket_udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    socket_udp.bind((app.UDP_IP, UDP_PORT))
 
     #Config Variables
     frames_per_packet = app.config['bi_frames_per_packet']
@@ -258,8 +278,13 @@ def bad_input_listener(thread_id, socket_udp):
     packetCounter = 0;
 
     while True:
+        bi_receive_watchdog = datetime.datetime.now()
         #Receive packet from port
         packet, addr = socket_udp.recvfrom(PacketSize)
+        if(not InitialKotekanConnection):
+            InitialKotekanConnection=True
+            print("Connected to Kotekan")
+
         #If we get something not empty
         if(packet != ''):
             #Every so often print that we are receiving packets
@@ -272,7 +297,7 @@ def bad_input_listener(thread_id, socket_udp):
             data = np.fromstring(packet[RFIHeaderSize:], dtype=np.uint8)
             #Create a new stream object each time a new stream connects
             if(header['encoded_stream_ID'][0] not in known_streams):
-                print("New Stream Detected")
+                #print("New Stream Detected")
                 #Check that the new stream is providing the correct data
                 if(HeaderCheck(header,app) == False):
                     break
@@ -293,7 +318,11 @@ def bad_input_listener(thread_id, socket_udp):
 
 def TCP_stream():
 
-    global sock_tcp, waterfall, t_min, max_t_pos, app
+    global sock_tcp, waterfall, t_min, max_t_pos, app, tcp_connected
+
+    sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock_tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock_tcp.bind((app.TCP_IP, app.TCP_PORT))
 
     sock_tcp.listen(1)
 
@@ -301,6 +330,7 @@ def TCP_stream():
 
         conn, addr = sock_tcp.accept()
         print('Established Connection to %s:%s' %(addr[0],addr[1]))
+        tcp_connected = True
 
         while True:
 
@@ -341,9 +371,9 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     bad_input_band = 100.0*np.nanmedian(mean_bi_waterfall, axis = 0)/float(app.config['bi_frames_per_packet'])
     for i in range(bad_input_band.size):
         if(np.isnan(bad_input_band[i])):
-            metric_dict['rfi_input_mask'].labels(i).set(-1)
+            metric_dict['rfi_input_mask'].labels(i+10000, i).set(-1)
         else:
-            metric_dict['rfi_input_mask'].labels(i).set(bad_input_band[i])
+            metric_dict['rfi_input_mask'].labels(i+10000, i).set(bad_input_band[i])
             #print(bad_input_band[i])
     num_bad_inputs = bad_input_band[bad_input_band>10.0].size
     n = app.config['sk_step']
@@ -365,14 +395,15 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     confidence = np.abs(waterfall[:,:max_pos]-med)/std
     rfi_mask = np.zeros_like(confidence)
     rfi_mask[confidence > 3.0] = 1.0
+    rfi_mask[waterfall[:,:max_pos] == -1] = -1.0
     band_perc = 100.0*np.sum(rfi_mask, axis = 1)/float(rfi_mask.shape[1])
-    #fbins = np.array([800.0 - float(b) * 400.0/1024.0 for b in np.arange(band.size)])
+    fbins_mhz = np.round(np.array([800.0 - float(b) * 400.0/1024.0 for b in np.arange(band.size)]),decimals=2)
     fbins = np.arange(band_perc.size)
     for i in range(band_perc.size):
-        if(np.isnan(band[i])):
-            metric_dict['rfi_band'].labels(fbins[i]).set(-1)
+        if(np.isnan(band[i]) or band[i] < 0):
+            metric_dict['rfi_band'].labels(fbins_mhz[i],fbins[i]).set(-1)
         else:
-            metric_dict['rfi_band'].labels(fbins[i]).set(band_perc[i])
+            metric_dict['rfi_band'].labels(fbins_mhz[i],fbins[i]).set(band_perc[i])
     overall_rfi = 100.0*np.sum(rfi_mask[waterfall[:,:max_pos] != -1])/float(rfi_mask[waterfall[:,:max_pos] != -1].size)
     if(np.isnan(overall_rfi)):
         overall_rfi = -1
@@ -390,14 +421,16 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
 
 def metric_thread():
 
-    global bi_waterfall, waterfall, max_t_pos, app
+    global bi_waterfall, waterfall, max_t_pos, app, InitialKotekanConnection
     print("Starting Metrics Thread")
     metric_dict = dict()
     # Create Metrics:
     metric_dict['overall_rfi_sk'] = Gauge('overall_rfi_sk', 'percent_masked')
     metric_dict['overall_rfi_bad_input'] = Gauge('overall_rfi_bad_input', 'number_of_bad_inputs')
-    metric_dict['rfi_band'] = Gauge('rfi_band', 'med_sk', ['freq_bin'])
-    metric_dict['rfi_input_mask'] = Gauge('rfi_input_mask', 'defect_likelihood', ['input_num'])
+    metric_dict['rfi_band'] = Gauge('rfi_band', 'med_sk', ['freq', 'freq_bin'])
+    metric_dict['rfi_input_mask'] = Gauge('rfi_input_mask', 'defect_likelihood', ['input_nu', 'input_num'])
+    while(not InitialKotekanConnection):
+        time.sleep(1)
     print("Starting HTTP Server")
     # Start up the server to expose the metrics.
     start_http_server(7341) #RFI1
@@ -407,16 +440,31 @@ def metric_thread():
         compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app)
         time.sleep(10)
 
+def watchdog_thread():
+
+    global sk_receive_watchdogs, bi_receive_watchdog, EXIT, InitialKotekanConnection
+    print("Starting Watchdog Thread")
+    while(not InitialKotekanConnection):
+        time.sleep(1)
+    while True:
+        #print((datetime.datetime.now() - sk_receive_watchdog).total_seconds())
+        for i in range(len(sk_receive_watchdogs)):
+            if((datetime.datetime.now() - sk_receive_watchdogs[i]).total_seconds() > 10):
+                print("Watchdog Failed: Is kotekan running?")
+                EXIT=True
+        if((datetime.datetime.now() - bi_receive_watchdog).total_seconds() > 10):
+            print("Bad Input Watchdog Failed: Is kotekan running?")
+            EXIT=True
+        time.sleep(1)
+
 
 if( __name__ == '__main__'):
 
     app = CommandLine()
 
-    #Intialize TCP
-    TCP_IP= app.TCP_IP
-    TCP_PORT = app.TCP_PORT
-    sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock_tcp.bind((TCP_IP, TCP_PORT))
+    EXIT=False
+    InitialKotekanConnection=False
+    tcp_connected=False
 
     #Intialize Time
     t_min = datetime.datetime.utcnow()
@@ -430,19 +478,14 @@ if( __name__ == '__main__'):
     bi_waterfall[:,:,:] = -1#np.nan
     time.sleep(1)
 
+    sk_receive_watchdogs = [datetime.datetime.now()]*app.config['num_receive_threads'] 
     receive_threads = []
     for i in range(app.config['num_receive_threads']):
-        UDP_PORT = app.UDP_PORT + i
-        sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock_udp.bind((app.UDP_IP, UDP_PORT))
-        receive_threads.append(threading.Thread(target=data_listener, args = (i, sock_udp,)))
+        receive_threads.append(threading.Thread(target=data_listener, args = (i,)))
         receive_threads[i].daemon = True
         receive_threads[i].start()
 
-    UDP_PORT = app.UDP_PORT + app.config['num_receive_threads']
-    sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_udp.bind((app.UDP_IP, UDP_PORT))
-    bi_thread = threading.Thread(target=bad_input_listener, args = (app.config['num_receive_threads'], sock_udp,))
+    bi_thread = threading.Thread(target=bad_input_listener, args = (app.config['num_receive_threads'],))
     bi_thread.daemon = True
     bi_thread.start()
 
@@ -454,6 +497,16 @@ if( __name__ == '__main__'):
     metricsThread.daemon = True
     metricsThread.start()
 
-    input()
+    bi_receive_watchdog = datetime.datetime.now() 
+
+    watchdogThread = threading.Thread(target=watchdog_thread)
+    watchdogThread.daemon = True
+    watchdogThread.start()
+
+    while(not EXIT):
+        time.sleep(1)
+
+    os._exit(1)
+
 
 
