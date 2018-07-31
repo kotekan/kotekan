@@ -33,6 +33,10 @@ using json = nlohmann::json;
  * @conf   infile				String. Path to the data files to read (e.g. "/path/to/0000_000", without .data/meta).
  * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
  *
+ * @par Metrics
+ * @metric kotekan_vistranspose_frame_id
+ *         The frame ids seen.
+ *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class visTranspose : public KotekanProcess {

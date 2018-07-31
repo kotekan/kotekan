@@ -9,6 +9,7 @@
 #include "fmt.hpp"
 #include "visUtil.hpp"
 #include "visTranspose.hpp"
+#include "prometheusMetrics.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
@@ -177,6 +178,9 @@ void visTranspose::main_thread() {
         // move to next frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
+
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_vistranspose_frame_id", unique_name, frame_id);
     }
 }
 
