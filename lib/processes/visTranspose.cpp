@@ -122,7 +122,7 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
-    uint32_t size_write_blk = 0;
+    uint32_t frame_size = 0;
 
     // Create HDF5 file
     file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
@@ -171,16 +171,13 @@ void visTranspose::main_thread() {
             fi = 0;
             ti = 0;
 
-            size_write_blk += (vis_weight.size() +  eval.size() + erms.size())
-                    * sizeof(float)
-                    + (gain_coeff.size() + vis.size()+ evec.size())
-                    * sizeof(cfloat)
-                    + gain_exp.size() * sizeof(int32_t);
-
             // export prometheus metric
+            if (frame_size == 0)
+                frame_size = frame.calculate_buffer_layout(num_input, num_prod,
+                        num_ev)["_struct"].second;
             prometheusMetrics::instance().add_process_metric(
                 "kotekan_vistranspose_data_transposed_bytes", unique_name,
-                        size_write_blk);
+                        frame_size * frames_so_far);
         }
 
         frames_so_far++;
