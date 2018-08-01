@@ -215,8 +215,7 @@ private:
  * @brief Checks if the visibility data matches a given expected pattern.
  *
  * Errors are calculated as the norm of the difference between the expected and the actual (complex) visibility value.
- * Writes out to a csv file specified in the configuration and prints a report
- * in a configured interval. The columns have the following meaning:
+ * For bad frames, the following data is written to a csv file specified in the config:
  * fpga_count:  FPGA counter for the frame
  * time:        the frames timestamp
  * freq_id:     the frames frequency ID
@@ -224,6 +223,8 @@ private:
  * avg_err:     average error of bad values
  * min_err:     minimum error of bad values
  * max_err:     maximum error of bad balues
+ *
+ * Additionally a report is printed in a configured interval.
  *
  * @par Buffers
  * @buffer in_buf               The buffer to debug
