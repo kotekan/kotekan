@@ -122,7 +122,7 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
-    uint32_t frame_size = 0;
+    uint64_t frame_size = 0;
 
     // Create HDF5 file
     file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
