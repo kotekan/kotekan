@@ -65,6 +65,9 @@ struct basebandDumpStatus {
  * @brief Helper structure to track registered basebandReadout processes
  */
 struct basebandReadoutRegistryEntry {
+    /// request updating lock
+    std::mutex requests_lock;
+
     /// new request notification
     std::condition_variable requests_cv;
 
@@ -144,9 +147,6 @@ private:
 
     /// Queue of baseband dumps in progress
     std::vector<std::shared_ptr<basebandDumpStatus>> processing;
-
-    /// request updating lock
-    std::mutex requests_lock;
 };
 
 #endif /* BASEBAND_REQUEST_MANAGER_HPP */
