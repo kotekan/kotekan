@@ -60,6 +60,17 @@ struct basebandDumpStatus {
     std::string reason = "";
 };
 
+/**
+ * @class basebandReadoutRegistryEntry
+ * @brief Helper structure to track registered basebandReadout processes
+ */
+struct basebandReadoutRegistryEntry {
+    /// new request notification
+    std::condition_variable requests_cv;
+
+    // Queue of unprocessed baseband requests for this frequency
+    std::deque<basebandRequest> request_queue;
+};
 
 /**
  * @class basebandRequestManager
@@ -111,6 +122,11 @@ public:
     void handle_request_callback(connectionInstance& conn, json& request);
 
     /**
+     * @brief Register a readout process for specified frequency
+     */
+    bool register_readout_process(const uint32_t freq_id);
+
+    /**
      * @brief Tries to get the next dump request to process.
      *
      * @return a shared_ptr to the `basebandDumpStatus` object if there is a
@@ -123,18 +139,14 @@ private:
     /// Constructor, not used directly
     basebandRequestManager() = default;
 
-    /// Queue of unprocessed baseband requests for each basebandReadout process,
-    /// indexed by `freq_id`
-    std::map<uint32_t, std::deque<basebandRequest>> requests;
+    /// Map of registered readout processes, indexed by `freq_id`
+    std::map<uint32_t, basebandReadoutRegistryEntry> readout_registry;
 
     /// Queue of baseband dumps in progress
     std::vector<std::shared_ptr<basebandDumpStatus>> processing;
 
     /// request updating lock
     std::mutex requests_lock;
-
-    /// new request notification
-    std::condition_variable requests_cv;
 };
 
 #endif /* BASEBAND_REQUEST_MANAGER_HPP */

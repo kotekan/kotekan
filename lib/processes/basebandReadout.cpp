@@ -102,6 +102,7 @@ void basebandReadout::main_thread() {
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
             INFO("Starting request-listening thread for freq_id: %d", freq_id);
+            basebandRequestManager::instance().register_readout_process(freq_id);
             lt = std::make_unique<std::thread>(&basebandReadout::listen_thread, this, freq_id);
         }
 
