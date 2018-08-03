@@ -12,34 +12,66 @@ configUpdater& configUpdater::instance()
     return dm;
 }
 
-void configUpdater::apply_config(Config& config, const string unique_name)
+void configUpdater::apply_config(Config& config)
 {
-    _name = unique_name;
-    DEBUG("configUpdater: reading dynamic block: %s", _name.c_str());
+    // parse the tree and create endpoints
+    parse_tree(config.get_full_config_json(), "");
 
-    // dynamic block has to be on root level
-    vector<string> dynamic_blk = config.get_string_array("", unique_name);
+//    // parse config for subscribers to the endpoints
+//    //collect_receivers(config.get_full_config_json(), dynamic_blk);
 
-    // parse config for subscribers to the endpoints
-    //collect_receivers(config.get_full_config_json(), dynamic_blk);
+//    // FIXME: check if block present
+//    for (auto name : dynamic_blk)
+//    {
+//        // create endpoint
 
-    // FIXME: check if block present
-    for (auto name : dynamic_blk)
-    {
-        // create endpoint
-        DEBUG("creating endpoint: /%s", name.c_str());
-        create_endpoint(name);
-    }
+//        create_endpoint(name);
+//    }
 
     //TEST remove the next 2 lines
-    _callbacks.insert(std::pair<std::string, int>("flags", 1));
+    _callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 1));
     _callbacks.insert(std::pair<std::string, int>("gains", 2));
+    _callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 2));
+
 
 }
 
-//void configUpdater::collect_receivers(json& config, vector<string>& endpoints)
-//{
-//}
+void configUpdater::parse_tree(json& config_tree, const std::string& path)
+{
+    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it)
+    {
+        // If the item isn't an object we can just ignore it.
+        if (!it.value().is_object()) {
+            continue;
+        }
+
+        // Check if this is a kotekan_update_endpoint block, and if so create
+        // the endpoint
+        string endpoint_type = it.value().value("kotekan_update_endpoint",
+                                                "none");
+        string unique_name = path + "/" + it.key();
+        if (endpoint_type == "json") {
+            if (std::count(_endpoints.begin(), _endpoints.end(), unique_name)
+                != 0) {
+                throw std::runtime_error("configUpdater: An endpoint with the" \
+                                         "path " + unique_name + " has been " \
+                                         "defined more than once.");
+            }
+            DEBUG("configUpdater: creating endpoint: %s", unique_name.c_str());
+            create_endpoint(unique_name);
+            continue; // no recursive updatable blocks allowed
+        }
+        else if (endpoint_type != "none") {
+            throw std::runtime_error("configUpdater: Found an unknown " \
+                                     "endpoint type value: " + endpoint_type);
+            continue; // no recursive updatable blocks allowed
+        }
+
+        // Recursive part.
+        // This is a section/scope not a process block.
+        parse_tree(it.value(), unique_name);
+    }
+}
 
 void configUpdater::subscribe(const string& name,
                               std::function<bool(json &)> callback)
@@ -54,53 +86,36 @@ void configUpdater::subscribe(const string& name,
 void configUpdater::create_endpoint(const string& name)
 {
     // register POST endpoint
-    restServer::instance().register_post_callback(_name + "/" + name,
+    // this will add any missing / in the beginning of the name
+    restServer::instance().register_post_callback(name,
                      std::bind(&configUpdater::rest_callback, this,
                      std::placeholders::_1, std::placeholders::_2));
+    _endpoints.push_back(name);
 }
 
 void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
 {
     DEBUG("Callback received this: %s", con.get_full_message().c_str());
 
-    std::string name = attribute_name(con);
+    std::string uri = con.get_uri();
 
-    DEBUG("Found name: %s", name.c_str());
+    DEBUG("uri called: %s", uri.c_str());
 
     // Call subscriber callbacks
-    // TODO: call multiple subscribers (search++ ?)
-    auto search = _callbacks.find(name);
-    if (search != _callbacks.end()) {
-        DEBUG("Calling subscriber: %s%d", search->first.c_str(), search->second)
+    auto search = _callbacks.equal_range(uri);
+    if (search.first == _callbacks.end()) {
+        INFO("configUpdater: Received a POST command to endpoint %s, but " \
+             "there are no subscribers to the endpoint.", uri.c_str());
+        if (std::find(_endpoints.begin(), _endpoints.end(), uri)
+            == _endpoints.end())
+            WARN("configUpdater: Received POST command to non-existend " \
+                 "endpoint: %s. This should never happen.", uri.c_str());
     } else {
-        DEBUG("Not found");
+        while (search.first != search.second) {
+            DEBUG("configUpdater: Calling subscriber: %s%d",
+                  search.first->first.c_str(), search.first->second);
+            //TODO actually call it
+            search.first++;
+        }
     }
 }
-
-std::string configUpdater::attribute_name(connectionInstance &con)
-{
-    std::string uri = con.get_uri();
-    boost::char_separator<char> sep{"/"};
-    boost::tokenizer<boost::char_separator<char>> tok{uri, sep};
-    boost::tokenizer<boost::char_separator<char>>::iterator t = tok.begin();
-//FIXME: test this
-    if (t == tok.end())
-        WARN("configUpdater: Failure parsing endpoint " \
-             "name %s for attribute %s: Bad endpoint name.",
-             uri, _name);
-    if (*t != _name)
-        WARN("configUpdater: Failure parsing endpoint " \
-             "name %s for attribute %s: " \
-             "Name of dynamic attribute block not found" \
-             "in endpoint name.",
-             uri, _name);
-
-    t++;
-    if (t == tok.end())
-        WARN("configUpdater: Failure parsing endpoint " \
-             "name %s for attribute %s: Attribute name not found" \
-             "in endpoint name.", uri, _name);
-
-    return *t;
-}
-

@@ -57,7 +57,7 @@ void kotekanMode::initalize_processes() {
 
     // Create Config Updater
     configUpdater &config_updater = configUpdater::instance();
-    config_updater.apply_config(config, "dynamic_attributes");
+    config_updater.apply_config(config);
 
     // Create Buffers
     bufferFactory buffer_factory(config, metadata_pools);

@@ -22,9 +22,8 @@ class configUpdater
        /**
         * @brief Set and apply the static config to configUpdater
         * @param config         The config.
-        * @param unique_name    The name of the dynamic block.
         */
-       void apply_config(Config& config, const string unique_name);
+       void apply_config(Config& config);
 
        /**
         * @brief Subscribe to a dynamic attribute.
@@ -53,12 +52,12 @@ class configUpdater
         /// Creates a new endpoint with a given name
         void create_endpoint(const string& name);
 
-        /// Parses a POST message for the attribute name, where the endpoint is
-        /// called /<name of dynamic block>/<attribute name>
-        std::string attribute_name(connectionInstance &con);
+        /// Parses the config tree and calls create_endpoint when it encounters
+        /// kotekan_update_endpoint in a block
+        void parse_tree(json& config_tree, const string& path);
 
-        // name of the dynamic block in the config
-        string _name;
+        // unique names of endpoints that the configUpdater controlls
+        vector<string> _endpoints;
 
         // mmap of all subscriber callback functions for the registered dynamic
         // attributes
