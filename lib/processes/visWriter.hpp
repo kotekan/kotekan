@@ -22,7 +22,7 @@
  * acquisition per node. Alternatively it can be run more generally, receiving
  * and writing arbitrary frequencies, but it must be given the frequency list in
  * the config.
- * 
+ *
  * The products we are outputting must be specified correctly. This is done
  * using the same configuration parameters as `prodSubset`. If not explicitly
  * set `all` products is assumed.

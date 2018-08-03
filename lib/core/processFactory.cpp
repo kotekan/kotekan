@@ -8,7 +8,7 @@ processFactory::processFactory(Config& config,
 
     auto known_processes = processFactoryRegistry::get_registered_processes();
     for (auto &process : known_processes){
-        INFO("Registered Kotekan Process: %s",process.first.c_str());
+        DEBUG("Registered Kotekan Process: %s",process.first.c_str());
     }
 }
 

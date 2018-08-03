@@ -128,7 +128,7 @@ uint32_t visFileRaw::extend_time(time_ctype new_time) {
     // Flush and clear out any really old parts of the datasets
     uint delta_sync = 4;
     if(ntime > delta_sync) {
-        flush_raw_async(ntime - delta_sync);
+        flush_raw_sync(ntime - delta_sync);
     }
 
     times.push_back(new_time);

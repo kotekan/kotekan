@@ -1,7 +1,7 @@
 #include "zeroSamples.hpp"
 #include "nt_memset.h"
 #include "chimeMetadata.h"
-
+#include <vector>
 REGISTER_KOTEKAN_PROCESS(zeroSamples);
 
 zeroSamples::zeroSamples(Config& config, const string& unique_name,
@@ -11,6 +11,18 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
 
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
+
+    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", false);
+    //Register as producer for all desired multiplied lost samples buffers
+    if(_duplicate_ls_buffer){
+        json in_bufs = config.get_value(unique_name, "out_lost_sample_buffers");
+        for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
+            struct Buffer * buf = buffer_container.get_buffer(it.value());
+            out_lost_sample_bufs.push_back(buf);
+            register_producer(buf, unique_name.c_str());
+        }
+    }
+
     lost_samples_buf = get_buffer("lost_samples_buf");
     register_consumer(lost_samples_buf, unique_name.c_str());
 
@@ -45,7 +57,15 @@ void zeroSamples::main_thread() {
                 lost_samples++;
             }
         }
-
+        if(_duplicate_ls_buffer){
+            for(size_t i = 0; i < out_lost_sample_bufs.size(); i++){
+                uint8_t * new_flag_frame = wait_for_empty_frame(out_lost_sample_bufs[i],
+                                                   unique_name.c_str(), lost_samples_buf_frame_id);
+                if (new_flag_frame == NULL) break;
+                memcpy(new_flag_frame, flag_frame, lost_samples_buf->frame_size);
+                mark_frame_full(out_lost_sample_bufs[i], unique_name.c_str(), lost_samples_buf_frame_id);
+            }
+        }
         atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);
 
         mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);

@@ -12,7 +12,7 @@ params = {
     'num_ev': 0,
     'total_frames': 128,
     'cadence': 10.0,
-    'mode': 'test_pattern',
+    'mode': 'gaussian',
     'buffer_depth': 5,
     'tolerance': 0.001,
     'report_freq': 1000,
@@ -28,7 +28,10 @@ def test_pattern(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("test_pattern")
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
-        num_frames=params['total_frames']
+        num_frames=params['total_frames'],
+        vis_mean_real=1.0,
+        vis_mean_imag=0.0,
+        vis_std=0.0
     )
 
     dump_buffer = kotekan_runner.DumpVisBuffer(
@@ -61,7 +64,7 @@ noise_params = {
     'num_ev': 0,
     'total_frames': 128,
     'cadence': 5.0,
-    'mode': 'test_pattern_noise',
+    'mode': 'gaussian_random',
     'buffer_depth': 2,
     'tolerance': 0.01,
     'report_freq': 1000,
@@ -76,7 +79,10 @@ def test_pattern_noise(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("test_pattern_noise")
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
-        num_frames=noise_params['total_frames']
+        num_frames=noise_params['total_frames'],
+        vis_mean_real=1.0,
+        vis_mean_imag=0.0,
+        vis_std=0.01
     )
 
     dump_buffer = kotekan_runner.DumpVisBuffer(

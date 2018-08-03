@@ -21,10 +21,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               vdifStream.cpp
               recvSingleDishVDIF.cpp
               streamSingleDishVDIF.cpp
-              rfiVDIF.cpp
-              rfiAVXVDIF.cpp
-              rfiBroadcast.cpp
-              rfiRecord.cpp
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
@@ -32,13 +28,20 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               simpleAutocorr.cpp
               freqSlicer.cpp
               prodSubset.cpp
+              countCheck.cpp
               visProcess.cpp
               timeDownsample.cpp
-              visRawReader.cpp
               visWriter.cpp
+              visRawReader.cpp
               restInspectFrame.cpp
               frbNetworkProcess.cpp
               pulsarNetworkProcess.cpp
+              #RFI Pipeline Processes
+              rfiVDIF.cpp
+              rfiAVXVDIF.cpp
+              rfiBroadcast.cpp
+              rfiRecord.cpp
+              rfiBadInputFinder.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -53,13 +56,22 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
-# This is temporarily disabled because it requires a newer version of hdf5
-# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5
+  # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp)
 endif ()
+
+# HDF5 and OpenMP
+if (${USE_HDF5} AND ${USE_OMP})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp)
+endif()
+
+# OpenMP
+if (${USE_OMP})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTruncate.cpp)
+endif()
 
 if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)

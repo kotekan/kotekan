@@ -2,6 +2,7 @@ import os
 import itertools
 import subprocess
 import tempfile
+import time
 
 import visbuffer
 
@@ -18,13 +19,18 @@ class KotekanRunner(object):
         Dictionary with all the process definitions.
     config : dict
         Global configuration at the root level.
+    rest_commands : list
+        REST commands to run packed as `(request_type, endpoint, json_data)`.
     """
 
-    def __init__(self, buffers=None, processes=None, config=None):
+    def __init__(self, buffers=None, processes=None, config=None,
+                 rest_commands=None):
 
         self._buffers = buffers if buffers is not None else {}
         self._processes = processes if processes is not None else {}
         self._config = config if config is not None else {}
+        self._rest_commands = (rest_commands if rest_commands is not None
+                               else [])
 
     def run(self):
         """Run kotekan.
@@ -33,6 +39,9 @@ class KotekanRunner(object):
         """
 
         import yaml
+
+        rest_header = {"content-type": "application/json"}
+        rest_addr = "http://localhost:12048/"
 
         config_dict = yaml.load(default_config)
         config_dict.update(self._config)
@@ -47,9 +56,40 @@ class KotekanRunner(object):
         with tempfile.NamedTemporaryFile() as fh:
             yaml.dump(config_dict, fh)
             fh.flush()
-            print config_dict
-            subprocess.check_call(["./kotekan", "-c", fh.name],
-                                  cwd=kotekan_dir)
+
+            cmd = ["./kotekan", "-c", fh.name]
+            p = subprocess.Popen(cmd, cwd=kotekan_dir,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            # Run any requested REST commands
+            if self._rest_commands:
+                import requests
+                import json
+                # Wait a moment for rest servers to start up.
+                time.sleep(0.5)
+                for rtype, endpoint, data in self._rest_commands:
+                    if rtype == 'wait':
+                        time.sleep(endpoint)
+                        continue
+
+                    try:
+                        command = getattr(requests, rtype)
+                    except AttributeError:
+                        raise ValueError('REST command not found')
+
+                    command(rest_addr + endpoint,
+                            headers=rest_header,
+                            data=json.dumps(data))
+
+            # Wait for kotekan to finish and capture the output
+            self.output, _ = p.communicate()
+
+            # Print out the output from Kotekan for debugging
+            print self.output
+
+            # Throw an exception if we don't exit cleanly
+            if p.returncode:
+                raise subprocess.CalledProcessError(p.returncode, cmd)
 
 
 class InputBuffer(object):
@@ -60,6 +100,45 @@ class InputBuffer(object):
 class OutputBuffer(object):
     """Base class for an output buffer consumer."""
     name = None
+
+
+class FakeNetworkBuffer(InputBuffer):
+    """Create an input network format buffer and fill it using `testDataGen`.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        Parameters fed straight into the process config. `type` must be
+        supplied, as well as `value` for types other than "random".
+    """
+    _buf_ind = 0
+
+    def __init__(self, **kwargs):
+
+        self.name = 'fakenetwork_buf%i' % self._buf_ind
+        if "process_name" in kwargs:
+            process_name = kwargs['process_name']
+        else:
+            process_name = 'fakenetwork%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'standard',
+                'metadata_pool': 'main_pool',
+                'num_frames': 'buffer_depth',
+                'frame_size': ('samples_per_data_set * num_elements'
+                               '* num_local_freq * num_data_sets'),
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'testDataGen',
+            'network_out_buf': self.name,
+        }
+        process_config.update(kwargs)
+
+        self.process_block = {process_name: process_config}
 
 
 class FakeGPUBuffer(InputBuffer):
@@ -137,6 +216,101 @@ class FakeVisBuffer(InputBuffer):
         self.process_block = {process_name: process_config}
 
 
+class VisWriterBuffer(OutputBuffer):
+    """Consume a visBuffer and provide its contents as raw or hdf5 file.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    file_type : string
+        File type to write into (see visWriter documentation)
+    freq_ids : Array of Int.
+        Frequency IDs
+    in_buf : string
+        Optionally specify the name of an input buffer instead of creating one.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(self, output_dir, file_type, freq_ids, in_buf=None):
+
+        self.name = 'viswriter_buf%i' % self._buf_ind
+        process_name = 'write%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+
+        if in_buf is None:
+            self.buffer_block = {
+                self.name: {
+                    'kotekan_buffer': 'vis',
+                    'metadata_pool': 'vis_pool',
+                    'num_frames': 'buffer_depth',
+                }
+            }
+            buf_name = self.name
+        else:
+            buf_name = in_buf
+            self.buffer_block = {}
+
+        process_config = {
+            'kotekan_process': 'visWriter',
+            'in_buf': buf_name,
+            'file_name': self.name,
+            'file_type': file_type,
+            'root_path': output_dir,
+            'write_ev': True,
+            'node_mode': False,
+            'freq_ids': freq_ids
+        }
+
+        self.process_block = {process_name: process_config}
+
+
+class ReadVisBuffer(InputBuffer):
+    """Write down a visBuffer and reads it with rawFileRead.
+
+    """
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = 'rawfileread_buf'
+        process_name = 'rawfileread%i' % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'rawFileRead',
+            'buf': self.name,
+            'base_dir': input_dir,
+            'file_ext': 'dump',
+            'file_name': self.name,
+            'end_interrupt': True
+        }
+
+        self.process_block = {process_name: process_config}
+
+    def write(self):
+        """Write a list of VisBuffer objects to disk.
+        """
+        visbuffer.VisBuffer.to_files(self.buffer_list,
+                                     self.input_dir + '/' + self.name)
+
+
 class DumpVisBuffer(OutputBuffer):
     """Consume a visBuffer and provide its contents at `VisBuffer` objects.
 
@@ -188,6 +362,36 @@ class DumpVisBuffer(OutputBuffer):
                                               (self.output_dir, self.name))
 
 
+class ReadRawBuffer(InputBuffer):
+
+    _buf_ind = 0
+
+    def __init__(self, infile, chunk_size):
+
+        self.name = "read_raw_buf{:d}".format(self._buf_ind)
+        process_name = "read_raw{:d}".format(self._buf_ind)
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                'kotekan_buffer': 'vis',
+                'metadata_pool': 'vis_pool',
+                'num_frames': 'buffer_depth',
+            }
+        }
+
+        process_config = {
+            'kotekan_process': 'visRawReader',
+            'infile': infile,
+            'out_buf': self.name,
+            'chunk_size': chunk_size,
+            'readahead_blocks': 4
+        }
+
+        self.process_block = {process_name: process_config}
+
+
+
 class KotekanProcessTester(KotekanRunner):
     """Construct a test around a single Kotekan process.
 
@@ -216,7 +420,7 @@ class KotekanProcessTester(KotekanRunner):
 
     def __init__(self, process_type, process_config, buffers_in,
                  buffers_out, global_config={}, parallel_process_type=None,
-                 parallel_process_config={}):
+                 parallel_process_config={}, rest_commands=None):
 
         config = process_config.copy()
         parallel_config = parallel_process_config.copy()
@@ -254,7 +458,7 @@ class KotekanProcessTester(KotekanRunner):
                 {(parallel_process_type + "_test_parallel"): parallel_config})
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
-                                                   global_config)
+                                                   global_config, rest_commands)
 
 
 default_config = """
@@ -263,6 +467,7 @@ type: config
 log_level: info
 num_elements: 10
 num_local_freq: 1
+num_data_sets: 1
 samples_per_data_set: 32768
 buffer_depth: 4
 num_gpu_frames: 64
