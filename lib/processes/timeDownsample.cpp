@@ -120,9 +120,9 @@ void timeDownsample::main_thread() {
                 // average inverse weights, i.e. variance
                 output_frame.weight[i] += 1. / frame.weight[i];
             }
-            for (uint i = 0; i < num_eigenvectors; i++) {
+            for (uint32_t i = 0; i < num_eigenvectors; i++) {
                 output_frame.eval[i] += frame.eval[i];
-                for (uint j = 0; j < num_elements; j++) {
+                for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
                     output_frame.evec[k] += frame.evec[k];
                 }
@@ -144,9 +144,9 @@ void timeDownsample::main_thread() {
                 // extra factor of nsamp for sample variance
                 output_frame.weight[i] = nframes*nframes / output_frame.weight[i];
             }
-            for (uint i = 0; i < num_eigenvectors; i++) {
+            for (uint32_t i = 0; i < num_eigenvectors; i++) {
                 output_frame.eval[i] /= nframes;
-                for (uint j = 0; j < num_elements; j++) {
+                for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
                     output_frame.evec[k] /= nframes;
                 }
