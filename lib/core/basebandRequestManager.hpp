@@ -61,21 +61,6 @@ struct basebandDumpStatus {
 };
 
 /**
- * @class basebandReadoutRegistryEntry
- * @brief Helper structure to track registered basebandReadout processes
- */
-struct basebandReadoutRegistryEntry {
-    /// request updating lock
-    std::mutex requests_lock;
-
-    /// new request notification
-    std::condition_variable requests_cv;
-
-    // Queue of unprocessed baseband requests for this frequency
-    std::deque<basebandRequest> request_queue;
-};
-
-/**
  * @class basebandRequestManager
  * @brief Class for receiving baseband dump requests and sending request status
  *
@@ -141,6 +126,21 @@ public:
 private:
     /// Constructor, not used directly
     basebandRequestManager() = default;
+
+    /**
+    * @class basebandReadoutRegistryEntry
+    * @brief Helper structure to track registered basebandReadout processes
+    */
+    struct basebandReadoutRegistryEntry {
+        /// request updating lock
+        std::mutex requests_lock;
+
+        /// new request notification
+        std::condition_variable requests_cv;
+
+        // Queue of unprocessed baseband requests for this frequency
+        std::deque<basebandRequest> request_queue;
+    };
 
     /// Map of registered readout processes, indexed by `freq_id`
     std::map<uint32_t, basebandReadoutRegistryEntry> readout_registry;
