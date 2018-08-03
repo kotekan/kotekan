@@ -13,7 +13,7 @@ class configUpdater
         *
         * @returns A reference to the global configUpdater instance.
         **/
-       static configUpdater& get();
+       static configUpdater& instance();
 
        // Remove the implicit copy/assignments to prevent copying
        configUpdater(const configUpdater&) = delete;

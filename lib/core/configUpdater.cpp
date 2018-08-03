@@ -5,7 +5,7 @@
 #include <iostream>
 #include <boost/tokenizer.hpp>
 
-configUpdater& configUpdater::get()
+configUpdater& configUpdater::instance()
 {
     static configUpdater dm;
 
