@@ -22,13 +22,13 @@ static json to_json(uint32_t freq_id, const basebandRequest& r) {
 static json to_json(const basebandDumpStatus& d) {
     json j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
     switch(d.state) {
-    case basebandRequestState::WAITING:
+    case basebandDumpStatus::State::WAITING:
         j["status"] = "waiting"; break;
-    case basebandRequestState::INPROGRESS:
+    case basebandDumpStatus::State::INPROGRESS:
         j["status"] = "inprogress"; break;
-    case basebandRequestState::DONE:
+    case basebandDumpStatus::State::DONE:
         j["status"] = "done"; break;
-    case basebandRequestState::ERROR:
+    case basebandDumpStatus::State::ERROR:
         j["status"] = "error";
         j["reason"] = d.reason;
         break;

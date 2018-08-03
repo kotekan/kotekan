@@ -139,7 +139,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                  event_id, dump_status->request.length_fpga, dump_status->request.start_fpga, next_frame);
             dump_status->bytes_total = dump_status->request.length_fpga * _num_elements;
             dump_status->bytes_remaining = dump_status->bytes_total;
-            dump_status->state = basebandRequestState::INPROGRESS;
+            dump_status->state = basebandDumpStatus::State::INPROGRESS;
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
@@ -160,7 +160,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                 if (data.data_length_fpga == 0) {
                     INFO("Captured no data for event %d and freq %d.",
                          data.event_id, data.freq_id);
-                    dump_status->state = basebandRequestState::ERROR;
+                    dump_status->state = basebandDumpStatus::State::ERROR;
                     dump_status->reason = "No data captured.";
                     continue;
                 } else {
@@ -184,7 +184,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
                     }
                 }
             } catch (const std::bad_alloc) {
-                dump_status->state = basebandRequestState::ERROR;
+                dump_status->state = basebandDumpStatus::State::ERROR;
                 dump_status->reason = "Not enough free memory for the request.";
                 continue;
             }
@@ -206,7 +206,7 @@ void basebandReadout::write_thread() {
                 write_dump(data, dump_status);
             } catch (HighFive::FileException& e) {
                 INFO("Writing Baseband dump file failed with hdf5 error.");
-                dump_status->state = basebandRequestState::ERROR;
+                dump_status->state = basebandDumpStatus::State::ERROR;
                 dump_status->reason = e.what();
             }
 
@@ -388,7 +388,7 @@ void basebandReadout::write_dump(basebandDumpData data,
     std::string lock_filename = create_lockfile(filename);
     INFO(("Writing baseband dump to " + filename).c_str());
 
-    dump_status->state = basebandRequestState::INPROGRESS;
+    dump_status->state = basebandDumpStatus::State::INPROGRESS;
 
     auto file = HighFive::File(
             filename,
@@ -512,10 +512,10 @@ void basebandReadout::write_dump(basebandDumpData data,
     std::remove(lock_filename.c_str());
 
     if (ii_samp > data.data_length_fpga) {
-        dump_status->state = basebandRequestState::DONE;
+        dump_status->state = basebandDumpStatus::State::DONE;
         INFO("Baseband dump for event %d, freq %d complete.", data.event_id, data.freq_id);
     } else {
-        dump_status->state = basebandRequestState::ERROR;
+        dump_status->state = basebandDumpStatus::State::ERROR;
         dump_status->reason = "Kotekan exit before write complete.";
         INFO("Baseband dump for event %d, freq %d incomplete.", data.event_id, data.freq_id);
     }

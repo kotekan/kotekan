@@ -35,16 +35,16 @@ struct basebandRequest {
 
 
 /**
- * @class basebandRequestState
- * @brief State of the request
- */
-enum class basebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
-
-/**
  * @class basebandDumpStatus
  * @brief Helper structure to track the progress of a dump request's processing.
  */
 struct basebandDumpStatus {
+    /**
+    * @class basebandDumpStatus::State
+    * @brief State of the request
+    */
+    enum class State { WAITING, INPROGRESS, DONE, ERROR };
+
     /// The request that is being tracked
     const basebandRequest request;
     /**
@@ -55,7 +55,7 @@ struct basebandDumpStatus {
     /// Remaining data to write, in bytes
     size_t bytes_remaining = bytes_total;
     /// Current state of the request
-    basebandRequestState state = basebandRequestState::WAITING;
+    basebandDumpStatus::State state = State::WAITING;
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
 };
