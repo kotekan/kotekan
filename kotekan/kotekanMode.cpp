@@ -4,6 +4,7 @@
 #include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
 #include "restServer.hpp"
+#include "configUpdater.hpp"
 #include "json.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
@@ -53,6 +54,10 @@ void kotekanMode::initalize_processes() {
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
     metadata_pools = metadata_factory.build_pools();
+
+    // Create Config Updater
+    configUpdater &config_updater = configUpdater::get();
+    config_updater.apply_config(config, "dynamic_attributes");
 
     // Create Buffers
     bufferFactory buffer_factory(config, metadata_pools);
