@@ -14,11 +14,10 @@ configUpdater& configUpdater::instance()
 
 void configUpdater::apply_config(Config& config)
 {
+    _config = &config;
+
     // parse the tree and create endpoints
     parse_tree(config.get_full_config_json(), "");
-
-//    // parse config for subscribers to the endpoints
-//    //collect_receivers(config.get_full_config_json(), dynamic_blk);
 
 //    // FIXME: check if block present
 //    for (auto name : dynamic_blk)
@@ -107,15 +106,34 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         INFO("configUpdater: Received a POST command to endpoint %s, but " \
              "there are no subscribers to the endpoint.", uri.c_str());
         if (std::find(_endpoints.begin(), _endpoints.end(), uri)
-            == _endpoints.end())
+            == _endpoints.end()) {
             WARN("configUpdater: Received POST command to non-existend " \
                  "endpoint: %s. This should never happen.", uri.c_str());
-    } else {
-        while (search.first != search.second) {
-            DEBUG("configUpdater: Calling subscriber: %s%d",
-                  search.first->first.c_str(), search.first->second);
-            //TODO actually call it
-            search.first++;
+            return;
         }
     }
+    while (search.first != search.second) {
+        DEBUG("configUpdater: Calling subscriber: %s%d",
+              search.first->first.c_str(), search.first->second);
+
+        //TODO actually call it: change comment in header somewhere (mmap has ints, not functions) for testing
+        //if (!search.first->second(json)) {
+        //    WARN("configUpdater: Failed updating %s with value %s.",
+        //         std::string(uri + "/" + it.key()).c_str(),
+        //         it.value().dump().c_str());
+        // TODO: kill kotekan
+        //}
+        search.first++;
+    }
+
+    // update active configs with all values in this update
+    for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
+        DEBUG("configUpdater: Updating value %s with %s",
+              std::string(uri + "/" + it.key()).c_str(),
+              it.value().dump().c_str());
+        // this ignores the data type, should be checked in processes' callbacks
+        _config->update_value(uri, it.key(), it.value());
+    }
+
+    //TODO HTTP::OK reply
 }

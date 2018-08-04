@@ -47,7 +47,7 @@ class configUpdater
 
     private:
         /// Constructor, we don't want anyone to call this
-        configUpdater() { }
+        configUpdater() : _config(nullptr) { }
 
         /// Creates a new endpoint with a given name
         void create_endpoint(const string& name);
@@ -61,9 +61,11 @@ class configUpdater
 
         // mmap of all subscriber callback functions for the registered dynamic
         // attributes
-        //std::multimap<std::string, std::function<void(connectionInstance &,
-          //                                            json &)>> _callbacks;
+        //std::multimap<std::string, std::function<void(json &)>> _callbacks;
         std::multimap<std::string, int> _callbacks;
+
+        // Reference to the Config instance in order to pass updates to it
+        Config *_config;
 };
 
 #endif // CONFIGUPDATER_H
