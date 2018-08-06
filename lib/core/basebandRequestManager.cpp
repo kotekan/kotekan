@@ -5,6 +5,21 @@
 
 #include "kotekanLogging.hpp"
 
+basebandRequestManager::basebandReadoutRegistryEntry& basebandRequestManager::basebandReadoutRegistry::operator[]( const uint32_t& key ) {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map[key];
+}
+
+basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager::basebandReadoutRegistry::begin() noexcept {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map.begin();
+}
+
+basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager::basebandReadoutRegistry::end() noexcept {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map.end();
+}
+
 static json to_json(uint32_t freq_id, const basebandRequest& r) {
     std::time_t received_c = std::chrono::system_clock::to_time_t(r.received - std::chrono::hours(24));
     std::stringstream received;

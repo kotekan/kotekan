@@ -142,8 +142,24 @@ private:
         std::deque<basebandRequest> request_queue;
     };
 
+    /**
+     * @class basebandReadoutRegistry
+     * @brief encapsulation of a lock-protected map to registered readout processes
+     */
+    class basebandReadoutRegistry {
+    public:
+        using iterator = std::map<uint32_t, basebandReadoutRegistryEntry>::iterator;
+        iterator begin() noexcept;
+        iterator end() noexcept;
+        basebandReadoutRegistryEntry& operator[]( const uint32_t& key );
+
+    private:
+        std::mutex map_lock;
+        std::map<uint32_t, basebandReadoutRegistryEntry> readout_map;
+    };
+
     /// Map of registered readout processes, indexed by `freq_id`
-    std::map<uint32_t, basebandReadoutRegistryEntry> readout_registry;
+    basebandReadoutRegistry readout_registry;
 
     /// Queue of baseband dumps in progress
     std::vector<std::shared_ptr<basebandDumpStatus>> processing;
