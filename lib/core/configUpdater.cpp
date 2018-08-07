@@ -77,20 +77,13 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
     }
 }
 
-nlohmann::json configUpdater::get_attributes(nlohmann::json::iterator it)
-{
-    nlohmann::json attributes;
-    DEBUG("configUpdater: Getting attributes from %s.", it.value());
-    return attributes;
-}
-
 void configUpdater::subscribe(const std::string& name,
                               std::function<bool(json &)> callback)
 {
     _callbacks.insert(std::pair<std::string, std::function<bool(
                           nlohmann::json &)>>(name, callback));
     //_callbacks.insert(std::pair<std::string, int>(name, 1));
-    DEBUG("New subscription to %s: %d", name, callback);
+    DEBUG("New subscription to %s", name.c_str());
 
     // First call to subscriber with initial value from the config
     if (!callback(_init_values[name])) {
@@ -132,8 +125,8 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         }
     }
     while (search.first != search.second) {
-        DEBUG("configUpdater: Calling subscriber: %s%d",
-              search.first->first.c_str(), search.first->second);
+        DEBUG("configUpdater: Calling subscriber of %s",
+             search.first->first.c_str());
 
         // subscriber callback
         if (!search.first->second(json)) {
