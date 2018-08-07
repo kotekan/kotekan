@@ -28,9 +28,9 @@ void configUpdater::apply_config(Config& config)
 //    }
 
     //TEST remove the next 2 lines
-    _callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 1));
-    _callbacks.insert(std::pair<std::string, int>("gains", 2));
-    _callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 2));
+    //_callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 1));
+    //_callbacks.insert(std::pair<std::string, int>("gains", 2));
+    //_callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 2));
 
 
 }
@@ -58,6 +58,11 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
             }
             DEBUG("configUpdater: creating endpoint: %s", unique_name.c_str());
             create_endpoint(unique_name);
+
+            // Store initial value for a first update on subscription
+            init_values.insert(std::pair<std::string, nlohmann::json>(
+                                   unique_name, get_attributes(it)));
+
             continue; // no recursive updatable blocks allowed
         }
         else if (endpoint_type != "none") {
@@ -72,14 +77,36 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
     }
 }
 
-void configUpdater::subscribe(const string& name,
+nlohmann::json configUpdater::get_attributes(nlohmann::json::iterator it)
+{
+    nlohmann::json attributes;
+    DEBUG("configUpdater: Getting attributes from %s.", it.value());
+    return attributes;
+}
+
+void configUpdater::subscribe(const std::string& name,
                               std::function<bool(json &)> callback)
 {
-    //_callbacks.insert(std::pair<std::string,
-      //                          std::function<void(connectionInstance &,
-        //                        json &)>>(name, callback));
-    _callbacks.insert(std::pair<std::string, int>(name, 1));
-    DEBUG("New subscription to %s: %d", name, 1);
+    _callbacks.insert(std::pair<std::string, std::function<bool(
+                          nlohmann::json &)>>(name, callback));
+    //_callbacks.insert(std::pair<std::string, int>(name, 1));
+    DEBUG("New subscription to %s: %d", name, callback);
+
+    // First call to subscriber with initial value from the config
+    if (!initial_update(name, callback)) {
+        WARN("Stopping Kotekan.");
+        // Shut Kotekan down
+        raise(SIGINT);
+    }
+}
+
+bool configUpdater::initial_update(const std::string& name,
+                                   std::function<bool(json &)> callback)
+{
+    return true;
+
+
+
 }
 
 void configUpdater::create_endpoint(const string& name)
@@ -116,13 +143,17 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         DEBUG("configUpdater: Calling subscriber: %s%d",
               search.first->first.c_str(), search.first->second);
 
-        //TODO actually call it: change comment in header somewhere (mmap has ints, not functions) for testing
-        //if (!search.first->second(json)) {
-        //    WARN("configUpdater: Failed updating %s with value %s.",
-        //         std::string(uri + "/" + it.key()).c_str(),
-        //         it.value().dump().c_str());
-        // TODO: kill kotekan
-        //}
+        // subscriber callback
+        if (!search.first->second(json)) {
+            con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
+            WARN("configUpdater: Failed updating %s with value %s.",
+                 uri.c_str(),
+                 json.dump().c_str());
+            WARN("Stopping Kotekan.");
+            // Shut Kotekan down
+            raise(SIGINT);
+            break;
+        }
         search.first++;
     }
 
@@ -135,5 +166,5 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         _config->update_value(uri, it.key(), it.value());
     }
 
-    //TODO HTTP::OK reply
+    con.send_empty_reply(HTTP_RESPONSE::OK);
 }

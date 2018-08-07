@@ -56,13 +56,24 @@ class configUpdater
         /// kotekan_update_endpoint in a block
         void parse_tree(json& config_tree, const string& path);
 
+        /// Parses a dynamic attribute block for the attributes
+        nlohmann::json get_attributes(nlohmann::json::iterator it);
+
+        /// Initial callback with values from config yaml when new subscription
+        /// registered.
+        bool initial_update(const std::string& name,
+                            std::function<bool(json &)> callback);
+
         // unique names of endpoints that the configUpdater controlls
         vector<string> _endpoints;
 
         // mmap of all subscriber callback functions for the registered dynamic
         // attributes
-        //std::multimap<std::string, std::function<void(json &)>> _callbacks;
-        std::multimap<std::string, int> _callbacks;
+        std::multimap<std::string, std::function<bool(json &)>> _callbacks;
+        //std::multimap<std::string, int> _callbacks;
+
+        // Initial values found in config yaml file
+        std::map<std::string, nlohmann::json> init_values;
 
         // Reference to the Config instance in order to pass updates to it
         Config *_config;
