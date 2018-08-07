@@ -78,11 +78,10 @@ void basebandRequestManager::status_callback(connectionInstance& conn){
             json j = to_json(freq_id, req);
             requests_json.push_back(j);
         }
-    }
-
-    for (const auto& d : processing) {
-        json j = to_json(*d);
-        requests_json.push_back(j);
+        for (const auto& d : readout_entry.processing) {
+            json j = to_json(*d);
+            requests_json.push_back(j);
+        }
     }
 
     conn.send_text_reply(requests_json.dump());
@@ -134,7 +133,7 @@ std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(con
         basebandDumpStatus stat{req};
         auto task = std::make_shared<basebandDumpStatus>(stat);
         readout_entry.request_queue.pop_front();
-        processing.push_back(task);
+        readout_entry.processing.push_back(task);
         return task;
     }
     else {

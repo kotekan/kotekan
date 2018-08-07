@@ -138,8 +138,11 @@ private:
         /// new request notification
         std::condition_variable requests_cv;
 
-        // Queue of unprocessed baseband requests for this frequency
+        /// Queue of unprocessed baseband requests for this frequency
         std::deque<basebandRequest> request_queue;
+
+        /// Queue of completed baseband requests for this frequency
+        std::vector<std::shared_ptr<basebandDumpStatus>> processing;
     };
 
     /**
@@ -160,9 +163,6 @@ private:
 
     /// Map of registered readout processes, indexed by `freq_id`
     basebandReadoutRegistry readout_registry;
-
-    /// Queue of baseband dumps in progress
-    std::vector<std::shared_ptr<basebandDumpStatus>> processing;
 };
 
 #endif /* BASEBAND_REQUEST_MANAGER_HPP */
