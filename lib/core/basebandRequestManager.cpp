@@ -109,8 +109,8 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-bool basebandRequestManager::register_readout_process(const uint32_t freq_id) {
-    return readout_registry[freq_id].request_queue.empty();
+std::shared_ptr<std::mutex> basebandRequestManager::register_readout_process(const uint32_t freq_id) {
+    return readout_registry[freq_id].current_lock;
 }
 
 std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(const uint32_t freq_id) {

@@ -111,8 +111,11 @@ public:
 
     /**
      * @brief Register a readout process for specified frequency
+     *
+     * @return a shared_ptr to the mutex used to guard access to the baseband
+     * dump currently in progress.
      */
-    bool register_readout_process(const uint32_t freq_id);
+    std::shared_ptr<std::mutex> register_readout_process(const uint32_t freq_id);
 
     /**
      * @brief Tries to get the next dump request to process.
@@ -140,6 +143,9 @@ private:
 
         /// Queue of unprocessed baseband requests for this frequency
         std::deque<basebandRequest> request_queue;
+
+        /// Lock to update the current basebandDumpStatus object
+        std::shared_ptr<std::mutex> current_lock;
 
         /// Queue of completed baseband requests for this frequency
         std::vector<std::shared_ptr<basebandDumpStatus>> processing;
