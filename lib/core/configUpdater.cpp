@@ -3,7 +3,6 @@
 #include "restServer.hpp"
 
 #include <iostream>
-#include <boost/tokenizer.hpp>
 
 configUpdater& configUpdater::instance()
 {
