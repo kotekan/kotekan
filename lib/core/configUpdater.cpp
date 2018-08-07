@@ -18,21 +18,6 @@ void configUpdater::apply_config(Config& config)
 
     // parse the tree and create endpoints
     parse_tree(config.get_full_config_json(), "");
-
-//    // FIXME: check if block present
-//    for (auto name : dynamic_blk)
-//    {
-//        // create endpoint
-
-//        create_endpoint(name);
-//    }
-
-    //TEST remove the next 2 lines
-    //_callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 1));
-    //_callbacks.insert(std::pair<std::string, int>("gains", 2));
-    //_callbacks.insert(std::pair<std::string, int>("/dynamic_attributes/flagging", 2));
-
-
 }
 
 void configUpdater::parse_tree(json& config_tree, const std::string& path)
@@ -82,7 +67,6 @@ void configUpdater::subscribe(const std::string& name,
 {
     _callbacks.insert(std::pair<std::string, std::function<bool(
                           nlohmann::json &)>>(name, callback));
-    //_callbacks.insert(std::pair<std::string, int>(name, 1));
     DEBUG("New subscription to %s", name.c_str());
 
     // First call to subscriber with initial value from the config

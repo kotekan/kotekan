@@ -37,11 +37,7 @@ class configUpdater
        void subscribe(const string& name,
                                      std::function<bool(json &)> callback);
 
-       /**
-        * @brief configUpdater::rest_callback
-        * @param con
-        * @param json
-        */
+       /// This should be called by restServer
        void rest_callback(connectionInstance &con,
                                          nlohmann::json &json);
 
@@ -56,18 +52,17 @@ class configUpdater
         /// kotekan_update_endpoint in a block
         void parse_tree(json& config_tree, const string& path);
 
-        // unique names of endpoints that the configUpdater controlls
+        /// unique names of endpoints that the configUpdater controlls
         vector<string> _endpoints;
 
-        // mmap of all subscriber callback functions for the registered dynamic
-        // attributes
+        /// mmap of all subscriber callback functions for the registered dynamic
+        /// attributes
         std::multimap<std::string, std::function<bool(json &)>> _callbacks;
-        //std::multimap<std::string, int> _callbacks;
 
-        // Initial values found in config yaml file
+        /// Initial values found in config yaml file
         std::map<std::string, nlohmann::json> _init_values;
 
-        // Reference to the Config instance in order to pass updates to it
+        /// Reference to the Config instance in order to pass updates to it
         Config *_config;
 };
 
