@@ -117,8 +117,7 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             WARN("configUpdater: Failed updating %s with value %s.",
                  uri.c_str(),
                  json.dump().c_str());
-            WARN("Stopping Kotekan.");
-            // Shut Kotekan down
+            WARN("configUpdater: Stopping Kotekan.");
             raise(SIGINT);
             break;
         }
