@@ -144,11 +144,14 @@ private:
         /// Queue of unprocessed baseband requests for this frequency
         std::deque<basebandRequest> request_queue;
 
+        /// Status of the baseband dump currently in progress
+        std::shared_ptr<basebandDumpStatus> current_status = nullptr;
+
         /// Lock to update the current basebandDumpStatus object
-        std::shared_ptr<std::mutex> current_lock;
+        std::shared_ptr<std::mutex> current_lock = std::make_shared<std::mutex>();
 
         /// Queue of completed baseband requests for this frequency
-        std::vector<std::shared_ptr<basebandDumpStatus>> processing;
+        std::vector<basebandDumpStatus> processing;
     };
 
     /**

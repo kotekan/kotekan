@@ -131,7 +131,7 @@ private:
     void write_thread(std::shared_ptr<std::mutex> status_lock);
     void write_dump(basebandDumpData data,
                     std::shared_ptr<basebandDumpStatus> dump_status,
-                    std::shared_ptr<std::mutex> status_lock);
+                    std::mutex* status_lock);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);

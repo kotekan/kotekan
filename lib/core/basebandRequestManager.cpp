@@ -79,8 +79,15 @@ void basebandRequestManager::status_callback(connectionInstance& conn){
             requests_json.push_back(j);
         }
         for (const auto& d : readout_entry.processing) {
-            json j = to_json(*d);
+            json j = to_json(d);
             requests_json.push_back(j);
+        }
+        {
+            std::lock_guard<std::mutex> lock(*readout_entry.current_lock);
+            if (readout_entry.current_status) {
+                json j = to_json(*readout_entry.current_status);
+                requests_json.push_back(j);
+            }
         }
     }
 
@@ -128,15 +135,21 @@ std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(con
         DEBUG("Expired");
     }
 
+    std::lock_guard<std::mutex> current_lock(*readout_entry.current_lock);
+    if (readout_entry.current_status) {
+        // if this method is called, we know that the readout is done with the
+        // current dump
+        readout_entry.processing.push_back(*readout_entry.current_status);
+    }
+
     if (!readout_entry.request_queue.empty()) {
         basebandRequest req = readout_entry.request_queue.front();
-        basebandDumpStatus stat{req};
-        auto task = std::make_shared<basebandDumpStatus>(stat);
         readout_entry.request_queue.pop_front();
-        readout_entry.processing.push_back(task);
-        return task;
+
+        readout_entry.current_status = std::make_shared<basebandDumpStatus>(basebandDumpStatus{req});
     }
     else {
-        return nullptr;
+        readout_entry.current_status = nullptr;
     }
+    return readout_entry.current_status;
 }

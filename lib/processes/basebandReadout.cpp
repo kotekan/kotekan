@@ -217,7 +217,7 @@ void basebandReadout::write_thread(std::shared_ptr<std::mutex> status_lock) {
             auto data = std::get<0>(dump_tup);
 
             try {
-                write_dump(data, dump_status, status_lock);
+                write_dump(data, dump_status, status_lock.get());
             } catch (HighFive::FileException& e) {
                 INFO("Writing Baseband dump file failed with hdf5 error.");
                 std::lock_guard<std::mutex> lock(*status_lock);
@@ -397,7 +397,7 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 
 void basebandReadout::write_dump(basebandDumpData data,
                                  std::shared_ptr<basebandDumpStatus> dump_status,
-                                 std::shared_ptr<std::mutex> status_lock) {
+                                 std::mutex* status_lock) {
 
     // TODO Create parent directories.
     std::string filename = _base_dir + dump_status->request.file_name;
