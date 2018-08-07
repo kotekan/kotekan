@@ -56,12 +56,12 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
                                          "path " + unique_name + " has been " \
                                          "defined more than once.");
             }
-            DEBUG("configUpdater: creating endpoint: %s", unique_name.c_str());
+            INFO("configUpdater: creating endpoint: %s", unique_name.c_str());
             create_endpoint(unique_name);
 
             // Store initial value for a first update on subscription
-            init_values.insert(std::pair<std::string, nlohmann::json>(
-                                   unique_name, get_attributes(it)));
+            _init_values.insert(std::pair<std::string, nlohmann::json>(
+                                   unique_name, it.value()));
 
             continue; // no recursive updatable blocks allowed
         }
@@ -93,20 +93,12 @@ void configUpdater::subscribe(const std::string& name,
     DEBUG("New subscription to %s: %d", name, callback);
 
     // First call to subscriber with initial value from the config
-    if (!initial_update(name, callback)) {
-        WARN("Stopping Kotekan.");
-        // Shut Kotekan down
+    if (!callback(_init_values[name])) {
+        WARN("configUpdater: Failure when calling subscriber to set initial " \
+             "value.");
+        WARN("configUpdater: Stopping Kotekan.");
         raise(SIGINT);
     }
-}
-
-bool configUpdater::initial_update(const std::string& name,
-                                   std::function<bool(json &)> callback)
-{
-    return true;
-
-
-
 }
 
 void configUpdater::create_endpoint(const string& name)
