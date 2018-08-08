@@ -125,6 +125,12 @@ private:
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
     std::queue<dump_data_status> write_q;
+    /// exclusive access to `write_q`
+    std::mutex q_lock;
+    /// wait for the notification that the `write_q` is not empty
+    std::condition_variable q_not_empty;
+    /// wait for the notification that the `write_q` is not full
+    std::condition_variable q_not_full;
 
     void listen_thread(const uint32_t freq_id,
                        std::shared_ptr<std::mutex> status_lock);
