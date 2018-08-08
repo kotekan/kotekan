@@ -5,6 +5,21 @@
 
 #include "kotekanLogging.hpp"
 
+basebandRequestManager::basebandReadoutRegistryEntry& basebandRequestManager::basebandReadoutRegistry::operator[]( const uint32_t& key ) {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map[key];
+}
+
+basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager::basebandReadoutRegistry::begin() noexcept {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map.begin();
+}
+
+basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager::basebandReadoutRegistry::end() noexcept {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map.end();
+}
+
 static json to_json(uint32_t freq_id, const basebandRequest& r) {
     std::time_t received_c = std::chrono::system_clock::to_time_t(r.received - std::chrono::hours(24));
     std::stringstream received;
@@ -22,13 +37,13 @@ static json to_json(uint32_t freq_id, const basebandRequest& r) {
 static json to_json(const basebandDumpStatus& d) {
     json j = json{{"total", d.bytes_total}, {"remaining", d.bytes_remaining}};
     switch(d.state) {
-    case basebandRequestState::WAITING:
+    case basebandDumpStatus::State::WAITING:
         j["status"] = "waiting"; break;
-    case basebandRequestState::INPROGRESS:
+    case basebandDumpStatus::State::INPROGRESS:
         j["status"] = "inprogress"; break;
-    case basebandRequestState::DONE:
+    case basebandDumpStatus::State::DONE:
         j["status"] = "done"; break;
-    case basebandRequestState::ERROR:
+    case basebandDumpStatus::State::ERROR:
         j["status"] = "error";
         j["reason"] = d.reason;
         break;
@@ -54,11 +69,12 @@ void basebandRequestManager::register_with_server(restServer* rest_server) {
 
 void basebandRequestManager::status_callback(connectionInstance& conn){
     json requests_json = json::array();
-    std::lock_guard<std::mutex> lock(requests_lock);
 
-    for (auto& element : requests) {
+    for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
-        for (auto& req : element.second) {
+        auto& readout_entry = element.second;
+        std::lock_guard<std::mutex> lock(readout_entry.requests_lock);
+        for (auto& req : readout_entry.request_queue) {
             json j = to_json(freq_id, req);
             requests_json.push_back(j);
         }
@@ -80,36 +96,44 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
         int64_t length_fpga = request["length"];
         std::string file_name = request["file_name"];
         uint32_t freq_id = request["freq_id"];
+        auto& readout_entry = readout_registry[freq_id];
         {
-            std::lock_guard<std::mutex> lock(requests_lock);
-            requests[freq_id].push_back({event_id, start_fpga, length_fpga, file_name, now});
+            std::lock_guard<std::mutex> lock(readout_entry.requests_lock);
+            readout_entry.request_queue.push_back({event_id, start_fpga, length_fpga, file_name, now});
         }
+        readout_entry.requests_cv.notify_all();
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
     } catch (const std::exception &ex) {
         INFO("Bad baseband request: %s", ex.what());
         conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
     }
-    requests_cv.notify_all();
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 
+bool basebandRequestManager::register_readout_process(const uint32_t freq_id) {
+    return readout_registry[freq_id].request_queue.empty();
+}
+
 std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(const uint32_t freq_id) {
     DEBUG("Waiting for notification");
-    std::unique_lock<std::mutex> lock(requests_lock);
 
+    auto& readout_entry = readout_registry[freq_id];
+    std::unique_lock<std::mutex> lock(readout_entry.requests_lock);
+
+    // NB: the requests_lock is released while the thread is waiting on requests_cv, and reacquired once woken
     using namespace std::chrono_literals;
-    if (requests_cv.wait_for(lock, 0.1s) == std::cv_status::no_timeout) {
+    if (readout_entry.requests_cv.wait_for(lock, 0.1s) == std::cv_status::no_timeout) {
         DEBUG("Notified");
     }
     else {
         DEBUG("Expired");
     }
 
-    if (!requests[freq_id].empty()) {
-        basebandRequest req = requests[freq_id].front();
+    if (!readout_entry.request_queue.empty()) {
+        basebandRequest req = readout_entry.request_queue.front();
         basebandDumpStatus stat{req};
         auto task = std::make_shared<basebandDumpStatus>(stat);
-        requests[freq_id].pop_front();
+        readout_entry.request_queue.pop_front();
         processing.push_back(task);
         return task;
     }
