@@ -40,38 +40,38 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
                            uint32_t n_prod, uint32_t n_eigenvectors) :
     buffer(buf),
     id(frame_id),
-    metadata((visMetadata *)buf->metadata[id]->metadata),
-    frame(buffer->frames[id]),
+    _metadata((visMetadata *)buf->metadata[id]->metadata),
+    _frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(calculate_buffer_layout(n_elements, n_prod, n_eigenvectors)),
 
     // Set the const refs to the structural metadata
-    num_elements(metadata->num_elements),
-    num_prod(metadata->num_prod),
-    num_ev(metadata->num_ev),
+    num_elements(_metadata->num_elements),
+    num_prod(_metadata->num_prod),
+    num_ev(_metadata->num_ev),
 
-    // Set the refs to the general metadata
-    time(std::tie(metadata->fpga_seq_start, metadata->ctime)),
-    fpga_seq_length(metadata->fpga_seq_length),
-    fpga_seq_total(metadata->fpga_seq_total),
-    freq_id(metadata->freq_id),
-    dataset_id(metadata->dataset_id),
+    // Set the refs to the general _metadata
+    time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
+    fpga_seq_length(_metadata->fpga_seq_length),
+    fpga_seq_total(_metadata->fpga_seq_total),
+    freq_id(_metadata->freq_id),
+    dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and refernces on the view
-    vis(bind_span<cfloat>(frame, buffer_layout["vis"])),
-    weight(bind_span<float>(frame, buffer_layout["weight"])),
-    eval(bind_span<float>(frame, buffer_layout["eval"])),
-    evec(bind_span<cfloat>(frame, buffer_layout["evec"])),
-    erms(bind_scalar<float>(frame, buffer_layout["erms"]))
+    vis(bind_span<cfloat>(_frame, buffer_layout["vis"])),
+    weight(bind_span<float>(_frame, buffer_layout["weight"])),
+    eval(bind_span<float>(_frame, buffer_layout["eval"])),
+    evec(bind_span<cfloat>(_frame, buffer_layout["evec"])),
+    erms(bind_scalar<float>(_frame, buffer_layout["erms"]))
 
 {
     // Initialise the structure if not already done
     // NOTE: the provided structure params have already been used to calculate
     // the layout, but here we need to make sure the metadata tracks them too.
-    metadata->num_elements = n_elements;
-    metadata->num_prod = n_prod;
-    metadata->num_ev = n_eigenvectors;
+    _metadata->num_elements = n_elements;
+    _metadata->num_prod = n_prod;
+    _metadata->num_ev = n_eigenvectors;
 
     // Check that the actual buffer size is big enough to contain the calculated
     // view
@@ -97,7 +97,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id,
                  frame_to_copy.num_prod, frame_to_copy.num_ev)
 {
     // Copy over the metadata values
-    *metadata = *(frame_to_copy.metadata);
+    *_metadata = *(frame_to_copy.metadata());
 
     // Copy the frame data here:
     // NOTE: this copies the full buffer memory, not only the individual components
@@ -122,12 +122,12 @@ std::string visFrameView::summary() const {
 
 // Copy the non-const parts of the metadata
 void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
-    metadata->fpga_seq_start = frame_to_copy.metadata->fpga_seq_start;
-    metadata->fpga_seq_length = frame_to_copy.metadata->fpga_seq_length;
-    metadata->fpga_seq_total = frame_to_copy.metadata->fpga_seq_total;
-    metadata->ctime = frame_to_copy.metadata->ctime;
-    metadata->freq_id = frame_to_copy.metadata->freq_id;
-    metadata->dataset_id = frame_to_copy.metadata->dataset_id;
+    _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
+    _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
+    _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
+    _metadata->ctime = frame_to_copy.metadata()->ctime;
+    _metadata->freq_id = frame_to_copy.metadata()->freq_id;
+    _metadata->dataset_id = frame_to_copy.metadata()->dataset_id;
 }
 
 // Copy the non-visibility parts of the buffer

@@ -48,6 +48,12 @@ struct freq_ctype {
  * @brief Correlator input index map
  */
 struct input_ctype {
+
+    /**
+     * @brief Default constructor.
+     **/
+    input_ctype();
+
     /**
      * @brief Allow initialisation from a std::string
      * @param id     Input ID
@@ -80,6 +86,18 @@ struct prod_ctype {
     /// Index of input B
     uint16_t input_b;
 };
+
+
+// Conversions of the index types to json
+void to_json(json& j, const freq_ctype& f);
+void to_json(json& j, const input_ctype& f);
+void to_json(json& j, const prod_ctype& f);
+void to_json(json& j, const time_ctype& f);
+
+void from_json(const json& j, freq_ctype& f);
+void from_json(const json& j, input_ctype& f);
+void from_json(const json& j, prod_ctype& f);
+void from_json(const json& j, time_ctype& f);
 
 /**
  * @brief Index into a flattened upper matrix triangle.

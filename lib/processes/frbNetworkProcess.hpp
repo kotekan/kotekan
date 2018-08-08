@@ -1,5 +1,5 @@
 /**
- * @file
+ * @file frbNetworkprocess.hpp
  * @brief Network transmission process for FRB obs
  *  - frbNetworkProcess : public KotekanProcess
  */
@@ -59,9 +59,6 @@ public:
   ///parse config
   void apply_config(uint64_t fpga_seq) override;
 
-  /// parse hostname to derive the ip_address using gethosname() 
-  void parse_host_name();
-
   /// Callback to update the beam offset
   void update_offset_callback(connectionInstance& conn, json& json_request);
 
@@ -101,7 +98,10 @@ private:
 
   // time per buffer frame in ns
   unsigned long time_interval;
-
+  
+  // samples per packet
+  int samples_per_packet;
+  
   //Beam Configuration Mode
   bool column_mode;
 };

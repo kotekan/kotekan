@@ -15,6 +15,7 @@ extern "C" {
 struct psrCoord {
   float ra[10];
   float dec[10];
+  uint32_t scaling[10];
 };
 
 struct chimeMetadata {

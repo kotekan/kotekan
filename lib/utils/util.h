@@ -33,6 +33,7 @@ inline std::string string_tail(std::string const& str, size_t const N) {
 extern "C" {
 #endif
 
+void make_rfi_dirs(int streamID, const char * write_to, const char* time_dir);
 void make_dirs(char * disk_base, char * data_set, int num_disks);
 void make_raw_dirs(const char * disk_base, const char * disk_set, const char * data_set, int num_disks);
 int cp(const char *to, const char *from);
