@@ -43,9 +43,19 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
             INFO("configUpdater: creating endpoint: %s", unique_name.c_str());
             create_endpoint(unique_name);
 
-            // Store initial value for a first update on subscription
+            // Store initial values for a first update on subscription
             _init_values.insert(std::pair<std::string, nlohmann::json>(
                                    unique_name, it.value()));
+
+            // Store all keys of this updatable block
+            std::vector<std::string> keys;
+            for (json::iterator key = it.value().begin();
+                    key != it.value().end(); key++) {
+                if (key.value().dump() != "kotekan_update_endpoint")
+                    keys.push_back(key.key());
+            }
+            _keys.insert(std::pair<std::string, std::vector<std::string>>
+                         (unique_name, keys));
 
             continue; // no recursive updatable blocks allowed
         }
@@ -69,12 +79,10 @@ void configUpdater::subscribe(const std::string& name,
     DEBUG("New subscription to %s", name.c_str());
 
     // First call to subscriber with initial value from the config
-    if (!callback(_init_values[name])) {
-        WARN("configUpdater: Failure when calling subscriber to set initial " \
-             "value.");
-        WARN("configUpdater: Stopping Kotekan.");
-        raise(SIGINT);
-    }
+    if (!callback(_init_values[name]))
+        throw std::runtime_error("configUpdater: Failure when calling " \
+                                 "subscriber to set initial value at endpoint" \
+                                 " '" + name + "'.");
 }
 
 void configUpdater::create_endpoint(const string& name)
@@ -95,20 +103,28 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
 
     DEBUG("uri called: %s", uri.c_str());
 
-    // update active configs with all values in this update
+    // Check the incoming json for extra values
     for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
-        DEBUG("configUpdater: Updating value %s with %s",
-              std::string(uri + "/" + it.key()).c_str(),
-              it.value().dump().c_str());
-
-        try {
-            // this ignores the data type,
-            // should be checked in processes' callbacks
-            _config->update_value(uri, it.key(), it.value());
-        } catch (const std::exception& e) {
-            con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
-            WARN("configUpdater: Failed applying update to endpoint %s: %s",
-                 uri.c_str(), e.what());
+        if (std::find(_keys[uri].begin(), _keys[uri].end(), it.key()) ==
+                _keys[uri].end()) {
+            // this key is not in the config file
+            con.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
+            WARN("configUpdater: Update to endpoint '%s' contained value '%s'" \
+                 " not defined in the updatable config block.",
+                 uri.c_str(), it.key().c_str());
+            return;
+        }
+    }
+    // ...and for missing values
+    for (auto it = _keys[uri].begin(); it != _keys[uri].end();
+         it++) {
+        if (*it != "kotekan_update_endpoint" &&
+                json.find(*it) == json.end()) {
+            // this key is in the config file, but missing in the update
+            con.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
+            WARN("configUpdater: Update to endpoint '%s' is missing value " \
+                 "'%s' that is defined in the config file.",
+                 uri.c_str(), it->c_str());
             return;
         }
     }
@@ -140,6 +156,26 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             return;
         }
         search.first++;
+    }
+
+    // update active config with all values in this update
+    for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
+        DEBUG("configUpdater: Updating value %s with %s",
+              std::string(uri + "/" + it.key()).c_str(),
+              it.value().dump().c_str());
+
+        try {
+            // this ignores the data type,
+            // should be checked in processes' callbacks
+            _config->update_value(uri, it.key(), it.value());
+        } catch (const std::exception& e) {
+            con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
+            ERROR("configUpdater: Failed applying update to endpoint %s: %s",
+                 uri.c_str(), e.what());
+            ERROR("configUpdater: Stopping Kotekan.");
+            raise(SIGINT);
+            return;
+        }
     }
 
     con.send_empty_reply(HTTP_RESPONSE::OK);

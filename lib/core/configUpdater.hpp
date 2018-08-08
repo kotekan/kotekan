@@ -34,8 +34,11 @@
  * hands over to subscribe() with the initial values defined in the config file
  * (in this case {"some_value": 0}).
  *
- * The process should check the update for correctness and return `false` if
- * the update is bad.
+ * All and only the variables defined in the updatable config block in the
+ * config file are guaranteed to be in the json block passed to the processes
+ * callback function.
+ * It is up to the process, though, to check the updated values and return
+ * `false` if they contain illegal values.
  */
 class configUpdater
 {
@@ -93,6 +96,9 @@ class configUpdater
 
         /// Initial values found in config yaml file
         std::map<std::string, nlohmann::json> _init_values;
+
+        /// Names of the variables found in each updatable config block
+        std::map<std::string, std::vector<std::string>> _keys;
 
         /// Reference to the Config instance in order to pass updates to it
         Config *_config;
