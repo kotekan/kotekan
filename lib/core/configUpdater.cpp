@@ -95,6 +95,24 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
 
     DEBUG("uri called: %s", uri.c_str());
 
+    // update active configs with all values in this update
+    for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
+        DEBUG("configUpdater: Updating value %s with %s",
+              std::string(uri + "/" + it.key()).c_str(),
+              it.value().dump().c_str());
+
+        try {
+            // this ignores the data type,
+            // should be checked in processes' callbacks
+            _config->update_value(uri, it.key(), it.value());
+        } catch (const std::exception& e) {
+            con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
+            WARN("configUpdater: Failed applying update to endpoint %s: %s",
+                 uri.c_str(), e.what());
+            return;
+        }
+    }
+
     // Call subscriber callbacks
     auto search = _callbacks.equal_range(uri);
     if (search.first == _callbacks.end()) {
@@ -114,23 +132,14 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         // subscriber callback
         if (!search.first->second(json)) {
             con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
-            WARN("configUpdater: Failed updating %s with value %s.",
+            ERROR("configUpdater: Failed updating %s with value %s.",
                  uri.c_str(),
                  json.dump().c_str());
-            WARN("configUpdater: Stopping Kotekan.");
+            ERROR("configUpdater: Stopping Kotekan.");
             raise(SIGINT);
-            break;
+            return;
         }
         search.first++;
-    }
-
-    // update active configs with all values in this update
-    for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
-        DEBUG("configUpdater: Updating value %s with %s",
-              std::string(uri + "/" + it.key()).c_str(),
-              it.value().dump().c_str());
-        // this ignores the data type, should be checked in processes' callbacks
-        _config->update_value(uri, it.key(), it.value());
     }
 
     con.send_empty_reply(HTTP_RESPONSE::OK);
