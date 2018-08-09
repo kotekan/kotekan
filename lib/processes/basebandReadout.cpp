@@ -146,9 +146,10 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                  event_id, request.length_fpga, request.start_fpga, next_frame);
             {
                 std::lock_guard<std::mutex> lock(*status_lock);
-                dump_status->bytes_total = request.length_fpga * _num_elements;
-                dump_status->bytes_remaining = dump_status->bytes_total;
                 dump_status->state = basebandDumpStatus::State::INPROGRESS;
+                // Note: the length of the dump still needs to be set with
+                // actual sizes. This is done in `get_data` as it verifies what
+                // is available in the current buffers.
             }
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
@@ -288,6 +289,13 @@ basebandDumpData basebandReadout::get_data(
             int buf_frame = frame_index % buf->num_frames;
             auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
             frame_fpga_seq = metadata->fpga_seq_num;
+
+            // if the request specified -1 for the start time, use the earliest
+            // timestamp available
+            if (trigger_start_fpga < 0) {
+                trigger_start_fpga = frame_fpga_seq;
+                trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
+            }
 
             if (trigger_end_fpga <= frame_fpga_seq) continue;
             if (trigger_start_fpga >= frame_fpga_seq + _samples_per_data_set) {

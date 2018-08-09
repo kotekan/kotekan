@@ -141,6 +141,17 @@ private:
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
+
+    /**
+     * @brief Make a private copy of the data from the ring buffer
+     *
+     * @param event_id unique identifier of the event in the FRB pipeline
+     * @param trigger_start_fpga start time, or -1 to use the earliest data available
+     * @param trigger_length_fpga number of FPGA samples to include in the dump
+     *
+     * @return A fully initialized `basebandDumpData` if the call succeeded, or
+     * an empty one if the frame data was not availabe for the time requested
+     */
     basebandDumpData get_data(
             uint64_t event_id,
             int64_t trigger_start_fpga,
