@@ -72,7 +72,7 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
             uint32_t ind;
             std::tie(file, ind) = vis_file_map.rbegin()->second;  // Unpack the last entry
 
-            if(file->num_time() < rollover) {
+            if(rollover == 0 || file->num_time() < rollover) {
                 // Extend the time axis and add into the sample map
                 ind = file->extend_time(new_time);
                 vis_file_map[count] = std::make_tuple(file, ind);

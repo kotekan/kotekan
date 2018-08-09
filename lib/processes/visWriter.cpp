@@ -204,12 +204,14 @@ void visWriter::init_acq() {
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
 
+    // For a ring-type file, rollover must be disabled
+    size_t rollover = file_type == "ring" ? 0 : file_length;
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
     file_bundle = std::unique_ptr<visFileBundle>(
         new visFileBundle(
-            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
-            freqs, inputs, prods, num_ev, file_length
+            file_type, root_path, instrument_name, metadata, chunk_id, rollover,
+            window, freqs, inputs, prods, num_ev, file_length
         )
     );
 }
