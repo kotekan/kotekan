@@ -33,14 +33,14 @@ uint32_t visFileRing::extend_time(time_ctype new_time) {
         times[cur_pos] = new_time;
         // Erase data in this row
         size_t nb = nfreq * frame_size;
-        char zeros[frame_size] = { 0 };
+        std::vector<char> zeros(frame_size, 0);
         for (size_t i = 0; i < nfreq; i++) {
             int res = TEMP_FAILURE_RETRY(
-                pwrite(fd, zeros, frame_size, cur_pos * nb + i * frame_size)
+                pwrite(fd, zeros.data(), frame_size, cur_pos * nb + i * frame_size)
             );
 
             if(res < 0) {
-                ERROR("Write error attempting to write frame at time %d, freq %d: s.",
+                ERROR("Write error attempting to write frame at time %d, freq %d: %s.",
                       cur_pos, i, strerror(errno));
             }
 
@@ -49,6 +49,7 @@ uint32_t visFileRing::extend_time(time_ctype new_time) {
         // Write metadata file
         write_metadata();
 
+        // TODO: Are these appropriate in this context?
         // Start to flush out older dataset regions
         uint delta_async = 2;
         if(cur_pos > delta_async) {
