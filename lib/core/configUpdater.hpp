@@ -28,7 +28,7 @@
  * Every process that subscribes to this update endpoint by calling
  * ```
  * configUpdater::instance().subscribe(config.get_string(unique_name, "updatable_config"),
- * std::bind(&my_process::my_callback, this, _1));
+ *                                     std::bind(&my_process::my_callback, this, _1));
  * ```
  * will receive an initial update on the callback function it implements and
  * hands over to subscribe() with the initial values defined in the config file
@@ -37,8 +37,12 @@
  * All and only the variables defined in the updatable config block in the
  * config file are guaranteed to be in the json block passed to the processes
  * callback function.
- * It is up to the process, though, to check the updated values and return
- * `false` if they contain illegal values.
+ * It is up to the process, though, to check the data types, sizes and
+ * the actual values in the callback function and return `false` if anything
+ * is wrong.
+ *
+ * The process must be ready to receive updates **before** it subscribes and it
+ * has to apply save threading principles.
  */
 class configUpdater
 {
