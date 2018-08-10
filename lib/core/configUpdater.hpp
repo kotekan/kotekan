@@ -21,29 +21,52 @@
  *     bar:
  *         kotekan_update_endpoint: "json"
  *         some_value: 0
+ *         some_other_value: 1
+ * ```
+ *
+ * In the config block of a process that wants to get updates of a specific
+ * updatable block, either a key "updatable_config" with the full path to the updatable
+ * block as a value has to exist, or an object called "updatable_config" with
+ * a list of all updatable config blocks.
+ *
+ * Example:
+ * ```
  * my_process:
  *     updatable_config: "/foo/bar"
+ * ```
+ * or
+ * ```
+ * my_process:
+ *     updatable_config:
+ *         bar: "/foo/bar"
+ *         fu: "/foo/fu"
  * ```
  *
  * Every process that subscribes to this update endpoint by calling
  * ```
- * configUpdater::instance().subscribe(config.get_string(unique_name, "updatable_config"),
- *                                     std::bind(&my_process::my_callback, this, _1));
+ * configUpdater::instance().subscribe(*this, std::bind(&my_process::my_callback, this, _1));
  * ```
- * will receive an initial update on the callback function it implements and
- * hands over to subscribe() with the initial values defined in the config file
- * (in this case {"some_value": 0}).
+ * or
+ * ```
+ * std::map<std::string, std::function<bool(json &)> callback_map(2);
+ * callbacks.insert ("bar", std::bind(&my_process::my_bar_callback, this, _1));
+ * callbacks.insert ("fu", std::bind(&my_process::my_fu_callback, this, _1));
+ * configUpdater::instance().subscribe(*this, callback_map);
+ * ```
+ * will receive an initial update on each callback function with the initial
+ * values defined in the config file (in the first example
+ * `{"some_value": 0, some_other_value: 1}`).
+ * That's why the process must be ready to receive updates **before** it
+ * subscribes.
  *
  * All and only the variables defined in the updatable config block in the
- * config file are guaranteed to be in the json block passed to the processes
+ * config file are guaranteed to be in the json block passed to a processes
  * callback function.
  * It is up to the process, though, to check the data types, sizes and
  * the actual values in the callback function and return `false` if anything
  * is wrong.
- *
- * The process must be ready to receive updates **before** it subscribes and it
- * has to apply save threading principles.
  */
+
 class configUpdater
 {
     public:
