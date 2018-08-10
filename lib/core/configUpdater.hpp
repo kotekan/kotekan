@@ -90,14 +90,15 @@ class configUpdater
        /**
         * @brief Subscribe to a dynamic attribute.
         *
+        * This function does not enforce the config structure and should
+        * only be used in special cases.
         * The callback function has to return True on success and False
         * otherwise.
         *
         * @param name       Name of the dynamic attribute.
         * @param callback   Callback function for attribute updates.
         */
-       void subscribe(const string& name,
-                                     std::function<bool(json &)> callback);
+       void subscribe(const string& name, std::function<bool(json &)> callback);
 
        /// This should be called by restServer
        void rest_callback(connectionInstance &con,
