@@ -204,8 +204,17 @@ void visWriter::init_acq() {
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
 
-    // For a ring-type file, rollover must be disabled
-    size_t rollover = file_type == "ring" ? 0 : file_length;
+    // For a ring-type file, rollover must be disabled,
+    // window should be less than file length
+    size_t rollover = file_length;
+    if (file_type == "ring") {
+        rollover = 0;
+        if (window > file_length) {
+            INFO("Active times window cannot be greater than file length for "
+                 "ring type files. Setting window to file length.");
+            window = file_length;
+        }
+    }
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
     file_bundle = std::unique_ptr<visFileBundle>(

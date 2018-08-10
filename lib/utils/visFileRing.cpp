@@ -27,16 +27,23 @@ uint32_t visFileRing::extend_time(time_ctype new_time) {
         cur_pos = visFileRaw::extend_time(new_time);
     } else {
         // Update current position
-        cur_pos = (cur_pos + 1 % file_len);
+        cur_pos = (cur_pos + 1) % file_len;
 
         // Insert new time at current position in file
         times[cur_pos] = new_time;
         // Erase data in this row
-        // TODO: check for errors
         size_t nb = nfreq * frame_size;
         char zeros[frame_size] = { 0 };
         for (size_t i = 0; i < nfreq; i++) {
-            pwrite(fd, zeros, i * frame_size, cur_pos * nb);
+            int res = TEMP_FAILURE_RETRY(
+                pwrite(fd, zeros, frame_size, cur_pos * nb + i * frame_size)
+            );
+
+            if(res < 0) {
+                ERROR("Write error attempting to write frame at time %d, freq %d: s.",
+                      cur_pos, i, strerror(errno));
+            }
+
         }
 
         // Write metadata file
