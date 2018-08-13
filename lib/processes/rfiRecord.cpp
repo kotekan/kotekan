@@ -163,17 +163,22 @@ void rfiRecord::main_thread() {
             if (fd == -1) {
                 ERROR("Cannot open file %s", file_name);
             }
-            //Write buffer to that file
-            ssize_t bytes_writen = write(fd,&fpga_seq_num, sizeof(int64_t));
-            bytes_writen = write(fd, frame, rfi_buf->frame_size);
-            if (bytes_writen != rfi_buf->frame_size) {
-                ERROR("Failed to write buffer to disk");
+            else {
+                //Write buffer to that file
+                ssize_t bytes_writen = write(fd,&fpga_seq_num, sizeof(int64_t));
+                if (bytes_writen !=  sizeof(int64_t)) {
+                    ERROR("Failed to write seq_num to disk");
+                }
+                bytes_writen = write(fd, frame, rfi_buf->frame_size);
+                if (bytes_writen != rfi_buf->frame_size) {
+                    ERROR("Failed to write buffer to disk");
+                }
+                //Close that file
+                if (close(fd) == -1) {
+                    ERROR("Cannot close file %s", file_name);
+                }
+                INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
             }
-            //Close that file
-            if (close(fd) == -1) {
-                ERROR("Cannot close file %s", file_name);
-            }
-            INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
         }
         //Unlock callback mutex
         rest_callback_mutex.unlock();
