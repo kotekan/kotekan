@@ -80,8 +80,8 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
         //Increment time for the next frame
         time_now->tv_nsec +=_timesamples_per_pulsar_packet*2560;
         if (time_now->tv_nsec > 999999999) {
+            time_now->tv_sec += (uint)(time_now->tv_nsec / 1000000000.);
             time_now->tv_nsec = time_now->tv_nsec % 1000000000;
-            time_now->tv_sec += (uint)(time_now->tv_nsec / 1000000000);
         }
     } //end packet
 }
@@ -172,10 +172,15 @@ void pulsarPostProcess::main_thread() {
         if (unlikely(startup == 1)) {
             // testing sync code
             startup = 0;
-	    uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
-	    current_input_location = seq_number_offset;
-	    first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
-
+            uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+            current_input_location = seq_number_offset;
+            first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
+            time_now.tv_nsec +=seq_number_offset*2560;
+            if (time_now.tv_nsec > 999999999) {
+                time_now.tv_sec += (uint)(time_now.tv_nsec / 1000000000.);
+                time_now.tv_nsec = time_now.tv_nsec % 1000000000;
+            }
+            
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
             fill_headers((unsigned char*)out_frame,
