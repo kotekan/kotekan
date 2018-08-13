@@ -456,7 +456,7 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
 
     // get config
     tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
-    report_freq = config.get_int_default(unique_name, "report_freq", 1000);
+    report_freq = config.get_uint64_default(unique_name, "report_freq", 1000);
     expected_val = {config.get_float_default(unique_name, "expected_val_real", 1.),
                     config.get_float_default(unique_name, "expected_val_imag", 0.)};
 
@@ -465,9 +465,6 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     if (tolerance < 0)
         throw std::invalid_argument("visCheckTestPattern: tolerance has to be" \
                " positive (is " + std::to_string(tolerance) + ").");
-    if (report_freq < 0)
-        throw std::invalid_argument("visCheckTestPattern: report_freq has to " \
-                "be positive (is " + std::to_string(report_freq) + ").");
 
     outfile.open (outfile_name);
     if (!outfile.is_open()) {
