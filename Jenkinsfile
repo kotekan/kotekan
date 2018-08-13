@@ -44,7 +44,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-pytest'''
+pytest -s -vvv'''
       }
     }
   }
