@@ -160,7 +160,7 @@ void rfiRecord::main_thread() {
                      file_num/1024);
             //Open that file
             fd = open(file_name, O_WRONLY | O_APPEND | O_CREAT, 0666);
-            if (fd == -1) {
+            if (fd < 0) {
                 ERROR("Cannot open file %s", file_name);
             }
             else {
@@ -174,10 +174,12 @@ void rfiRecord::main_thread() {
                     ERROR("Failed to write buffer to disk");
                 }
                 //Close that file
-                if (close(fd) == -1) {
+                if (close(fd) < 0) {
                     ERROR("Cannot close file %s", file_name);
                 }
-                INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
+                else{
+                    INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
+                }
             }
         }
         //Unlock callback mutex
