@@ -1,6 +1,7 @@
 #include "configUpdater.hpp"
 #include "errors.h"
 #include "restServer.hpp"
+#include "KotekanProcess.hpp"
 
 #include <iostream>
 
@@ -68,6 +69,33 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
         // Recursive part.
         // This is a section/scope not a process block.
         parse_tree(it.value(), unique_name);
+    }
+}
+
+void configUpdater::subscribe(const KotekanProcess& subscriber,
+               std::function<bool(json &)> callback)
+{
+    if (!_config->exists(subscriber.get_unique_name(), "updatable_block"))
+        throw std::runtime_error("configUpdater: key 'updatable block' was " \
+                                 "not found in '" + subscriber.get_unique_name()
+                                 + "' in the config file.");
+    subscribe(_config->get_string(subscriber.get_unique_name(),
+                                  "updatable_block"), callback);
+}
+
+void configUpdater::subscribe(const KotekanProcess& subscriber,
+            std::map<std::string,std::function<bool(json &)>> callbacks)
+{
+    for (auto callback : callbacks) {
+        if (!_config->exists(subscriber.get_unique_name() + "/updatable_block",
+                            callback.first))
+            throw std::runtime_error("configUpdater: key '" + callback.first +
+                                     "' was not found in '" +
+                                     subscriber.get_unique_name() +
+                                     "/updatable block' in the config file.");
+        subscribe(_config->get_string(subscriber.get_unique_name() +
+                                     "/updatable_block/", callback.first),
+                                     callback.second);
     }
 }
 

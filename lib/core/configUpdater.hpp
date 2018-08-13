@@ -3,6 +3,7 @@
 
 #include "Config.hpp"
 #include "restServer.hpp"
+#include "KotekanProcess.hpp"
 
 /**
  * @brief Kotekan core component that creates endpoints defined in the config
@@ -88,10 +89,42 @@ class configUpdater
        void apply_config(Config& config);
 
        /**
-        * @brief Subscribe to a dynamic attribute.
+        * @brief Subscribe to a updatable blocks from a KotekanProcess.
+        *
+        * The callback function has to return True on success and False
+        * otherwise.
+        * The block of the calling process in the configuration file should have
+        * a key named "updatable_block" that defines the full path to the
+        * updatable block.
+        *
+        * @param subscriber Reference to the subscribing process.
+        * @param callback   Callback function for attribute updates.
+        */
+       void subscribe(const KotekanProcess& subscriber,
+                      std::function<bool(json &)> callback);
+
+       /**
+        * @brief Subscribe to several updatable blocks from a KotekanProcess.
+        *
+        * The callback functions have to return True on success and False
+        * otherwise.
+        * The block of the calling process in the configuration file should have
+        * an object named "updatable_block" with values that define the full
+        * path to an updatable block, each. The names in the callbacks map refer
+        * to the names of these values.
+        *
+        * @param subscriber Reference to the subscribing process.
+        * @param callbacks  Map of value names and callback functions.
+        */
+       void subscribe(const KotekanProcess& subscriber,
+                   std::map<std::string,std::function<bool(json &)>> callbacks);
+
+       /**
+        * @brief Subscribe to an updatable block.
         *
         * This function does not enforce the config structure and should
-        * only be used in special cases.
+        * only be used in special cases (Like when called from somewhere else
+        * than a KotekanProcess).
         * The callback function has to return True on success and False
         * otherwise.
         *
