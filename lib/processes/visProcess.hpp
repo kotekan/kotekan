@@ -215,8 +215,7 @@ private:
  * @brief Checks if the visibility data matches a given expected pattern.
  *
  * Errors are calculated as the norm of the difference between the expected and the actual (complex) visibility value.
- * Writes out to a csv file specified in the configuration and prints a report
- * in a configured interval. The columns have the following meaning:
+ * For bad frames, the following data is written to a csv file specified in the config:
  * fpga_count:  FPGA counter for the frame
  * time:        the frames timestamp
  * freq_id:     the frames frequency ID
@@ -225,8 +224,13 @@ private:
  * min_err:     minimum error of bad values
  * max_err:     maximum error of bad balues
  *
+ * Additionally a report is printed in a configured interval.
+ *
  * @par Buffers
  * @buffer in_buf               The buffer to debug
+ *         @buffer_format       visBuffer structured
+ *         @buffer_metadata     visMetadata
+ * @buffer out_buf              All frames found to contain errors
  *         @buffer_format       visBuffer structured
  *         @buffer_metadata     visMetadata
  *
@@ -251,6 +255,7 @@ public:
 
 private:
     Buffer * in_buf;
+    Buffer * out_buf;
 
     // A (freq_id, dataset_id) pair
     using fd_pair = typename std::pair<uint32_t, uint32_t>;
