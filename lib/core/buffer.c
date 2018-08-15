@@ -2,6 +2,7 @@
 #include "metadata.h"
 #include "errors.h"
 #include "nt_memset.h"
+#include "util.h"
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
@@ -136,6 +137,8 @@ struct Buffer* create_buffer(int num_frames, int len,
     // By default don't zero buffers at the end of their use.
     buf->zero_frames = 0;
 
+    buf->last_arrival_time = 0;
+
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
 
@@ -145,7 +148,8 @@ struct Buffer* create_buffer(int num_frames, int len,
         buf->frames[i] = hsa_host_malloc(buf->aligned_frame_size);
         //DEBUG("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->frames[i], buf->aligned_frame_size);
 
-        memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
+        //memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
+        memset(buf->frames[i], 0x0, buf->aligned_frame_size);
 
         #else
         // Create a page alligned block of memory for the buffer
@@ -209,6 +213,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
     if (private_producers_done(buf, ID) == 1) {
         private_reset_producers(buf, ID);
         buf->is_full[ID] = 1;
+        buf->last_arrival_time = e_time();
         set_full = 1;
 
         // If there are no consumers registered then we can just mark the buffer empty
@@ -246,14 +251,14 @@ void *private_zero_frames(void * args) {
     assert (ID <= buf->num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
-    //int div_256 = 256*(buf->frame_size / 256);
-    //nt_memset((void *)buf->frames[ID], 0x00, div_256);
-    //memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
+    int div_256 = 256*(buf->frame_size / 256);
+    nt_memset((void *)buf->frames[ID], 0x00, div_256);
+    memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
 
     // HACK: Just zero the first two words of the VDIF header
-    for (int i = 0; i < buf->frame_size/1056; ++i) {
-        *((uint64_t*)&buf->frames[ID][i*1056]) = 0;
-    }
+    //for (int i = 0; i < buf->frame_size/1056; ++i) {
+    //    *((uint64_t*)&buf->frames[ID][i*1056]) = 0;
+    //}
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
@@ -288,6 +293,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
         private_mark_consumer_done(buf, consumer_name, ID);
+
         if (private_consumers_done(buf, ID) == 1) {
 
             if (buf->zero_frames == 1) {
@@ -386,7 +392,7 @@ void register_consumer(struct Buffer * buf, const char *name) {
 
 void register_producer(struct Buffer * buf, const char *name) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
-
+    DEBUG("Buffer: %s Registering producer: %s", buf->buffer_name, name);
     if (private_get_producer_id(buf, name) != -1) {
         ERROR("You cannot register two consumers with the same name!");
         assert(0); // Optional
@@ -564,7 +570,12 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-    INFO("Buffer %s status: %s", buf->buffer_name, status_string);
+//TODO: temporary solution to not print buffer status on gossec
+#ifndef _GOSSEC
+    INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
+#else
+    DEBUG("Buffer %s, status: %s", buf->buffer_name, status_string);
+#endif
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
@@ -624,6 +635,10 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int ID) {
     assert(ID < buf->num_frames);
 
     return buf->metadata[ID];
+}
+
+double get_last_arrival_time(struct Buffer * buf) {
+    return buf->last_arrival_time;
 }
 
 void send_shutdown_signal(struct Buffer* buf) {

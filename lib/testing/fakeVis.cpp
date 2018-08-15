@@ -5,6 +5,7 @@
 #include <csignal>
 #include <time.h>
 #include <math.h>
+#include <random>
 
 
 REGISTER_KOTEKAN_PROCESS(fakeVis);
@@ -36,11 +37,25 @@ fakeVis::fakeVis(Config &config,
 
     // Get fill type
     mode = config.get_string_default(unique_name, "mode", "default");
+    if (mode == "gaussian" || mode == "gaussian_random") {
+        vis_mean = {config.get_float_default(unique_name, "vis_mean_real", 0.),
+            config.get_float_default(unique_name, "vis_mean_imag", 0.)};
+        vis_std = config.get_float_default(unique_name, "vis_std", 1.);
+
+        // initialize random number generation
+        if (mode == "gaussian_random") {
+            std::random_device rd;
+            gen.seed(rd());
+        }
+    }
 
     // Get timing and frame params
     cadence = config.get_float(unique_name, "cadence");
     num_frames = config.get_int_default(unique_name, "num_frames", -1);
     wait = config.get_bool_default(unique_name, "wait", true);
+
+    // Get zero_weight option
+    zero_weight = config.get_bool_default(unique_name, "zero_weight", false);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -59,6 +74,9 @@ void fakeVis::main_thread() {
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
+    // random number generation for gaussian modes
+    std::normal_distribution<float> gauss_real{vis_mean.real(), vis_std};
+    std::normal_distribution<float> gauss_imag{vis_mean.imag(), vis_std};
 
     while (!stop_thread) {
 
@@ -127,7 +145,15 @@ void fakeVis::main_thread() {
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
                         float phase = (float) i - (float) j;
-                        out_vis[ind] = {cos(phase), sin(phase)};
+                        out_vis[ind] = {cosf(phase), sinf(phase)};
+                        ind++;
+                    }
+                }
+            } else if (mode == "gaussian" || mode == "gaussian_random") {
+                int ind = 0;
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_vis[ind] = {gauss_real(gen), gauss_imag(gen)};
                         ind++;
                     }
                 }
@@ -137,25 +163,58 @@ void fakeVis::main_thread() {
             }
 
             // Insert values into eigenvectors, eigenvalues and rms
-            for (int i = 0; i < num_eigenvectors; i++) {
-                for (int j = 0; j < num_elements; j++) {
-                    int k = i * num_elements + j;
-                    output_frame.evec[k] = {(float)i, (float)j};
+            if (mode == "gaussian" || mode == "gaussian_random") {
+                for (uint32_t i = 0; i < num_eigenvectors; i++) {
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        int k = i * num_elements + j;
+                        output_frame.evec[k] = {(float)i, gauss_real(gen)};
+                    }
+                    output_frame.eval[i] = i;
                 }
-                output_frame.eval[i] = i;
+                output_frame.erms = gauss_real(gen);
+            } else {
+                for (uint32_t i = 0; i < num_eigenvectors; i++) {
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        int k = i * num_elements + j;
+                        output_frame.evec[k] = {(float)i, (float)j};
+                    }
+                    output_frame.eval[i] = i;
+                }
+                output_frame.erms = 1.;
             }
-            output_frame.erms = 1.;
 
-            // Set the weights to 1.
+            // weights
             auto out_wei = output_frame.weight;
             int ind = 0;
-            for(uint32_t i = 0; i < num_elements; i++) {
-                for(uint32_t j = i; j < num_elements; j++) {
-                    out_wei[ind] = 1.;
-                    ind++;
+            if (zero_weight) {
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_wei[ind] = 0.;
+                        ind++;
+                    }
+                }
+            } else if (mode == "gaussian" || mode == "gaussian_random") {
+                std::default_random_engine gen;
+                if (mode == "gaussian_random") {
+                    std::random_device rd;
+                    gen.seed(rd());
+                }
+                // generate vaguely realistic weights
+                std::normal_distribution<float> gauss(0.1 * vis_std, 0.1 * vis_std);
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_wei[ind] = 1. / pow(gauss(gen), 2);
+                        ind++;
+                    }
+                }
+            } else {  // Set the weights to 1. by default
+                for(uint32_t i = 0; i < num_elements; i++) {
+                    for(uint32_t j = i; j < num_elements; j++) {
+                        out_wei[ind] = 1.;
+                        ind++;
+                    }
                 }
             }
-
 
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
@@ -174,7 +233,7 @@ void fakeVis::main_thread() {
         ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
 
         // Cause kotekan to exit if we've hit the maximum number of frames
-        if(num_frames > 0 && frame_count >= num_frames) {
+        if(num_frames > 0 && frame_count >= (unsigned) num_frames) {
             INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
             std::raise(SIGINT);
             return;
@@ -235,7 +294,7 @@ void replaceVis::main_thread() {
         auto output_frame = visFrameView(out_buf,
                                          output_frame_id, input_frame);
 
-        for(int i = 0; i < output_frame.num_prod; i++) {
+        for(uint32_t i = 0; i < output_frame.num_prod; i++) {
             float real = (i % 2 == 0 ?
                           output_frame.freq_id :
                           std::get<0>(output_frame.time));

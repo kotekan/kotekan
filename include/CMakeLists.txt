@@ -5,8 +5,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 include_directories (${KOTEKAN_SOURCE_DIR}/generated)
 
 set (LIBINCLUDE_LIB_SOURCES
-              mongoose.c
-              timing_mach.c)
+              mongoose.c)
 
 add_library( libinclude
              ${LIBINCLUDE_LIB_SOURCES} )

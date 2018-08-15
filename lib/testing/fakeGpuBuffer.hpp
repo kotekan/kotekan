@@ -7,6 +7,7 @@
 #define FAKE_GPU_BUFFER_HPP
 
 #include "buffer.h"
+#include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 
 
@@ -65,8 +66,24 @@ public:
      *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
      */
-    void fill_mode_block(int32_t* data, int frame_num);
+    void fill_mode_block(int32_t* data, int frame_num,
+                         chimeMetadata* metadata);
+
+    /**
+     * @brief Fill with a pattern for testing lost packet renormalisation.
+     *
+     * Fill each element with its block row (real value) and block column
+     * (imaginary). Each frame has a number of lost packets equivalent to the
+     * frame number.
+     *
+     * @param data      The output frame data to fill.
+     * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
+     */
+    void fill_mode_lostsamples(int32_t* data, int frame_num,
+                               chimeMetadata* metadata);
 
     /**
      * @brief Fill with a pattern for debugging the accumulation.
@@ -79,8 +96,10 @@ public:
      *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
      */
-    void fill_mode_accumulate(int32_t* data, int frame_num);
+    void fill_mode_accumulate(int32_t* data, int frame_num,
+                              chimeMetadata* metadata);
 
     /**
      * @brief Fill with a pattern with Gaussian noise with radiometer variance.
@@ -89,8 +108,10 @@ public:
      * 
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
      */
-    void fill_mode_gaussian(int32_t* data, int frame_num);
+    void fill_mode_gaussian(int32_t* data, int frame_num,
+                            chimeMetadata* metadata);
 private:
 
     Buffer* out_buf;
@@ -106,7 +127,7 @@ private:
     int32_t num_frames;
 
     // Function pointer for fill modes
-    typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int);
+    typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int, chimeMetadata *);
 
     // A map to look up the modes by name at run time
     std::map<std::string, fill_func> fill_map;

@@ -49,10 +49,12 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
             list_commands.push_back(new output_beamform_result("output_beamform_result", config, unique_name));
         } else if (commands[i]["name"] == "output_data_result") {
             list_commands.push_back(new output_data_result("output_data_result", config, unique_name));
-        } else if (commands[i]["name"] == "rfi_kernel") {
-            list_commands.push_back(new rfi_kernel(commands[i]["kernel"].get<string>().c_str(), "rfi_kernel", config, unique_name));
-        } else if (commands[i]["name"] == "output_rfi") {
-            list_commands.push_back(new output_rfi("output_rfi", config, unique_name));
+        } else if (commands[i]["name"] == "clRfiTimeSum") {
+            list_commands.push_back(new clRfiTimeSum(commands[i]["kernel"].get<string>().c_str(), "clRfiTimeSum", config, unique_name));
+        } else if (commands[i]["name"] == "clRfiInputSum") {
+            list_commands.push_back(new clRfiInputSum(commands[i]["kernel"].get<string>().c_str(), "clRfiInputSum", config, unique_name));
+        } else if (commands[i]["name"] == "clRfiOutput") {
+            list_commands.push_back(new clRfiOutput("clRfiOutput", config, unique_name));
         }
 
         // TODO This should just be part of the constructor.

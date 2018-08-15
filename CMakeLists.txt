@@ -15,7 +15,15 @@ option(USE_DPDK "Enable DPDK Framework" OFF)
 option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
+option(USE_OMP "Enable OpenMP" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
+option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
+option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
+
+if(${_GOSSEC})
+    add_definitions(-D_GOSSEC=1)
+    MESSAGE("_GOSSEC enabled: Set buffer status messages to DEBUG log level")
+endif()
 
 if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
   find_package( HCC )
@@ -113,36 +121,43 @@ if (${USE_AIRSPY})
 endif ()
 MESSAGE("Input Modules Included: " ${INPUT_MODULES})
 
-
-if (${USE_DPDK})
-  # DPDK Includes
-  include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
-  link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-
-  set (DPDK_LIST
-          rte_ethdev   rte_distributor  rte_kni     rte_mbuf      rte_pmd_bond   rte_pmd_ring
-          rte_power    rte_timer        rte_ring    rte_sched     rte_table
-          rte_acl      rte_eal          rte_kvargs  rte_mempool   rte_pmd_e1000
-          rte_cfgfile  rte_hash         rte_lpm     rte_meter     rte_pmd_i40e   rte_pmd_vmxnet3_uio
-          rte_cmdline  rte_ip_frag      rte_pipeline  rte_pmd_ixgbe  rte_port
-  )
-  set (DPDK_LIBS
-        -Wl,--start-group ${DPDK_LIST} -Wl,--end-group -ldl )
-  add_definitions(-DWITH_DPDK)
-  MESSAGE("DPDK Enabled")
-else ()
-  MESSAGE("DPDK Disabled")
-endif ()
-
 if (${USE_HDF5})
-  # HDF5 setup
-  include_directories ( ${HIGHFIVE_PATH}/include )
-  find_package(HDF5 REQUIRED)
-  add_definitions(-DWITH_HDF5)
-  MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
-else ()
-  MESSAGE("HDF5 disabled")
+    # only clone highfive if HIGHFIVE_PATH is not specified nor cached
+    if (NOT DEFINED HIGHFIVE_PATH)
+        MESSAGE("HIGHFIVE_PATH not specified: Cloning HighFive repository")
+        include(ExternalProject)
+        find_package(Git REQUIRED)
+        ExternalProject_Add(
+            highfive
+            PREFIX ${CMAKE_BINARY_DIR}/ext
+            GIT_REPOSITORY https://github.com/jrs65/HighFive.git
+	        GIT_TAG extensible-datasets
+            TIMEOUT 10
+            UPDATE_COMMAND ${GIT_EXECUTABLE} pull
+            CONFIGURE_COMMAND ""
+            BUILD_COMMAND ""
+            INSTALL_COMMAND ""
+            LOG_DOWNLOAD ON
+        )
+        ExternalProject_Get_Property(highfive source_dir)
+        set(HIGHFIVE_PATH ${source_dir} CACHE INTERNAL "Path to HighFive")
+    else()
+        # just to satisfy dependencies (dependencies on highfive are needed
+        # to make sure it is cloned before attempting to build kotekan)
+        add_custom_target(highfive)
+    endif()
+    MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
+    include_directories ( ${HIGHFIVE_PATH}/include )
+    find_package(HDF5 REQUIRED)
+    add_definitions(-DWITH_HDF5)
 endif ()
+
+# Optionally include OpenSSL for hash function support
+find_package( OpenSSL )
+if( OPENSSL_FOUND )
+    add_definitions(-DWITH_SSL)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+endif()
 
 # Get the current working branch
 execute_process(
@@ -178,6 +193,13 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+
+# OpenMP flag
+if(${USE_OMP})
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+endif()
+
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
@@ -204,18 +226,6 @@ endif ()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
-#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
-#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb ")
-#set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
-
-# Note C++11
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb")
-#set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
-#SET(CMAKE_INSTALL_PREFIX "/")
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
 if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
@@ -225,3 +235,13 @@ add_subdirectory(kotekan)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
+
+
+# Testing with boost
+if (${BOOST_TESTS})
+    set(BOOST_TESTS_DIR tests/boost/ CACHE INTERNAL "Path to boost test sources")
+    MESSAGE("BOOST_TESTS enabled: building tests in " ${BOOST_TESTS_DIR})
+    add_subdirectory(${BOOST_TESTS_DIR})
+else()
+    MESSAGE("BOOST_TESTS disabled")
+endif()

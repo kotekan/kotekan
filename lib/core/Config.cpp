@@ -8,6 +8,10 @@
 #include <stdexcept>
 #include <vector>
 
+#ifdef WITH_SSL
+#include <openssl/md5.h>
+#endif
+
 using std::vector;
 
 Config::Config() {
@@ -17,18 +21,17 @@ Config::Config(const Config& orig) {
 }
 
 Config::~Config() {
-    _json[0].clear();
+    _json.clear();
 }
 
-void Config::parse_file(const string& file_name, uint64_t switch_fpga_seq) {
+void Config::parse_file(const string& file_name) {
     try {
         std::ifstream config_file_stream(file_name);
-        config_file_stream >> _json[0];
+        config_file_stream >> _json;
     } catch (std::exception const & ex) {
         WARN("Could not parse json file: %s, error: %s", file_name.c_str(), ex.what());
         throw ex;
     }
-    _switch_fpga_seq = switch_fpga_seq;
 }
 
 int32_t Config::get_int(const string& base_path, const string& name) {
@@ -222,24 +225,8 @@ vector<json> Config::get_json_array(const string& base_path, const string& name)
     return value.get< vector<json> >();
 }
 
-uint64_t Config::get_switch_fpga_seq() {
-    return _switch_fpga_seq;
-}
-
-void Config::update_config(json updates, uint64_t switch_fpga_seq) {
-
-    // TODO enable config banks
-    _json[0] = updates;
-    (void)switch_fpga_seq;
-    // Switch gain banks here.
-    return;
-}
-
-bool Config::update_needed(uint32_t fpga_seq) {
-    if (fpga_seq == 0)
-        return true;
-    else
-        return false;
+void Config::update_config(json updates) {
+    _json = updates;
 }
 
 int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
@@ -257,23 +244,25 @@ int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
 
 json Config::get_value(const string& base_path, const string& name) {
     string search_path = base_path;
-    // I could make this a fancy recursive function, but this works just as well.
     for (;;) {
-        json::json_pointer search_pointer(search_path);
-        // Check if the search_path exists.
-        try {
-            // Yes this statement really does something.
-            _json[0][search_pointer];
-        } catch (std::exception const & ex) {
-            throw std::runtime_error("The base path " + base_path + " does not exist in the config.");
-        }
-        // Check if the value we want exists in the search path.
-        if (_json[0][search_pointer].count(name)) {
-            return _json[0][search_pointer][name];
+
+        if (search_path == "" && exists("/", name)) {
+            json::json_pointer value_pointer("/" + name);
+            return _json.at(value_pointer);
         }
 
         if (search_path == "")
             break;
+
+        if (search_path == "/" && exists(search_path, name)) {
+            json::json_pointer value_pointer(search_path + name);
+            return _json.at(value_pointer);
+        }
+
+        if (exists(search_path, name)) {
+            json::json_pointer value_pointer(search_path + "/" + name);
+            return  _json.at(value_pointer);
+        }
 
         std::size_t last_slash = search_path.find_last_of("/");
         search_path = search_path.substr(0, last_slash);
@@ -282,18 +271,42 @@ json Config::get_value(const string& base_path, const string& name) {
 }
 
 bool Config::exists(const string& base_path, const string& name) {
+    string search_path;
+    if (base_path == "/") {
+        search_path = base_path + name;
+    } else {
+        search_path = base_path + "/" + name;
+    }
+
+    json::json_pointer search_pointer(search_path);
     try {
-        get_value(base_path, name);
-    } catch (std::runtime_error const & ex) {
+        _json.at(search_pointer);
+    } catch (std::exception const & ex) {
         return false;
     }
     return true;
 }
 
 void Config::dump_config() {
-    INFO("Config: %s", _json[0].dump().c_str());
+    INFO("Config: %s", _json.dump().c_str());
 }
 
 json &Config::get_full_config_json() {
-    return _json[0];
+    return _json;
 }
+
+#ifdef WITH_SSL
+std::string Config::get_md5sum() {
+    unsigned char md5sum[MD5_DIGEST_LENGTH];
+
+    string config_dump = _json.dump().c_str();
+
+    MD5((const unsigned char *)config_dump.c_str(), config_dump.size(), md5sum);
+
+    char md5str[33];
+    for(int i = 0; i < 16; i++)
+        sprintf(&md5str[i*2], "%02x", (unsigned int)md5sum[i]);
+
+    return string(md5str);
+}
+#endif

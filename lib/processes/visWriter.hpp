@@ -22,7 +22,7 @@
  * acquisition per node. Alternatively it can be run more generally, receiving
  * and writing arbitrary frequencies, but it must be given the frequency list in
  * the config.
- * 
+ *
  * The products we are outputting must be specified correctly. This is done
  * using the same configuration parameters as `prodSubset`. If not explicitly
  * set `all` products is assumed.
@@ -35,6 +35,8 @@
  *         @buffer_metadata visMetadata
  *
  * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
+ * @conf   file_type        String. Type of file to write. One of 'hdf5',
+ *                          'hdf5fast' or 'raw'.
  * @conf   root_path        String. Location in filesystem to write to.
  * @conf   instrument_name  String (default: chime). Name of the instrument
  *                          acquiring data (if ``node_mode`` the hostname is
@@ -93,6 +95,9 @@ private:
 
     // The current file of visibilities that we are writing
     std::unique_ptr<visFileBundle> file_bundle;
+
+    // Type of the file we are writing
+    std::string file_type;
 
     // File length and number of samples to keep "active"
     size_t file_length;
