@@ -3,6 +3,7 @@
 #include "restServer.hpp"
 #include "KotekanProcess.hpp"
 
+#include "fmt.hpp"
 #include <iostream>
 
 configUpdater& configUpdater::instance()
@@ -136,10 +137,13 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         if (std::find(_keys[uri].begin(), _keys[uri].end(), it.key()) ==
                 _keys[uri].end()) {
             // this key is not in the config file
-            con.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
-            WARN("configUpdater: Update to endpoint '%s' contained value '%s'" \
-                 " not defined in the updatable config block.",
-                 uri.c_str(), it.key().c_str());
+            std::string msg = fmt::format("configUpdater: Update to endpoint " \
+                                          "'%s' contained value '%s' not " \
+                                          "defined in the updatable config " \
+                                          "block.",
+                                          uri.c_str(), it.key().c_str());
+            WARN(msg.c_str());
+            con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
     }
@@ -149,10 +153,12 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         if (*it != "kotekan_update_endpoint" &&
                 json.find(*it) == json.end()) {
             // this key is in the config file, but missing in the update
-            con.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
-            WARN("configUpdater: Update to endpoint '%s' is missing value " \
-                 "'%s' that is defined in the config file.",
-                 uri.c_str(), it->c_str());
+            std::string msg = fmt::format("configUpdater: Update to endpoint " \
+                                          "'%s' is missing value '%s' that is" \
+                                          " defined in the config file.",
+                                          uri.c_str(), it->c_str());
+            WARN(msg.c_str());
+            con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
     }
@@ -164,8 +170,12 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
              "there are no subscribers to the endpoint.", uri.c_str());
         if (std::find(_endpoints.begin(), _endpoints.end(), uri)
             == _endpoints.end()) {
-            WARN("configUpdater: Received POST command to non-existend " \
-                 "endpoint: %s. This should never happen.", uri.c_str());
+            std::string msg = fmt::format("configUpdater: Received POST " \
+                                          "command to non-existend endpoint: " \
+                                          "%s. This should never happen.",
+                                          uri.c_str());
+            WARN(msg.c_str());
+            con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
     }
@@ -175,10 +185,11 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
 
         // subscriber callback
         if (!search.first->second(json)) {
-            con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Failed updating %s with value %s.",
-                 uri.c_str(),
-                 json.dump().c_str());
+            std::string msg = fmt::format("configUpdater: Failed updating %s " \
+                                          "with value %s.",
+                                          uri.c_str(), json.dump().c_str());
+            ERROR(msg.c_str());
+            con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
             ERROR("configUpdater: Stopping Kotekan.");
             raise(SIGINT);
             return;
@@ -197,9 +208,11 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             // should be checked in processes' callbacks
             _config->update_value(uri, it.key(), it.value());
         } catch (const std::exception& e) {
-            con.send_empty_reply(HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Failed applying update to endpoint %s: %s",
-                 uri.c_str(), e.what());
+            std::string msg = fmt::format("configUpdater: Failed applying " \
+                                          "update to endpoint %s: %s",
+                                          uri.c_str(), e.what());
+            ERROR(msg.c_str());
+            con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
             ERROR("configUpdater: Stopping Kotekan.");
             raise(SIGINT);
             return;
