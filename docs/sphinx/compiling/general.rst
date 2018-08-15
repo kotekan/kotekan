@@ -42,6 +42,7 @@ Required for some options
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
+* `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_
 
 Hardware
 =========
@@ -112,6 +113,8 @@ Cmake build options
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
     Location of the openssl libs and includes.
+* ``-DBOOST_TESTS=ON``
+    Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
 
 Examples
 ---------
