@@ -34,7 +34,7 @@ pipeline {
             sh '''export PATH=${PATH}:/usr/local/bin/
                   mkdir build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON ..
+                  cmake ..
                   make'''
           }
         }
