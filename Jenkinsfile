@@ -28,6 +28,16 @@ pipeline {
                   make'''
           }
         }
+        stage('Build docs') {
+          agent {label 'macos silver'}
+          steps {
+            sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
+                  mkdir build-docs
+                  cd build-docs/
+                  cmake -DCOMPILE_DOCS=ON ..
+                  make'''
+          }
+        }
       }
     }
   }
