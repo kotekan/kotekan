@@ -28,7 +28,7 @@ pipeline {
                   make'''
           }
         }
-        stage('Build docs') {
+        stage('Build MacOS kotekan') {
           agent {label 'macos silver'}
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
