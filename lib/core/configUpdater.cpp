@@ -126,11 +126,8 @@ void configUpdater::create_endpoint(const string& name)
 
 void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
 {
-    DEBUG("Callback received this: %s", con.get_full_message().c_str());
-
     std::string uri = con.get_uri();
-
-    DEBUG("uri called: %s", uri.c_str());
+    DEBUG("configUpdater: received message on endpoint: %s", uri.c_str());
 
     // Check the incoming json for extra values
     for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
@@ -180,9 +177,6 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
         }
     }
     while (search.first != search.second) {
-        DEBUG("configUpdater: Calling subscriber of %s",
-             search.first->first.c_str());
-
         // subscriber callback
         if (!search.first->second(json)) {
             std::string msg = fmt::format("configUpdater: Failed updating %s " \
