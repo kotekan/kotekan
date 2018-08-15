@@ -46,9 +46,6 @@ uint32_t visFileRing::extend_time(time_ctype new_time) {
 
         }
 
-        // Write metadata file
-        write_metadata();
-
         // TODO: Are these appropriate in this context?
         // Start to flush out older dataset regions
         uint delta_async = 2;
@@ -62,6 +59,9 @@ uint32_t visFileRing::extend_time(time_ctype new_time) {
             flush_raw_sync(cur_pos - delta_sync);
         }
     }
+
+    // Write metadata file
+    write_metadata();
 
     return cur_pos;
 
