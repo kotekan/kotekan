@@ -61,11 +61,14 @@
  * subscribes.
  *
  * All and only the variables defined in the updatable config block in the
- * config file are guaranteed to be in the json block passed to a processes
+ * config file are guaranteed to be in the json block passed to the processes
  * callback function.
  * It is up to the process, though, to check the data types, sizes and
  * the actual values in the callback function and return `false` if anything
  * is wrong.
+ *
+ * The process must be ready to receive updates **before** it subscribes and it
+ * has to apply save threading principles.
  */
 
 class configUpdater
