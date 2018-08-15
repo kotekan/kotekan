@@ -78,11 +78,17 @@ void basebandRequestManager::status_callback(connectionInstance& conn){
             json j = to_json(freq_id, req);
             requests_json.push_back(j);
         }
-    }
-
-    for (const auto& d : processing) {
-        json j = to_json(*d);
-        requests_json.push_back(j);
+        for (const auto& d : readout_entry.processing) {
+            json j = to_json(d);
+            requests_json.push_back(j);
+        }
+        {
+            std::lock_guard<std::mutex> lock(*readout_entry.current_lock);
+            if (readout_entry.current_status) {
+                json j = to_json(*readout_entry.current_status);
+                requests_json.push_back(j);
+            }
+        }
     }
 
     conn.send_text_reply(requests_json.dump());
@@ -110,8 +116,8 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-bool basebandRequestManager::register_readout_process(const uint32_t freq_id) {
-    return readout_registry[freq_id].request_queue.empty();
+std::shared_ptr<std::mutex> basebandRequestManager::register_readout_process(const uint32_t freq_id) {
+    return readout_registry[freq_id].current_lock;
 }
 
 std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(const uint32_t freq_id) {
@@ -129,15 +135,21 @@ std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(con
         DEBUG("Expired");
     }
 
+    std::lock_guard<std::mutex> current_lock(*readout_entry.current_lock);
+    if (readout_entry.current_status) {
+        // if this method is called, we know that the readout is done with the
+        // current dump
+        readout_entry.processing.push_back(*readout_entry.current_status);
+    }
+
     if (!readout_entry.request_queue.empty()) {
         basebandRequest req = readout_entry.request_queue.front();
-        basebandDumpStatus stat{req};
-        auto task = std::make_shared<basebandDumpStatus>(stat);
         readout_entry.request_queue.pop_front();
-        processing.push_back(task);
-        return task;
+
+        readout_entry.current_status = std::make_shared<basebandDumpStatus>(basebandDumpStatus{req});
     }
     else {
-        return nullptr;
+        readout_entry.current_status = nullptr;
     }
+    return readout_entry.current_status;
 }
