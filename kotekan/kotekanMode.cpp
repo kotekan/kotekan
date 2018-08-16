@@ -25,6 +25,7 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
 kotekanMode::~kotekanMode() {
 
+    configUpdater::instance().reset();
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_all_aliases();
 

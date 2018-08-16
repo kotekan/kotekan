@@ -96,7 +96,16 @@ class configUpdater
        void apply_config(Config& config);
 
        /**
-        * @brief Subscribe to a updatable blocks from a KotekanProcess.
+        * @brief Reset the configUpdater
+        *
+        * Removes all REST endpoints and clears all memory of subscribers and
+        * endpoints. This should be called **before destruction of the
+        * subscribers**, to prevent the callbacks being called afterwards.
+        */
+       void reset();
+
+       /**
+        * @brief Subscribe to the updatable blocks of a KotekanProcess.
         *
         * The callback function has to return True on success and False
         * otherwise.
@@ -111,7 +120,7 @@ class configUpdater
                       std::function<bool(json &)> callback);
 
        /**
-        * @brief Subscribe to several updatable blocks from a KotekanProcess.
+        * @brief Subscribe to all updatable blocks of a KotekanProcess.
         *
         * The callback functions have to return True on success and False
         * otherwise.

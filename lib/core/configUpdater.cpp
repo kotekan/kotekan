@@ -15,10 +15,27 @@ configUpdater& configUpdater::instance()
 
 void configUpdater::apply_config(Config& config)
 {
+    reset();
+
     _config = &config;
 
     // parse the tree and create endpoints
     parse_tree(config.get_full_config_json(), "");
+}
+
+void configUpdater::reset()
+{
+    // unsubscribe from all REST endpoints
+    for (auto it = _endpoints.cbegin(); it != _endpoints.cend(); it++) {
+        INFO("configUpdater: Removing endpoint %s", it->c_str());
+        restServer::instance().remove_json_callback(*it);
+    }
+
+    // clear all memory of endpoints, callbacks and updatable blocks
+    _endpoints.clear();
+    _callbacks.clear();
+    _init_values.clear();
+    _keys.clear();
 }
 
 void configUpdater::parse_tree(json& config_tree, const std::string& path)
@@ -104,6 +121,10 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
 void configUpdater::subscribe(const std::string& name,
                               std::function<bool(json &)> callback)
 {
+    if (!callback)
+        throw std::runtime_error("configUpdater: Was passed a callback " \
+                                 "function for endpoint '" + name + "', that " \
+                                 "does not exist.");
     _callbacks.insert(std::pair<std::string, std::function<bool(
                           nlohmann::json &)>>(name, callback));
     DEBUG("New subscription to %s", name.c_str());
