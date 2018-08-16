@@ -103,7 +103,7 @@ class configUpdater
         * @param subscriber Reference to the subscribing process.
         * @param callback   Callback function for attribute updates.
         */
-       void subscribe(const KotekanProcess& subscriber,
+       void subscribe(const KotekanProcess* subscriber,
                       std::function<bool(json &)> callback);
 
        /**
@@ -119,7 +119,7 @@ class configUpdater
         * @param subscriber Reference to the subscribing process.
         * @param callbacks  Map of value names and callback functions.
         */
-       void subscribe(const KotekanProcess& subscriber,
+       void subscribe(const KotekanProcess* subscriber,
                    std::map<std::string,std::function<bool(json &)>> callbacks);
 
        /**
