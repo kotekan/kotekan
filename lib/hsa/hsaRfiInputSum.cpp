@@ -31,7 +31,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint = unique_name + "/gpu_" + std::to_string(device.get_gpu_id()) + "/update_bad_inputs";
+    endpoint = unique_name + "/update_bad_inputs";
     rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiInputSum::rest_callback, this, _1, _2));
 }
@@ -52,11 +52,12 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
         _bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
     }
     //Update relevant variables
-    _num_bad_inputs = json_request["num_bad_inputs"].get<int>();
+    _num_bad_inputs = _bad_inputs.size();
     //Flag for input mask rebuild
     rebuildInputMask = true;
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
+    config.update_value(unique_name, "bad_inputs", _bad_inputs);
 }
 
 hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
