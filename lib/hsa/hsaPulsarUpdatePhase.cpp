@@ -67,8 +67,9 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
         host_phase_0[index++] = 0;
     }
 
-    bank_read_id = 8;
-    bank_write = 0;
+    bankID = (uint *)hsa_host_malloc(device.get_gpu_buffer_depth());
+    bank_use_0 = 0;
+    bank_use_1 = 0;
 
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
@@ -89,6 +90,7 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     restServer::instance().remove_json_callback(endpoint_gains);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
+    hsa_host_free(bankID);
     hsa_host_free(host_gain);
 }
 
@@ -137,7 +139,6 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
         az = acos(az);
         if(sin(hour_angle*D2R) >= 0){az = TAU - az;}
         double projection_angle, effective_angle, offset_distance;
-
         for (int i=0;i<4;i++){ //loop 4 cylinders
             for (int j=0;j<256;j++) { //loop 256 feeds
                 float dist_y = j*_feed_sep_NS;
@@ -160,27 +161,22 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
 
 hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             hsa_signal_t precede_signal) {
-
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
-    uint bankID = (current_seq / phase_update_period) % 2;
-
+    bank_now = (current_seq / phase_update_period) % 2;
+    
     if (first_pass) {
         first_pass = false;
         //From the metadata, figure out the frequency
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_idx = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_idx);
-        bankID = bank_write;
+	bank_switch = bank_now;  //Trigger to update phase
+	bank_read = bank_now;
     }
 
     if (update_gains) {
-        //brute force wait to make sure we don't clobber memory
-        if (hsa_signal_wait_scacquire(precede_signal, HSA_SIGNAL_CONDITION_LT, 1,
-                      UINT64_MAX, HSA_WAIT_STATE_BLOCKED) != 0) {
-        ERROR("***** ERROR **** Unexpected signal value **** ERROR **** ");
-        }
         update_gains=false;
         FILE *ptr_myfile;
         char filename[256];
@@ -201,26 +197,30 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
             fclose(ptr_myfile);
         }
     }
-
-    if(bankID == bank_write) {  //Time to update
+    if( bank_now == bank_switch) {  //Condition for update phase
 
         //GPS time, need ch_master
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
 	if (time_now_gps.tv_sec == 0) {
 	    ERROR("GPS time appears to be zero, bad news for pulsar timing!");
 	}
-        if (bank_write == 0) {
+	//use whichever bank that has no lock
+	if ( bank_use_0 == 0)  {  //no more outstanding async copy using bank0
 	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
-        }
-        if (bank_write == 1) {
+	    bank_read=0;
+	    bank_switch = (bank_switch + 1) % 2;
+	}
+        else if (bank_use_1 == 0) { //no more outstanding async copy using bank1
 	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
-        }
-        {
-            std::lock_guard<std::mutex> lock(mtx_read);
-            bank_read_id = bank_write;
-        }
-        bank_write = (bank_write + 1) % 2; //So if next time want to update, get written to the alt. bank instead to avoid overwritting
+	    bank_read = 1;
+	    bank_switch = (bank_switch + 1) % 2;
+	}
+	else {
+	  ERROR("No available phase bank for psr update bank_use_0=%d bank_use_1=%d", bank_use_0, bank_use_1);
+	}
     }
+
+    bankID[gpu_frame_id] = bank_read; // update or not, read from the latest bank
 
     set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
@@ -229,25 +229,17 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     //(i.e., when main_thread is being called, in principle I just need to copy in
     //when there is an update, which is of slower cadence. Down the road optimization
 
-    // Get the gpu memory pointer. i will need multiple frame,
+    // Get the gpu memory pointer. i will need multiple frame through the use of get_gpu_mem_array,
     //because while it has been sent away for async copy, the next update might be happening.
-    void * gpu_memory_frame = device.get_gpu_memory("beamform_phase",
-                                                    phase_frame_len);
+    void * gpu_memory_frame = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, phase_frame_len);
 
-    {
-        std::lock_guard<std::mutex> lock(mtx_read); //Prevent multiple read if read_id change during execut
-
-        //This is just for the beginning, and sending host_phase_0 which are all zeros.
-        if (unlikely(bank_read_id==8)) {
-            device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_0, phase_frame_len, precede_signal, signals[gpu_frame_id]);
-        }
-        //as soon as it start updating bank_read_id will be either 0 or 1
-        if (likely(bank_read_id == 0)) {
-            device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_0, phase_frame_len, precede_signal, signals[gpu_frame_id]);
-        }
-        if (likely(bank_read_id == 1)) {
-            device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_1, phase_frame_len, precede_signal, signals[gpu_frame_id]);
-        }
+    if (bankID[gpu_frame_id] == 0) {
+        device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_0, phase_frame_len, precede_signal, signals[gpu_frame_id]);
+	bank_use_0 = bank_use_0 + 1;
+    }
+    if (bankID[gpu_frame_id] == 1) {
+        device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_1, phase_frame_len, precede_signal, signals[gpu_frame_id]);
+	bank_use_1 = bank_use_1 + 1;
     }
     return signals[gpu_frame_id];
 }
@@ -255,6 +247,12 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
 void hsaPulsarUpdatePhase::finalize_frame(int frame_id)
 {
     hsaCommand::finalize_frame(frame_id);
+    if (bankID[frame_id] == 1) {
+      bank_use_1 = bank_use_1 - 1;
+    }
+    if (bankID[frame_id] == 0) {
+      bank_use_0 = bank_use_0 - 1;
+    }
 }
 
 void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& json_request) {

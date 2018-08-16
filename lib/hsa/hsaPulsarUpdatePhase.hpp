@@ -81,6 +81,7 @@ public:
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 
+    /// Clean up and decrement the counter that keeps track of outstanding async copy
     void finalize_frame(int frame_id);
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
@@ -132,12 +133,18 @@ private:
     /// E-W feed separation in m
     int32_t _feed_sep_EW;
 
-    /// Determine which bank of phases to read from, normally its either 0 or 1
-    uint16_t bank_read_id;
-    /// Determine which bank of phases to write to, when updating phases, should be 0 or 1
-    uint16_t bank_write;
-    /// mutex lock to prevent a bank from being read while it is being written to.
-    std::mutex mtx_read;
+    /// Determine which bank of phases to read from, should be either 0 or 1
+    uint bank_read;
+    /// Determine which bank of phases to switch to next when an update is due
+    uint bank_switch;
+    /// Trigger an update every second as it changes b/w 0 and 1
+    uint bank_now;
+    /// Array to keep track of which gpu_frame is using which phase bank
+    uint * bankID;
+    /// Counter to keep track of outstanding async copy for phase bank 0
+    uint bank_use_0;
+    /// Counter to keep track of outstanding async copy for phase bank 1
+    uint bank_use_1;
     /// mutex lock prevent psr_coord to be read while it is being updated.
     std::mutex _pulsar_lock;
 
