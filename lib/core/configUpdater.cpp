@@ -76,26 +76,26 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path)
 void configUpdater::subscribe(const KotekanProcess& subscriber,
                std::function<bool(json &)> callback)
 {
-    if (!_config->exists(subscriber.get_unique_name(), "updatable_block"))
-        throw std::runtime_error("configUpdater: key 'updatable block' was " \
+    if (!_config->exists(subscriber.get_unique_name(), "updatable_config"))
+        throw std::runtime_error("configUpdater: key 'updatable_config' was " \
                                  "not found in '" + subscriber.get_unique_name()
                                  + "' in the config file.");
     subscribe(_config->get_string(subscriber.get_unique_name(),
-                                  "updatable_block"), callback);
+                                  "updatable_config"), callback);
 }
 
 void configUpdater::subscribe(const KotekanProcess& subscriber,
             std::map<std::string,std::function<bool(json &)>> callbacks)
 {
     for (auto callback : callbacks) {
-        if (!_config->exists(subscriber.get_unique_name() + "/updatable_block",
+        if (!_config->exists(subscriber.get_unique_name() + "/updatable_config",
                             callback.first))
             throw std::runtime_error("configUpdater: key '" + callback.first +
                                      "' was not found in '" +
                                      subscriber.get_unique_name() +
-                                     "/updatable block' in the config file.");
+                                     "/updatable_config' in the config file.");
         subscribe(_config->get_string(subscriber.get_unique_name() +
-                                     "/updatable_block/", callback.first),
+                                     "/updatable_config/", callback.first),
                                      callback.second);
     }
 }
