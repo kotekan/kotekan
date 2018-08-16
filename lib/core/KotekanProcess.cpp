@@ -92,6 +92,11 @@ void KotekanProcess::start() {
     apply_cpu_affinity();
 }
 
+std::string KotekanProcess::get_unique_name() const
+{
+    return unique_name;
+}
+
 void KotekanProcess::join() {
     if (this_thread.joinable()) {
         // This has the effect of creating a new thread for each thread join,
