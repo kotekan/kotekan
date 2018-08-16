@@ -40,7 +40,7 @@ pipeline {
           }
         }
         stage('Build MacOS kotekan') {
-          agent {label 'macos silver'}
+          agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
                   mkdir build-macos
