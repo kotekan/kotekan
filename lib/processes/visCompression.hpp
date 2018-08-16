@@ -76,4 +76,5 @@ private:
 std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
     std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
 );
+
 #endif

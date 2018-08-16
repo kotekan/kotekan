@@ -87,7 +87,7 @@ void fakeVis::main_thread() {
             DEBUG("Making fake visBuffer for freq=%i, fpga_seq=%i", f, fpga_seq);
 
             // Wait for the buffer frame to be free
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), 
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(),
                                      output_frame_id) == nullptr) {
                 break;
             }
@@ -215,6 +215,12 @@ void fakeVis::main_thread() {
                     }
                 }
             }
+
+            // Set flags
+            std::fill(output_frame.flags.begin(), output_frame.flags.end(), 1.0);
+
+            // Set gain
+            std::fill(output_frame.gain.begin(), output_frame.gain.end(), 1.0);
 
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
