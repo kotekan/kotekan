@@ -71,8 +71,12 @@ private:
     uint32_t input_frame_len;
     /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
     uint32_t output_frame_len;
+    /// Length of the input mask, should be sizeof_uchar x n_elem
+    uint32_t mask_len;
     /// Length of lost sample correction frame
     uint32_t correction_frame_len;
+    /// Array to hold the input mask (which inputs are currently functioning)
+    uint8_t *InputMask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
@@ -85,6 +89,10 @@ private:
     uint32_t _num_bad_inputs;
     /// The total integration length of the spectral kurtosis estimate
     uint32_t _M;
+    /// Vector to hold a list of inputs which are currently malfunctioning
+    vector<int32_t> _bad_inputs;
+    /// Boolean to hold whether or not the current kernel execution is the first or not.
+    bool rebuildInputMask;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
     /// Sring to hold endpoint name

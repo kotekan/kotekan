@@ -11,7 +11,7 @@ __kernel void
 rfi_chime_timesum(
      __global uint *input,
      __global float *output,
-     __constant uchar *InputMask,
+//     __constant uchar *InputMask,
      __constant uchar *LostSamples,
      __global uint *LostSamplesCorrection,
      const uint sk_step,
@@ -64,8 +64,8 @@ rfi_chime_timesum(
     }      
     //Compute address in output data and add sum to output array
     address = 4*gx + gy*4*gx_size;
-    output[0 + address] = (1-InputMask[0 + current_element])*tmp.s0;
-    output[1 + address] = (1-InputMask[1 + current_element])*tmp.s1;
-    output[2 + address] = (1-InputMask[2 + current_element])*tmp.s2;
-    output[3 + address] = (1-InputMask[3 + current_element])*tmp.s3;
+    output[0 + address] = tmp.s0;
+    output[1 + address] = tmp.s1;
+    output[2 + address] = tmp.s2;
+    output[3 + address] = tmp.s3;
 }
