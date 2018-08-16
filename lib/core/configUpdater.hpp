@@ -45,13 +45,17 @@
  *
  * Every process that subscribes to this update endpoint by calling
  * ```
- * configUpdater::instance().subscribe(*this, std::bind(&my_process::my_callback, this, _1));
+ * configUpdater config_updater = configUpdater::instance();
+ * config_updater.subscribe(*this, std::bind(&my_process::my_callback, this, _1));
  * ```
  * or
  * ```
  * std::map<std::string, std::function<bool(json &)> callback_map(2);
+ *
  * callbacks.insert ("bar", std::bind(&my_process::my_bar_callback, this, _1));
+ *
  * callbacks.insert ("fu", std::bind(&my_process::my_fu_callback, this, _1));
+ *
  * configUpdater::instance().subscribe(*this, callback_map);
  * ```
  * will receive an initial update on each callback function with the initial
