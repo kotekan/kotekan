@@ -88,10 +88,6 @@ void kotekanMode::start_processes() {
 }
 
 void kotekanMode::stop_processes() {
-    // Stop the configUpdater from making new calls to kotekan processes
-    configUpdater &config_updater = configUpdater::instance();
-    config_updater.reset();
-    
     // Send shutdown signal to buffers
     for (auto const &buf : buffers) {
         INFO("Sending shutdown signal to buffer: %s", buf.first.c_str());
