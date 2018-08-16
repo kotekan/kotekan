@@ -2,6 +2,7 @@
 @file
 @brief Processes for writing visibility data.
 - visWriter : public KotekanProcess
+- visCalWriter : public KotekanProcess
 *****************************************/
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
@@ -12,6 +13,7 @@
 #include "KotekanProcess.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
+#include "restServer.hpp"
 
 /**
  * @class visWriter
@@ -78,7 +80,12 @@ public:
     void main_thread();
 
 
-private:
+protected:
+    // The current file of visibilities that we are writing
+    std::shared_ptr<visFileBundle> file_bundle;
+
+    // Override to use a visFileBundle child class
+    virtual void make_bundle(std::map<std::string, std::string>& metadata);
 
     /// Setup the acquisition
     void init_acq();
@@ -93,15 +100,13 @@ private:
     std::string instrument_name;
     std::string weights_type;
 
-    // The current file of visibilities that we are writing
-    std::unique_ptr<visFileBundle> file_bundle;
-
     // Type of the file we are writing
     std::string file_type;
 
     // File length and number of samples to keep "active"
     size_t file_length;
     size_t window;
+    size_t rollover;
 
     /// Input buffer to read from
     Buffer * in_buf;
@@ -134,6 +139,36 @@ private:
     movingAverage write_time;
 
     uint32_t dropped_frame_count = 0;
+};
+
+/**
+ * @class visCalWriter
+ * @brief Extension to visWriter for exporting calibration data.
+ *
+ * TODO: fill in...
+ *
+ * @author Tristan Pinsonneault-Marotte
+ **/
+class visCalWriter : public visWriter {
+public:
+
+    visCalWriter(Config &config,
+            const string& unique_name,
+            bufferContainer &buffer_container);
+
+    // TODO: is it necessary to override?
+    //void main_thread() override;
+
+    /// REST endpoint to request swapping buffer files
+    void rest_callback(connectionInstance& conn);
+
+protected:
+
+    // Override function to make visCalFileBundle and set its file name
+    void make_bundle(std::map<std::string, std::string>& metadata) override;
+
+    std::string acq_name, file_name;
+
 };
 
 #endif

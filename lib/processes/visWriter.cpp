@@ -16,6 +16,7 @@
 #include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
+REGISTER_KOTEKAN_PROCESS(visCalWriter);
 
 visWriter::visWriter(Config& config,
                        const string& unique_name,
@@ -206,7 +207,7 @@ void visWriter::init_acq() {
 
     // For a ring-type file, rollover must be disabled,
     // window should be less than file length
-    size_t rollover = file_length;
+    rollover = file_length;
     if (file_type == "ring") {
         rollover = 0;
         if (window > file_length) {
@@ -215,6 +216,12 @@ void visWriter::init_acq() {
             window = file_length;
         }
     }
+    make_bundle(metadata);
+}
+
+
+void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
+
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
     file_bundle = std::unique_ptr<visFileBundle>(
@@ -260,4 +267,37 @@ void visWriter::setup_freq(const std::vector<uint32_t>& freq_ids) {
         freqs.push_back({freq_from_bin(id), (400.0 / 1024)});
         fpos++;
     }
+}
+
+
+visCalWriter::visCalWriter(Config &config,
+                            const string& unique_name,
+                            bufferContainer &buffer_container) :
+    visWriter::visWriter(config, unique_name, buffer_container) {
+    // Register REST callback
+    // Set file name in visCalFileBundle
+    file_name = "live";
+    acq_name = "cal";
+}
+
+void visCalWriter::rest_callback(connectionInstance& conn) {
+    // Tell visCalFileBundle to change files
+    // Respond with frozen file path
+}
+
+void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
+
+    // Create the visFileBundle. This will not create any files until add_sample
+    // is called
+    file_bundle = std::unique_ptr<visCalFileBundle>(
+        new visCalFileBundle(
+            file_type, root_path, instrument_name, metadata, chunk_id, rollover,
+            window, freqs, inputs, prods, num_ev, file_length
+        )
+    );
+
+    // TODO: is there a better way of using the child class method?
+    std::shared_ptr<visCalFileBundle> file_cal_bundle = std::dynamic_pointer_cast<visCalFileBundle>(file_bundle);
+
+    file_cal_bundle->set_file_name(file_name, acq_name);
 }

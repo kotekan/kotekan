@@ -130,6 +130,31 @@ void visFileBundle::add_file(time_ctype first_time) {
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
 }
 
+void visCalFileBundle::set_file_name(std::string fname, std::string aname) {
+    file_name = fname;
+    acq_name = aname;
+}
+
+void visCalFileBundle::add_file(time_ctype first_time) {
+    // Create directory
+    mkdir((root_path + "/" + acq_name).c_str(), 0755);
+    // Create the file, create room for the first sample and add into the file map
+    auto file = mk_file(file_name, acq_name, root_path);
+    auto ind = file->extend_time(first_time);
+    vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
+}
+
+void visCalFileBundle::clear_file_map() {
+    // RFlush and remove all entries in the map
+    std::shared_ptr<visFile> file;
+    uint32_t ind;
+    for (size_t i = 0; i < vis_file_map.size(); i++) {
+        std::tie(file, ind) = vis_file_map[i];
+        file->deactivate_time(ind); // Cleanup the sample
+    }
+    vis_file_map.clear();
+}
+
 std::string create_lockfile(std::string filename) {
 
     // Create the lock file first such that there is no time the file is
