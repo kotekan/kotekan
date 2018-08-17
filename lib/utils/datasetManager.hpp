@@ -249,20 +249,6 @@ public:
     void operator=(const datasetManager&) = delete;
 
     /**
-     * @brief Register a state with the manager.
-     *
-     * @param trans A pointer to the state.
-     * @returns The id assigned to the state.
-     **/
-    template <class T,
-    typename enable_if<is_base_of<datasetState, T>::value, void>::type>
-    pair<state_id, const T*> add_state(unique_ptr<T>&& state) {
-        state_id hash = hash_state(*state);
-        _states[hash] = std::move(state);
-        return std::pair<state_id, T>(hash, _states[hash]);
-    }
-
-    /**
      * @brief Register a new dataset.
      *
      * @param trans The ID of an already registered state.
@@ -270,6 +256,15 @@ public:
      * @returns The ID assigned to the new dataset.
      **/
     dset_id add_dataset(state_id trans, dset_id input);
+
+    /**
+     * @brief Register a state with the manager.
+     *
+     * @param trans A pointer to the state.
+     * @returns The id assigned to the state.
+     **/
+    template <typename T>
+    inline pair<state_id, const T*> add_state(unique_ptr<T>&& state);
 
     /**
      * @brief Return the state table.
@@ -372,5 +367,17 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
 
     return {-1, nullptr};
 
+}
+
+// FIXME: add sth like
+// typename enable_if_t<is_base_of<datasetState, T>::value>::state
+// So that compilation for T not having datasetState as a base class fails.
+template <typename T>
+pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state)
+{
+    state_id hash = hash_state(*state);
+    _states[hash] = std::move(state);
+    return std::pair<state_id, const T*>(hash,
+                                         (const T*)(_states.at(hash).get()));
 }
 #endif

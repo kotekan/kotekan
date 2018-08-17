@@ -31,11 +31,11 @@ BOOST_AUTO_TEST_CASE( _general ) {
     state_uptr dt3 = datasetState::from_json(j2);
     std::cout << dt3->to_json().dump() << std::endl;
 
-    std::pair<state_id, const freqState*> pair = dm.add_state(std::make_unique<freqState>(ids));
-    state_id t1 = pair.first;
+    std::pair<state_id, const freqState*> pair1 = dm.add_state(std::make_unique<freqState>(ids));
+    state_id t1 = pair1.first;
     std::pair<state_id, const inputState*> pair2 = dm.add_state(std::make_unique<inputState>());
     state_id t2 = pair2.first;
-    std::pair<state_id, const freqState*> pair3 = dm.add_state(std::move(dt2));
+    std::pair<state_id, const freqState*> pair3 = dm.add_state(std::make_unique<freqState>(j, std::move(dt2)));
     state_id t3 = pair3.first;
 
     dset_id d1 = dm.add_dataset(t1, -1);
