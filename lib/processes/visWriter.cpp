@@ -296,8 +296,10 @@ visCalWriter::visCalWriter(Config &config,
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
     if (access((full_path + file_name + ".data").c_str(), F_OK) == 0) {
-        // TODO: just delete?
-        throw std::runtime_error("visCalWriter: File already exist.");
+        // Delete existing files
+        INFO(("Clobering files " + full_path + file_name + ".*").c_str());
+        remove((full_path + file_name + ".data").c_str());
+        remove((full_path + file_name + ".meta").c_str());
     }
 }
 
@@ -323,7 +325,10 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
            (full_path + "/" + frozen_file_name + ".meta").c_str());
 
     // Respond with frozen file path
-    conn.send_text_reply(full_path + "/" + frozen_file_name);
+    json reply {
+        {"file_path", root_path + "/" + acq_name + "/" + frozen_file_name}
+    };
+    conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }
 
