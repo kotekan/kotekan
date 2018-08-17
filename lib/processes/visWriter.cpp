@@ -285,19 +285,27 @@ visCalWriter::visCalWriter(Config &config,
 
     // Get file name to write to
     // TODO: strip file extensions?
-    file_name = config.get_string_default(unique_name, "file_name", "live");
+    std::string fname_base = config.get_string_default(unique_name, "file_base", "cal");
     acq_name = config.get_string_default(unique_name, "dir_name", "cal");
-    frozen_file_name = config.get_string_default(unique_name,
-                                                 "frozen_file_name", "cal");
+    // Initially start with this buffer configuration
+    fname_live = fname_base + "_A";
+    fname_frozen = fname_base + "_B";
 
     // Force use of VisFileRing
     file_type = "ring";
 
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
-    if (access((full_path + file_name + ".data").c_str(), F_OK) == 0) {
+    if ((access((full_path + fname_live + ".data").c_str(), F_OK) == 0)
+        || (access((full_path + fname_frozen + ".data").c_str(), F_OK) == 0)) {
         // TODO: just delete?
-        throw std::runtime_error("visCalWriter: File already exist.");
+        INFO(("Clobering files in " + full_path).c_str());
+        remove((full_path + fname_base + "_A.data").c_str());
+        remove((full_path + fname_base + "_A.meta").c_str());
+        remove((full_path + fname_base + "_B.data").c_str());
+        remove((full_path + fname_base + "_B.meta").c_str());
+        DEBUG("Remove locks: %s", strerror(errno));
+        //throw std::runtime_error("visCalWriter: File already exist.");
     }
 }
 
@@ -311,19 +319,18 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
 
     INFO("Received request to release calibration live file...");
 
-    // Tell visCalFileBundle to stop writing to current file
-    file_cal_bundle->clear_file_map();
-    // Remove previous frozen buffer and replace with new one
-    std::string full_path = root_path + "/" + acq_name;
-    INFO(("Updating cal file names in " + full_path).c_str());
-    remove((full_path + "/" + frozen_file_name + ".*").c_str());
-    rename((full_path + "/" + file_name + ".data").c_str(),
-           (full_path + "/" + frozen_file_name + ".data").c_str());
-    rename((full_path + "/" + file_name + ".meta").c_str(),
-           (full_path + "/" + frozen_file_name + ".meta").c_str());
+    // Swap files
+    std::string fname_tmp = fname_live;
+    fname_live = fname_frozen;
+    fname_frozen = fname_tmp;
+
+    // Tell visCalFileBundle to write to new file starting with next sample
+    remove((root_path + "/" + acq_name + "/" + fname_live).c_str());
+    file_cal_bundle->set_file_name(fname_live, acq_name);
 
     // Respond with frozen file path
-    conn.send_text_reply(full_path + "/" + frozen_file_name);
+    json reply {"file_path", root_path + "/" + acq_name + "/" + fname_frozen};
+    conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }
 
@@ -341,5 +348,5 @@ void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     // TODO: is there a better way of using the child class method?
     file_cal_bundle = std::dynamic_pointer_cast<visCalFileBundle>(file_bundle);
 
-    file_cal_bundle->set_file_name(file_name, acq_name);
+    file_cal_bundle->set_file_name(fname_live, acq_name);
 }

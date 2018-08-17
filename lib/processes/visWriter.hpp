@@ -222,7 +222,7 @@ protected:
 
     std::shared_ptr<visCalFileBundle> file_cal_bundle;
 
-    std::string acq_name, file_name, frozen_file_name;
+    std::string acq_name, fname_live, fname_frozen;
 
     std::string endpoint;
 
