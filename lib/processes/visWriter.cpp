@@ -93,9 +93,6 @@ void visWriter::main_thread() {
             break;
         }
 
-        // Acquire lock on writing
-        std::lock_guard<std::mutex> write_guard(write_mutex);
-
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
 
@@ -140,7 +137,9 @@ void visWriter::main_thread() {
 
             // Add all the new information to the file.
             double start = current_time();
+            write_mutex.lock();
             bool error = file_bundle->add_sample(t, freq_ind, frame);
+            write_mutex.unlock();
             double elapsed = current_time() - start;
 
             DEBUG("Write time %.5f s", elapsed);
