@@ -8,6 +8,7 @@
 
 #include "json.hpp"
 #include "errors.h"
+#include "visUtil.hpp"
 
 // Alias certain types to give semantic meaning to the IDs
 using dset_id = int32_t;
@@ -15,12 +16,13 @@ using state_id = size_t;  // This is the output format of a std::hash (64bit so 
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
+using namespace std;
 
 // Forward declarations
 class datasetState;
 class datasetManager;
 
-using state_uptr = std::unique_ptr<datasetState>;
+using state_uptr = unique_ptr<datasetState>;
 
 /**
  * @brief A base class for representing state changes done to datasets.
@@ -41,7 +43,7 @@ public:
      *              like function composition.
      **/
     datasetState(state_uptr inner=nullptr) :
-        _inner_state(std::move(inner)) {};
+        _inner_state(move(inner)) {};
 
     virtual ~datasetState() {};
 
@@ -68,7 +70,7 @@ public:
      *
      * This must be implement by any derived classes and should save the
      * information needed to reconstruct any subclass specific internals.
-     * Information the baseclass (e.g. tag, inner_state) is saved
+     * Information of the baseclass (e.g. inner_state) is saved
      * separately.
      *
      * @returns JSON representing the internal state.
@@ -97,52 +99,132 @@ private:
      * @param inner Inner state to compose with.
      * @returns The created datasetState.
      **/
-    static state_uptr _create(std::string name, json & data,
+    static state_uptr _create(string name, json & data,
                               state_uptr inner=nullptr);
 
     // Reference to the internal state
     state_uptr _inner_state = nullptr;
 
     // List of registerd subclass creating functions
-    static std::map<std::string,
-                    std::function<state_uptr(json&, state_uptr)>> _type_create_funcs;
+    static map<string,
+                    function<state_uptr(json&, state_uptr)>> _type_create_funcs;
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
 
 };
 
-#define REGISTER_DATASET_STATE(T) int _register_ ## T = datasetState::_register_state_type<T>()
+#define REGISTER_DATASET_STATE(T) int _register_ ## T = \
+    datasetState::_register_state_type<T>()
 
 
 // Printing for datasetState
-std::ostream& operator<<(std::ostream&, const datasetState&);
+ostream& operator<<(ostream&, const datasetState&);
 
 
-class freqState : virtual public datasetState {
+
+class freqState : public datasetState {
 public:
-    freqState(std::string t, state_uptr inner=nullptr) :
-        datasetState(std::move(inner))
-    {
-        std::cout << t << std::endl;
-    }
+    freqState(state_uptr inner=nullptr) :
+        datasetState(move(inner)) {};
 
     freqState(json & data, state_uptr inner) :
-        freqState("Hello", std::move(inner)) {};
+        datasetState(move(inner))
+    {
+     //TODO do sth like json_to_data(data);
+    };
 
-    json data_to_json() const override { json j; return j; }
+    // a list of frequency ids
+    // description of what those frequency IDs mean in actual physical
+    //      frequencies (e.g. 800-400MHz, 1024 frequency channels).
+    freqState(vector<uint32_t> ids, state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+                     _freq_ids(ids) {};
+
+    const vector<uint32_t>& get_subset() const
+    {
+        return _freq_ids;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override
+    {
+        json j;
+        //TODO _ids to json
+        return j;
+    }
+
+    /// IDs that describe the subset that this dataset state defines
+    vector<uint32_t> _freq_ids;
 };
 
 
-class inputState : virtual public datasetState {
+class inputState : public datasetState {
 public:
     inputState(state_uptr inner=nullptr) :
-        datasetState(std::move(inner)) {};
+        datasetState(move(inner)) {};
 
     inputState(json & data, state_uptr inner) :
-        inputState(std::move(inner)) {};
+        datasetState(move(inner))
+    {
+        //TODO do sth like json_to_data(data);
+    };
 
-    json data_to_json() const override { json j; return j; }
+    inputState(std::vector<input_ctype> inputs, state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+        _inputs(inputs) {};
+
+    const vector<input_ctype>& get_inputs() const
+    {
+        return _inputs;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override
+    {
+        json j;
+        //TODO _inputs to json
+        return j;
+    }
+
+    /// The subset that this dataset state defines
+    vector<input_ctype> _inputs;
+};
+
+
+class prodState : public datasetState {
+public:
+    prodState(state_uptr inner=nullptr) :
+        datasetState(move(inner))
+    {};
+
+    prodState(json & data, state_uptr inner) :
+        datasetState(move(inner))
+    { //TODO do sth like json_to_data(data);
+    };
+
+    prodState(vector<prod_ctype> prods, state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+        _prods(prods) {};
+
+    const vector<prod_ctype>& get_subset() const
+    {
+        return _prods;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override
+    {
+        json j;
+        //TODO _ids to json
+        return j;
+    }
+
+    /// IDs that describe the subset that this dataset state defines
+    vector<prod_ctype> _prods;
 };
 
 
@@ -172,7 +254,13 @@ public:
      * @param trans A pointer to the state.
      * @returns The id assigned to the state.
      **/
-    state_id add_state(state_uptr&& trans);
+    template <class T,
+    typename enable_if<is_base_of<datasetState, T>::value, void>::type>
+    pair<state_id, const T*> add_state(unique_ptr<T>&& state) {
+        state_id hash = hash_state(*state);
+        _states[hash] = std::move(state);
+        return std::pair<state_id, T>(hash, _states[hash]);
+    }
 
     /**
      * @brief Register a new dataset.
@@ -188,21 +276,21 @@ public:
      *
      * @returns A string summarising the state table.
      **/
-    std::string summary() const;
+    string summary() const;
 
     /**
      * @brief Get a read-only vector of the states.
      *
      * @returns The set of states.
      **/
-    const std::map<state_id, const datasetState *> states() const;
+    const map<state_id, const datasetState *> states() const;
 
     /**
      * @brief Get a read-only vector of the datasets.
      *
      * @returns The set of datasets.
      **/
-    const std::vector<std::pair<state_id, dset_id>> datasets() const;
+    const vector<pair<state_id, dset_id>> datasets() const;
 
     /**
      * @brief Get the states applied to generate the given dataset.
@@ -213,7 +301,7 @@ public:
      * @returns A vector of the dataset ID and the state that was
      *          applied to previous element in the vector to generate it.
      **/
-    const std::vector<std::pair<dset_id, datasetState *>> ancestors(
+    const vector<pair<dset_id, datasetState *>> ancestors(
         dset_id dset
     ) const;
 
@@ -224,7 +312,7 @@ public:
      * Returns `{-1, nullptr}` if not found in ancestors.
      **/
     template<typename T>
-    inline std::pair<dset_id, const T*> closest_ancestor_of_type(dset_id) const;
+    inline pair<dset_id, const T*> closest_ancestor_of_type(dset_id) const;
 
 private:
 
@@ -243,10 +331,10 @@ private:
     state_id hash_state(datasetState& state);
 
     // Store the list of all the registered states.
-    std::map<state_id, state_uptr> _states;
+    map<state_id, state_uptr> _states;
 
     // Store a list of the datasets registered and what states they correspond to
-    std::vector<std::pair<state_id, dset_id>> _datasets;
+    vector<pair<state_id, dset_id>> _datasets;
 };
 
 
@@ -260,20 +348,20 @@ inline int datasetState::_register_state_type() {
     // Get the unique name for the type to generate the lookup key. This is
     // the same used by RTTI which is what we use to label the serialised
     // instances.
-    std::string key = typeid(T).name();
+    string key = typeid(T).name();
 
     DEBUG("Registering state type: %s", key);
 
     // Generate a lambda function that creates an instance of the type
     datasetState::_type_create_funcs[key] =
         [](json & data, state_uptr inner) {
-            return std::make_unique<T>(data, std::move(inner));
+            return make_unique<T>(data, move(inner));
         };
     return 0;
 }
 
 template<typename T>
-inline std::pair<dset_id, const T*>
+inline pair<dset_id, const T*>
 datasetManager::closest_ancestor_of_type(dset_id dset) const {
 
     for(auto& t : ancestors(dset)) {

@@ -64,12 +64,6 @@ datasetManager& datasetManager::instance() {
     return dm;
 }
 
-state_id datasetManager::add_state(state_uptr&& dt) {
-    state_id hash = hash_state(*dt);
-    _states[hash] = std::move(dt);
-    return hash;
-}
-
 dset_id datasetManager::add_dataset(state_id state, dset_id input) {
     _datasets.push_back({state, input});
     return _datasets.size() - 1;
@@ -137,6 +131,7 @@ datasetManager::ancestors(dset_id dset) const {
 
     return a_list;
 }
+
 
 REGISTER_DATASET_STATE(freqState);
 REGISTER_DATASET_STATE(inputState);
