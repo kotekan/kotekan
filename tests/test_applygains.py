@@ -41,7 +41,6 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
     if tag is None:
         tag = global_params['dynamic_attributes']['gains']['tag']
     filepath = gains_dir.join(tag+'.hdf5')
-    print "\n\nFilepath: {0}\n\n".format(filepath)
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset('gain', (nfreq, nelem), dtype='c8')
@@ -50,7 +49,6 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
             * 1j*np.arange(nelem, dtype='f2')[None, :]
             + 1. + 1j)
     dset[...] = gain * mult_factor
-    print "Gain generated: ", dset[250, 5], filepath
 
     dset2 = f.create_dataset('weight', (nfreq,), dtype='f')
     dset2[...] = np.arange(nfreq, dtype=float) * 0.5
@@ -101,7 +99,8 @@ def load_gains(filepath, fr, ipt=None):
 def combine_gains(tframe, tcombine, new_tmstp, old_tmstp, 
                   new_gains, old_gains):
     if tframe < old_tmstp:
-        print 'Weird'
+        # TODO: This should not happen. Add a warning or a raise?
+        pass
     elif tframe < new_tmstp:
         return old_gains
     elif tframe < new_tmstp + tcombine:
@@ -142,8 +141,6 @@ def test_apply(tmpdir_factory):
         frame_tmstp = visutil.ts_to_double(frame.metadata.ctime)  
         gains = combine_gains(frame_tmstp, tcombine, new_tmstp, old_tmstp, 
                               new_gains, old_gains)
-        print frame.gain[:3], new_tmstp, frame_tmstp, gains[2]
-
         expvis = np.zeros(num_prod, dtype=frame.vis[:].dtype)
         for ii in range(num_prod):
             prod = visutil.icmap(ii, global_params['num_elements'])
@@ -165,7 +162,6 @@ def test_apply(tmpdir_factory):
         greal_fracdiff = (frame.gain.real - gains.real)/gains.real
         gimag_fracdiff = (frame.gain.imag - gains.imag)/gains.imag
         assert (greal_fracdiff < 1E-5).all()
-        print np.amax(gimag_fracdiff)
         assert (gimag_fracdiff < 1E-5).all()
         expweight = []
         for ii in range(n_el):

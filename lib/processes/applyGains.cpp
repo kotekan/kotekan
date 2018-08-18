@@ -81,7 +81,6 @@ cfloat applyGains::combine_gains(int idx) {
 
 bool applyGains::receive_update(nlohmann::json &json) {
     // TODO: need to make sure this is thread safe
-    //uint64_t new_ts;
     double new_ts;
     std::string gains_path;
     std::string gtag;
@@ -114,14 +113,11 @@ bool applyGains::receive_update(nlohmann::json &json) {
     // Get the gains for this timestamp
     // TODO: For now, assume the tag is the gain file name.
     gains_path = gains_dir + "/" + gtag + ".hdf5";
-    std::cout << "Filepath c++: "+gains_path << std::endl;
     // Read the gains from file
     HighFive::File gains_fl(gains_path, HighFive::File::ReadOnly);
     // Read the dataset and alocates it to the most recent entry of the gain vector
     HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
     gains_ds.read(gain_read);
-    std::cout << "gain c++: " << gain_read[250][5] << std::endl;
-
     gains.insert(double_to_ts(new_ts), std::move(gain_read));
     return true;
 }
@@ -161,7 +157,6 @@ void applyGains::main_thread() {
         }
         tpast = frame_time - ts_to_double(gainpair1.first);
         gain_new = (*gainpair1.second)[freq];
-//        std::cout << "gain2 c++: " << gain_new[5] << std::endl;
         if (tpast >= tcombine) {
             coef_new = 1;
         } else if (tpast >= 0) {
@@ -176,15 +171,6 @@ void applyGains::main_thread() {
         } else {
             // TODO: export prometeus metric saying that there are no gains to apply?
             INFO("Gain timestamp is in the future!")
-        }
-
-        if (coef_new==1) {
-            INFO("coeff new: %f", coef_new);
-            std::cout << "new gain: " << gain_new[5] << std::endl;
-        } else {
-            INFO("coeff new: %f, coeff old: %f", coef_new, coef_old);
-            std::cout << "new gain: " << gain_new[5] << " old gain: " << gain_old[5] << std::endl;
-            INFO("tcombine: %f", tcombine);
         }
 
         // Wait for the output buffer to be empty of data
