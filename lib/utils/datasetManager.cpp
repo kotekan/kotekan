@@ -135,3 +135,4 @@ datasetManager::ancestors(dset_id dset) const {
 
 REGISTER_DATASET_STATE(freqState);
 REGISTER_DATASET_STATE(inputState);
+REGISTER_DATASET_STATE(prodState);
