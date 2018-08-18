@@ -4,6 +4,7 @@
 #include "configUpdater.hpp"
 #include "visFileH5.hpp"
 #include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
 
 #include <algorithm>
 #include <highfive/H5DataSet.hpp>
@@ -11,8 +12,10 @@
 #include <highfive/H5File.hpp>
 #include <sys/stat.h>
 #include <csignal>
+#include <exception>
 
 using namespace HighFive;
+using namespace std::placeholders;
 
 
 
@@ -28,9 +31,8 @@ applyGains::applyGains(Config& config,
 
     apply_config(0);
 
-    // Get the path to gains file
-    // TODO: delete? Whait to see how I get this from config updater...
-    gains_path = config.get_string(unique_name, "gains_path");
+    // Get the path to gains directory
+    gains_dir = config.get_string(unique_name, "gains_dir");
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
@@ -41,12 +43,16 @@ applyGains::applyGains(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // FIFO for gains updates
-    gains2 = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
+    gains = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
 
     // subscribe to gain timestamp updates
-    configUpdater::instance().subscribe(updatable_config,
-                              std::bind(&applyGains::receive_update, this,
-                                        std::placeholders::_1));
+    // Using the new constructor
+    configUpdater::instance().subscribe(this,
+                std::bind(&applyGains::receive_update, this, 
+                          _1));
+//    configUpdater::instance().subscribe(updatable_config,
+//                              std::bind(&applyGains::receive_update, this,
+//                                        std::placeholders::_1));
 }
 
 void applyGains::apply_config(uint64_t fpga_seq) {
@@ -59,12 +65,12 @@ void applyGains::apply_config(uint64_t fpga_seq) {
                                     + std::to_string(num_kept_updates) + ").");
 
     // Time to blend old and new gains in seconds. Default is 5 minutes. 
-    tblend = config.get_float_default(unique_name, "gains_time_blend", 5*60);
+    tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
 
     updatable_config = config.get_string(unique_name, "updatable_config");
 }
 
-cfloat applyGains::blend_gains(int idx) {
+cfloat applyGains::combine_gains(int idx) {
 
     if (coef_new == 1) {
         return gain_new[idx];
@@ -74,8 +80,10 @@ cfloat applyGains::blend_gains(int idx) {
 }
 
 bool applyGains::receive_update(nlohmann::json &json) {
+    // TODO: need to make sure this is thread safe
     //uint64_t new_ts;
     double new_ts;
+    std::string gains_path;
     std::string gtag;
     std::vector<std::vector<cfloat>> gain_read;
     // receive new gains timestamp ("gains_timestamp" might move to "start_time")
@@ -95,22 +103,26 @@ bool applyGains::receive_update(nlohmann::json &json) {
     }
     // receive new gains tag
     try {
-        // TODO: add some tests here
+        if (!json.at("tag").is_string())
+            throw std::invalid_argument("applyGains: received bad gains tag:" \
+                                        + json.at("tag").dump());
         gtag = json.at("tag");
     } catch (std::exception& e) {
         WARN("%s", e.what());
         return false;
     }
     // Get the gains for this timestamp
-    // For now, assume the tag is the path to the gain file
-    gains_path = gtag;
+    // TODO: For now, assume the tag is the gain file name.
+    gains_path = gains_dir + "/" + gtag + ".hdf5";
+    std::cout << "Filepath c++: "+gains_path << std::endl;
     // Read the gains from file
     HighFive::File gains_fl(gains_path, HighFive::File::ReadOnly);
     // Read the dataset and alocates it to the most recent entry of the gain vector
     HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
     gains_ds.read(gain_read);
+    std::cout << "gain c++: " << gain_read[250][5] << std::endl;
 
-    gains2.insert(double_to_ts(new_ts), std::move(gain_read));
+    gains.insert(double_to_ts(new_ts), std::move(gain_read));
     return true;
 }
 
@@ -142,24 +154,37 @@ void applyGains::main_thread() {
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair1;
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair2;
 
-        gainpair1 = gains2.get_update(double_to_ts(frame_time));
+        gainpair1 = gains.get_update(double_to_ts(frame_time));
         if (gainpair1.second == NULL) {
             WARN("No gains available.\nKilling kotekan");
             std::raise(SIGINT);
         }
         tpast = frame_time - ts_to_double(gainpair1.first);
         gain_new = (*gainpair1.second)[freq];
-        if (tpast >= tblend) {
+//        std::cout << "gain2 c++: " << gain_new[5] << std::endl;
+        if (tpast >= tcombine) {
             coef_new = 1;
         } else if (tpast >= 0) {
-            gainpair2 = gains2.get_update(double_to_ts(frame_time - tblend));
-            gain_old = (*gainpair2.second)[freq];
-            coef_new = tpast/tblend;
-            coef_old = 1 - coef_new;
-            INFO("Coeffs: %f, %f", coef_new, coef_old)
+            gainpair2 = gains.get_update(double_to_ts(frame_time - tcombine));
+            if (ts_to_double(gainpair1.first)!=ts_to_double(gainpair2.first)) {
+                // If we are not using the very first set of gains,
+                // do gains interpolation.
+                gain_old = (*gainpair2.second)[freq];
+                coef_new = tpast/tcombine;
+                coef_old = 1 - coef_new;
+            }
         } else {
             // TODO: export prometeus metric saying that there are no gains to apply?
             INFO("Gain timestamp is in the future!")
+        }
+
+        if (coef_new==1) {
+            INFO("coeff new: %f", coef_new);
+            std::cout << "new gain: " << gain_new[5] << std::endl;
+        } else {
+            INFO("coeff new: %f, coeff old: %f", coef_new, coef_old);
+            std::cout << "new gain: " << gain_new[5] << " old gain: " << gain_old[5] << std::endl;
+            INFO("tcombine: %f", tcombine);
         }
 
         // Wait for the output buffer to be empty of data
@@ -180,16 +205,16 @@ void applyGains::main_thread() {
             for (int jj=ii; jj<input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
                 output_frame.vis[idx] = input_frame.vis[idx]
-                                        * blend_gains(ii)
-                                        * std::conj(blend_gains(jj));
+                                        * combine_gains(ii)
+                                        * std::conj(combine_gains(jj));
                 // Update the wheights.
                 // TODO: check that this exponent is correct
-                output_frame.weight[idx] /= pow(abs(blend_gains(ii))
-                                              * abs(blend_gains(jj)), 2.0);
+                output_frame.weight[idx] /= pow(abs(combine_gains(ii))
+                                              * abs(combine_gains(jj)), 2.0);
                 idx++;
             }
             // Update the gains.
-            output_frame.gain[ii] = blend_gains(ii);
+            output_frame.gain[ii] = combine_gains(ii);
         }
 
         // Mark the buffers and move on

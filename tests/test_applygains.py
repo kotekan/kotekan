@@ -7,29 +7,50 @@ import time
 
 print kotekan_runner.__file__
 
-general_params = {
+old_tmstp = time.time() 
+old_tag = "gains{0}".format(int(old_tmstp))
+
+global_params = {
     'num_elements': 16,
     'num_ev': 4,
-    'total_frames': 128,
-    'cadence': 5.0,
+    'total_frames': 20,
+    'cadence': 1.0,
     'mode': 'fill_ij',
     'freq_ids': [250],
-    'buffer_depth': 5
+    'buffer_depth': 5,
+    'updatable_config': "/dynamic_attributes/gains",
+    'dynamic_attributes': {
+        'flagging': {'kotekan_update_endpoint': "json",
+                     'bad_inputs': [1, 4],
+                     'timestamp': old_tmstp
+                    },
+        'gains': {'kotekan_update_endpoint': "json",
+                  'gains_timestamp': old_tmstp,
+                  'tag': old_tag
+                 }
+    },
+    'wait': True,
+    'num_kept_updates': 4,
+    'combine_gains_time': 10.
 }
 
 
-@pytest.fixture(scope="module")
-def gen_gains(tmpdir_factory, nelem=general_params['num_elements'], nfreq=1024):
+def gen_gains(gains_dir, tag=None, mult_factor=1.,
+              nelem=global_params['num_elements'], nfreq=1024):
 
-    tmpgainsdir = tmpdir_factory.mktemp("gains")
-    filepath = tmpgainsdir.join("gains.hdf5")
+    if tag is None:
+        tag = global_params['dynamic_attributes']['gains']['tag']
+    filepath = gains_dir.join(tag+'.hdf5')
+    print "\n\nFilepath: {0}\n\n".format(filepath)
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset('gain', (nfreq, nelem), dtype='c8')
     gain = np.zeros((nfreq, nelem), dtype='c8')
     gain = (np.arange(nfreq, dtype='f2')[:, None] 
-            * 1j*np.arange(nelem, dtype='f2')[None, :]+1.)
-    dset[...] = gain
+            * 1j*np.arange(nelem, dtype='f2')[None, :]
+            + 1. + 1j)
+    dset[...] = gain * mult_factor
+    print "Gain generated: ", dset[250, 5], filepath
 
     dset2 = f.create_dataset('weight', (nfreq,), dtype='f')
     dset2[...] = np.arange(nfreq, dtype=float) * 0.5
@@ -40,43 +61,32 @@ def gen_gains(tmpdir_factory, nelem=general_params['num_elements'], nfreq=1024):
     freq_ds[...] = np.linspace(800., 400., nfreq, dtype=float)
     ipt_ds[:] = np.arange(nelem)
 
-    # TODO: delete
-    #gains_stt_time_ds = f.create_dataset('gains_stt_time', (1,), dtype='i')
-    #gains_stt_time_ds[:] = np.array([int(time.time())], dtype=int)
-
     f.close()
 
-    return filepath
 
+def apply_data(cmds, tmpdir_factory):
 
-@pytest.fixture(scope="module")
-def apply_data(tmpdir_factory, gen_gains):
-
-    tmpdir = tmpdir_factory.mktemp("apply")
+    apply_dir = tmpdir_factory.mktemp("apply")
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
-        freq_ids=general_params['freq_ids'],
-        num_frames=general_params['total_frames']
+        freq_ids=global_params['freq_ids'],
+        num_frames=global_params['total_frames'],
+        wait=global_params['wait']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
-
-    filepath = gen_gains
-    apply_params = {
-        'gains_path': str(filepath),
-        'num_kept_updates': 4
-    }
+    out_dump_buffer = kotekan_runner.DumpVisBuffer(str(apply_dir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'applyGains', apply_params,
-        fakevis_buffer,
-        dump_buffer,
-        general_params
+        'applyGains', global_params,
+        buffers_in=fakevis_buffer,
+        buffers_out=out_dump_buffer,
+        global_config=global_params,
+        rest_commands=cmds
     )
 
     test.run()
 
-    yield dump_buffer.load()
+    return out_dump_buffer.load()
 
 
 def load_gains(filepath, fr, ipt=None):
@@ -88,18 +98,55 @@ def load_gains(filepath, fr, ipt=None):
         return gains[fr, ipt]
 
 
-def test_apply(apply_data, gen_gains):
+def combine_gains(tframe, tcombine, new_tmstp, old_tmstp, 
+                  new_gains, old_gains):
+    if tframe < old_tmstp:
+        print 'Weird'
+    elif tframe < new_tmstp:
+        return old_gains
+    elif tframe < new_tmstp + tcombine:
+        tpast = tframe - new_tmstp
+        new_coef = tpast/tcombine
+        old_coef = 1. - new_coef
+        return new_coef * new_gains + old_coef * old_gains
+    else:
+        return new_gains
 
-    filepath = gen_gains
-    n_el = general_params['num_elements']
+
+def test_apply(tmpdir_factory):
+
+    gains_dir = tmpdir_factory.mktemp("gains")
+    new_tmstp = time.time() + 5.
+    new_tag = 'gains{0}'.format(int(new_tmstp))
+
+    gen_gains(gains_dir)
+    gen_gains(gains_dir, tag=new_tag, mult_factor=2.)
+    old_filepath = gains_dir.join(old_tag+'.hdf5')
+    new_filepath = gains_dir.join(new_tag+'.hdf5')
+
+    global_params['gains_dir'] = str(gains_dir)
+    tcombine = global_params['combine_gains_time']
+    n_el = global_params['num_elements']
     num_prod = n_el * (n_el + 1) / 2
 
-    for frame in apply_data:
+    # REST commands
+    cmds = [["post", "dynamic_attributes/gains", 
+             {'tag': new_tag,
+              'gains_timestamp': new_tmstp}]]
+    gains_dump = apply_data(cmds, tmpdir_factory)
+
+    for frame in gains_dump:
         frqid = frame.metadata.freq_id
-        gains = load_gains(filepath, frqid)
+        old_gains = load_gains(old_filepath, frqid)
+        new_gains = load_gains(new_filepath, frqid)
+        frame_tmstp = visutil.ts_to_double(frame.metadata.ctime)  
+        gains = combine_gains(frame_tmstp, tcombine, new_tmstp, old_tmstp, 
+                              new_gains, old_gains)
+        print frame.gain[:3], new_tmstp, frame_tmstp, gains[2]
+
         expvis = np.zeros(num_prod, dtype=frame.vis[:].dtype)
         for ii in range(num_prod):
-            prod = visutil.icmap(ii, general_params['num_elements'])
+            prod = visutil.icmap(ii, global_params['num_elements'])
             # With fill_ij, vis_ij = i+j*(1j)
             expvis[ii] = ((prod.input_a + 1j*prod.input_b)
                           * (gains[prod.input_a])
@@ -109,13 +156,17 @@ def test_apply(apply_data, gen_gains):
         assert (real_fracdiff < 1E-5).all()
         assert (imag_fracdiff < 1E-5).all()
         assert (frame.eval == np.arange(
-                general_params['num_ev'])).all()
-        evecs = (np.arange(general_params['num_ev'])[:, None]
+                global_params['num_ev'])).all()
+        evecs = (np.arange(global_params['num_ev'])[:, None]
                  + 1.0J 
-                 * np.arange(general_params['num_elements'])[None, :]).flatten()
+                 * np.arange(global_params['num_elements'])[None, :]).flatten()
         assert (frame.evec == evecs).all()
         assert (frame.erms == 1.)
-        assert (frame.gain == gains).all()
+        greal_fracdiff = (frame.gain.real - gains.real)/gains.real
+        gimag_fracdiff = (frame.gain.imag - gains.imag)/gains.imag
+        assert (greal_fracdiff < 1E-5).all()
+        print np.amax(gimag_fracdiff)
+        assert (gimag_fracdiff < 1E-5).all()
         expweight = []
         for ii in range(n_el):
             for jj in range(ii, n_el):

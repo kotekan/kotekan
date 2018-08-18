@@ -24,7 +24,7 @@ public:
     void apply_config(uint64_t fpga_seq);
 
     /// Blend gains old and new
-    cfloat blend_gains(int idx);
+    cfloat combine_gains(int idx);
 
     /// Main loop for the process
     void main_thread();
@@ -36,9 +36,8 @@ private:
 
     // Parameters saved from the config files
 
-    /// Path to gains file
-    // TODO: delete? Whait to see how I get this from config updater...
-    std::string gains_path;
+    /// Path to gains directory
+    std::string gains_dir;
 
     /// Number of gains updates to maintain
     uint64_t num_kept_updates;
@@ -47,7 +46,7 @@ private:
     std::string updatable_config;
 
     /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
-    double tblend;
+    double tcombine;
 
     /// Coefficients for blending gains old and new
     float coef_new = 1;
@@ -58,7 +57,7 @@ private:
     std::vector<cfloat> gain_old;
 
     /// The gains and when to start applying them in a FIFO (len set by config)
-    updateQueue<std::vector<std::vector<cfloat>>> gains2;
+    updateQueue<std::vector<std::vector<cfloat>>> gains;
 
     /// Output buffer with gains applied
     Buffer * out_buf;
