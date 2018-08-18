@@ -77,4 +77,51 @@ std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
     std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
 );
 
+// Stack along the band diagonals
+std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
+    std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
+);
+
+#define CYL_A 0
+#define CYL_B 1
+#define CYL_C 2
+#define CYL_D 3
+
+#define POL_X 0
+#define POL_Y 1
+
+
+/**
+ * @brief The properties of a CHIME feed
+ **/
+struct chimeFeed {
+
+    /// The cylinder the feed is on.
+    int8_t cylinder;
+
+    /// The polarisation of the feed
+    int8_t polarisation;
+
+    /// The feed location running South to North
+    int16_t feed_location;
+
+    /**
+     * @brief Get the CHIME feed properties from an input.
+     *
+     * @params input The input to calculate.
+     *
+     * @returns The feed definition.
+     **/
+    static chimeFeed from_input(input_ctype input);
+};
+
+/**
+ * @brief Implement an output operator to help debugging.
+ **/
+std::ostream & operator<<(std::ostream &os, const chimeFeed& f);
+
+
+
+
+
 #endif
