@@ -12,7 +12,8 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
 # test source files are located in tests/boost/
 # list them all here:
 set(KOTEKAN_BOOST_TEST_SOURCES
-                test_truncate.cpp)
+                test_truncate.cpp
+                test_updatequeue.cpp)
 
 # list test source files that need HDF5 here:
 if(${USE_HDF5})
