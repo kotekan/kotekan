@@ -298,8 +298,8 @@ visCalWriter::visCalWriter(Config &config,
     if (access((full_path + file_name + ".data").c_str(), F_OK) == 0) {
         // Delete existing files
         INFO(("Clobering files " + full_path + file_name + ".*").c_str());
-        remove((full_path + file_name + ".data").c_str());
-        remove((full_path + file_name + ".meta").c_str());
+        check_remove(full_path + file_name + ".data");
+        check_remove(full_path + file_name + ".meta");
     }
 }
 
@@ -318,11 +318,12 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     // Remove previous frozen buffer and replace with new one
     std::string full_path = root_path + "/" + acq_name;
     INFO(("Updating cal file names in " + full_path).c_str());
-    remove((full_path + "/" + frozen_file_name + ".*").c_str());
-    rename((full_path + "/" + file_name + ".data").c_str(),
-           (full_path + "/" + frozen_file_name + ".data").c_str());
-    rename((full_path + "/" + file_name + ".meta").c_str(),
-           (full_path + "/" + frozen_file_name + ".meta").c_str());
+    check_remove(full_path + "/" + frozen_file_name + ".data");
+    check_remove(full_path + "/" + frozen_file_name + ".meta");
+    check_rename(full_path + "/" + file_name + ".data",
+                 full_path + "/" + frozen_file_name + ".data");
+    check_rename(full_path + "/" + file_name + ".meta",
+                 full_path + "/" + frozen_file_name + ".meta");
 
     // Respond with frozen file path
     json reply {
