@@ -29,8 +29,8 @@ using state_uptr = unique_ptr<datasetState>;
  *
  * This is meant to be subclassed. All subclasses must implement a constructor
  * that calls the base class constructor to set any inner states. As a
- * convention tag should be the first argument, and inner the last (and should
- * be optional).
+ * convention it should pass the data and as a last argument `inner` (which
+ * should be optional).
  *
  **/
 class datasetState {
@@ -122,15 +122,13 @@ private:
 ostream& operator<<(ostream&, const datasetState&);
 
 
-
+/**
+ * @brief A dataset state that describes the frequencies in a datatset.
+ */
 class freqState : public datasetState {
 public:
-    freqState(state_uptr inner=nullptr) :
-        datasetState(move(inner)) {};
-
     freqState(json & data, state_uptr inner) :
-        datasetState(move(inner))
-    {
+        datasetState(move(inner)) {
         _freqs = data.get<vector<pair<uint32_t, freq_ctype>>>();
     };
 
@@ -141,15 +139,13 @@ public:
               state_uptr inner=nullptr) : datasetState(move(inner)),
                      _freqs(freqs) {};
 
-    const vector<pair<uint32_t, freq_ctype>>& get_freqs() const
-    {
+    const vector<pair<uint32_t, freq_ctype>>& get_freqs() const {
         return _freqs;
     }
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override
-    {
+    json data_to_json() const override {
         json j(_freqs);
         return j;
     }
@@ -161,12 +157,8 @@ private:
 
 class inputState : public datasetState {
 public:
-    inputState(state_uptr inner=nullptr) :
-        datasetState(move(inner)) {};
-
     inputState(json & data, state_uptr inner) :
-        datasetState(move(inner))
-    {
+        datasetState(move(inner)) {
         //FIXME: add some checks or handle exceptions
 
         _inputs = data.get<vector<input_ctype>>();
@@ -176,15 +168,13 @@ public:
         datasetState(move(inner)),
         _inputs(inputs) {};
 
-    const vector<input_ctype>& get_inputs() const
-    {
+    const vector<input_ctype>& get_inputs() const {
         return _inputs;
     }
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override
-    {
+    json data_to_json() const override {
         json j(_inputs);
         return j;
     }
@@ -196,13 +186,8 @@ private:
 
 class prodState : public datasetState {
 public:
-    prodState(state_uptr inner=nullptr) :
-        datasetState(move(inner))
-    {};
-
     prodState(json & data, state_uptr inner) :
-        datasetState(move(inner))
-    {
+        datasetState(move(inner)) {
         _prods = data.get<vector<prod_ctype>>();
     };
 
@@ -210,15 +195,13 @@ public:
         datasetState(move(inner)),
         _prods(prods) {};
 
-    const vector<prod_ctype>& get_subset() const
-    {
+    const vector<prod_ctype>& get_prods() const {
         return _prods;
     }
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override
-    {
+    json data_to_json() const override {
         json j(_prods);
         return j;
     }
@@ -231,8 +214,8 @@ private:
 /**
  * @brief Manages sets of state changes applied to datasets.
  *
- * This is a singleton class. Use datasetManager::get to return a reference to
- * it.
+ * This is a singleton class. Use datasetManager::instance() to get a
+ * reference to it.
  **/
 class datasetManager {
 public:
@@ -376,7 +359,6 @@ template <typename T>
 pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     state_id hash = hash_state(*state);
     _states[hash] = move(state);
-    return pair<state_id, const T*>(hash,
-                                         (const T*)(_states.at(hash).get()));
+    return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif
