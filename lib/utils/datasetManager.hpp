@@ -127,9 +127,20 @@ ostream& operator<<(ostream&, const datasetState&);
  */
 class freqState : public datasetState {
 public:
+    /**
+     * @brief Constructor
+     * @param data  The frequency information as serialized by
+     *              freqState::to_json().
+     * @param inner An inner state or a nullptr.
+     */
     freqState(json & data, state_uptr inner) :
         datasetState(move(inner)) {
-        _freqs = data.get<vector<pair<uint32_t, freq_ctype>>>();
+        try {
+            _freqs = data.get<vector<pair<uint32_t, freq_ctype>>>();
+        } catch (exception& e) {
+             throw std::runtime_error("freqState: Failure parsing json data ("
+                                      + data.dump() + "): " + e.what());
+        }
     };
 
     // a list of frequency ids
@@ -157,11 +168,20 @@ private:
 
 class inputState : public datasetState {
 public:
+    /**
+     * @brief Constructor
+     * @param data  The input information as serialized by
+     *              inputState::to_json().
+     * @param inner An inner state or a nullptr.
+     */
     inputState(json & data, state_uptr inner) :
         datasetState(move(inner)) {
-        //FIXME: add some checks or handle exceptions
-
-        _inputs = data.get<vector<input_ctype>>();
+        try {
+            _inputs = data.get<vector<input_ctype>>();
+        } catch (exception& e) {
+             throw std::runtime_error("inputState: Failure parsing json data ("
+                                      + data.dump() + "): " + e.what());
+        }
     };
 
     inputState(vector<input_ctype> inputs, state_uptr inner=nullptr) :
@@ -186,9 +206,20 @@ private:
 
 class prodState : public datasetState {
 public:
+    /**
+     * @brief Constructor
+     * @param data  The prod information as serialized by
+     *              prodState::to_json().
+     * @param inner An inner state or a nullptr.
+     */
     prodState(json & data, state_uptr inner) :
         datasetState(move(inner)) {
-        _prods = data.get<vector<prod_ctype>>();
+        try {
+            _prods = data.get<vector<prod_ctype>>();
+        } catch (exception& e) {
+             throw std::runtime_error("prodState: Failure parsing json data ("
+                                      + data.dump() + "): " + e.what());
+        }
     };
 
     prodState(vector<prod_ctype> prods, state_uptr inner=nullptr) :
