@@ -131,6 +131,19 @@ BOOST_FIXTURE_TEST_CASE( _general, TestContext ) {
             dm.closest_ancestor_of_type<inputState>(transformed_ds_id);
     const std::vector<input_ctype>& final_inputs = final_state.second->get_inputs();
     check_equal(new_inputs, final_inputs);
+
+    std::cout << dm.summary() << std::endl;
+
+    for (auto s : dm.states())
+        std::cout << s.first << " - " << s.second->data_to_json().dump()
+                  << std::endl;
+
+    for (auto s : dm.datasets())
+        std::cout << s.first << " - " << s.second << std::endl;
+
+    for (auto s : dm.ancestors(transformed_ds_id))
+        std::cout << s.first << " - " << s.second->data_to_json().dump()
+                  << std::endl;
 }
 
 BOOST_AUTO_TEST_CASE( _serialization_input ) {
@@ -231,4 +244,21 @@ BOOST_AUTO_TEST_CASE( _serialization_freq ) {
             dm.add_state(std::make_unique<freqState>(diff_freqs));
     json j_diff = diff_state.second->to_json();
     BOOST_CHECK(j != j_diff);
+}
+
+BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
+    __log_level = 4;
+    datasetManager& dm = datasetManager::instance();
+
+    std::vector<input_ctype> inputs = {input_ctype(1, "1")};
+    std::pair<state_id, const inputState*> input_state =
+            dm.add_state(std::make_unique<inputState>(inputs));
+    dset_id init_ds_id = dm.add_dataset(input_state.first, -1);
+
+    std::pair<dset_id, const prodState*> not_found =
+            dm.closest_ancestor_of_type<prodState>(init_ds_id);
+
+    BOOST_CHECK_EQUAL(not_found.first, -1);
+    BOOST_CHECK_EQUAL(not_found.second, // == nullptr
+                      static_cast<decltype(not_found.second)>(nullptr));
 }

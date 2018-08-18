@@ -29,6 +29,7 @@ Welcome to Kotekan's documentation!
    dev/dev_buffers
    dev/dev_processes
    dev/dev_rest_endpoints
+   dev/dev_dataset_states
    dev/dev_style_guide
 
 You can also peruse the full `doxygen docs <doxygen/>`_.

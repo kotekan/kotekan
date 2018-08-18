@@ -32,6 +32,7 @@ using state_uptr = unique_ptr<datasetState>;
  * convention it should pass the data and as a last argument `inner` (which
  * should be optional).
  *
+ * @author Richard Shaw, Rick Nitsche
  **/
 class datasetState {
 public:
@@ -124,6 +125,8 @@ ostream& operator<<(ostream&, const datasetState&);
 
 /**
  * @brief A dataset state that describes the frequencies in a datatset.
+ *
+ * @author Richard Shaw, Rick Nitsche
  */
 class freqState : public datasetState {
 public:
@@ -143,13 +146,22 @@ public:
         }
     };
 
-    // a list of frequency ids
-    // description of what those frequency IDs mean in actual physical
-    //      frequencies (e.g. 800-400MHz, 1024 frequency channels).
+    /**
+     * @brief Constructor
+     * @param freqs The frequency information as a vector of
+     *              {frequency ID, frequency index map}.
+     * @param inner An inner state (optional).
+     */
     freqState(vector<pair<uint32_t, freq_ctype>> freqs,
               state_uptr inner=nullptr) : datasetState(move(inner)),
                      _freqs(freqs) {};
 
+    /**
+     * @brief Get frequency information (read only).
+     *
+     * @return The frequency information as a vector of
+     *         {frequency ID, frequency index map}
+     */
     const vector<pair<uint32_t, freq_ctype>>& get_freqs() const {
         return _freqs;
     }
@@ -166,6 +178,11 @@ private:
 };
 
 
+/**
+ * @brief A dataset state that describes the inputs in a datatset.
+ *
+ * @author Richard Shaw, Rick Nitsche
+ */
 class inputState : public datasetState {
 public:
     /**
@@ -184,10 +201,21 @@ public:
         }
     };
 
+    /**
+     * @brief Constructor
+     * @param inputs The input information as a vector of
+     *               input index maps.
+     * @param inner  An inner state (optional).
+     */
     inputState(vector<input_ctype> inputs, state_uptr inner=nullptr) :
         datasetState(move(inner)),
         _inputs(inputs) {};
 
+    /**
+     * @brief Get input information (read only).
+     *
+     * @return The input information as a vector of input index maps.
+     */
     const vector<input_ctype>& get_inputs() const {
         return _inputs;
     }
@@ -204,11 +232,16 @@ private:
 };
 
 
+/**
+ * @brief A dataset state that describes the products in a datatset.
+ *
+ * @author Richard Shaw, Rick Nitsche
+ */
 class prodState : public datasetState {
 public:
     /**
      * @brief Constructor
-     * @param data  The prod information as serialized by
+     * @param data  The product information as serialized by
      *              prodState::to_json().
      * @param inner An inner state or a nullptr.
      */
@@ -222,10 +255,21 @@ public:
         }
     };
 
+    /**
+     * @brief Constructor
+     * @param prods The product information as a vector of
+     *              product index maps.
+     * @param inner An inner state (optional).
+     */
     prodState(vector<prod_ctype> prods, state_uptr inner=nullptr) :
         datasetState(move(inner)),
         _prods(prods) {};
 
+    /**
+     * @brief Get product information (read only).
+     *
+     * @return The prod information as a vector of product index maps.
+     */
     const vector<prod_ctype>& get_prods() const {
         return _prods;
     }
@@ -245,8 +289,36 @@ private:
 /**
  * @brief Manages sets of state changes applied to datasets.
  *
- * This is a singleton class. Use datasetManager::instance() to get a
+ * This is a singleton class. Use `datasetManager::instance()` to get a
  * reference to it.
+ *
+ * This is used to manage the states of datasets that get passed through
+ * kotekan processes.
+ * A process in the kotekan pipeline may use the dataset ID found in an incoming
+ * frame to get a set of states from the datasetManager.
+ * E.g.
+ * ```
+ * pair<dset_id, const inputState*> input_state =
+ *          dm.closest_ancestor_of_type<inputState>(ds_id_from_frame);
+ * const std::vector<input_ctype>& inputs = input_state.second->get_inputs();
+ * ```
+ * to receive information about the inputs the datsets in the frames contain.
+ *
+ * A process that changes the state of the dataset in the frames it processes
+ * should inform the datasetManager by adding a state. For example
+ * ```
+ * std::pair<state_id, const inputState*> new_state =
+ *          dm.add_state(std::make_unique<inputState>(new_inputs,
+ *                                         make_unique<prodState>(new_prods)));
+ *  dset_id new_ds_id = dm.add_dataset(new_state.first, old_state.first);
+ * ```
+ * Adds an input state as well as a product dataset state to the manager. The
+ * process should then write `new_ds_id` to its outgoing frames.
+ *
+ * @author Richard Shaw, Rick Nitsche
+ *
+ * TODO: Centralized datasetBroker, so that states can be shared over multiple
+ * kotekan instances.
  **/
 class datasetManager {
 public:
@@ -310,9 +382,7 @@ public:
      * @returns A vector of the dataset ID and the state that was
      *          applied to previous element in the vector to generate it.
      **/
-    const vector<pair<dset_id, datasetState *>> ancestors(
-        dset_id dset
-    ) const;
+    const vector<pair<dset_id, datasetState *>> ancestors(dset_id dset) const;
 
     /**
      * @brief Find the closest ancestor of a given type.
