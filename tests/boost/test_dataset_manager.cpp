@@ -101,3 +101,63 @@ BOOST_AUTO_TEST_CASE( _serialization_input ) {
     json j_diff = diff_input_state.second->to_json();
     BOOST_CHECK(j != j_diff);
 }
+
+BOOST_AUTO_TEST_CASE( _serialization_prod ) {
+    __log_level = 4;
+    datasetManager& dm = datasetManager::instance();
+
+    // serialize and deserialize
+    std::vector<prod_ctype> prods = {{1, 1},
+                                     {2, 2},
+                                     {3, 3}};
+    std::pair<state_id, const prodState*> state =
+            dm.add_state(std::make_unique<prodState>(prods));
+    json j = state.second->to_json();
+    state_uptr s = datasetState::from_json(j);
+    json j2 = s->to_json();
+    BOOST_CHECK_EQUAL(j, j2);
+
+    // serialize 2 states with the same data
+    std::pair<state_id, const prodState*> state3 =
+            dm.add_state(std::make_unique<prodState>(prods));
+    json j3 = state3.second->to_json();
+    BOOST_CHECK_EQUAL(j, j3);
+
+    // check that different data leads to different json
+    std::vector<prod_ctype> diff_prods = {{1, 2},
+                                          {7, 3}};
+    std::pair<state_id, const prodState*> diff_state =
+            dm.add_state(std::make_unique<prodState>(diff_prods));
+    json j_diff = diff_state.second->to_json();
+    BOOST_CHECK(j != j_diff);
+}
+
+BOOST_AUTO_TEST_CASE( _serialization_freq ) {
+    __log_level = 4;
+    datasetManager& dm = datasetManager::instance();
+
+    // serialize and deserialize
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}},
+                                                          {2, {2, 2.2}},
+                                                          {3, {3, 3}}};
+    std::pair<state_id, const freqState*> state =
+            dm.add_state(std::make_unique<freqState>(freqs));
+    json j = state.second->to_json();
+    state_uptr s = datasetState::from_json(j);
+    json j2 = s->to_json();
+    BOOST_CHECK_EQUAL(j, j2);
+
+    // serialize 2 states with the same data
+    std::pair<state_id, const freqState*> state3 =
+            dm.add_state(std::make_unique<freqState>(freqs));
+    json j3 = state3.second->to_json();
+    BOOST_CHECK_EQUAL(j, j3);
+
+    // check that different data leads to different json
+    std::vector<std::pair<uint32_t, freq_ctype>> diff_freqs = {{1, {1.2, 2}},
+                                                               {3, {7, 3}}};
+    std::pair<state_id, const freqState*> diff_state =
+            dm.add_state(std::make_unique<freqState>(diff_freqs));
+    json j_diff = diff_state.second->to_json();
+    BOOST_CHECK(j != j_diff);
+}
