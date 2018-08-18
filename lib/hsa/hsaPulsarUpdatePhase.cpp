@@ -40,9 +40,9 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     _source_scl = config.get_int_array(unique_name, "psr_scaling");
 
     for (int i=0;i<_num_pulsar;i++){
-        psr_coord.ra[i] = _source_ra[i];
-	psr_coord.dec[i] = _source_dec[i];
-	psr_coord.scaling[i] = _source_scl[i];
+        psr_coord_latest_update.ra[i] = _source_ra[i];
+        psr_coord_latest_update.dec[i] = _source_dec[i];
+        psr_coord_latest_update.scaling[i] = _source_scl[i];
     }
 
     //Just for metadata manipulation
@@ -70,7 +70,8 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bankID = (uint *)hsa_host_malloc(device.get_gpu_buffer_depth());
     bank_use_0 = 0;
     bank_use_1 = 0;
-
+    second_last = 0;
+    
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -82,7 +83,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     endpoint_gains = unique_name + "/frb/update_gains/"+std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_gains,
                                         std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
-
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
@@ -98,7 +98,7 @@ void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json&
     try {
         _gain_dir = json_request["gain_dir"];
     } catch (...) {
-	conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
+        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
     return;
     }
     update_gains=true;
@@ -164,16 +164,19 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
-    bank_now = (current_seq / phase_update_period) % 2;
-    
+    second_now = (current_seq / phase_update_period) % 2;
+    if (second_now != second_last) {
+        update_phase = true;
+    }
+    second_last = second_now;
+
     if (first_pass) {
         first_pass = false;
         //From the metadata, figure out the frequency
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_idx = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_idx);
-	bank_switch = bank_now;  //Trigger to update phase
-	bank_read = bank_now;
+        update_phase = true;
     }
 
     if (update_gains) {
@@ -197,32 +200,34 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
             fclose(ptr_myfile);
         }
     }
-    if( bank_now == bank_switch) {  //Condition for update phase
-
+    if(update_phase) {
         //GPS time, need ch_master
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
-	if (time_now_gps.tv_sec == 0) {
-	    ERROR("GPS time appears to be zero, bad news for pulsar timing!");
-	}
-	//use whichever bank that has no lock
-	if ( bank_use_0 == 0)  {  //no more outstanding async copy using bank0
-	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
-	    bank_read=0;
-	    bank_switch = (bank_switch + 1) % 2;
-	}
+        if (time_now_gps.tv_sec == 0) {
+            ERROR("GPS time appears to be zero, bad news for pulsar timing!");
+        }
+        //use whichever bank that has no lock
+        if ( bank_use_0 == 0)  {  //no more outstanding async copy using bank0
+            psr_coord_0 = psr_coord_latest_update;
+            calculate_phase(psr_coord_0, time_now_gps, freq_MHz, host_gain, host_phase_0);
+            bank_active=0;
+            update_phase = false;
+        }
         else if (bank_use_1 == 0) { //no more outstanding async copy using bank1
-	    calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
-	    bank_read = 1;
-	    bank_switch = (bank_switch + 1) % 2;
-	}
-	else {
-	  ERROR("No available phase bank for psr update bank_use_0=%d bank_use_1=%d", bank_use_0, bank_use_1);
-	}
+            psr_coord_1 = psr_coord_latest_update;
+            calculate_phase(psr_coord_1, time_now_gps, freq_MHz, host_gain, host_phase_1);
+            bank_active = 1;
+            update_phase = false;
+        }
     }
 
-    bankID[gpu_frame_id] = bank_read; // update or not, read from the latest bank
-
-    set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
+    bankID[gpu_frame_id] = bank_active; // update or not, read from the latest bank
+    if (bankID[gpu_frame_id] ==0) {
+        set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord_0);
+    }
+    else if (bankID[gpu_frame_id] ==1) {
+        set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord_1);
+    }
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     // Do the data copy. Now I am doing async everytime there is new data
@@ -235,11 +240,11 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
 
     if (bankID[gpu_frame_id] == 0) {
         device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_0, phase_frame_len, precede_signal, signals[gpu_frame_id]);
-	bank_use_0 = bank_use_0 + 1;
+        bank_use_0 = bank_use_0 + 1;
     }
     if (bankID[gpu_frame_id] == 1) {
         device.async_copy_host_to_gpu(gpu_memory_frame,(void *)host_phase_1, phase_frame_len, precede_signal, signals[gpu_frame_id]);
-	bank_use_1 = bank_use_1 + 1;
+        bank_use_1 = bank_use_1 + 1;
     }
     return signals[gpu_frame_id];
 }
@@ -248,10 +253,10 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id)
 {
     hsaCommand::finalize_frame(frame_id);
     if (bankID[frame_id] == 1) {
-      bank_use_1 = bank_use_1 - 1;
+        bank_use_1 = bank_use_1 - 1;
     }
     if (bankID[frame_id] == 0) {
-      bank_use_0 = bank_use_0 - 1;
+        bank_use_0 = bank_use_0 - 1;
     }
 }
 
@@ -272,12 +277,13 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
     //update ra and dec
     {
         std::lock_guard<std::mutex> lock(_pulsar_lock);
-        psr_coord.ra[beam] = json_request["ra"];
-        psr_coord.dec[beam] = json_request["dec"];
-	psr_coord.scaling[beam] = json_request["scaling"];
+        psr_coord_latest_update.ra[beam] = json_request["ra"];
+        psr_coord_latest_update.dec[beam] = json_request["dec"];
+        psr_coord_latest_update.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-	config.update_value(unique_name, "source_ra/" + std::to_string(beam), json_request["ra"]);
-	config.update_value(unique_name, "source_dec/" + std::to_string(beam), json_request["dec"]);
-	config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
+        config.update_value(unique_name, "source_ra/" + std::to_string(beam), json_request["ra"]);
+        config.update_value(unique_name, "source_dec/" + std::to_string(beam), json_request["dec"]);
+        config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
+        update_phase = true;
     }
 }

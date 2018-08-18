@@ -16,7 +16,7 @@
  * @class hsaPulsarUpdatePhase
  * @brief hsaCommand to get phase delay for brute-force beamform
  *
- * This is an hsaCommand that calculates phase delays for brute-form beamforming.
+ * This is an hsaCommand that calculateas phase delays for brute-form beamforming.
  * It forms 10 tracking beams with phases updated every second.
  * Ten pairs of nominal coordinates (RA & Dec) is provided by the config file.
  * This script calculates the phase delay of these 10 sources,
@@ -81,7 +81,6 @@ public:
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 
-    /// Clean up and decrement the counter that keeps track of outstanding async copy
     void finalize_frame(int frame_id);
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
@@ -117,7 +116,9 @@ private:
     Buffer * metadata_buf;
 
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord;
+    struct psrCoord psr_coord_0;  //Pairing with phase bank 0
+    struct psrCoord psr_coord_1;  //Pairing with phase bank 1
+    struct psrCoord psr_coord_latest_update; //Last updated coordinates
     vector<float> _source_ra;
     vector<float> _source_dec;
     vector<int> _source_scl;
@@ -133,18 +134,19 @@ private:
     /// E-W feed separation in m
     int32_t _feed_sep_EW;
 
-    /// Determine which bank of phases to read from, should be either 0 or 1
-    uint bank_read;
-    /// Determine which bank of phases to switch to next when an update is due
-    uint bank_switch;
-    /// Trigger an update every second as it changes b/w 0 and 1
-    uint bank_now;
-    /// Array to keep track of which gpu_frame is using which phase bank
+    /// Which phase bank (0 or 1) is used by with gpu_frame_id
     uint * bankID;
-    /// Counter to keep track of outstanding async copy for phase bank 0
+    /// Keep track of outstanding async copies involving phase bank 0
     uint bank_use_0;
-    /// Counter to keep track of outstanding async copy for phase bank 1
+    /// Keep track of outstanding async copies involving phase bank 1
     uint bank_use_1;
+    /// The ID of the active bank of phase to be used (0 or 1)
+    uint bank_active;
+
+    /// Keep track of the passing of time, in order to trigger update phase every second
+    uint second_now;
+    uint second_last;
+
     /// mutex lock prevent psr_coord to be read while it is being updated.
     std::mutex _pulsar_lock;
 
@@ -152,6 +154,8 @@ private:
     bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
+    /// Flag to trigger phase update, either because of endpt message or every second
+    bool update_phase;
 
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;
