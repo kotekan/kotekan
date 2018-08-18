@@ -48,21 +48,16 @@ private:
     /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
     double tcombine;
 
-    /// Coefficients for blending gains old and new
-    float coef_new = 1;
-    float coef_old = 0;
-
-    /// Vectors for storing old and new gains
-    std::vector<cfloat> gain_new;
-    std::vector<cfloat> gain_old;
-
     /// The gains and when to start applying them in a FIFO (len set by config)
-    updateQueue<std::vector<std::vector<cfloat>>> gains;
+    updateQueue<std::vector<std::vector<cfloat>>> gains_fifo;
 
     /// Output buffer with gains applied
     Buffer * out_buf;
     /// Input buffer to read from
     Buffer * in_buf;
+
+    /// Mutex to protect access to gains
+    std::mutex gain_mtx; 
 
 };
 

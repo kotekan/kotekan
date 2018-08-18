@@ -31,9 +31,6 @@ applyGains::applyGains(Config& config,
 
     apply_config(0);
 
-    // Get the path to gains directory
-    gains_dir = config.get_string(unique_name, "gains_dir");
-
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -43,16 +40,12 @@ applyGains::applyGains(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // FIFO for gains updates
-    gains = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
+    gains_fifo = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
 
     // subscribe to gain timestamp updates
-    // Using the new constructor
     configUpdater::instance().subscribe(this,
                 std::bind(&applyGains::receive_update, this, 
                           _1));
-//    configUpdater::instance().subscribe(updatable_config,
-//                              std::bind(&applyGains::receive_update, this,
-//                                        std::placeholders::_1));
 }
 
 void applyGains::apply_config(uint64_t fpga_seq) {
@@ -66,17 +59,16 @@ void applyGains::apply_config(uint64_t fpga_seq) {
 
     // Time to blend old and new gains in seconds. Default is 5 minutes. 
     tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
+    if (tcombine < 0)
+        throw std::invalid_argument("applyGains: config: combine_gains_time has" \
+                                    "to be positive (is "
+                                    + std::to_string(tcombine) + ").");
 
     updatable_config = config.get_string(unique_name, "updatable_config");
-}
 
-cfloat applyGains::combine_gains(int idx) {
+    // Get the path to gains directory
+    gains_dir = config.get_string(unique_name, "gains_dir");
 
-    if (coef_new == 1) {
-        return gain_new[idx];
-    } else {
-        return coef_new * gain_new[idx] + coef_old * gain_old[idx];
-    }
 }
 
 bool applyGains::receive_update(nlohmann::json &json) {
@@ -118,7 +110,9 @@ bool applyGains::receive_update(nlohmann::json &json) {
     // Read the dataset and alocates it to the most recent entry of the gain vector
     HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
     gains_ds.read(gain_read);
-    gains.insert(double_to_ts(new_ts), std::move(gain_read));
+    gain_mtx.lock();
+    gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
+    gain_mtx.unlock();
     return true;
 }
 
@@ -129,6 +123,7 @@ void applyGains::main_thread() {
     unsigned int freq;
     double tpast;
     double frame_time;
+
 
     while (!stop_thread) {
 
@@ -146,31 +141,57 @@ void applyGains::main_thread() {
         freq = input_frame.freq_id;
         // Unix time
         frame_time = ts_to_double(std::get<1>(input_frame.time));
+        // Vector for storing gains
+        std::vector<cfloat> gain;
+        std::vector<cfloat> gain_conj;
+        // Vector for storing weight factors
+        std::vector<float> weight_factor;
 
-        std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair1;
-        std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair2;
 
-        gainpair1 = gains.get_update(double_to_ts(frame_time));
-        if (gainpair1.second == NULL) {
+        std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_new;
+        std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_old;
+
+        gain_mtx.lock();
+        gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
+        if (gainpair_new.second == NULL) {
             WARN("No gains available.\nKilling kotekan");
             std::raise(SIGINT);
         }
-        tpast = frame_time - ts_to_double(gainpair1.first);
-        gain_new = (*gainpair1.second)[freq];
-        if (tpast >= tcombine) {
-            coef_new = 1;
-        } else if (tpast >= 0) {
-            gainpair2 = gains.get_update(double_to_ts(frame_time - tcombine));
-            if (ts_to_double(gainpair1.first)!=ts_to_double(gainpair2.first)) {
-                // If we are not using the very first set of gains,
-                // do gains interpolation.
-                gain_old = (*gainpair2.second)[freq];
-                coef_new = tpast/tcombine;
-                coef_old = 1 - coef_new;
+        tpast = frame_time - ts_to_double(gainpair_new.first);
+
+        // Determine if we need to combine gains:
+        bool combine_gains = (tpast>=0) && (tpast<tcombine);
+        if (combine_gains) {
+            gainpair_old = gains_fifo.get_update(double_to_ts(frame_time - tcombine));
+            // If we are not using the very first set of gains, do gains interpolation:
+            combine_gains = combine_gains && \
+                (ts_to_double(gainpair_new.first)!=ts_to_double(gainpair_old.first));
+        }
+
+        // Combine gains if needed:
+        if (combine_gains) {
+            float coef_new = tpast/tcombine;
+            float coef_old = 1 - coef_new;
+            for (int ii=0; ii<input_frame.num_elements; ii++) {
+                gain.push_back(coef_new * (*gainpair_new.second)[freq][ii] \
+                             + coef_old * (*gainpair_old.second)[freq][ii]);
             }
         } else {
-            // TODO: export prometeus metric saying that there are no gains to apply?
-            INFO("Gain timestamp is in the future!")
+            gain = (*gainpair_new.second)[freq];
+            if (tpast < 0) {
+                // TODO: export prometeus metric and print time difference?
+                WARN("Gain timestamp is in the future! Using oldest gains available."\
+                     "Time difference is: %f seconds.", tpast);
+                prometheusMetrics::instance().add_process_metric(
+                                        "kotekan_applygains_old_frame_seconds",
+                                        unique_name, tpast);
+            }
+        }
+        gain_mtx.unlock();
+        // Compute weight factors and conjugate gains
+        for (int ii=0; ii<input_frame.num_elements; ii++) {
+            gain_conj.push_back(std::conj(gain[ii]));
+            weight_factor.push_back(pow(abs(gain[ii]), -2.0));
         }
 
         // Wait for the output buffer to be empty of data
@@ -191,16 +212,16 @@ void applyGains::main_thread() {
             for (int jj=ii; jj<input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
                 output_frame.vis[idx] = input_frame.vis[idx]
-                                        * combine_gains(ii)
-                                        * std::conj(combine_gains(jj));
-                // Update the wheights.
-                // TODO: check that this exponent is correct
-                output_frame.weight[idx] /= pow(abs(combine_gains(ii))
-                                              * abs(combine_gains(jj)), 2.0);
+                                        * gain[ii]
+                                        * gain_conj[jj];
+                // Update the weights.
+                output_frame.weight[idx] = input_frame.weight[idx] 
+                                           * weight_factor[ii] 
+                                           * weight_factor[jj];
                 idx++;
             }
             // Update the gains.
-            output_frame.gain[ii] = combine_gains(ii);
+            output_frame.gain[ii] = input_frame.gain[ii] * gain[ii];
         }
 
         // Mark the buffers and move on

@@ -148,8 +148,10 @@ def test_apply(tmpdir_factory):
             expvis[ii] = ((prod.input_a + 1j*prod.input_b)
                           * (gains[prod.input_a])
                           * np.conj((gains[prod.input_b])))
-        real_fracdiff = (frame.vis[:].real - expvis.real)/(frame.vis[:].real+1E-10)
-        imag_fracdiff = (frame.vis[:].imag - expvis.imag)/(frame.vis[:].imag+1E-10)
+        real_fracdiff = abs(frame.vis[:].real 
+                            - expvis.real)/abs(frame.vis[:].real+1E-10)
+        imag_fracdiff = abs(frame.vis[:].imag 
+                            - expvis.imag)/abs(frame.vis[:].imag+1E-10)
         assert (real_fracdiff < 1E-5).all()
         assert (imag_fracdiff < 1E-5).all()
         assert (frame.eval == np.arange(
@@ -159,13 +161,16 @@ def test_apply(tmpdir_factory):
                  * np.arange(global_params['num_elements'])[None, :]).flatten()
         assert (frame.evec == evecs).all()
         assert (frame.erms == 1.)
-        greal_fracdiff = (frame.gain.real - gains.real)/gains.real
-        gimag_fracdiff = (frame.gain.imag - gains.imag)/gains.imag
+        # This relies on the fact that the initial value 
+        # of the gains is 1 in fakevis.
+        greal_fracdiff = abs(frame.gain.real - gains.real)/abs(gains.real)
+        gimag_fracdiff = abs(frame.gain.imag - gains.imag)/abs(gains.imag)
         assert (greal_fracdiff < 1E-5).all()
         assert (gimag_fracdiff < 1E-5).all()
         expweight = []
         for ii in range(n_el):
             for jj in range(ii, n_el):
                 expweight.append(1./abs(gains[ii]*gains[jj])**2)
-        weight_fracdiff = (frame.weight - expweight)/(frame.weight)
+        expweight = np.array(expweight)
+        weight_fracdiff = abs(frame.weight - expweight)/(frame.weight)
         assert (weight_fracdiff < 1E-5).all()
