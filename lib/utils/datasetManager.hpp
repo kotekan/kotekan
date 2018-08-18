@@ -131,32 +131,31 @@ public:
     freqState(json & data, state_uptr inner) :
         datasetState(move(inner))
     {
-     //TODO do sth like json_to_data(data);
+        _freqs = data.get<vector<pair<uint32_t, freq_ctype>>>();
     };
 
     // a list of frequency ids
     // description of what those frequency IDs mean in actual physical
     //      frequencies (e.g. 800-400MHz, 1024 frequency channels).
-    freqState(vector<uint32_t> ids, state_uptr inner=nullptr) :
-        datasetState(move(inner)),
-                     _freq_ids(ids) {};
+    freqState(vector<pair<uint32_t, freq_ctype>> freqs,
+              state_uptr inner=nullptr) : datasetState(move(inner)),
+                     _freqs(freqs) {};
 
-    const vector<uint32_t>& get_subset() const
+    const vector<pair<uint32_t, freq_ctype>>& get_freqs() const
     {
-        return _freq_ids;
+        return _freqs;
     }
 
 private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
-        json j;
-        //TODO _ids to json
+        json j(_freqs);
         return j;
     }
 
     /// IDs that describe the subset that this dataset state defines
-    vector<uint32_t> _freq_ids;
+    vector<pair<uint32_t, freq_ctype>> _freqs;
 };
 
 
@@ -168,10 +167,12 @@ public:
     inputState(json & data, state_uptr inner) :
         datasetState(move(inner))
     {
-        //TODO do sth like json_to_data(data);
+        //FIXME: add some checks or handle exceptions
+
+        _inputs = data.get<vector<input_ctype>>();
     };
 
-    inputState(std::vector<input_ctype> inputs, state_uptr inner=nullptr) :
+    inputState(vector<input_ctype> inputs, state_uptr inner=nullptr) :
         datasetState(move(inner)),
         _inputs(inputs) {};
 
@@ -184,8 +185,7 @@ private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
-        json j;
-        //TODO _inputs to json
+        json j(_inputs);
         return j;
     }
 
@@ -202,7 +202,8 @@ public:
 
     prodState(json & data, state_uptr inner) :
         datasetState(move(inner))
-    { //TODO do sth like json_to_data(data);
+    {
+        _prods = data.get<vector<prod_ctype>>();
     };
 
     prodState(vector<prod_ctype> prods, state_uptr inner=nullptr) :
@@ -218,8 +219,7 @@ private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
-        json j;
-        //TODO _ids to json
+        json j(_prods);
         return j;
     }
 
@@ -373,11 +373,10 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
 // typename enable_if_t<is_base_of<datasetState, T>::value>::state
 // So that compilation for T not having datasetState as a base class fails.
 template <typename T>
-pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state)
-{
+pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     state_id hash = hash_state(*state);
-    _states[hash] = std::move(state);
-    return std::pair<state_id, const T*>(hash,
+    _states[hash] = move(state);
+    return pair<state_id, const T*>(hash,
                                          (const T*)(_states.at(hash).get()));
 }
 #endif

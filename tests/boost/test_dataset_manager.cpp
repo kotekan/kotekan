@@ -3,8 +3,8 @@
 #include <boost/test/included/unit_test.hpp>
 #include <string>
 #include <iostream>
-
 #include "json.hpp"
+#include "visUtil.hpp"
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -13,51 +13,91 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
-BOOST_AUTO_TEST_CASE( _general ) {
+struct TestContext {
+    TestContext() { BOOST_TEST_MESSAGE( "setup fixture" ); }
+    ~TestContext()               { BOOST_TEST_MESSAGE( "teardown fixture" ); }
+
+    void check_equal(const vector<input_ctype>& a, const vector<input_ctype>& b) {
+        auto ita = a.begin();
+        auto itb = b.begin();
+
+        while(ita != a.end() || itb != b.end())
+        {
+            BOOST_CHECK_EQUAL(ita->chan_id, itb->chan_id);
+            BOOST_CHECK_EQUAL(ita->correlator_input, itb->correlator_input);
+            if(ita != a.end())
+            {
+                ++ita;
+            }
+            if(itb != b.end())
+            {
+                ++itb;
+            }
+        }
+    }
+};
+
+BOOST_FIXTURE_TEST_CASE( _general, TestContext ) {
     __log_level = 4;
     datasetManager& dm = datasetManager::instance();
 
-    json j;
-
-    std::vector<uint32_t> ids(3,0);
-
-    std::cout << "Test calling freqState constructor" << endl;
-    state_uptr dt1 = std::make_unique<freqState>();
-    std::cout << "Test calling freqState constructor" << endl;
-    state_uptr dt2 = std::make_unique<freqState>(j, std::move(dt1));
-    std::cout << dt2->to_json().dump() << std::endl;
-
-    json j2 = dt2->to_json();
-    state_uptr dt3 = datasetState::from_json(j2);
-    std::cout << dt3->to_json().dump() << std::endl;
-
-    std::pair<state_id, const freqState*> pair1 = dm.add_state(std::make_unique<freqState>(ids));
-    state_id t1 = pair1.first;
-    std::pair<state_id, const inputState*> pair2 = dm.add_state(std::make_unique<inputState>());
-    state_id t2 = pair2.first;
-    std::pair<state_id, const freqState*> pair3 = dm.add_state(std::make_unique<freqState>(j, std::move(dt2)));
-    state_id t3 = pair3.first;
-
-    dset_id d1 = dm.add_dataset(t1, -1);
-    dset_id d2 = dm.add_dataset(t2, d1);
-    dset_id d4 = dm.add_dataset(t3, d2);
-
-    for (auto t : dm.ancestors(d4)) {
-        std::cout << t.first << " " << *(t.second) << std::endl;\
-
-    }
-
-    auto ancestor = dm.ancestors(d4);
-    BOOST_CHECK_EQUAL(ancestor[0].first, d4);
-    BOOST_CHECK_EQUAL(ancestor[0].second->to_json(), j2);
-    BOOST_CHECK_EQUAL(ancestor[1].first, d4);
-    BOOST_CHECK_EQUAL(ancestor[2].first, d2);
-    BOOST_CHECK_EQUAL(ancestor[3].first, d1);
+    // generate datasets:
+    std::vector<input_ctype> inputs = {input_ctype(1, "1"),
+                                       input_ctype(2, "2"),
+                                       input_ctype(3, "3")};
+    std::pair<state_id, const inputState*> input_state =
+            dm.add_state(std::make_unique<inputState>(inputs));
+    dset_id init_ds_id = dm.add_dataset(input_state.first, -1);
 
 
+    // transform that data:
+    std::vector<input_ctype> new_inputs = {input_ctype(1, "1"),
+                                           input_ctype(2, "2"),
+                                           input_ctype(3, "3"),
+                                           input_ctype(4, "4")};
+    pair<dset_id, const inputState*> old_state =
+            dm.closest_ancestor_of_type<inputState>(init_ds_id);
+    const std::vector<input_ctype>& old_inputs = old_state.second->get_inputs();
+    check_equal(old_inputs, inputs);
+    std::pair<state_id, const inputState*> transformed_input_state =
+            dm.add_state(std::make_unique<inputState>(new_inputs));
+    dset_id transformed_ds_id = dm.add_dataset(transformed_input_state.first,
+                                               old_state.first);
 
-    auto t = dm.closest_ancestor_of_type<inputState>(d4);
-    std::cout << "Ancestor(input) " << t.first << " " << *(t.second) << std::endl;
 
-    std::cout << dm.summary();
+    // get state
+    pair<dset_id, const inputState*> final_state =
+            dm.closest_ancestor_of_type<inputState>(transformed_ds_id);
+    const std::vector<input_ctype>& final_inputs = final_state.second->get_inputs();
+    check_equal(new_inputs, final_inputs);
+}
+
+BOOST_AUTO_TEST_CASE( _serialization_input ) {
+    __log_level = 4;
+    datasetManager& dm = datasetManager::instance();
+
+    // serialize and deserialize
+    std::vector<input_ctype> inputs = {input_ctype(1, "1"),
+                                       input_ctype(2, "2"),
+                                       input_ctype(3, "3")};
+    std::pair<state_id, const inputState*> input_state =
+            dm.add_state(std::make_unique<inputState>(inputs));
+    json j = input_state.second->to_json();
+    state_uptr s = datasetState::from_json(j);
+    json j2 = s->to_json();
+    BOOST_CHECK_EQUAL(j, j2);
+
+    // serialize 2 states with the same data
+    std::pair<state_id, const inputState*> input_state3 =
+            dm.add_state(std::make_unique<inputState>(inputs));
+    json j3 = input_state3.second->to_json();
+    BOOST_CHECK_EQUAL(j, j3);
+
+    // check that different data leads to different json
+    std::vector<input_ctype> diff_inputs = {input_ctype(1, "1"),
+                                            input_ctype(7, "7")};
+    std::pair<state_id, const inputState*> diff_input_state =
+            dm.add_state(std::make_unique<inputState>(diff_inputs));
+    json j_diff = diff_input_state.second->to_json();
+    BOOST_CHECK(j != j_diff);
 }
