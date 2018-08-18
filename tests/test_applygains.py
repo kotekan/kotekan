@@ -18,16 +18,10 @@ global_params = {
     'mode': 'fill_ij',
     'freq_ids': [250],
     'buffer_depth': 5,
-    'updatable_config': "/dynamic_attributes/gains",
-    'dynamic_attributes': {
-        'flagging': {'kotekan_update_endpoint': "json",
-                     'bad_inputs': [1, 4],
-                     'timestamp': old_tmstp
-                    },
-        'gains': {'kotekan_update_endpoint': "json",
-                  'gains_timestamp': old_tmstp,
-                  'tag': old_tag
-                 }
+    'updatable_config': "/gains",
+    'gains': {'kotekan_update_endpoint': "json",
+              'gains_timestamp': old_tmstp,
+              'tag': old_tag
     },
     'wait': True,
     'num_kept_updates': 4,
@@ -39,7 +33,7 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
               nelem=global_params['num_elements'], nfreq=1024):
 
     if tag is None:
-        tag = global_params['dynamic_attributes']['gains']['tag']
+        tag = global_params['gains']['tag']
     filepath = gains_dir.join(tag+'.hdf5')
     f = h5py.File(str(filepath), "w")
 
@@ -129,7 +123,7 @@ def test_apply(tmpdir_factory):
     num_prod = n_el * (n_el + 1) / 2
 
     # REST commands
-    cmds = [["post", "dynamic_attributes/gains", 
+    cmds = [["post", "gains", 
              {'tag': new_tag,
               'gains_timestamp': new_tmstp}]]
     gains_dump = apply_data(cmds, tmpdir_factory)

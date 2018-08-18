@@ -44,8 +44,7 @@ applyGains::applyGains(Config& config,
 
     // subscribe to gain timestamp updates
     configUpdater::instance().subscribe(this,
-                std::bind(&applyGains::receive_update, this, 
-                          _1));
+                std::bind(&applyGains::receive_update, this, _1));
 }
 
 void applyGains::apply_config(uint64_t fpga_seq) {
