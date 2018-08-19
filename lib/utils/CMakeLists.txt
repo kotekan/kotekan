@@ -15,6 +15,7 @@ set (KOTEKAN_UTIL_SOURCES
               visUtil.cpp
               visFile.cpp
               visFileRaw.cpp
+              visFileRing.cpp
               tx_utils.cpp
               datasetManager.cpp
        )

@@ -14,7 +14,8 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # list them all here:
 set(KOTEKAN_BOOST_TEST_SOURCES
                 test_truncate.cpp
-                test_dataset_manager.cpp)
+                test_dataset_manager.cpp
+                test_updatequeue.cpp)
 
 # list test source files that need HDF5 here:
 if(${USE_HDF5})

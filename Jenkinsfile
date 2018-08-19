@@ -1,5 +1,8 @@
 pipeline {
   agent any
+  options {
+    timeout(time: 1, unit: 'HOURS')
+  }
   stages {
     stage('Build') {
       parallel {
@@ -41,7 +44,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-pytest'''
+pytest -s -vvv'''
       }
     }
   }
