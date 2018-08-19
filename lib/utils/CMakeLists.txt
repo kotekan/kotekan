@@ -17,6 +17,7 @@ set (KOTEKAN_UTIL_SOURCES
               visFileRaw.cpp
               visFileRing.cpp
               tx_utils.cpp
+              datasetManager.cpp
        )
 
 if (${USE_HDF5})

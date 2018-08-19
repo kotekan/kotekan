@@ -90,7 +90,7 @@ def test_io_errors_and_max_samples(tmpdir_factory):
             command_rest_frames(1),
             command_trigger(1437, 1839, "doesnt_exist/file1.h5", 10),
             command_trigger(10457, 3237, "file2.h5", 31),
-            wait(0.1),
+            wait(0.5),
             command_rest_frames(60),
             ]
     params = {
@@ -111,7 +111,7 @@ def test_basic(tmpdir_factory):
             command_trigger(1437, 1839, "file1.h5", 10),
             command_trigger(40457, 3237, "file2.h5", 31),
             command_trigger(51039, 2091, "file3.h5", 17),
-            wait(0.1),
+            wait(0.5),
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
