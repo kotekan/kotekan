@@ -20,11 +20,10 @@ global_params = {
     'buffer_depth': 5,
     'updatable_config': "/gains",
     'gains': {'kotekan_update_endpoint': "json",
-              'gains_timestamp': old_tmstp,
+              'start_time': old_tmstp,
               'tag': old_tag
     },
     'wait': True,
-    'num_kept_updates': 4,
     'combine_gains_time': 10.
 }
 
@@ -125,7 +124,7 @@ def test_apply(tmpdir_factory):
     # REST commands
     cmds = [["post", "gains", 
              {'tag': new_tag,
-              'gains_timestamp': new_tmstp}]]
+              'start_time': new_tmstp}]]
     gains_dump = apply_data(cmds, tmpdir_factory)
 
     for frame in gains_dump:

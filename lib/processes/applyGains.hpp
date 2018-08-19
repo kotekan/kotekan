@@ -23,9 +23,6 @@ public:
 
     void apply_config(uint64_t fpga_seq);
 
-    /// Blend gains old and new
-    cfloat combine_gains(int idx);
-
     /// Main loop for the process
     void main_thread();
 

@@ -49,13 +49,12 @@ applyGains::applyGains(Config& config,
 
 void applyGains::apply_config(uint64_t fpga_seq) {
 
-    // Number of gain versions kept
-    num_kept_updates = config.get_uint64(unique_name, "num_kept_updates");
+    // Number of gain versions kept. Default is 5.
+    num_kept_updates = config.get_uint64_default(unique_name, "num_kept_updates", 5);
     if (num_kept_updates < 1)
         throw std::invalid_argument("applyGains: config: num_kept_updates has" \
                                     "to equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
-
     // Time to blend old and new gains in seconds. Default is 5 minutes. 
     tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
     if (tcombine < 0)
@@ -76,17 +75,17 @@ bool applyGains::receive_update(nlohmann::json &json) {
     std::string gains_path;
     std::string gtag;
     std::vector<std::vector<cfloat>> gain_read;
-    // receive new gains timestamp ("gains_timestamp" might move to "start_time")
+    // receive new gains timestamp ("start_time" might move to "start_time")
     try {
-        if (!json.at("gains_timestamp").is_number())
+        if (!json.at("start_time").is_number())
             throw std::invalid_argument("applyGains: received bad gains " \
                                        "timestamp: " +
-                                       json.at("gains_timestamp").dump());
-        if (json.at("gains_timestamp") < 0)
+                                       json.at("start_time").dump());
+        if (json.at("start_time") < 0)
             throw std::invalid_argument("applyGains: received negative gains " \
                                        "timestamp: " +
-                                       json.at("gains_timestamp").dump());
-        new_ts = json.at("gains_timestamp");
+                                       json.at("start_time").dump());
+        new_ts = json.at("start_time");
     } catch (std::exception& e) {
         WARN("%s", e.what());
         return false;
@@ -141,10 +140,10 @@ void applyGains::main_thread() {
         // Unix time
         frame_time = ts_to_double(std::get<1>(input_frame.time));
         // Vector for storing gains
-        std::vector<cfloat> gain;
-        std::vector<cfloat> gain_conj;
+        std::vector<cfloat> gain(input_frame.num_elements);
+        std::vector<cfloat> gain_conj(input_frame.num_elements);
         // Vector for storing weight factors
-        std::vector<float> weight_factor;
+        std::vector<float> weight_factor(input_frame.num_elements);
 
 
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_new;
@@ -164,7 +163,7 @@ void applyGains::main_thread() {
             gainpair_old = gains_fifo.get_update(double_to_ts(frame_time - tcombine));
             // If we are not using the very first set of gains, do gains interpolation:
             combine_gains = combine_gains && \
-                (ts_to_double(gainpair_new.first)!=ts_to_double(gainpair_old.first));
+                !(gainpair_new.first==gainpair_old.first);
         }
 
         // Combine gains if needed:
@@ -172,8 +171,8 @@ void applyGains::main_thread() {
             float coef_new = tpast/tcombine;
             float coef_old = 1 - coef_new;
             for (int ii=0; ii<input_frame.num_elements; ii++) {
-                gain.push_back(coef_new * (*gainpair_new.second)[freq][ii] \
-                             + coef_old * (*gainpair_old.second)[freq][ii]);
+                gain[ii] = coef_new * (*gainpair_new.second)[freq][ii] \
+                         + coef_old * (*gainpair_old.second)[freq][ii];
             }
         } else {
             gain = (*gainpair_new.second)[freq];
@@ -189,8 +188,8 @@ void applyGains::main_thread() {
         gain_mtx.unlock();
         // Compute weight factors and conjugate gains
         for (int ii=0; ii<input_frame.num_elements; ii++) {
-            gain_conj.push_back(std::conj(gain[ii]));
-            weight_factor.push_back(pow(abs(gain[ii]), -2.0));
+            gain_conj[ii] = std::conj(gain[ii]);
+            weight_factor[ii] = pow(abs(gain[ii]), -2.0);
         }
 
         // Wait for the output buffer to be empty of data
@@ -224,10 +223,8 @@ void applyGains::main_thread() {
         }
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), 
-                                                    output_frame_id);
-        mark_frame_empty(in_buf, unique_name.c_str(), 
-                                                input_frame_id);
+        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
         // Advance the current frame ids
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
