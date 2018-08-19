@@ -108,7 +108,7 @@ private:
 
     // List of registerd subclass creating functions
     static map<string,
-                    function<state_uptr(json&, state_uptr)>> _type_create_funcs;
+               function<state_uptr(json&, state_uptr)>> _type_create_funcs;
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
@@ -153,8 +153,9 @@ public:
      * @param inner An inner state (optional).
      */
     freqState(vector<pair<uint32_t, freq_ctype>> freqs,
-              state_uptr inner=nullptr) : datasetState(move(inner)),
-                     _freqs(freqs) {};
+              state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+        _freqs(freqs) {};
 
     /**
      * @brief Get frequency information (read only).
