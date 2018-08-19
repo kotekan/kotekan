@@ -12,6 +12,39 @@
 #include "updateQueue.hpp"
 
 
+
+/**
+ * @class applyGains
+ * @brief Receives gains and apply them to the output buffer.
+ *
+ * This process registers as a subscriber to an updatable config block. The
+ * full name of the block should be defined in the value <updateable_block>
+ *
+ * @par Buffers
+ * @buffer in_buf The input stream.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ * @buffer out_buf The output stream.
+ *         @buffer_format visBuffer.
+ *         @buffer_metadata visMetadata
+ *
+ * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
+ * correlator data.
+ * @conf   updatable_block  String. The full name of the updatable_block that
+ * will provide new flagging values (e.g. "/dynamic_block/gains").
+ * @conf   gains_dir        String. The path to the directory holding the gains
+ * file.
+ * @conf   tcombine         Double. Time (in seconds) over which to combine old 
+ * and new gains to prevent discontinuities. Default is 5 minutes.
+ * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
+ *
+ * @metric kotekan_applygains_old_frame_seconds The difference between the
+ *  timestamps of the current frame and the oldest stored update, in case there
+ *  is no update with a timestamp that is older than the timestamp of the
+ *  current frame (in seconds).
+ *
+ * @author Mateus Fandino
+ */
 class applyGains : public KotekanProcess {
 
 public:
