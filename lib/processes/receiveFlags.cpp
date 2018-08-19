@@ -43,7 +43,8 @@ void receiveFlags::apply_config(uint64_t fpga_seq) {
 
     updatable_config = config.get_string(unique_name, "updatable_config");
 
-    num_kept_updates = config.get_uint32(unique_name, "num_kept_updates");
+    num_kept_updates = config.get_uint32_default(unique_name,
+                                                 "num_kept_updates", 5);
 }
 
 bool receiveFlags::flags_callback(nlohmann::json &json) {

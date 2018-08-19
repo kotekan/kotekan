@@ -1,9 +1,12 @@
+/*****************************************
+@file
+@brief Receive and set flags for the visibility data.
+- receiveFlags : public KotekanProcess
+*****************************************/
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
 #include "updateQueue.hpp"
-#include "gsl-lite.hpp"
-
 #include "KotekanProcess.hpp"
 #include <mutex>
 
