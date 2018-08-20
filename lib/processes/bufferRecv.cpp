@@ -3,14 +3,20 @@
 #include "bufferSend.hpp"
 #include "prometheusMetrics.hpp"
 #include "visUtil.hpp"
+#include "nt_memcpy.h"
 
 #include "fmt.hpp"
 #include <exception>
 #include <errno.h>
 #include <functional>
 #include <signal.h>
+#include <string>
 
 using namespace std::placeholders;
+using std::thread;
+using std::vector;
+using std::queue;
+using std::mutex;
 
 REGISTER_KOTEKAN_PROCESS(bufferRecv);
 
@@ -21,6 +27,8 @@ bufferRecv::bufferRecv(Config& config,
                    std::bind(&bufferRecv::main_thread, this)) {
 
     listen_port = config.get_int_default(unique_name, "listen_port", 11024);
+    num_threads = config.get_int_default(unique_name, "num_threads", 1);
+    connection_timeout = config.get_int_default(unique_name, "connection_timeout", 60);
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
@@ -34,168 +42,38 @@ void bufferRecv::apply_config(uint64_t fpga_seq) {
 }
 
 void bufferRecv::read_callback(bufferevent* bev, void* ctx) {
+    // Add job to work queue.
     connInstance * instance = (connInstance *) ctx;
-    instance->buffer_recv->internal_read_callback(bev, ctx);
+    std::lock_guard<mutex> lock(instance->buffer_recv->work_queue_lock);
+    instance->increment_ref_count();
+    instance->buffer_recv->work_queue.push(std::bind(&connInstance::internal_read_callback, instance, bev));
+    instance->buffer_recv->work_cv.notify_all();
 }
 
-void bufferRecv::internal_read_callback(struct bufferevent *bev, void *ctx)
-{
-    DEBUG2("Read Callback");
-    struct evbuffer *input;
-    input = bufferevent_get_input(bev);
-    connInstance * instance = (connInstance *) ctx;
-    int64_t n = 0;
-
-    // TODO: this timer really needs to be done differently as there might be
-    // several calls in `internal_read_callback` required to complete a
-    // transfer. Best option is to make `st` a member of `connInstance` and only
-    // reset when we start to get the header.
-    double st = current_time();
-
-    while (evbuffer_get_length(input) && !instance->buffer_recv->stop_thread) {
-        switch (instance->state) {
-        case connState::header:
-            n = evbuffer_remove(input,
-                       (void*)(((int8_t*)&instance->buf_frame_header) + instance->bytes_read),
-                       sizeof(struct bufferFrameHeader) - instance->bytes_read);
-            DEBUG2("Header read bytes: %d", n);
-            if (n < 0) {
-                ERROR("Reading header failed for client %s, with error %d (%s)",
-                        instance->client_ip.c_str(), errno, strerror(errno));
-                goto end_loop;
-            }
-            instance->bytes_read += n;
-            if (instance->bytes_read >= sizeof(struct bufferFrameHeader)) {
-                assert(instance->bytes_read == sizeof(struct bufferFrameHeader));
-                instance->state = connState::metadata;
-                instance->bytes_read = 0;
-
-                DEBUG2("Got header: metadata_size: %d, frame_size: %d",
-                        instance->buf_frame_header.metadata_size, instance->buf_frame_header.frame_size);
-
-                if ((unsigned int)instance->buf->frame_size != instance->buf_frame_header.frame_size) {
-                    ERROR("Frame size does not match between server: %d and client: %d",
-                            instance->buf->frame_size, instance->buf_frame_header.frame_size);
-                    throw std::runtime_error("Frame size does not match between server and client!");
-                }
-                if (instance->buf->metadata_pool->metadata_object_size != instance->buf_frame_header.metadata_size) {
-                    ERROR("Metadata size does not match between server and client!");
-                    throw std::runtime_error("Metadata size does not match between server and client!");
-                }
-            }
-
-            break;
-        case connState::metadata:
-            n = evbuffer_remove(input,
-                    (void*)(instance->metadata_space + instance->bytes_read),
-                    instance->buf_frame_header.metadata_size - instance->bytes_read);
-            DEBUG2("Metadata read bytes: %d", n);
-            if (n < 0) {
-                ERROR("Reading metadata failed for client %s, with error %d (%s)",
-                        instance->client_ip.c_str(), errno, strerror(errno));
-                goto end_loop;
-            }
-            instance->bytes_read += n;
-            if (instance->bytes_read >= instance->buf_frame_header.metadata_size) {
-                assert(instance->bytes_read == instance->buf_frame_header.metadata_size);
-                instance->state = connState::frame;
-                instance->bytes_read = 0;
-            }
-        case connState::frame:
-            n = evbuffer_remove(input,
-                    (void*)(instance->frame_space + instance->bytes_read),
-                    instance->buf_frame_header.frame_size - instance->bytes_read);
-            if (n < 0) {
-                ERROR("Reading frame failed for client %s, with error %d (%s)",
-                        instance->client_ip.c_str(), errno, strerror(errno));
-                goto end_loop;
-            }
-            instance->bytes_read += n;
-            DEBUG("Frame read bytes: %d, total read: %d", n, instance->bytes_read);
-            if (instance->bytes_read >= instance->buf_frame_header.frame_size) {
-                assert(instance->bytes_read == instance->buf_frame_header.frame_size);
-                instance->state = connState::finished;
-                instance->bytes_read = 0;
-            }
-            break;
-        case connState::finished:
-            throw std::runtime_error("State set to something unexpected!");
-            break;
+void bufferRecv::worker_thread() {
+    std::function<void(void)> job;
+    DEBUG2("Starting worker thread");
+    while (!stop_thread) {
+        {
+            std::unique_lock<mutex> lock(work_queue_lock);
+            work_cv.wait(lock, [&] {return (!work_queue.empty() || stop_thread);});
+            if (stop_thread) return;
+            job = work_queue.front();
+            work_queue.pop();
         }
-
-        if (instance->state == connState::finished) {
-            // Get empty frame if one exists.
-            DEBUG2("Finished state");
-            int frame_id = instance->buffer_recv->get_next_frame();
-            if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from %s",
-                        instance->client_ip.c_str());
-
-                // Update dropped frame count in prometheus
-                dropped_frame_count++;
-                prometheusMetrics::instance().add_process_metric(
-                    "kotekan_buffer_recv_dropped_frame_total", unique_name, dropped_frame_count
-                );
-            } else {
-                // This call cannot be blocking because we checked that
-                // the frame is empty in get_next_frame()
-                uint8_t * frame = wait_for_empty_frame(instance->buf,
-                                    instance->producer_name.c_str(), frame_id);
-                if (frame == NULL) return;
-
-                allocate_new_metadata_object(instance->buf, frame_id);
-
-                memcpy((void*)frame, instance->frame_space,
-                        instance->buf_frame_header.frame_size);
-
-                void * metadata = get_metadata(instance->buf, frame_id);
-                if (metadata != NULL)
-                    memcpy(metadata, instance->metadata_space,
-                            instance->buf_frame_header.metadata_size);
-
-                mark_frame_full(instance->buf, instance->producer_name.c_str(), frame_id);
-
-                // Save a prometheus metric of the elapsed time
-                double elapsed = current_time() - st;
-                std::string labels = fmt::format("source=\"{}:{}\"",
-                                                 instance->client_ip,
-                                                 instance->port);
-                prometheusMetrics::instance().add_process_metric(
-                    "kotekan_buffer_recv_transfer_time_seconds", unique_name,
-                    elapsed, labels
-                );
-
-                INFO("Received data from client: %s:%d into frame: %s[%d]",
-                        instance->client_ip.c_str(), instance->port,
-                        instance->buf->buffer_name, frame_id);
-            }
-            instance->state = connState::header;
-        }
+        DEBUG2("Starting worker thread job");
+        job();
     }
-    end_loop:; // TODO Close?
+}
+
+bool bufferRecv::get_worker_stop_thread() {
+    return worker_stop_thread;
 }
 
 void bufferRecv::error_callback(struct bufferevent *bev, short error, void *ctx)
 {
     connInstance * instance = (connInstance *)ctx;
-    instance->buffer_recv->internal_error_callback(bev, error, ctx);
-}
-
-void bufferRecv::internal_error_callback(bufferevent* bev, short error, void* ctx) {
-    connInstance * instance = (connInstance *)ctx;
-    DEBUG("Error Callback");
-    if (error & BEV_EVENT_EOF) {
-        WARN("Kotekan client: %s closed connection", instance->client_ip.c_str());
-    } else if (error & BEV_EVENT_ERROR) {
-        ERROR("Connection error with Kotekan client: %s, errno: %d, message %s",
-                instance->client_ip.c_str(), errno, strerror(errno));
-    } else if (error & BEV_EVENT_TIMEOUT) {
-        ERROR("Connection with Kotekan client: %s timed out.", instance->client_ip.c_str());
-    } else {
-        ERROR("Un-handled error in error_callback %d", error);
-    }
-    delete instance;
-    bufferevent_free(bev);
+    instance->internal_error_callback(bev, error, ctx);
 }
 
 void bufferRecv::accept_connection(int listener, short event, void* arg) {
@@ -203,16 +81,24 @@ void bufferRecv::accept_connection(int listener, short event, void* arg) {
     accept_args->buffer_recv->internal_accept_connection(listener, event, arg);
 }
 
+void bufferRecv::increment_droped_frame_count() {
+    std::lock_guard<mutex> lock(dropped_frame_count_mutex);
+    dropped_frame_count++;
+    prometheusMetrics::instance().add_process_metric(
+        "kotekan_buffer_recv_dropped_frame_total", unique_name, dropped_frame_count
+    );
+}
+
 void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void *arg)
 {
-    //DEBUG("Accept connection");
+    DEBUG("Accept connection");
     struct acceptArgs * accept_args = (struct acceptArgs *)arg;
     struct event_base *base = accept_args->base;
     struct sockaddr_storage ss;
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr*)&ss, &slen);
     if (fd < 0) {
-        //ERROR("Failed to accept connection.");
+        ERROR("Failed to accept connection.");
     } else if (fd > FD_SETSIZE) {
         close(fd);
     } else {
@@ -225,7 +111,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
         char ip_str[256];
         inet_ntop(AF_INET, &s->sin_addr, ip_str, sizeof(ip_str));
 
-        //INFO("New connection from client: %s:%d", ip_str, port);
+        INFO("New connection from client: %s:%d", ip_str, port);
 
         // New connection instance
         connInstance * instance =
@@ -235,23 +121,34 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
                                  ip_str,
                                  port);
 
-        bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+        // Setup logging for the instance object.
+        instance->set_log_prefix(accept_args->unique_name + "/instance");
+        instance->set_log_level(accept_args->log_level);
+
+        bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE);
+        instance->set_bufferevent(bev);
         bufferevent_setcb(bev, &bufferRecv::read_callback, NULL,
                                &bufferRecv::error_callback, (void *)instance);
         size_t expected_size = sizeof(struct bufferFrameHeader) +
                                 accept_args->buf->metadata_pool->metadata_object_size +
                                 accept_args->buf->frame_size;
         bufferevent_setwatermark(bev, EV_READ, expected_size, 0);
-        const int timeout_sec = 60;
-        struct timeval read_timeout = {timeout_sec, 0};
-        struct timeval write_timeout = {timeout_sec, 0};
+        struct timeval read_timeout = {connection_timeout, 0};
+        struct timeval write_timeout = {connection_timeout, 0};
         bufferevent_set_timeouts(bev, &read_timeout, &write_timeout);
         bufferevent_enable(bev, EV_READ|EV_WRITE);
     }
 }
 
-void bufferRecv::base_thread() {
-    event_base_dispatch(base);
+//void bufferRecv::base_thread() {
+//    event_base_dispatch(base);
+//}
+
+void bufferRecv::timer(evutil_socket_t fd, short event, void *arg) {
+    bufferRecv * buff_recv = (bufferRecv *)arg;
+    if (buff_recv->stop_thread) {
+        event_base_loopbreak(buff_recv->base);
+    }
 }
 
 void bufferRecv::main_thread() {
@@ -260,11 +157,33 @@ void bufferRecv::main_thread() {
     struct sockaddr_in server_addr;
     struct event *listener_event;
 
+    INFO("libevent version: %s", event_get_version());
+
+    if (evthread_use_pthreads()) {
+        ERROR("Cannot use pthreads with libevent!");
+        return;
+    }
+
     base = event_base_new();
     if (!base) {
         ERROR("Failed to crate libevent base");
         raise(SIGINT);
         return;
+    }
+
+    // Create worker threads:
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+        CPU_SET(i, &cpuset);
+
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        thread_pool.push_back(thread(&bufferRecv::worker_thread, std::ref(*this)));
+        pthread_setaffinity_np(thread_pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
+        #ifndef MAC_OSX
+            std::string short_name = string_tail(unique_name + "/worker_thread/" + std::to_string(i), 15);
+            pthread_setname_np(thread_pool.back().native_handle(), short_name.c_str());
+        #endif
     }
 
     server_addr.sin_family = AF_INET;
@@ -293,28 +212,48 @@ void bufferRecv::main_thread() {
     args.buf = buf;
     args.buffer_recv = this;
     args.unique_name = unique_name;
+    args.log_level = config.get_string_default(unique_name, "instance_log_level",
+                                               config.get_string(unique_name, "log_level"));
+
+    // Note that if the performance still isn't good enough, we could have more than
+    // one base object and base loop threads.  In theory there shouldn't be much happening
+    // in the base loop thread, but this needs to be tested more.
     listener_event = event_new(base, listener, EV_READ|EV_PERSIST,
                         bufferRecv::accept_connection, (void*)&args);
     event_add(listener_event, NULL);
 
-    std::thread base_thread_t =
-            std::thread(&bufferRecv::base_thread, std::ref(*this));
+//    std::thread base_thread_t =
+//            std::thread(&bufferRecv::base_thread, std::ref(*this));
 
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
-        CPU_SET(i, &cpuset);
-    pthread_setaffinity_np(base_thread_t.native_handle(), sizeof(cpu_set_t), &cpuset);
+//    cpu_set_t cpuset;
+//    CPU_ZERO(&cpuset);
+//    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+//        CPU_SET(i, &cpuset);
+//    pthread_setaffinity_np(base_thread_t.native_handle(), sizeof(cpu_set_t), &cpuset);
 
-    while (!stop_thread) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+//    while (!stop_thread) {
+//        std::this_thread::sleep_for(std::chrono::seconds(1));
+//    }
+
+    // Create a timer to check for the exit condition
+    struct event *timer_event;
+    timer_event = event_new(base, -1, EV_PERSIST, &bufferRecv::timer, this);
+    struct timeval interval;
+    interval.tv_sec = 0;
+    interval.tv_usec = 100000;
+    event_add(timer_event, &interval);
+
+    // The libevent main loop.
+    event_base_dispatch(base);
+
+    // Join all the worker threads
+    worker_stop_thread = true;
+    work_cv.notify_all();
+    for (thread &t : thread_pool) {
+        if (t.joinable()) {
+            t.join();
+        }
     }
-
-    INFO("Event base loop break");
-    event_base_loopbreak(base);
-
-    base_thread_t.join();
-    // TODO Cleanup connInstances
 }
 
 int bufferRecv::get_next_frame() {
@@ -350,7 +289,214 @@ connInstance::connInstance(const string& producer_name,
 }
 
 connInstance::~connInstance() {
+    bufferevent_free(buffer_event);
     free(frame_space);
     free(metadata_space);
 }
 
+void connInstance::increment_ref_count() {
+    std::lock_guard<std::mutex> lock(reference_count_lock);
+    reference_count++;
+}
+
+void connInstance::decrement_ref_count() {
+    std::lock_guard<std::mutex> lock(reference_count_lock);
+    reference_count--;
+    if (reference_count == 0 && close_flag) {
+        delete this;
+    }
+}
+
+void connInstance::close_instance() {
+    std::lock_guard<std::mutex> lock(reference_count_lock);
+    bufferevent_disable(buffer_event, EV_READ | EV_WRITE);
+    close_flag = true;
+    if (reference_count == 0) {
+        delete this;
+    }
+}
+
+void connInstance::set_bufferevent(struct bufferevent *bev) {
+    buffer_event = bev;
+}
+
+void connInstance::internal_error_callback(bufferevent* bev, short error, void* ctx) {
+    assert(bev == buffer_event);
+
+    DEBUG("Error Callback");
+    if (error & BEV_EVENT_EOF) {
+        WARN("Kotekan client: %s closed connection", client_ip.c_str());
+    } else if (error & BEV_EVENT_ERROR) {
+        ERROR("Connection error with Kotekan client: %s, errno: %d, message %s",
+                client_ip.c_str(), errno, strerror(errno));
+    } else if (error & BEV_EVENT_TIMEOUT) {
+        ERROR("Connection with Kotekan client: %s timed out.", client_ip.c_str());
+    } else {
+        ERROR("Un-handled error in error_callback %d", error);
+    }
+
+    // Stop getting new events on this connection
+    close_instance();
+}
+
+void connInstance::internal_read_callback(struct bufferevent *bev)
+{
+    DEBUG2("Read Callback");
+    assert(bev == buffer_event);
+
+    // Locking the instance should be equivalent to locking the bufferevent
+    // since the callback which includes a given bev has a unique instance
+    // attached to it.
+    std::lock_guard<std::mutex> lock(instance_lock);
+
+    // Don't process anything if the instance (and the connection attached to it) has been closed.
+    if (close_flag) {
+        decrement_ref_count();
+        return;
+    }
+
+    // Get the evbuffer;
+    struct evbuffer *input;
+    input = bufferevent_get_input(bev);
+    int64_t n = 0;
+
+    while (evbuffer_get_length(input) && !buffer_recv->get_worker_stop_thread()) {
+        switch (state) {
+        case connState::header:
+
+            start_time = current_time();
+
+            n = evbuffer_remove(input,
+                       (void*)(((int8_t*)&buf_frame_header) + bytes_read),
+                       sizeof(struct bufferFrameHeader) - bytes_read);
+            DEBUG2("Header read bytes: %d", n);
+            if (n < 0) {
+                ERROR("Reading header failed for client %s, with error %d (%s)",
+                        client_ip.c_str(), errno, strerror(errno));
+                decrement_ref_count();
+                close_instance();
+                return;
+            }
+            bytes_read += n;
+            if (bytes_read >= sizeof(struct bufferFrameHeader)) {
+                assert(bytes_read == sizeof(struct bufferFrameHeader));
+                state = connState::metadata;
+                bytes_read = 0;
+
+                DEBUG2("Got header: metadata_size: %d, frame_size: %d",
+                        buf_frame_header.metadata_size, buf_frame_header.frame_size);
+
+                if ((unsigned int)buf->frame_size != buf_frame_header.frame_size) {
+                    ERROR("Frame size does not match between server: %d and client: %d",
+                            buf->frame_size, buf_frame_header.frame_size);
+                    decrement_ref_count();
+                    close_instance();
+                    return;
+                }
+                if (buf->metadata_pool->metadata_object_size != buf_frame_header.metadata_size) {
+                    ERROR("Metadata size does not match between server and client!");
+                    decrement_ref_count();
+                    close_instance();
+                    return;
+                }
+            }
+
+            break;
+        case connState::metadata:
+            n = evbuffer_remove(input,
+                    (void*)(metadata_space + bytes_read),
+                    buf_frame_header.metadata_size - bytes_read);
+            DEBUG2("Metadata read bytes: %d", n);
+            if (n < 0) {
+                ERROR("Reading metadata failed for client %s, with error %d (%s)",
+                        client_ip.c_str(), errno, strerror(errno));
+                decrement_ref_count();
+                close_instance();
+                return;
+            }
+            bytes_read += n;
+            if (bytes_read >= buf_frame_header.metadata_size) {
+                assert(bytes_read == buf_frame_header.metadata_size);
+                state = connState::frame;
+                bytes_read = 0;
+            }
+        case connState::frame:
+            n = evbuffer_remove(input,
+                    (void*)(frame_space + bytes_read),
+                    buf_frame_header.frame_size - bytes_read);
+            if (n < 0) {
+                ERROR("Reading frame failed for client %s, with error %d (%s)",
+                        client_ip.c_str(), errno, strerror(errno));
+                decrement_ref_count();
+                close_instance();
+                return;
+            }
+            bytes_read += n;
+            DEBUG("Frame read bytes: %d, total read: %d", n, bytes_read);
+            if (bytes_read >= buf_frame_header.frame_size) {
+                assert(bytes_read == buf_frame_header.frame_size);
+                state = connState::finished;
+                bytes_read = 0;
+            }
+            break;
+        case connState::finished:
+            throw std::runtime_error("State set to something unexpected!");
+            break;
+        }
+
+        if (state == connState::finished) {
+            // Get empty frame if one exists.
+            DEBUG2("Finished state");
+            int frame_id = buffer_recv->get_next_frame();
+            if (frame_id == -1) {
+                WARN("No free buffer frames, dropping data from %s",
+                        client_ip.c_str());
+
+                // Update dropped frame count in prometheus
+                buffer_recv->increment_droped_frame_count();
+            } else {
+                // This call cannot be blocking because we checked that
+                // the frame is empty in get_next_frame()
+                uint8_t * frame = wait_for_empty_frame(buf,
+                                    producer_name.c_str(), frame_id);
+                if (frame == NULL) return;
+
+                allocate_new_metadata_object(buf, frame_id);
+
+                // If possible use the fast nt_memcpy function instead of the built in memcpy.
+                if ( ((((uintptr_t)frame) & 0xF) == 0) &&
+                     ((buf_frame_header.frame_size % 128) == 0)) {
+                    DEBUG2("Using nt_memcpy instead of memcpy");
+                    nt_memcpy((void*)frame, frame_space,
+                              buf_frame_header.frame_size);
+
+                } else {
+                    memcpy((void*)frame, frame_space,
+                           buf_frame_header.frame_size);
+                }
+
+                void * metadata = get_metadata(buf, frame_id);
+                if (metadata != NULL)
+                    memcpy(metadata, metadata_space,
+                            buf_frame_header.metadata_size);
+
+                mark_frame_full(buf, producer_name.c_str(), frame_id);
+
+                // Save a prometheus metric of the elapsed time
+                double elapsed = current_time() - start_time;
+                std::string labels = fmt::format("source=\"{}:{}\"",
+                                                 client_ip,
+                                                 port);
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_buffer_recv_transfer_time_seconds", producer_name,
+                    elapsed, labels
+                );
+
+                INFO("Received data from client: %s:%d into frame: %s[%d]",
+                        client_ip.c_str(), port, buf->buffer_name, frame_id);
+            }
+            state = connState::header;
+        }
+    }
+    decrement_ref_count();
+}
