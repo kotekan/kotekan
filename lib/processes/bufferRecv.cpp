@@ -93,7 +93,6 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
 {
     DEBUG("Accept connection");
     struct acceptArgs * accept_args = (struct acceptArgs *)arg;
-    struct event_base *base = accept_args->base;
     struct sockaddr_storage ss;
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr*)&ss, &slen);
@@ -125,14 +124,15 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
         instance->set_log_prefix(accept_args->unique_name + "/instance");
         instance->set_log_level(accept_args->log_level);
 
-        bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE);
+        bev = bufferevent_socket_new(accept_args->buffer_recv->recv_bases[accept_args->buffer_recv->next_base], fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE);
+        accept_args->buffer_recv->next_base = (accept_args->buffer_recv->next_base + 1) % NUM_BASES;
         instance->set_bufferevent(bev);
         bufferevent_setcb(bev, &bufferRecv::read_callback, NULL,
                                &bufferRecv::error_callback, (void *)instance);
         size_t expected_size = sizeof(struct bufferFrameHeader) +
                                 accept_args->buf->metadata_pool->metadata_object_size +
                                 accept_args->buf->frame_size;
-        bufferevent_setwatermark(bev, EV_READ, expected_size, 0);
+        bufferevent_setwatermark(bev, EV_READ, expected_size, expected_size);
         struct timeval read_timeout = {connection_timeout, 0};
         struct timeval write_timeout = {connection_timeout, 0};
         bufferevent_set_timeouts(bev, &read_timeout, &write_timeout);
@@ -140,15 +140,26 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     }
 }
 
-//void bufferRecv::base_thread() {
-//    event_base_dispatch(base);
-//}
-
 void bufferRecv::timer(evutil_socket_t fd, short event, void *arg) {
     bufferRecv * buff_recv = (bufferRecv *)arg;
     if (buff_recv->stop_thread) {
         event_base_loopbreak(buff_recv->base);
+        for (int i = 0; i < NUM_BASES; ++i) {
+            event_base_loopbreak(buff_recv->recv_bases[i]);
+        }
     }
+}
+
+void bufferRecv::base_thread(uint32_t thread_id) {
+    INFO("Started base thread for thread ID %d", thread_id);
+    event_base_loop(recv_bases[thread_id], 0);
+    INFO("Exit base thread for thread ID %d", thread_id);
+}
+
+void bufferRecv::do_nothing(evutil_socket_t fd, short event, void *arg) {
+    (void)fd;
+    (void)event;
+    (void)arg;
 }
 
 void bufferRecv::main_thread() {
@@ -169,6 +180,15 @@ void bufferRecv::main_thread() {
         ERROR("Failed to crate libevent base");
         raise(SIGINT);
         return;
+    }
+
+    for (int i = 0; i < NUM_BASES; ++i) {
+        recv_bases[i] = event_base_new();
+        if (!recv_bases[i]) {
+            ERROR("Failed to crate libevent base");
+            raise(SIGINT);
+            return;
+        }
     }
 
     // Create worker threads:
@@ -222,19 +242,6 @@ void bufferRecv::main_thread() {
                         bufferRecv::accept_connection, (void*)&args);
     event_add(listener_event, NULL);
 
-//    std::thread base_thread_t =
-//            std::thread(&bufferRecv::base_thread, std::ref(*this));
-
-//    cpu_set_t cpuset;
-//    CPU_ZERO(&cpuset);
-//    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
-//        CPU_SET(i, &cpuset);
-//    pthread_setaffinity_np(base_thread_t.native_handle(), sizeof(cpu_set_t), &cpuset);
-
-//    while (!stop_thread) {
-//        std::this_thread::sleep_for(std::chrono::seconds(1));
-//    }
-
     // Create a timer to check for the exit condition
     struct event *timer_event;
     timer_event = event_new(base, -1, EV_PERSIST, &bufferRecv::timer, this);
@@ -243,6 +250,16 @@ void bufferRecv::main_thread() {
     interval.tv_usec = 100000;
     event_add(timer_event, &interval);
 
+    for (int i = 0; i < NUM_BASES; ++i) {
+        timer_event = event_new(recv_bases[i], -1, EV_PERSIST, &bufferRecv::do_nothing, this);
+        event_add(timer_event, &interval);
+    }
+
+    for (int i = 0; i < NUM_BASES; ++i) {
+        recv_base_threads.push_back(thread(std::bind(&bufferRecv::base_thread, std::ref(*this), i)));
+        pthread_setaffinity_np(recv_base_threads.back().native_handle(), sizeof(cpu_set_t), &cpuset);
+    }
+
     // The libevent main loop.
     event_base_dispatch(base);
 
@@ -250,6 +267,12 @@ void bufferRecv::main_thread() {
     worker_stop_thread = true;
     work_cv.notify_all();
     for (thread &t : thread_pool) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    for (thread &t : recv_base_threads) {
         if (t.joinable()) {
             t.join();
         }
@@ -271,6 +294,9 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
+static int num_instances = 0;
+std::mutex num_instances_lock;
+
 connInstance::connInstance(const string& producer_name,
                            Buffer* buf,
                            bufferRecv* buffer_recv,
@@ -286,12 +312,20 @@ connInstance::connInstance(const string& producer_name,
     CHECK_MEM(frame_space);
     metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
     CHECK_MEM(metadata_space);
+
+    std::lock_guard<std::mutex> lock(num_instances_lock);
+    num_instances++;
+    ERROR("Creating connection instance: %d", num_instances);
 }
 
 connInstance::~connInstance() {
     bufferevent_free(buffer_event);
     free(frame_space);
     free(metadata_space);
+
+    std::lock_guard<std::mutex> lock(num_instances_lock);
+    num_instances--;
+    ERROR("Freeing connection instance: %d", num_instances);
 }
 
 void connInstance::increment_ref_count() {
@@ -325,7 +359,7 @@ void connInstance::internal_error_callback(bufferevent* bev, short error, void* 
 
     DEBUG("Error Callback");
     if (error & BEV_EVENT_EOF) {
-        WARN("Kotekan client: %s closed connection", client_ip.c_str());
+        ERROR("Kotekan client: %s closed connection", client_ip.c_str());
     } else if (error & BEV_EVENT_ERROR) {
         ERROR("Connection error with Kotekan client: %s, errno: %d, message %s",
                 client_ip.c_str(), errno, strerror(errno));
@@ -449,7 +483,7 @@ void connInstance::internal_read_callback(struct bufferevent *bev)
             DEBUG2("Finished state");
             int frame_id = buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from %s",
+                ERROR("No free buffer frames, dropping data from %s",
                         client_ip.c_str());
 
                 // Update dropped frame count in prometheus
