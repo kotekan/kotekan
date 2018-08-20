@@ -227,18 +227,18 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
-duplicate_lost_samples_buffers:
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
-    lost_samples_buffer_0:
-        kotekan_buffer: standard
-    lost_samples_buffer_1:
-        kotekan_buffer: standard
-    lost_samples_buffer_2:
-        kotekan_buffer: standard
-    lost_samples_buffer_3:
-        kotekan_buffer: standard
+#duplicate_lost_samples_buffers:
+#    num_frames: 2 * buffer_depth
+#    frame_size: samples_per_data_set * num_local_freq * num_data_sets
+#    metadata_pool: main_pool
+#    lost_samples_buffer_0:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_1:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_2:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_3:
+#        kotekan_buffer: standard
 
 cpu_affinity: [2,3,8,9]
 dpdk:
@@ -269,7 +269,7 @@ dpdk:
     lost_samples_buf: lost_samples_buffer
 
 zero_samples:
-    duplicate_ls_buffer: True
+    duplicate_ls_buffer: False
     lost_samples_buf: lost_samples_buffer
     zero_0:
         kotekan_process: zeroSamples
@@ -325,7 +325,6 @@ gpu:
   kernel_path: "hsa_kernels/"
   commands:
   - name: hsaInputData
-  - name: hsaInputLostSamples
   - name: hsaPresumZero
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
@@ -364,7 +363,6 @@ gpu:
     bad_inputs: []
     in_buffers:
       network_buf: network_buffer_0
-      lost_samples_buf: lost_samples_buffer_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -383,7 +381,6 @@ gpu:
     bad_inputs: []
     in_buffers:
       network_buf: network_buffer_1
-      lost_samples_buf: lost_samples_buffer_1
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -402,7 +399,6 @@ gpu:
     bad_inputs: []
     in_buffers:
       network_buf: network_buffer_2
-      lost_samples_buf: lost_samples_buffer_2
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -421,7 +417,6 @@ gpu:
     bad_inputs: []
     in_buffers:
       network_buf: network_buffer_3
-      lost_samples_buf: lost_samples_buffer_3
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3

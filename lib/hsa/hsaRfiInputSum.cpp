@@ -25,11 +25,10 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     mask_len = sizeof(uint8_t)*_num_elements;
     correction_frame_len = sizeof(uint32_t)*_samples_per_data_set/_sk_step;
     _bad_inputs = config.get_int_array(unique_name, "bad_inputs");
-    _num_bad_inputs = _bad_inputs.size();
     //Local Parameters
-    rebuildInputMask = true;
+    rebuild_input_mask = true;
     //Allocate memory for input mask
-    InputMask = (uint8_t *)hsa_host_malloc(mask_len);
+    input_mask = (uint8_t *)hsa_host_malloc(mask_len);
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -41,7 +40,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
 hsaRfiInputSum::~hsaRfiInputSum() {
     restServer::instance().remove_json_callback(endpoint);
     //Free allocated memory
-    hsa_host_free(InputMask);
+    hsa_host_free(input_mask);
 }
 
 void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) {
@@ -53,10 +52,8 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     for(uint32_t i = 0; i < json_request["bad_inputs"].size(); i++){
         _bad_inputs.push_back(json_request["bad_inputs"][i].get<int>());
     }
-    //Update relevant variables
-    _num_bad_inputs = _bad_inputs.size();
     //Flag for input mask rebuild
-    rebuildInputMask = true;
+    rebuild_input_mask = true;
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "bad_inputs", _bad_inputs);
@@ -66,27 +63,27 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     //Lock rest server callback mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Build Input mask when needed (after rest callback or on first execution)
-    if (rebuildInputMask) {
-        rebuildInputMask = false;
+    if (rebuild_input_mask) {
+        rebuild_input_mask = false;
         //Fill input mask based on config parameters
         uint32_t j = 0;
         for(uint32_t i = 0; i < mask_len/sizeof(uint8_t); i++){
-            InputMask[i] = (uint8_t)0;
+            input_mask[i] = (uint8_t)0;
             if(_bad_inputs.size() > 0 && (int32_t)i == _bad_inputs[j]){
-                InputMask[i] = (uint8_t)1;
+                input_mask[i] = (uint8_t)1;
                 j++;
             }
         }
         //Copy to gpu memory
         void * input_mask_map = device.get_gpu_memory("input_mask", mask_len);
-        device.sync_copy_host_to_gpu(input_mask_map, (void *)InputMask, mask_len);
+        device.sync_copy_host_to_gpu(input_mask_map, (void *)input_mask, mask_len);
     }
     //Struct for hsa arguments
     struct __attribute__ ((aligned(16))) args_t {
         void *input;
         void *output;
-        void *InputMask;
-        void *LostSampleCorrection;
+        void *input_mask;
+     //   void *LostSampleCorrection;
         uint32_t num_elements;
         uint32_t num_bad_inputs;
         uint32_t sk_step;
@@ -97,10 +94,10 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     //Set arguments
     args.input = device.get_gpu_memory("timesum", input_frame_len);
     args.output = device.get_gpu_memory_array("rfi_output",gpu_frame_id, output_frame_len);
-    args.InputMask = device.get_gpu_memory("input_mask", mask_len);
-    args.LostSampleCorrection = device.get_gpu_memory("lost_sample_correction", correction_frame_len);
+    args.input_mask = device.get_gpu_memory("input_mask", mask_len);
+    //args.LostSampleCorrection = device.get_gpu_memory("lost_sample_correction", correction_frame_len);
     args.num_elements = _num_elements;
-    args.num_bad_inputs = _num_bad_inputs;
+    args.num_bad_inputs = _bad_inputs.size();
     args.sk_step = _sk_step;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

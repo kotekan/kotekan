@@ -76,7 +76,7 @@ private:
     /// Length of lost sample correction frame
     uint32_t correction_frame_len;
     /// Array to hold the input mask (which inputs are currently functioning)
-    uint8_t *InputMask;
+    uint8_t *input_mask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
@@ -92,7 +92,7 @@ private:
     /// Vector to hold a list of inputs which are currently malfunctioning
     vector<int32_t> _bad_inputs;
     /// Boolean to hold whether or not the current kernel execution is the first or not.
-    bool rebuildInputMask;
+    bool rebuild_input_mask;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
     /// Sring to hold endpoint name
