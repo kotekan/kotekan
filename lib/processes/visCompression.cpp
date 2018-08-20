@@ -104,9 +104,10 @@ void baselineCompression::main_thread() {
         output_frame.copy_nonvis_buffer(input_frame);
 
         // Reset the normalisation array and zero the output frame
-        std::fill(stack_norm.begin(), stack_norm.end(), 0);
-        std::fill(output_frame.vis.begin(), output_frame.vis.end(), 0.0);
-        std::fill(output_frame.weight.begin(), output_frame.weight.end(), 0.0);
+        std::fill(std::begin(stack_norm), std::end(stack_norm), 0);
+        std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
+        std::fill(std::begin(output_frame.weight),
+                  std::end(output_frame.weight), 0.0);
 
         // Iterate over all the products and average together
         for(uint32_t prod_ind = 0; prod_ind < prods.size(); prod_ind++) {
@@ -171,8 +172,6 @@ std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
         stack_def.emplace_back(stack_ind, conjugate);
     }
 
-    INFO("Here2 %i", num_elements);
-
     return {num_elements, stack_def};
 
 }
@@ -202,83 +201,71 @@ std::ostream & operator<<(std::ostream &os, const chimeFeed& f) {
 
 using feed_diff = std::tuple<int8_t, int8_t, int8_t, int8_t, int16_t>;
 
+// Calculate the baseline parameters and whether the product must be
+// conjugated to get canonical ordering
+std::pair<feed_diff, bool> calculate_chime_vis(
+    const prod_ctype& p, const std::vector<input_ctype>& inputs)
+{
+
+    chimeFeed fa = chimeFeed::from_input(inputs[p.input_a]);
+    chimeFeed fb = chimeFeed::from_input(inputs[p.input_b]);
+
+    bool is_wrong_cylorder = (fa.cylinder > fb.cylinder);
+    bool is_same_cyl_wrong_feed_order = (
+            (fa.cylinder == fb.cylinder) &&
+            (fa.feed_location > fb.feed_location)
+    );
+    bool is_same_feed_wrong_pol_order = (
+        (fa.cylinder == fb.cylinder) &&
+        (fa.feed_location == fb.feed_location) &&
+        (fa.polarisation > fb.polarisation)
+    );
+
+    bool conjugate = false;
+
+    // Check if we need to conjugate/transpose to get the correct order
+    if (is_wrong_cylorder ||
+        is_same_cyl_wrong_feed_order ||
+        is_same_feed_wrong_pol_order) {
+
+        chimeFeed t = fa;
+        fa = fb;
+        fb = t;
+        conjugate = true;
+    }
+
+    return {
+        {fa.polarisation, fb.polarisation, fa.cylinder, fb.cylinder,
+         fb.feed_location - fa.feed_location},
+         conjugate
+    };
+}
+
 // Stack along the band diagonals
 std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
     std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
 ) {
-    // Calculate the baseline parameters and whether the product must be
-    // conjugated to get canonical ordering
-    auto calc_diff = [&](prod_ctype p) -> std::pair<feed_diff, bool> {
-        chimeFeed fa = chimeFeed::from_input(inputs[p.input_a]);
-        chimeFeed fb = chimeFeed::from_input(inputs[p.input_b]);
-
-        bool wrong_cylorder = (fa.cylinder > fb.cylinder);
-        bool same_cyl_wrong_feed_order = (
-             (fa.cylinder == fb.cylinder) &&
-             (fa.feed_location > fb.feed_location)
-        );
-        bool same_feed_wrong_pol_order = (
-            (fa.cylinder == fb.cylinder) &&
-            (fa.feed_location == fb.feed_location) &&
-            (fa.polarisation > fb.polarisation)
-        );
-
-        bool conjugate = false;
-
-        // Check if we need to conjugate/transpose to get the correct order
-        if(wrong_cylorder ||
-           same_cyl_wrong_feed_order ||
-           same_feed_wrong_pol_order) {
-            chimeFeed t = fa;
-            fa = fb;
-            fb = t;
-            conjugate = true;
-        }
-
-        return {
-            {fa.polarisation, fb.polarisation, fa.cylinder, fb.cylinder,
-             fb.feed_location - fa.feed_location},
-             conjugate
-        };
-    };
-
-    std::cout << "Here1";
-
     // Calculate the set of baseline properties
     std::vector<std::pair<feed_diff, bool>> bl_prop;
-    std::transform(prods.begin(), prods.end(),
-                   std::back_inserter(bl_prop), calc_diff);
+    std::transform(std::begin(prods), std::end(prods),
+                   std::back_inserter(bl_prop), calculate_chime_vis);
 
-    // for(auto s : bl_prop) {
-    //     std::cout << (int)std::get<0>(s.first) << ","
-    //               << (int)std::get<1>(s.first) << ","
-    //               << (int)std::get<2>(s.first) << ","
-    //               << (int)std::get<3>(s.first) << ","
-    //               << std::get<4>(s.first) << " "
-    //               << s.second << "\n";
-    // }
-
-    std::cout << "Here1";
     // Create an index array for doing the sorting
     std::vector<uint32_t> sort_ind(prods.size());
-    std::iota(sort_ind.begin(), sort_ind.end(), 0);
+    std::iota(std::begin(sort_ind), std::end(sort_ind), 0);
 
-    std::cout << "Here1";
-    auto sort_fn = [&](uint32_t ii, uint32_t jj) -> bool {
+    auto sort_fn = [&](const uint32_t& ii, const uint32_t& jj) -> bool {
         return (bl_prop[ii].first <
                 bl_prop[jj].first);
     };
-    std::sort(sort_ind.begin(), sort_ind.end(), sort_fn);
+    std::sort(std::begin(sort_ind), std::end(sort_ind), sort_fn);
 
-    std::cout << "Here1";
     std::vector<std::pair<uint32_t, bool>> stack_map(prods.size());
 
-    std::cout << sort_ind[0];
     feed_diff cur = bl_prop[sort_ind[0]].first;
     uint32_t cur_stack_ind = 0;
 
-    std::cout << "Here1";
-    for(auto ind : sort_ind) {
+    for(auto& ind : sort_ind) {
         if(bl_prop[ind].first != cur) {
             cur = bl_prop[ind].first;
             cur_stack_ind++;

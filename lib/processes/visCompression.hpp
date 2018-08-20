@@ -13,9 +13,9 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 /**
- * @class baselineCompression
  * @brief Compress visibility data by stacking together equivalent baselines.
  *
  * This task takes a stream of uncompressed visibility data and performs a
@@ -121,7 +121,72 @@ struct chimeFeed {
 std::ostream & operator<<(std::ostream &os, const chimeFeed& f);
 
 
+/// Define an alias for the
+using stack_pair = std::pair<uint32_t, bool>;
 
+/**
+ * @brief A dataset state that describes a redundant baseline stacking.
+ *
+ * @author Richard Shaw
+ */
+class stackState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The stack information as serialized by
+     *              stackState::to_json().
+     * @param inner An inner state or a nullptr.
+     */
+    stackState(json & data, state_uptr inner) :
+        datasetState(move(inner))
+    {
+        try {
+            _stack_map = data["stack"].get<std::vector<stack_pair>>();
+            _num_stack = data["num_stack"].get<uint32_t>();
+        } catch (exception& e) {
+             throw std::runtime_error("stackState: Failure parsing json data: "
+                                      + e.what());
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param stack_map Definition of how the products were stacked.
+     * @param num_stack Number of stacked visibilites.
+     * @param inner  An inner state (optional).
+     */
+    stackState(std::vector<stack_pair>&& stack_map, uint32_t num_stack, state_uptr inner=nullptr) :
+        datasetState(std::move(inner)),
+        _stack_map(inputs),
+        _num_stack(num_stack) {};
+
+
+    /**
+     * @brief Get stack map information (read only).
+     *
+     * For every product this says which stack to add the product into and
+     * whether it needs conjugating before doing so.
+     *
+     * @return The stack map.
+     */
+    const std::vector<stack_pair>& get_stack_map() const
+    {
+        return _stack_map;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override
+    {
+        return {{"stack_map", _stack_map }, {"num_stack", _num_stack}};
+    }
+
+    /// The stack definition
+    std::vector<stack_pair> _stack_map;
+
+    /// Total number of stacks
+    uint32_t _num_stack;
+};
 
 
 #endif

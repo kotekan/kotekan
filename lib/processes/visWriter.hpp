@@ -36,7 +36,7 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
+ * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
  * @conf   file_type        String. Type of file to write. One of 'hdf5',
  *                          'hdf5fast' or 'raw'.
  * @conf   root_path        String. Location in filesystem to write to.
@@ -173,7 +173,7 @@ protected:
  * @conf   file_name        String. Name of file to buffer data in (omit ext).
  * @conf   frozen_file_name String. Name of file to release for reading (omit ext).
  * @conf   dir_name         String. Name of directory to hold the above files.
- * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
+ * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
  * @conf   instrument_name  String (default: chime). Name of the instrument
  *                          acquiring data (if ``node_mode`` the hostname is
  *                          used instead)

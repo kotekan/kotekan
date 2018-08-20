@@ -8,6 +8,8 @@
 #include <iomanip>
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
+#include "datasetManager.hpp"
+
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
@@ -48,7 +50,7 @@ visWriter::visWriter(Config& config,
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
 
-    node_mode = config.get_bool_default(unique_name, "node_mode", true);
+    node_mode = config.get_bool_default(unique_name, "node_mode", false);
 
     // Calculate the set of products we are writing from the config
     prods = std::get<1>(parse_prod_subset(config, unique_name));
@@ -113,7 +115,7 @@ void visWriter::main_thread() {
         } else if (num_ev > 0  and frame.num_ev != num_ev) {
 
             string msg = fmt::format(
-                "Number of eigenvectors in frame doesn't match file ({} != {}).", 
+                "Number of eigenvectors in frame doesn't match file ({} != {}).",
                 frame.num_ev, num_ev
             );
             throw std::runtime_error(msg);
@@ -124,16 +126,6 @@ void visWriter::main_thread() {
 
             // Lookup the frequency index if reordering, otherwise write out in buffer order
             uint32_t freq_ind = freq_map[frame.freq_id];
-
-            // Create fake entries to fill out the gain and weight datasets with
-            // because these don't correctly make it through kotekan yet
-            // TODO: these should be read directly from the span
-            std::vector<cfloat> vis(frame.vis.begin(), frame.vis.end());
-            std::vector<float> vis_weight(frame.weight.begin(), frame.weight.end());
-            std::vector<cfloat> gain_coeff(inputs.size(), {1, 0});
-            std::vector<int32_t> gain_exp(inputs.size(), 0);
-            std::vector<float> eval(frame.eval.begin(), frame.eval.end());
-            std::vector<cfloat> evec(frame.evec.begin(), frame.evec.end());
 
             // Add all the new information to the file.
             double start = current_time();
@@ -178,15 +170,34 @@ void visWriter::init_acq() {
     // Fetch out information from the buffers that are needed for setting  up
     // the acq. For the moment just read the first frame.
     unsigned int frame_id = 0;
-    std::vector<uint32_t> freq_ids;
 
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
     auto frame = visFrameView(in_buf, frame_id);
-    freq_ids.push_back(frame.freq_id);
 
-    // Use the per buffer info to setup the acqusition properties
-    setup_freq(freq_ids);
+    if (use_dataset_manager) {
+        auto& dm = datasetManager::instance();
+
+        auto f = dm.closest_ancestor_of_type<freqState>(frame.dataset_id);
+        if (f.second == nullptr) {
+            throw std::runtime_error(
+                "Required freqState not available for dataset_id=%i",
+                frame.dataset_id
+            )
+        }
+        for(auto& f : f.second->get_freqs();
+
+        if (f.second == nullptr) {
+            throw std::runtime_error(
+                "Required freqState not available for dataset_id=%i",
+                frame.dataset_id
+            )
+        }
+    }
+    else {
+        // Use the per buffer info to setup the acqusition properties
+        setup_freq(frame.freq_id);
+    }
 
     // Get the current user
     std::string user(256, '\0');
@@ -226,11 +237,9 @@ void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
 
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
-    file_bundle = std::unique_ptr<visFileBundle>(
-        new visFileBundle(
-            file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, freqs, inputs, prods, num_ev, file_length
-        )
+    file_bundle = std::make_unique<visFileBundle>(
+        file_type, root_path, instrument_name, metadata, chunk_id, rollover,
+        window, freqs, inputs, prods, num_ev, file_length
     );
 }
 
