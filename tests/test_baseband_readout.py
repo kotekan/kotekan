@@ -91,7 +91,10 @@ def test_io_errors_and_max_samples(tmpdir_factory):
             command_trigger(1437, 1839, "doesnt_exist/file1.h5", 10),
             command_trigger(10457, 3237, "file2.h5", 31),
             wait(0.1),
-            command_rest_frames(60),
+            command_rest_frames(25),
+            # Give it some time to write the capture before shutdown.
+            wait(1.),
+            command_rest_frames(5),
             ]
     params = {
             'total_frames': 30,
