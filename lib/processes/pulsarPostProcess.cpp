@@ -178,7 +178,7 @@ void pulsarPostProcess::main_thread() {
         }
 
         struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
-        if (time_now.tv_sec != time_now_from_compute.tv_sec) {
+        if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
             ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld time_now_from_compute2.tv_sec=%ld", time_now.tv_sec, time_now_from_compute2.tv_sec);
         }
         if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
