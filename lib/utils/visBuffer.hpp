@@ -219,12 +219,16 @@ public:
     const gsl::span<cfloat> vis;
     /// View of the weight data.
     const gsl::span<float> weight;
+    /// View of the input flags
+    const gsl::span<float> flags;
     /// View of the eigenvalues.
     const gsl::span<float> eval;
     /// View of the eigenvectors (packed as ev,feed).
     const gsl::span<cfloat> evec;
     /// The RMS of residual visibilities
     float& erms;
+    /// View of the applied gains
+    const gsl::span<cfloat> gain;
 
 };
 

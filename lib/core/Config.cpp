@@ -43,6 +43,15 @@ int32_t Config::get_int(const string& base_path, const string& name) {
     return value.get<int32_t>();
 }
 
+uint32_t Config::get_uint32(const string& base_path, const string& name) {
+    json value = get_value(base_path, name);
+
+    if (!value.is_number_integer() && !value.is_number_float() ) {
+        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an integer or doesn't exist");
+    }
+    return value.get<uint32_t>();
+}
+
 uint64_t Config::get_uint64(const string& base_path, const string& name) {
     json value = get_value(base_path, name);
 
@@ -64,6 +73,15 @@ int32_t Config::get_int_default(const string& base_path, const string& name, int
 uint64_t Config::get_uint64_default(const string& base_path, const string& name, uint64_t default_value) {
     try {
         uint64_t value = get_uint64(base_path, name);
+        return value;
+    } catch (std::exception const & ex) {
+        return default_value;
+    }
+}
+
+uint32_t Config::get_uint32_default(const string& base_path, const string& name, uint32_t default_value) {
+    try {
+        uint32_t value = get_uint32(base_path, name);
         return value;
     } catch (std::exception const & ex) {
         return default_value;

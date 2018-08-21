@@ -61,9 +61,11 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     // Bind the regions of the buffer to spans and refernces on the view
     vis(bind_span<cfloat>(_frame, buffer_layout["vis"])),
     weight(bind_span<float>(_frame, buffer_layout["weight"])),
+    flags(bind_span<float>(_frame, buffer_layout["flags"])),
     eval(bind_span<float>(_frame, buffer_layout["eval"])),
     evec(bind_span<cfloat>(_frame, buffer_layout["evec"])),
-    erms(bind_scalar<float>(_frame, buffer_layout["erms"]))
+    erms(bind_scalar<float>(_frame, buffer_layout["erms"])),
+    gain(bind_span<cfloat>(_frame, buffer_layout["gain"]))
 
 {
     // Initialise the structure if not already done
@@ -150,9 +152,11 @@ struct_layout visFrameView::calculate_buffer_layout(
     std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
         std::make_tuple("vis", sizeof(cfloat), num_prod),
         std::make_tuple("weight", sizeof(float),  num_prod),
+        std::make_tuple("flags", sizeof(float),  num_elements),
         std::make_tuple("eval", sizeof(float),  num_ev),
         std::make_tuple("evec", sizeof(cfloat), num_ev * num_elements),
-        std::make_tuple("erms", sizeof(float),  1)
+        std::make_tuple("erms", sizeof(float),  1),
+        std::make_tuple("gain", sizeof(cfloat), num_elements)
     };
 
     return struct_alignment(buffer_members);
