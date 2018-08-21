@@ -62,6 +62,9 @@ public:
     /// Callback function to receive updates on timestamps from configUpdater
     bool receive_update(nlohmann::json &json);
 
+    /// Check if file to read exists
+    bool fexists(const std::string& filename);
+
 private:
 
     // Parameters saved from the config files

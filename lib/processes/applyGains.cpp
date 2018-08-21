@@ -10,7 +10,7 @@
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
-#include <sys/stat.h>
+#include <fstream>
 #include <csignal>
 #include <exception>
 
@@ -69,6 +69,12 @@ void applyGains::apply_config(uint64_t fpga_seq) {
 
 }
 
+bool applyGains::fexists(const std::string& filename) {
+  std::ifstream ifile(filename.c_str());
+  return (bool)ifile;
+}
+
+
 bool applyGains::receive_update(nlohmann::json &json) {
     // TODO: need to make sure this is thread safe
     double new_ts;
@@ -102,7 +108,17 @@ bool applyGains::receive_update(nlohmann::json &json) {
     }
     // Get the gains for this timestamp
     // TODO: For now, assume the tag is the gain file name.
-    gains_path = gains_dir + "/" + gtag + ".hdf5";
+    gains_path = gains_dir + "/" + gtag + ".h5";
+    //Check if file exists
+    if (!fexists(gains_path)) {
+        // Try a different extension
+        gains_path = gains_dir + "/" + gtag + ".hdf5";
+        if (!fexists(gains_path)) {
+            WARN("Could not update gains. File not found.")
+            return false;
+        }
+    }
+
     // Read the gains from file
     HighFive::File gains_fl(gains_path, HighFive::File::ReadOnly);
     // Read the dataset and alocates it to the most recent entry of the gain vector
