@@ -17,6 +17,7 @@ option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
+option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
 option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
 
 if(${_GOSSEC})
@@ -227,3 +228,13 @@ add_subdirectory(kotekan)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
+
+
+# Testing with boost
+if (${BOOST_TESTS})
+    set(BOOST_TESTS_DIR tests/boost/ CACHE INTERNAL "Path to boost test sources")
+    MESSAGE("BOOST_TESTS enabled: building tests in " ${BOOST_TESTS_DIR})
+    add_subdirectory(${BOOST_TESTS_DIR})
+else()
+    MESSAGE("BOOST_TESTS disabled")
+endif()

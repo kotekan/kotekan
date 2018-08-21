@@ -253,6 +253,11 @@ connectionInstance::~connectionInstance() {
 
 }
 
+string connectionInstance::get_uri() {
+    struct http_message *msg = (struct http_message *)ev_data;
+    return string(msg->uri.p, msg->uri.len);
+}
+
 string connectionInstance::get_body() {
     struct http_message *msg = (struct http_message *)ev_data;
     return string(msg->body.p, msg->body.len);
