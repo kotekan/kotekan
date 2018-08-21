@@ -9,8 +9,6 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#define NUM_BASES 4
-
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "bufferSend.hpp"
@@ -117,8 +115,6 @@ private:
     static void error_callback(struct bufferevent *bev, short error, void *ctx);
     static void accept_connection(evutil_socket_t listener, short event, void *arg);
 
-    void base_thread(uint32_t thread_id);
-
     /**
      * @brief Internal timer call back to check for thread exit condition
      *
@@ -143,11 +139,6 @@ private:
     /// The base event for libevent, run in the main_thread.
     /// This might be increased to more than one if there are performance issues.
     struct event_base *base;
-
-    struct event_base *recv_bases[NUM_BASES];
-    std::vector<std::thread> recv_base_threads;
-    int next_base = 0;
-    static void do_nothing(evutil_socket_t fd, short event, void *arg);
 
     /// The number of frames dropped
     size_t dropped_frame_count = 0;
@@ -246,6 +237,7 @@ public:
     int port;
 
     struct bufferevent *buffer_event;
+
 
     size_t bytes_read = 0;
 
