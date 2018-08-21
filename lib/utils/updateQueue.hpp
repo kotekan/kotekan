@@ -66,7 +66,7 @@ public:
                         break;
                 }
                 // check if timestamp is identical -> replace update
-                if (u->first == timestamp)
+                if (u != values.crend() && u->first == timestamp)
                     u->second = move(update);
                 else
                     // insert the new update where it belongs in the queue
