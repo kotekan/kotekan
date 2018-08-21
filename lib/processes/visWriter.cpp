@@ -52,6 +52,9 @@ visWriter::visWriter(Config& config,
 
     node_mode = config.get_bool_default(unique_name, "node_mode", false);
 
+    use_dataset_manager = config.get_bool_default(
+        unique_name, "use_dataset_manager", false);
+
     // Calculate the set of products we are writing from the config
     prods = std::get<1>(parse_prod_subset(config, unique_name));
     num_prod = prods.size();
@@ -72,7 +75,7 @@ visWriter::visWriter(Config& config,
 
     } else {
         instrument_name = config.get_string_default(unique_name, "instrument_name", "chime");
-        freq_id_list = config.get_int_array(unique_name, "freq_ids");
+        freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
     }
 }
 
@@ -176,26 +179,44 @@ void visWriter::init_acq() {
     auto frame = visFrameView(in_buf, frame_id);
 
     if (use_dataset_manager) {
+        // Using the dataset manager we should be able to get a complete
+        // specification of the data we are receiving...
+
         auto& dm = datasetManager::instance();
 
-        auto f = dm.closest_ancestor_of_type<freqState>(frame.dataset_id);
-        if (f.second == nullptr) {
+        // Get the frequency spec and set the ID list and freq index_map arrays
+        auto fstate = dm.closest_ancestor_of_type<freqState>(frame.dataset_id);
+        if (fstate.second == nullptr) {
             throw std::runtime_error(
-                "Required freqState not available for dataset_id=%i",
-                frame.dataset_id
-            )
+                fmt::format("Required freqState not available for "
+                            "dataset_id={}\n", frame.dataset_id)
+            );
         }
-        for(auto& f : f.second->get_freqs();
+        std::tie(freq_id_list, freqs) = unzip(fstate.second->get_freqs());
 
-        if (f.second == nullptr) {
+        // Get the input spec
+        auto istate = dm.closest_ancestor_of_type<inputState>(frame.dataset_id);
+        if (istate.second == nullptr) {
             throw std::runtime_error(
-                "Required freqState not available for dataset_id=%i",
-                frame.dataset_id
-            )
+                fmt::format("Required inputState not available for "
+                            "dataset_id={}\n", frame.dataset_id)
+            );
         }
+        inputs = istate.second->get_inputs();
+
+        // Get the product spec
+        auto pstate = dm.closest_ancestor_of_type<prodState>(frame.dataset_id);
+        if (pstate.second == nullptr) {
+            throw std::runtime_error(
+                fmt::format("Required prodState not available for "
+                            "dataset_id={}\n", frame.dataset_id)
+            );
+        }
+        prods = pstate.second->get_prods();
     }
     else {
-        // Use the per buffer info to setup the acqusition properties
+        // ... if we are not using the datasetManager we need to infer it from
+        // the freq_id and config files.
         setup_freq(frame.freq_id);
     }
 
@@ -244,20 +265,16 @@ void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
 }
 
 
-void visWriter::setup_freq(const std::vector<uint32_t>& freq_ids) {
+void visWriter::setup_freq(uint32_t freq_id) {
     // TODO: this function needs to do three things: set the frequency input map
     // (freqs), set the frequency ordering (freq_map) and set the chunk ID
     // (chunk_id).
     if(node_mode) {
         // Output all the frequencies that we have found
-        std::string s;
-        for(auto id : freq_ids) {
-            s += fmt::format("{} [{:.2f} MHz] ", id, freq_from_bin(id));
-        }
-        INFO("Frequency bins found: %s", s.c_str());
+        INFO("Frequency bin found: %i", freq_id);
 
         // TODO: this uses the hacky way of deriving the chunk ID
-        unsigned int node_id = freq_ids[0] % 256;
+        unsigned int node_id = freq_id % 256;
 
         // Set the list of frequency ids that this node will deal with
         for(unsigned int i = 0; i < 4; i++) {

@@ -144,7 +144,7 @@ public:
             _stack_map = data["stack"].get<std::vector<stack_pair>>();
             _num_stack = data["num_stack"].get<uint32_t>();
         } catch (exception& e) {
-             throw std::runtime_error("stackState: Failure parsing json data: "
+             throw std::runtime_error("stackState: Failure parsing json data: "s
                                       + e.what());
         }
     };
@@ -157,7 +157,7 @@ public:
      */
     stackState(std::vector<stack_pair>&& stack_map, uint32_t num_stack, state_uptr inner=nullptr) :
         datasetState(std::move(inner)),
-        _stack_map(inputs),
+        _stack_map(stack_map),
         _num_stack(num_stack) {};
 
 

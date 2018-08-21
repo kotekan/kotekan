@@ -29,7 +29,7 @@
  * using the same configuration parameters as `prodSubset`. If not explicitly
  * set `all` products is assumed.
  *
- * The output is written into the CHIME N^2 HDF% format version 3.1.0.
+ * The output is written into the CHIME N^2 HDF5 format version 3.1.0.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
@@ -90,11 +90,12 @@ protected:
     /// Setup the acquisition
     void init_acq();
 
-    /// Given a list of stream_ids infer the frequencies in the file, and create
-    /// a mapping from id to frequency index
-    void setup_freq(const std::vector<uint32_t>& freq_ids);
+    /// Using the first frequency ID found, and any config parameters, determine
+    /// which frequencies will end up in the file
+    void setup_freq(uint32_t freq_id);
 
     // Parameters saved from the config files
+    bool use_dataset_manager;
     size_t num_freq;
     std::string root_path;
     std::string instrument_name;
@@ -127,7 +128,7 @@ protected:
 
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
-    std::vector<int> freq_id_list;
+    std::vector<uint32_t> freq_id_list;
 
     // Number of eigenvectors to write out
     size_t num_ev;

@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <vector>
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <stdexcept>
 #include <iostream>
@@ -10,6 +11,7 @@
 #include "visCompression.hpp"
 #include "fmt.hpp"
 
+using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(baselineCompression);
 
@@ -248,7 +250,8 @@ std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
     // Calculate the set of baseline properties
     std::vector<std::pair<feed_diff, bool>> bl_prop;
     std::transform(std::begin(prods), std::end(prods),
-                   std::back_inserter(bl_prop), calculate_chime_vis);
+                   std::back_inserter(bl_prop),
+                   std::bind(calculate_chime_vis, _1, inputs));
 
     // Create an index array for doing the sorting
     std::vector<uint32_t> sort_ind(prods.size());

@@ -633,7 +633,7 @@ void visCheckTestPattern::main_thread() {
 registerInitialDatasetState::registerInitialDatasetState(Config& config,
     const string& unique_name, bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visCheckTestPattern::main_thread, this))
+                   std::bind(&registerInitialDatasetState::main_thread, this))
 {
     // Fetch any needed config.
     apply_config(0);
@@ -641,17 +641,17 @@ registerInitialDatasetState::registerInitialDatasetState(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_nam
+    register_producer(out_buf, unique_name.c_str());
 }
 
-registerInitialDatasetState::apply_config(uint64_t fpga_seq)
+void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
 {
     std::vector<uint32_t> freq_ids;
 
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
     if (config.exists(unique_name, "freq_ids")) {
-        freq_ids = config.get_int_array(unique_name, "freq_ids");
+        freq_ids = config.get_array<uint32_t>(unique_name, "freq_ids");
     }
     else {
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
@@ -659,20 +659,20 @@ registerInitialDatasetState::apply_config(uint64_t fpga_seq)
 
     // Create the frequency specification
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::begin(_freqs),
-                   [] (uint32_t id) -> std::pair<uint32_t, input_ctype> {
+                   [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
                        return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                    });
 
     // Extract the input specification from the config
-    _inputs = parse_reorder_default(config, unique_name).second;
+    _inputs = std::get<1>(parse_reorder_default(config, unique_name));
 
     size_t num_elements = _inputs.size();
 
     // Create the product specification
     _prods.reserve(num_elements);
-    for(int i = 0; i < num_elements; i++) {
-        for(int j = i; j < num_elements; j++) {
-            _prods.emplace_back(i, j);
+    for(uint16_t i = 0; i < num_elements; i++) {
+        for(uint16_t j = i; j < num_elements; j++) {
+            _prods.push_back({i, j});
         }
     }
 
@@ -702,20 +702,20 @@ void registerInitialDatasetState::main_thread() {
 
     while (!stop_thread) {
         // Wait for an input frame
-        if(wait_for_full_frame(buf_in, unique_name.c_str(),
+        if(wait_for_full_frame(in_buf, unique_name.c_str(),
                                frame_id_in) == nullptr) {
             break;
         }
         //wait for an empty output frame
-        if(wait_for_empty_frame(buf_out, unique_name.c_str(),
+        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
                                 frame_id_out) == nullptr) {
             break;
         }
 
         // Copy frame into output buffer
-        auto frame_in = visFrameView(buf_in, frame_id_in);
-        allocate_new_metadata_object(buf_out, frame_id_out);
-        auto frame_out = visFrameView(buf_out, frame_id_out, frame_in);
+        auto frame_in = visFrameView(in_buf, frame_id_in);
+        allocate_new_metadata_object(out_buf, frame_id_out);
+        auto frame_out = visFrameView(out_buf, frame_id_out, frame_in);
 
         // Update the dataset ID if needed
         if (frame_in.dataset_id != current_input_dataset) {
@@ -728,10 +728,10 @@ void registerInitialDatasetState::main_thread() {
         frame_out.dataset_id = current_output_dataset;
 
         // Mark output frame full and input frame empty
-        mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
+        mark_frame_full(out_buf, unique_name.c_str(), frame_id_out);
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id_in);
         // Move forward one frame
-        frame_id_out = (frame_id_out + 1) % buf_out->num_frames;
-        frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
+        frame_id_out = (frame_id_out + 1) % out_buf->num_frames;
+        frame_id_in = (frame_id_in + 1) % in_buf->num_frames;
     }
 }
