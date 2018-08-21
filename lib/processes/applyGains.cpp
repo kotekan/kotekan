@@ -10,7 +10,7 @@
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
-#include <fstream>
+#include <sys/stat.h>
 #include <csignal>
 #include <exception>
 
@@ -69,9 +69,14 @@ void applyGains::apply_config(uint64_t fpga_seq) {
 
 }
 
+//bool applyGains::fexists(const std::string& filename) {
+//  std::ifstream ifile(filename.c_str());
+//  return (bool)ifile;
+//}
+
 bool applyGains::fexists(const std::string& filename) {
-  std::ifstream ifile(filename.c_str());
-  return (bool)ifile;
+    struct stat buf;
+    return (stat(filename.c_str(), &buf) == 0);
 }
 
 
