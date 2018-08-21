@@ -69,16 +69,10 @@ void applyGains::apply_config(uint64_t fpga_seq) {
 
 }
 
-//bool applyGains::fexists(const std::string& filename) {
-//  std::ifstream ifile(filename.c_str());
-//  return (bool)ifile;
-//}
-
 bool applyGains::fexists(const std::string& filename) {
     struct stat buf;
     return (stat(filename.c_str(), &buf) == 0);
 }
-
 
 bool applyGains::receive_update(nlohmann::json &json) {
     // TODO: need to make sure this is thread safe
