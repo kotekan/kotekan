@@ -195,6 +195,7 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
     size_map["prod"] = std::make_tuple(length("prod"), chunk[1]);
     size_map["ev"] = std::make_tuple(length("ev"), length("ev"));
     size_map["time"] = std::make_tuple(length("time"), chunk[2]);
+    if (stacked): size_map["stack"] = std::make_tuple(length("stack"), chunk[1]);
 
     std::vector<size_t> cur_dims, max_dims, chunk_dims;
 
