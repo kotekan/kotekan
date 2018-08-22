@@ -73,10 +73,10 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
                 struct timespec time_now_from_compute;
                 time_now_from_compute = compute_gps_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
-                    ERROR("[Time Check] mismatch in fill header time_now->tv_sec=%ld time_now_from_compute.tv_sec=%ld", time_now->tv_sec, time_now_from_compute.tv_sec);
+		  ERROR("[Time Check] mismatch in fill header packet=%d beam=%d time_now->tv_sec=%ld time_now_from_compute.tv_sec=%ld", i, psr, time_now->tv_sec, time_now_from_compute.tv_sec);
                 }
                 if (time_now->tv_nsec != time_now_from_compute.tv_nsec) {
-                    ERROR("[Time Check] mismatch in fill header time_now->tv_nsec=%ld time_now_from_compute.tv_nsec=%ld", time_now->tv_nsec, time_now_from_compute.tv_nsec);
+		  ERROR("[Time Check] mismatch in fill header packet=%d beam=%d time_now->tv_nsec=%ld time_now_from_compute.tv_nsec=%ld", i, psr, time_now->tv_nsec, time_now_from_compute.tv_nsec);
                 }
                 if (_timesamples_per_pulsar_packet == 3125) {
                     memcpy(&out_buf[(f*_num_pulsar+psr)*_num_packet_per_stream*_udp_pulsar_packet_size + i*_udp_pulsar_packet_size], vdif_header, sizeof(struct VDIFHeader));
