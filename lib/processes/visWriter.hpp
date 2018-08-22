@@ -190,7 +190,7 @@ protected:
  * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Fixed length of the ring file
  *                          in number of time samples.
- * @conf   window           Int (default 2). Number of samples to keep active
+ * @conf   window           Int (default 10). Number of samples to keep active
  *                          for writing at any time.
  *
  * @par Metrics

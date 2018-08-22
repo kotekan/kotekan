@@ -11,6 +11,9 @@ void visFileRing::create_file(const std::string& name,
                              const std::vector<prod_ctype>& prods,
                              size_t num_ev, size_t num_time) {
 
+    // Set open flags to allow overwriting
+    oflags = O_CREAT | O_WRONLY;
+
     visFileRaw::create_file(name, metadata, freqs, inputs, prods, num_ev, num_time);
 
     file_len = num_time;
