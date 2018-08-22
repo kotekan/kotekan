@@ -13,6 +13,7 @@
 #include <iostream>
 #include <fstream>
 #include <time.h>
+#include <regex>
 #include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
@@ -278,7 +279,7 @@ visCalWriter::visCalWriter(Config &config,
     visWriter::visWriter(config, unique_name, buffer_container) {
 
     // Register REST callback
-    endpoint = "/release_cal_file";
+    endpoint = "/release_live_file/" + std::regex_replace(unique_name, std::regex("^/+"), "");
     using namespace std::placeholders;
     restServer::instance().register_get_callback(endpoint,
             std::bind(&visCalWriter::rest_callback, this, _1));
