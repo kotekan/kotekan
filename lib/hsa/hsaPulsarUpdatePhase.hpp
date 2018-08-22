@@ -116,8 +116,7 @@ private:
     Buffer * metadata_buf;
 
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord_0;  //Pairing with phase bank 0
-    struct psrCoord psr_coord_1;  //Pairing with phase bank 1
+    struct psrCoord psr_coord;  //active coordinates to be passed to metatdata
     struct psrCoord psr_coord_latest_update; //Last updated coordinates
     vector<float> _source_ra;
     vector<float> _source_dec;

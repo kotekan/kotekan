@@ -208,13 +208,15 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
         }
         //use whichever bank that has no lock
         if ( bank_use_0 == 0)  {  //no more outstanding async copy using bank0
-            psr_coord_0 = psr_coord_latest_update;
+            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            psr_coord = psr_coord_latest_update;
             calculate_phase(psr_coord_0, time_now_gps, freq_MHz, host_gain, host_phase_0);
             bank_active=0;
             update_phase = false;
         }
         else if (bank_use_1 == 0) { //no more outstanding async copy using bank1
-            psr_coord_1 = psr_coord_latest_update;
+            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            psr_coord = psr_coord_latest_update;
             calculate_phase(psr_coord_1, time_now_gps, freq_MHz, host_gain, host_phase_1);
             bank_active = 1;
             update_phase = false;
@@ -222,12 +224,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
     }
 
     bankID[gpu_frame_id] = bank_active; // update or not, read from the latest bank
-    if (bankID[gpu_frame_id] ==0) {
-        set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord_0);
-    }
-    else if (bankID[gpu_frame_id] ==1) {
-        set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord_1);
-    }
+    set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     // Do the data copy. Now I am doing async everytime there is new data
