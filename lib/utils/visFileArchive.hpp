@@ -105,6 +105,8 @@ protected:
 
     std::string lock_filename;
 
+    bool stacked;
+
 };
 
 

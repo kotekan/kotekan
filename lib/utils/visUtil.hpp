@@ -33,6 +33,9 @@ using cfloat = typename std::complex<float>;
 /// Aliased type for storing the layout of members in a struct
 using struct_layout = typename std::map<std::string, std::pair<size_t, size_t>>;
 
+/// Define an alias for the stack pair
+using stack_pair = std::pair<uint32_t, bool>;
+
 
 /**
  * @brief Frequency index map type

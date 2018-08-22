@@ -67,6 +67,11 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
     ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
 
+    // Check if this is baseline-stacked data
+    if (_t["index_map"].find("stack") != _t["index_map"].end()) {
+        stack = _t["index_map"]["stack"].get<std::vector<uint16_t>>();
+    }
+
     num_time = times.size();
     num_freq = freqs.size();
     num_input = inputs.size();
@@ -99,9 +104,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     // Allocate memory for collecting frames
     vis.resize(chunk_t*chunk_f*num_prod);
     vis_weight.resize(chunk_t*chunk_f*num_prod);
-    // TODO: fill these at this point?
-    gain_coeff.resize(chunk_t*chunk_f*num_input);
-    gain_exp.resize(chunk_t*num_input);
     eval.resize(chunk_t*chunk_f*num_ev);
     evec.resize(chunk_t*chunk_f*num_ev*num_input);
     erms.resize(chunk_t*chunk_f);

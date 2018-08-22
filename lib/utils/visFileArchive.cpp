@@ -172,7 +172,12 @@ void visFileArchive::create_datasets() {
         create_dataset("evec", {"freq", "ev", "input", "time"},
                        create_datatype<cfloat>(), compress);
         create_dataset("erms", {"freq", "time"},
-                       create_datatype<float>(), no_compress); 
+                       create_datatype<float>(), no_compress);
+    }
+
+    if(stacked) {
+        Group rev_map = file->createGroup("reverse_map");
+        create_dataset("reverse_map/stack", {"prod"}, create_datatype<stack_pair>(), no_compress);
     }
 
     file->flush();
