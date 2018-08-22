@@ -210,14 +210,14 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
         if ( bank_use_0 == 0)  {  //no more outstanding async copy using bank0
             std::lock_guard<std::mutex> lock(_pulsar_lock);
             psr_coord = psr_coord_latest_update;
-            calculate_phase(psr_coord_0, time_now_gps, freq_MHz, host_gain, host_phase_0);
+            calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
             bank_active=0;
             update_phase = false;
         }
         else if (bank_use_1 == 0) { //no more outstanding async copy using bank1
             std::lock_guard<std::mutex> lock(_pulsar_lock);
             psr_coord = psr_coord_latest_update;
-            calculate_phase(psr_coord_1, time_now_gps, freq_MHz, host_gain, host_phase_1);
+            calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
             bank_active = 1;
             update_phase = false;
         }
