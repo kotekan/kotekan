@@ -144,6 +144,15 @@ void visCalFileBundle::add_file(time_ctype first_time) {
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
 }
 
+void visCalFileBundle::swap_file(std::string new_fname, std::string new_aname) {
+    set_file_name(new_fname, new_aname);
+    // Use a dummy time just to get a new file in the map
+    uint64_t max_fpga = vis_file_map.rbegin()->first;
+    time_ctype dummy = {max_fpga + 1, 0.};
+    add_file(dummy);
+
+}
+
 void visCalFileBundle::clear_file_map() {
     // RFlush and remove all entries in the map
     std::shared_ptr<visFile> file;

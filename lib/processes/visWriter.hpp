@@ -228,4 +228,10 @@ protected:
 
 };
 
+inline void check_remove(std::string fname) {
+    if (remove(fname.c_str()) != 0) {
+        throw std::runtime_error("Could not remove file " + fname);
+    }
+}
+
 #endif

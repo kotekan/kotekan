@@ -296,16 +296,13 @@ visCalWriter::visCalWriter(Config &config,
 
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
-    if ((access((full_path + fname_live + ".data").c_str(), F_OK) == 0)
-        || (access((full_path + fname_frozen + ".data").c_str(), F_OK) == 0)) {
-        // TODO: just delete?
-        INFO(("Clobering files in " + full_path).c_str());
-        remove((full_path + fname_base + "_A.data").c_str());
-        remove((full_path + fname_base + "_A.meta").c_str());
-        remove((full_path + fname_base + "_B.data").c_str());
-        remove((full_path + fname_base + "_B.meta").c_str());
-        DEBUG("Remove locks: %s", strerror(errno));
-        //throw std::runtime_error("visCalWriter: File already exist.");
+    if (access((full_path + fname_live + ".data").c_str(), F_OK) == 0) {
+        INFO(("Clobering file " + full_path + fname_base + "_A.data").c_str());
+        check_remove((full_path + fname_base + "_A.data").c_str());
+    }
+    if (access((full_path + fname_frozen + ".data").c_str(), F_OK) == 0) {
+        INFO(("Clobering file " + full_path + fname_base + "_B.data").c_str());
+        check_remove((full_path + fname_base + "_B.data").c_str());
     }
 }
 
@@ -325,8 +322,8 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     fname_frozen = fname_tmp;
 
     // Tell visCalFileBundle to write to new file starting with next sample
-    remove((root_path + "/" + acq_name + "/" + fname_live).c_str());
-    file_cal_bundle->set_file_name(fname_live, acq_name);
+    check_remove((root_path + "/" + acq_name + "/" + fname_live).c_str());
+    file_cal_bundle->swap_file(fname_live, acq_name);
 
     // Respond with frozen file path
     json reply {"file_path", root_path + "/" + acq_name + "/" + fname_frozen};

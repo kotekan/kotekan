@@ -262,6 +262,13 @@ public:
      **/
     void set_file_name(std::string file_name, std::string acq_name);
 
+    /**
+     * Add a new file to the map of open files and let the
+     * previous one be flushed out as samples come in.
+     **/
+    void visCalFileBundle::swap_file(std::string new_fname,
+                                     std::string new_aname);
+
 protected:
 
     // Override parent method to use a set file name
