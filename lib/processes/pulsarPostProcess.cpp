@@ -166,9 +166,6 @@ void pulsarPostProcess::main_thread() {
         }
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
-        //GPS time, need ch_master
-        time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
-
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             assert(first_seq_number ==
                    (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
@@ -177,21 +174,25 @@ void pulsarPostProcess::main_thread() {
             freq_ids[i] = bin_number_chime(&stream_id);
         }
 
-        struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
-        if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
-            ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld time_now_from_compute2.tv_sec=%ld", time_now.tv_sec, time_now_from_compute2.tv_sec);
-        }
-        if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
-            ERROR("[Time Check] mismatch in execute time_now.tv_nsec=%ld time_now_from_compute2.tv_nsec=%ld", time_now.tv_nsec, time_now_from_compute2.tv_nsec);
-        }
-        if (is_gps_global_time_set() != 1) {
-            ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set() );
-        }
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
             // testing sync code
             startup = 0;
+
+            //GPS time, need ch_master
+	    time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
+
+	    struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
+	    if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
+	        ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld time_now_from_compute2.tv_sec=%ld", time_now.tv_sec, time_now_from_compute2.tv_sec);
+	    }
+	    if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
+	       ERROR("[Time Check] mismatch in execute time_now.tv_nsec=%ld time_now_from_compute2.tv_nsec=%ld", time_now.tv_nsec, time_now_from_compute2.tv_nsec);
+	    }
+	    if (is_gps_global_time_set() != 1) {
+  	        ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set() );
+	    }
             uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
             current_input_location = seq_number_offset;
             first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
