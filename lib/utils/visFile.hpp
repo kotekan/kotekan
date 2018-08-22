@@ -266,8 +266,7 @@ public:
      * Add a new file to the map of open files and let the
      * previous one be flushed out as samples come in.
      **/
-    void visCalFileBundle::swap_file(std::string new_fname,
-                                     std::string new_aname);
+    void swap_file(std::string new_fname, std::string new_aname);
 
 protected:
 

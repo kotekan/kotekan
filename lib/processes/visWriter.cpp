@@ -291,18 +291,23 @@ visCalWriter::visCalWriter(Config &config,
     fname_live = fname_base + "_A";
     fname_frozen = fname_base + "_B";
 
+    // Use a very short window by default
+    window = config.get_int_default(unique_name, "window", 2);
+
     // Force use of VisFileRing
     file_type = "ring";
 
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
-    if (access((full_path + fname_live + ".data").c_str(), F_OK) == 0) {
-        INFO(("Clobering file " + full_path + fname_base + "_A.data").c_str());
+     if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
+        || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
+        INFO(("Clobering files in " + full_path).c_str());
         check_remove((full_path + fname_base + "_A.data").c_str());
-    }
-    if (access((full_path + fname_frozen + ".data").c_str(), F_OK) == 0) {
-        INFO(("Clobering file " + full_path + fname_base + "_B.data").c_str());
+        check_remove(("." + full_path + fname_base + "_A.lock").c_str());
+        check_remove((full_path + fname_base + "_A.meta").c_str());
         check_remove((full_path + fname_base + "_B.data").c_str());
+        check_remove(("." + full_path + fname_base + "_B.lock").c_str());
+        check_remove((full_path + fname_base + "_B.meta").c_str());
     }
 }
 
@@ -322,7 +327,7 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     fname_frozen = fname_tmp;
 
     // Tell visCalFileBundle to write to new file starting with next sample
-    check_remove((root_path + "/" + acq_name + "/" + fname_live).c_str());
+    check_remove((root_path + "/" + acq_name + "/" + fname_live + ".data").c_str());
     file_cal_bundle->swap_file(fname_live, acq_name);
 
     // Respond with frozen file path

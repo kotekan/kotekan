@@ -170,8 +170,7 @@ protected:
  *         @buffer_metadata visMetadata
  *
  * @conf   root_path        String. Location in filesystem to write to.
- * @conf   file_name        String. Name of file to buffer data in (omit ext).
- * @conf   frozen_file_name String. Name of file to release for reading (omit ext).
+ * @conf   file_base        String. Base filename to buffer data in (omit ext).
  * @conf   dir_name         String. Name of directory to hold the above files.
  * @conf   node_mode        Bool (default: true). Run in ``node_mode`` or not.
  * @conf   instrument_name  String (default: chime). Name of the instrument
@@ -191,7 +190,7 @@ protected:
  * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Fixed length of the ring file
  *                          in number of time samples.
- * @conf   window           Int (default 20). Number of samples to keep active
+ * @conf   window           Int (default 2). Number of samples to keep active
  *                          for writing at any time.
  *
  * @par Metrics
@@ -230,7 +229,8 @@ protected:
 
 inline void check_remove(std::string fname) {
     if (remove(fname.c_str()) != 0) {
-        throw std::runtime_error("Could not remove file " + fname);
+        if (errno != ENOENT)
+            throw std::runtime_error("Could not remove file " + fname);
     }
 }
 
