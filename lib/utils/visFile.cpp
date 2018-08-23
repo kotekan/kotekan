@@ -72,12 +72,13 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
             uint32_t ind;
             std::tie(file, ind) = vis_file_map.rbegin()->second;  // Unpack the last entry
 
-            if(rollover == 0 || file->num_time() < rollover) {
+            if((rollover == 0 || file->num_time() < rollover) && !change_file) {
                 // Extend the time axis and add into the sample map
                 ind = file->extend_time(new_time);
                 vis_file_map[count] = std::make_tuple(file, ind);
             } else {
                 add_file(new_time);
+                change_file = false;
             }
 
             // As we've added a new sample we need to delete the earliest sample
@@ -145,12 +146,9 @@ void visCalFileBundle::add_file(time_ctype first_time) {
 }
 
 void visCalFileBundle::swap_file(std::string new_fname, std::string new_aname) {
+    // Change the file and and request writing to a new file
     set_file_name(new_fname, new_aname);
-    // Use a dummy time just to get a new file in the map
-    uint64_t max_fpga = vis_file_map.rbegin()->first;
-    time_ctype dummy = {max_fpga + 1, 0.};
-    add_file(dummy);
-
+    change_file = true;
 }
 
 void visCalFileBundle::clear_file_map() {

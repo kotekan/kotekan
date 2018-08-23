@@ -214,6 +214,9 @@ protected:
     std::string acq_name;
     double acq_start_time;
 
+    // Flag to force moving to a new file
+    bool change_file = false;
+
 };
 
 /**

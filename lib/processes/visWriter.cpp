@@ -328,7 +328,6 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     fname_frozen = fname_tmp;
 
     // Tell visCalFileBundle to write to new file starting with next sample
-    //check_remove((root_path + "/" + acq_name + "/" + fname_live + ".data").c_str());
     file_cal_bundle->swap_file(fname_live, acq_name);
 
     // Respond with frozen file path
