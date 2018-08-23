@@ -17,6 +17,7 @@ def icmap(k,n):
     j = k - cmap(ii, ii, n) + ii
     return prod_ctype(ii, j)
 
-
+def ts_to_double(ts):
+    return ts.tv + 1E-9 * ts.tv_nsec
 
 

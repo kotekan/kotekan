@@ -81,7 +81,7 @@ uint64_t Config::get_uint64_default(const string& base_path, const string& name,
 
 uint32_t Config::get_uint32_default(const string& base_path, const string& name, uint32_t default_value) {
     try {
-        uint32_t value = get_uint64(base_path, name);
+        uint32_t value = get_uint32(base_path, name);
         return value;
     } catch (std::exception const & ex) {
         return default_value;

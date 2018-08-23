@@ -164,6 +164,11 @@ void fakeVis::main_thread() {
             // Fill out the frame with debug info according to the given mode.
             fill(output_frame);
 
+            // gains
+            for(uint32_t i = 0; i < num_elements; i++) {
+                output_frame.gain[i] = 1;
+            }
+
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);
