@@ -379,4 +379,26 @@ inline std::pair< std::vector<T>, std::vector<U> > unzip(
     return result;
 }
 
+/**
+ * @brief Apply a function 1->1 over a vector.
+ *
+ * @param vec  Vector to use.
+ * @param func Function to apply.
+ *
+ * @returns Vector with the mapped elements.
+ **/
+template<typename T, typename U>
+inline std::vector<U> func_map(const std::vector<T>& vec,
+                               std::function<U(const T&)> func)
+{
+    std::vector<U> ret;
+    ret.reserve(vec.size());
+
+    for(const T& x : vec) {
+        ret.push_back(func(x));
+    }
+    return ret;
+}
+
+
 #endif

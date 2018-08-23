@@ -57,7 +57,7 @@ private:
     // Inputs are the usual input map and product map.
     using stack_def_fn = std::function<
         std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>>(
-            std::vector<input_ctype>&, std::vector<prod_ctype>&
+            const std::vector<input_ctype>&, const std::vector<prod_ctype>&
         )
     >;
 
@@ -74,12 +74,14 @@ private:
 
 // Stack along the band diagonals
 std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
-    std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
+    const std::vector<input_ctype>& inputs,
+    const std::vector<prod_ctype>& prods
 );
 
 // Stack along the band diagonals
 std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
-    std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
+    const std::vector<input_ctype>& inputs,
+    const std::vector<prod_ctype>& prods
 );
 
 #define CYL_A 0
@@ -155,10 +157,10 @@ public:
      * @param num_stack Number of stacked visibilites.
      * @param inner  An inner state (optional).
      */
-    stackState(std::vector<stack_pair>&& stack_map, uint32_t num_stack, state_uptr inner=nullptr) :
+    stackState(uint32_t num_stack, std::vector<stack_pair>&& stack_map, state_uptr inner=nullptr) :
         datasetState(std::move(inner)),
-        _stack_map(stack_map),
-        _num_stack(num_stack) {};
+        _num_stack(num_stack),
+        _stack_map(stack_map) {};
 
 
     /**
@@ -174,6 +176,16 @@ public:
         return _stack_map;
     }
 
+    /**
+     * @brief Get the number of stacks (read only).
+     *
+     * @return The number of stacks.
+     */
+    const uint32_t get_num_stack() const
+    {
+        return _num_stack;
+    }
+
 private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override
@@ -181,11 +193,11 @@ private:
         return {{"stack_map", _stack_map }, {"num_stack", _num_stack}};
     }
 
-    /// The stack definition
-    std::vector<stack_pair> _stack_map;
-
     /// Total number of stacks
     uint32_t _num_stack;
+
+    /// The stack definition
+    std::vector<stack_pair> _stack_map;
 };
 
 

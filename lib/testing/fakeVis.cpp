@@ -7,6 +7,9 @@
 #include <math.h>
 #include <random>
 #include <functional>
+#include "datasetManager.hpp"
+#include "fmt.hpp"
+
 
 using namespace std::placeholders;
 
@@ -34,9 +37,7 @@ fakeVis::fakeVis(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Get frequency IDs from config
-    for (auto f : config.get_int_array(unique_name, "freq_ids")) {
-        freq.push_back((uint32_t) f);
-    }
+    freq = config.get_array<uint32_t>(unique_name, "freq_ids");
 
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
@@ -72,6 +73,8 @@ fakeVis::fakeVis(Config &config,
     cadence = config.get_float(unique_name, "cadence");
     num_frames = config.get_int_default(unique_name, "num_frames", -1);
     wait = config.get_bool_default(unique_name, "wait", true);
+    use_dataset_manager = config.get_bool_default(
+        unique_name, "use_dataset_manager", false);
 
     // Get zero_weight option
     zero_weight = config.get_bool_default(unique_name, "zero_weight", false);
@@ -93,6 +96,40 @@ void fakeVis::main_thread() {
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
+    // If configured, register datasetStates to describe the properties of the
+    // created stream
+    dset_id dataset = 0;
+    if (use_dataset_manager) {
+
+        std::cout << "Hello1: " << dataset << std::endl;
+        auto& dm = datasetManager::instance();
+        std::cout << "Hello2: " << dataset << std::endl;
+
+        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+        std::transform(
+            std::begin(freq), std::end(freq), std::back_inserter(fspec),
+            [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+            });
+        auto fstate = std::make_unique<freqState>(fspec);
+
+        std::vector<input_ctype> ispec;
+        for (uint32_t i = 0; i < num_elements; i++)
+            ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
+        auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
+
+        std::vector<prod_ctype> pspec;
+        for (uint16_t i = 0; i < num_elements; i++)
+            for (uint16_t j = i; j < num_elements; j++)
+                pspec.push_back({i, j});
+        auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+
+        auto s = dm.add_state(std::move(pstate));
+        dataset = dm.add_dataset(s.first, -1);  // Register a root state
+
+        std::cout << "Hello1: " << dataset << std::endl;
+    }
+
     while (!stop_thread) {
 
         double start = current_time();
@@ -112,8 +149,7 @@ void fakeVis::main_thread() {
             auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
-            // TODO: dataset ID properly when we have gated data
-            output_frame.dataset_id = 0;
+            output_frame.dataset_id = dataset;
 
             // Set the frequency index
             output_frame.freq_id = f;

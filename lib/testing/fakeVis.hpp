@@ -143,6 +143,8 @@ private:
     // Test mode that sets all weights to zero
     bool zero_weight;
 
+    bool use_dataset_manager;
+
     bool wait;
     int32_t num_frames;
 

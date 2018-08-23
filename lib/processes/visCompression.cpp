@@ -14,7 +14,8 @@
 using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(baselineCompression);
-
+;
+REGISTER_DATASET_STATE(stackState);
 
 baselineCompression::baselineCompression(Config &config,
                                          const string& unique_name,
@@ -35,10 +36,11 @@ baselineCompression::baselineCompression(Config &config,
     stack_type_defs["diagonal"] = stack_diagonal;
 
     std::string stack_type = config.get_string(unique_name, "stack_type");
-    INFO("using stack type: %s", stack_type.c_str());
     if(stack_type_defs.count(stack_type) == 0) {
         ERROR("unknown stack type %s", stack_type.c_str());
+        return;
     }
+    INFO("using stack type: %s", stack_type.c_str());
     calculate_stack = stack_type_defs.at(stack_type);
 
 }
@@ -77,6 +79,13 @@ void baselineCompression::main_thread() {
     // Keep track of the normalisation of each stack
     std::vector<float> stack_norm(num_stack);
 
+    auto& dm = datasetManager::instance();
+    const stackState * stack_state_ptr;
+    dset_id input_dset_id = -1;
+    dset_id output_dset_id;
+    state_id stack_state_id;
+
+
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
@@ -94,11 +103,30 @@ void baselineCompression::main_thread() {
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
+        // If the input dataset has changed construct a new stack spec from the
+        // datasetManager
+        if (input_dset_id != input_frame.dataset_id) {
+            input_dset_id = input_frame.dataset_id;
+
+            auto istate = dm.closest_ancestor_of_type<inputState>(input_dset_id);
+            auto pstate = dm.closest_ancestor_of_type<prodState>(input_dset_id);
+
+            auto sspec = calculate_stack(istate.second->get_inputs(),
+                                         pstate.second->get_prods());
+            auto sstate = std::make_unique<stackState>(
+                sspec.first, std::move(sspec.second));
+
+            std::tie(stack_state_id, stack_state_ptr) =
+                dm.add_state(std::move(sstate));
+            output_dset_id = dm.add_dataset(stack_state_id, input_dset_id);
+        }
+
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
         auto output_frame = visFrameView(out_buf, output_frame_id,
-                                         input_frame.num_elements, num_stack,
+                                         input_frame.num_elements,
+                                         stack_state_ptr->get_num_stack(),
                                          input_frame.num_ev);
 
         // Copy over the data we won't modify
@@ -110,6 +138,8 @@ void baselineCompression::main_thread() {
         std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
         std::fill(std::begin(output_frame.weight),
                   std::end(output_frame.weight), 0.0);
+
+        auto stack_map = stack_state_ptr->get_stack_map();
 
         // Iterate over all the products and average together
         for(uint32_t prod_ind = 0; prod_ind < prods.size(); prod_ind++) {
@@ -162,7 +192,8 @@ void baselineCompression::main_thread() {
 
 // Stack along the band diagonals
 std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
-    std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
+    const std::vector<input_ctype>& inputs,
+    const std::vector<prod_ctype>& prods
 ) {
     uint32_t num_elements = inputs.size();
     std::vector<std::pair<uint32_t, bool>> stack_def;
@@ -245,7 +276,8 @@ std::pair<feed_diff, bool> calculate_chime_vis(
 
 // Stack along the band diagonals
 std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
-    std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods
+    const std::vector<input_ctype>& inputs,
+    const std::vector<prod_ctype>& prods
 ) {
     // Calculate the set of baseline properties
     std::vector<std::pair<feed_diff, bool>> bl_prop;

@@ -12,7 +12,8 @@ subset_params = {
     'cadence': 2048.0,
     'mode': 'phase_ij',
     'freq_ids': [0, 250],
-    'buffer_depth': 5
+    'buffer_depth': 5,
+    'use_dataset_manager': True
 }
 
 vis_params = {

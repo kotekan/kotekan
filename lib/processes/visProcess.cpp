@@ -658,7 +658,7 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
     }
 
     // Create the frequency specification
-    std::transform(std::begin(freq_ids), std::end(freq_ids), std::begin(_freqs),
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
                    [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
                        return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                    });

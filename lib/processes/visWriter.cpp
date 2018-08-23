@@ -192,7 +192,13 @@ void visWriter::init_acq() {
                             "dataset_id={}\n", frame.dataset_id)
             );
         }
+
         std::tie(freq_id_list, freqs) = unzip(fstate.second->get_freqs());
+
+        // Set the frequency remapping
+        uint32_t fpos = 0;
+        for(auto id : freq_id_list)
+            freq_map[id] = fpos++;
 
         // Get the input spec
         auto istate = dm.closest_ancestor_of_type<inputState>(frame.dataset_id);
