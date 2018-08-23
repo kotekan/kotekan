@@ -168,6 +168,8 @@ def test_accumulate(accumulate_data):
 
         assert (frame.vis == pat).all()
         assert (frame.weight == 8.0).all()
+        assert (frame.flags == 1.0).all()
+        assert (frame.gain == 1.0).all()
 
 
 # Test the the statistics are being calculated correctly

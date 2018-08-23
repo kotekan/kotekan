@@ -171,7 +171,7 @@ public:
      * @param rollover Maximum time length of file.
      * @param window_size Number of "active" timesamples to keep.
      * @param ... Arguments passed through to `visFile::visFile`.
-     * 
+     *
      * @warning The directory will not be created if it doesn't exist.
      **/
     template<typename... InitArgs>
@@ -191,18 +191,20 @@ public:
     template<typename... WriteArgs>
     bool add_sample(time_ctype new_time, WriteArgs&&... args);
 
-private:
+protected:
 
-    // Add a file if we need to 
-    void add_file(time_ctype first_time);
-
-    // Thin function to actually create the file
-    std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mk_file;
+    // Add a file if we need to
+    virtual void add_file(time_ctype first_time);
 
     // Find/create the slot for data at this time to go into
     bool resolve_sample(time_ctype new_time);
 
+    std::map<uint64_t, std::tuple<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
+    // Thin function to actually create the file
+    std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mk_file;
+
     const std::string root_path;
+
     const std::string instrument_name;
     const int freq_chunk;
 
@@ -212,7 +214,60 @@ private:
     std::string acq_name;
     double acq_start_time;
 
-    std::map<uint64_t, std::tuple<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
+};
+
+/**
+ * @brief Extension to visFileBundle to manage buffer files for the
+ *        calibration broker.
+ *
+ * This version is intended to write to a single file, with a
+ * static user defined file name. The file mapping can be cleared
+ * so that a new file is written to and the previous one is available
+ * for reading. Swapping these files is managed by visCalWriter.
+ *
+ * @author Tristan Pinsonneault-Marotee
+ **/
+class visCalFileBundle : public visFileBundle {
+
+public:
+
+    /**
+     * Initialise the file bundle
+     * @param root_path Directory to write into.
+     * @param inst_name Instrument name (e.g. chime)
+     * @param freq_chunk ID of the frequency chunk being written
+     * @param rollover Maximum time length of file.
+     * @param window_size Number of "active" timesamples to keep.
+     * @param ... Arguments passed through to `visFile::visFile`.
+     *
+     * @warning The directory will not be created if it doesn't exist.
+     **/
+    template<typename... InitArgs>
+    visCalFileBundle(const std::string& type, const std::string& root_path,
+                  const std::string& instrument_name,
+                  const std::map<std::string, std::string>& metadata,
+                  int freq_chunk,
+                  size_t rollover, size_t window_size,
+                  InitArgs... args) :
+        visFileBundle(type, root_path, instrument_name, metadata,
+                      freq_chunk, rollover, window_size, args...) {};
+
+    /**
+     * Close all files and clear the map.
+     **/
+    void clear_file_map();
+
+    /**
+     * Set the file name to write to.
+     **/
+    void set_file_name(std::string file_name, std::string acq_name);
+
+protected:
+
+    // Override parent method to use a set file name
+    void add_file(time_ctype first_time) override;
+
+    std::string acq_name, file_name;
 
 };
 
@@ -249,7 +304,7 @@ inline visFileBundle::visFileBundle(
 
 template<typename... WriteArgs>
 inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) {
-    
+
     if(resolve_sample(new_time)) {
         std::shared_ptr<visFile> file;
         uint32_t ind;
@@ -263,6 +318,17 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
     }
 }
 
+//template<typename... InitArgs>
+//inline visCalFileBundle::visCalFileBundle(const std::string& type,
+//                                   const std::string& root_path,
+//                                   const std::string& instrument_name,
+//                                   const std::map<std::string, std::string>& metadata,
+//                                   int freq_chunk,
+//                                   size_t rollover, size_t window_size,
+//                                   InitArgs... args) :
+//    visFileBundle::visFileBundle(type, root_path, instrument_name, metadata,
+//                                 freq_chunk, rollover, window_size, args...) {}
+//
 /**
  * @brief Create a lock file for the given file.
  * @param filename Name of file to lock.

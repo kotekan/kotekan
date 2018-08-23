@@ -93,9 +93,11 @@ class VisBuffer(object):
         structure = [
             ('vis', np.complex64, num_prod),
             ('weight', np.float32, num_prod),
+            ('flags', np.float32, num_elements),
             ("eval", np.float32,  num_ev),
             ("evec", np.complex64, num_ev * num_elements),
-            ("erms", np.float32,  1)
+            ("erms", np.float32,  1),
+            ("gain", np.complex64, num_elements)
         ]
 
         end = 0
