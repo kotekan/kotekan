@@ -430,7 +430,7 @@ inline int datasetState::_register_state_type() {
     // instances.
     string key = typeid(T).name();
 
-    DEBUG("Registering state type: %s", key);
+    DEBUG("Registering state type: %s", key.c_str());
 
     // Generate a lambda function that creates an instance of the type
     datasetState::_type_create_funcs[key] =
