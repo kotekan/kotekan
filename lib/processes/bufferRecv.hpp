@@ -34,6 +34,8 @@
 #include <event2/bufferevent.h>
 #include <event2/thread.h>
 
+// Forward declare
+class connInstance;
 
 /**
  * @brief Receives frames and metadata from other networked kotekan buffers,
@@ -111,8 +113,7 @@ private:
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
 
-    static void read_callback(struct bufferevent *bev, void *ctx);
-    static void error_callback(struct bufferevent *bev, short error, void *ctx);
+    static void read_callback(evutil_socket_t fd, short what, void *arg);
     static void accept_connection(evutil_socket_t listener, short event, void *arg);
 
     /**
@@ -155,7 +156,7 @@ private:
     std::vector<std::thread> thread_pool;
 
     /// Queue of functions to be called by the worker threads
-    std::queue<std::function<void(void)>> work_queue;
+    std::deque<connInstance *> work_queue;
 
     /// Lock for the work queue
     std::mutex work_queue_lock;
@@ -216,17 +217,15 @@ public:
                  struct Buffer *buf,
                  bufferRecv * buffer_recv,
                  const string &client_ip,
-                 int port);
+                 int port,
+                 struct timeval read_timeout);
     ~connInstance();
 
-    void internal_read_callback(struct bufferevent *bev);
-    void internal_error_callback(struct bufferevent *bev, short error, void *ctx);
+    void internal_read_callback();
 
     void increment_ref_count();
     void decrement_ref_count();
     void close_instance();
-
-    void set_bufferevent(struct bufferevent *bev);
 
     string producer_name;
     struct Buffer *buf;
@@ -236,8 +235,10 @@ public:
     string client_ip;
     int port;
 
-    struct bufferevent *buffer_event;
+    struct timeval read_timeout;
 
+    struct event * event_read;
+    evutil_socket_t fd;
 
     size_t bytes_read = 0;
 
@@ -260,6 +261,28 @@ public:
     std::mutex reference_count_lock;
 
     connState state = connState::header;
+
+    inline void handle_error(const std::string &msg, int err_num, ssize_t bytes_read) {
+        // Resource temporarily unavailable, no need to close connection
+        if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
+            DEBUG2("Got resource unavailable error, %d, read return %d", err_num, bytes_read);
+            decrement_ref_count();
+            event_add(event_read, &read_timeout);
+            return;
+        }
+
+        if (bytes_read == 0) {
+            INFO("Connection to %s closed", client_ip.c_str());
+            decrement_ref_count();
+            close_instance();
+            return;
+        }
+
+        ERROR("Error with operation '%s' for client %s, error code %d (%s).  Closing connection.",
+                msg.c_str(), client_ip.c_str(), err_num, strerror(err_num));
+        decrement_ref_count();
+        close_instance();
+    }
 };
 
 #endif
