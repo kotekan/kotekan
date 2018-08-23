@@ -1,9 +1,9 @@
 #ifndef CONFIGUPDATER_H
 #define CONFIGUPDATER_H
 
-#include "Config.hpp"
 #include "restServer.hpp"
 #include "KotekanProcess.hpp"
+#include "Config.hpp"
 
 /**
  * @brief Kotekan core component that creates endpoints defined in the config
