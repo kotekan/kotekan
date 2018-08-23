@@ -66,8 +66,8 @@ private:
     std::vector<cfloat> evec;
     std::vector<float> erms;
     std::vector<cfloat> gain;
-    std::vector<float> lost_samp;
-    std::vector<float> flags;
+    std::vector<float> frac_lost;
+    std::vector<float> input_flags;
     std::vector<stack_pair> reverse_stack;
 
     // Keep track of the size to write out
@@ -97,6 +97,7 @@ private:
     size_t num_time;
     size_t num_freq;
     size_t num_ev;
+    size_t eff_prod_dim;
 
     // write datasets to file
     void write();

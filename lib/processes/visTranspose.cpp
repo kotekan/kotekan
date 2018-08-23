@@ -70,6 +70,8 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     // Check if this is baseline-stacked data
     if (_t["index_map"].find("stack") != _t["index_map"].end()) {
         stack = _t["index_map"]["stack"].get<std::vector<uint16_t>>();
+        // TODO: verify this is where it gets stored
+        reverse_stack = _t["stack_map"].get<std::vector<stack_pair>>();
     }
 
     num_time = times.size();
@@ -77,6 +79,9 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     num_input = inputs.size();
     num_prod = prods.size();
     num_ev = ev.size();
+
+    // the dimension of the visibilities is different for stacked data
+    eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
     // change archive version: remove "NT_" prefix (not transposed)
     version = metadata["archive_version"];
@@ -102,11 +107,14 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     write_f = chunk_f;
 
     // Allocate memory for collecting frames
-    vis.resize(chunk_t*chunk_f*num_prod);
-    vis_weight.resize(chunk_t*chunk_f*num_prod);
+    vis.resize(chunk_t*chunk_f*eff_prod_dim);
+    vis_weight.resize(chunk_t*chunk_f*eff_prod_dim);
     eval.resize(chunk_t*chunk_f*num_ev);
     evec.resize(chunk_t*chunk_f*num_ev*num_input);
     erms.resize(chunk_t*chunk_f);
+    gain.resize(chunk_t*chunk_f*num_input);
+    frac_lost.resize(chunk_t*chunk_f);
+    input_flags.resize(chunk_t*num_input);
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
@@ -124,9 +132,16 @@ void visTranspose::main_thread() {
     uint32_t offset = 0;
 
     // Create HDF5 file
-    file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
-                metadata, times, freqs, inputs, prods, num_ev, chunk)
-    );
+    if (stack.size() > 0) {
+        file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
+                    metadata, times, freqs, inputs, prods,
+                    stack, reverse_stack, num_ev, chunk)
+        );
+    } else {
+        file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
+                    metadata, times, freqs, inputs, prods, num_ev, chunk)
+        );
+    }
 
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
@@ -140,23 +155,21 @@ void visTranspose::main_thread() {
         // Time-transpose as frames come in
         // Fastest varying is time (needs to be consistent with reader!)
         offset = fi * write_t;
-        strided_copy(frame.vis.data(), vis.data(), offset*num_prod + ti,
-                write_t, num_prod);
+        strided_copy(frame.vis.data(), vis.data(), offset*eff_prod_dim + ti,
+                write_t, eff_prod_dim);
         strided_copy(frame.weight.data(), vis_weight.data(),
-                offset*num_prod + ti, write_t, num_prod);
-        // TODO: just fill until these are populated in the frames
-        std::fill(gain_coeff.begin() + (offset+ti) * num_input,
-                gain_coeff.begin() + (offset+ti+1) * num_input, (cfloat) {1, 0});
-        if (fi == 0) {
-            std::fill(gain_exp.begin() + (offset+ti) * inputs.size(),
-                      gain_exp.begin() + (offset+ti+1) * inputs.size(), 0);
-        }
-        // TODO: are sizes of eigenvectors always the number of inputs?
+                offset*eff_prod_dim + ti, write_t, eff_prod_dim);
         strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti,
                 write_t, num_ev);
         strided_copy(frame.evec.data(), evec.data(),
                 fi*num_ev*num_input*write_t + ti, write_t, num_ev*num_input);
         erms[offset + ti] = frame.erms;
+        frac_lost[offset + ti] = float(frame.fpga_seq_total) / frame.fpga_seq_length;
+        strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
+                write_t, num_input);
+        strided_copy(frame.flags.data(), input_flags.data(), ti,
+                write_t, num_input);
+        // input_flags
 
         // Increment within read chunk
         ti = (ti + 1) % write_t;

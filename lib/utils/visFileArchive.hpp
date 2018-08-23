@@ -47,6 +47,16 @@ public:
                    const std::vector<prod_ctype>& prods,
                    size_t num_ev,
                    std::vector<int> chunk_size);
+    visFileArchive(const std::string& name,
+                   const std::map<std::string, std::string>& metadata,
+                   const std::vector<time_ctype>& times,
+                   const std::vector<freq_ctype>& freqs,
+                   const std::vector<input_ctype>& inputs,
+                   const std::vector<prod_ctype>& prods,
+                   const std::vector<uint16_t>& stack,
+                   std::vector<stack_pair>& reverse_stack,
+                   size_t num_ev,
+                   std::vector<int> chunk_size);
 
     /**
      * @brief Destructor.
@@ -70,6 +80,16 @@ public:
 
 protected:
 
+    // Prepare a file
+    void visFileArchive::setup_file(const std::string& name,
+                                    const std::map<std::string, std::string>& metadata,
+                                    const std::vector<time_ctype>& times,
+                                    const std::vector<freq_ctype>& freqs,
+                                    const std::vector<input_ctype>& inputs,
+                                    const std::vector<prod_ctype>& prods,
+                                    size_t num_ev,
+                                    std::vector<int> chunk_size);
+
     // Helper to create datasets
     virtual void create_dataset(const std::string& name,
                                 const std::vector<std::string>& axes,
@@ -85,6 +105,12 @@ protected:
                      const std::vector<freq_ctype>& freqs,
                      const std::vector<input_ctype>& inputs,
                      const std::vector<prod_ctype>& prods,
+                     size_t num_ev);
+    void create_axes(const std::vector<time_ctype>& times,
+                     const std::vector<freq_ctype>& freqs,
+                     const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods,
+                     const std::vector<uint16_t>& stack,
                      size_t num_ev);
 
     // Create the main visibility holding datasets
@@ -105,9 +131,18 @@ protected:
 
     std::string lock_filename;
 
+    // Whether the products have been compressed via baseline stacking
     bool stacked;
 
+    // Shortcut for axes labels
+    inline std::string prod_or_stack();
+
 };
+
+
+inline std::string visFileArchive::prod_or_stack() {
+    return stacked ? "stack" : "prod";
+}
 
 
 // TODO: these should be included from visFileH5
