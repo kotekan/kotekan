@@ -161,8 +161,9 @@ protected:
  *          a file, the released file will be partially empty.
  *
  * @par REST Endpoints
- * @endpoint /release_cal_file ``GET`` Stop writing and make a file available
- *           for reading. Responds with a path to the file.
+ * @endpoint /release_live_file/process name>    ``GET`` Stop writing
+ *           and make a file available for reading. Responds with a path to
+ *           the file.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
