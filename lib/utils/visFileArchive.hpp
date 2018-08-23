@@ -81,14 +81,14 @@ public:
 protected:
 
     // Prepare a file
-    void visFileArchive::setup_file(const std::string& name,
-                                    const std::map<std::string, std::string>& metadata,
-                                    const std::vector<time_ctype>& times,
-                                    const std::vector<freq_ctype>& freqs,
-                                    const std::vector<input_ctype>& inputs,
-                                    const std::vector<prod_ctype>& prods,
-                                    size_t num_ev,
-                                    std::vector<int> chunk_size);
+    void setup_file(const std::string& name,
+                    const std::map<std::string, std::string>& metadata,
+                    const std::vector<time_ctype>& times,
+                    const std::vector<freq_ctype>& freqs,
+                    const std::vector<input_ctype>& inputs,
+                    const std::vector<prod_ctype>& prods,
+                    size_t num_ev,
+                    std::vector<int> chunk_size);
 
     // Helper to create datasets
     virtual void create_dataset(const std::string& name,
@@ -154,6 +154,7 @@ template <> DataType create_datatype<time_ctype>();
 template <> DataType create_datatype<input_ctype>();
 template <> DataType create_datatype<prod_ctype>();
 template <> DataType create_datatype<cfloat>();
+template <> DataType create_datatype<stack_pair>();
 };
 
 

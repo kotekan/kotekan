@@ -98,7 +98,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
                    md_filename.c_str());
 
     DEBUG("File has %d times, %d frequencies, %d products",
-                  num_time, num_freq, num_prod);
+                  num_time, num_freq, eff_prod_dim);
 
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
@@ -169,7 +169,6 @@ void visTranspose::main_thread() {
                 write_t, num_input);
         strided_copy(frame.flags.data(), input_flags.data(), ti,
                 write_t, num_input);
-        // input_flags
 
         // Increment within read chunk
         ti = (ti + 1) % write_t;
@@ -206,10 +205,6 @@ void visTranspose::write() {
             vis_weight.data());
     //DEBUG("wrote vis_weight");
 
-    file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t,
-            gain_coeff.data());
-    //DEBUG("wrote gain_coeff");
-
     file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
     //DEBUG("wrote eval");
 
@@ -217,8 +212,14 @@ void visTranspose::write() {
 
     file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
 
-    file->write_block("gain_exp", f_ind, t_ind, write_f, write_t,
-            gain_exp.data());
+    file->write_block("gain", f_ind, t_ind, write_f, write_t,
+            gain.data());
+
+    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
+            input_flags.data());
+
+    file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t,
+            frac_lost.data());
 }
 
 // increment between chunks
