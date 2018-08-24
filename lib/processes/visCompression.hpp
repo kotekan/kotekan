@@ -10,10 +10,15 @@
 #include <vector>
 #include <tuple>
 
+#include "json.hpp"
+
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
 #include "datasetManager.hpp"
+
+// This type is used a lot so let's use an alias
+using json = nlohmann::json;
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.
@@ -139,7 +144,7 @@ public:
      *              stackState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    stackState(json & data, state_uptr inner) :
+    stackState(json& data, state_uptr inner) :
         datasetState(move(inner))
     {
         try {
@@ -186,12 +191,13 @@ public:
         return _num_stack;
     }
 
-private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
         return {{"stack_map", _stack_map }, {"num_stack", _num_stack}};
     }
+
+private:
 
     /// Total number of stacks
     uint32_t _num_stack;

@@ -7,15 +7,20 @@
 #include "fmt.hpp"
 
 // Initialise static map of types
-std::map<std::string,
-         std::function<state_uptr(json&, state_uptr)>>
-    datasetState::_type_create_funcs;
+std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&
+datasetState::_registered_types()
+{
+    static std::map<std::string, std::function<state_uptr(json&, state_uptr)>>
+        _register;
+
+    return _register;
+}
 
 
 state_uptr datasetState::_create(std::string name, json & data,
                                  state_uptr inner) {
 
-    return _type_create_funcs[name](data, std::move(inner));
+    return _registered_types()[name](data, std::move(inner));
 }
 
 

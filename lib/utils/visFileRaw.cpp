@@ -15,11 +15,11 @@
 #include "fmt.hpp"
 
 
-// Register the HDF5 file writers
+// Register the raw file writer
 REGISTER_VIS_FILE("raw", visFileRaw);
 
 //
-// Implementation of standard HDF5 visibility data file
+// Implementation of raw visibility data file
 //
 
 void visFileRaw::create_file(const std::string& name,
@@ -111,7 +111,7 @@ void visFileRaw::flush_raw_sync(int ind) {
                     SYNC_FILE_RANGE_WAIT_BEFORE |
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
-    posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED); 
+    posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
 #endif
 }
 
@@ -151,7 +151,7 @@ void visFileRaw::deactivate_time(uint32_t time_ind) {
 bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
 
     // Write in a retry macro loop incase the write was interrupted by a signal
-    int nbytes = TEMP_FAILURE_RETRY( 
+    int nbytes = TEMP_FAILURE_RETRY(
         pwrite(fd, data, nb, offset)
     );
 

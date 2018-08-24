@@ -14,7 +14,6 @@
 using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(baselineCompression);
-;
 REGISTER_DATASET_STATE(stackState);
 
 baselineCompression::baselineCompression(Config &config,

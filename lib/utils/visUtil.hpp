@@ -87,17 +87,40 @@ struct prod_ctype {
     uint16_t input_b;
 };
 
+/**
+ * @brief Stack index map type (stack -> product)
+ */
+struct stack_ctype {
+    /// Index of an example product
+    uint32_t prod;
+    /// Conjugate before stack
+    bool conjugate;
+};
+
+/**
+ * @brief Reverse stack map (product -> stack)
+ */
+struct rstack_ctype {
+    /// Index of stack this product goes into
+    uint32_t stack;
+    /// Conjugate before stack
+    bool conjugate;
+};
 
 // Conversions of the index types to json
 void to_json(json& j, const freq_ctype& f);
 void to_json(json& j, const input_ctype& f);
 void to_json(json& j, const prod_ctype& f);
 void to_json(json& j, const time_ctype& f);
+void to_json(json& j, const stack_ctype& f);
+void to_json(json& j, const rstack_ctype& f);
 
 void from_json(const json& j, freq_ctype& f);
 void from_json(const json& j, input_ctype& f);
 void from_json(const json& j, prod_ctype& f);
 void from_json(const json& j, time_ctype& f);
+void from_json(const json& j, stack_ctype& f);
+void from_json(const json& j, rstack_ctype& f);
 
 /**
  * @brief Index into a flattened upper matrix triangle.
