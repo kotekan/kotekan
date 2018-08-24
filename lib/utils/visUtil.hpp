@@ -176,6 +176,44 @@ inline timespec double_to_ts(double dtime) {
 
 
 /**
+ * @brief Subtraction of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a - b as timespec.
+ **/
+inline timespec operator-(const timespec & a, const timespec & b)
+{
+    if(a.tv_nsec < b.tv_nsec)
+        return {a.tv_sec - b.tv_sec - 1, 1000000000 + a.tv_nsec - b.tv_nsec};
+    else
+        return {a.tv_sec - b.tv_sec, a.tv_nsec - b.tv_nsec};
+}
+
+
+/**
+ * @brief Comparison of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    True if (a == b), False otherwise.
+ **/
+inline bool operator==(const timespec & a, const timespec & b) {
+    return (a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec);
+}
+
+
+/**
+ * @brief Comparison of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    True if (a > b), False otherwise.
+ **/
+inline bool operator>(const timespec & a,const timespec & b) {
+    return (a.tv_sec > b.tv_sec ||
+            (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec));
+}
+
+
+/**
  * @brief Get the current UNIX time as a double.
  * @return  UNIX time as double.
  **/

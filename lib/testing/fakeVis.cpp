@@ -145,7 +145,7 @@ void fakeVis::main_thread() {
                 for(uint32_t i = 0; i < num_elements; i++) {
                     for(uint32_t j = i; j < num_elements; j++) {
                         float phase = (float) i - (float) j;
-                        out_vis[ind] = {cos(phase), sin(phase)};
+                        out_vis[ind] = {cosf(phase), sinf(phase)};
                         ind++;
                     }
                 }
@@ -216,6 +216,11 @@ void fakeVis::main_thread() {
                 }
             }
 
+            // gains
+            for(uint32_t i = 0; i < num_elements; i++) {
+                output_frame.gain[i] = 1;
+            }
+
             // Mark the buffers and move on
             mark_frame_full(out_buf, unique_name.c_str(),
                             output_frame_id);
@@ -233,7 +238,7 @@ void fakeVis::main_thread() {
         ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
 
         // Cause kotekan to exit if we've hit the maximum number of frames
-        if(num_frames > 0 && frame_count >= num_frames) {
+        if(num_frames > 0 && frame_count >= (unsigned) num_frames) {
             INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
             std::raise(SIGINT);
             return;
