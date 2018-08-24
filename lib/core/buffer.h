@@ -359,13 +359,10 @@ void allocate_new_metadata_object(struct Buffer * buf, int frame_id);
  *          given will be used and freed by the buffer, so the providing system
  *          must not attempt to free it.
  * @warning This function should only be use by single producer processes.
- * @warning The extra frame provided to this function must be allocated in the same
- *          way, and have the same lenght as the frames in the buffer. Like wise
- *          it must be freed in the same way the buffer will free it.
+ * @warning The extra frame provided to this function must be allocated with
+ *          @c buffer_malloc() and the frame returned by this function must be
+ *          freed with @c buffer_free()
  * @warning Take care when using this function!
- *
- * @todo Factor out allocation and freeing of buffer frames so external systems
- *       can use the same alloc and free functions.
  *
  * @param buf The buffer object to swap with
  * @param frame_id The frame to swap
@@ -391,6 +388,21 @@ uint8_t * swap_external_frame(struct Buffer * buf, int frame_id, uint8_t * exter
  */
 void swap_frames(struct Buffer * from_buf, int from_frame_id,
                  struct Buffer * to_buf, int to_frame_id);
+
+/**
+ * @brief Allocates a frame with the required malloc method
+ *
+ * @param len The size of the frame to allocate in bytes.
+ * @return A pointer to the new memory, or @c NULL if allocation failed.
+ */
+uint8_t * buffer_malloc(ssize_t len);
+
+/**
+ * @brief Deallocate a frame of memory with the required free method.
+ *
+ * @param frame_pointer The pointer to the memory to free.
+ */
+void buffer_free(uint8_t * frame_pointer);
 
 /**
  * @brief Gets the raw metadata block for the given frame

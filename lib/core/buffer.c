@@ -141,34 +141,9 @@ struct Buffer* create_buffer(int num_frames, int len,
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-
-        #ifdef WITH_HSA
-
-        // Is this memory aligned?
-        buf->frames[i] = hsa_host_malloc(buf->aligned_frame_size);
-        //DEBUG("Using hsa_host_malloc in buffers.c: %p, len: %d", buf->frames[i], buf->aligned_frame_size);
-
-        //memset(buf->frames[i], 0x88888888, buf->aligned_frame_size);
-        memset(buf->frames[i], 0x0, buf->aligned_frame_size);
-
-        #else
-        // Create a page alligned block of memory for the buffer
-        int err = 0;
-        err = posix_memalign((void **) &(buf->frames[i]), PAGESIZE_MEM, buf->aligned_frame_size);
-        CHECK_MEM(buf->frames[i]);
-        if ( err != 0 ) {
-            ERROR("Error creating alligned memory: %d", err);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size);
+        if (buf->frames[i] == NULL)
             return NULL;
-        }
-
-        // Ask that all pages be kept in memory
-        err = mlock((void *) buf->frames[i], len);
-
-        if ( err == -1 ) {
-            ERROR("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
-            return NULL;
-        }
-        #endif
     }
 
     return buf;
@@ -177,11 +152,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_frames; ++i) {
-        #ifdef WITH_HSA
-        hsa_host_free(buf->frames[i]);
-        #else
-        free(buf->frames[i]);
-        #endif
+        buffer_free(buf->frames[i]);
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -682,6 +653,51 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
     CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
     CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
 
+}
+
+uint8_t * buffer_malloc(ssize_t len) {
+
+    uint8_t * frame = NULL;
+
+#ifdef WITH_HSA
+    // Is this memory aligned?
+    frame = hsa_host_malloc(len);
+    if (frame == NULL) {
+        return NULL;
+    }
+
+#else
+    // Create a page alligned block of memory for the buffer
+    int err = 0;
+    err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
+    CHECK_MEM(frame);
+    if ( err != 0 ) {
+        ERROR("Error creating alligned memory: %d", err);
+        return NULL;
+    }
+
+    // Ask that all pages be kept in memory
+    err = mlock((void *)frame, len);
+
+    if ( err == -1 ) {
+        ERROR("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
+        free(frame);
+        return NULL;
+    }
+#endif
+
+    // Zero the new frame
+    memset(frame, 0x0, len);
+
+    return frame;
+}
+
+void buffer_free(uint8_t * frame_pointer) {
+#ifdef WITH_HSA
+    hsa_host_free(frame_pointer);
+#else
+    free(frame_pointer);
+#endif
 }
 
 // Do not call if there is no metadata

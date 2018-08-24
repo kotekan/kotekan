@@ -281,14 +281,8 @@ connInstance::connInstance(const string& producer_name,
                            port(port),
                            read_timeout(read_timeout) {
 
-    if ( posix_memalign((void **) &frame_space, PAGESIZE_MEM, buf->aligned_frame_size) ) {
-        throw std::runtime_error("Error creating alligned memory!");
-    }
+    frame_space = buffer_malloc(buf->aligned_frame_size);
     CHECK_MEM(frame_space);
-
-    if ( mlock((void *) frame_space, buf->aligned_frame_size) ) {
-        throw std::runtime_error("Error locking memory, check ulimit -a to check memlock limits, error: " + std::to_string(errno));
-    }
 
     metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
     CHECK_MEM(metadata_space);
@@ -298,7 +292,7 @@ connInstance::~connInstance() {
     INFO("Closing FD");
     close(fd);
     event_free(event_read);
-    free(frame_space);
+    buffer_free(frame_space);
     free(metadata_space);
 }
 
