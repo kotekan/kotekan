@@ -620,6 +620,70 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 }
 
+uint8_t * swap_external_frame(struct Buffer * buf, int frame_id, uint8_t * external_frame) {
+
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    // Check that we don't have more than one producer.
+    int num_producers = 0;
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
+        if (buf->producers[i].in_use == 1) {
+            num_producers++;
+        }
+    }
+    assert(num_producers == 1);
+
+    uint8_t * temp_frame = buf->frames[frame_id];
+    buf->frames[frame_id] = external_frame;
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    return temp_frame;
+}
+
+void swap_frames(struct Buffer * from_buf, int from_frame_id,
+                 struct Buffer * to_buf, int to_frame_id) {
+
+    assert(from_buf != to_buf);
+    assert(from_buf != NULL);
+    assert(to_buf != NULL);
+    assert(from_frame_id >= 0);
+    assert(from_frame_id < from_buf->num_frames);
+    assert(to_frame_id >= 0);
+    assert(to_frame_id < to_buf->num_frames);
+    assert(from_buf->aligned_frame_size == to_buf->aligned_frame_size);
+
+    CHECK_ERROR( pthread_mutex_lock(&from_buf->lock) );
+    CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
+
+    // Check that we don't have more than one consumer on the from_buf.
+    int num_consumers = 0;
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (from_buf->consumers[i].in_use == 1) {
+            num_consumers++;
+        }
+    }
+    assert(num_consumers == 1);
+
+    // Check that we don't have more than one producer on the to_buf.
+    int num_producers = 0;
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
+        if (to_buf->producers[i].in_use == 1) {
+            num_producers++;
+        }
+    }
+    assert(num_producers == 1);
+
+    // Swap the frames
+    uint8_t * temp_frame = from_buf->frames[from_frame_id];
+    from_buf->frames[from_frame_id] = to_buf->frames[to_frame_id];
+    to_buf->frames[to_frame_id] = temp_frame;
+
+    CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
+    CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
+
+}
+
 // Do not call if there is no metadata
 void * get_metadata(struct Buffer * buf, int ID) {
     assert(ID >= 0);

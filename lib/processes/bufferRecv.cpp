@@ -11,6 +11,9 @@
 #include <functional>
 #include <signal.h>
 #include <string>
+#include <stdlib.h>
+#include <memory.h>
+#include <sys/mman.h>
 
 using namespace std::placeholders;
 using std::thread;
@@ -278,10 +281,15 @@ connInstance::connInstance(const string& producer_name,
                            port(port),
                            read_timeout(read_timeout) {
 
-    // TODO if there was a way to mark frames as invalid this extra memory
-    // and the copy later in the internal_read_callback could be avoided.
-    frame_space = (uint8_t *)malloc(buf->frame_size);
+    if ( posix_memalign((void **) &frame_space, PAGESIZE_MEM, buf->aligned_frame_size) ) {
+        throw std::runtime_error("Error creating alligned memory!");
+    }
     CHECK_MEM(frame_space);
+
+    if ( mlock((void *) frame_space, buf->aligned_frame_size) ) {
+        throw std::runtime_error("Error locking memory, check ulimit -a to check memlock limits, error: " + std::to_string(errno));
+    }
+
     metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
     CHECK_MEM(metadata_space);
 }
@@ -430,18 +438,11 @@ void connInstance::internal_read_callback()
 
                 allocate_new_metadata_object(buf, frame_id);
 
-                // If possible use the fast nt_memcpy function instead of the built in memcpy.
-                if ( ((((uintptr_t)frame) & 0xF) == 0) &&
-                     ((buf_frame_header.frame_size % 128) == 0)) {
-                    DEBUG2("Using nt_memcpy instead of memcpy");
-                    nt_memcpy((void*)frame, frame_space,
-                              buf_frame_header.frame_size);
+                // Swap the frame pointers
+                frame_space = swap_external_frame(buf, frame_id, frame_space);
 
-                } else {
-                    memcpy((void*)frame, frame_space,
-                           buf_frame_header.frame_size);
-                }
-
+                // We could also swap the metadata,
+                // but this is more complex, and mucher lower overhead to just memcpy here.
                 void * metadata = get_metadata(buf, frame_id);
                 if (metadata != NULL)
                     memcpy(metadata, metadata_space,
