@@ -304,7 +304,7 @@ void connInstance::increment_ref_count() {
 void connInstance::decrement_ref_count() {
     std::lock_guard<std::mutex> lock(reference_count_lock);
     reference_count--;
-    DEBUG("decrement reference_count %d, %d", reference_count, close_flag);
+    DEBUG2("decrement reference_count %d, %d", reference_count, close_flag);
     if (reference_count == 0 && close_flag) {
         event_del(event_read);
         delete this;
@@ -315,7 +315,7 @@ void connInstance::close_instance() {
     std::lock_guard<std::mutex> lock(reference_count_lock);
     event_del(event_read);
     close_flag = true;
-    DEBUG("close reference_count %d", reference_count);
+    DEBUG2("close reference_count %d", reference_count);
     if (reference_count == 0) {
         delete this;
     }
@@ -342,7 +342,6 @@ void connInstance::internal_read_callback()
     while (!buffer_recv->get_worker_stop_thread()) {
         switch (state) {
         case connState::header:
-            DEBUG2("Header");
             start_time = current_time();
 
             n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
@@ -378,7 +377,6 @@ void connInstance::internal_read_callback()
 
             break;
         case connState::metadata:
-            DEBUG2("Metadata");
             n = read(fd, (void*)(metadata_space + bytes_read),
                      buf_frame_header.metadata_size - bytes_read);
             if (n <= 0) {
@@ -393,7 +391,6 @@ void connInstance::internal_read_callback()
                 bytes_read = 0;
             }
         case connState::frame:
-            DEBUG2("Frame");
             n = read(fd, (void*)(frame_space + bytes_read),
                      buf_frame_header.frame_size - bytes_read);
             if (n <= 0) {
@@ -401,7 +398,7 @@ void connInstance::internal_read_callback()
                 return;
             }
             bytes_read += n;
-            DEBUG("Frame read bytes: %d, total read: %d", n, bytes_read);
+            DEBUG2("Frame read bytes: %d, total read: %d", n, bytes_read);
             if (bytes_read >= buf_frame_header.frame_size) {
                 assert(bytes_read == buf_frame_header.frame_size);
                 state = connState::finished;
