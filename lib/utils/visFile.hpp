@@ -214,6 +214,9 @@ protected:
     std::string acq_name;
     double acq_start_time;
 
+    // Flag to force moving to a new file
+    bool change_file = false;
+
 };
 
 /**
@@ -261,6 +264,12 @@ public:
      * Set the file name to write to.
      **/
     void set_file_name(std::string file_name, std::string acq_name);
+
+    /**
+     * Add a new file to the map of open files and let the
+     * previous one be flushed out as samples come in.
+     **/
+    void swap_file(std::string new_fname, std::string new_aname);
 
 protected:
 
