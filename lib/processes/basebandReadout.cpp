@@ -85,7 +85,7 @@ void basebandReadout::main_thread() {
     int frame_id = 0;
     int done_frame;
 
-    std::thread wt(&basebandReadout::write_thread, this);
+    std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
 
     while (!stop_thread) {
@@ -102,7 +102,9 @@ void basebandReadout::main_thread() {
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
             INFO("Starting request-listening thread for freq_id: %d", freq_id);
-            lt = std::make_unique<std::thread>(&basebandReadout::listen_thread, this, freq_id);
+            auto status_lock = basebandRequestManager::instance().register_readout_process(freq_id);
+            wt = std::make_unique<std::thread>(&basebandReadout::write_thread, this, status_lock);
+            lt = std::make_unique<std::thread>(&basebandReadout::listen_thread, this, freq_id, status_lock);
         }
 
         done_frame = add_replace_frame(frame_id);
@@ -117,10 +119,13 @@ void basebandReadout::main_thread() {
     if (lt) {
         lt->join();
     }
-    wt.join();
+    if (wt) {
+        wt->join();
+    }
 }
 
-void basebandReadout::listen_thread(const uint32_t freq_id) {
+void basebandReadout::listen_thread(const uint32_t freq_id,
+                                    std::shared_ptr<std::mutex> status_lock) {
 
     basebandRequestManager& mgr = basebandRequestManager::instance();
 
@@ -132,13 +137,20 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
         auto dump_status = mgr.get_next_request(freq_id);
 
         if (dump_status) {
-            //std::time_t tt = std::chrono::system_clock::to_time_t(dump_status->request.received);
-            uint64_t event_id = dump_status->request.event_id;
+            // This should be safe even without a lock, as there is nothing else
+            // yet that can change the dump_status object
+            const basebandRequest request = dump_status->request;
+            //std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
+            const uint64_t event_id = request.event_id;
             INFO("Received baseband dump request for event %d: %d samples starting at count %d. (next_frame: %d)",
-                 event_id, dump_status->request.length_fpga, dump_status->request.start_fpga, next_frame);
-            dump_status->bytes_total = dump_status->request.length_fpga * _num_elements;
-            dump_status->bytes_remaining = dump_status->bytes_total;
-            dump_status->state = basebandRequestState::INPROGRESS;
+                 event_id, request.length_fpga, request.start_fpga, next_frame);
+            {
+                std::lock_guard<std::mutex> lock(*status_lock);
+                dump_status->state = basebandDumpStatus::State::INPROGRESS;
+                // Note: the length of the dump still needs to be set with
+                // actual sizes. This is done in `get_data` as it verifies what
+                // is available in the current buffers.
+            }
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
@@ -146,44 +158,51 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
             try {
                 basebandDumpData data = get_data(
                     event_id,
-                    dump_status->request.start_fpga,
-                    std::min((int64_t) dump_status->request.length_fpga, _max_dump_samples)
+                    request.start_fpga,
+                    std::min((int64_t) request.length_fpga, _max_dump_samples)
                     );
 
 
 
                 // At this point we know how much of the requested data we managed to read from the
                 // buffer (which may be nothing if the request as recieved too late).
-                dump_status->bytes_total = data.num_elements * data.data_length_fpga;
-                dump_status->bytes_remaining = dump_status->bytes_total;
-                if (data.data_length_fpga == 0) {
-                    INFO("Captured no data for event %d and freq %d.",
-                         data.event_id, data.freq_id);
-                    dump_status->state = basebandRequestState::ERROR;
-                    dump_status->reason = "No data captured.";
-                    continue;
-                } else {
-                    INFO("Captured %d samples for event %d and freq %d.",
-                         data.data_length_fpga,
-                         data.event_id,
-                         data.freq_id
-                        );
+                {
+                    std::lock_guard<std::mutex> lock(*status_lock);
+                    dump_status->bytes_total = data.num_elements * data.data_length_fpga;
+                    dump_status->bytes_remaining = dump_status->bytes_total;
+                    if (data.data_length_fpga == 0) {
+                        INFO("Captured no data for event %d and freq %d.",
+                            data.event_id, data.freq_id);
+                        dump_status->state = basebandDumpStatus::State::ERROR;
+                        dump_status->reason = "No data captured.";
+                        continue;
+                    } else {
+                        INFO("Captured %d samples for event %d and freq %d.",
+                            data.data_length_fpga,
+                            data.event_id,
+                            data.freq_id
+                            );
+                    }
                 }
 
                 // Wait for free space in the write queue. This prevents this thread from 
                 // receiving any more dump requests until the pipe clears out. Limits the 
                 // memory use and buffer congestion.
                 const int max_writes_queued = 3;
-                while (!stop_thread) {
-                    if (write_q.size() < max_writes_queued) {
-                        write_q.push(dump_data_status(data, dump_status));
-                        break;
-                    } else {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                {
+                    std::unique_lock<std::mutex> lock(q_lock);
+                    while (write_q.size() >= max_writes_queued) {
+                        q_not_full.wait_for(lock, std::chrono::milliseconds(100));
+                        if (stop_thread) {
+                            return;
+                        }
                     }
+                    write_q.push(dump_data_status(data, dump_status));
+                    q_not_empty.notify_one();
                 }
             } catch (const std::bad_alloc) {
-                dump_status->state = basebandRequestState::ERROR;
+                std::lock_guard<std::mutex> lock(*status_lock);
+                dump_status->state = basebandDumpStatus::State::ERROR;
                 dump_status->reason = "Not enough free memory for the request.";
                 continue;
             }
@@ -191,29 +210,32 @@ void basebandReadout::listen_thread(const uint32_t freq_id) {
     }
 }
 
-void basebandReadout::write_thread() {
+void basebandReadout::write_thread(std::shared_ptr<std::mutex> status_lock) {
     while (!stop_thread) {
-        if (write_q.empty()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        } else {
-            auto dump_tup = write_q.front();
-
-            auto dump_status = std::get<1>(dump_tup);
-            auto data = std::get<0>(dump_tup);
-
-            try {
-                write_dump(data, dump_status);
-            } catch (HighFive::FileException& e) {
-                INFO("Writing Baseband dump file failed with hdf5 error.");
-                dump_status->state = basebandRequestState::ERROR;
-                dump_status->reason = e.what();
+        std::unique_lock<std::mutex> lock(q_lock);
+        while (write_q.empty()) {
+            q_not_empty.wait_for(lock, std::chrono::milliseconds(100));
+            if (stop_thread) {
+                return;
             }
-
-            //process_request(dump_status, data);
-            // pop at the end such that memory for `data` is released before queue slot
-            // becomes available.
-            write_q.pop();
         }
+        auto dump_tup = write_q.front();
+
+        auto dump_status = std::get<1>(dump_tup);
+        auto data = std::get<0>(dump_tup);
+
+        try {
+            write_dump(data, dump_status, status_lock.get());
+        } catch (HighFive::FileException& e) {
+            INFO("Writing Baseband dump file failed with hdf5 error.");
+            std::lock_guard<std::mutex> lock(*status_lock);
+            dump_status->state = basebandDumpStatus::State::ERROR;
+            dump_status->reason = e.what();
+        }
+
+        // release the memory for `data` before queue slot becomes available
+        write_q.pop();
+        q_not_full.notify_one();
     }
 }
 
@@ -267,6 +289,13 @@ basebandDumpData basebandReadout::get_data(
             int buf_frame = frame_index % buf->num_frames;
             auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
             frame_fpga_seq = metadata->fpga_seq_num;
+
+            // if the request specified -1 for the start time, use the earliest
+            // timestamp available
+            if (trigger_start_fpga < 0) {
+                trigger_start_fpga = frame_fpga_seq;
+                trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
+            }
 
             if (trigger_end_fpga <= frame_fpga_seq) continue;
             if (trigger_start_fpga >= frame_fpga_seq + _samples_per_data_set) {
@@ -380,14 +409,13 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 }
 
 void basebandReadout::write_dump(basebandDumpData data,
-        std::shared_ptr<basebandDumpStatus> dump_status) {
+                                 std::shared_ptr<basebandDumpStatus> dump_status,
+                                 std::mutex* status_lock) {
 
     // TODO Create parent directories.
     std::string filename = _base_dir + dump_status->request.file_name;
     std::string lock_filename = create_lockfile(filename);
     INFO(("Writing baseband dump to " + filename).c_str());
-
-    dump_status->state = basebandRequestState::INPROGRESS;
 
     auto file = HighFive::File(
             filename,
@@ -490,7 +518,6 @@ void basebandReadout::write_dump(basebandDumpData data,
     dataset.createAttribute<std::string>(
             "axis", HighFive::DataSpace::From(axes)).write(axes);
 
-    dump_status->bytes_remaining = data.data_length_fpga * num_elements;
     size_t ii_samp = 0;
     while (!stop_thread) {
         size_t to_write = std::min((size_t) data.data_length_fpga - ii_samp, ntime_chunk);
@@ -501,7 +528,10 @@ void basebandReadout::write_dump(basebandDumpData data,
                 ).write((uint8_t **) &(data.data[ii_samp * num_elements]));
         file.flush();
 
-        dump_status->bytes_remaining -= to_write * num_elements;
+        {
+            std::lock_guard<std::mutex> lock(*status_lock);
+            dump_status->bytes_remaining -= to_write * num_elements;
+        }
         ii_samp += ntime_chunk;
         if (ii_samp >= data.data_length_fpga) break;
         // Add intentional throttling.
@@ -511,10 +541,12 @@ void basebandReadout::write_dump(basebandDumpData data,
     std::remove(lock_filename.c_str());
 
     if (ii_samp > data.data_length_fpga) {
-        dump_status->state = basebandRequestState::DONE;
+        std::lock_guard<std::mutex> lock(*status_lock);
+        dump_status->state = basebandDumpStatus::State::DONE;
         INFO("Baseband dump for event %d, freq %d complete.", data.event_id, data.freq_id);
     } else {
-        dump_status->state = basebandRequestState::ERROR;
+        std::lock_guard<std::mutex> lock(*status_lock);
+        dump_status->state = basebandDumpStatus::State::ERROR;
         dump_status->reason = "Kotekan exit before write complete.";
         INFO("Baseband dump for event %d, freq %d incomplete.", data.event_id, data.freq_id);
     }
