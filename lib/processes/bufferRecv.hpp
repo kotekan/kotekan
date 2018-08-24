@@ -60,6 +60,14 @@ class connInstance;
  * @config num_threads         Int, default 1.  The number of worker threads to use
  * @config connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  *
+ * @par Metrics
+ * @metric kotekan_buffer_recv_transfer_time_seconds
+ *         The amount of time it took in seconds to transfer the last frame from the
+ *         host given by the @c source label
+ * @metric kotekan_buffer_recv_dropped_frame_total
+ *         The number of times a frame was dropped because the @c buf was full at the time
+ *         a block of was aviable to transfer to it.
+ *
  * @todo Possibly factor out the threadpool.
  * @todo Allow for a different log level for workers from the main thread.
  *
