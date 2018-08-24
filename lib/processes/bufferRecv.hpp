@@ -213,60 +213,117 @@ struct acceptArgs {
  */
 class connInstance : public kotekanLogging {
 public:
+    /// Constructor
     connInstance(const string& producer_name,
                  struct Buffer *buf,
                  bufferRecv * buffer_recv,
                  const string &client_ip,
                  int port,
                  struct timeval read_timeout);
+
+    /// Destructor
     ~connInstance();
 
+    /**
+     * @brief Function called to do the socket @c read
+     */
     void internal_read_callback();
 
+    // Reference counting is used to track how many outstanding
+    // jobs have been queued for this instance.
+    // Currently since we only do one READ at a time, this
+    // isn't really needed, but might be useful for doing writes or
+    // different types of event handing.
+
+    /**
+     * @brief Increases the reference count to this object
+     */
     void increment_ref_count();
+
+    /**
+     * @brief Decreases the reference count to this object.
+     * Note this can delete the object if @c close_frag == true
+     */
     void decrement_ref_count();
+
+    /**
+     * @brief Stops this instance from processing more data
+     * Since there might be more outstanding jobs queued for this
+     * instance it isn't deleted unless the refernce count is zero.
+     */
     void close_instance();
 
+    /// The name of the parient kotekan_process
     string producer_name;
+
+    /// The kotekan buffer to transfer data into
     struct Buffer *buf;
+
+    /// Pointer to the parient kotekan_process which owns this instance
     bufferRecv * buffer_recv;
 
-    string client_name;
+    /// The client IP address for this instance
     string client_ip;
+
+    /// The port the client is connected on.
     int port;
 
+    /// The event/read timeout
     struct timeval read_timeout;
 
+    /// The libevent event which gets triggered on a read
     struct event * event_read;
+
+    /// The socket assoicated with this instance
     evutil_socket_t fd;
 
+    /// Tracks how many bytes have been read from the socket for the current read
     size_t bytes_read = 0;
 
+    /// The start time of a new frame read
     double start_time;
 
+    /// The buffer tranfer header
     struct bufferFrameHeader buf_frame_header;
+
+    /// Pointer to the local memory space which matching the size of the incoming frame.
     uint8_t * frame_space;
+
+    /// Pointer to local memory for storing the metadata of the incoming frame.
     uint8_t * metadata_space;
 
+    /// Lock to make sure only one instance of this jobs call backs is run at any one time.
     std::mutex instance_lock;
 
     /// The number of active jobs which hold a pointer to this
     /// object.  Note this doesn't include the libevent pointers.
     uint32_t reference_count = 0;
 
+    /// Lock for updating the reference count
+    std::mutex reference_count_lock;
+
     /// Set to true if we've encountered an error and need to close
     /// the connection attached to this instance.
     bool close_flag = false;
 
-    std::mutex reference_count_lock;
-
+    /// The state of the transer, starts with the header state
     connState state = connState::header;
 
+    /**
+     * @brief Handles the result of a READ which doesn't return a value > 0
+     *
+     * @param msg
+     * @param err_num
+     * @param bytes_read
+     */
     inline void handle_error(const std::string &msg, int err_num, ssize_t bytes_read) {
         // Resource temporarily unavailable, no need to close connection
+        // The two error codes cover MacOS and Linux
         if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
             DEBUG2("Got resource unavailable error, %d, read return %d", err_num, bytes_read);
             decrement_ref_count();
+            // Add the event back to the libevent queue so we are notifed
+            // when more data becomes available.
             event_add(event_read, &read_timeout);
             return;
         }
@@ -278,6 +335,7 @@ public:
             return;
         }
 
+        // All other errors close the connection
         ERROR("Error with operation '%s' for client %s, error code %d (%s).  Closing connection.",
                 msg.c_str(), client_ip.c_str(), err_num, strerror(err_num));
         decrement_ref_count();
