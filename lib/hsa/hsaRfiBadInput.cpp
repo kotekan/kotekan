@@ -46,7 +46,7 @@ hsa_signal_t hsaRfiBadInput::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters
     kernelParams params;
-    params.workgroup_size_x = 256;
+    params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.grid_size_x = _num_elements;
     params.grid_size_y = _num_local_freq;

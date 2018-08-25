@@ -107,6 +107,30 @@ def test_io_errors_and_max_samples(tmpdir_factory):
                                    default_params['num_elements'])
 
 
+def test_negative_start_time(tmpdir_factory):
+    """Test using the 'save whatever you have' mode of the baseband dump
+
+    Using -1 as the trigger start point initiates the dump using the oldest
+    frame available in the buffers.
+    """
+
+    rest_commands = [
+            command_rest_frames(1),
+            command_trigger(-1, 3237, "file2.h5", 31),
+            wait(0.1),
+            command_rest_frames(60),
+            ]
+    params = {
+            'total_frames': 30,
+            'max_dump_samples': 2123,
+            }
+    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
+    assert len(dump_files) == 1
+    f = h5py.File(dump_files[0], 'r')
+    assert f['baseband'].shape == (params['max_dump_samples'],
+                                   default_params['num_elements'])
+
+
 def test_basic(tmpdir_factory):
 
     rest_commands = [
