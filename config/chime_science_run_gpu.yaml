@@ -227,18 +227,18 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
-duplicate_lost_samples_buffers:
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
-    lost_samples_buffer_0:
-        kotekan_buffer: standard
-    lost_samples_buffer_1:
-        kotekan_buffer: standard
-    lost_samples_buffer_2:
-        kotekan_buffer: standard
-    lost_samples_buffer_3:
-        kotekan_buffer: standard
+#duplicate_lost_samples_buffers:
+#    num_frames: 2 * buffer_depth
+#    frame_size: samples_per_data_set * num_local_freq * num_data_sets
+#    metadata_pool: main_pool
+#    lost_samples_buffer_0:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_1:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_2:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_3:
+#        kotekan_buffer: standard
 
 cpu_affinity: [2,3,8,9]
 dpdk:
@@ -269,7 +269,7 @@ dpdk:
     lost_samples_buf: lost_samples_buffer
 
 zero_samples:
-    duplicate_ls_buffer: True
+    duplicate_ls_buffer: False
     lost_samples_buf: lost_samples_buffer
     zero_0:
         kotekan_process: zeroSamples
@@ -325,7 +325,6 @@ gpu:
   kernel_path: "hsa_kernels/"
   commands:
   - name: hsaInputData
-  - name: hsaInputLostSamples
   - name: hsaPresumZero
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
@@ -361,10 +360,9 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_0
-      lost_samples_buf: lost_samples_buffer_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -380,10 +378,9 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_1
-      lost_samples_buf: lost_samples_buffer_1
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -399,10 +396,9 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_2
-      lost_samples_buf: lost_samples_buffer_2
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -418,10 +414,9 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_3
-      lost_samples_buf: lost_samples_buffer_3
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
