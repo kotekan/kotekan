@@ -185,7 +185,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # Required for some SSE/AVX intrinsics
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -ffast-math -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -fcx-limited-range -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
 if(${USE_OMP})
