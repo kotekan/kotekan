@@ -117,6 +117,18 @@ public:
      **/
     void fill_mode_gaussian(visFrameView& frame);
 
+    /**
+     * @brief Fill with a pattern to test CHIME redundant stacking.
+     *
+     * Fill real and imaginary parts with normally distributed random numbers.
+     * Specify mean and standard deviation with additional parameters. Will use
+     * the same distribution to set the weights. Note that the seed for the
+     * generator is not random.
+     *
+     * @param frame Frame to fill.
+     **/
+    void fill_mode_chime(visFrameView& frame);
+
 private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors, block_size;

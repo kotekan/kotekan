@@ -61,7 +61,7 @@ private:
     // describes whether the input must be complex conjugated prior to stacking.
     // Inputs are the usual input map and product map.
     using stack_def_fn = std::function<
-        std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>>(
+        std::pair<uint32_t, std::vector<rstack_ctype>>(
             const std::vector<input_ctype>&, const std::vector<prod_ctype>&
         )
     >;
@@ -78,16 +78,28 @@ private:
 };
 
 // Stack along the band diagonals
-std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
+std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
 );
 
 // Stack along the band diagonals
-std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
+std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
 );
+
+/**
+ * @brief Take an a rstack map and generate a stack->prod mapping.
+ *
+ * @param num_stack Total number of stacks.
+ * @param stack_map The prod->stack mapping.
+ *
+ * @returns The stack->prod mapping.
+ **/
+std::vector<stack_ctype> invert_stack(
+    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map);
+
 
 #define CYL_A 0
 #define CYL_B 1
@@ -128,9 +140,6 @@ struct chimeFeed {
 std::ostream & operator<<(std::ostream &os, const chimeFeed& f);
 
 
-/// Define an alias for the
-using stack_pair = std::pair<uint32_t, bool>;
-
 /**
  * @brief A dataset state that describes a redundant baseline stacking.
  *
@@ -148,7 +157,7 @@ public:
         datasetState(move(inner))
     {
         try {
-            _stack_map = data["stack"].get<std::vector<stack_pair>>();
+            _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
             _num_stack = data["num_stack"].get<uint32_t>();
         } catch (exception& e) {
              throw std::runtime_error("stackState: Failure parsing json data: "s
@@ -162,10 +171,10 @@ public:
      * @param num_stack Number of stacked visibilites.
      * @param inner  An inner state (optional).
      */
-    stackState(uint32_t num_stack, std::vector<stack_pair>&& stack_map, state_uptr inner=nullptr) :
+    stackState(uint32_t num_stack, std::vector<rstack_ctype>&& rstack_map, state_uptr inner=nullptr) :
         datasetState(std::move(inner)),
         _num_stack(num_stack),
-        _stack_map(stack_map) {};
+        _rstack_map(rstack_map) {};
 
 
     /**
@@ -176,9 +185,9 @@ public:
      *
      * @return The stack map.
      */
-    const std::vector<stack_pair>& get_stack_map() const
+    const std::vector<rstack_ctype>& get_rstack_map() const
     {
-        return _stack_map;
+        return _rstack_map;
     }
 
     /**
@@ -191,10 +200,22 @@ public:
         return _num_stack;
     }
 
+    /**
+     * @brief Calculate and return the stack->prod mapping.
+     *
+     * This is calculated on demand and so a full fledged vector is returned.
+     *
+     * @returns The stack map.
+     **/
+    std::vector<stack_ctype> get_stack_map() const
+    {
+        return invert_stack(_num_stack, _rstack_map);
+    }
+
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
-        return {{"stack_map", _stack_map }, {"num_stack", _num_stack}};
+        return {{"rstack", _rstack_map }, {"num_stack", _num_stack}};
     }
 
 private:
@@ -203,7 +224,7 @@ private:
     uint32_t _num_stack;
 
     /// The stack definition
-    std::vector<stack_pair> _stack_map;
+    std::vector<rstack_ctype> _rstack_map;
 };
 
 

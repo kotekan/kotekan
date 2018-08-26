@@ -33,6 +33,7 @@ baselineCompression::baselineCompression(Config &config,
 
     // Fill out the map of stack types
     stack_type_defs["diagonal"] = stack_diagonal;
+    stack_type_defs["chime_in_cyl"] = stack_chime_in_cyl;
 
     std::string stack_type = config.get_string(unique_name, "stack_type");
     if(stack_type_defs.count(stack_type) == 0) {
@@ -67,7 +68,7 @@ void baselineCompression::main_thread() {
     std::vector<input_ctype> inputs(num_elements);
 
     /// Map of product index in the input stream to (output index, conjugate)
-    std::vector<std::pair<uint32_t, bool>> stack_map;
+    std::vector<rstack_ctype> stack_map;
 
     /// The number of stacks in the output
     uint32_t num_stack;
@@ -76,7 +77,7 @@ void baselineCompression::main_thread() {
     std::tie(num_stack, stack_map) = calculate_stack(inputs, prods);
 
     // Keep track of the normalisation of each stack
-    std::vector<float> stack_norm(num_stack);
+    std::vector<float> stack_norm;
 
     auto& dm = datasetManager::instance();
     const stackState * stack_state_ptr;
@@ -118,6 +119,8 @@ void baselineCompression::main_thread() {
             std::tie(stack_state_id, stack_state_ptr) =
                 dm.add_state(std::move(sstate));
             output_dset_id = dm.add_dataset(stack_state_id, input_dset_id);
+
+            stack_norm = std::vector<float>(stack_state_ptr->get_num_stack());
         }
 
         // Allocate metadata and get output frame
@@ -138,37 +141,34 @@ void baselineCompression::main_thread() {
         std::fill(std::begin(output_frame.weight),
                   std::end(output_frame.weight), 0.0);
 
-        auto stack_map = stack_state_ptr->get_stack_map();
+        auto stack_map = stack_state_ptr->get_rstack_map();
 
         // Iterate over all the products and average together
         for(uint32_t prod_ind = 0; prod_ind < prods.size(); prod_ind++) {
 
-            uint32_t stack_ind;
-            bool conjugate;
-
             auto& p = prods[prod_ind];
-            std::tie(stack_ind, conjugate) = stack_map[prod_ind];
+            auto& s = stack_map[prod_ind];
 
             // Alias the parts of the data we are going to stack
             float weight = input_frame.weight[prod_ind];
             cfloat vis = input_frame.vis[prod_ind];
-            vis = conjugate ? conj(vis) : vis;
+            vis = s.conjugate ? conj(vis) : vis;
 
             // Set the weighting used to combine baselines
             float w = (weight != 0) *
                 input_frame.flags[p.input_a] * input_frame.flags[p.input_b];
 
             // First summation of the visibilities (dividing by the total weight will be done later)
-            output_frame.vis[stack_ind] += w * vis;
+            output_frame.vis[s.stack] += w * vis;
 
             // Accumulate the weighted *variances*. Normalising and inversion
             // will be done later
             // NOTE: hopefully there aren't too many zeros so the branch
             // predictor will work well
-            output_frame.weight[stack_ind] += (w == 0) ? 0 : (w * w / weight);
+            output_frame.weight[s.stack] += (w == 0) ? 0 : (w * w / weight);
 
             // Accumulate the weights so we can normalize correctly
-            stack_norm[stack_ind] += w;
+            stack_norm[s.stack] += w;
         }
 
         // Loop over the stacks and normalise (and invert the variances)
@@ -190,18 +190,18 @@ void baselineCompression::main_thread() {
 }
 
 // Stack along the band diagonals
-std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_diagonal(
+std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
 ) {
     uint32_t num_elements = inputs.size();
-    std::vector<std::pair<uint32_t, bool>> stack_def;
+    std::vector<rstack_ctype> stack_def;
 
     for(auto& p : prods) {
         uint32_t stack_ind = abs(p.input_b - p.input_a);
         bool conjugate = p.input_a > p.input_b;
 
-        stack_def.emplace_back(stack_ind, conjugate);
+        stack_def.push_back({stack_ind, conjugate});
     }
 
     return {num_elements, stack_def};
@@ -274,7 +274,7 @@ std::pair<feed_diff, bool> calculate_chime_vis(
 }
 
 // Stack along the band diagonals
-std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
+std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
 ) {
@@ -294,7 +294,7 @@ std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
     };
     std::sort(std::begin(sort_ind), std::end(sort_ind), sort_fn);
 
-    std::vector<std::pair<uint32_t, bool>> stack_map(prods.size());
+    std::vector<rstack_ctype> stack_map(prods.size());
 
     feed_diff cur = bl_prop[sort_ind[0]].first;
     uint32_t cur_stack_ind = 0;
@@ -308,4 +308,19 @@ std::pair<uint32_t, std::vector<std::pair<uint32_t, bool>>> stack_chime_in_cyl(
     }
 
     return {++cur_stack_ind, stack_map};
+}
+
+
+std::vector<stack_ctype> invert_stack(
+    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map)
+{
+    std::vector<stack_ctype> res(num_stack);
+    size_t num_prod = stack_map.size();
+
+    for(uint32_t i = 0; i < num_prod; i++) {
+        uint32_t j = num_prod - i - 1;
+        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
+    }
+
+    return res;
 }

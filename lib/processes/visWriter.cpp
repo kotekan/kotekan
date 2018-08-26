@@ -75,7 +75,9 @@ visWriter::visWriter(Config& config,
 
     } else {
         instrument_name = config.get_string_default(unique_name, "instrument_name", "chime");
-        freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
+
+        if (!use_dataset_manager)
+            freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
     }
 }
 
@@ -184,6 +186,9 @@ void visWriter::init_acq() {
 
         auto& dm = datasetManager::instance();
 
+        // Save the current dataset ID
+        dataset = frame.dataset_id;
+
         // Get the frequency spec and set the ID list and freq index_map arrays
         auto fstate = dm.closest_ancestor_of_type<freqState>(frame.dataset_id);
         if (fstate.second == nullptr) {
@@ -219,6 +224,8 @@ void visWriter::init_acq() {
             );
         }
         prods = pstate.second->get_prods();
+
+        chunk_id = 0;
     }
     else {
         // ... if we are not using the datasetManager we need to infer it from
@@ -264,10 +271,18 @@ void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
 
     // Create the visFileBundle. This will not create any files until add_sample
     // is called
-    file_bundle = std::make_unique<visFileBundle>(
-        file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-        window, freqs, inputs, prods, num_ev, file_length
-    );
+    if (use_dataset_manager) {
+        file_bundle = std::make_unique<visFileBundle>(
+            file_type, root_path, instrument_name, metadata, chunk_id,
+            rollover, window, dataset, num_ev, file_length
+        );
+    }
+    else {
+        file_bundle = std::make_unique<visFileBundle>(
+            file_type, root_path, instrument_name, metadata, chunk_id,
+            rollover, window, freqs, inputs, prods, num_ev, file_length
+        );
+    }
 }
 
 

@@ -112,6 +112,9 @@ protected:
     /// Input buffer to read from
     Buffer * in_buf;
 
+    /// Dataset ID of current stream
+    dset_id dataset;
+
     /// The list of frequencies and inputs that gets written into the index maps
     /// of the HDF5 files
     std::vector<freq_ctype> freqs;

@@ -45,6 +45,7 @@ fakeVis::fakeVis(Config &config,
     fill_map["phase_ij"] = std::bind(&fakeVis::fill_mode_phase_ij, this, _1);
     fill_map["gaussian"] = std::bind(&fakeVis::fill_mode_gaussian, this, _1);
     fill_map["gaussian_random"] = std::bind(&fakeVis::fill_mode_gaussian, this, _1);
+    fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
 
     mode = config.get_string_default(unique_name, "mode", "default");
 
@@ -101,9 +102,7 @@ void fakeVis::main_thread() {
     dset_id dataset = 0;
     if (use_dataset_manager) {
 
-        std::cout << "Hello1: " << dataset << std::endl;
         auto& dm = datasetManager::instance();
-        std::cout << "Hello2: " << dataset << std::endl;
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         std::transform(
@@ -126,8 +125,6 @@ void fakeVis::main_thread() {
 
         auto s = dm.add_state(std::move(pstate));
         dataset = dm.add_dataset(s.first, -1);  // Register a root state
-
-        std::cout << "Hello1: " << dataset << std::endl;
     }
 
     while (!stop_thread) {
@@ -296,6 +293,23 @@ void fakeVis::fill_mode_gaussian(visFrameView& frame)
     std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
 }
 
+void fakeVis::fill_mode_chime(visFrameView& frame)
+{
+    int ind = 0;
+    for(uint32_t i = 0; i < num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            int cyl_i = i / 512;
+            int cyl_j = j / 512;
+
+            int pos_i = i % 256;
+            int pos_j = j % 256;
+
+            frame.vis[ind] = {(float)(cyl_i - cyl_j), (float)(pos_i - pos_j)};
+            ind++;
+        }
+    }
+    fill_non_vis(frame);
+}
 
 void fakeVis::fill_non_vis(visFrameView& frame)
 {

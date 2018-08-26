@@ -107,6 +107,10 @@ struct rstack_ctype {
     bool conjugate;
 };
 
+/// Comparison operator for stacks
+bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs);
+
+
 // Conversions of the index types to json
 void to_json(json& j, const freq_ctype& f);
 void to_json(json& j, const input_ctype& f);

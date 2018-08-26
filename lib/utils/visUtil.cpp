@@ -14,6 +14,11 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
     serial.copy(correlator_input, 32);
 }
 
+bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs)
+{
+    return (lhs.stack != rhs.stack) || (lhs.conjugate != rhs.conjugate);
+}
+
 // JSON converters
 void to_json(json& j, const freq_ctype& f) {
     j = json{{"centre", f.centre}, {"width", f.width}};
