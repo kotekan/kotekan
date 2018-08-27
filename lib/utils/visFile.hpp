@@ -96,27 +96,6 @@ protected:
 
     /** @brief Create the file.
      *
-     * This needs to out of the constructor so we can properly override.
-     *
-     *  @param name Name of the file to write
-     *  @param metadata Textual metadata to write into the file.
-     *  @param freqs    Frequencies channels that will be in the file
-     *  @param inputs   Inputs that are in the file
-     *  @param prods    Products that are in the file.
-     *  @param num_ev   Number of eigenvectors to write (0 turns off the
-     *                  datasets entirely).
-     *  @param max_time Maximum number of times to write into the file.
-     **/
-    virtual void create_file(
-        const std::string& name,
-        const std::map<std::string, std::string>& metadata,
-        const std::vector<freq_ctype>& freqs,
-        const std::vector<input_ctype>& inputs,
-        const std::vector<prod_ctype>& prods,
-        size_t num_ev, size_t max_time) = 0;
-
-    /** @brief Create the file.
-     *
      * This variant uses the datasetManager to look up properties of the
      * dataset that we are dealing with.
      *

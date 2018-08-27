@@ -96,7 +96,6 @@ protected:
 
     // Parameters saved from the config files
     bool use_dataset_manager;
-    size_t num_freq;
     std::string root_path;
     std::string instrument_name;
     std::string weights_type;
@@ -115,29 +114,24 @@ protected:
     /// Dataset ID of current stream
     dset_id dataset;
 
-    /// The list of frequencies and inputs that gets written into the index maps
-    /// of the HDF5 files
-    std::vector<freq_ctype> freqs;
-    std::vector<input_ctype> inputs;
-
-    /// The mapping from frequency bin id to output frequency index
-    std::map<uint32_t, uint32_t> freq_map;
+    /// State ID for the internal datasetState used if the datasetManager is not
+    /// being used externally
+    state_id writer_dstate;
 
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
-    // Vector of products if options to restrict them are present
-    std::vector<prod_ctype> prods;
-
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
-    std::vector<uint32_t> freq_id_list;
 
     // Number of eigenvectors to write out
     size_t num_ev;
 
     /// Number of products to write
-    size_t num_prod;
+    size_t num_vis;
+
+    /// Frequency IDs that we are expecting
+    std::map<uint32_t, uint32_t> freq_id_map;
 
     /// Keep track of the average write time
     movingAverage write_time;

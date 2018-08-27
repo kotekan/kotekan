@@ -123,25 +123,27 @@ void baselineCompression::main_thread() {
             stack_norm = std::vector<float>(stack_state_ptr->get_num_stack());
         }
 
+        auto& stack_map = stack_state_ptr->get_rstack_map();
+        auto num_stack = stack_state_ptr->get_num_stack();
+
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
         auto output_frame = visFrameView(out_buf, output_frame_id,
                                          input_frame.num_elements,
-                                         stack_state_ptr->get_num_stack(),
+                                         num_stack,
                                          input_frame.num_ev);
 
         // Copy over the data we won't modify
         output_frame.copy_nonconst_metadata(input_frame);
         output_frame.copy_nonvis_buffer(input_frame);
+        output_frame.dataset_id = output_dset_id;
 
         // Reset the normalisation array and zero the output frame
         std::fill(std::begin(stack_norm), std::end(stack_norm), 0);
         std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
         std::fill(std::begin(output_frame.weight),
                   std::end(output_frame.weight), 0.0);
-
-        auto stack_map = stack_state_ptr->get_rstack_map();
 
         // Iterate over all the products and average together
         for(uint32_t prod_ind = 0; prod_ind < prods.size(); prod_ind++) {
