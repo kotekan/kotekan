@@ -439,7 +439,7 @@ frb:
     log_level: warn
     cpu_affinity: [11]
     kotekan_process: frbPostProcess
-    incoherent_beams: [0]
+    incoherent_beams: [0,1000,2000,3000]
     #incoherent_truncation: 25.
     frb_out_buf: frb_output_buffer
     in_buf_0: gpu_beamform_output_buffer_0
