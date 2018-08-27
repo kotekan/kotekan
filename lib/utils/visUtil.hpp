@@ -36,6 +36,11 @@ using struct_layout = typename std::map<std::string, std::pair<size_t, size_t>>;
 /// Define an alias for the stack pair
 using stack_pair = std::pair<uint32_t, bool>;
 
+struct stack_ctype {
+    bool conjugate;
+    uint32_t prod;
+};
+
 
 /**
  * @brief Frequency index map type
@@ -96,11 +101,13 @@ void to_json(json& j, const freq_ctype& f);
 void to_json(json& j, const input_ctype& f);
 void to_json(json& j, const prod_ctype& f);
 void to_json(json& j, const time_ctype& f);
+void to_json(json& j, const stack_ctype& f);
 
 void from_json(const json& j, freq_ctype& f);
 void from_json(const json& j, input_ctype& f);
 void from_json(const json& j, prod_ctype& f);
 void from_json(const json& j, time_ctype& f);
+void from_json(const json& j, stack_ctype& f);
 
 /**
  * @brief Index into a flattened upper matrix triangle.

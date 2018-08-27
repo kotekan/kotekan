@@ -31,9 +31,8 @@ void to_json(json& j, const time_ctype& t) {
     j = json{{"fpga_count", t.fpga_count}, {"ctime", t.ctime}};
 }
 
-void from_json(const json& j, freq_ctype& f) {
-    f.centre = j.at("centre").get<double>();
-    f.width = j.at("width").get<double>();
+void to_json(json& j, const stack_ctype& s) {
+    j = json{{"conjugate", s.conjugate}, {"prod", s.prod}};
 }
 
 void from_json(const json& j, input_ctype& i) {
@@ -52,6 +51,17 @@ void from_json(const json& j, time_ctype& t) {
     t.fpga_count = j.at("fpga_count").get<uint64_t>();
     t.ctime = j.at("ctime").get<double>();
 }
+
+void from_json(const json& j, freq_ctype& f) {
+    f.centre = j.at("centre").get<double>();
+    f.width = j.at("width").get<double>();
+}
+
+void from_json(const json& j, stack_ctype& s) {
+    s.conjugate = j.at("conjugate").get<bool>();
+    s.prod = j.at("prod").get<uint32_t>();
+}
+
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 // TODO: port this to using map_vis_triangle. Need a unit test first.

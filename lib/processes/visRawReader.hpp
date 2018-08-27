@@ -65,7 +65,7 @@ public:
     /**
      * @brief Get the stack in the file.
      **/
-    const std::vector<stack_pair>& stack() { return _stack; }
+    const std::vector<stack_ctype>& stack() { return _stack; }
 
     /**
      * @brief Get the inputs in the file.
@@ -113,7 +113,7 @@ private:
     std::vector<freq_ctype> _freqs;
     std::vector<prod_ctype> _prods;
     std::vector<input_ctype> _inputs;
-    std::vector<stack_pair> _stack;
+    std::vector<stack_ctype> _stack;
     std::vector<uint32_t> _ev;
 
     // whether to read in chunks
