@@ -14,6 +14,11 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
     serial.copy(correlator_input, 32);
 }
 
+bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs)
+{
+    return (lhs.stack != rhs.stack) || (lhs.conjugate != rhs.conjugate);
+}
+
 // JSON converters
 void to_json(json& j, const freq_ctype& f) {
     j = json{{"centre", f.centre}, {"width", f.width}};
@@ -31,8 +36,17 @@ void to_json(json& j, const time_ctype& t) {
     j = json{{"fpga_count", t.fpga_count}, {"ctime", t.ctime}};
 }
 
-void to_json(json& j, const stack_ctype& s) {
-    j = json{{"conjugate", s.conjugate}, {"prod", s.prod}};
+void to_json(json& j, const stack_ctype& t) {
+    j = json{{"prod", t.prod}, {"conjugate", t.conjugate}};
+}
+
+void to_json(json& j, const rstack_ctype& t) {
+    j = json{{"stack", t.stack}, {"conjugate", t.conjugate}};
+}
+
+void from_json(const json& j, freq_ctype& f) {
+    f.centre = j.at("centre").get<double>();
+    f.width = j.at("width").get<double>();
 }
 
 void from_json(const json& j, input_ctype& i) {
@@ -52,14 +66,14 @@ void from_json(const json& j, time_ctype& t) {
     t.ctime = j.at("ctime").get<double>();
 }
 
-void from_json(const json& j, freq_ctype& f) {
-    f.centre = j.at("centre").get<double>();
-    f.width = j.at("width").get<double>();
+void from_json(const json& j, stack_ctype& t) {
+    t.prod = j.at("prod").get<uint32_t>();
+    t.conjugate = j.at("conjugate").get<bool>();
 }
 
-void from_json(const json& j, stack_ctype& s) {
-    s.conjugate = j.at("conjugate").get<bool>();
-    s.prod = j.at("prod").get<uint32_t>();
+void from_json(const json& j, rstack_ctype& t) {
+    t.stack = j.at("stack").get<uint32_t>();
+    t.conjugate = j.at("conjugate").get<bool>();
 }
 
 // Copy the visibility triangle out of the buffer of data, allowing for a

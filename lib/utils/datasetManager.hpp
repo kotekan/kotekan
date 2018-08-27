@@ -106,9 +106,9 @@ private:
     // Reference to the internal state
     state_uptr _inner_state = nullptr;
 
-    // List of registerd subclass creating functions
-    static map<string,
-               function<state_uptr(json&, state_uptr)>> _type_create_funcs;
+    // List of registered subclass creating functions
+    static map<string, function<state_uptr(json&, state_uptr)>>&
+        _registered_types();
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
@@ -430,11 +430,11 @@ inline int datasetState::_register_state_type() {
     // instances.
     string key = typeid(T).name();
 
-    DEBUG("Registering state type: %s", key);
+    DEBUG("Registering state type: %s", key.c_str());
 
     // Generate a lambda function that creates an instance of the type
-    datasetState::_type_create_funcs[key] =
-        [](json & data, state_uptr inner) {
+    datasetState::_registered_types()[key] =
+        [](json & data, state_uptr inner) -> state_uptr {
             return make_unique<T>(data, move(inner));
         };
     return 0;

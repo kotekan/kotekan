@@ -13,13 +13,15 @@
 #include <libgen.h>
 #include <errno.h>
 #include "fmt.hpp"
+#include "datasetManager.hpp"
+#include "visCompression.hpp"
 
 
-// Register the HDF5 file writers
+// Register the raw file writer
 REGISTER_VIS_FILE("raw", visFileRaw);
 
 //
-// Implementation of standard HDF5 visibility data file
+// Implementation of raw visibility data file
 //
 
 void visFileRaw::create_file(const std::string& name,
@@ -78,6 +80,34 @@ void visFileRaw::create_file(const std::string& name,
 #endif
 }
 
+
+void visFileRaw::create_file(
+    const std::string& name,
+    const std::map<std::string, std::string>& metadata,
+    dset_id dataset, size_t num_ev, size_t max_time)
+{
+    auto& dm = datasetManager::instance();
+
+    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
+    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
+    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
+    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+
+    if (!istate || !pstate || !fstate) {
+        ERROR("Required datasetStates not found for dataset_id=%i", dataset);
+        throw std::runtime_error("Could not create file.");
+    }
+
+    create_file(name, metadata, unzip(fstate->get_freqs()).second,
+                istate->get_inputs(), pstate->get_prods(), num_ev, max_time);
+
+    // Add in stack information if it is present
+    if (sstate) {
+        file_metadata["index_map"]["stack"] = sstate->get_stack_map();
+        file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
+    }
+}
+
 visFileRaw::~visFileRaw() {
 
     // Finalize the metadata file
@@ -111,7 +141,7 @@ void visFileRaw::flush_raw_sync(int ind) {
                     SYNC_FILE_RANGE_WAIT_BEFORE |
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
-    posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED); 
+    posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
 #endif
 }
 
@@ -151,7 +181,7 @@ void visFileRaw::deactivate_time(uint32_t time_ind) {
 bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
 
     // Write in a retry macro loop incase the write was interrupted by a signal
-    int nbytes = TEMP_FAILURE_RETRY( 
+    int nbytes = TEMP_FAILURE_RETRY(
         pwrite(fd, data, nb, offset)
     );
 

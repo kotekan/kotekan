@@ -15,31 +15,11 @@
 #include "fmt.hpp"
 
 
-// Initialise the type map
-std::map<std::string, std::function<visFile*()>> visFile::_type_list;
+std::map<std::string, std::function<visFile*()>>& visFile::_registered_types()
+{
+    static std::map<std::string, std::function<visFile*()>> _register;
 
-std::shared_ptr<visFile> visFile::create(
-    const std::string& type,
-    const std::string& name,
-    const std::map<std::string, std::string>& metadata,
-    const std::vector<freq_ctype>& freqs,
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods,
-    size_t num_ev, size_t max_time
-) {
-
-    if(_type_list.find(type) == _type_list.end()) {
-        throw std::runtime_error(
-            fmt::format("Cannot create visFile of unknown type {}", type)
-        );
-    }
-
-    // Lookup the registered file and create an instance
-    INFO("Creating file %s of type %s", name.c_str(), type.c_str());
-    auto file = std::shared_ptr<visFile>(_type_list[type]());
-    file->create_file(name, metadata, freqs, inputs, prods, num_ev, max_time);
-
-    return file;
+    return _register;
 }
 
 

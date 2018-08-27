@@ -66,7 +66,7 @@ struct visMetadata {
  *
  * @todo This may want changing to use reference wrappers instead of bare
  *       references.
- * 
+ *
  * @author Richard Shaw
  */
 class visFrameView {
@@ -144,13 +144,31 @@ public:
                                                  uint32_t num_prod,
                                                  uint32_t num_ev);
 
-    /// Return a summary of the visibility buffer contents
+    /**
+     * @brief Return a summary of the visibility buffer contents.
+     *
+     * @returns A string summarising the contents.
+     **/
     std::string summary() const;
 
-    /// Copy the non-const parts of the metadata
+    /**
+     * @brief Copy the non-const parts of the metadata.
+     *
+     * Transfers all the non-structural metadata from the source frame.
+     *
+     * @param frame_to_copy Frame to copy metadata from.
+     *
+     **/
     void copy_nonconst_metadata(visFrameView frame_to_copy);
 
-    // Copy the non-visibility parts of the buffer
+    /**
+     * @brief Copy the non-visibility parts of the buffer.
+     *
+     * Transfers all the datasets except the visibilities and their weights.
+     *
+     * @param frame_to_copy Frame to copy metadata from.
+     *
+     **/
     void copy_nonvis_buffer(visFrameView frame_to_copy);
 
     /**

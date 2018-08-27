@@ -19,10 +19,10 @@
 #include "errors.h"
 
 /** @brief A CHIME correlator file.
- * 
+ *
  * The class creates and manages writes to a CHIME style correlator output
  * file in the standard HDF5 format. It also manages the lock file.
- * 
+ *
  * @author Richard Shaw
  **/
 class visFileH5 : public visFile {
@@ -33,15 +33,15 @@ public:
 
     /**
      * @brief Extend the file to a new time sample.
-     * 
+     *
      * @param new_time The new time to add.
      * @return The index of the added time in the file.
-     **/ 
+     **/
     uint32_t extend_time(time_ctype new_time) override;
 
     /**
      * @brief Write a sample of data into the file at the given index.
-     * 
+     *
      * @param time_ind Time index to write into.
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
@@ -51,7 +51,7 @@ public:
 
     /**
      * @brief Return the current number of current time samples.
-     * 
+     *
      * @return The current number of time samples.
      **/
     size_t num_time() override;
@@ -66,6 +66,11 @@ protected:
                      const std::vector<input_ctype>& inputs,
                      const std::vector<prod_ctype>& prods,
                      size_t num_ev, size_t max_time) override;
+
+    // Implement the alternative create file method
+    void create_file(const std::string& name,
+                     const std::map<std::string, std::string>& metadata,
+                     dset_id dataset, size_t num_ev, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     virtual void create_time_axis(size_t num_time);
@@ -103,19 +108,19 @@ protected:
 };
 
 
-/** 
+/**
  * @brief A correlator output file with fast direct writing..
- * 
+ *
  * This class writes HDF5 formatted files, but for improved speed bypasses HDF5
  * when writing out data. To do this it uses contiguous datasets, which means
  * that the files are pre-allocated to their maximum size. On close, the number
  * of time samples written is written into an attribute on the file called
  * `num_time`.
- * 
+ *
  * Note that we rely on the behaviour of the filesystem to return 0 in
  * allocated but unwritten parts of the files to give zero weights for
  * unwritten data.
- * 
+ *
  * @author Richard Shaw
  **/
 class visFileH5Fast : public visFileH5 {
@@ -127,15 +132,15 @@ public:
 
     /**
      * @brief Extend the file to a new time sample.
-     * 
+     *
      * @param new_time The new time to add.
      * @return The index of the added time in the file.
-     **/ 
+     **/
     uint32_t extend_time(time_ctype new_time) override;
 
     /**
      * @brief Write a sample of data into the file at the given index.
-     * 
+     *
      * @param time_ind Time index to write into.
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
@@ -147,12 +152,12 @@ public:
 
     /**
      * @brief Remove the time sample from the active set being written to.
-     * 
+     *
      * This explicit flushes the requested time sample and evicts it from the
      * page cache.
      *
      * @param time_ind Sample to cleanup.
-     **/ 
+     **/
     void deactivate_time(uint32_t time_ind);
 
 protected:
@@ -178,31 +183,31 @@ protected:
 
     /**
      * @brief  Helper routine for writing data into the file
-     * 
+     *
      * @param dset_base Offset of dataset in file
      * @param ind       The index into the file dataset in chunks.
      * @param n         The size of the chunk in elements.
      * @param vec       The data to write out.
      **/
     template<typename T>
-    bool write_raw(off_t dset_base, int ind, size_t n, 
+    bool write_raw(off_t dset_base, int ind, size_t n,
                    const std::vector<T>& vec);
 
     /**
      * @brief  Helper routine for writing data into the file
-     * 
+     *
      * @param dset_base Offset of dataset in file
      * @param ind       The index into the file dataset in chunks.
      * @param n         The size of the chunk in elements.
      * @param data       The data to write out.
      **/
     template<typename T>
-    bool write_raw(off_t dset_base, int ind, size_t n, 
+    bool write_raw(off_t dset_base, int ind, size_t n,
                    const T * data);
 
     /**
      * @brief Start an async flush to disk
-     * 
+     *
      * @param dset_base Offset of dataset in file
      * @param ind       The index into the file dataset in time.
      * @param n         The size of the region to flush in bytes.
@@ -211,7 +216,7 @@ protected:
 
     /**
      * @brief Start a synchronised flush to disk and evict any clean pages.
-     * 
+     *
      * @param dset_base Offset of dataset in file
      * @param ind       The index into the file dataset in time.
      * @param n         The size of the region to flush in bytes.
