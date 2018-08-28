@@ -215,7 +215,20 @@ void applyGains::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Copy frame and create view
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
+        auto output_frame = visFrameView(out_buf, output_frame_id,
+                                         input_frame.num_elements,
+                                         input_frame.num_prod,
+                                         input_frame.num_ev);
+
+        // Copy over the data we won't modify
+        output_frame.copy_nonconst_metadata(input_frame);
+        output_frame.copy_nonvis_buffer(input_frame);
+
+        cfloat * out_vis = output_frame.vis.data();
+        cfloat * in_vis = input_frame.vis.data();
+        float * out_weight = output_frame.weight.data();
+        float * in_weight = input_frame.weight.data();
+
 
         // For now this doesn't try to do any type of check on the
         // ordering of products in vis and elements in gains.
@@ -224,11 +237,11 @@ void applyGains::main_thread() {
         for (int ii=0; ii<input_frame.num_elements; ii++) {
             for (int jj=ii; jj<input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
-                output_frame.vis[idx] = input_frame.vis[idx]
+                out_vis[idx] = in_vis[idx]
                                         * gain[ii]
                                         * gain_conj[jj];
                 // Update the weights.
-                output_frame.weight[idx] = input_frame.weight[idx] 
+                out_weight[idx] = in_weight[idx] 
                                            * weight_factor[ii] 
                                            * weight_factor[jj];
                 idx++;

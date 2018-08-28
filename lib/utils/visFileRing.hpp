@@ -9,6 +9,19 @@
 
 #include "visFileRaw.hpp"
 
+/** @brief A CHIME correlator ring-style buffer file in raw format.
+ *
+ * The class manages a CHIME correlator file of fixed length in time,
+ * where additional times get written at the start of the file again,
+ * effectively maintaining a ring buffer of the most recent data stream.
+ *
+ * The file format is provided by visFileRaw.
+ *
+ * @warning Unlike visFileRaw, this class will overwrite an existing
+ *          file with the same path.
+ *
+ * @author Tristan Pinsonneault-Marotte
+ **/
 class visFileRing : public visFileRaw {
 
 public:
@@ -27,8 +40,6 @@ public:
      * @return The index of the added time in the file.
      **/
     uint32_t extend_time(time_ctype new_time) override;
-
-    // TODO: override write_sample to make sure it flushes immediately
 
     void write_metadata();
 

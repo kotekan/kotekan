@@ -2,7 +2,6 @@
 #include "visFileRaw.hpp"
 #include "errors.h"
 #include <time.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <iomanip>
 #include <algorithm>
@@ -87,7 +86,7 @@ void visFileRaw::create_file(
     // Create lock file and then open the other files
     lock_filename = create_lockfile(name);
     metadata_file = std::ofstream(name + ".meta", std::ios::binary);
-    if((fd = open((name + ".data").c_str(), O_CREAT | O_EXCL | O_WRONLY,
+    if((fd = open((name + ".data").c_str(), oflags,
                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) == -1) {
         std::runtime_error(fmt::format("Failed to open file {}: {}.",
                                        name + ".data", strerror(errno)));
