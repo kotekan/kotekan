@@ -75,9 +75,7 @@ visRawReader::visRawReader(Config &config,
     _prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
     _ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
     if (_t["index_map"].find("stack") != _t["index_map"].end()) {
-        DEBUG("reading stack...");
         _stack = _t["index_map"]["stack"].get<std::vector<stack_ctype>>();
-        DEBUG("done.");
     }
 
     // Extract the structure

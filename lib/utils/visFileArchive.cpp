@@ -52,8 +52,8 @@ visFileArchive::visFileArchive(const std::string& name,
                                const std::vector<freq_ctype>& freqs,
                                const std::vector<input_ctype>& inputs,
                                const std::vector<prod_ctype>& prods,
-                               const std::vector<uint16_t>& stack,
-                               std::vector<stack_pair>& reverse_stack,
+                               const std::vector<stack_ctype>& stack,
+                               std::vector<rstack_ctype>& reverse_stack,
                                size_t num_ev,
                                std::vector<int> chunk_size) {
 
@@ -128,10 +128,8 @@ void visFileArchive::setup_file(const std::string& name,
         ).write(item.second);
     }
 
-    // Add weight type flag where gossec expects it
-    dset("vis_weight").createAttribute<std::string>(
-        "type", DataSpace::From(metadata.at("weight_type"))
-    ).write(metadata.at("weight_type"));
+    // Get weight type flag
+    weight_type = metadata.at("weight_type");
 
 }
 
@@ -191,7 +189,7 @@ void visFileArchive::create_axes(const std::vector<time_ctype>& times,
                             const std::vector<freq_ctype>& freqs,
                             const std::vector<input_ctype>& inputs,
                             const std::vector<prod_ctype>& prods,
-                            const std::vector<uint16_t>& stack,
+                            const std::vector<stack_ctype>& stack,
                             size_t num_ev) {
 
     create_axes(times, freqs, inputs, prods, num_ev);
@@ -238,8 +236,14 @@ void visFileArchive::create_datasets() {
 
     if(stacked) {
         Group rev_map = file->createGroup("reverse_map");
-        create_dataset("reverse_map/stack", {"prod"}, create_datatype<stack_pair>(), no_compress);
+        create_dataset("reverse_map/stack", {"prod"},
+                create_datatype<rstack_ctype>(), no_compress);
     }
+
+    // Add weight type flag where gossec expects it
+    dset("vis_weight").createAttribute<std::string>(
+        "type", DataSpace::From(weight_type)
+    ).write(weight_type);
 
     file->flush();
 
@@ -355,9 +359,17 @@ template <> inline DataType HighFive::create_datatype<cfloat>() {
     return c;
 }
 
-template <> inline DataType HighFive::create_datatype<stack_pair>() {
+template <> inline DataType HighFive::create_datatype<rstack_ctype>() {
     CompoundType c;
-    c.addMember("stack_index", H5T_STD_U32LE);
+    c.addMember("stack", H5T_STD_U32LE);
+    c.addMember("conjugate", H5T_STD_U8LE);
+    c.autoCreate();
+    return c;
+}
+
+template <> inline DataType HighFive::create_datatype<stack_ctype>() {
+    CompoundType c;
+    c.addMember("prod", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
     return c;

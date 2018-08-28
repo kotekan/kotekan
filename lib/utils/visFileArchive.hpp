@@ -53,8 +53,8 @@ public:
                    const std::vector<freq_ctype>& freqs,
                    const std::vector<input_ctype>& inputs,
                    const std::vector<prod_ctype>& prods,
-                   const std::vector<uint16_t>& stack,
-                   std::vector<stack_pair>& reverse_stack,
+                   const std::vector<stack_ctype>& stack,
+                   std::vector<rstack_ctype>& reverse_stack,
                    size_t num_ev,
                    std::vector<int> chunk_size);
 
@@ -110,7 +110,7 @@ protected:
                      const std::vector<freq_ctype>& freqs,
                      const std::vector<input_ctype>& inputs,
                      const std::vector<prod_ctype>& prods,
-                     const std::vector<uint16_t>& stack,
+                     const std::vector<stack_ctype>& stack,
                      size_t num_ev);
 
     // Create the main visibility holding datasets
@@ -123,6 +123,9 @@ protected:
     // Whether to write eigenvalues or not
     bool write_ev;
 
+    // Description of weights stored in vis_weight dataset
+    std::string weight_type;
+
     // HDF5 chunk size
     std::vector<int> chunk;
 
@@ -132,7 +135,7 @@ protected:
     std::string lock_filename;
 
     // Whether the products have been compressed via baseline stacking
-    bool stacked;
+    bool stacked = false;
 
     // Shortcut for axes labels
     inline std::string prod_or_stack();
@@ -154,7 +157,8 @@ template <> DataType create_datatype<time_ctype>();
 template <> DataType create_datatype<input_ctype>();
 template <> DataType create_datatype<prod_ctype>();
 template <> DataType create_datatype<cfloat>();
-template <> DataType create_datatype<stack_pair>();
+template <> DataType create_datatype<stack_ctype>();
+template <> DataType create_datatype<rstack_ctype>();
 };
 
 

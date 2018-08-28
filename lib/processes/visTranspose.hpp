@@ -68,7 +68,7 @@ private:
     std::vector<cfloat> gain;
     std::vector<float> frac_lost;
     std::vector<float> input_flags;
-    std::vector<stack_pair> reverse_stack;
+    std::vector<rstack_ctype> reverse_stack;
 
     // Keep track of the size to write out
     // size of frequency and time dimension of chunk when written to file
@@ -85,7 +85,7 @@ private:
     std::vector<input_ctype> inputs;
     std::vector<prod_ctype> prods;
     std::vector<uint32_t> ev;
-    std::vector<uint16_t> stack;
+    std::vector<stack_ctype> stack;
     json metadata;
 
     /// A unique ID for the chunk (i.e. frequency set)

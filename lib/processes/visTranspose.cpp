@@ -69,9 +69,9 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
 
     // Check if this is baseline-stacked data
     if (_t["index_map"].find("stack") != _t["index_map"].end()) {
-        stack = _t["index_map"]["stack"].get<std::vector<uint16_t>>();
+        stack = _t["index_map"]["stack"].get<std::vector<stack_ctype>>();
         // TODO: verify this is where it gets stored
-        reverse_stack = _t["stack_map"].get<std::vector<stack_pair>>();
+        reverse_stack = _t["reverse_map"]["stack"].get<std::vector<rstack_ctype>>();
     }
 
     num_time = times.size();
@@ -205,12 +205,11 @@ void visTranspose::write() {
             vis_weight.data());
     //DEBUG("wrote vis_weight");
 
-    file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
-    //DEBUG("wrote eval");
-
-    file->write_block("evec", f_ind, t_ind, write_f, write_t, evec.data());
-
-    file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
+    if (num_ev > 0) {
+        file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
+        file->write_block("evec", f_ind, t_ind, write_f, write_t, evec.data());
+        file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
+    }
 
     file->write_block("gain", f_ind, t_ind, write_f, write_t,
             gain.data());
