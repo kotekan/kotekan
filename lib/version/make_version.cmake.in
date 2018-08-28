@@ -1,0 +1,57 @@
+# Template for the script to generate the version.c
+# file from the version.c.in template
+# Yes this is generating a file to generate a file,
+# and no I'm not happy this is how it has to work -AR
+
+set(SOURCE_DIR "@CMAKE_SOURCE_DIR@")
+set(BINARY_DIR "@CMAKE_BINARY_DIR@")
+set(CURRENT_SOURCE_DIR "@CMAKE_CURRENT_SOURCE_DIR@")
+set(CURRENT_BINARY_DIR "@CMAKE_CURRENT_BINARY_DIR@")
+
+set(CMAKE_BUILD_TYPE "@CMAKE_BUILD_TYPE@")
+set(CMAKE_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
+set(CMAKE_C_COMPILER "@CMAKE_C_COMPILER@")
+set(USE_DPDK "@USE_DPDK@")
+set(RTE_SDK "@RTE_SDK@")
+set(RTE_TARGET "@RTE_TARGET@")
+set(USE_HSA "@USE_HSA@")
+set(USE_CLOC "@USE_CLOC@")
+set(USE_PRECOMPILED_OPENCL "@USE_PRECOMPILED_OPENCL@")
+set(USE_OPENCL "@USE_OPENCL@")
+set(USE_HCC "@USE_HCC@")
+set(USE_HDF5 "@USE_HDF5@")
+set(HIGHFIVE_PATH "@HIGHFIVE_PATH@")
+set(USE_LAPACK "@USE_LAPACK@")
+set(OPENBLAS_PATH "@OPENBLAS_PATH@")
+set(USE_AIRSPY "@USE_AIRSPY@")
+set(USE_FFTW "@USE_FFTW@")
+set(USE_OMP "@USE_OMP@")
+
+# Get the current working branch
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Get the latest abbreviated commit hash of the working branch
+execute_process(
+  COMMAND git log -1 --format=%H
+  WORKING_DIRECTORY ${SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+execute_process(
+  COMMAND python ${SOURCE_DIR}/scripts/version.py
+  WORKING_DIRECTORY ${SOURCE_DIR}
+  OUTPUT_VARIABLE KOTEKAN_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+configure_file(
+    ${CURRENT_SOURCE_DIR}/version.c.in
+    ${CURRENT_BINARY_DIR}/version.c
+    @ONLY
+)
