@@ -275,7 +275,7 @@ private:
 
 
 /**
- * @brief Register the initial state of the buffers with the
+ * @brief Register the initial state of the buffers with the datasetManager.
  *
  * This task tags a stream with a properly allocated dataset_id and adds
  * associated datasetStates to the datasetManager.

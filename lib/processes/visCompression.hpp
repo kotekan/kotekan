@@ -37,7 +37,8 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf stack_type      String. Type of stacking to apply to the data.
+ * @conf stack_type String. Type of stacking to apply to the data. Look at
+ *                  documentation of stack_X functions for details.
  * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
  *
  * @author Richard Shaw
@@ -83,13 +84,38 @@ private:
     Buffer* out_buf;
 };
 
-// Stack along the band diagonals
+
+/**
+ * @brief Combine all feeds on the same diagonal of the correlation matrix.
+ *
+ * This is mostly useful for testing as in most cases it will combine
+ * non-redundant visibilities.
+ *
+ * @param inputs The set of inputs.
+ * @param prods  The products we are stacking.
+ *
+ * @returns Stack definition.
+ **/
 std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
 );
 
-// Stack along the band diagonals
+/**
+ * @brief Stack redundant baselines between cylinder pairs for CHIME.
+ *
+ * This stacks together redundant baselines between cylinder pairs, but does
+ * not stack distinct pairs together. For instance A1,B2 will be stacked in the
+ * same group as A2,B3, but not the same group as B1,C2.
+ *
+ * This will give back stacks ordered by (polarisation pair, cylinder pair, NS
+ * feed separation).
+ *
+ * @param inputs The set of inputs.
+ * @param prods  The products we are stacking.
+ *
+ * @returns Stack definition.
+ **/
 std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
