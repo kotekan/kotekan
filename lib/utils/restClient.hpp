@@ -28,7 +28,8 @@ class restClient {
      * @param request   JSON request
      * @return          False in case of failure, True otherwise.
      */
-    bool send_json (const char *s_url, const nlohmann::json *request);
+    struct restReply send_json (const char *s_url,
+                                const nlohmann::json *request);
 
     /// Default constructor.
     restClient() = default;
@@ -40,8 +41,15 @@ class restClient {
     static const char *_s_url;
 
     private:
+
     /// event handler that is called by mongoose
     static void ev_handler(struct mg_connection *nc, int ev, void *ev_data);
+};
+
+struct restReply {
+        bool success = false;
+        void* data = nullptr;
+        size_t data_len = 0;
 };
 
 #endif // RESTCLIENT_HPP

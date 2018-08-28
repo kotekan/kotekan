@@ -8,19 +8,21 @@
 int restClient::_s_exit_flag = 0;
 const char * restClient::_s_url = nullptr;
 
-bool restClient::send_json (const char *s_url,
+restReply restClient::send_json(const char *s_url,
                    const nlohmann::json *request) {
     struct mg_mgr mgr;
     struct mg_connection *nc;
-    _s_url = s_url;
     std::string json_string = request->dump();
+    struct restReply reply;
+
+    _s_url = s_url;
     _s_exit_flag = 0;
 
     mg_mgr_init(&mgr, NULL);
     nc = mg_connect_http(&mgr, ev_handler, s_url, NULL, json_string.c_str());
     if (nc == NULL) {
         ERROR("restClient: Failed connecting to %s.", s_url);
-        return false;
+        return reply;
     }
     mg_set_protocol_http_websocket(nc);
 
@@ -32,8 +34,10 @@ bool restClient::send_json (const char *s_url,
     mg_mgr_free(&mgr);
 
     if (_s_exit_flag == -1)
-        return false;
-    return true;
+        return reply;
+
+    reply.success = true;
+    return reply;
 }
 
 void restClient::ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
