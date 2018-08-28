@@ -95,7 +95,7 @@ void visFileRaw::create_file(
 
     // Preallocate data file (without increasing the length)
 #ifdef __linux__
-    fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * num_time);
+    fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
 #endif
 }
 
