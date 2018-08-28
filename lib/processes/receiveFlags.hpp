@@ -72,7 +72,7 @@ private:
 
     // config values
     /// Number of elements
-    size_t num_elems;
+    size_t num_elements;
 
     /// Name of the updatable block in conf that contains flags
     std::string updatable_config;
