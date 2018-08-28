@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 12    # was 120, 48Gb, 15s buffer.
+baseband_buffer_depth: 120  # 48Gb, 15s buffer.
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -274,50 +274,47 @@ zero_samples:
     zero_0:
         kotekan_process: zeroSamples
         out_buf: network_buffer_0
-        out_lost_sample_buffers:
-            - lost_samples_buffer_0
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_0
     zero_1:
         kotekan_process: zeroSamples
         out_buf: network_buffer_1
-        out_lost_sample_buffers:
-            - lost_samples_buffer_1
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_1
     zero_2:
         kotekan_process: zeroSamples
         out_buf: network_buffer_2
-        out_lost_sample_buffers:
-            - lost_samples_buffer_2
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_2
     zero_3:
         kotekan_process: zeroSamples
         out_buf: network_buffer_3
-        out_lost_sample_buffers:
-            - lost_samples_buffer_3
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_3
 
-#baseband:
-#    max_dump_samples: 100000
-#    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
-#    num_frames_buffer: 110
-#    base_dir: /mnt/frb-archiver/
-#    write_throttle: 0
-#    baseband0:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_0
-#    baseband1:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_1
-#    baseband2:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_2
-#    baseband3:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_3
+baseband:
+    max_dump_samples: 100000
+    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
+    num_frames_buffer: 110
+    base_dir: /mnt/frb-archiver/
+    write_throttle: 0
+    baseband0:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_0
+    baseband1:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_1
+    baseband2:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_2
+    baseband3:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_3
 
 monitor:
     kotekan_process: monitorBuffer
     bufs:
-      - network_buffer_0
-      - network_buffer_1
-      - network_buffer_2
-      - network_buffer_3
+      - lost_samples_buffer
     timeout: 5
     fill_threshold: 0.8
 
@@ -442,7 +439,7 @@ frb:
     log_level: warn
     cpu_affinity: [11]
     kotekan_process: frbPostProcess
-    incoherent_beams: [0]
+    incoherent_beams: [0,1000,2000,3000]
     #incoherent_truncation: 25.
     frb_out_buf: frb_output_buffer
     in_buf_0: gpu_beamform_output_buffer_0
@@ -462,6 +459,7 @@ frb:
     beam_offset: 0
     time_interval: 125829120
     L1_node_ips:
+      # Rack 1
       - 10.6.201.10
       - 10.7.201.10
       - 10.6.201.11
@@ -480,6 +478,9 @@ frb:
       - 10.7.201.17
       - 10.6.201.18
       - 10.7.201.18
+      #- 10.6.201.19 -- cf1n9 -- Motherboard Issues
+      #- 10.7.201.19
+      # Rack 2
       - 10.8.202.10
       - 10.9.202.10
       - 10.8.202.11
@@ -500,6 +501,7 @@ frb:
       - 10.9.202.18
       - 10.8.202.19
       - 10.9.202.19
+      # Rack 3
       - 10.6.203.10
       - 10.7.203.10
       - 10.6.203.11
@@ -520,6 +522,28 @@ frb:
       - 10.7.203.18
       - 10.6.203.19
       - 10.7.203.19
+      # Rack 4
+      - 10.8.204.10
+      - 10.9.204.10
+      - 10.8.204.11
+      - 10.9.204.11
+      - 10.8.204.12
+      - 10.9.204.12
+      - 10.8.204.13
+      - 10.9.204.13
+      - 10.8.204.14
+      - 10.9.204.14
+      - 10.8.204.15
+      - 10.9.204.15
+      - 10.8.204.16
+      - 10.9.204.16
+      - 10.8.204.17
+      - 10.9.204.17
+      - 10.8.204.18
+      - 10.9.204.18
+      - 10.8.204.19
+      - 10.9.204.19
+      # Rack 5
       - 10.6.205.10
       - 10.7.205.10
       - 10.6.205.11
@@ -540,6 +564,28 @@ frb:
       - 10.7.205.18
       - 10.6.205.19
       - 10.7.205.19
+      # Rack 6
+      - 10.8.206.10
+      - 10.9.206.10
+      - 10.8.206.11
+      - 10.9.206.11
+      - 10.8.206.12
+      - 10.9.206.12
+      - 10.8.206.13
+      - 10.9.206.13
+      - 10.8.206.14
+      - 10.9.206.14
+      - 10.8.206.15
+      - 10.9.206.15
+      - 10.8.206.16
+      - 10.9.206.16
+      - 10.8.206.17
+      - 10.9.206.17
+      - 10.8.206.18
+      - 10.9.206.18
+      - 10.8.206.19
+      - 10.9.206.19
+      # Rack 7
       - 10.6.207.10
       - 10.7.207.10
       - 10.6.207.11
@@ -560,6 +606,70 @@ frb:
       - 10.7.207.18
       - 10.6.207.19
       - 10.7.207.19
+      # Rack 8
+      - 10.8.208.10
+      - 10.9.208.10
+      - 10.8.208.11
+      - 10.9.208.11
+      - 10.8.208.12
+      - 10.9.208.12
+      - 10.8.208.13
+      - 10.9.208.13
+      - 10.8.208.14
+      - 10.9.208.14
+      - 10.8.208.15
+      - 10.9.208.15
+      - 10.8.208.16
+      - 10.9.208.16
+      - 10.8.208.17
+      - 10.9.208.17
+      - 10.8.208.18
+      - 10.9.208.18
+      - 10.8.208.19
+      - 10.9.208.19
+      # Rack 9
+      - 10.6.209.10
+      - 10.7.209.10
+      - 10.6.209.11
+      - 10.7.209.11
+      - 10.6.209.12
+      - 10.7.209.12
+      - 10.6.209.13
+      - 10.7.209.13
+      - 10.6.209.14
+      - 10.7.209.14
+      - 10.6.209.15
+      - 10.7.209.15
+      - 10.6.209.16
+      - 10.7.209.16
+      - 10.6.209.17
+      - 10.7.209.17
+      - 10.6.209.18
+      - 10.7.209.18
+      - 10.6.209.19
+      - 10.7.209.19
+      # Rack A
+      - 10.8.210.10
+      - 10.9.210.10
+      - 10.8.210.11
+      - 10.9.210.11
+      - 10.8.210.12
+      - 10.9.210.12
+      - 10.8.210.13
+      - 10.9.210.13
+      - 10.8.210.14
+      - 10.9.210.14
+      - 10.8.210.15
+      - 10.9.210.15
+      - 10.8.210.16
+      - 10.9.210.16
+      - 10.8.210.17
+      - 10.9.210.17
+      - 10.8.210.18
+      - 10.9.210.18
+      - 10.8.210.19
+      - 10.9.210.19
+      # Rack B
       - 10.6.211.10
       - 10.7.211.10
       - 10.6.211.11
@@ -580,6 +690,7 @@ frb:
       - 10.7.211.18
       - 10.6.211.19
       - 10.7.211.19
+      # Rack C
       - 10.8.212.10
       - 10.9.212.10
       - 10.8.212.11
@@ -600,6 +711,7 @@ frb:
       - 10.9.212.18
       - 10.8.212.19
       - 10.9.212.19
+      # Rack D
       - 10.6.213.10
       - 10.7.213.10
       - 10.6.213.11
@@ -614,6 +726,9 @@ frb:
       - 10.7.213.15
       - 10.6.213.16
       - 10.7.213.16
+      # cfDn7
+      # cfDn8
+      # cfDn9
 
 pulsar:
   timesamples_per_pulsar_packet: 625
