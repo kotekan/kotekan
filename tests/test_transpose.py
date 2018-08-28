@@ -121,15 +121,19 @@ def test_transpose(transpose):
     # check if shapes are correct
     assert f_tr['index_map/time'].shape[0] == n_t
     assert f_tr['index_map/freq'].shape[0] == n_f
+    assert f_tr['index_map/prod'].shape[0] == n_prod
+    assert f_tr['index_map/input'].shape[0] == n_elems
     assert f_tr['vis'].shape == (n_f, n_prod, n_t)
     assert f_tr['flags/vis_weight'].shape == (n_f, n_prod, n_t)
     assert f_tr['eval'].shape == (n_f, writer_params['num_ev'], n_t)
     assert f_tr['evec'].shape == (n_f, writer_params['num_ev'], writer_params['num_elements'], n_t)
     assert f_tr['erms'].shape == (n_f, n_t)
+    assert f_tr['gain'].shape == (n_f, n_elems, n_t)
+    assert f_tr['flags/inputs'].shape == (n_elems, n_t)
+    assert f_tr['flags/frac_lost'].shape == (n_f, n_t)
 
     # transpose with numpy and see if data is the same
-    assert np.all(vis_tr == vis.transpose(1,2,0))
-    assert np.all(weight_tr == weight.transpose(1,2,0))
-    assert np.all(eigenval_tr == eigenval.transpose(1,2,0))
-    assert np.all(evec_tr == evec.transpose(1,2,3,0))
-    assert np.all(erms_tr == erms.transpose(1,0))
+    dsets = ['vis', 'flags/vis_weight',
+             'eval', 'evec', 'erms']
+    for d in dsets:
+        assert np.all(f_tr[d][:] == np.moveaxis(f[d], 0, -1))
