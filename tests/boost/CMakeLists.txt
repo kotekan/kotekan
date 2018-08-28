@@ -16,6 +16,7 @@ set(KOTEKAN_BOOST_TEST_SOURCES
     test_dataset_manager.cpp
     test_updatequeue.cpp
     test_truncate.cpp
+    test_restclient.cpp
     test_chime_stacking.cpp
 )
 

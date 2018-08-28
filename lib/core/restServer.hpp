@@ -17,6 +17,11 @@ enum class HTTP_RESPONSE {
     INTERNAL_ERROR = 500
 };
 
+#define PORT_REST_SERVER 12048
+
+#define XSTR(s) STR(s)
+#define STR(s) #s
+
 /**
  * @brief Contains details of a request (POST or GET), and provides
  *        functions for replying to the request.
@@ -282,7 +287,7 @@ private:
     struct mg_connection *nc;
 
     /// The port to use, for now this is constant 12048
-    const char *port = "12048";
+    const char *port = XSTR(PORT_REST_SERVER);
 
     /// Main server thread handle
     std::thread main_thread;
