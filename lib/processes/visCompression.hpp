@@ -26,13 +26,19 @@ using json = nlohmann::json;
  * This task takes a stream of uncompressed visibility data and performs a
  * (weighted) average over the equivalent baselines.
  *
+ * @note This task requires there to be an inputState and prodState registered
+ *       for the incoming dataset.
+ *
  * @par Buffers
- * @buffer in_bufs The input uncompressed data (must be full N^2).
+ * @buffer in_bufs The input uncompressed data.
  *         @buffer_format visBuffer structured.
  *         @buffer_metadata visMetadata
  * @buffer out_buf The merged and transformed buffer
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
+ *
+ * @conf stack_type      String. Type of stacking to apply to the data.
+ * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
  *
  * @author Richard Shaw
  */
@@ -52,8 +58,8 @@ public:
 
 private:
 
-    // TODO: remove this when dataset manager arrives
-    uint32_t num_elements;
+    // The extra inputs we are excluding
+    std::vector<uint32_t> exclude_inputs;
 
     // Alias for the type of a stack definition function. Damn C++ is verbose :)
     // Return is a pair of (num stacks total, stack_map), where stack_map is a
