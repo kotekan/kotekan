@@ -291,9 +291,9 @@ std::pair<feed_diff, bool> calculate_chime_vis(
     }
 
     return {
-        {fa.polarisation, fb.polarisation, fa.cylinder, fb.cylinder,
-         fb.feed_location - fa.feed_location},
-         conjugate
+        std::make_tuple(fa.polarisation, fb.polarisation, fa.cylinder, fb.cylinder,
+                        fb.feed_location - fa.feed_location),
+        conjugate
     };
 }
 
