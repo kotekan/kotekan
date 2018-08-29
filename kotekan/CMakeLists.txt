@@ -7,6 +7,7 @@ SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
@@ -30,8 +31,6 @@ if (${USE_OPENCL})
     install(FILES kotekan_opencl_fury.yaml DESTINATION /etc/kotekan/ COMPONENT config)
     install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
 endif ()
-
-add_dependencies( kotekan kotekan_libs )
 
 install(TARGETS kotekan DESTINATION /usr/local/bin COMPONENT binaries)
 

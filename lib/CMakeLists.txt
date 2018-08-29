@@ -12,9 +12,13 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/dpdk)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
 add_library ( kotekan_libs "empty.c" )
+
+add_subdirectory(version)
+target_link_libraries( kotekan_libs kotekan_version )
 
 add_subdirectory(core)
 target_link_libraries( kotekan_libs kotekan_core )
