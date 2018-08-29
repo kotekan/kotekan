@@ -5,6 +5,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <iostream>
+#include <pthread.h>
 
 #include "visUtil.hpp"
 #include "visBuffer.hpp"
@@ -51,13 +52,44 @@ void baselineCompression::apply_config(uint64_t fpga_seq) {
         exclude_inputs = config.get_array<uint32_t>(unique_name,
                                                     "exclude_inputs");
     }
-}
 
+    num_threads = config.get_uint32_default(unique_name, "num_threads", 1);
+    if (num_threads == 0)
+        throw std::invalid_argument("baselineCompression: apply_config: "
+                                    "num_threads has to be at least 1.");
+    if (in_buf->num_frames % num_threads != 0 ||
+        out_buf->num_frames % num_threads != 0)
+        throw std::invalid_argument("baselineCompression: apply_config: both "
+                                    "the size of the input and output buffer"
+                                    "have to be multiples of num_threads.");
+}
 
 void baselineCompression::main_thread() {
 
-    unsigned int output_frame_id = 0;
-    unsigned int input_frame_id = 0;
+    // Create the threads
+    thread_handles.resize(num_threads);
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        thread_handles[i] = std::thread(&baselineCompression::compress_thread, this, i);
+
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        INFO("Setting thread affinity");
+        for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            CPU_SET(i, &cpuset);
+
+        pthread_setaffinity_np(thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);
+    }
+
+    // Join the threads
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        thread_handles[i].join();
+    }
+}
+
+void baselineCompression::compress_thread(int offset) {
+
+    unsigned int output_frame_id = offset;
+    unsigned int input_frame_id = offset;
 
     auto& dm = datasetManager::instance();
     const stackState * stack_state_ptr;
@@ -65,6 +97,8 @@ void baselineCompression::main_thread() {
     dset_id input_dset_id = -1;
     dset_id output_dset_id;
     state_id stack_state_id;
+
+    double total_time = 0;
 
     while (!stop_thread) {
 
@@ -105,8 +139,8 @@ void baselineCompression::main_thread() {
             output_dset_id = dm.add_dataset(stack_state_id, input_dset_id);
         }
 
-        auto& stack_map = stack_state_ptr->get_rstack_map();
-        auto& prods = prod_state_ptr->get_prods();
+        const auto& stack_map = stack_state_ptr->get_rstack_map();
+        const auto& prods = prod_state_ptr->get_prods();
         auto num_stack = stack_state_ptr->get_num_stack();
 
         std::vector<float> stack_norm(stack_state_ptr->get_num_stack(), 0.0);
@@ -135,42 +169,42 @@ void baselineCompression::main_thread() {
             output_frame.flags[input] = 0.0;
         }
 
+        auto in_vis = input_frame.vis.data();
+        auto out_vis = output_frame.vis.data();
+        auto in_weight = input_frame.weight.data();
+        auto out_weight = output_frame.weight.data();
+        auto flags = output_frame.flags.data();
+
         // Iterate over all the products and average together
         for(uint32_t prod_ind = 0; prod_ind < prods.size(); prod_ind++) {
-
             // TODO: if the weights are ever different from 0 or 1, we will
             // definitely need to rewrite this.
+
+            // Alias the parts of the data we are going to stack
+            cfloat vis = in_vis[prod_ind];
+            float weight = in_weight[prod_ind];
 
             auto& p = prods[prod_ind];
             auto& s = stack_map[prod_ind];
 
-            // Alias the parts of the data we are going to stack
-            float weight = input_frame.weight[prod_ind];
-            cfloat vis = input_frame.vis[prod_ind];
+            // If the weight is zero, completey skip this iteration
+            if (weight == 0 || flags[p.input_a] == 0 || flags[p.input_b] == 0)
+                continue;
+
             vis = s.conjugate ? conj(vis) : vis;
 
-            // Set the weighting used to combine baselines
-            float w = (weight != 0) *
-                output_frame.flags[p.input_a] * output_frame.flags[p.input_b];
-
             // First summation of the visibilities (dividing by the total weight will be done later)
-            cfloat vw = w * vis;
-            output_frame.vis[s.stack] += vw;
+            out_vis[s.stack] += vis;
 
-            // float vwr = std::real(wv);
-            // float vwi = std::imag(wv);
-            // stack_v2[s.stack] += (vwr * vwr + vwi + vwi);
             // Accumulate the square for variance calculation
-            stack_v2[s.stack] += std::norm(vw);
+            stack_v2[s.stack] += fast_norm(vis);
 
             // Accumulate the weighted *variances*. Normalising and inversion
             // will be done later
-            // NOTE: hopefully there aren't too many zeros so the branch
-            // predictor will work well
-            output_frame.weight[s.stack] += (w == 0) ? 0 : (w * w / weight);
+            out_weight[s.stack] += (1.0 / weight);
 
             // Accumulate the weights so we can normalize correctly
-            stack_norm[s.stack] += w;
+            stack_norm[s.stack] += 1.0;
         }
 
         // Loop over the stacks and normalise (and invert the variances)
@@ -195,8 +229,8 @@ void baselineCompression::main_thread() {
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
         // Advance the current frame id
-        output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-        input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
+        output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
+        input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
 
         double elapsed = current_time() - start_time;
 
@@ -210,6 +244,8 @@ void baselineCompression::main_thread() {
             "kotekan_baselinecompression_time", unique_name, elapsed
         );
         INFO("Compression time %.4f", elapsed);
+        total_time += elapsed;
+        INFO("Total time %.4f", total_time);
     }
 }
 

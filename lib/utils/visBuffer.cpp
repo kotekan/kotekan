@@ -125,6 +125,8 @@ std::string visFrameView::summary() const {
 visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src,
                                       Buffer* buf_dest, int frame_id_dest)
 {
+    allocate_new_metadata_object(buf_dest, frame_id_dest);
+
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {
         std::string msg = fmt::format(
@@ -162,7 +164,6 @@ visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src,
     }
 
     // Copy over the metadata
-    allocate_new_metadata_object(buf_dest, frame_id_dest);
     std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
                 buf_src->metadata[frame_id_src]->metadata,
                 buf_src->metadata[frame_id_src]->metadata_size);

@@ -126,6 +126,8 @@ bool applyGains::receive_update(nlohmann::json &json) {
     gain_mtx.lock();
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
     gain_mtx.unlock();
+    INFO("Updated gains to %s.", gtag.c_str());
+
     return true;
 }
 

@@ -315,6 +315,24 @@ struct_layout struct_alignment(
 
 
 /**
+ * @brief Calculate the norm of a complex number (i.e. |z|^2).
+ *
+ * In theory std::norm should do this, but the version in libstdc++ is super
+ * slow.
+ *
+ * @param z  Number to find the norm of.
+ * @returns  Norm of z.
+ **/
+template<typename T>
+inline T fast_norm(const std::complex<T>& z)
+{
+    T r = std::real(z);
+    T i = std::imag(z);
+    return (r * r + i * i);
+}
+
+
+/**
  * @class movingAverage
  * @brief Calculate an exponentially weighted moving average of a time series.
  *

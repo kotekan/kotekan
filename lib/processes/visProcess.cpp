@@ -19,7 +19,7 @@ REGISTER_KOTEKAN_PROCESS(visDebug);
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 REGISTER_KOTEKAN_PROCESS(visMerge);
 REGISTER_KOTEKAN_PROCESS(visCheckTestPattern);
-
+REGISTER_KOTEKAN_PROCESS(registerInitialDatasetState);
 
 visTransform::visTransform(Config& config,
                            const string& unique_name,
@@ -654,6 +654,7 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
         freq_ids = config.get_array<uint32_t>(unique_name, "freq_ids");
     }
     else {
+        freq_ids.resize(1024);
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
