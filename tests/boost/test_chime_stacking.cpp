@@ -7,30 +7,17 @@
 #include "visCompression.hpp"
 #include "visUtil.hpp"
 
-// Teach boost to understand how to print a pair...
-namespace boost {
-    namespace test_tools {
-        namespace tt_detail {
-            template<typename T,typename U>
-            struct print_log_value<std::pair<T, U> > {
-                void operator()(std::ostream& os, std::pair<T, U> const& pr) {
-                    os << "<" << std::get<0>(pr) << "," << std::get<1>(pr) << ">";
-                }
-            };
-            template<>
-            struct print_log_value<rstack_ctype> {
-                void operator()(std::ostream& os, rstack_ctype const& pr) {
-                    os << "<" << pr.stack << "," << pr.conjugate << ">";
-                }
-            };
-            template<>
-            struct print_log_value<stack_ctype> {
-                void operator()(std::ostream& os, stack_ctype const& pr) {
-                    os << "<" << pr.prod << "," << pr.conjugate << ">";
-                }
-            };
-        }
-    }
+// Teach boost to understand how to print the stack types...
+std::ostream& operator<<(std::ostream& os, rstack_ctype const& pr)
+{
+    os << "<" << pr.stack << "," << pr.conjugate << ">";
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, stack_ctype const& pr)
+{
+    os << "<" << pr.prod << "," << pr.conjugate << ">";
+    return os;
 }
 
 BOOST_AUTO_TEST_CASE( _chimeFeed )
