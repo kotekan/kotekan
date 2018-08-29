@@ -164,7 +164,8 @@ void visTranspose::main_thread() {
         strided_copy(frame.evec.data(), evec.data(),
                 fi*num_ev*num_input*write_t + ti, write_t, num_ev*num_input);
         erms[offset + ti] = frame.erms;
-        frac_lost[offset + ti] = float(frame.fpga_seq_total) / frame.fpga_seq_length;
+        frac_lost[offset + ti] = frame.fpga_seq_length == 0 ?
+                1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
                 write_t, num_input);
         strided_copy(frame.flags.data(), input_flags.data(), ti,
