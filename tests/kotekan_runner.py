@@ -79,9 +79,24 @@ class KotekanRunner(object):
                     except AttributeError:
                         raise ValueError('REST command not found')
 
-                    command(rest_addr + endpoint,
-                            headers=rest_header,
-                            data=json.dumps(data))
+                    try:
+                        command(rest_addr + endpoint,
+                                headers=rest_header,
+                                data=json.dumps(data))
+                    except:
+                        # print kotekan output if sending REST command fails
+                        # (kotekan might have crashed and we want to know)
+                        p.wait()
+                        self.output = file(f_out.name).read()
+
+                        # Print out the output from Kotekan for debugging
+                        print self.output
+
+                        # Throw an exception if we don't exit cleanly
+                        if p.returncode:
+                            raise subprocess.CalledProcessError(p.returncode, cmd)
+
+                        print "Failed sending REST command: " + rtype + " to " + endpoint + " with data " + data
 
 
             # Wait for kotekan to finish and capture the output
