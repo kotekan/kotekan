@@ -140,14 +140,16 @@ public:
      *
      * @warning This may invalidate anything pointing at the input buffer.
      *
-     * @param buf_dest       The buffer to copy into.
-     * @param frame_id_dest  The buffer location to copy into.         The id of the frame to read.
      * @param buf_src        The buffer to copy from.
      * @param frame_id_src   The buffer location to copy from.
+     * @param buf_dest       The buffer to copy into.
+     * @param frame_id_dest  The buffer location to copy into.
+     *
+     * @returns A visFrameView of the copied frame.
      *
      */
-    static visFrameView copy_frame(Buffer* buf_dest, int frame_id_dest,
-                                   Buffer* buf_src, int frame_id_src);
+    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src,
+                                   Buffer* buf_dest, int frame_id_dest);
 
     /**
      * @brief Get the layout of the buffer from the structural parameters.
