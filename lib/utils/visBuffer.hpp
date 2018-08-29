@@ -130,6 +130,28 @@ public:
     visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
 
     /**
+     * @brief Copy a whole frame from a buffer and create a view of it.
+     *
+     * This will attempt to do a zero copy transfer of the frame for speed, and
+     * fall back on a full copy if any other processes consume from the input
+     * buffer.
+     *
+     * @note This will allocate metadata for the destination.
+     *
+     * @warning This may invalidate anything pointing at the input buffer.
+     *
+     * @param buf_src        The buffer to copy from.
+     * @param frame_id_src   The buffer location to copy from.
+     * @param buf_dest       The buffer to copy into.
+     * @param frame_id_dest  The buffer location to copy into.
+     *
+     * @returns A visFrameView of the copied frame.
+     *
+     */
+    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src,
+                                   Buffer* buf_dest, int frame_id_dest);
+
+    /**
      * @brief Get the layout of the buffer from the structural parameters.
      *
      * @param num_elements     Number of elements.

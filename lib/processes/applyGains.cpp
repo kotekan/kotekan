@@ -55,7 +55,7 @@ void applyGains::apply_config(uint64_t fpga_seq) {
         throw std::invalid_argument("applyGains: config: num_kept_updates has" \
                                     "to equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
-    // Time to blend old and new gains in seconds. Default is 5 minutes. 
+    // Time to blend old and new gains in seconds. Default is 5 minutes.
     tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
     if (tcombine < 0)
         throw std::invalid_argument("applyGains: config: combine_gains_time has" \
@@ -142,7 +142,7 @@ void applyGains::main_thread() {
 
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, 
+        if(wait_for_full_frame(in_buf,
                     unique_name.c_str(),input_frame_id) == nullptr) {
             break;
         }
@@ -241,14 +241,19 @@ void applyGains::main_thread() {
                                         * gain[ii]
                                         * gain_conj[jj];
                 // Update the weights.
-                out_weight[idx] = in_weight[idx] 
-                                           * weight_factor[ii] 
+                out_weight[idx] = in_weight[idx]
+                                           * weight_factor[ii]
                                            * weight_factor[jj];
                 idx++;
             }
             // Update the gains.
             output_frame.gain[ii] = input_frame.gain[ii] * gain[ii];
         }
+
+        // Report how old the gains being applied to the current data are.
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_update_age_seconds",
+            unique_name, tpast);
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
