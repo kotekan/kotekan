@@ -98,8 +98,6 @@ void baselineCompression::compress_thread(int offset) {
     dset_id output_dset_id;
     state_id stack_state_id;
 
-    double total_time = 0;
-
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
@@ -243,9 +241,7 @@ void baselineCompression::compress_thread(int offset) {
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_time", unique_name, elapsed
         );
-        INFO("Compression time %.4f", elapsed);
-        total_time += elapsed;
-        INFO("Total time %.4f", total_time);
+        DEBUG("Compression time %.4f", elapsed);
     }
 }
 
