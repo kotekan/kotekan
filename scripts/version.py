@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-C H I M E   R E L E A S E   V E R S I O N I N G
+KOTEKAN RELEASE VERSIONING
 """
 
 from pkgutil import get_loader
