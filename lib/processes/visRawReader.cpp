@@ -222,7 +222,9 @@ void visRawReader::main_thread() {
 			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->
                 num_elements = _inputs.size();
             // Fill data with zeros
-            auto frame = visFrameView(out_buf, frame_id);
+            size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
+            auto frame = visFrameView(out_buf, frame_id, _inputs.size(),
+                    num_vis, _ev.size());
             std::memset(frame.vis.data(), 0, sizeof(cfloat) * frame.num_prod);
             std::memset(frame.weight.data(), 0, sizeof(float) * frame.num_prod);
             std::memset(frame.eval.data(), 0, sizeof(float) * frame.num_ev);
