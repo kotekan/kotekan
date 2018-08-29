@@ -62,8 +62,6 @@ void applyGains::apply_config(uint64_t fpga_seq) {
                                     "to be positive (is "
                                     + std::to_string(tcombine) + ").");
 
-    updatable_config = config.get_string(unique_name, "updatable_config");
-
     // Get the path to gains directory
     gains_dir = config.get_string(unique_name, "gains_dir");
 

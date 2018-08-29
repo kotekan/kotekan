@@ -78,9 +78,6 @@ private:
     /// Number of gains updates to maintain
     uint64_t num_kept_updates;
 
-    /// Name of updatable config block for gain timestamps
-    std::string updatable_config;
-
     /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
     double tcombine;
 
