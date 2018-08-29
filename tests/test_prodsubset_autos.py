@@ -24,7 +24,7 @@ def subset_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("subset")
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
-        freq=subset_params['freq_ids'],
+        freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames']
     )
 
@@ -49,7 +49,7 @@ def test_subset(subset_data):
 
     for frame in subset_data:
         # With fill_ij, vis_ij = i+j*(1j)
-        assert (frame.vis.real == frame.vis.imag).all()    
+        assert (frame.vis.real == frame.vis.imag).all()
         assert (frame.eval == np.arange(
                 subset_params['num_ev'])).all()
         evecs = (np.arange(subset_params['num_ev'])[:, None] +

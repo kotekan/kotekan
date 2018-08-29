@@ -27,7 +27,7 @@ def subset_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("subset")
 
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
-        freq=subset_params['freq_ids'],
+        freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames']
     )
 

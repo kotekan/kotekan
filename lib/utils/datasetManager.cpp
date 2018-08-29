@@ -1,20 +1,26 @@
 #include <typeinfo>
 #include <functional>
 #include <algorithm>
+#include <iostream>
 
 #include "datasetManager.hpp"
 #include "fmt.hpp"
 
 // Initialise static map of types
-std::map<std::string,
-         std::function<state_uptr(json&, state_uptr)>>
-    datasetState::_type_create_funcs;
+std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&
+datasetState::_registered_types()
+{
+    static std::map<std::string, std::function<state_uptr(json&, state_uptr)>>
+        _register;
+
+    return _register;
+}
 
 
 state_uptr datasetState::_create(std::string name, json & data,
                                  state_uptr inner) {
 
-    return _type_create_funcs[name](data, std::move(inner));
+    return _registered_types()[name](data, std::move(inner));
 }
 
 
@@ -117,7 +123,6 @@ datasetManager::ancestors(dset_id dset) const {
     // states performed
     while(dset >= 0) {
         datasetState * t = _states.at(_datasets[dset].first).get();
-
         // Walk over the inner states, given them all the same dataset id.
         while(t != nullptr) {
             a_list.emplace_back(dset, t);

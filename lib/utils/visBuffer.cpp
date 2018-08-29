@@ -134,13 +134,25 @@ void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
 
 // Copy the non-visibility parts of the buffer
 void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
-    std::copy(frame_to_copy.eval.begin(), 
-              frame_to_copy.eval.end(), 
+
+    // Copy eigenvector parts
+    std::copy(frame_to_copy.eval.begin(),
+              frame_to_copy.eval.end(),
               eval.begin());
     std::copy(frame_to_copy.evec.begin(),
-              frame_to_copy.evec.end(), 
+              frame_to_copy.evec.end(),
               evec.begin());
     erms = frame_to_copy.erms;
+
+    // Copy per input flags
+    std::copy(frame_to_copy.flags.begin(),
+              frame_to_copy.flags.end(),
+              flags.begin());
+
+    // Copy gains
+    std::copy(frame_to_copy.gain.begin(),
+              frame_to_copy.gain.end(),
+              gain.begin());
 }
 
 struct_layout visFrameView::calculate_buffer_layout(
