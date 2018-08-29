@@ -96,7 +96,6 @@ protected:
 
     // Parameters saved from the config files
     bool use_dataset_manager;
-    size_t num_freq;
     std::string root_path;
     std::string instrument_name;
     std::string weights_type;
@@ -115,29 +114,24 @@ protected:
     /// Dataset ID of current stream
     dset_id dataset;
 
-    /// The list of frequencies and inputs that gets written into the index maps
-    /// of the HDF5 files
-    std::vector<freq_ctype> freqs;
-    std::vector<input_ctype> inputs;
-
-    /// The mapping from frequency bin id to output frequency index
-    std::map<uint32_t, uint32_t> freq_map;
+    /// State ID for the internal datasetState used if the datasetManager is not
+    /// being used externally
+    state_id writer_dstate;
 
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
-    // Vector of products if options to restrict them are present
-    std::vector<prod_ctype> prods;
-
     /// Params for supporting old node based HDF5 writing scheme
     bool node_mode;
-    std::vector<uint32_t> freq_id_list;
 
     // Number of eigenvectors to write out
     size_t num_ev;
 
     /// Number of products to write
-    size_t num_prod;
+    size_t num_vis;
+
+    /// Frequency IDs that we are expecting
+    std::map<uint32_t, uint32_t> freq_id_map;
 
     /// Keep track of the average write time
     movingAverage write_time;
@@ -165,8 +159,9 @@ protected:
  *          a file, the released file will be partially empty.
  *
  * @par REST Endpoints
- * @endpoint /release_cal_file ``GET`` Stop writing and make a file available
- *           for reading. Responds with a path to the file.
+ * @endpoint /release_live_file/process name>    ``GET`` Stop writing
+ *           and make a file available for reading. Responds with a path to
+ *           the file.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
@@ -174,8 +169,7 @@ protected:
  *         @buffer_metadata visMetadata
  *
  * @conf   root_path        String. Location in filesystem to write to.
- * @conf   file_name        String. Name of file to buffer data in (omit ext).
- * @conf   frozen_file_name String. Name of file to release for reading (omit ext).
+ * @conf   file_base        String. Base filename to buffer data in (omit ext).
  * @conf   dir_name         String. Name of directory to hold the above files.
  * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
  * @conf   instrument_name  String (default: chime). Name of the instrument
@@ -195,7 +189,7 @@ protected:
  * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Fixed length of the ring file
  *                          in number of time samples.
- * @conf   window           Int (default 20). Number of samples to keep active
+ * @conf   window           Int (default 10). Number of samples to keep active
  *                          for writing at any time.
  *
  * @par Metrics
@@ -226,7 +220,7 @@ protected:
 
     std::shared_ptr<visCalFileBundle> file_cal_bundle;
 
-    std::string acq_name, file_name, frozen_file_name;
+    std::string acq_name, fname_live, fname_frozen;
 
     std::string endpoint;
 
@@ -234,14 +228,8 @@ protected:
 
 inline void check_remove(std::string fname) {
     if (remove(fname.c_str()) != 0) {
-        throw std::runtime_error("Could not remove file " + fname);
-    }
-}
-
-inline void check_rename(std::string src, std::string dest) {
-    if (rename(src.c_str(), dest.c_str()) != 0) {
-        throw std::runtime_error("Could not move file " + src
-                + " to " + dest);
+        if (errno != ENOENT)
+            throw std::runtime_error("Could not remove file " + fname);
     }
 }
 

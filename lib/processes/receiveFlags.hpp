@@ -17,6 +17,10 @@
  * This process registeres as a subscriber to an updatable config block. The
  * full name of the block should be defined in the value <updateable_block>
  *
+ * @note If there are no other consumers on this buffer it will be able to do a
+ *       much faster zero copy transfer of the frame from input to output
+ *       buffer.
+ *
  * @par Buffers
  * @buffer in_buf The input stream.
  *         @buffer_format visBuffer.
@@ -26,17 +30,20 @@
  *         @buffer_metadata visMetadata
  *
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
- * correlator data.
+ *   correlator data.
  * @conf   updatable_block  String. The full name of the updatable_block that
- * will provide new flagging values (e.g. "/dynamic_block/flagging").
+ *   will provide new flagging values (e.g. "/dynamic_block/flagging").
  *
- * @metric kotekan_receiveFlags_old_update_seconds  The difference between the
- *  timestamp of a received update and the timestamp of the current frame, in
- *  case the update has a later timestamp than the current frame (in seconds).
- * @metric kotekan_receiveFlags_old_frame_seconds   The difference between the
- *  timestamps of the current frame and the oldes stored update, in case there
- *  is no update with a timestamp that is more recent than the timestamp of the
- *  current frame (in seconds).
+ * @metric kotekan_receiveflags_old_update_seconds  The difference between the
+ *   timestamp of a received update and the timestamp of the current frame, in
+ *   case the update has a later timestamp than the current frame (in seconds).
+ * @metric kotekan_receiveflags_old_frame_seconds   The difference between the
+ *   timestamps of the current frame and the oldest stored update, in case
+ *   there is no update with a timestamp that is more recent than the timestamp
+ *   of the current frame (in seconds).
+ * @metric kotekan_receiveflags_update_age_seconds The time difference in
+ *   seconds between the current frame being processed and the time stamp of
+ *   the flag update being applied.
  *
  * @author Rick Nitsche
  */
@@ -72,7 +79,7 @@ private:
 
     // config values
     /// Number of elements
-    size_t num_elems;
+    size_t num_elements;
 
     /// Name of the updatable block in conf that contains flags
     std::string updatable_config;

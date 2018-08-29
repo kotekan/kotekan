@@ -19,7 +19,7 @@ REGISTER_KOTEKAN_PROCESS(visDebug);
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 REGISTER_KOTEKAN_PROCESS(visMerge);
 REGISTER_KOTEKAN_PROCESS(visCheckTestPattern);
-
+REGISTER_KOTEKAN_PROCESS(registerInitialDatasetState);
 
 visTransform::visTransform(Config& config,
                            const string& unique_name,
@@ -654,6 +654,7 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
         freq_ids = config.get_array<uint32_t>(unique_name, "freq_ids");
     }
     else {
+        freq_ids.resize(1024);
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
@@ -681,6 +682,11 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
 
 void registerInitialDatasetState::main_thread() {
 
+    // In case we have multiple processes all registering different datasets we
+    // need to make sure that they all get distinct roots, use this for
+    // co-ordination.
+    static std::atomic<int> root_dataset_id(-1);
+
     uint32_t frame_id_in = 0;
     uint32_t frame_id_out = 0;
 
@@ -697,8 +703,9 @@ void registerInitialDatasetState::main_thread() {
     auto s = dm.add_state(std::move(prod_state));
     state_id initial_state = s.first;
 
-    dset_id current_input_dataset = -1;
-    dset_id current_output_dataset = -1;
+    // Get the new dataset ID, this uses the current root ID and then decrements
+    // it for any other instance of this process.
+    dset_id output_dataset = dm.add_dataset(initial_state, root_dataset_id--);
 
     while (!stop_thread) {
         // Wait for an input frame
@@ -713,19 +720,11 @@ void registerInitialDatasetState::main_thread() {
         }
 
         // Copy frame into output buffer
-        auto frame_in = visFrameView(in_buf, frame_id_in);
-        allocate_new_metadata_object(out_buf, frame_id_out);
-        auto frame_out = visFrameView(out_buf, frame_id_out, frame_in);
-
-        // Update the dataset ID if needed
-        if (frame_in.dataset_id != current_input_dataset) {
-            current_input_dataset = frame_in.dataset_id;
-            current_output_dataset = dm.add_dataset(initial_state,
-                                                    current_input_dataset);
-        }
+        auto frame_out = visFrameView::copy_frame(in_buf, frame_id_in,
+                                                  out_buf, frame_id_out);
 
         // Assign the frame the correct dataset ID
-        frame_out.dataset_id = current_output_dataset;
+        frame_out.dataset_id = output_dataset;
 
         // Mark output frame full and input frame empty
         mark_frame_full(out_buf, unique_name.c_str(), frame_id_out);

@@ -304,7 +304,7 @@ void fakeVis::fill_mode_chime(visFrameView& frame)
             int pos_i = i % 256;
             int pos_j = j % 256;
 
-            frame.vis[ind] = {(float)(cyl_i - cyl_j), (float)(pos_i - pos_j)};
+            frame.vis[ind] = {(float)(cyl_j - cyl_i), (float)(pos_j - pos_i)};
             ind++;
         }
     }

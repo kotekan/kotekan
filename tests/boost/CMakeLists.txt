@@ -28,7 +28,7 @@ endif()
 foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
 	get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
-    target_link_libraries(${testName} kotekan_utils kotekan_core kotekan_processes)
+    target_link_libraries(${testName} kotekan_libs libinclude dl m pthread)
 
     if(${USE_HDF5})
         include_directories(${HDF5_INCLUDE_DIRS})

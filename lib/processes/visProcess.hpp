@@ -275,10 +275,14 @@ private:
 
 
 /**
- * @brief Register the initial state of the buffers with the
+ * @brief Register the initial state of the buffers with the datasetManager.
  *
  * This task tags a stream with a properly allocated dataset_id and adds
  * associated datasetStates to the datasetManager.
+ *
+ * @note If there are no other consumers on this buffer it will be able to do a
+ *       much faster zero copy transfer of the frame from input to output
+ *       buffer.
  *
  * @par Buffers
  * @buffer in_bufs The untagged data.

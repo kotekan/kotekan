@@ -26,13 +26,20 @@ using json = nlohmann::json;
  * This task takes a stream of uncompressed visibility data and performs a
  * (weighted) average over the equivalent baselines.
  *
+ * @note This task requires there to be an inputState and prodState registered
+ *       for the incoming dataset.
+ *
  * @par Buffers
- * @buffer in_bufs The input uncompressed data (must be full N^2).
+ * @buffer in_bufs The input uncompressed data.
  *         @buffer_format visBuffer structured.
  *         @buffer_metadata visMetadata
  * @buffer out_buf The merged and transformed buffer
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
+ *
+ * @conf stack_type String. Type of stacking to apply to the data. Look at
+ *                  documentation of stack_X functions for details.
+ * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
  *
  * @author Richard Shaw
  */
@@ -47,13 +54,20 @@ public:
 
     void apply_config(uint64_t fpga_seq) override;
 
-    // Main loop for the process
+    // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;
 
 private:
 
-    // TODO: remove this when dataset manager arrives
-    uint32_t num_elements;
+	/// Entrancepoint for n threads. Each thread takes frames with a
+	/// different frame_id from the buffer and compresses them.
+    void compress_thread(int offset);
+
+    ///Vector to hold the thread handles
+    std::vector<std::thread> thread_handles;
+
+    // The extra inputs we are excluding
+    std::vector<uint32_t> exclude_inputs;
 
     // Alias for the type of a stack definition function. Damn C++ is verbose :)
     // Return is a pair of (num stacks total, stack_map), where stack_map is a
@@ -72,18 +86,46 @@ private:
     /// The stack function to use.
     stack_def_fn calculate_stack;
 
+    /// Number of parallel threads accessing the same buffers (default 1)
+    uint32_t num_threads;
+
     // Buffers to read/write
     Buffer* in_buf;
     Buffer* out_buf;
 };
 
-// Stack along the band diagonals
+
+/**
+ * @brief Combine all feeds on the same diagonal of the correlation matrix.
+ *
+ * This is mostly useful for testing as in most cases it will combine
+ * non-redundant visibilities.
+ *
+ * @param inputs The set of inputs.
+ * @param prods  The products we are stacking.
+ *
+ * @returns Stack definition.
+ **/
 std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods
 );
 
-// Stack along the band diagonals
+/**
+ * @brief Stack redundant baselines between cylinder pairs for CHIME.
+ *
+ * This stacks together redundant baselines between cylinder pairs, but does
+ * not stack distinct pairs together. For instance A1,B2 will be stacked in the
+ * same group as A2,B3, but not the same group as B1,C2.
+ *
+ * This will give back stacks ordered by (polarisation pair, cylinder pair, NS
+ * feed separation).
+ *
+ * @param inputs The set of inputs.
+ * @param prods  The products we are stacking.
+ *
+ * @returns Stack definition.
+ **/
 std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
     const std::vector<input_ctype>& inputs,
     const std::vector<prod_ctype>& prods

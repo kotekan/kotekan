@@ -213,6 +213,12 @@ else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 endif()
 
+# Add fcx-limited-range to speed up complex arithmetic if we are using GCC
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
+endif()
+
 if (${USE_OPENCL})
     install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl )
 endif ()

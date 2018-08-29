@@ -59,13 +59,10 @@ public:
 
 protected:
 
-    // Implement the create_file method
+    // Implement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs,
-                     const std::vector<prod_ctype>& prods,
-                     size_t num_ev, size_t max_time) override;
+                     dset_id dataset, size_t num_ev, size_t max_time) override;
 
     // Implement the alternative create file method
     void create_file(const std::string& name,
@@ -165,10 +162,7 @@ protected:
     // Reimplement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs,
-                     const std::vector<prod_ctype>& prods,
-                     size_t num_ev, size_t max_time) override;
+                     dset_id dataset, size_t num_ev, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     void create_time_axis(size_t num_time) override;

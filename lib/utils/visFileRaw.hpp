@@ -9,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstdint>
+#include <fcntl.h>
 
 #include "visFile.hpp"
 #include "visUtil.hpp"
@@ -83,13 +84,13 @@ public:
 
 protected:
 
-    // Implement the create_file method
+    // Implement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs,
-                     const std::vector<prod_ctype>& prods,
-                     size_t num_ev, size_t max_time) override;
+                     dset_id dataset, size_t num_ev, size_t max_time) override;
+
+    /// Flags used for opening new files
+    int oflags = O_CREAT | O_EXCL | O_WRONLY;
 
     // Implement the alternative create file method
     void create_file(const std::string& name,

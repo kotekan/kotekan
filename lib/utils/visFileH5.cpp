@@ -29,41 +29,6 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 // Implementation of standard HDF5 visibility data file
 //
 
-void visFileH5::create_file(const std::string& name,
-                            const std::map<std::string, std::string>& metadata,
-                            const std::vector<freq_ctype>& freqs,
-                            const std::vector<input_ctype>& inputs,
-                            const std::vector<prod_ctype>& prods,
-                            size_t num_ev, size_t num_time) {
-
-    std::string data_filename = name + ".h5";
-
-    lock_filename = create_lockfile(data_filename);
-
-    // Determine whether to write the eigensector or not...
-    write_ev = (num_ev > 0);
-
-    INFO("Creating new output file %s", name.c_str());
-
-    file = std::unique_ptr<File>(
-        new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
-    );
-    create_axes(freqs, inputs, prods, num_ev, num_time);
-    create_datasets();
-
-    // Write out metadata into flle
-    for (auto item : metadata) {
-        file->createAttribute<std::string>(
-            item.first, DataSpace::From(item.second)
-        ).write(item.second);
-    }
-
-    // Add weight type flag where gossec expects it
-    dset("vis_weight").createAttribute<std::string>(
-        "type", DataSpace::From(metadata.at("weight_type"))
-    ).write(metadata.at("weight_type"));
-}
-
 void visFileH5::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
@@ -81,13 +46,39 @@ void visFileH5::create_file(
         throw std::runtime_error("Could not create file.");
     }
 
-    create_file(name, metadata, unzip(fstate->get_freqs()).second,
-                istate->get_inputs(), pstate->get_prods(), num_ev, max_time);
-
     if(sstate) {
         throw std::runtime_error("H5 writers do not currently worked with "
                                  "stacked data.");
     }
+
+    std::string data_filename = name + ".h5";
+
+    lock_filename = create_lockfile(data_filename);
+
+    // Determine whether to write the eigensector or not...
+    write_ev = (num_ev > 0);
+
+    INFO("Creating new output file %s", name.c_str());
+
+    file = std::unique_ptr<File>(
+        new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
+    );
+    create_axes(unzip(fstate->get_freqs()).second, istate->get_inputs(),
+                pstate->get_prods(), num_ev, max_time);
+
+    create_datasets();
+
+    // Write out metadata into flle
+    for (auto item : metadata) {
+        file->createAttribute<std::string>(
+            item.first, DataSpace::From(item.second)
+        ).write(item.second);
+    }
+
+    // Add weight type flag where gossec expects it
+    dset("vis_weight").createAttribute<std::string>(
+        "type", DataSpace::From(metadata.at("weight_type"))
+    ).write(metadata.at("weight_type"));
 }
 
 
@@ -273,11 +264,9 @@ void visFileH5::write_sample(
 void visFileH5Fast::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    const std::vector<freq_ctype>& freqs,
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods, size_t num_ev, size_t max_time
+    dset_id dataset, size_t num_ev, size_t max_time
 ) {
-    visFileH5::create_file(name, metadata, freqs, inputs, prods, num_ev, max_time);
+    visFileH5::create_file(name, metadata, dataset, num_ev, max_time);
     setup_raw();
 }
 

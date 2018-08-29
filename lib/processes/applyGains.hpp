@@ -34,14 +34,17 @@
  * will provide new flagging values (e.g. "/dynamic_block/gains").
  * @conf   gains_dir        String. The path to the directory holding the gains
  * file.
- * @conf   tcombine         Double. Time (in seconds) over which to combine old 
+ * @conf   tcombine         Double. Time (in seconds) over which to combine old
  * and new gains to prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  *
  * @metric kotekan_applygains_old_frame_seconds The difference between the
- *  timestamps of the current frame and the oldest stored update, in case there
- *  is no update with a timestamp that is older than the timestamp of the
- *  current frame (in seconds).
+ *     timestamps of the current frame and the oldest stored update, in case
+ *     there is no update with a timestamp that is older than the timestamp of
+ *     the current frame (in seconds).
+ * @metric kotekan_applygains_update_age_seconds The time difference in
+ *     seconds between the current frame being processed and the time stamp of
+ *     the gains update being applied.
  *
  * @author Mateus Fandino
  */
@@ -90,7 +93,7 @@ private:
     Buffer * in_buf;
 
     /// Mutex to protect access to gains
-    std::mutex gain_mtx; 
+    std::mutex gain_mtx;
 
 };
 

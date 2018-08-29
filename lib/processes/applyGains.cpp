@@ -55,7 +55,7 @@ void applyGains::apply_config(uint64_t fpga_seq) {
         throw std::invalid_argument("applyGains: config: num_kept_updates has" \
                                     "to equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
-    // Time to blend old and new gains in seconds. Default is 5 minutes. 
+    // Time to blend old and new gains in seconds. Default is 5 minutes.
     tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
     if (tcombine < 0)
         throw std::invalid_argument("applyGains: config: combine_gains_time has" \
@@ -126,6 +126,8 @@ bool applyGains::receive_update(nlohmann::json &json) {
     gain_mtx.lock();
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
     gain_mtx.unlock();
+    INFO("Updated gains to %s.", gtag.c_str());
+
     return true;
 }
 
@@ -142,7 +144,7 @@ void applyGains::main_thread() {
 
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, 
+        if(wait_for_full_frame(in_buf,
                     unique_name.c_str(),input_frame_id) == nullptr) {
             break;
         }
@@ -215,7 +217,20 @@ void applyGains::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Copy frame and create view
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
+        auto output_frame = visFrameView(out_buf, output_frame_id,
+                                         input_frame.num_elements,
+                                         input_frame.num_prod,
+                                         input_frame.num_ev);
+
+        // Copy over the data we won't modify
+        output_frame.copy_nonconst_metadata(input_frame);
+        output_frame.copy_nonvis_buffer(input_frame);
+
+        cfloat * out_vis = output_frame.vis.data();
+        cfloat * in_vis = input_frame.vis.data();
+        float * out_weight = output_frame.weight.data();
+        float * in_weight = input_frame.weight.data();
+
 
         // For now this doesn't try to do any type of check on the
         // ordering of products in vis and elements in gains.
@@ -224,18 +239,23 @@ void applyGains::main_thread() {
         for (int ii=0; ii<input_frame.num_elements; ii++) {
             for (int jj=ii; jj<input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
-                output_frame.vis[idx] = input_frame.vis[idx]
+                out_vis[idx] = in_vis[idx]
                                         * gain[ii]
                                         * gain_conj[jj];
                 // Update the weights.
-                output_frame.weight[idx] = input_frame.weight[idx] 
-                                           * weight_factor[ii] 
+                out_weight[idx] = in_weight[idx]
+                                           * weight_factor[ii]
                                            * weight_factor[jj];
                 idx++;
             }
             // Update the gains.
             output_frame.gain[ii] = input_frame.gain[ii] * gain[ii];
         }
+
+        // Report how old the gains being applied to the current data are.
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_update_age_seconds",
+            unique_name, tpast);
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

@@ -2,7 +2,6 @@
 #include "visFileRaw.hpp"
 #include "errors.h"
 #include <time.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <iomanip>
 #include <algorithm>
@@ -23,28 +22,46 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 //
 // Implementation of raw visibility data file
 //
-
-void visFileRaw::create_file(const std::string& name,
-                             const std::map<std::string, std::string>& metadata,
-                             const std::vector<freq_ctype>& freqs,
-                             const std::vector<input_ctype>& inputs,
-                             const std::vector<prod_ctype>& prods,
-                             size_t num_ev, size_t num_time) {
-
+void visFileRaw::create_file(
+    const std::string& name,
+    const std::map<std::string, std::string>& metadata,
+    dset_id dataset, size_t num_ev, size_t max_time)
+{
     INFO("Creating new output file %s", name.c_str());
 
+    // Get properties of stream from datasetManager
+    auto& dm = datasetManager::instance();
+    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
+    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
+    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
+    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    if (!istate || !pstate || !fstate) {
+        ERROR("Required datasetStates not found for dataset_id=%i", dataset);
+        throw std::runtime_error("Could not create file.");
+    }
+
+
+    // Set the axis metadata
     file_metadata["attributes"] = metadata;
-    file_metadata["index_map"]["freq"] = freqs;
-    file_metadata["index_map"]["input"] = inputs;
-    file_metadata["index_map"]["prod"] = prods;
+    file_metadata["index_map"]["freq"] = unzip(fstate->get_freqs()).second;
+    file_metadata["index_map"]["input"] = istate->get_inputs();
+    file_metadata["index_map"]["prod"] = pstate->get_prods();
 
     // Create and add eigenvalue index
     std::vector<int> eval_index(num_ev);
     std::iota(eval_index.begin(), eval_index.end(), 0);
     file_metadata["index_map"]["ev"] = eval_index;
 
-    nfreq = freqs.size();
-    size_t ninput = inputs.size(), nprod = prods.size();
+    if (sstate) {
+        file_metadata["index_map"]["stack"] = sstate->get_stack_map();
+        file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
+    }
+
+
+    // Calculate the file structure
+    nfreq = fstate->get_freqs().size();
+    size_t ninput = istate->get_inputs().size();
+    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 
     // Set the alignment (in kB)
     // TODO: find some way of getting this from config
@@ -52,7 +69,7 @@ void visFileRaw::create_file(const std::string& name,
 
     // Calculate the file structure
     auto layout = visFrameView::calculate_buffer_layout(
-        ninput, nprod, num_ev
+        ninput, nvis, num_ev
     );
     data_size = layout["_struct"].second;
     metadata_size = sizeof(visMetadata);
@@ -65,10 +82,11 @@ void visFileRaw::create_file(const std::string& name,
     file_metadata["structure"]["frame_size"] = frame_size;
     file_metadata["structure"]["nfreq"] = nfreq;
 
+
     // Create lock file and then open the other files
     lock_filename = create_lockfile(name);
     metadata_file = std::ofstream(name + ".meta", std::ios::binary);
-    if((fd = open((name + ".data").c_str(), O_CREAT | O_EXCL | O_WRONLY,
+    if((fd = open((name + ".data").c_str(), oflags,
                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) == -1) {
         std::runtime_error(fmt::format("Failed to open file {}: {}.",
                                        name + ".data", strerror(errno)));
@@ -76,7 +94,7 @@ void visFileRaw::create_file(const std::string& name,
 
     // Preallocate data file (without increasing the length)
 #ifdef __linux__
-    fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * num_time);
+    fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
 #endif
 }
 

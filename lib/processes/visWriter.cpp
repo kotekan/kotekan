@@ -9,12 +9,14 @@
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
 #include "datasetManager.hpp"
+#include "visCompression.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
 #include <time.h>
+#include <regex>
 #include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
@@ -37,10 +39,8 @@ visWriter::visWriter(Config& config,
     // TODO: we may want to validate here rather than at creation time
     file_type = config.get_string_default(unique_name, "file_type", "hdf5fast");
 
-    // Get the input labels
-    inputs = std::get<1>(parse_reorder_default(config, unique_name));
-
     // If specified, get the weights type to write to attributes
+    // TODO: add this to the datasetManager framework
     weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
 
     file_length = config.get_int_default(unique_name, "file_length", 1024);
@@ -50,34 +50,51 @@ visWriter::visWriter(Config& config,
     bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
 
-    node_mode = config.get_bool_default(unique_name, "node_mode", false);
-
     use_dataset_manager = config.get_bool_default(
         unique_name, "use_dataset_manager", false);
 
-    // Calculate the set of products we are writing from the config
-    prods = std::get<1>(parse_prod_subset(config, unique_name));
-    num_prod = prods.size();
+    // If we are not using the dataset manager directly, create fake entries
+    // from the config information supplied to the class
+    if (!use_dataset_manager) {
 
-    // TODO: dynamic setting of instrument name, shouldn't be hardcoded here, At
-    // the moment this either uses chime, or if set to use a per_node_instrument
-    // it uses the hostname of the current node
+        // Get the input labels and the products we are writing from the config
+        auto ispec = std::get<1>(parse_reorder_default(config, unique_name));
+        auto pspec = std::get<1>(parse_prod_subset(config, unique_name));
+
+        // Get the frequency IDs we are going to write
+        auto freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
+        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+        std::transform(freq_id_list.begin(), freq_id_list.end(),
+                       std::back_inserter(fspec),
+                       [](uint32_t f) -> std::pair<uint32_t, freq_ctype> {
+                           return {f, {freq_from_bin(f), (400.0 / 1024)}};
+                       });
+
+        // Create the datasetState
+        auto& dm = datasetManager::instance();
+
+        // Construct a nested description of the initial state
+        state_uptr freq_state = std::make_unique<freqState>(fspec);
+        state_uptr input_state = std::make_unique<inputState>(
+            ispec, std::move(freq_state));
+        state_uptr prod_state = std::make_unique<prodState>(
+            pspec, std::move(input_state));
+
+        // Register the initial state with the manager
+        auto s = dm.add_state(std::move(prod_state));
+        writer_dstate = s.first;
+    }
+
+    // TODO: long term this should come from some dynamic source (dM?)
+    instrument_name = config.get_string_default(unique_name, "instrument_name", "chime");
+
+    // Set the instrument name from the hostname if in node mode
+    node_mode = config.get_bool_default(unique_name, "node_mode", false);
     if(node_mode) {
-
-        // Set the instrument_name from the hostname
         std::string t(256, '\0');
         gethostname(&t[0], 256);
         // Here we trim the hostname to the first alphanumeric segment only.
         instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
-
-        node_mode = true;
-        num_freq = 4;
-
-    } else {
-        instrument_name = config.get_string_default(unique_name, "instrument_name", "chime");
-
-        if (!use_dataset_manager)
-            freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
     }
 }
 
@@ -107,16 +124,21 @@ void visWriter::main_thread() {
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        // Check if the frequency we are receiving is on the list of frequencies we are processing
-        if(freq_map.count(frame.freq_id) == 0) {
-            WARN("Frequency id=%i is not enabled for visWriter, discarding frame", frame.freq_id);
-        } else if (frame.num_prod != num_prod) {
+        // Check if the frequency we are receiving is on the list of frequencies
+        // we are processing
+        if (freq_id_map.count(frame.freq_id) == 0) {
+            WARN("Frequency id=%i not enabled for visWriter, discarding frame",
+                 frame.freq_id);
 
+        // Check that the number of visibilities matches what we expect
+        } else if (frame.num_prod != num_vis) {
             string msg = fmt::format(
-                "Number of products in frame doesn't match file ({} != {}).", frame.num_prod, num_prod
+                "Number of products in frame doesn't match file ({} != {}).",
+                frame.num_prod, num_vis
             );
             throw std::runtime_error(msg);
 
+        // Check the number of eigen vectors is as expected
         } else if (num_ev > 0  and frame.num_ev != num_ev) {
 
             string msg = fmt::format(
@@ -125,12 +147,19 @@ void visWriter::main_thread() {
             );
             throw std::runtime_error(msg);
 
+        // Check the dataset ID hasn't changed
+        } else if (use_dataset_manager && frame.dataset_id != dataset) {
+            string msg = fmt::format(
+                "Unexpected dataset ID={} received (expected id={}).",
+                frame.dataset_id, dataset
+            );
+            throw std::runtime_error(msg);
+
         } else {
 
             INFO("Writing frequency id=%i", frame.freq_id);
 
-            // Lookup the frequency index if reordering, otherwise write out in buffer order
-            uint32_t freq_ind = freq_map[frame.freq_id];
+            uint32_t freq_ind = freq_id_map[frame.freq_id];
 
             // Add all the new information to the file.
             double start = current_time();
@@ -174,70 +203,40 @@ void visWriter::init_acq() {
 
     // Fetch out information from the buffers that are needed for setting  up
     // the acq. For the moment just read the first frame.
-    unsigned int frame_id = 0;
+    wait_for_full_frame(in_buf, unique_name.c_str(), 0);
+    auto frame = visFrameView(in_buf, 0);
 
-    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    auto& dm = datasetManager::instance();
 
-    auto frame = visFrameView(in_buf, frame_id);
-
+    // Get the dataset ID that the downstream files can use to determine what
+    // they will be writing.
     if (use_dataset_manager) {
-        // Using the dataset manager we should be able to get a complete
-        // specification of the data we are receiving...
-
-        auto& dm = datasetManager::instance();
-
-        // Save the current dataset ID
         dataset = frame.dataset_id;
-
-        // Get the frequency spec and set the ID list and freq index_map arrays
-        auto fstate = dm.closest_ancestor_of_type<freqState>(frame.dataset_id);
-        if (fstate.second == nullptr) {
-            throw std::runtime_error(
-                fmt::format("Required freqState not available for "
-                            "dataset_id={}\n", frame.dataset_id)
-            );
-        }
-
-        std::tie(freq_id_list, freqs) = unzip(fstate.second->get_freqs());
-
-        // Set the frequency remapping
-        uint32_t fpos = 0;
-        for(auto id : freq_id_list)
-            freq_map[id] = fpos++;
-
-        // Get the input spec
-        auto istate = dm.closest_ancestor_of_type<inputState>(frame.dataset_id);
-        if (istate.second == nullptr) {
-            throw std::runtime_error(
-                fmt::format("Required inputState not available for "
-                            "dataset_id={}\n", frame.dataset_id)
-            );
-        }
-        inputs = istate.second->get_inputs();
-
-        // Get the product spec
-        auto pstate = dm.closest_ancestor_of_type<prodState>(frame.dataset_id);
-        if (pstate.second == nullptr) {
-            throw std::runtime_error(
-                fmt::format("Required prodState not available for "
-                            "dataset_id={}\n", frame.dataset_id)
-            );
-        }
-        prods = pstate.second->get_prods();
-
-        chunk_id = 0;
+    } else {
+        dataset = dm.add_dataset(writer_dstate, -1);
     }
-    else {
-        // ... if we are not using the datasetManager we need to infer it from
-        // the freq_id and config files.
-        setup_freq(frame.freq_id);
-    }
+
+    // Get the frequency spec to determine the freq_ids expected at this Writer.
+    auto fstate = dm.closest_ancestor_of_type<freqState>(
+        frame.dataset_id).second;
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs())
+        freq_id_map[f.first] = ind++;
+
+    // Get the product spec and (if available) the stackState to determine the
+    // number of vis entries we are expecting
+    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
+    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+
+    // TODO: chunk ID is not really supported now. Just set it to zero.
+    chunk_id = 0;
 
     // Get the current user
     std::string user(256, '\0');
     user = (getlogin_r(&user[0], 256) == 0) ? user.c_str() : "unknown";
 
-    // Get the current hostname of the system
+    // Get the current hostname of the system for the metadata
     std::string hostname(256, '\0');
     gethostname(&hostname[0], 256);
     hostname = hostname.c_str();
@@ -268,54 +267,10 @@ void visWriter::init_acq() {
 
 
 void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
-
-    // Create the visFileBundle. This will not create any files until add_sample
-    // is called
-    if (use_dataset_manager) {
-        file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, instrument_name, metadata, chunk_id,
-            rollover, window, dataset, num_ev, file_length
-        );
-    }
-    else {
-        file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, instrument_name, metadata, chunk_id,
-            rollover, window, freqs, inputs, prods, num_ev, file_length
-        );
-    }
-}
-
-
-void visWriter::setup_freq(uint32_t freq_id) {
-    // TODO: this function needs to do three things: set the frequency input map
-    // (freqs), set the frequency ordering (freq_map) and set the chunk ID
-    // (chunk_id).
-    if(node_mode) {
-        // Output all the frequencies that we have found
-        INFO("Frequency bin found: %i", freq_id);
-
-        // TODO: this uses the hacky way of deriving the chunk ID
-        unsigned int node_id = freq_id % 256;
-
-        // Set the list of frequency ids that this node will deal with
-        for(unsigned int i = 0; i < 4; i++) {
-            freq_id_list.push_back(256 * i + node_id);
-        }
-    }
-
-    // Set the chunk_id
-    // TODO: eventually this should be set properly, but at the moment as we are
-    // not merging into a single dir, chunk_id=0 should always be fine
-    chunk_id = 0;
-
-    // Sort the streams into bin order, this will give the order in which they
-    // are written out
-    unsigned int fpos = 0;
-    for(auto id : freq_id_list) {
-        freq_map[id] = fpos;
-        freqs.push_back({freq_from_bin(id), (400.0 / 1024)});
-        fpos++;
-    }
+    file_bundle = std::make_unique<visFileBundle>(
+        file_type, root_path, instrument_name, metadata, chunk_id,
+        rollover, window, dataset, num_ev, file_length
+    );
 }
 
 
@@ -325,28 +280,36 @@ visCalWriter::visCalWriter(Config &config,
     visWriter::visWriter(config, unique_name, buffer_container) {
 
     // Register REST callback
-    endpoint = "/release_cal_file";
+    endpoint = "/release_live_file/" + std::regex_replace(unique_name, std::regex("^/+"), "");
     using namespace std::placeholders;
     restServer::instance().register_get_callback(endpoint,
             std::bind(&visCalWriter::rest_callback, this, _1));
 
     // Get file name to write to
     // TODO: strip file extensions?
-    file_name = config.get_string_default(unique_name, "file_name", "live");
+    std::string fname_base = config.get_string_default(unique_name, "file_base", "cal");
     acq_name = config.get_string_default(unique_name, "dir_name", "cal");
-    frozen_file_name = config.get_string_default(unique_name,
-                                                 "frozen_file_name", "cal");
+    // Initially start with this buffer configuration
+    fname_live = fname_base + "_A";
+    fname_frozen = fname_base + "_B";
+
+    // Use a very short window by default
+    window = config.get_int_default(unique_name, "window", 10);
 
     // Force use of VisFileRing
     file_type = "ring";
 
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
-    if (access((full_path + file_name + ".data").c_str(), F_OK) == 0) {
-        // Delete existing files
-        INFO(("Clobering files " + full_path + file_name + ".*").c_str());
-        check_remove(full_path + file_name + ".data");
-        check_remove(full_path + file_name + ".meta");
+     if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
+        || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
+        INFO(("Clobering files in " + full_path).c_str());
+        check_remove((full_path + fname_base + "_A.data").c_str());
+        check_remove(("." + full_path + fname_base + "_A.lock").c_str());
+        check_remove((full_path + fname_base + "_A.meta").c_str());
+        check_remove((full_path + fname_base + "_B.data").c_str());
+        check_remove(("." + full_path + fname_base + "_B.lock").c_str());
+        check_remove((full_path + fname_base + "_B.meta").c_str());
     }
 }
 
@@ -360,22 +323,16 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
 
     INFO("Received request to release calibration live file...");
 
-    // Tell visCalFileBundle to stop writing to current file
-    file_cal_bundle->clear_file_map();
-    // Remove previous frozen buffer and replace with new one
-    std::string full_path = root_path + "/" + acq_name;
-    INFO(("Updating cal file names in " + full_path).c_str());
-    check_remove(full_path + "/" + frozen_file_name + ".data");
-    check_remove(full_path + "/" + frozen_file_name + ".meta");
-    check_rename(full_path + "/" + file_name + ".data",
-                 full_path + "/" + frozen_file_name + ".data");
-    check_rename(full_path + "/" + file_name + ".meta",
-                 full_path + "/" + frozen_file_name + ".meta");
+    // Swap files
+    std::string fname_tmp = fname_live;
+    fname_live = fname_frozen;
+    fname_frozen = fname_tmp;
+
+    // Tell visCalFileBundle to write to new file starting with next sample
+    file_cal_bundle->swap_file(fname_live, acq_name);
 
     // Respond with frozen file path
-    json reply {
-        {"file_path", root_path + "/" + acq_name + "/" + frozen_file_name}
-    };
+    json reply {"file_path", root_path + "/" + acq_name + "/" + fname_frozen};
     conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }
@@ -387,12 +344,12 @@ void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::unique_ptr<visCalFileBundle>(
         new visCalFileBundle(
             file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, freqs, inputs, prods, num_ev, file_length
+            window, dataset, num_ev, file_length
         )
     );
 
     // TODO: is there a better way of using the child class method?
     file_cal_bundle = std::dynamic_pointer_cast<visCalFileBundle>(file_bundle);
 
-    file_cal_bundle->set_file_name(file_name, acq_name);
+    file_cal_bundle->set_file_name(fname_live, acq_name);
 }
