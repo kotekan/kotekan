@@ -27,7 +27,8 @@ char * __cmake_build_options =
         " - OPENBLAS_PATH: @OPENBLAS_PATH@\n"
         " USE_AIRSPY: @USE_AIRSPY@\n"
         " USE_FFTW: @USE_FFTW@\n"
-        " USE_OMP: @USE_OMP@\n";
+        " USE_OMP: @USE_OMP@\n"
+        " USE_OPENSSL: @USE_OPENSSL@\n";
 
 char * get_kotekan_version() {
     return __kotekan_version;

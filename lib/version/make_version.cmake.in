@@ -26,6 +26,7 @@ set(OPENBLAS_PATH "@OPENBLAS_PATH@")
 set(USE_AIRSPY "@USE_AIRSPY@")
 set(USE_FFTW "@USE_FFTW@")
 set(USE_OMP "@USE_OMP@")
+set(USE_OPENSSL "@USE_OPENSSL@")
 
 # Get the current working branch
 execute_process(
