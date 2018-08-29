@@ -54,10 +54,17 @@ public:
 
     void apply_config(uint64_t fpga_seq) override;
 
-    // Main loop for the process
+    // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;
 
 private:
+
+	/// Entrancepoint for n threads. Each thread takes frames with a
+	/// different frame_id from the buffer and compresses them.
+    void compress_thread(int offset);
+
+    ///Vector to hold the thread handles
+    std::vector<std::thread> thread_handles;
 
     // The extra inputs we are excluding
     std::vector<uint32_t> exclude_inputs;
@@ -78,6 +85,9 @@ private:
 
     /// The stack function to use.
     stack_def_fn calculate_stack;
+
+    /// Number of parallel threads accessing the same buffers (default 1)
+    uint32_t num_threads;
 
     // Buffers to read/write
     Buffer* in_buf;

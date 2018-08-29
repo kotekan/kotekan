@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <memory>
+#include <mutex>
 
 #include "json.hpp"
 #include "errors.h"
@@ -415,6 +416,12 @@ private:
 
     // Store a list of the datasets registered and what states they correspond to
     vector<pair<state_id, dset_id>> _datasets;
+
+    // Lock for changing or using the states map.
+    mutable std::mutex _lock_states;
+
+    // Lock for changing or using the datasets.
+    mutable std::mutex _lock_dsets;
 };
 
 
@@ -460,7 +467,11 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
 template <typename T>
 pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     state_id hash = hash_state(*state);
-    _states[hash] = move(state);
+    std::lock_guard<std::mutex> lock(_lock_states);
+    if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
+                                                           move(state))).second)
+        INFO("datasetManager: tried to insert an existing state a second " \
+                "time (or hash collison).");
     return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif

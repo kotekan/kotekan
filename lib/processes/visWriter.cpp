@@ -225,10 +225,8 @@ void visWriter::init_acq() {
 
     // Get the product spec and (if available) the stackState to determine the
     // number of vis entries we are expecting
-    auto pstate = dm.closest_ancestor_of_type<prodState>(
-        frame.dataset_id).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(
-        frame.dataset_id).second;
+    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
+    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
     num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 
     // TODO: chunk ID is not really supported now. Just set it to zero.

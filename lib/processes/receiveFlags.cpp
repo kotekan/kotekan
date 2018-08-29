@@ -53,7 +53,7 @@ bool receiveFlags::flags_callback(nlohmann::json &json) {
     std::fill(flags_received.begin(), flags_received.end(), 1.0);
     double ts;
 
-    //receive flags and timestamp
+    //receive flags and start_time
     try {
         if (!json.at("bad_inputs").is_array())
             throw std::invalid_argument("receiveFlags: flags_callback " \
@@ -64,16 +64,16 @@ bool receiveFlags::flags_callback(nlohmann::json &json) {
                       "received " + std::to_string(json.at("bad_inputs").size())
                       + " bad inputs (has to be less than or equal num_elements = "
                       + std::to_string(num_elements) + ").");
-        if (!json.at("timestamp").is_number())
+        if (!json.at("start_time").is_number())
             throw std::invalid_argument("receiveFlags: received bad value " \
-                                        "'timestamp': " +
-                                        json.at("timestamp").dump());
-        if (json.at("timestamp") < 0)
+                                        "'start_time': " +
+                                        json.at("start_time").dump());
+        if (json.at("start_time") < 0)
             throw std::invalid_argument("receiveFlags: received negative " \
-                                       "timestamp: " +
-                                       json.at("timestamp").dump());
+                                       "start_time: " +
+                                       json.at("start_time").dump());
 
-        ts = json.at("timestamp");
+        ts = json.at("start_time");
 
         for (nlohmann::json::iterator flag = json.at("bad_inputs").begin();
              flag != json.at("bad_inputs").end(); flag++) {
@@ -89,7 +89,7 @@ bool receiveFlags::flags_callback(nlohmann::json &json) {
     }
 
     if (ts_frame > double_to_ts(ts)) {
-        WARN("receiveFlags: Received update with a timestamp that is older " \
+        WARN("receiveFlags: Received update with a start_time that is older " \
              "than the current frame (The difference is %f s).",
              ts_to_double(ts_frame) - ts);
         prometheusMetrics::instance().add_process_metric(
