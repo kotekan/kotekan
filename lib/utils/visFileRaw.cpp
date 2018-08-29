@@ -98,34 +98,6 @@ void visFileRaw::create_file(
 #endif
 }
 
-
-void visFileRaw::create_file(
-    const std::string& name,
-    const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
-{
-    auto& dm = datasetManager::instance();
-
-    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
-
-    if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetStates not found for dataset_id=%i", dataset);
-        throw std::runtime_error("Could not create file.");
-    }
-
-    create_file(name, metadata, unzip(fstate->get_freqs()).second,
-                istate->get_inputs(), pstate->get_prods(), num_ev, max_time);
-
-    // Add in stack information if it is present
-    if (sstate) {
-        file_metadata["index_map"]["stack"] = sstate->get_stack_map();
-        file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
-    }
-}
-
 visFileRaw::~visFileRaw() {
 
     // Finalize the metadata file

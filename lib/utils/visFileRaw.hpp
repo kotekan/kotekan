@@ -92,11 +92,6 @@ protected:
     /// Flags used for opening new files
     int oflags = O_CREAT | O_EXCL | O_WRONLY;
 
-    // Implement the alternative create file method
-    void create_file(const std::string& name,
-                     const std::map<std::string, std::string>& metadata,
-                     dset_id dataset, size_t num_ev, size_t max_time) override;
-
     /**
      * @brief  Helper routine for writing data into the file
      *
