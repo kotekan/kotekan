@@ -53,6 +53,7 @@ def write_data(tmpdir_factory):
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
+        use_dataset_manager=True,
         wait=False
     )
 

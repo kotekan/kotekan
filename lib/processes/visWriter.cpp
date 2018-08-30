@@ -218,7 +218,7 @@ void visWriter::init_acq() {
 
     // Get the frequency spec to determine the freq_ids expected at this Writer.
     auto fstate = dm.closest_ancestor_of_type<freqState>(
-        frame.dataset_id).second;
+        dataset).second;
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         freq_id_map[f.first] = ind++;
