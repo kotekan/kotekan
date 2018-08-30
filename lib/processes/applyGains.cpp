@@ -197,7 +197,7 @@ void applyGains::main_thread() {
         if (combine_gains) {
             float coef_new = tpast/tcombine;
             float coef_old = 1 - coef_new;
-            for (int ii=0; ii<input_frame.num_elements; ii++) {
+            for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
                 gain[ii] = coef_new * (*gainpair_new.second)[freq][ii] \
                          + coef_old * (*gainpair_old.second)[freq][ii];
             }
@@ -212,7 +212,7 @@ void applyGains::main_thread() {
         }
         gain_mtx.unlock();
         // Compute weight factors and conjugate gains
-        for (int ii=0; ii<input_frame.num_elements; ii++) {
+        for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
             gain_conj[ii] = std::conj(gain[ii]);
             weight_factor[ii] = pow(abs(gain[ii]), -2.0);
         }
@@ -243,9 +243,9 @@ void applyGains::main_thread() {
         // For now this doesn't try to do any type of check on the
         // ordering of products in vis and elements in gains.
         // Also assumes the ordering of freqs in gains is standard
-        int idx = 0;
-        for (int ii=0; ii<input_frame.num_elements; ii++) {
-            for (int jj=ii; jj<input_frame.num_elements; jj++) {
+        uint32_t idx = 0;
+        for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
+            for (uint32_t jj=ii; jj<input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
                 out_vis[idx] = in_vis[idx]
                                         * gain[ii]
