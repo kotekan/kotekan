@@ -53,7 +53,7 @@ void applyGains::apply_config(uint64_t fpga_seq) {
     num_kept_updates = config.get_uint64_default(unique_name, "num_kept_updates", 5);
     if (num_kept_updates < 1)
         throw std::invalid_argument("applyGains: config: num_kept_updates has" \
-                                    "to equal or greater than one (is "
+                                    "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
     // Time to blend old and new gains in seconds. Default is 5 minutes.
     tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
@@ -73,7 +73,6 @@ bool applyGains::fexists(const std::string& filename) {
 }
 
 bool applyGains::receive_update(nlohmann::json &json) {
-    // TODO: need to make sure this is thread safe
     double new_ts;
     std::string gains_path;
     std::string gtag;
@@ -90,7 +89,7 @@ bool applyGains::receive_update(nlohmann::json &json) {
                                        json.at("start_time").dump());
         new_ts = json.at("start_time");
     } catch (std::exception& e) {
-        WARN("%s", e.what());
+        WARN("Failure reading 'start_time' from update: %s", e.what());
         return false;
     }
     // receive new gains tag
@@ -100,7 +99,7 @@ bool applyGains::receive_update(nlohmann::json &json) {
                                         + json.at("tag").dump());
         gtag = json.at("tag");
     } catch (std::exception& e) {
-        WARN("%s", e.what());
+        WARN("Failure reading 'tag' from update: %s", e.what());
         return false;
     }
     // Get the gains for this timestamp
@@ -111,7 +110,8 @@ bool applyGains::receive_update(nlohmann::json &json) {
         // Try a different extension
         gains_path = gains_dir + "/" + gtag + ".hdf5";
         if (!fexists(gains_path)) {
-            WARN("Could not update gains. File not found.")
+            WARN("Could not update gains. File not found: %s",\
+                 gains_path.c_str())
             return false;
         }
     }
@@ -192,8 +192,8 @@ void applyGains::main_thread() {
         } else {
             gain = (*gainpair_new.second)[freq];
             if (tpast < 0) {
-                // TODO: export prometeus metric and print time difference?
-                WARN("Gain timestamp is in the future! Using oldest gains available."\
+                WARN("No gains update is as old as the currently processed " \
+                     "frame. Using oldest gains available."\
                      "Time difference is: %f seconds.", tpast);
                 prometheusMetrics::instance().add_process_metric(
                                         "kotekan_applygains_old_frame_seconds",
