@@ -71,7 +71,7 @@ visFileArchive::visFileArchive(const std::string& name,
     create_datasets();
 
     // Write the reverse map of products to stack
-    dset("reverse_map/stack").select({0}, {length("stack")}).write(reverse_stack.data());
+    dset("reverse_map/stack").select({0}, {length("prod")}).write(reverse_stack.data());
 
 }
 
