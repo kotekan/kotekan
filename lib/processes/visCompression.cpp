@@ -92,10 +92,10 @@ void baselineCompression::compress_thread(int offset) {
     unsigned int input_frame_id = offset;
 
     auto& dm = datasetManager::instance();
-    const stackState * stack_state_ptr;
-    const prodState * prod_state_ptr;
+    const stackState * stack_state_ptr = nullptr;
+    const prodState * prod_state_ptr = nullptr;
     dset_id input_dset_id = -1;
-    dset_id output_dset_id;
+    dset_id output_dset_id = -1;
     state_id stack_state_id;
 
     while (!stop_thread) {
