@@ -87,9 +87,6 @@ private:
     /// Number of elements
     size_t num_elements;
 
-    /// Name of the updatable block in conf that contains flags
-    std::string updatable_config;
-
     /// Number of updates to keept track of
     uint32_t num_kept_updates;
 };

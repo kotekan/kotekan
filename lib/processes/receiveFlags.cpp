@@ -42,8 +42,6 @@ void receiveFlags::apply_config(uint64_t fpga_seq) {
                                     + std::to_string(num));
     num_elements = (size_t)num;
 
-    updatable_config = config.get_string(unique_name, "updatable_config");
-
     num_kept_updates = config.get_uint32_default(unique_name,
                                                  "num_kept_updates", 5);
 }
