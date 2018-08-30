@@ -1,6 +1,9 @@
 #include "prodSubset.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
+#include <signal.h>
+
 
 REGISTER_KOTEKAN_PROCESS(prodSubset);
 
@@ -22,7 +25,9 @@ prodSubset::prodSubset(Config &config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    prod_ind = std::get<0>(parse_prod_subset(config, unique_name));
+    auto subset_list = parse_prod_subset(config, unique_name);
+    prod_ind = std::get<0>(subset_list);
+    prod_subset = std::get<1>(subset_list);
 
     subset_num_prod = prod_ind.size();
 }
@@ -32,6 +37,10 @@ void prodSubset::apply_config(uint64_t fpga_seq) {
 }
 
 void prodSubset::main_thread() {
+
+    auto& dm = datasetManager::instance();
+    dset_id input_dset_id = -1;
+    dset_id output_dset_id = -1;
 
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
@@ -53,6 +62,42 @@ void prodSubset::main_thread() {
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
+        // check if the input dataset has changed
+        if (input_dset_id != input_frame.dataset_id) {
+            // create new product dataset state
+            input_dset_id = input_frame.dataset_id;
+            const prodState* input_prod_ptr =
+                   dm.closest_ancestor_of_type<prodState>(input_dset_id).second;
+            if (input_prod_ptr == nullptr) {
+                ERROR("freqSubset: Could not find prodState for incoming " \
+                      "dataset with ID %d.", input_dset_id);
+                raise(SIGINT);
+                return;
+            }
+
+            const vector<prod_ctype>& input_prods = input_prod_ptr->get_prods();
+            vector<prod_ctype> output_prods;
+            std::copy(input_prods.cbegin(), input_prods.cend(),
+                      std::back_inserter(output_prods));
+
+            // check if prod_subset is a subset of the closest prodState
+            for (uint32_t i = 0; i < subset_num_prod; i++) {
+                if (std::find(input_prods.cbegin(), input_prods.cend(),
+                              prod_subset.at(i)) == input_prods.cend()) {
+                    WARN("freqSlicer: Could not find product with ID %d in " \
+                         "incoming dataset %d. Removing it from the product " \
+                         "subset.", prod_ind[i], input_dset_id);
+                    output_prods.erase(std::find(input_prods.cbegin(),
+                                                 input_prods.cend(),
+                                                 prod_subset[i]));
+                }
+            }
+
+            state_uptr pstate = std::make_unique<prodState>(prod_subset);
+            state_id prod_state_id = dm.add_state(std::move(pstate)).first;
+            output_dset_id = dm.add_dataset(prod_state_id, input_dset_id);
+        }
+
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
@@ -70,6 +115,9 @@ void prodSubset::main_thread() {
         output_frame.copy_nonvis_buffer(input_frame);
         // Copy metadata
         output_frame.copy_nonconst_metadata(input_frame);
+
+        // set the dataset ID in the outgoing frame
+        output_frame.dataset_id = output_dset_id;
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
