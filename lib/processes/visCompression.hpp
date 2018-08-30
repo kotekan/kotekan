@@ -61,7 +61,7 @@ private:
 
 	/// Entrancepoint for n threads. Each thread takes frames with a
 	/// different frame_id from the buffer and compresses them.
-    void compress_thread(int offset);
+    void compress_thread(int thread_id);
 
     ///Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
