@@ -41,6 +41,12 @@ using json = nlohmann::json;
  *                  documentation of stack_X functions for details.
  * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
  *
+ * @par Metrics
+ * @metric kotekan_baselinecompression_thread<thread_id>_residuals The variance
+ *      of the residuals in thread <thread_id>.
+ * @metric kotekan_baselinecompression_thread<thread_id>_time The time elapsed
+ *      in thread <thread_id> to process one frame.
+ *
  * @author Richard Shaw
  */
 class baselineCompression : public KotekanProcess {
