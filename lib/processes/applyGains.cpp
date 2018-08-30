@@ -92,6 +92,13 @@ bool applyGains::receive_update(nlohmann::json &json) {
         WARN("Failure reading 'start_time' from update: %s", e.what());
         return false;
     }
+    if (ts_frame > double_to_ts(new_ts)) {
+            WARN("applyGains: Received update with a timestamp that is older " \
+                 "than the current frame (The difference is %f s).",
+                 ts_to_double(ts_frame) - new_ts);
+            num_late_updates++;
+    }
+
     // receive new gains tag
     try {
         if (!json.at("tag").is_string())
@@ -136,7 +143,9 @@ void applyGains::main_thread() {
     unsigned int freq;
     double tpast;
     double frame_time;
+    size_t num_late_frames = 0;
 
+    num_late_updates = 0;
 
     while (!stop_thread) {
 
@@ -149,6 +158,9 @@ void applyGains::main_thread() {
 
         // Create view to input frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
+
+        // get the frames timestamp
+        ts_frame = std::get<1>(input_frame.time);
 
         // frequency index of this frame
         freq = input_frame.freq_id;
@@ -195,9 +207,7 @@ void applyGains::main_thread() {
                 WARN("No gains update is as old as the currently processed " \
                      "frame. Using oldest gains available."\
                      "Time difference is: %f seconds.", tpast);
-                prometheusMetrics::instance().add_process_metric(
-                                        "kotekan_applygains_old_frame_seconds",
-                                        unique_name, tpast);
+                num_late_frames++;
             }
         }
         gain_mtx.unlock();
@@ -254,6 +264,16 @@ void applyGains::main_thread() {
         prometheusMetrics::instance().add_process_metric(
             "kotekan_applygains_update_age_seconds",
             unique_name, tpast);
+
+        // Report number of updates received too late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_num_late_updates",
+            unique_name, num_late_updates);
+
+        // Report number of frames received late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_num_late_frames",
+            unique_name, num_late_frames);
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

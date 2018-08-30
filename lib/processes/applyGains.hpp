@@ -38,10 +38,13 @@
  * and new gains to prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  *
- * @metric kotekan_applygains_old_frame_seconds The difference between the
- *     timestamps of the current frame and the oldest stored update, in case
- *     there is no update with a timestamp that is older than the timestamp of
- *     the current frame (in seconds).
+ * @par Metrics
+ * @metric kotekan_applygains_num_late_updates The number of updates received
+ *     too late (The start time of the update is older than the currently
+ *     processed frame).
+ * @metric kotekan_applygains_num_late_frames The number of frames received
+ *     late (The frames timestamp is older then all start times of stored
+ *     updates).
  * @metric kotekan_applygains_update_age_seconds The time difference in
  *     seconds between the current frame being processed and the time stamp of
  *     the gains update being applied.
@@ -92,6 +95,11 @@ private:
     /// Mutex to protect access to gains
     std::mutex gain_mtx;
 
+    /// Timestamp of the current frame
+    timespec ts_frame = {0,0};
+
+    /// Number of updates received too late
+    size_t num_late_updates;
 };
 
 
