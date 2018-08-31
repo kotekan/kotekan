@@ -47,6 +47,22 @@ public:
                    const std::vector<prod_ctype>& prods,
                    size_t num_ev,
                    std::vector<int> chunk_size);
+    /**
+     * @brief Creates a visFileArchive object.
+     *
+     * @param name Path of the file to write into (without file extension).
+     * @param metadata Metadata attributes.
+     * @param times Vector of time indices.
+     * @param freqs Vector of frequency indices.
+     * @param inputs Vector of input indices.
+     * @param prods Vector of product indices.
+     * @param stack Vector of stack indices.
+     * @param reverse_stack Vector mapping products to stacks.
+     * @param num_ev Number of eigenvectors.
+     * @param chunk_size HDF5 chunk size (frequencies * products * times).
+     *
+     * @return Instance of visFileArchive.
+     **/
     visFileArchive(const std::string& name,
                    const std::map<std::string, std::string>& metadata,
                    const std::vector<time_ctype>& times,
@@ -78,7 +94,7 @@ public:
                      size_t chunk_t, const T* data);
 
 
-protected:
+private:
 
     // Prepare a file
     void setup_file(const std::string& name,
