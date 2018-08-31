@@ -42,8 +42,6 @@ void receiveFlags::apply_config(uint64_t fpga_seq) {
                                     + std::to_string(num));
     num_elements = (size_t)num;
 
-    updatable_config = config.get_string(unique_name, "updatable_config");
-
     num_kept_updates = config.get_uint32_default(unique_name,
                                                  "num_kept_updates", 5);
 }
@@ -92,9 +90,7 @@ bool receiveFlags::flags_callback(nlohmann::json &json) {
         WARN("receiveFlags: Received update with a start_time that is older " \
              "than the current frame (The difference is %f s).",
              ts_to_double(ts_frame) - ts);
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_receiveflags_old_update_seconds",
-            unique_name, ts_to_double(ts_frame) - ts);
+        num_late_updates++;
     }
 
     // update the flags
@@ -111,7 +107,9 @@ void receiveFlags::main_thread() {
 
     uint32_t frame_id_in = 0;
     uint32_t frame_id_out = 0;
+    size_t num_late_frames = 0;
 
+    num_late_updates = 0;
     timespec ts_late = {0,0};
 
     std::pair<timespec, const std::vector<float>*> update;
@@ -151,9 +149,7 @@ void receiveFlags::main_thread() {
                   "not in memory. Applying oldest flags found. (%d)" \
                  " Concider increasing num_kept_updates.", frame_id_in,
                  ts_to_double(ts_frame), ts_to_double(update.first));
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_receiveflags_old_frame_seconds",
-                unique_name, ts_to_double(ts_late));
+            num_late_frames++;
         }
         // actually copy the new flags and apply them from now
         std::copy(update.second->begin(), update.second->end(),
@@ -164,6 +160,16 @@ void receiveFlags::main_thread() {
         prometheusMetrics::instance().add_process_metric(
             "kotekan_receiveflags_update_age_seconds",
             unique_name, -ts_to_double(ts_late));
+
+        // Report number of frames received late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_num_late_frames",
+            unique_name, num_late_frames);
+
+        // Report number of updates received too late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_num_late_updates",
+            unique_name, num_late_updates);
 
         // Mark output frame full and input frame empty
         mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);

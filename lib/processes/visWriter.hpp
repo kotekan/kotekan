@@ -88,7 +88,7 @@ protected:
     virtual void make_bundle(std::map<std::string, std::string>& metadata);
 
     /// Setup the acquisition
-    void init_acq();
+    bool init_acq();
 
     /// Using the first frequency ID found, and any config parameters, determine
     /// which frequencies will end up in the file
