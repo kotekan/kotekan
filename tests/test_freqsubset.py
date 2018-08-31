@@ -59,7 +59,6 @@ def write_data(tmpdir_factory):
 
     write_buffer = kotekan_runner.VisWriterBuffer(
             str(tmpdir), 'raw', params['subset_list'])
-            #extra_config={'use_dataset_manager': True})
 
     test = kotekan_runner.KotekanProcessTester(
         'freqSubset', {},
