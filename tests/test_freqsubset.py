@@ -70,7 +70,7 @@ def write_data(tmpdir_factory):
 
     test.run()
 
-    yield write_buffer
+    return write_buffer.load()
 
 def test_freqslice(vis_data):
 
@@ -89,19 +89,11 @@ def test_freqslice(vis_data):
 
 def test_write(write_data):
 
-    for f in os.listdir(write_data.output_dir):
-        acq_dir = re.search("[0-9]{8}T[0-9]{6}Z_chime_corr", f)
-        if acq_dir is not None:
-            acq_dir = "/" + acq_dir.group(0)
-            break
-
-    data = visbuffer.VisRaw(write_data.output_dir + acq_dir + "/00000000_0000").data
-
     counts = [ 0 ] * len(params['subset_list'])
     for t in range(params['total_frames']):
         for f in range(len(params['subset_list'])):
             # get freq is from fakeVis
-            fid = int(data[t][f].vis[2].real)
+            fid = int(write_data[t][f].vis[2].real)
             assert fid in params['subset_list']
             # Check the order
             assert fid == params['subset_list'][f]
