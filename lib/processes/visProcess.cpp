@@ -494,9 +494,6 @@ void visCheckTestPattern::main_thread() {
     // number of bad elements in frame and totally
     size_t num_bad, num_bad_tot = 0;
 
-    // norm of the difference of a visibility and its expected value
-    float error;
-
     // average error of the bad values in frame and totally
     float avg_err, avg_err_tot = 0;
 
@@ -513,6 +510,9 @@ void visCheckTestPattern::main_thread() {
     uint32_t freq_id;
 
     uint64_t i_frame = 0;
+
+    // Comparisons will be against tolerance^2
+    float t2 = tolerance * tolerance;
 
     while (!stop_thread) {
 
@@ -533,11 +533,18 @@ void visCheckTestPattern::main_thread() {
 
 	    // Iterate over covariance matrix
 	    for (size_t i = 0; i < frame.num_prod; i++) {
-            error = std::abs(frame.vis[i] - expected_val);
+
+            // Calculate the error^2 and compared this to the tolerance as it's
+            // much faster than taking the square root where we don't need to.
+            float r2 = fast_norm(frame.vis[i] - expected_val);
 
             // check for bad values
-            if (error > tolerance) {
+            if (r2 > t2) {
                 num_bad++;
+
+                // Calculate the error here, this square root is then
+                // evalulated only when there is bad data.
+                float error = sqrt(r2);
                 avg_err += error;
 
                 if (error > max_err)

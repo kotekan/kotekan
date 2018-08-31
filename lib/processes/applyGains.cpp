@@ -53,7 +53,7 @@ void applyGains::apply_config(uint64_t fpga_seq) {
     num_kept_updates = config.get_uint64_default(unique_name, "num_kept_updates", 5);
     if (num_kept_updates < 1)
         throw std::invalid_argument("applyGains: config: num_kept_updates has" \
-                                    "to equal or greater than one (is "
+                                    "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
     // Time to blend old and new gains in seconds. Default is 5 minutes.
     tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
@@ -61,8 +61,6 @@ void applyGains::apply_config(uint64_t fpga_seq) {
         throw std::invalid_argument("applyGains: config: combine_gains_time has" \
                                     "to be positive (is "
                                     + std::to_string(tcombine) + ").");
-
-    updatable_config = config.get_string(unique_name, "updatable_config");
 
     // Get the path to gains directory
     gains_dir = config.get_string(unique_name, "gains_dir");
@@ -75,7 +73,6 @@ bool applyGains::fexists(const std::string& filename) {
 }
 
 bool applyGains::receive_update(nlohmann::json &json) {
-    // TODO: need to make sure this is thread safe
     double new_ts;
     std::string gains_path;
     std::string gtag;
@@ -92,9 +89,16 @@ bool applyGains::receive_update(nlohmann::json &json) {
                                        json.at("start_time").dump());
         new_ts = json.at("start_time");
     } catch (std::exception& e) {
-        WARN("%s", e.what());
+        WARN("Failure reading 'start_time' from update: %s", e.what());
         return false;
     }
+    if (ts_frame > double_to_ts(new_ts)) {
+            WARN("applyGains: Received update with a timestamp that is older " \
+                 "than the current frame (The difference is %f s).",
+                 ts_to_double(ts_frame) - new_ts);
+            num_late_updates++;
+    }
+
     // receive new gains tag
     try {
         if (!json.at("tag").is_string())
@@ -102,7 +106,7 @@ bool applyGains::receive_update(nlohmann::json &json) {
                                         + json.at("tag").dump());
         gtag = json.at("tag");
     } catch (std::exception& e) {
-        WARN("%s", e.what());
+        WARN("Failure reading 'tag' from update: %s", e.what());
         return false;
     }
     // Get the gains for this timestamp
@@ -113,7 +117,8 @@ bool applyGains::receive_update(nlohmann::json &json) {
         // Try a different extension
         gains_path = gains_dir + "/" + gtag + ".hdf5";
         if (!fexists(gains_path)) {
-            WARN("Could not update gains. File not found.")
+            WARN("Could not update gains. File not found: %s",\
+                 gains_path.c_str())
             return false;
         }
     }
@@ -138,7 +143,9 @@ void applyGains::main_thread() {
     unsigned int freq;
     double tpast;
     double frame_time;
+    size_t num_late_frames = 0;
 
+    num_late_updates = 0;
 
     while (!stop_thread) {
 
@@ -151,6 +158,9 @@ void applyGains::main_thread() {
 
         // Create view to input frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
+
+        // get the frames timestamp
+        ts_frame = std::get<1>(input_frame.time);
 
         // frequency index of this frame
         freq = input_frame.freq_id;
@@ -187,24 +197,22 @@ void applyGains::main_thread() {
         if (combine_gains) {
             float coef_new = tpast/tcombine;
             float coef_old = 1 - coef_new;
-            for (int ii=0; ii<input_frame.num_elements; ii++) {
+            for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
                 gain[ii] = coef_new * (*gainpair_new.second)[freq][ii] \
                          + coef_old * (*gainpair_old.second)[freq][ii];
             }
         } else {
             gain = (*gainpair_new.second)[freq];
             if (tpast < 0) {
-                // TODO: export prometeus metric and print time difference?
-                WARN("Gain timestamp is in the future! Using oldest gains available."\
+                WARN("No gains update is as old as the currently processed " \
+                     "frame. Using oldest gains available."\
                      "Time difference is: %f seconds.", tpast);
-                prometheusMetrics::instance().add_process_metric(
-                                        "kotekan_applygains_old_frame_seconds",
-                                        unique_name, tpast);
+                num_late_frames++;
             }
         }
         gain_mtx.unlock();
         // Compute weight factors and conjugate gains
-        for (int ii=0; ii<input_frame.num_elements; ii++) {
+        for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
             gain_conj[ii] = std::conj(gain[ii]);
             weight_factor[ii] = pow(abs(gain[ii]), -2.0);
         }
@@ -235,9 +243,9 @@ void applyGains::main_thread() {
         // For now this doesn't try to do any type of check on the
         // ordering of products in vis and elements in gains.
         // Also assumes the ordering of freqs in gains is standard
-        int idx = 0;
-        for (int ii=0; ii<input_frame.num_elements; ii++) {
-            for (int jj=ii; jj<input_frame.num_elements; jj++) {
+        uint32_t idx = 0;
+        for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
+            for (uint32_t jj=ii; jj<input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
                 out_vis[idx] = in_vis[idx]
                                         * gain[ii]
@@ -256,6 +264,16 @@ void applyGains::main_thread() {
         prometheusMetrics::instance().add_process_metric(
             "kotekan_applygains_update_age_seconds",
             unique_name, tpast);
+
+        // Report number of updates received too late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_num_late_updates",
+            unique_name, num_late_updates);
+
+        // Report number of frames received late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_applygains_num_late_frames",
+            unique_name, num_late_frames);
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
