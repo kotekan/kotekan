@@ -237,15 +237,13 @@ void baselineCompression::compress_thread(int thread_id) {
         // Update prometheus metrics
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
             output_frame.freq_id, output_frame.dataset_id);
-        std::string name_metric_residuals = fmt::format(
-                    "kotekan_baselinecompression_thread{}_residuals",thread_id);
-        std::string name_metric_time =fmt::format(
-                    "kotekan_baselinecompression_thread{}_time",thread_id);
-        prometheusMetrics::instance().add_process_metric(name_metric_residuals,
-                                                         unique_name,
-                                                         vart / normt, labels);
-        prometheusMetrics::instance().add_process_metric(name_metric_time,
-                                                         unique_name, elapsed);
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_baselinecompression_residuals",
+            unique_name, vart / normt, labels);
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_baselinecompression_time_seconds",
+            unique_name, elapsed);
+
         DEBUG("Compression time %.4f", elapsed);
     }
 }

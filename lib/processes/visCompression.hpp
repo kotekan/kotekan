@@ -37,15 +37,15 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf stack_type String. Type of stacking to apply to the data. Look at
- *                  documentation of stack_X functions for details.
+ * @conf stack_type      String. Type of stacking to apply to the data. Look at
+ *                       documentation of stack_X functions for details.
  * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
  *
  * @par Metrics
- * @metric kotekan_baselinecompression_thread<thread_id>_residuals The variance
- *      of the residuals in thread <thread_id>.
- * @metric kotekan_baselinecompression_thread<thread_id>_time The time elapsed
- *      in thread <thread_id> to process one frame.
+ * @metric kotekan_baselinecompression_residuals
+ *      The variance of the residuals.
+ * @metric kotekan_baselinecompression_time_seconds
+ *      The time elapsed to process one frame.
  *
  * @author Richard Shaw
  */

@@ -267,12 +267,12 @@ void applyGains::main_thread() {
 
         // Report number of updates received too late
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_applygains_num_late_updates",
+            "kotekan_applygains_late_update_count",
             unique_name, num_late_updates);
 
         // Report number of frames received late
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_applygains_num_late_frames",
+            "kotekan_applygains_late_frame_count",
             unique_name, num_late_frames);
 
         // Mark the buffers and move on

@@ -39,10 +39,10 @@
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  *
  * @par Metrics
- * @metric kotekan_applygains_num_late_updates The number of updates received
+ * @metric kotekan_applygains_late_update_count The number of updates received
  *     too late (The start time of the update is older than the currently
  *     processed frame).
- * @metric kotekan_applygains_num_late_frames The number of frames received
+ * @metric kotekan_applygains_late_frame_count The number of frames received
  *     late (The frames timestamp is older then all start times of stored
  *     updates).
  * @metric kotekan_applygains_update_age_seconds The time difference in
