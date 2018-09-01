@@ -97,7 +97,7 @@ class KotekanRunner(object):
                         if p.returncode:
                             raise subprocess.CalledProcessError(p.returncode, cmd)
 
-                        print "Failed sending REST command: " + rtype + " to " + endpoint + " with data " + data
+                        print "Failed sending REST command: " + rtype + " to " + endpoint + " with data ", data
 
 
             # Wait for kotekan to finish and capture the output
