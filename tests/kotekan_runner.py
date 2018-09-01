@@ -57,6 +57,7 @@ class KotekanRunner(object):
              tempfile.NamedTemporaryFile() as f_out:
 
             yaml.dump(config_dict, fh)
+            print yaml.dump(config_dict)
             fh.flush()
 
             cmd = ["./kotekan", "-c", fh.name]

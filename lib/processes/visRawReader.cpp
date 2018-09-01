@@ -74,6 +74,9 @@ visRawReader::visRawReader(Config &config,
     _inputs = _t["index_map"]["input"].get<std::vector<input_ctype>>();
     _prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
     _ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
+    if (_t["index_map"].find("stack") != _t["index_map"].end()) {
+        _stack = _t["index_map"]["stack"].get<std::vector<stack_ctype>>();
+    }
 
     // Extract the structure
     file_frame_size = _t["structure"]["frame_size"].get<size_t>();
@@ -219,12 +222,16 @@ void visRawReader::main_thread() {
 			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->
                 num_elements = _inputs.size();
             // Fill data with zeros
-            auto frame = visFrameView(out_buf, frame_id);
+            size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
+            auto frame = visFrameView(out_buf, frame_id, _inputs.size(),
+                    num_vis, _ev.size());
             std::memset(frame.vis.data(), 0, sizeof(cfloat) * frame.num_prod);
             std::memset(frame.weight.data(), 0, sizeof(float) * frame.num_prod);
             std::memset(frame.eval.data(), 0, sizeof(float) * frame.num_ev);
             std::memset(frame.evec.data(), 0, sizeof(cfloat) * frame.num_ev
                     * frame.num_elements);
+            std::memset(frame.gain.data(), 0, sizeof(cfloat) * frame.num_elements);
+            std::memset(frame.flags.data(), 0, sizeof(float) * frame.num_elements);
 			frame.freq_id = 0;
 			frame.dataset_id = 0;
 			frame.erms = 0;
