@@ -288,6 +288,25 @@ class VisWriterBuffer(OutputBuffer):
 
         self.process_block = {process_name: process_config}
 
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : visbuffer.VisRaw object.
+            The buffer output.
+        """
+        import glob
+
+        # For now assume only one file is found
+        # TODO: Might be nice to be able to check the file is the right one.
+        # But visWriter creates the acquisition and file names on the flight
+        flnm = glob.glob(self.output_dir+'/*/*.data')[0]
+        return visbuffer.VisRaw(os.path.splitext(flnm)[0]).data
+
+#        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
+#                                              (self.output_dir, self.name))
+
 
 class ReadVisBuffer(InputBuffer):
     """Write down a visBuffer and reads it with rawFileRead.
