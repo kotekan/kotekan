@@ -29,6 +29,16 @@ pipeline {
                   make'''
           }
         }
+        stage('Build MacOS kotekan') {
+          agent {label 'macos'}
+          steps {
+            sh '''export PATH=${PATH}:/usr/local/bin/
+                  mkdir build-docs
+                  cd build-docs/
+                  cmake ..
+                  make'''
+          }
+        }
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
@@ -44,7 +54,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-pytest -s -vvv'''
+              pytest -s -vvv'''
       }
     }
   }
