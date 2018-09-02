@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 12    # was 120, 48Gb, 15s buffer.
+baseband_buffer_depth: 120  # 48Gb, 15s buffer.
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -169,31 +169,11 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_merge:
     kotekan_buffer: vis
-  visbuf_20s_0:
-    kotekan_buffer: vis
-  visbuf_20s_1:
-    kotekan_buffer: vis
-  visbuf_20s_2:
-    kotekan_buffer: vis
-  visbuf_20s_3:
-    kotekan_buffer: vis
-  visbuf_20s_merge:
-    kotekan_buffer: vis
   # Increase the buffer depth for the pre-send buffers
-  visbuf_10s_4freq:
-    kotekan_buffer: vis
-    num_frames: 2 * buffer_depth
-  visbuf_10s_cal:
-    kotekan_buffer: vis
-    num_prod: 2048
-    num_frames: 10 * buffer_depth
   visbuf_5s_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
-  visbuf_20s_highfreq:
-    kotekan_buffer: vis
-    num_frames: 4 * buffer_depth
 
 gpu_rfi_output_buffers:
     num_frames: buffer_depth
@@ -227,18 +207,18 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
-duplicate_lost_samples_buffers:
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
-    lost_samples_buffer_0:
-        kotekan_buffer: standard
-    lost_samples_buffer_1:
-        kotekan_buffer: standard
-    lost_samples_buffer_2:
-        kotekan_buffer: standard
-    lost_samples_buffer_3:
-        kotekan_buffer: standard
+#duplicate_lost_samples_buffers:
+#    num_frames: 2 * buffer_depth
+#    frame_size: samples_per_data_set * num_local_freq * num_data_sets
+#    metadata_pool: main_pool
+#    lost_samples_buffer_0:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_1:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_2:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_3:
+#        kotekan_buffer: standard
 
 cpu_affinity: [2,3,8,9]
 dpdk:
@@ -269,47 +249,47 @@ dpdk:
     lost_samples_buf: lost_samples_buffer
 
 zero_samples:
-    duplicate_ls_buffer: True
+    duplicate_ls_buffer: False
     lost_samples_buf: lost_samples_buffer
     zero_0:
         kotekan_process: zeroSamples
         out_buf: network_buffer_0
-        out_lost_sample_buffers:
-            - lost_samples_buffer_0
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_0
     zero_1:
         kotekan_process: zeroSamples
         out_buf: network_buffer_1
-        out_lost_sample_buffers:
-            - lost_samples_buffer_1
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_1
     zero_2:
         kotekan_process: zeroSamples
         out_buf: network_buffer_2
-        out_lost_sample_buffers:
-            - lost_samples_buffer_2
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_2
     zero_3:
         kotekan_process: zeroSamples
         out_buf: network_buffer_3
-        out_lost_sample_buffers:
-            - lost_samples_buffer_3
+#        out_lost_sample_buffers:
+#            - lost_samples_buffer_3
 
-#baseband:
-#    max_dump_samples: 100000
-#    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
-#    num_frames_buffer: 110
-#    base_dir: /mnt/frb-archiver/
-#    write_throttle: 0
-#    baseband0:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_0
-#    baseband1:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_1
-#    baseband2:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_2
-#    baseband3:
-#      kotekan_process: basebandReadout
-#      in_buf: network_buffer_3
+baseband:
+    max_dump_samples: 100000
+    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
+    num_frames_buffer: 110
+    base_dir: /mnt/frb-archiver/
+    write_throttle: 0
+    baseband0:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_0
+    baseband1:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_1
+    baseband2:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_2
+    baseband3:
+      kotekan_process: basebandReadout
+      in_buf: network_buffer_3
 
 monitor:
     kotekan_process: monitorBuffer
@@ -319,13 +299,23 @@ monitor:
       - network_buffer_2
       - network_buffer_3
     timeout: 5
-    fill_threshold: 0.8
+    fill_threshold: 0.98
+
+# This seems to find the lockup condition
+monitor_2:
+    kotekan_process: monitorBuffer
+    bufs:
+      - beamform_pulsar_output_buffer_0
+      - beamform_pulsar_output_buffer_1
+      - beamform_pulsar_output_buffer_2
+      - beamform_pulsar_output_buffer_3
+    timeout: 10
+    fill_threshold: 0.80
 
 gpu:
-  kernel_path: "hsa_kernels/"
+  kernel_path: "/var/lib/kotekan/hsa_kernels/"
   commands:
   - name: hsaInputData
-  - name: hsaInputLostSamples
   - name: hsaPresumZero
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
@@ -355,16 +345,15 @@ gpu:
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
-    gain_dir: "/root/FRB-GainFiles/eigen_CygA_5_15/"
+    gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    ew_spacing: [0,-0.1,0.1,0.2]
-    northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    ew_spacing: [-0.4,0,0.4,0.8]
+    northmost_beam: 60.0
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_0
-      lost_samples_buf: lost_samples_buffer_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -374,16 +363,15 @@ gpu:
   gpu_1:
     kotekan_process: hsaProcess
     gpu_id: 1
-    gain_dir: "/root/FRB-GainFiles/eigen_CygA_5_15/"
+    gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    ew_spacing: [0,-0.1,0.1,0.2]
-    northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    ew_spacing: [-0.4,0,0.4,0.8]
+    northmost_beam: 60.0
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_1
-      lost_samples_buf: lost_samples_buffer_1
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -393,16 +381,15 @@ gpu:
   gpu_2:
     kotekan_process: hsaProcess
     gpu_id: 2
-    gain_dir: "/root/FRB-GainFiles/eigen_CygA_5_15/"
+    gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    ew_spacing: [0,-0.1,0.1,0.2]
-    northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    ew_spacing: [-0.4,0,0.4,0.8]
+    northmost_beam: 60.0
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_2
-      lost_samples_buf: lost_samples_buffer_2
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -412,16 +399,15 @@ gpu:
   gpu_3:
     kotekan_process: hsaProcess
     gpu_id: 3
-    gain_dir: "/root/FRB-GainFiles/eigen_CygA_5_15/"
+    gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    ew_spacing: [0,-0.1,0.1,0.2]
-    northmost_beam: 90.0
-    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
+    ew_spacing: [-0.4,0,0.4,0.8]
+    northmost_beam: 60.0
+    bad_inputs: []
     in_buffers:
       network_buf: network_buffer_3
-      lost_samples_buf: lost_samples_buffer_3
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
@@ -447,7 +433,7 @@ frb:
     log_level: warn
     cpu_affinity: [11]
     kotekan_process: frbPostProcess
-    incoherent_beams: [0]
+    incoherent_beams: [0,256,512,768]
     #incoherent_truncation: 25.
     frb_out_buf: frb_output_buffer
     in_buf_0: gpu_beamform_output_buffer_0
@@ -467,6 +453,7 @@ frb:
     beam_offset: 0
     time_interval: 125829120
     L1_node_ips:
+      # Rack 1
       - 10.6.201.10
       - 10.7.201.10
       - 10.6.201.11
@@ -485,6 +472,9 @@ frb:
       - 10.7.201.17
       - 10.6.201.18
       - 10.7.201.18
+      #- 10.6.201.19 -- cf1n9 -- Motherboard Issues
+      #- 10.7.201.19
+      # Rack 2
       - 10.8.202.10
       - 10.9.202.10
       - 10.8.202.11
@@ -505,6 +495,7 @@ frb:
       - 10.9.202.18
       - 10.8.202.19
       - 10.9.202.19
+      # Rack 3
       - 10.6.203.10
       - 10.7.203.10
       - 10.6.203.11
@@ -525,6 +516,28 @@ frb:
       - 10.7.203.18
       - 10.6.203.19
       - 10.7.203.19
+      # Rack 4
+      - 10.8.204.10
+      - 10.9.204.10
+      - 10.8.204.11
+      - 10.9.204.11
+      - 10.8.204.12
+      - 10.9.204.12
+      - 10.8.204.13
+      - 10.9.204.13
+      - 10.8.204.14
+      - 10.9.204.14
+      - 10.8.204.15
+      - 10.9.204.15
+      - 10.8.204.16
+      - 10.9.204.16
+      - 10.8.204.17
+      - 10.9.204.17
+      - 10.8.204.18
+      - 10.9.204.18
+      - 10.8.204.19
+      - 10.9.204.19
+      # Rack 5
       - 10.6.205.10
       - 10.7.205.10
       - 10.6.205.11
@@ -545,6 +558,28 @@ frb:
       - 10.7.205.18
       - 10.6.205.19
       - 10.7.205.19
+      # Rack 6
+      - 10.8.206.10
+      - 10.9.206.10
+      - 10.8.206.11
+      - 10.9.206.11
+      - 10.8.206.12
+      - 10.9.206.12
+      - 10.8.206.13
+      - 10.9.206.13
+      - 10.8.206.14
+      - 10.9.206.14
+      - 10.8.206.15
+      - 10.9.206.15
+      - 10.8.206.16
+      - 10.9.206.16
+      - 10.8.206.17
+      - 10.9.206.17
+      - 10.8.206.18
+      - 10.9.206.18
+      - 10.8.206.19
+      - 10.9.206.19
+      # Rack 7
       - 10.6.207.10
       - 10.7.207.10
       - 10.6.207.11
@@ -565,6 +600,70 @@ frb:
       - 10.7.207.18
       - 10.6.207.19
       - 10.7.207.19
+      # Rack 8
+      - 10.8.208.10
+      - 10.9.208.10
+      - 10.8.208.11
+      - 10.9.208.11
+      - 10.8.208.12
+      - 10.9.208.12
+      - 10.8.208.13
+      - 10.9.208.13
+      - 10.8.208.14
+      - 10.9.208.14
+      - 10.8.208.15
+      - 10.9.208.15
+      - 10.8.208.16
+      - 10.9.208.16
+      - 10.8.208.17
+      - 10.9.208.17
+      - 10.8.208.18
+      - 10.9.208.18
+      - 10.8.208.19
+      - 10.9.208.19
+      # Rack 9
+      - 10.6.209.10
+      - 10.7.209.10
+      - 10.6.209.11
+      - 10.7.209.11
+      - 10.6.209.12
+      - 10.7.209.12
+      - 10.6.209.13
+      - 10.7.209.13
+      - 10.6.209.14
+      - 10.7.209.14
+      - 10.6.209.15
+      - 10.7.209.15
+      - 10.6.209.16
+      - 10.7.209.16
+      - 10.6.209.17
+      - 10.7.209.17
+      - 10.6.209.18
+      - 10.7.209.18
+      - 10.6.209.19
+      - 10.7.209.19
+      # Rack A
+      - 10.8.210.10
+      - 10.9.210.10
+      - 10.8.210.11
+      - 10.9.210.11
+      - 10.8.210.12
+      - 10.9.210.12
+      - 10.8.210.13
+      - 10.9.210.13
+      - 10.8.210.14
+      - 10.9.210.14
+      - 10.8.210.15
+      - 10.9.210.15
+      - 10.8.210.16
+      - 10.9.210.16
+      - 10.8.210.17
+      - 10.9.210.17
+      - 10.8.210.18
+      - 10.9.210.18
+      - 10.8.210.19
+      - 10.9.210.19
+      # Rack B
       - 10.6.211.10
       - 10.7.211.10
       - 10.6.211.11
@@ -585,6 +684,7 @@ frb:
       - 10.7.211.18
       - 10.6.211.19
       - 10.7.211.19
+      # Rack C
       - 10.8.212.10
       - 10.9.212.10
       - 10.8.212.11
@@ -605,6 +705,7 @@ frb:
       - 10.9.212.18
       - 10.8.212.19
       - 10.9.212.19
+      # Rack D
       - 10.6.213.10
       - 10.7.213.10
       - 10.6.213.11
@@ -619,6 +720,9 @@ frb:
       - 10.7.213.15
       - 10.6.213.16
       - 10.7.213.16
+      # cfDn7
+      # cfDn8
+      # cfDn9
 
 pulsar:
   timesamples_per_pulsar_packet: 625
@@ -652,7 +756,7 @@ pulsar:
       - 10.16.50.13
       - 10.15.50.14
       - 10.16.50.15
-      - 10.15.50.16
+#      - 10.15.50.16
 
 
 #### N2 GPU Post processing and Tx ####
@@ -745,33 +849,6 @@ vis_merge_eig_10s:
     - visbuf_eig_10s_3
   out_buf: visbuf_10s_merge
 
-vis_int_20s:
-  num_samples: 2
-  int0:
-    kotekan_process: timeDownsample
-    in_buf: visbuf_eig_10s_0
-    out_buf: visbuf_20s_0
-  int1:
-    kotekan_process: timeDownsample
-    in_buf: visbuf_eig_10s_1
-    out_buf: visbuf_20s_1
-  int2:
-    kotekan_process: timeDownsample
-    in_buf: visbuf_eig_10s_2
-    out_buf: visbuf_20s_2
-  int3:
-    kotekan_process: timeDownsample
-    in_buf: visbuf_eig_10s_3
-    out_buf: visbuf_20s_3
-
-vis_merge_20s:
-  kotekan_process: visMerge
-  in_bufs:
-    - visbuf_20s_0
-    - visbuf_20s_1
-    - visbuf_20s_2
-    - visbuf_20s_3
-  out_buf: visbuf_20s_merge
 ## Time integration done
 
 vis_debug:
@@ -779,20 +856,6 @@ vis_debug:
   in_buf: visbuf_10s_merge
 
 ## Start frequency and baseline downselect
-
-# Generate the 4 freq full N^2 stream
-freq_subset1:
-  kotekan_process: freqSubset
-  in_buf: visbuf_10s_merge
-  out_buf: visbuf_10s_4freq
-  subset_list: [50, 100, 250, 350]  # 4 good frequencies within the upper 1/4 band
-
-# Generate the calibration stream
-cal_subset:
-  kotekan_process: prodSubset
-  in_buf: visbuf_10s_merge
-  out_buf: visbuf_10s_cal
-  prod_subset_type: autos
 
 # Generate the 26m stream
 26m_subset:
@@ -802,54 +865,19 @@ cal_subset:
   prod_subset_type: have_inputs
   input_list: [1225, 1521]  # 26m channels
 
-# Generate the 1/4 band pathfinder subset
-# At this stage only down select the frequencies
-freq_subset2:
-  kotekan_process: freqSubset
-  in_buf: visbuf_20s_merge
-  out_buf: visbuf_20s_highfreq
-  subset_list:   [ 26,  28,  29,  30,  32,  33,  34,  35,  36,  37,  38,  39,  40,
-                   41,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,
-                   57,  58,  59,  60,  61,  62,  64,  65,  67,  68,  69,  70,  71,
-                   72,  73,  74,  77,  78,  79,  80,  81,  82,  83,  85,  86,  87,
-                   88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99, 100,
-                  101, 102, 103, 104, 105, 106, 109, 111, 112, 113, 138, 139, 182,
-                  185, 186, 187, 188, 189, 192, 193, 194, 195, 197, 198, 202, 203,
-                  206, 207, 211, 213, 214, 217, 218, 219, 220, 221, 224, 225, 226,
-                  227, 229, 230, 234, 235, 238, 239, 243, 245, 246, 249, 250, 251,
-                  252, 253, 257, 258, 259, 260, 261, 262, 263, 264, 265, 269, 270,
-                  271, 272, 274, 275, 277, 278, 279, 280, 281, 282, 284, 285, 286,
-                  288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 301, 302, 303,
-                  304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316,
-                  317, 318, 320, 321, 323, 324, 325, 326, 327, 328, 329, 330, 333,
-                  334, 335, 336, 337, 338, 339, 341, 342, 343, 344, 345, 346, 347,
-                  348, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360,
-                  361, 362, 365, 367, 368, 369, 370, 374, 375, 376, 377, 378, 379,
-                  380, 381, 383, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395,
-                  398, 399, 402, 403, 404, 405, 406, 409, 410, 411, 412, 413, 416,
-                  417, 418, 419, 420, 421, 422, 425, 426, 427]
 ## End subsetting
 
 # Transmit all the data to the receiver node
 buffer_send:
   server_ip: 10.1.50.12
-
-  n2_f4:
+  n2:
     kotekan_process: bufferSend
-    buf: visbuf_10s_4freq
+    buf: visbuf_10s_merge
     server_port: 11024
-  cal:
-    kotekan_process: bufferSend
-    buf: visbuf_10s_cal
-    server_port: 11025
   26m:
     kotekan_process: bufferSend
     buf: visbuf_5s_26m
-    server_port: 11026
-  pathbf:
-    kotekan_process: bufferSend
-    buf: visbuf_20s_highfreq
-    server_port: 11027
+    server_port: 11025
 
 buffer_status:
   kotekan_process: bufferStatus

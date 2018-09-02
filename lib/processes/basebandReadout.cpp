@@ -146,9 +146,10 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                  event_id, request.length_fpga, request.start_fpga, next_frame);
             {
                 std::lock_guard<std::mutex> lock(*status_lock);
-                dump_status->bytes_total = request.length_fpga * _num_elements;
-                dump_status->bytes_remaining = dump_status->bytes_total;
                 dump_status->state = basebandDumpStatus::State::INPROGRESS;
+                // Note: the length of the dump still needs to be set with
+                // actual sizes. This is done in `get_data` as it verifies what
+                // is available in the current buffers.
             }
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
@@ -184,17 +185,20 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                     }
                 }
 
-                // Wait for free space in the write queue. This prevents this thread from 
-                // receiving any more dump requests until the pipe clears out. Limits the 
+                // Wait for free space in the write queue. This prevents this thread from
+                // receiving any more dump requests until the pipe clears out. Limits the
                 // memory use and buffer congestion.
                 const int max_writes_queued = 3;
-                while (!stop_thread) {
-                    if (write_q.size() < max_writes_queued) {
-                        write_q.push(dump_data_status(data, dump_status));
-                        break;
-                    } else {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                {
+                    std::unique_lock<std::mutex> lock(q_lock);
+                    while (write_q.size() >= max_writes_queued) {
+                        q_not_full.wait_for(lock, std::chrono::milliseconds(100));
+                        if (stop_thread) {
+                            return;
+                        }
                     }
+                    write_q.push(dump_data_status(data, dump_status));
+                    q_not_empty.notify_one();
                 }
             } catch (const std::bad_alloc) {
                 std::lock_guard<std::mutex> lock(*status_lock);
@@ -208,28 +212,30 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
 
 void basebandReadout::write_thread(std::shared_ptr<std::mutex> status_lock) {
     while (!stop_thread) {
-        if (write_q.empty()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        } else {
-            auto dump_tup = write_q.front();
-
-            auto dump_status = std::get<1>(dump_tup);
-            auto data = std::get<0>(dump_tup);
-
-            try {
-                write_dump(data, dump_status, status_lock.get());
-            } catch (HighFive::FileException& e) {
-                INFO("Writing Baseband dump file failed with hdf5 error.");
-                std::lock_guard<std::mutex> lock(*status_lock);
-                dump_status->state = basebandDumpStatus::State::ERROR;
-                dump_status->reason = e.what();
+        std::unique_lock<std::mutex> lock(q_lock);
+        while (write_q.empty()) {
+            q_not_empty.wait_for(lock, std::chrono::milliseconds(100));
+            if (stop_thread) {
+                return;
             }
-
-            //process_request(dump_status, data);
-            // pop at the end such that memory for `data` is released before queue slot
-            // becomes available.
-            write_q.pop();
         }
+        auto dump_tup = write_q.front();
+
+        auto dump_status = std::get<1>(dump_tup);
+        auto data = std::get<0>(dump_tup);
+
+        try {
+            write_dump(data, dump_status, status_lock.get());
+        } catch (HighFive::FileException& e) {
+            INFO("Writing Baseband dump file failed with hdf5 error.");
+            std::lock_guard<std::mutex> lock(*status_lock);
+            dump_status->state = basebandDumpStatus::State::ERROR;
+            dump_status->reason = e.what();
+        }
+
+        // release the memory for `data` before queue slot becomes available
+        write_q.pop();
+        q_not_full.notify_one();
     }
 }
 
@@ -283,6 +289,13 @@ basebandDumpData basebandReadout::get_data(
             int buf_frame = frame_index % buf->num_frames;
             auto metadata = (chimeMetadata *) buf->metadata[buf_frame]->metadata;
             frame_fpga_seq = metadata->fpga_seq_num;
+
+            // if the request specified -1 for the start time, use the earliest
+            // timestamp available
+            if (trigger_start_fpga < 0) {
+                trigger_start_fpga = frame_fpga_seq;
+                trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
+            }
 
             if (trigger_end_fpga <= frame_fpga_seq) continue;
             if (trigger_start_fpga >= frame_fpga_seq + _samples_per_data_set) {
@@ -415,7 +428,7 @@ void basebandReadout::write_dump(basebandDumpData data,
     file.createAttribute<std::string>(
             "archive_version", HighFive::DataSpace::From(version)).write(version);
 
-    std::string git_version = GIT_COMMIT_HASH;
+    std::string git_version = get_git_commit_hash();
     file.createAttribute<std::string>(
             "git_version_tag", HighFive::DataSpace::From(git_version)
             ).write(git_version);

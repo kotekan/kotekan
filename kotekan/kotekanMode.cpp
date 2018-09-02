@@ -4,6 +4,7 @@
 #include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
 #include "restServer.hpp"
+#include "configUpdater.hpp"
 #include "json.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
@@ -24,6 +25,7 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
 kotekanMode::~kotekanMode() {
 
+    configUpdater::instance().reset();
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_all_aliases();
 
@@ -53,6 +55,10 @@ void kotekanMode::initalize_processes() {
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
     metadata_pools = metadata_factory.build_pools();
+
+    // Create Config Updater
+    configUpdater &config_updater = configUpdater::instance();
+    config_updater.apply_config(config);
 
     // Create Buffers
     bufferFactory buffer_factory(config, metadata_pools);

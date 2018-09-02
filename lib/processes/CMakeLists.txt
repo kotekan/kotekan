@@ -42,6 +42,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiBroadcast.cpp
               rfiRecord.cpp
               rfiBadInputFinder.cpp
+              receiveFlags.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

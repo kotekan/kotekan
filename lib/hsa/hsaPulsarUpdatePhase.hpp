@@ -16,7 +16,7 @@
  * @class hsaPulsarUpdatePhase
  * @brief hsaCommand to get phase delay for brute-force beamform
  *
- * This is an hsaCommand that calculates phase delays for brute-form beamforming.
+ * This is an hsaCommand that calculateas phase delays for brute-form beamforming.
  * It forms 10 tracking beams with phases updated every second.
  * Ten pairs of nominal coordinates (RA & Dec) is provided by the config file.
  * This script calculates the phase delay of these 10 sources,
@@ -116,7 +116,8 @@ private:
     Buffer * metadata_buf;
 
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord;
+    struct psrCoord psr_coord;  //active coordinates to be passed to metatdata
+    struct psrCoord psr_coord_latest_update; //Last updated coordinates
     vector<float> _source_ra;
     vector<float> _source_dec;
     vector<int> _source_scl;
@@ -132,12 +133,19 @@ private:
     /// E-W feed separation in m
     int32_t _feed_sep_EW;
 
-    /// Determine which bank of phases to read from, normally its either 0 or 1
-    uint16_t bank_read_id;
-    /// Determine which bank of phases to write to, when updating phases, should be 0 or 1
-    uint16_t bank_write;
-    /// mutex lock to prevent a bank from being read while it is being written to.
-    std::mutex mtx_read;
+    /// Which phase bank (0 or 1) is used by with gpu_frame_id
+    uint * bankID;
+    /// Keep track of outstanding async copies involving phase bank 0
+    uint bank_use_0;
+    /// Keep track of outstanding async copies involving phase bank 1
+    uint bank_use_1;
+    /// The ID of the active bank of phase to be used (0 or 1)
+    uint bank_active;
+
+    /// Keep track of the passing of time, in order to trigger update phase every second
+    uint second_now;
+    uint second_last;
+
     /// mutex lock prevent psr_coord to be read while it is being updated.
     std::mutex _pulsar_lock;
 
@@ -145,6 +153,8 @@ private:
     bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
+    /// Flag to trigger phase update, either because of endpt message or every second
+    bool update_phase;
 
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;

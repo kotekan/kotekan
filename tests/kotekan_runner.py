@@ -53,20 +53,22 @@ class KotekanRunner(object):
         kotekan_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
                                                     "..", "build", "kotekan"))
 
-        with tempfile.NamedTemporaryFile() as fh:
+        with tempfile.NamedTemporaryFile() as fh, \
+             tempfile.NamedTemporaryFile() as f_out:
+
             yaml.dump(config_dict, fh)
             fh.flush()
 
             cmd = ["./kotekan", "-c", fh.name]
             p = subprocess.Popen(cmd, cwd=kotekan_dir,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                 stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
             if self._rest_commands:
                 import requests
                 import json
                 # Wait a moment for rest servers to start up.
-                time.sleep(0.5)
+                time.sleep(1)
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == 'wait':
                         time.sleep(endpoint)
@@ -81,8 +83,10 @@ class KotekanRunner(object):
                             headers=rest_header,
                             data=json.dumps(data))
 
+
             # Wait for kotekan to finish and capture the output
-            self.output, _ = p.communicate()
+            p.wait()
+            self.output = file(f_out.name).read()
 
             # Print out the output from Kotekan for debugging
             print self.output

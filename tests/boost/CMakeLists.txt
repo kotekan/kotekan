@@ -8,11 +8,14 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
+include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 # test source files are located in tests/boost/
 # list them all here:
 set(KOTEKAN_BOOST_TEST_SOURCES
-                test_truncate.cpp)
+                test_truncate.cpp
+                test_dataset_manager.cpp
+                test_updatequeue.cpp)
 
 # list test source files that need HDF5 here:
 if(${USE_HDF5})
@@ -23,6 +26,7 @@ endif()
 foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
 	get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
+    target_link_libraries(${testName} kotekan_utils kotekan_core)
 
     if(${USE_HDF5})
         include_directories(${HDF5_INCLUDE_DIRS})
