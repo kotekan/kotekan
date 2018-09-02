@@ -29,7 +29,7 @@ frbPostProcess::frbPostProcess(Config& config_,
     frb_header_offset = new float[_nbeams * _num_gpus];
 
     if (posix_memalign((void**)&ib,32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float))){
-        ERROR("Couldn't allocate memory.");
+        throw std::runtime_error("Couldn't allocate frbPostProcess memory.");
     }
 }
 

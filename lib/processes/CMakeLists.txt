@@ -24,6 +24,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
+              bufferRecv.cpp
               simpleAutocorr.cpp
               freqSlicer.cpp
               prodSubset.cpp
@@ -52,11 +53,9 @@ endif ()
 if (${USE_AIRSPY})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} airspyInput.cpp)
 endif ()
+
 if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
-endif ()
-if (${USE_EVENT})
-    set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} bufferRecv.cpp)
 endif ()
 
 # HDF5 stuff
@@ -80,6 +79,7 @@ if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
 endif ()
 
+
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 
 
@@ -89,6 +89,7 @@ endif ()
 if (${USE_FFTW})
   target_link_libraries ( kotekan_processes -lfftw3f)
 endif ()
+# HDF5 stuff
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )

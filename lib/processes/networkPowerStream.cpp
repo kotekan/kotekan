@@ -52,11 +52,14 @@ networkPowerStream::networkPowerStream(Config& config,
 
     frame_idx=0;
 
-#ifdef MAC_OSX
-    //MacOS throws SIGPIPE on a TCP disconnect,
-    //blows up kotekan if we don't ignore it.
-    INFO("Disabling SIGPIPE on OSX.");
-    signal(SIGPIPE, SIG_IGN);
+        // Prevent SIGPIPE on send failure.
+        // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
+#ifdef SO_NOSIGPIPE
+        int set = 1;
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE,
+                       (void *)&set, sizeof(int)) < 0) {
+            ERROR("bufferSend: setsockopt() NOSIGPIPE ");
+        }
 #endif
 }
 
