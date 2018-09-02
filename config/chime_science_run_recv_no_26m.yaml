@@ -227,10 +227,10 @@ mfreq_subset:
     kotekan_process: freqSubset
     in_buf: visbuf_10s_flags
     out_buf: visbuf_10s_mfreq
-  stack:
-    kotekan_process: freqSubset
-    in_buf: visbuf_10s_stack
-    out_buf: visbuf_10s_stack_mfreq
+#  stack:
+#    kotekan_process: freqSubset
+#    in_buf: visbuf_10s_stack
+#    out_buf: visbuf_10s_stack_mfreq
 
 buffer_writers:
   file_length: 256

@@ -140,6 +140,8 @@ void visDebug::main_thread() {
 
     unsigned int frame_id = 0;
 
+    uint64_t num_frames = 0;
+
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -149,8 +151,10 @@ void visDebug::main_thread() {
         }
 
         // Print out debug information from the buffer
+        if ((num_frames % 1000) == 0)
+            INFO("Got frame number %lli", num_frames);
         auto frame = visFrameView(in_buf, frame_id);
-        INFO("%s", frame.summary().c_str());
+        DEBUG("%s", frame.summary().c_str());
 
         // Update the frame count for prometheus
         fd_pair key {frame.freq_id, frame.dataset_id};
@@ -166,6 +170,7 @@ void visDebug::main_thread() {
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
+        num_frames++;
     }
 }
 
