@@ -263,7 +263,7 @@ archive_writers:
   file_type: raw
   write_ev: True
   weights_type: inverse_var
-  root_path: /data/test/bigtest/
+  root_path: /data/untransposed/
 
   freq_ids: *allfreq
 

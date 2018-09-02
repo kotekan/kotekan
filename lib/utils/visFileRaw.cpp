@@ -84,6 +84,7 @@ void visFileRaw::create_file(
 
 
     // Create lock file and then open the other files
+    _name = name;
     lock_filename = create_lockfile(name);
     metadata_file = std::ofstream(name + ".meta", std::ios::binary);
     if((fd = open((name + ".data").c_str(), oflags,
@@ -176,8 +177,8 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
     );
 
     if(nbytes < 0) {
-        ERROR("Write error attempting to write %i bytes at offset %i: %s",
-              nb, offset, strerror(errno));
+        ERROR("Write error attempting to write %i bytes at offset %llu into file %s: %s",
+              nb, offset, _name.c_str(), strerror(errno));
         return false;
     }
 

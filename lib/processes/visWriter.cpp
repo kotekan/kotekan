@@ -164,7 +164,7 @@ void visWriter::main_thread() {
 
         } else {
 
-            INFO("Writing frequency id=%i", frame.freq_id);
+            DEBUG("Writing frequency id=%i", frame.freq_id);
 
             uint32_t freq_ind = freq_id_map[frame.freq_id];
 
