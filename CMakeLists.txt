@@ -70,6 +70,9 @@ elseif(${AVX_FOUND})
   add_definitions(-DWITH_AVX -mavx)
 endif()
 
+#Libevent is required now
+find_package(LibEvent REQUIRED )
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
 else()
