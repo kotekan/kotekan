@@ -29,16 +29,6 @@ pipeline {
                   make'''
           }
         }
-        stage('Build docs') {
-          steps {
-            sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
-                  mkdir build-docs
-                  cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON ..
-                  cd docs/
-                  make'''
-          }
-        }
         stage('Build MacOS kotekan') {
           agent {label 'macos'}
           steps {
@@ -49,7 +39,16 @@ pipeline {
                   make'''
           }
         }
-
+        stage('Build docs') {
+          steps {
+            sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
+                  mkdir build-docs
+                  cd build-docs/
+                  cmake -DCOMPILE_DOCS=ON ..
+                  cd docs/
+                  make'''
+          }
+        }
       }
     }
     stage('Unit Tests') {
