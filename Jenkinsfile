@@ -29,13 +29,26 @@ pipeline {
                   make'''
           }
         }
-        stage('Build MacOS kotekan') {
+        stage('Build Minimal MacOS kotekan') {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build-docs
-                  cd build-docs/
+                  mkdir build
+                  cd build/
                   cmake ..
+                  make'''
+          }
+        }
+        stage('Build Maximal MacOS kotekan') {
+          agent {label 'macos'}
+          steps {
+            sh '''export PATH=${PATH}:/usr/local/bin/
+                  mkdir build
+                  cd build/
+                  cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DUSE_FFTW=ON -DUSE_AIRSPY=ON \
+                        -DUSE_LAPACK=ON -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
+                        -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
                   make'''
           }
         }
