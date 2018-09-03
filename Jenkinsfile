@@ -33,8 +33,8 @@ pipeline {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build
-                  cd build/
+                  mkdir build_base
+                  cd build_base/
                   cmake ..
                   make'''
           }
@@ -43,8 +43,8 @@ pipeline {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build
-                  cd build/
+                  mkdir build_full
+                  cd build_full/
                   cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DUSE_FFTW=ON -DUSE_AIRSPY=ON \
                         -DUSE_LAPACK=ON -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
