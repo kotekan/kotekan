@@ -163,12 +163,12 @@ void receiveFlags::main_thread() {
 
         // Report number of frames received late
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_applygains_late_frame_count",
+            "kotekan_receiveflags_late_frame_count",
             unique_name, num_late_frames);
 
         // Report number of updates received too late
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_applygains_late_update_count",
+            "kotekan_receiveflags_late_update_count",
             unique_name, num_late_updates);
 
         // Mark output frame full and input frame empty
