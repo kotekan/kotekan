@@ -55,9 +55,11 @@ vis_buffer:
   visbuf_10s_cal:
     kotekan_buffer: vis
     num_prod: 2048
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
     num_prod: 3
     kotekan_buffer: vis
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
 
 # Subset of good frequencies to output whole for monitoring
 mfreq: &mfreq [107, 214, 262, 344, 425, 519, 619, 726, 775, 938]
@@ -272,7 +274,7 @@ archive_writers:
     in_buf: visbuf_10s_mfreq
     freq_ids: *mfreq
     instrument_name: chimeN2
-  
+
   chimestack:
     kotekan_process: visWriter
     in_buf: visbuf_10s_stack
