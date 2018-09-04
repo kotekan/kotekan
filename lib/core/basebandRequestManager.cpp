@@ -101,14 +101,32 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
         int64_t start_fpga = request["start"];
         int64_t length_fpga = request["length"];
         std::string file_name = request["file_name"];
-        uint32_t freq_id = request["freq_id"];
-        auto& readout_entry = readout_registry[freq_id];
-        {
+
+        json response = json::object({});
+        for (auto& element : readout_registry) {
+            const uint32_t freq_id = element.first;
+            auto& readout_entry = element.second;
+
             std::lock_guard<std::mutex> lock(readout_entry.requests_lock);
-            readout_entry.request_queue.push_back({event_id, start_fpga, length_fpga, file_name, now});
+            const std::string readout_file_name = file_name +
+                "_" + std::to_string(freq_id) + ".h5";
+            const auto readout_start_fpga = start_fpga;
+            const auto readout_length_fpga = length_fpga;
+            readout_entry.request_queue.push_back({
+                    event_id,
+                    readout_start_fpga,
+                    readout_length_fpga,
+                    readout_file_name,
+                    now
+            });
+            readout_entry.requests_cv.notify_all();
+            response[std::to_string(freq_id)] = json{
+                {"file_name", readout_file_name},
+                {"start_fpga", readout_start_fpga},
+                {"length_fpga", readout_length_fpga}
+            };
         }
-        readout_entry.requests_cv.notify_all();
-        conn.send_empty_reply(HTTP_RESPONSE::OK);
+        conn.send_text_reply(response.dump());
     } catch (const std::exception &ex) {
         INFO("Bad baseband request: %s", ex.what());
         conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
