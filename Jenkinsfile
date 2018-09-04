@@ -29,22 +29,12 @@ pipeline {
                   make'''
           }
         }
-        stage('Build MacOS kotekan') {
-          agent {label 'macos'}
-          steps {
-            sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build-macos
-                  cd build-macos/
-                  cmake ..
-                  make'''
-          }
-        }
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
                   mkdir build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl ..
+                  cmake -DCOMPILE_DOCS=ON ..
                   cd docs/
                   make'''
           }
