@@ -66,6 +66,7 @@ public:
                         break;
                 }
                 // check if timestamp is identical -> replace update
+
                 if (u != values.crend() && u->first == timestamp)
                     u->second = move(update);
                 else

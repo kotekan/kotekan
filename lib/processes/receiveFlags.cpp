@@ -35,48 +35,47 @@ receiveFlags::receiveFlags(Config &config, const string& unique_name,
 
 void receiveFlags::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    num_elems = config.get_int(unique_name, "num_elements");
-    if (num_elems < 0)
+    int num = config.get_int(unique_name, "num_elements");
+    if (num < 0)
         throw std::invalid_argument("receiveFlags: config: invalid value for" \
                                     " num_elements: "
-                                    + std::to_string(num_elems));
-
-    updatable_config = config.get_string(unique_name, "updatable_config");
+                                    + std::to_string(num));
+    num_elements = (size_t)num;
 
     num_kept_updates = config.get_uint32_default(unique_name,
                                                  "num_kept_updates", 5);
 }
 
 bool receiveFlags::flags_callback(nlohmann::json &json) {
-    std::vector<float> flags_received (num_elems);
+    std::vector<float> flags_received (num_elements);
     std::fill(flags_received.begin(), flags_received.end(), 1.0);
     double ts;
 
-    //receive flags and timestamp
+    //receive flags and start_time
     try {
         if (!json.at("bad_inputs").is_array())
             throw std::invalid_argument("receiveFlags: flags_callback " \
                                         "received bad value 'bad_inputs': " +
                                         json.at("bad_inputs").dump());
-        if (json.at("bad_inputs").size() > num_elems)
+        if (json.at("bad_inputs").size() > num_elements)
             throw std::invalid_argument("receiveFlags: flags_callback " \
                       "received " + std::to_string(json.at("bad_inputs").size())
-                      + " bad inputs (has to be less than or equal num_elems = "
-                      + std::to_string(num_elems) + ").");
-        if (!json.at("timestamp").is_number())
+                      + " bad inputs (has to be less than or equal num_elements = "
+                      + std::to_string(num_elements) + ").");
+        if (!json.at("start_time").is_number())
             throw std::invalid_argument("receiveFlags: received bad value " \
-                                        "'timestamp': " +
-                                        json.at("timestamp").dump());
-        if (json.at("timestamp") < 0)
+                                        "'start_time': " +
+                                        json.at("start_time").dump());
+        if (json.at("start_time") < 0)
             throw std::invalid_argument("receiveFlags: received negative " \
-                                       "timestamp: " +
-                                       json.at("timestamp").dump());
+                                       "start_time: " +
+                                       json.at("start_time").dump());
 
-        ts = json.at("timestamp");
+        ts = json.at("start_time");
 
         for (nlohmann::json::iterator flag = json.at("bad_inputs").begin();
              flag != json.at("bad_inputs").end(); flag++) {
-            if (*flag >= num_elems)
+            if (*flag >= num_elements)
                 throw std::invalid_argument("receiveFlags: received " \
                                             "out-of-range bad_input: " +
                                             json.at("bad_inputs").dump());
@@ -88,18 +87,18 @@ bool receiveFlags::flags_callback(nlohmann::json &json) {
     }
 
     if (ts_frame > double_to_ts(ts)) {
-        WARN("receiveFlags: Received update with a timestamp that is older " \
+        WARN("receiveFlags: Received update with a start_time that is older " \
              "than the current frame (The difference is %f s).",
              ts_to_double(ts_frame) - ts);
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_receiveflags_old_update_seconds",
-            unique_name, ts_to_double(ts_frame) - ts);
+        num_late_updates++;
     }
 
     // update the flags
     flags_lock.lock();
     flags.insert(double_to_ts(ts), std::move(flags_received));
     flags_lock.unlock();
+
+    INFO("Updated flags to %s.", json.at("tag").get<std::string>().c_str());
 
     return true;
 }
@@ -108,7 +107,9 @@ void receiveFlags::main_thread() {
 
     uint32_t frame_id_in = 0;
     uint32_t frame_id_out = 0;
+    size_t num_late_frames = 0;
 
+    num_late_updates = 0;
     timespec ts_late = {0,0};
 
     std::pair<timespec, const std::vector<float>*> update;
@@ -126,9 +127,8 @@ void receiveFlags::main_thread() {
         }
 
         // Copy frame into output buffer
-        auto frame_in = visFrameView(buf_in, frame_id_in);
-        allocate_new_metadata_object(buf_out, frame_id_out);
-        auto frame_out = visFrameView(buf_out, frame_id_out, frame_in);
+        auto frame_out = visFrameView::copy_frame(buf_in, frame_id_in,
+                                                  buf_out, frame_id_out);
 
         // get the frames timestamp
         ts_frame = std::get<1>(frame_out.time);
@@ -149,14 +149,27 @@ void receiveFlags::main_thread() {
                   "not in memory. Applying oldest flags found. (%d)" \
                  " Concider increasing num_kept_updates.", frame_id_in,
                  ts_to_double(ts_frame), ts_to_double(update.first));
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_receiveflags_old_frame_seconds",
-                unique_name, ts_to_double(ts_late));
+            num_late_frames++;
         }
         // actually copy the new flags and apply them from now
         std::copy(update.second->begin(), update.second->end(),
                   frame_out.flags.begin());
         flags_lock.unlock();
+
+        // Report how old the flags being applied to the current data are.
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_receiveflags_update_age_seconds",
+            unique_name, -ts_to_double(ts_late));
+
+        // Report number of frames received late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_receiveflags_late_frame_count",
+            unique_name, num_late_frames);
+
+        // Report number of updates received too late
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_receiveflags_late_update_count",
+            unique_name, num_late_updates);
 
         // Mark output frame full and input frame empty
         mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);

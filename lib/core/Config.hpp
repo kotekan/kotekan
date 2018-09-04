@@ -64,6 +64,9 @@ public:
     vector<string> get_string_array(const string& base_path, const string& name);
     vector<json> get_json_array(const string& base_path, const string& name);
 
+    template<typename T>
+    vector<T> get_array(const string& base_path, const string& name);
+
     void parse_file(const string &file_name);
 
     // @param updates Json object with values to be replaced.
@@ -138,6 +141,17 @@ void Config::update_value(const string &base_path, const string &name, const T &
     } catch (std::exception const & ex) {
         throw std::runtime_error("Failed to update config value at: " + update_path + " message: " + ex.what());
     }
+}
+
+template<typename T>
+vector<T> Config::get_array(const string& base_path, const string& name)
+{
+    json value = get_value(base_path, name);
+
+    if (!value.is_array()) {
+        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
+    }
+    return value.get<vector<T>>();
 }
 
 #endif /* CONFIG_HPP */

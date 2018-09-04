@@ -57,6 +57,7 @@ class KotekanRunner(object):
              tempfile.NamedTemporaryFile() as f_out:
 
             yaml.dump(config_dict, fh)
+            print yaml.dump(config_dict)
             fh.flush()
 
             cmd = ["./kotekan", "-c", fh.name]
@@ -79,9 +80,24 @@ class KotekanRunner(object):
                     except AttributeError:
                         raise ValueError('REST command not found')
 
-                    command(rest_addr + endpoint,
-                            headers=rest_header,
-                            data=json.dumps(data))
+                    try:
+                        command(rest_addr + endpoint,
+                                headers=rest_header,
+                                data=json.dumps(data))
+                    except:
+                        # print kotekan output if sending REST command fails
+                        # (kotekan might have crashed and we want to know)
+                        p.wait()
+                        self.output = file(f_out.name).read()
+
+                        # Print out the output from Kotekan for debugging
+                        print self.output
+
+                        # Throw an exception if we don't exit cleanly
+                        if p.returncode:
+                            raise subprocess.CalledProcessError(p.returncode, cmd)
+
+                        print "Failed sending REST command: " + rtype + " to " + endpoint + " with data ", data
 
 
             # Wait for kotekan to finish and capture the output
@@ -272,6 +288,25 @@ class VisWriterBuffer(OutputBuffer):
         }
 
         self.process_block = {process_name: process_config}
+
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : visbuffer.VisRaw object.
+            The buffer output.
+        """
+        import glob
+
+        # For now assume only one file is found
+        # TODO: Might be nice to be able to check the file is the right one.
+        # But visWriter creates the acquisition and file names on the flight
+        flnm = glob.glob(self.output_dir+'/*/*.data')[0]
+        return visbuffer.VisRaw(os.path.splitext(flnm)[0]).data
+
+#        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
+#                                              (self.output_dir, self.name))
 
 
 class ReadVisBuffer(InputBuffer):
