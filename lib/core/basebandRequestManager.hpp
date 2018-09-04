@@ -8,6 +8,7 @@
 #define BASEBAND_REQUEST_MANAGER_HPP
 
 #include "json.hpp"
+#include "gpsTime.h"
 #include "restServer.hpp"
 #include <chrono>
 #include <condition_variable>
@@ -27,12 +28,21 @@ struct basebandRequest {
     int64_t start_fpga;
     /// Length of the dump in FPGA frames
     int64_t length_fpga;
-    /// destination file (relative to ``base_dir`` from the configuration.)
+    /// destination directory (relative to ``base_dir`` from the configuration.)
+    std::string file_path;
+    /// destination file (relative to ``file_path``)
     std::string file_name;
     /// Time when the request was received
     std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
 };
+void to_json(json& j, const basebandRequest& r);
 
+struct basebandSlice {
+    /// Starting FPGA frame of the dump
+    int64_t start_fpga;
+    /// Length of the dump in FPGA frames
+    int64_t length_fpga;
+};
 
 /**
  * @class basebandDumpStatus
@@ -59,6 +69,8 @@ struct basebandDumpStatus {
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
 };
+void to_json(json& j, const basebandDumpStatus& s);
+
 
 /**
  * @class basebandRequestManager
@@ -93,11 +105,27 @@ public:
     /**
      * @brief The call back function for GET requests to `/baseband`.
      *
-     * This function is never called directly.
+     * The function sends an HTTP response with the status of all
+     * baseband dumps received since this instance started running.
+     *
+     * @note This function is never called directly.
      *
      * @param conn The connection instance to send results to
      */
-    void status_callback(connectionInstance& conn);
+    void status_callback_all(connectionInstance& conn);
+
+    /**
+     * @brief The call back function for GET requests to `/baseband/:event_id`.
+     *
+     * The function sends an HTTP response with the status of a specified
+     * baseband dump.
+     *
+     * @note This function is never called directly.
+     *
+     * @param event_id unique identifier for the event
+     * @param conn The connection instance to send results to
+     */
+    void status_callback_single_event(const uint64_t event_id, connectionInstance& conn);
 
     /**
      * @brief The call back function for POST requests to `/baseband`.
@@ -129,6 +157,59 @@ public:
 private:
     /// Constructor, not used directly
     basebandRequestManager() = default;
+
+    /// Sampling frequency (Hz)
+    static constexpr double ADC_SAMPLE_RATE = 800e6;
+
+    /// Number of samples in the inital FFT in the F-engine.
+    static constexpr double FPGA_NSAMP_FFT = 2048;
+
+    /// FPGA clock rate (Hz)
+    static constexpr double FPGA_FRAME_RATE = 1. / (FPGA_PERIOD_NS * 1E-9); // =390,625
+    // Can also be done as FPGA_FRAME_RATE = ADC_SAMPLE_RATE / FPGA_NSAMP_FFT
+
+    /// Reference frequency in the L0 subsystem
+    static constexpr double FPGA_FREQ0 = 800e6;
+
+    /// Width of frequency bin, used to calculate frequency of an index, relative to FPGA_FREQ0
+    static constexpr double FPGA_DELTA_FREQ  = - ADC_SAMPLE_RATE / FPGA_NSAMP_FFT;
+
+    /// Physical constant: elementary charge (C)
+    static constexpr double ELEMENTARY_CHARGE = 1.6021766208e-19;
+    /// Physical constant: the electric constant (vacuum permittivity, F/m)
+    static constexpr double EPSILON_0 = 8.854187817620389e-12;
+    /// Physical constant: mass of electron (kg)
+    static constexpr double ELECTRON_MASS = 9.10938356e-31;
+    /// Physical constant: speed of light in vacuum (m/s)
+    static constexpr double C = 299792458.0;
+
+    /// Unit definition: parsec (m)
+    static constexpr double PARSEC = 3.0856775813057292e+16;
+    /// Unit definition: Centimeters (m)
+    static constexpr double CM = 1e-2;
+
+    /// Physical constant: Dispersion measure, in Hz**2 s / (pc cm^-3)
+    static constexpr double K_DM = (
+        ELEMENTARY_CHARGE * ELEMENTARY_CHARGE
+        / 2 / M_PI
+        / 4 / M_PI / EPSILON_0
+        / ELECTRON_MASS / C
+        * (PARSEC / (CM * CM * CM)));
+
+    /// Reference frequency in the L1 subsystem. (TODO verify. May be off by 1 bin.)
+    static constexpr double L1_REFERERENCE_FREQ = 400e6;
+
+    /// TODO verify. I'm assuming dm_error is 1-sigma.
+    static constexpr double N_DM_ERROR_TOL = 3;
+
+    /// Utility function that adjusts the trigger times given for the reference
+    /// frequency to those for the frequency `freq_id`
+    static basebandSlice translate_trigger(int64_t fpga_time0, int64_t fpga_width,
+                                           const double dm, const double dm_error,
+                                           const int64_t freq_id,
+                                           const double ref_freq_hz=L1_REFERERENCE_FREQ);
+
+    void status_callback_single_event(connectionInstance& conn);
 
     /**
     * @class basebandReadoutRegistryEntry

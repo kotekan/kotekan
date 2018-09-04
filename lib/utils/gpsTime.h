@@ -22,6 +22,8 @@ int is_gps_global_time_set();
 // Returns the GPS time based on the given fpga seq number.
 struct timespec compute_gps_time(uint64_t fpga_seq_num);
 
+/// Returns the fpga seq at GPS time ``ts``
+uint64_t compute_fpga_seq(struct timespec ts);
 #ifdef __cplusplus
 }
 #endif

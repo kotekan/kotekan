@@ -28,12 +28,22 @@ def command_rest_frames(num_frames):
     return ('post', DATAGEN_PNAME + '/generate_test_data', {'num_frames': num_frames})
 
 
-def command_trigger(start, length, file_name, event_id=123456):
+def command_trigger(start, length, event_id=123456, file_path="", dm=0, dm_error=0):
+    if start < 0:
+        start_unix_seconds = start
+        start_unix_nano = 0
+    else:
+        start_unix_seconds = 0
+        start_unix_nano = start * 2560
+
     data = {
             "event_id": event_id,
-            "start": start,
-            "length": length,
-            "file_name": file_name,
+            "start_unix_seconds": start_unix_seconds,
+            "start_unix_nano": start_unix_nano,
+            "duration_nano": length*2560,
+            "dm": dm,
+            "dm_error": dm_error,
+            "file_path": file_path,
             }
     return ('post', 'baseband', data)
 
@@ -88,8 +98,8 @@ def test_io_errors_and_max_samples(tmpdir_factory):
     rest_commands = [
             command_rest_frames(1),
             wait(0.1),
-            command_trigger(1437, 1839, "doesnt_exist/file1", 10),
-            command_trigger(10457, 3237, "file2", 31),
+            command_trigger(1437, 1839, 10, "doesnt_exist"),
+            command_trigger(10457, 3237, 31),
             wait(0.1),
             command_rest_frames(25),
             # Give it some time to write the capture before shutdown.
@@ -117,7 +127,7 @@ def test_negative_start_time(tmpdir_factory):
     rest_commands = [
             command_rest_frames(1),
             wait(0.1),
-            command_trigger(-1, 3237, "file2", 31),
+            command_trigger(-1, 3237, 31),
             wait(0.1),
             command_rest_frames(25),
             # Give it some time to write the capture before shutdown.
@@ -138,9 +148,9 @@ def test_basic(tmpdir_factory):
     rest_commands = [
             command_rest_frames(1),
             wait(0.1),
-            command_trigger(1437, 1839, "file1", 10),
-            command_trigger(40457, 3237, "file2", 31),
-            command_trigger(51039, 2091, "file3", 17),
+            command_trigger(1437, 1839, 10),
+            command_trigger(40457, 3237, 17),
+            command_trigger(51039, 2091, 31),
             wait(0.1),
             command_rest_frames(60),
             ]
@@ -151,10 +161,10 @@ def test_basic(tmpdir_factory):
     for ii, f in enumerate(sorted(dump_files)):
         f = h5py.File(f, 'r')
         shape = f['baseband'].shape
-        assert f.attrs['time0_fpga_count'] == rest_commands[2 + ii][2]['start']
+        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii][2]['start_unix_nano']
         assert f.attrs['event_id'] == rest_commands[2 + ii][2]['event_id']
         assert f.attrs['freq_id'] == 0
-        assert shape == (rest_commands[2 + ii][2]['length'], num_elements)
+        assert shape == (rest_commands[2 + ii][2]['duration_nano']/2560, num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
         edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)
@@ -165,16 +175,16 @@ def test_basic(tmpdir_factory):
 
 def test_missed(tmpdir_factory):
 
-    good_trigger = (2437, 3123, "file1")
+    good_trigger = (2437, 3123)
     rest_commands = [
             command_rest_frames(21),
             wait(.5),
             command_trigger(*good_trigger),  # Catch part of this one.
             command_rest_frames(30),
-            command_trigger(100, 100, "file2"),       # Miss this one.
-            command_trigger(1002, 112, "file3"),      # Miss this one.
-            command_trigger(1001, 300, "file4"),      # Miss this one.
-            command_trigger(81039, 7091, "file5"),    # This one never arrives.
+            command_trigger(100, 100),       # Miss this one.
+            command_trigger(1002, 112),      # Miss this one.
+            command_trigger(1001, 300),      # Miss this one.
+            command_trigger(81039, 7091),    # This one never arrives.
             command_rest_frames(10),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
@@ -194,7 +204,7 @@ def test_bigdump(tmpdir_factory):
     rest_commands = [
             command_rest_frames(1),
             wait(0.1),
-            command_trigger(5437, 25423, "file1"),    # Bigger than ring buffer.
+            command_trigger(5437, 25423),    # Bigger than ring buffer.
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
@@ -221,8 +231,8 @@ def test_overload_no_crash(tmpdir_factory):
     n = 30
     for ii in range(n):
         start = random.randrange(1, (ii * tf / n + 20) * spd)
-        lenth = random.randrange(1, spd * 5)
-        rest_commands += [command_trigger(start, lenth, "file" + str(ii+1))]
+        length = random.randrange(1, spd * 5)
+        rest_commands += [command_trigger(start, length, (ii+1))]
     rest_commands += [command_rest_frames(params['total_frames'])]
 
     run_baseband(tmpdir_factory, params, rest_commands)

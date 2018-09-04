@@ -39,6 +39,10 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         oldest_frame(-1),
         frame_locks(_num_frames_buffer)
 {
+    // ensure a trailing slash in _base_dir
+    if (_base_dir.back() != '/') {
+        _base_dir.push_back('/');
+    }
     // Get the correlator input meanings, unreordered.
     auto input_reorder = parse_reorder_default(config, unique_name);
     _inputs = std::get<1>(input_reorder);
@@ -413,7 +417,9 @@ void basebandReadout::write_dump(basebandDumpData data,
                                  std::mutex* status_lock) {
 
     // TODO Create parent directories.
-    std::string filename = _base_dir + dump_status->request.file_name;
+    std::string filename = _base_dir +
+        dump_status->request.file_path + "/" +
+        dump_status->request.file_name;
     std::string lock_filename = create_lockfile(filename);
     INFO(("Writing baseband dump to " + filename).c_str());
 
