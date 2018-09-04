@@ -53,20 +53,23 @@ class KotekanRunner(object):
         kotekan_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
                                                     "..", "build", "kotekan"))
 
-        with tempfile.NamedTemporaryFile() as fh:
+        with tempfile.NamedTemporaryFile() as fh, \
+             tempfile.NamedTemporaryFile() as f_out:
+
             yaml.dump(config_dict, fh)
+            print yaml.dump(config_dict)
             fh.flush()
 
             cmd = ["./kotekan", "-c", fh.name]
             p = subprocess.Popen(cmd, cwd=kotekan_dir,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                 stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
             if self._rest_commands:
                 import requests
                 import json
                 # Wait a moment for rest servers to start up.
-                time.sleep(0.5)
+                time.sleep(1)
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == 'wait':
                         time.sleep(endpoint)
@@ -77,12 +80,29 @@ class KotekanRunner(object):
                     except AttributeError:
                         raise ValueError('REST command not found')
 
-                    command(rest_addr + endpoint,
-                            headers=rest_header,
-                            data=json.dumps(data))
+                    try:
+                        command(rest_addr + endpoint,
+                                headers=rest_header,
+                                data=json.dumps(data))
+                    except:
+                        # print kotekan output if sending REST command fails
+                        # (kotekan might have crashed and we want to know)
+                        p.wait()
+                        self.output = file(f_out.name).read()
+
+                        # Print out the output from Kotekan for debugging
+                        print self.output
+
+                        # Throw an exception if we don't exit cleanly
+                        if p.returncode:
+                            raise subprocess.CalledProcessError(p.returncode, cmd)
+
+                        print "Failed sending REST command: " + rtype + " to " + endpoint + " with data ", data
+
 
             # Wait for kotekan to finish and capture the output
-            self.output, _ = p.communicate()
+            p.wait()
+            self.output = file(f_out.name).read()
 
             # Print out the output from Kotekan for debugging
             print self.output
@@ -268,6 +288,25 @@ class VisWriterBuffer(OutputBuffer):
         }
 
         self.process_block = {process_name: process_config}
+
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : visbuffer.VisRaw object.
+            The buffer output.
+        """
+        import glob
+
+        # For now assume only one file is found
+        # TODO: Might be nice to be able to check the file is the right one.
+        # But visWriter creates the acquisition and file names on the flight
+        flnm = glob.glob(self.output_dir+'/*/*.data')[0]
+        return visbuffer.VisRaw(os.path.splitext(flnm)[0]).data
+
+#        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
+#                                              (self.output_dir, self.name))
 
 
 class ReadVisBuffer(InputBuffer):

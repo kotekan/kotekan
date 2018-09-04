@@ -35,16 +35,16 @@ struct basebandRequest {
 
 
 /**
- * @class basebandRequestState
- * @brief State of the request
- */
-enum class basebandRequestState { WAITING, INPROGRESS, DONE, ERROR };
-
-/**
  * @class basebandDumpStatus
  * @brief Helper structure to track the progress of a dump request's processing.
  */
 struct basebandDumpStatus {
+    /**
+    * @class basebandDumpStatus::State
+    * @brief State of the request
+    */
+    enum class State { WAITING, INPROGRESS, DONE, ERROR };
+
     /// The request that is being tracked
     const basebandRequest request;
     /**
@@ -55,11 +55,10 @@ struct basebandDumpStatus {
     /// Remaining data to write, in bytes
     size_t bytes_remaining = bytes_total;
     /// Current state of the request
-    basebandRequestState state = basebandRequestState::WAITING;
+    basebandDumpStatus::State state = State::WAITING;
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
 };
-
 
 /**
  * @class basebandRequestManager
@@ -111,6 +110,14 @@ public:
     void handle_request_callback(connectionInstance& conn, json& request);
 
     /**
+     * @brief Register a readout process for specified frequency
+     *
+     * @return a shared_ptr to the mutex used to guard access to the baseband
+     * dump currently in progress.
+     */
+    std::shared_ptr<std::mutex> register_readout_process(const uint32_t freq_id);
+
+    /**
      * @brief Tries to get the next dump request to process.
      *
      * @return a shared_ptr to the `basebandDumpStatus` object if there is a
@@ -123,18 +130,48 @@ private:
     /// Constructor, not used directly
     basebandRequestManager() = default;
 
-    /// Queue of unprocessed baseband requests for each basebandReadout process,
-    /// indexed by `freq_id`
-    std::map<uint32_t, std::deque<basebandRequest>> requests;
+    /**
+    * @class basebandReadoutRegistryEntry
+    * @brief Helper structure to track registered basebandReadout processes
+    */
+    struct basebandReadoutRegistryEntry {
+        /// request updating lock
+        std::mutex requests_lock;
 
-    /// Queue of baseband dumps in progress
-    std::vector<std::shared_ptr<basebandDumpStatus>> processing;
+        /// new request notification
+        std::condition_variable requests_cv;
 
-    /// request updating lock
-    std::mutex requests_lock;
+        /// Queue of unprocessed baseband requests for this frequency
+        std::deque<basebandRequest> request_queue;
 
-    /// new request notification
-    std::condition_variable requests_cv;
+        /// Status of the baseband dump currently in progress
+        std::shared_ptr<basebandDumpStatus> current_status = nullptr;
+
+        /// Lock to update the current basebandDumpStatus object
+        std::shared_ptr<std::mutex> current_lock = std::make_shared<std::mutex>();
+
+        /// Queue of completed baseband requests for this frequency
+        std::vector<basebandDumpStatus> processing;
+    };
+
+    /**
+     * @class basebandReadoutRegistry
+     * @brief encapsulation of a lock-protected map to registered readout processes
+     */
+    class basebandReadoutRegistry {
+    public:
+        using iterator = std::map<uint32_t, basebandReadoutRegistryEntry>::iterator;
+        iterator begin() noexcept;
+        iterator end() noexcept;
+        basebandReadoutRegistryEntry& operator[]( const uint32_t& key );
+
+    private:
+        std::mutex map_lock;
+        std::map<uint32_t, basebandReadoutRegistryEntry> readout_map;
+    };
+
+    /// Map of registered readout processes, indexed by `freq_id`
+    basebandReadoutRegistry readout_registry;
 };
 
 #endif /* BASEBAND_REQUEST_MANAGER_HPP */

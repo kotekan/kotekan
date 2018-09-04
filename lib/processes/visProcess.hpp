@@ -177,7 +177,7 @@ private:
  *
  * In reality this probably works on any buffer format, though it is only
  * tested against visBuffer data.
- * 
+ *
  * @par Buffers
  * @buffer in_bufs The set of buffers to merge together.
  *         @buffer_format visBuffer.
@@ -215,8 +215,7 @@ private:
  * @brief Checks if the visibility data matches a given expected pattern.
  *
  * Errors are calculated as the norm of the difference between the expected and the actual (complex) visibility value.
- * Writes out to a csv file specified in the configuration and prints a report
- * in a configured interval. The columns have the following meaning:
+ * For bad frames, the following data is written to a csv file specified in the config:
  * fpga_count:  FPGA counter for the frame
  * time:        the frames timestamp
  * freq_id:     the frames frequency ID
@@ -225,8 +224,13 @@ private:
  * min_err:     minimum error of bad values
  * max_err:     maximum error of bad balues
  *
+ * Additionally a report is printed in a configured interval.
+ *
  * @par Buffers
  * @buffer in_buf               The buffer to debug
+ *         @buffer_format       visBuffer structured
+ *         @buffer_metadata     visMetadata
+ * @buffer out_buf              All frames found to contain errors
  *         @buffer_format       visBuffer structured
  *         @buffer_metadata     visMetadata
  *
@@ -251,6 +255,7 @@ public:
 
 private:
     Buffer * in_buf;
+    Buffer * out_buf;
 
     // A (freq_id, dataset_id) pair
     using fd_pair = typename std::pair<uint32_t, uint32_t>;
@@ -267,4 +272,51 @@ private:
     std::ofstream outfile;
     std::string outfile_name;
 };
+
+
+/**
+ * @brief Register the initial state of the buffers with the datasetManager.
+ *
+ * This task tags a stream with a properly allocated dataset_id and adds
+ * associated datasetStates to the datasetManager.
+ *
+ * @note If there are no other consumers on this buffer it will be able to do a
+ *       much faster zero copy transfer of the frame from input to output
+ *       buffer.
+ *
+ * @par Buffers
+ * @buffer in_bufs The untagged data.
+ *         @buffer_format visBuffer structured.
+ *         @buffer_metadata visMetadata
+ * @buffer out_buf The tagged data.
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ *
+ * @author Richard Shaw
+ */
+class registerInitialDatasetState : public KotekanProcess {
+
+public:
+
+    // Default constructor
+    registerInitialDatasetState(Config &config,
+                                const string& unique_name,
+                                bufferContainer &buffer_container);
+
+    void apply_config(uint64_t fpga_seq) override;
+
+    // Main loop for the process
+    void main_thread() override;
+
+private:
+
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<input_ctype> _inputs;
+    std::vector<prod_ctype> _prods;
+
+    // Buffers to read/write
+    Buffer* in_buf;
+    Buffer* out_buf;
+};
+
 #endif

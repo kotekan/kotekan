@@ -30,6 +30,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               countCheck.cpp
               visProcess.cpp
+              visCompression.cpp
               timeDownsample.cpp
               visWriter.cpp
               visRawReader.cpp
@@ -42,6 +43,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiBroadcast.cpp
               rfiRecord.cpp
               rfiBadInputFinder.cpp
+              receiveFlags.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -60,7 +62,7 @@ endif ()
 if (${USE_HDF5})
   # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp applyGains.cpp)
 endif ()
 
 # HDF5 and OpenMP

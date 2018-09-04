@@ -31,6 +31,9 @@ public:
     uint64_t get_uint64(const string& base_path, const string& name);
     uint64_t get_uint64_default(const string& base_path, const string& name, uint64_t default_value);
 
+    uint32_t get_uint32(const string& base_path, const string& name);
+    uint32_t get_uint32_default(const string& base_path, const string& name, uint32_t default_value);
+
     float get_float(const string& base_path, const string& name);
     // Same as get_float, but if it cannot find the value, it returns `default_value`
     float get_float_default(const string& base_path, const string& name, float default_value);
@@ -60,6 +63,9 @@ public:
     vector<double> get_double_array(const string& base_path, const string& name);
     vector<string> get_string_array(const string& base_path, const string& name);
     vector<json> get_json_array(const string& base_path, const string& name);
+
+    template<typename T>
+    vector<T> get_array(const string& base_path, const string& name);
 
     void parse_file(const string &file_name);
 
@@ -135,6 +141,17 @@ void Config::update_value(const string &base_path, const string &name, const T &
     } catch (std::exception const & ex) {
         throw std::runtime_error("Failed to update config value at: " + update_path + " message: " + ex.what());
     }
+}
+
+template<typename T>
+vector<T> Config::get_array(const string& base_path, const string& name)
+{
+    json value = get_value(base_path, name);
+
+    if (!value.is_array()) {
+        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
+    }
+    return value.get<vector<T>>();
 }
 
 #endif /* CONFIG_HPP */

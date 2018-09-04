@@ -2,13 +2,11 @@
 #
 # chime_science_run_recv_no_26m.yaml
 #
-# CHIME receiver node configuration used in the July 2018 run.
-# This configuration disables saving of the 26m datasets.
+# CHIME receiver node configuration used in the August 2018 run.
+# This configuration turns off saving of the 26m datasets.
 #
-# For the N2 data it includes 5 second 26m baselines,
-# 10 second calibration data, full triangles for 4 frequencies
-# at 10 seconds, and 20 second baseline subsetted data
-# for a subset of frequencies.
+# For the N2 data it includes 10 second calibration data, full triangles
+# for 10 frequencies at 10 seconds, and stacked data over all frequencies.
 #
 # Author: Richard Shaw
 #
@@ -24,7 +22,7 @@ samples_per_data_set: 32768
 buffer_depth: 64
 num_gpu_frames: 128
 block_size: 32
-cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+cpu_affinity: [4,5,6,7,12,13,14,15]
 num_ev: 4
 
 vis_pool:
@@ -34,47 +32,37 @@ vis_pool:
 vis_buffer:
   metadata_pool: vis_pool
   num_frames: buffer_depth
-  visbuf_10s_4freq:
+  visbuf_10s_all:
     kotekan_buffer: vis
-  visbuf_10s_cal:
+  visbuf_10s_dm:
     kotekan_buffer: vis
-    buffer_depth: 4096
-    num_prod: 2048
+  visbuf_10s_gain:
+    kotekan_buffer: vis
+  visbuf_10s_flags:
+    kotekan_buffer: vis
+    buffer_depth: 512  # This is immediately before the first slow process so it needs a longer length
+  visbuf_10s_stack:
+    kotekan_buffer: vis
+    num_prod: 17000  # Approximation to the correct size
+  visbuf_10s_mfreq:
+    kotekan_buffer: vis
+  visbuf_10s_stack_mfreq:
+    kotekan_buffer: vis
   visbuf_5s_26m:
     kotekan_buffer: vis
     buffer_depth: 4096
     num_prod: 4096
-  visbuf_20s_highfreq:
+  visbuf_10s_cal:
     kotekan_buffer: vis
-  visbuf_20s_timing:
+    num_prod: 2048
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
+  visbuf_10s_timing:
     num_prod: 3
     kotekan_buffer: vis
-  visbuf_20s_pb:
-    num_prod: 580000  # This number is an approximation LARGER than the actual one
-    kotekan_buffer: vis
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
 
-highfreq: &highfreq [
-       26,  28,  29,  30,  32,  33,  34,  35,  36,  37,  38,  39,  40,
-       41,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,
-       57,  58,  59,  60,  61,  62,  64,  65,  67,  68,  69,  70,  71,
-       72,  73,  74,  77,  78,  79,  80,  81,  82,  83,  85,  86,  87,
-       88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99, 100,
-      101, 102, 103, 104, 105, 106, 109, 111, 112, 113, 138, 139, 182,
-      185, 186, 187, 188, 189, 192, 193, 194, 195, 197, 198, 202, 203,
-      206, 207, 211, 213, 214, 217, 218, 219, 220, 221, 224, 225, 226,
-      227, 229, 230, 234, 235, 238, 239, 243, 245, 246, 249, 250, 251,
-      252, 253, 257, 258, 259, 260, 261, 262, 263, 264, 265, 269, 270,
-      271, 272, 274, 275, 277, 278, 279, 280, 281, 282, 284, 285, 286,
-      288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 301, 302, 303,
-      304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316,
-      317, 318, 320, 321, 323, 324, 325, 326, 327, 328, 329, 330, 333,
-      334, 335, 336, 337, 338, 339, 341, 342, 343, 344, 345, 346, 347,
-      348, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360,
-      361, 362, 365, 367, 368, 369, 370, 374, 375, 376, 377, 378, 379,
-      380, 381, 383, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395,
-      398, 399, 402, 403, 404, 405, 406, 409, 410, 411, 412, 413, 416,
-      417, 418, 419, 420, 421, 422, 425, 426, 427
-]
+# Subset of good frequencies to output whole for monitoring
+mfreq: &mfreq [107, 214, 262, 344, 425, 519, 619, 726, 775, 938]
 
 allfreq: &allfreq [
           0,    1,    2,    3,    4,    5,    6,    7,    8,    9,   10,   11,   12,   13,   14,   15,   16,
@@ -139,52 +127,90 @@ allfreq: &allfreq [
        1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019,
        1020, 1021, 1022, 1023]
 
+# Updatable config blocks
+updatable_config:
+  flagging:
+    kotekan_update_endpoint: "json"
+    start_time: 1535048997
+    tag: "initial_flags"
+    bad_inputs: [ ]
+  gains:
+    kotekan_update_endpoint: "json"
+    start_time: 1535048997
+    tag: "gain_20180830T074323.149037Z_cyga"
+
+
 # Kotekan processes
 buffer_recv:
-  4freq:
+
+  n2:
     kotekan_process: bufferRecv
-    buf: visbuf_10s_4freq
+    buf: visbuf_10s_all
     listen_port: 11024
-  cal:
-    kotekan_process: bufferRecv
-    buf: visbuf_10s_cal
-    listen_port: 11025
+    cpu_affinity: [0, 8]
+    num_threads: 2
   26m:
     kotekan_process: bufferRecv
     buf: visbuf_5s_26m
-    listen_port: 11026
-  highfreq:
-    kotekan_process: bufferRecv
-    buf: visbuf_20s_highfreq
-    listen_port: 11027
+    listen_port: 11025
+
+tag_dset:
+  kotekan_process: registerInitialDatasetState
+  in_buf: visbuf_10s_all
+  out_buf: visbuf_10s_dm
+
+apply_flags:
+  kotekan_process: receiveFlags
+  in_buf: visbuf_10s_dm
+  out_buf: visbuf_10s_flags
+  updatable_config: "/updatable_config/flagging"
 
 vis_debug:
-  4freq:
+  n2:
     kotekan_process: visDebug
-    in_buf: visbuf_10s_4freq
-  cal:
-    kotekan_process: visDebug
-    in_buf: visbuf_10s_cal
+    in_buf: visbuf_10s_flags
   26m:
     kotekan_process: visDebug
     in_buf: visbuf_5s_26m
-  highfreq:
-    kotekan_process: visDebug
-    in_buf: visbuf_20s_highfreq
 
 count_check:
-  4freq:
+  n2:
     kotekan_process: countCheck
-    in_buf: visbuf_10s_4freq
-  cal:
-    kotekan_process: countCheck
-    in_buf: visbuf_10s_cal
+    in_buf: visbuf_10s_flags
   26m:
     kotekan_process: countCheck
     in_buf: visbuf_5s_26m
-  highfreq:
-    kotekan_process: countCheck
-    in_buf: visbuf_20s_highfreq
+
+apply_gains:
+  cpu_affinity: [1]
+  kotekan_process: applyGains
+  in_buf: visbuf_10s_flags
+  out_buf: visbuf_10s_gain
+  gains_dir: "/mnt/recv1/calibration/gain_updates/"
+  updatable_config: "/updatable_config/gains"
+
+stacking:
+  kotekan_process: baselineCompression
+  in_buf: visbuf_10s_gain
+  out_buf: visbuf_10s_stack
+  stack_type: chime_in_cyl
+  exclude_inputs: [206, 1166, 1225, 1521]
+  num_threads: 2
+  cpu_affinity: [2, 3]
+
+buffer_status:
+  kotekan_process: bufferStatus
+  print_status: false
+
+# Generate the calibration stream
+cal_subset_params: &cal_subset_params
+  prod_subset_type: autos
+
+cal_subset:
+  kotekan_process: prodSubset
+  in_buf: visbuf_10s_flags
+  out_buf: visbuf_10s_cal
+  << : *cal_subset_params
 
 timing_subset_params: &timing_subset_params
   prod_subset_type: only_inputs
@@ -192,65 +218,98 @@ timing_subset_params: &timing_subset_params
 
 timing_subset:
   kotekan_process: prodSubset
-  in_buf: visbuf_20s_highfreq
-  out_buf: visbuf_20s_timing
+  in_buf: visbuf_10s_flags
+  out_buf: visbuf_10s_timing
   << : *timing_subset_params
 
-pathfinder_subset_params: &pathfinder_subset_params
-  prod_subset_type: baseline
-  max_ew_baseline: 1
-  max_ns_baseline: 63
+# Generate the monitoring freq full N^2 stream
+mfreq_subset:
+  subset_list: *mfreq  # 10 good frequencies within the upper 1/4 band
+  n2:
+    kotekan_process: freqSubset
+    in_buf: visbuf_10s_flags
+    out_buf: visbuf_10s_mfreq
+#  stack:
+#    kotekan_process: freqSubset
+#    in_buf: visbuf_10s_stack
+#    out_buf: visbuf_10s_stack_mfreq
 
-pathfinder_subset:
-  kotekan_process: prodSubset
-  in_buf: visbuf_20s_highfreq
-  out_buf: visbuf_20s_pb
-  << : *pathfinder_subset_params
-
-hdf5_writers:
-  file_length: 512
-  file_type: raw
-  node_mode: false
-  root_path: /data/untransposed/
+buffer_writers:
+  file_length: 256
+  root_path: /mnt/recv1/buffer/
   write_ev: True
   weights_type: inverse_var
+  file_base: buffer
 
-  n2_f4:
-    kotekan_process: visWriter
-    in_buf: visbuf_10s_4freq
-    freq_ids: [50, 100, 250, 350]
-    instrument_name: chimeN2
+  freq_ids: *allfreq
+
   cal:
-    kotekan_process: visWriter
+    kotekan_process: visCalWriter
     in_buf: visbuf_10s_cal
     prod_subset_type: autos
-    freq_ids: *allfreq
     instrument_name: chimecal
     file_length: 256
-### No 26m writing ###
+    dir_name: cal
+    << : *cal_subset_params
+
+  timing:
+    kotekan_process: visCalWriter
+    in_buf: visbuf_10s_timing
+    instrument_name: chimetiming
+    dir_name: timing
+    << : *timing_subset_params
+
+archive_writers:
+
+  file_length: 512
+  file_type: raw
+  write_ev: True
+  weights_type: inverse_var
+  root_path: /data/untransposed/
+
+  freq_ids: *allfreq
+
+  n2_mf:
+    kotekan_process: visWriter
+    in_buf: visbuf_10s_mfreq
+    freq_ids: *mfreq
+    instrument_name: chimeN2
+
+  chimestack:
+    kotekan_process: visWriter
+    in_buf: visbuf_10s_stack
+    use_dataset_manager: true
+    instrument_name: chimestack
+
 #  26m:
 #    kotekan_process: visWriter
 #    in_buf: visbuf_5s_26m
 #    prod_subset_type: have_inputs
 #    input_list: [1225, 1521]
-#    freq_ids: *allfreq
 #    instrument_name: chime26m
-  pathb:
+
+  cal:
     kotekan_process: visWriter
-    in_buf: visbuf_20s_pb
-    freq_ids: *highfreq
-    instrument_name: chimepb
-    << : *pathfinder_subset_params
+    in_buf: visbuf_10s_cal
+    prod_subset_type: autos
+    instrument_name: chimecal
+    file_length: 256
+    << : *cal_subset_params
+
   timing:
     kotekan_process: visWriter
-    in_buf: visbuf_20s_timing
-    freq_ids: *highfreq
+    in_buf: visbuf_10s_timing
     instrument_name: chimetiming
     << : *timing_subset_params
 
-buffer_status:
-  kotekan_process: bufferStatus
-  print_status: false
+
+# Transmit part of the stack to the recv1 for testing
+#buffer_send:
+#  server_ip: 10.1.50.11
+#  stack_mfreq:
+#    kotekan_process: bufferSend
+#    buf: visbuf_10s_stack_mfreq
+#    server_port: 14096
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)

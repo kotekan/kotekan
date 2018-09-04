@@ -25,7 +25,7 @@ unsigned int BSHUF_BLOCK = 0;  // let bitshuffle choose
 const std::vector<unsigned int> BSHUF_CD = {BSHUF_BLOCK, BSHUF_H5_COMPRESS_LZ4};
 
 
-// Create an archive file with times as input
+// Create an archive file for uncompressed products
 visFileArchive::visFileArchive(const std::string& name,
                                const std::map<std::string, std::string>& metadata,
                                const std::vector<time_ctype>& times,
@@ -34,6 +34,56 @@ visFileArchive::visFileArchive(const std::string& name,
                                const std::vector<prod_ctype>& prods,
                                size_t num_ev,
                                std::vector<int> chunk_size) {
+
+    // Check axes and create file
+    setup_file(name, metadata, times, freqs, inputs, prods, num_ev, chunk_size);
+
+    // Make datasets
+    create_axes(times, freqs, inputs, prods, num_ev);
+    create_datasets();
+
+}
+
+
+// Create an archive file for baseline-stacked products
+visFileArchive::visFileArchive(const std::string& name,
+                               const std::map<std::string, std::string>& metadata,
+                               const std::vector<time_ctype>& times,
+                               const std::vector<freq_ctype>& freqs,
+                               const std::vector<input_ctype>& inputs,
+                               const std::vector<prod_ctype>& prods,
+                               const std::vector<stack_ctype>& stack,
+                               std::vector<rstack_ctype>& reverse_stack,
+                               size_t num_ev,
+                               std::vector<int> chunk_size) {
+
+    // Check axes and create file
+    setup_file(name, metadata, times, freqs, inputs, prods, num_ev, chunk_size);
+    // Different bound check for stacked data
+    if (chunk[1] > (int)stack.size()) {
+        chunk[1] = stack.size();
+        INFO("visFileArchive: Chunk stack dimension greater than axes. Will use a smaller chunk.")
+    }
+
+    // Make datasets, for stacked data
+    stacked = true;
+    create_axes(times, freqs, inputs, prods, stack, num_ev);
+    create_datasets();
+
+    // Write the reverse map of products to stack
+    dset("reverse_map/stack").select({0}, {length("prod")}).write(reverse_stack.data());
+
+}
+
+
+void visFileArchive::setup_file(const std::string& name,
+                                const std::map<std::string, std::string>& metadata,
+                                const std::vector<time_ctype>& times,
+                                const std::vector<freq_ctype>& freqs,
+                                const std::vector<input_ctype>& inputs,
+                                const std::vector<prod_ctype>& prods,
+                                size_t num_ev,
+                                std::vector<int> chunk_size) {
 
     std::string data_filename = name + ".h5";
 
@@ -70,8 +120,6 @@ visFileArchive::visFileArchive(const std::string& name,
     file = std::unique_ptr<File>(
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate)
     );
-    create_axes(times, freqs, inputs, prods, num_ev);
-    create_datasets();
 
     // Write out metadata into flle
     for (auto item : metadata) {
@@ -80,10 +128,8 @@ visFileArchive::visFileArchive(const std::string& name,
         ).write(item.second);
     }
 
-    // Add weight type flag where gossec expects it
-    dset("vis_weight").createAttribute<std::string>(
-        "type", DataSpace::From(metadata.at("weight_type"))
-    ).write(metadata.at("weight_type"));
+    // Get weight type flag
+    weight_type = metadata.at("weight_type");
 
 }
 
@@ -92,12 +138,12 @@ template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
     //DEBUG("writing %d freq, %d times, at (%d,%d).", chunk_f, chunk_t, f_ind, t_ind);
-    if (name == "gain_exp") {
+    if (name == "flags/inputs") {
         dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
     } else if (name == "evec") {
         dset(name).select({f_ind, 0, 0, t_ind},
                           {chunk_f, length("ev"), length("input"), chunk_t}).write(data);
-    } else if (name == "erms") {
+    } else if (name == "erms" || name == "flags/frac_lost") {
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
@@ -139,6 +185,18 @@ void visFileArchive::create_axes(const std::vector<time_ctype>& times,
     }
 }
 
+void visFileArchive::create_axes(const std::vector<time_ctype>& times,
+                            const std::vector<freq_ctype>& freqs,
+                            const std::vector<input_ctype>& inputs,
+                            const std::vector<prod_ctype>& prods,
+                            const std::vector<stack_ctype>& stack,
+                            size_t num_ev) {
+
+    create_axes(times, freqs, inputs, prods, num_ev);
+
+    create_axis("stack", stack);
+}
+
 template<typename T>
 void visFileArchive::create_axis(std::string name, const std::vector<T>& axis) {
 
@@ -158,12 +216,13 @@ void visFileArchive::create_datasets() {
     bool no_compress = false;
 
     // Create transposed dataset shapes
-    create_dataset("vis", {"freq", "prod", "time"}, create_datatype<cfloat>(), compress);
-    create_dataset("flags/vis_weight", {"freq", "prod", "time"},
+    create_dataset("vis", {"freq", prod_or_stack(), "time"}, create_datatype<cfloat>(), compress);
+    create_dataset("flags/vis_weight", {"freq", prod_or_stack(), "time"},
                    create_datatype<float>(), compress);
-    create_dataset("gain_coeff", {"freq", "input", "time"},
+    create_dataset("flags/inputs", {"input", "time"}, create_datatype<float>(), no_compress);
+    create_dataset("gain", {"freq", "input", "time"},
                    create_datatype<cfloat>(), compress);
-    create_dataset("gain_exp", {"input", "time"}, create_datatype<int>(), no_compress);
+    create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
 
     // Only write the eigenvector datasets if there's going to be anything in them
     if(write_ev) {
@@ -172,8 +231,19 @@ void visFileArchive::create_datasets() {
         create_dataset("evec", {"freq", "ev", "input", "time"},
                        create_datatype<cfloat>(), compress);
         create_dataset("erms", {"freq", "time"},
-                       create_datatype<float>(), no_compress); 
+                       create_datatype<float>(), no_compress);
     }
+
+    if(stacked) {
+        Group rev_map = file->createGroup("reverse_map");
+        create_dataset("reverse_map/stack", {"prod"},
+                create_datatype<rstack_ctype>(), no_compress);
+    }
+
+    // Add weight type flag where gossec expects it
+    dset("vis_weight").createAttribute<std::string>(
+        "type", DataSpace::From(weight_type)
+    ).write(weight_type);
 
     file->flush();
 
@@ -190,6 +260,7 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
     size_map["prod"] = std::make_tuple(length("prod"), chunk[1]);
     size_map["ev"] = std::make_tuple(length("ev"), length("ev"));
     size_map["time"] = std::make_tuple(length("time"), chunk[2]);
+    if (stacked) size_map["stack"] = std::make_tuple(length("stack"), chunk[1]);
 
     std::vector<size_t> cur_dims, max_dims, chunk_dims;
 
@@ -284,6 +355,22 @@ template <> inline DataType HighFive::create_datatype<cfloat>() {
     CompoundType c;
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);
+    c.autoCreate();
+    return c;
+}
+
+template <> inline DataType HighFive::create_datatype<rstack_ctype>() {
+    CompoundType c;
+    c.addMember("stack", H5T_STD_U32LE);
+    c.addMember("conjugate", H5T_STD_U8LE);
+    c.autoCreate();
+    return c;
+}
+
+template <> inline DataType HighFive::create_datatype<stack_ctype>() {
+    CompoundType c;
+    c.addMember("prod", H5T_STD_U32LE);
+    c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
     return c;
 }
