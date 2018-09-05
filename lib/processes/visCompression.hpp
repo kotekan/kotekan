@@ -37,9 +37,15 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf stack_type String. Type of stacking to apply to the data. Look at
- *                  documentation of stack_X functions for details.
+ * @conf stack_type      String. Type of stacking to apply to the data. Look at
+ *                       documentation of stack_X functions for details.
  * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
+ *
+ * @par Metrics
+ * @metric kotekan_baselinecompression_residuals
+ *      The variance of the residuals.
+ * @metric kotekan_baselinecompression_time_seconds
+ *      The time elapsed to process one frame.
  *
  * @author Richard Shaw
  */
@@ -61,7 +67,7 @@ private:
 
 	/// Entrancepoint for n threads. Each thread takes frames with a
 	/// different frame_id from the buffer and compresses them.
-    void compress_thread(int offset);
+    void compress_thread(int thread_id);
 
     ///Vector to hold the thread handles
     std::vector<std::thread> thread_handles;

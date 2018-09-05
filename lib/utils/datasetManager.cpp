@@ -77,9 +77,9 @@ dset_id datasetManager::add_dataset(state_id state, dset_id input) {
     auto key = std::make_pair(state, input);
 
     // Search for existing entry and return if it exists
-    for (dset_id id = 0; id < _datasets.size(); id++) {
+    for (size_t id = 0; id < _datasets.size(); id++) {
         if (_datasets[id] == key) {
-            return id;
+            return (dset_id)id;
         }
     }
 

@@ -317,6 +317,9 @@ private:
  * Adds an input state as well as a product dataset state to the manager. The
  * process should then write `new_ds_id` to its outgoing frames.
  *
+ * If a process is altering more than one type of dataset state, it can add
+ * `inner` states to the one it passes to the dataset manager.
+ *
  * @author Richard Shaw, Rick Nitsche
  *
  * TODO: Centralized datasetBroker, so that states can be shared over multiple
@@ -470,8 +473,8 @@ pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     std::lock_guard<std::mutex> lock(_lock_states);
     if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
                                                            move(state))).second)
-        INFO("datasetManager: tried to insert an existing state a second " \
-                "time (or hash collison).");
+        INFO("datasetManager a state with hash %d is already registered.",
+             hash);
     return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif

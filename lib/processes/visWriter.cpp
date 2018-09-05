@@ -107,7 +107,8 @@ void visWriter::main_thread() {
     unsigned int frame_id = 0;
 
     // Look over the current buffers for information to setup the acquisition
-    init_acq();
+    if (!init_acq())
+        return;
 
     while (!stop_thread) {
 
@@ -136,7 +137,9 @@ void visWriter::main_thread() {
                 "Number of products in frame doesn't match file ({} != {}).",
                 frame.num_prod, num_vis
             );
-            throw std::runtime_error(msg);
+            ERROR(msg.c_str());
+            raise(SIGINT);
+            return;
 
         // Check the number of eigen vectors is as expected
         } else if (num_ev > 0  and frame.num_ev != num_ev) {
@@ -145,7 +148,9 @@ void visWriter::main_thread() {
                 "Number of eigenvectors in frame doesn't match file ({} != {}).",
                 frame.num_ev, num_ev
             );
-            throw std::runtime_error(msg);
+            ERROR(msg.c_str());
+            raise(SIGINT);
+            return;
 
         // Check the dataset ID hasn't changed
         } else if (use_dataset_manager && frame.dataset_id != dataset) {
@@ -153,11 +158,13 @@ void visWriter::main_thread() {
                 "Unexpected dataset ID={} received (expected id={}).",
                 frame.dataset_id, dataset
             );
-            throw std::runtime_error(msg);
+            ERROR(msg.c_str());
+            raise(SIGINT);
+            return;
 
         } else {
 
-            INFO("Writing frequency id=%i", frame.freq_id);
+            DEBUG("Writing frequency id=%i", frame.freq_id);
 
             uint32_t freq_ind = freq_id_map[frame.freq_id];
 
@@ -199,11 +206,12 @@ void visWriter::main_thread() {
 
 
 
-void visWriter::init_acq() {
+bool visWriter::init_acq() {
 
     // Fetch out information from the buffers that are needed for setting  up
     // the acq. For the moment just read the first frame.
-    wait_for_full_frame(in_buf, unique_name.c_str(), 0);
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
+        return false;
     auto frame = visFrameView(in_buf, 0);
 
     auto& dm = datasetManager::instance();
@@ -218,7 +226,7 @@ void visWriter::init_acq() {
 
     // Get the frequency spec to determine the freq_ids expected at this Writer.
     auto fstate = dm.closest_ancestor_of_type<freqState>(
-        frame.dataset_id).second;
+        dataset).second;
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         freq_id_map[f.first] = ind++;
@@ -263,6 +271,8 @@ void visWriter::init_acq() {
         }
     }
     make_bundle(metadata);
+
+    return true;
 }
 
 

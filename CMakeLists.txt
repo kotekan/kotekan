@@ -12,9 +12,7 @@ option(USE_PRECOMPILED_OPENCL "Use precompiled OpenCL binaries" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
-option(DPDK_VDIF "Use DPDK VDIF settings" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
-option(USE_LAPACK "Include OpenBLAS/LAPACK" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
@@ -62,11 +60,6 @@ if (${USE_LAPACK})
   endif()
   find_package( OpenBLAS REQUIRED )
 endif()
-
-if(${DPDK_VDIF})
-  add_definitions(-DDPDK_VDIF_MODE)
-endif()
-
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
@@ -148,34 +141,9 @@ endif ()
 find_package( OpenSSL )
 if( OPENSSL_FOUND )
     add_definitions(-DWITH_SSL)
+    set (USE_OPENSSL ON)
     include_directories(${OPENSSL_INCLUDE_DIR})
 endif()
-
-# Get the current working branch
-execute_process(
-  COMMAND git rev-parse --abbrev-ref HEAD
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  OUTPUT_VARIABLE GIT_BRANCH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Get the latest abbreviated commit hash of the working branch
-execute_process(
-  COMMAND git log -1 --format=%H
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  OUTPUT_VARIABLE GIT_COMMIT_HASH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Include the version string
-#add_definitions("-DGIT_COMMIT_HASH=${GIT_COMMIT_HASH}")
-#add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
-configure_file(
-  ${CMAKE_SOURCE_DIR}/lib/version.h.in
-  ${CMAKE_BINARY_DIR}/generated/version.h
-)
-
-include_directories(${CMAKE_BINARY_DIR}/generated)
 
 find_package(Threads REQUIRED)
 
@@ -234,7 +202,6 @@ add_subdirectory(kotekan)
 add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
-
 
 # Testing with boost
 if (${BOOST_TESTS})

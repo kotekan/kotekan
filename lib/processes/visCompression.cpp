@@ -86,16 +86,17 @@ void baselineCompression::main_thread() {
     }
 }
 
-void baselineCompression::compress_thread(int offset) {
+void baselineCompression::compress_thread(int thread_id) {
 
-    unsigned int output_frame_id = offset;
-    unsigned int input_frame_id = offset;
+    // use the thread id as an offset on frame ids
+    unsigned int output_frame_id = thread_id;
+    unsigned int input_frame_id = thread_id;
 
     auto& dm = datasetManager::instance();
-    const stackState * stack_state_ptr;
-    const prodState * prod_state_ptr;
+    const stackState * stack_state_ptr = nullptr;
+    const prodState * prod_state_ptr = nullptr;
     dset_id input_dset_id = -1;
-    dset_id output_dset_id;
+    dset_id output_dset_id = -1;
     state_id stack_state_id;
 
     while (!stop_thread) {
@@ -217,7 +218,8 @@ void baselineCompression::compress_thread(int offset) {
                 output_frame.weight[stack_ind];
 
             // Accumulate to calculate the variance of the residuals
-            vart += stack_v2[stack_ind] - std::norm(output_frame.vis[stack_ind]) * norm;
+            vart += stack_v2[stack_ind]
+                    - std::norm(output_frame.vis[stack_ind]) * norm;
             normt += norm;
         }
 
@@ -236,11 +238,12 @@ void baselineCompression::compress_thread(int offset) {
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
             output_frame.freq_id, output_frame.dataset_id);
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_baselinecompression_residuals", unique_name, vart / normt, labels
-        );
+            "kotekan_baselinecompression_residuals",
+            unique_name, vart / normt, labels);
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_baselinecompression_time", unique_name, elapsed
-        );
+            "kotekan_baselinecompression_time_seconds",
+            unique_name, elapsed);
+
         DEBUG("Compression time %.4f", elapsed);
     }
 }

@@ -185,8 +185,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                     }
                 }
 
-                // Wait for free space in the write queue. This prevents this thread from 
-                // receiving any more dump requests until the pipe clears out. Limits the 
+                // Wait for free space in the write queue. This prevents this thread from
+                // receiving any more dump requests until the pipe clears out. Limits the
                 // memory use and buffer congestion.
                 const int max_writes_queued = 3;
                 {
@@ -428,7 +428,7 @@ void basebandReadout::write_dump(basebandDumpData data,
     file.createAttribute<std::string>(
             "archive_version", HighFive::DataSpace::From(version)).write(version);
 
-    std::string git_version = GIT_COMMIT_HASH;
+    std::string git_version = get_git_commit_hash();
     file.createAttribute<std::string>(
             "git_version_tag", HighFive::DataSpace::From(git_version)
             ).write(git_version);

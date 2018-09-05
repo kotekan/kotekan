@@ -131,6 +131,9 @@ protected:
 
     // Align to blocks of this size kB
     size_t alignment;
+
+    // File name (used for debugging)
+    std::string _name;
 };
 
 #endif

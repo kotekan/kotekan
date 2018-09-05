@@ -140,6 +140,8 @@ void visDebug::main_thread() {
 
     unsigned int frame_id = 0;
 
+    uint64_t num_frames = 0;
+
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -149,8 +151,10 @@ void visDebug::main_thread() {
         }
 
         // Print out debug information from the buffer
+        if ((num_frames % 1000) == 0)
+            INFO("Got frame number %lli", num_frames);
         auto frame = visFrameView(in_buf, frame_id);
-        INFO("%s", frame.summary().c_str());
+        DEBUG("%s", frame.summary().c_str());
 
         // Update the frame count for prometheus
         fd_pair key {frame.freq_id, frame.dataset_id};
@@ -166,6 +170,7 @@ void visDebug::main_thread() {
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
+        num_frames++;
     }
 }
 
@@ -494,9 +499,6 @@ void visCheckTestPattern::main_thread() {
     // number of bad elements in frame and totally
     size_t num_bad, num_bad_tot = 0;
 
-    // norm of the difference of a visibility and its expected value
-    float error;
-
     // average error of the bad values in frame and totally
     float avg_err, avg_err_tot = 0;
 
@@ -513,6 +515,9 @@ void visCheckTestPattern::main_thread() {
     uint32_t freq_id;
 
     uint64_t i_frame = 0;
+
+    // Comparisons will be against tolerance^2
+    float t2 = tolerance * tolerance;
 
     while (!stop_thread) {
 
@@ -533,11 +538,18 @@ void visCheckTestPattern::main_thread() {
 
 	    // Iterate over covariance matrix
 	    for (size_t i = 0; i < frame.num_prod; i++) {
-            error = std::abs(frame.vis[i] - expected_val);
+
+            // Calculate the error^2 and compared this to the tolerance as it's
+            // much faster than taking the square root where we don't need to.
+            float r2 = fast_norm(frame.vis[i] - expected_val);
 
             // check for bad values
-            if (error > tolerance) {
+            if (r2 > t2) {
                 num_bad++;
+
+                // Calculate the error here, this square root is then
+                // evalulated only when there is bad data.
+                float error = sqrt(r2);
                 avg_err += error;
 
                 if (error > max_err)

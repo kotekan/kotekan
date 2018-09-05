@@ -451,8 +451,8 @@ void connInstance::internal_read_callback()
                     elapsed, labels
                 );
 
-                INFO("Received data from client: %s:%d into frame: %s[%d]",
-                        client_ip.c_str(), port, buf->buffer_name, frame_id);
+                DEBUG("Received data from client: %s:%d into frame: %s[%d]",
+                      client_ip.c_str(), port, buf->buffer_name, frame_id);
             }
             state = connState::header;
 
