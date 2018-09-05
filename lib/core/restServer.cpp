@@ -183,6 +183,8 @@ int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json
         json_parse = json::parse(string(msg->body.p, msg->body.len));
     } catch (std::exception ex) {
         string message =  string("Error Message: JSON failed to parse, error: ") + string(ex.what());
+        DEBUG("restServer::handle_json: %s", message.c_str());
+        DEBUG("This was the JSON: ", json_parse.dump().c_str());
         mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), 0, message.c_str());
         return -1;
     }
