@@ -5,6 +5,7 @@ add_library ( kotekan_testing
               chimeMetadataDump.cpp
               constDataCheck.cpp
               fakeGpuBuffer.cpp
+              fakeMultifreqGpuBuffer.cpp
               fakeVis.cpp
               gpuBeamformSimulate.cpp
               gpuBeamformPulsarSimulate.cpp

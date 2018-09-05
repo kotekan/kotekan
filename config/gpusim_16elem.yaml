@@ -1,0 +1,47 @@
+##########################################
+#
+# gpusim_16elem.yaml
+#
+# Config to generate fake 16-element GPU output data blocks.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_elements: 16
+num_freqs: 32
+block_size: 32
+samples_per_data_set: 32768
+buffer_depth: 8
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_int32: 4
+sizeof_float: 4
+one: 1
+stream_id: 4
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+gpu_output_buffers:
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_freqs / (block_size / num_elements) * (block_size * block_size) * 2
+    metadata_pool: main_pool
+    gpu_output_buffer_0:
+        kotekan_buffer: standard
+
+sim_gpu_data:
+    kotekan_process: fakeMultifreqGpuBuffer
+    mode: gaussian
+    out_buf: gpu_output_buffer_0
+
+plot_gpu_data:
+    kotekan_process: pyPlotN2
+    in_buf: gpu_output_buffer_0
+    gpu_id: 0
