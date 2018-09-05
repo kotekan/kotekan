@@ -27,6 +27,7 @@ def vis_data(tmpdir_factory):
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
+        use_dataset_manager=True,
         wait=False
     )
 
@@ -58,7 +59,8 @@ def write_data(tmpdir_factory):
     )
 
     write_buffer = kotekan_runner.VisWriterBuffer(
-            str(tmpdir), 'raw', params['subset_list'])
+            str(tmpdir), 'raw', params['subset_list'],
+            extra_config={'use_dataset_manager': True})
 
     test = kotekan_runner.KotekanProcessTester(
         'freqSubset', {},

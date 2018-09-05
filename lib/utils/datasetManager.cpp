@@ -142,7 +142,8 @@ datasetManager::ancestors(dset_id dset) const {
     // Walk up from the current node to the root, extracting pointers to the
     // states performed
     while(dset >= 0) {
-        datasetState * t = _states.at(_datasets[dset].first).get();
+        datasetState * t = _states.at(_datasets.at(dset).first).get();
+
         // Walk over the inner states, given them all the same dataset id.
         while(t != nullptr) {
             a_list.emplace_back(dset, t);

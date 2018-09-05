@@ -89,6 +89,9 @@ private:
     /// Vector of indices for subset of products
     std::vector<size_t> prod_ind;
 
+    /// Vector of subset of products
+    std::vector<prod_ctype> prod_subset;
+
 };
 
 
