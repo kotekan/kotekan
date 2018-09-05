@@ -12,12 +12,13 @@ using namespace std;
 
 /**
  * @class restClient
- * @brief REST client: Send REST messages to a server.
+ * @brief REST client: Send REST messages to a server and maybe get a reply.
  *
- * This class supports sending json data in a POST message using Mongoose -
- * Embedded Web Server / Embedded Networking Library.
+ * This class supports sending GET messages and POST messages with json data
+ * using libevent >= 2.1.8. Any reply received is returned.
  *
- * @todo Implement send_get() for GET messages.
+ * @warning This is not thread save. Don't share an object of this between
+ * threads and don't send requests from different threads at the same time.
  *
  * @author Rick Nitsche
  */
@@ -25,11 +26,21 @@ class restClient {
 public:
 
     /**
-     * @brief Send json data to a POST endpoint.
-     * @param s_url     URL of the endpoint
-     *                  (e.g. "localhost:12048/endpoint_name")
-     * @param request   JSON request
-     * @return          False in case of failure, True otherwise.
+     * @brief Send GET or POST with json data to an endpoint.
+     *
+     * To send a GET message, pass a `nullptr` as the parameter `data`.
+     * To send a POST message, pass JSON data.
+     *
+     * @param path      Path to the endpoint
+     *                  (e.g. "/endpoint_name")
+     * @param data      JSON request or a nullptr (default: nullptr).
+     * @param host      Host (default: "localhost").
+     * @param port      Port (default: PORT_REST_SERVER).
+     * @param retries   Max. retries to send message (default: 0).
+     * @param timeout   Timeout in seconds. If -1 is passed, the default value
+     * (of 50 seconds) is set (default: -1).
+     * @return          The servers reply, indicating success, any sent data
+     * and its length.
      */
     unique_ptr<struct restReply> send(string path,
                           const nlohmann::json& data = {},
@@ -37,7 +48,9 @@ public:
                           const unsigned short port = PORT_REST_SERVER,
                           const int retries = 0, const int timeout = -1);
 
-    /// Default constructor.
+    /**
+     * @brief Default constructor.
+     */
     restClient() = default;
 
 private:
@@ -49,6 +62,12 @@ private:
     static struct restReply _reply;
 };
 
+/**
+ * @brief The REST reply.
+ *
+ * Indicates if the REST request was successfull and keeps any data attached to
+ * the servers response as well as the data size.
+ */
 struct restReply {
         bool success = false;
         void* data = nullptr;
