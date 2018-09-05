@@ -1,73 +1,186 @@
 #include "restClient.hpp"
 #include "errors.h"
 #include "json.hpp"
-#include "mongoose.h"
-#include "restServer.hpp"
 #include <iostream>
 
-int restClient::_s_exit_flag = 0;
-const char * restClient::_s_url = nullptr;
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+#include <evhttp.h>
+#include <event2/event.h>
+#include <event2/http.h>
+#include <event2/bufferevent.h>
 
-restReply restClient::send_json(const char *s_url,
-                   const nlohmann::json *request) {
-    struct mg_mgr mgr;
-    struct mg_connection *nc;
-    std::string json_string = request->dump();
-    struct restReply reply;
+restReply restClient::_reply = { false, nullptr, 0 };
 
-    _s_url = s_url;
-    _s_exit_flag = 0;
+void restClient::http_request_done(struct evhttp_request *req, void *arg){
+    _reply.datalen = 0;
+    _reply.data = nullptr;
 
-    mg_mgr_init(&mgr, NULL);
-    nc = mg_connect_http(&mgr, ev_handler, s_url, NULL, json_string.c_str());
-    if (nc == NULL) {
-        ERROR("restClient: Failed connecting to %s.", s_url);
-        return reply;
+    if (req == NULL) {
+        int errcode = EVUTIL_SOCKET_ERROR();
+        WARN("restClient: request failed.");
+        // Print socket error
+        WARN("socket error = %s (%d)\n",
+             evutil_socket_error_to_string(errcode), errcode);
+        return;
     }
-    mg_set_protocol_http_websocket(nc);
 
-    DEBUG("restClient: Sent json_request to %s:\n%s", s_url,
-          request->dump().c_str());
-    while (_s_exit_flag == 0)
-        mg_mgr_poll(&mgr, 1000);
+    int response_code = evhttp_request_get_response_code(req);
 
-    mg_mgr_free(&mgr);
+    if (response_code == 200)
+        _reply.success = true;
+    else {
+        INFO("restClient: Received respose code %d", response_code);
+        _reply.success = false;
+    }        
 
-    if (_s_exit_flag == -1)
-        return reply;
+    // get input buffer
+    evbuffer* input_buffer = evhttp_request_get_input_buffer(req);
+    _reply.datalen = evbuffer_get_length(input_buffer);
 
-    reply.success = true;
-    return reply;
+    // reserve memory
+    _reply.data = new char[_reply.datalen];
+    if (_reply.data == nullptr) {
+        WARN("restClient: Failure reserving memory for received data.");
+        _reply.success = false;
+        return;
+    }
+
+    // copy data out of the input buffer
+    if (evbuffer_remove(input_buffer, _reply.data, _reply.datalen) == -1) {
+        WARN("restClient: Unable to drain input buffer.");
+        _reply.success = false;
+        _reply.datalen = 0;
+    }
 }
 
-void restClient::ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
-  struct http_message *hm = (struct http_message *) ev_data;
-  int connect_status;
+unique_ptr<restReply> restClient::send(string path, const nlohmann::json& data,
+                           const string& host, const unsigned short port,
+                           const int retries, const int timeout) {
+    struct event_base *base;
+    struct bufferevent* bev;
+    struct evhttp_connection *evcon = NULL;
+    struct evhttp_request *req;
+    struct evkeyvalq *output_headers;
+    struct evbuffer *output_buffer;
 
-  switch (ev) {
-    case MG_EV_CONNECT:
-      connect_status = *(int *) ev_data;
-      if (connect_status != 0) {
-        ERROR("restClient: Error connecting to %s: %s", _s_url, strerror(connect_status));
-        _s_exit_flag = -1;
-      }
-      break;
-    case MG_EV_HTTP_REPLY:
-      if ((int) hm->resp_code != (int) HTTP_RESPONSE::OK) {
-        ERROR("restClient: Got response:\n%s", hm->resp_status_msg);
-        _s_exit_flag = -1;
-        break;
-      }
-      nc->flags |= MG_F_SEND_AND_CLOSE;
-      _s_exit_flag = 1;
-      break;
-    case MG_EV_CLOSE:
-      if (_s_exit_flag == 0) {
-        ERROR("restClient: Server closed connection");
-        _s_exit_flag = -1;
-      };
-      break;
-    default:
-      break;
-  }
+    size_t datalen = data.dump().length() + 1;
+    char json_string[datalen];
+
+    int ret;
+
+    // Fix path in case it is nothing or missing '/' in the beginning
+    if (path.length() == 0) {
+        path = string("/");
+    } else if (path.at(0) != '/')
+        path = "/" + path;
+
+    base = event_base_new();
+    if (!base) {
+        WARN("restClient: Failure creating new event_base.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+
+    bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+    if (bev == NULL) {
+        WARN("restClient: bufferevent_socket_new() failed.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+
+    // If not a numeric host is passed, DNS resolution will be blocking
+    evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev,
+        host.c_str(), port);
+    if (evcon == NULL) {
+        WARN("restClient: evhttp_connection_base_bufferevent_new() failed.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+
+    if (retries > 0) {
+        evhttp_connection_set_retries(evcon, retries);
+    }
+    if (timeout >= 0) {
+        evhttp_connection_set_timeout(evcon, timeout);
+    }
+
+    // Fire off the request
+    req = evhttp_request_new(http_request_done, bev);
+    if (req == NULL) {
+        WARN("restClient: evhttp_request_new() failed.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+
+    //conn = evhttp_connection_base_new(base, NULL, host.c_str(), port);
+    //req = evhttp_request_new(http_request_done, base);
+
+    output_headers = evhttp_request_get_output_headers(req);
+    ret = evhttp_add_header(output_headers, "Host", host.c_str());
+    if (ret) {
+        WARN("restClient: Failure adding \"Host\" header.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+    ret = evhttp_add_header(output_headers, "Connection", "close");
+    if (ret) {
+        WARN("restClient: Failure adding \"Connection\" header.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+    ret = evhttp_add_header(output_headers, "Content-Type", "application/json");
+    if (ret) {
+        WARN("restClient: Failure adding \"Content-Type\" header.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+
+    if (!data.empty()) {
+        char buf[256];
+        strcpy(json_string, data.dump().c_str());
+
+        output_buffer = evhttp_request_get_output_buffer(req);
+        ret = evbuffer_add_reference(output_buffer, json_string, datalen, NULL,
+                                     NULL);
+        if (ret) {
+            WARN("restClient: Failure adding JSON data to event buffer.");
+            _reply.success = false;
+            return make_unique<restReply>(_reply);
+        }
+
+        evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)datalen);
+        evhttp_add_header(output_headers, "Content-Length", buf);
+        if (ret) {
+            WARN("restClient: Failure adding \"Content-Length\" header.");
+            _reply.success = false;
+            return make_unique<restReply>(_reply);
+        }
+        DEBUG("restClient: Sending %s bytes: %s", buf, data.dump().c_str());
+
+        ret = evhttp_make_request(evcon, req, EVHTTP_REQ_POST, path.c_str());
+    } else {
+        ret = evhttp_make_request(evcon, req, EVHTTP_REQ_GET, path.c_str());
+    }
+    if (ret) {
+        WARN("restClient: evhttp_make_request() failed.");
+        _reply.success = false;
+        return make_unique<restReply>(_reply);
+    }
+
+    ret = event_base_dispatch(base);
+    if (ret < 0) {
+        _reply.success = false;
+        WARN("restClient::send: Failure sending message %s to %s:%d%s.",
+             json_string, host.c_str(), port, path.c_str());
+    }
+
+    // Cleanup
+    if (evcon)
+        evhttp_connection_free(evcon);
+    event_base_free(base);
+
+    return make_unique<restReply>(_reply);
 }

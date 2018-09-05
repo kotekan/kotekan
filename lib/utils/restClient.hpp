@@ -6,6 +6,9 @@
 #define RESTCLIENT_HPP
 
 #include "json.hpp"
+#include "restServer.hpp"
+
+using namespace std;
 
 /**
  * @class restClient
@@ -19,7 +22,7 @@
  * @author Rick Nitsche
  */
 class restClient {
-    public:
+public:
 
     /**
      * @brief Send json data to a POST endpoint.
@@ -28,28 +31,28 @@ class restClient {
      * @param request   JSON request
      * @return          False in case of failure, True otherwise.
      */
-    struct restReply send_json (const char *s_url,
-                                const nlohmann::json *request);
+    unique_ptr<struct restReply> send(string path,
+                          const nlohmann::json& data = {},
+                          const string& host = "localhost",
+                          const unsigned short port = PORT_REST_SERVER,
+                          const int retries = 0, const int timeout = -1);
 
     /// Default constructor.
     restClient() = default;
 
-    /// exit flag set by ev_handler to inform about connection status
-    static int _s_exit_flag;
+private:
 
-    /// URL
-    static const char *_s_url;
+    /// callback function for http request
+    static void http_request_done(struct evhttp_request *req, void *arg);
 
-    private:
-
-    /// event handler that is called by mongoose
-    static void ev_handler(struct mg_connection *nc, int ev, void *ev_data);
+    /// reply struct for callback to store reply
+    static struct restReply _reply;
 };
 
 struct restReply {
         bool success = false;
         void* data = nullptr;
-        size_t data_len = 0;
+        size_t datalen = 0;
 };
 
 #endif // RESTCLIENT_HPP
