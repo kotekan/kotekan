@@ -31,7 +31,7 @@ Required
 Required for some options
 ==========================
 
-* `libevent <http://libevent.org/>`_
+* `libevent <http://libevent.org/>`_ >= 2.1.8
 * `DPDK dpdk-16.11.3 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
@@ -107,6 +107,8 @@ Cmake build options
     Build processes depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
 * ``-DUSE_OMP=ON``
     Build processes using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
+* ``-D_USE_EVENT=ON``
+    Build using libevent (Requires libevent >= 2.1.8).
 * ``-DOPENBLAS_PATH=<openblas_prefix>``
     Path to OpenBLAS installation, if not in the ``CMAKE_PREFIX_PATH``
 * ``-DCOMPILE_DOCS=ON``
