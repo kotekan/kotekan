@@ -158,7 +158,7 @@ void freqSubset::main_thread() {
             for (uint32_t i = 0; i < subset_list.size(); i++) {
                 try {
                     output_freqs.push_back(input_freqs.at(subset_list[i]));
-                } catch (out_of_range e) {
+                } catch (std::out_of_range e) {
                     WARN("freqSlicer: Could not find frequency with ID %d in " \
                          "incoming dataset %d: %s", subset_list[i],
                          input_dset_id, e.what());

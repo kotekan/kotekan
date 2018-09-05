@@ -31,8 +31,10 @@ def subset_data(tmpdir_factory):
         use_dataset_manager=True
     )
 
-    write_buffer = kotekan_runner.VisWriterBuffer(str(tmpdir), "raw",
-                                                  subset_params['freq_ids'])
+    write_buffer = kotekan_runner.VisWriterBuffer(
+        str(tmpdir), "raw",
+        subset_params['freq_ids'],
+        extra_config={'use_dataset_manager': True})
 
     test = kotekan_runner.KotekanProcessTester(
         'prodSubset', vis_params,
