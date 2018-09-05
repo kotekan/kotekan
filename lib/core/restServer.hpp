@@ -85,6 +85,13 @@ public:
      * @return The full http request message
      */
     std::string get_full_message();
+
+    /**
+     * @brief Get the uri
+     *
+     * @return The uri of the http request message
+     */
+    std::string get_uri();
 private:
 
     /// The connection details

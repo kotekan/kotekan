@@ -3,7 +3,6 @@
 @brief Processes for splitting and subsetting visibility data by frequency.
 - freqSplit : public KotekanProcess
 - freqSubset : public KotekanProcess
-
 *****************************************/
 #ifndef FREQ_SLICER_HPP
 #define FREQ_SLICER_HPP

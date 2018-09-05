@@ -26,6 +26,8 @@ public:
 
     virtual void apply_config(uint64_t fpga_seq) = 0;
 
+    std::string get_unique_name() const;
+
     /**
      * @brief Attempts to join the process's @c main_thread with a tineout
      *

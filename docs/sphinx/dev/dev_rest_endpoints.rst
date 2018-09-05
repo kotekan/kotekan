@@ -71,6 +71,12 @@ The endpoint should be removed in the destructor of the process registering it:
     // Remove a POST call back
     rest_server.remove_json_callback(unique_name + "/my_post_endpoint");
 
+Shared Endpoints
+*****************
+If several processes need to share one endpoint, the endpoint can be created by the `configUpdater`.
+
+.. doxygenclass:: configUpdater
+
 Aliases
 **************
 To make things easier to access, it is possible to define aliases to endpoints in
@@ -92,7 +98,7 @@ The CPU affinity defaults to the global ``cpu_affinity:`` property
 
 To override that and pin it to say cores 3,4:
 
-.. code_block:: json
+.. code-block:: json
 
     rest_server:
         cpu_affinity: [3,4]

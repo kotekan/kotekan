@@ -25,9 +25,6 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
             host_phase[index++] = b/10.;
         }
     }
-
-    void * device_phase = device.get_gpu_memory("beamform_phase", phase_len);
-    device.sync_copy_host_to_gpu(device_phase, (void *)host_phase, phase_len);
 }
 
 hsaBeamformPulsar::~hsaBeamformPulsar() {
@@ -43,7 +40,7 @@ hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, const uint64_t& fpga_s
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    args.phase_buffer = device.get_gpu_memory("beamform_phase", phase_len);
+    args.phase_buffer = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, phase_len);
     args.output_buffer = device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.

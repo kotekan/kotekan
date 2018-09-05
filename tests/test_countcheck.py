@@ -6,6 +6,7 @@ import kotekan_runner
 import visbuffer
 
 root_params = {
+    'log_level': 'DEBUG',
     'num_elements': 16,
     'num_prod': 136,
     'num_ev': 2,
