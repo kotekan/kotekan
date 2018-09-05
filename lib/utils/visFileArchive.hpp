@@ -47,6 +47,32 @@ public:
                    const std::vector<prod_ctype>& prods,
                    size_t num_ev,
                    std::vector<int> chunk_size);
+    /**
+     * @brief Creates a visFileArchive object.
+     *
+     * @param name Path of the file to write into (without file extension).
+     * @param metadata Metadata attributes.
+     * @param times Vector of time indices.
+     * @param freqs Vector of frequency indices.
+     * @param inputs Vector of input indices.
+     * @param prods Vector of product indices.
+     * @param stack Vector of stack indices.
+     * @param reverse_stack Vector mapping products to stacks.
+     * @param num_ev Number of eigenvectors.
+     * @param chunk_size HDF5 chunk size (frequencies * products * times).
+     *
+     * @return Instance of visFileArchive.
+     **/
+    visFileArchive(const std::string& name,
+                   const std::map<std::string, std::string>& metadata,
+                   const std::vector<time_ctype>& times,
+                   const std::vector<freq_ctype>& freqs,
+                   const std::vector<input_ctype>& inputs,
+                   const std::vector<prod_ctype>& prods,
+                   const std::vector<stack_ctype>& stack,
+                   std::vector<rstack_ctype>& reverse_stack,
+                   size_t num_ev,
+                   std::vector<int> chunk_size);
 
     /**
      * @brief Destructor.
@@ -68,7 +94,17 @@ public:
                      size_t chunk_t, const T* data);
 
 
-protected:
+private:
+
+    // Prepare a file
+    void setup_file(const std::string& name,
+                    const std::map<std::string, std::string>& metadata,
+                    const std::vector<time_ctype>& times,
+                    const std::vector<freq_ctype>& freqs,
+                    const std::vector<input_ctype>& inputs,
+                    const std::vector<prod_ctype>& prods,
+                    size_t num_ev,
+                    std::vector<int> chunk_size);
 
     // Helper to create datasets
     virtual void create_dataset(const std::string& name,
@@ -86,6 +122,12 @@ protected:
                      const std::vector<input_ctype>& inputs,
                      const std::vector<prod_ctype>& prods,
                      size_t num_ev);
+    void create_axes(const std::vector<time_ctype>& times,
+                     const std::vector<freq_ctype>& freqs,
+                     const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods,
+                     const std::vector<stack_ctype>& stack,
+                     size_t num_ev);
 
     // Create the main visibility holding datasets
     void create_datasets();
@@ -97,6 +139,9 @@ protected:
     // Whether to write eigenvalues or not
     bool write_ev;
 
+    // Description of weights stored in vis_weight dataset
+    std::string weight_type;
+
     // HDF5 chunk size
     std::vector<int> chunk;
 
@@ -105,7 +150,18 @@ protected:
 
     std::string lock_filename;
 
+    // Whether the products have been compressed via baseline stacking
+    bool stacked = false;
+
+    // Shortcut for axes labels
+    inline std::string prod_or_stack();
+
 };
+
+
+inline std::string visFileArchive::prod_or_stack() {
+    return stacked ? "stack" : "prod";
+}
 
 
 // TODO: these should be included from visFileH5
@@ -117,6 +173,8 @@ template <> DataType create_datatype<time_ctype>();
 template <> DataType create_datatype<input_ctype>();
 template <> DataType create_datatype<prod_ctype>();
 template <> DataType create_datatype<cfloat>();
+template <> DataType create_datatype<stack_ctype>();
+template <> DataType create_datatype<rstack_ctype>();
 };
 
 

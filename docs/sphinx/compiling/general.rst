@@ -91,16 +91,12 @@ Cmake build options
     Build with OpenCL support.
 * ``-DUSE_HCC=ON``
     Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
-* ``-DDPDK_VDIF=ON``
-    Adjusts DPDK defines to optimize for single dish VDIF capture mode.
 * ``-DUSE_HDF5=ON``
     Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
 * ``-DHIGHFIVE_PATH=<path>``
     To enable the HDF5 writer
 * ``-DUSE_AIRSPY=ON``
     Build the AirSpy producer. Requires libairspy.
-* ``-DUSE_FFTW=ON``
-    Build an FFTW-based F-engine. Requires FFTW3.
 * ``-DUSE_FFTW=ON``
     Build an FFTW-based F-engine. Requires FFTW3.
 * ``-DUSE_LAPACK=ON``
