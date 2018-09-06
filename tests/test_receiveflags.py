@@ -450,6 +450,9 @@ def test_start_time_new_update(tmpdir_factory):
     assert (flags_set == 3)
 
 def test_flags_wrong_type(tmpdir_factory):
+    params['total_frames'] = 20
+    params['cadence'] = 0.1
+    params['dynamic_attributes']['flagging']['bad_inputs'] = [1,4]
     n = params['num_elements']
     num_prod = (n * (n + 1) / 2)
     flags_set = False
