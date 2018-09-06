@@ -448,3 +448,24 @@ def test_start_time_new_update(tmpdir_factory):
         assert np.all(frame_flags[flags_set] == pytest.approx(frame.flags))
 
     assert (flags_set == 3)
+
+def test_flags_wrong_type(tmpdir_factory):
+    n = params['num_elements']
+    num_prod = (n * (n + 1) / 2)
+    flags_set = False
+
+    # REST commands
+    flags = [2,3]
+    cmds = [["post", "dynamic_attributes/flagging", {'bad_inputs': start_time,
+                                                     'start_time': start_time,
+                                                     'tag': "test_flag_update"}]]
+
+    flags_dump = run_flagging(tmpdir_factory, cmds)
+
+    for frame in flags_dump:
+        assert frame.metadata.num_prod == num_prod
+
+        assert(n == len(frame.flags))
+
+        # flags should stay the same
+        assert np.all(frame.flags == [1,0,1,1,0])

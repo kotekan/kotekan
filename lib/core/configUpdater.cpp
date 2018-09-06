@@ -164,6 +164,19 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             WARN(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
+        } else {
+            // ...and for correct types
+            if (it.value().type() != _init_values[uri].at(string(it.key())).type()) {
+                std::string msg = fmt::format(
+                            "configUpdater: Update to endpoint '{}' contained" \
+                            "value '{}' of type {} (expected type {}).",
+                            uri.c_str(), it.key().c_str(),
+                            it.value().type_name(),
+                            _init_values[uri].at(it.key()).type_name());
+                WARN(msg.c_str());
+                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
         }
     }
     // ...and for missing values
