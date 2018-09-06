@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <memory>
+#include <mutex>
 
 #include "json.hpp"
 #include "errors.h"
@@ -106,9 +107,9 @@ private:
     // Reference to the internal state
     state_uptr _inner_state = nullptr;
 
-    // List of registerd subclass creating functions
-    static map<string,
-               function<state_uptr(json&, state_uptr)>> _type_create_funcs;
+    // List of registered subclass creating functions
+    static map<string, function<state_uptr(json&, state_uptr)>>&
+        _registered_types();
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
@@ -316,6 +317,9 @@ private:
  * Adds an input state as well as a product dataset state to the manager. The
  * process should then write `new_ds_id` to its outgoing frames.
  *
+ * If a process is altering more than one type of dataset state, it can add
+ * `inner` states to the one it passes to the dataset manager.
+ *
  * @author Richard Shaw, Rick Nitsche
  *
  * TODO: Centralized datasetBroker, so that states can be shared over multiple
@@ -415,6 +419,12 @@ private:
 
     // Store a list of the datasets registered and what states they correspond to
     vector<pair<state_id, dset_id>> _datasets;
+
+    // Lock for changing or using the states map.
+    mutable std::mutex _lock_states;
+
+    // Lock for changing or using the datasets.
+    mutable std::mutex _lock_dsets;
 };
 
 
@@ -433,8 +443,8 @@ inline int datasetState::_register_state_type() {
     DEBUG("Registering state type: %s", key.c_str());
 
     // Generate a lambda function that creates an instance of the type
-    datasetState::_type_create_funcs[key] =
-        [](json & data, state_uptr inner) {
+    datasetState::_registered_types()[key] =
+        [](json & data, state_uptr inner) -> state_uptr {
             return make_unique<T>(data, move(inner));
         };
     return 0;
@@ -460,7 +470,11 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
 template <typename T>
 pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     state_id hash = hash_state(*state);
-    _states[hash] = move(state);
+    std::lock_guard<std::mutex> lock(_lock_states);
+    if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
+                                                           move(state))).second)
+        INFO("datasetManager a state with hash %d is already registered.",
+             hash);
     return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif
