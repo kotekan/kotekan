@@ -15,7 +15,7 @@ using namespace std;
  * @brief REST client: Send REST messages to a server and maybe get a reply.
  *
  * This class supports sending GET messages and POST messages with json data
- * using libevent >= 2.1.8. Any reply received is returned.
+ * using libevent. Any reply received is returned.
  *
  * @warning This is not thread save. Don't share an object of this between
  * threads and don't send requests from different threads at the same time.
