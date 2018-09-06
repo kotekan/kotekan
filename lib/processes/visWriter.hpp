@@ -59,6 +59,7 @@
  *                          write into a file.
  * @conf   window           Int (default 20). Number of samples to keep active
  *                          for writing at any time.
+ * @conf   use_dataset_manager Bool (default:false). Use the dataset manager.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds

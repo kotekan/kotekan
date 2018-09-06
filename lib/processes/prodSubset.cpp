@@ -16,6 +16,8 @@ prodSubset::prodSubset(Config &config,
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
     num_eigenvectors =  config.get_int(unique_name, "num_ev");
+    use_dataset_manager = config.get_bool_default(
+        unique_name, "use_dataset_manager", false);
 
     // Get buffers
     in_buf = get_buffer("in_buf");
@@ -63,7 +65,7 @@ void prodSubset::main_thread() {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
-        if (input_dset_id != input_frame.dataset_id) {
+        if (input_dset_id != input_frame.dataset_id && use_dataset_manager) {
             // create new product dataset state
             input_dset_id = input_frame.dataset_id;
             const prodState* input_prod_ptr =
