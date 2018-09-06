@@ -84,16 +84,8 @@ unique_ptr<restReply> restClient::send(string path, const nlohmann::json& data,
         return make_unique<restReply>(_reply);
     }
 
-    bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-    if (bev == NULL) {
-        WARN("restClient: bufferevent_socket_new() failed.");
-        _reply.success = false;
-        return make_unique<restReply>(_reply);
-    }
+    evcon = evhttp_connection_base_new(base, NULL, host.c_str(), port);
 
-    // If not a numeric host is passed, DNS resolution will be blocking
-    evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev,
-        host.c_str(), port);
     if (evcon == NULL) {
         WARN("restClient: evhttp_connection_base_bufferevent_new() failed.");
         _reply.success = false;
