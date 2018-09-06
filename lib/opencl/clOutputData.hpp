@@ -14,10 +14,14 @@ public:
     void finalize_frame(int frame_id) override;
 
 protected:
-    int32_t output_buffer_id;
+    int32_t output_buffer_execute_id;
     int32_t output_buffer_precondition_id;
-    int32_t output_buffer_finalize_id;
-    Buffer * output_buf;
+
+    Buffer * output_buffer;
+    Buffer * network_buffer;
+
+    int32_t output_buffer_id;
+    int32_t network_buffer_id;
 
 private:
     // Common configuration values (which do not change in a run)

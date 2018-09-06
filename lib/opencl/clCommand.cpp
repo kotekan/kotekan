@@ -43,6 +43,7 @@ clCommand::clCommand(
 
 clCommand::~clCommand()
 {
+    INFO("KERNEL COMMAND: %s",kernel_command.c_str());
     if (kernel_command != ""){
         CHECK_CL_ERROR( clReleaseKernel(kernel) );
         DEBUG("kernel Freed");
@@ -135,7 +136,11 @@ void clCommand::finalize_frame(int gpu_frame_id) {
             last_gpu_execution_time = ((double)(stop_time - start_time)) * 1e-9;
         }
 
-        clReleaseEvent(post_event[gpu_frame_id]);
+//        cl_uint ref;
+//        clGetEventInfo(post_event[gpu_frame_id], CL_EVENT_REFERENCE_COUNT, sizeof(cl_uint), &ref, NULL);
+//        INFO("Event Ref Ct: %i", ref);
+
+        CHECK_CL_ERROR(clReleaseEvent(post_event[gpu_frame_id]));
         post_event[gpu_frame_id] = NULL;
     }
     else INFO("*** WTF? Null event!");

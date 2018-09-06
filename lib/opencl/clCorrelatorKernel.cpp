@@ -10,9 +10,9 @@ clCorrelatorKernel::clCorrelatorKernel(Config& config, const string &unique_name
     clCommand("corr","pairwise_correlator.cl", config, unique_name, host_buffers, device)
 {
     _num_elements = config.get_int(unique_name, "num_elements");
-    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
+//    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
+//    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
     _block_size = config.get_int(unique_name, "block_size");
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
     _num_blocks = config.get_int(unique_name,"num_blocks");
@@ -49,8 +49,8 @@ void clCorrelatorKernel::build()
     num_accumulations = _samples_per_data_set/256;
 
     string cl_options = "";
-    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_adjusted_elements);
-    cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_adjusted_local_freq);
+    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
+    cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
     cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
 
     cl_device_id dev_id = device.get_id();
@@ -86,7 +86,7 @@ void clCorrelatorKernel::build()
 
     // Correlation kernel global and local work space sizes.
     gws[0] = 8*_num_data_sets;
-    gws[1] = 8*_num_adjusted_local_freq;
+    gws[1] = 8*_num_local_freq;
     gws[2] = _num_blocks*num_accumulations;
 
     lws[0] = 8;
@@ -119,6 +119,7 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq,
 
     return post_event[gpu_frame_id];
 }
+
 void clCorrelatorKernel::defineOutputDataMap()
 {
     cl_int err;
@@ -130,7 +131,7 @@ void clCorrelatorKernel::defineOutputDataMap()
 
     //TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y indices for an upper triangle.
     // Time Test kernels using them compared to the lookup tables for NUM_ELEM = 256
-    int largest_num_blocks_1D = _num_adjusted_elements /_block_size;
+    int largest_num_blocks_1D = _num_elements /_block_size;
     int index_1D = 0;
     for (int j = 0; j < largest_num_blocks_1D; j++){
         for (int i = j; i < largest_num_blocks_1D; i++){

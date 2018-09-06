@@ -9,6 +9,8 @@
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi
 
+REGISTER_CL_COMMAND(clBeamformPhaseData);
+
 clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("","", config, unique_name, host_buffers, device)
@@ -31,7 +33,7 @@ clBeamformPhaseData::~clBeamformPhaseData()
 void clBeamformPhaseData::apply_config(const uint64_t& fpga_seq) {
     clCommand::apply_config(fpga_seq);
 
-    beamforming_do_not_track = config.get_int(unique_name, "do_not_track");
+    beamforming_do_not_track = config.get_bool_default(unique_name, "do_not_track",false);
     inst_lat = config.get_double(unique_name, "instrument_lat");
     inst_long = config.get_double(unique_name, "instrument_long");
     fixed_time = config.get_int(unique_name, "fixed_time");

@@ -5,13 +5,13 @@
 
 using std::string;
 
+REGISTER_CL_COMMAND(clBeamformKernel);
+
 clBeamformKernel::clBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("gpu_beamforming","beamform_tree_scale.cl", config, unique_name, host_buffers, device)
 {
     _num_elements = config.get_int(unique_name, "num_elements");
-    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
-    _num_blocks = config.get_int(unique_name, "num_blocks");
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
@@ -52,8 +52,7 @@ void clBeamformKernel::build()
     cl_device_id dev_id = device.get_id();
 
     string cl_options = "";
-    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_adjusted_elements);
-    cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
+    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D NUM_TIMESAMPLES=" + std::to_string(_samples_per_data_set);
 
     CHECK_CL_ERROR ( clBuildProgram( program, 1, &dev_id, cl_options.c_str(), NULL, NULL ) );
@@ -63,9 +62,9 @@ void clBeamformKernel::build()
 
 ////##OCCURS IN SETUP_OPEN_CL
 
-    unsigned char mask[_num_adjusted_elements];
+    unsigned char mask[_num_elements];
 
-    for (int i = 0; i < _num_adjusted_elements; ++i) {
+    for (int i = 0; i < _num_elements; ++i) {
         mask[i] = 1;
     }
     for (uint32_t i = 0; i < _element_mask.size(); ++i) {
@@ -76,7 +75,7 @@ void clBeamformKernel::build()
 
     device_mask = clCreateBuffer(device.get_context(),
                                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                        _num_adjusted_elements * sizeof(unsigned char),
+                                        _num_elements * sizeof(unsigned char),
                                         mask,
                                         &err);
 
@@ -124,7 +123,7 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
     cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * 2;
-    cl_mem output_memory_frame = device.get_gpu_memory_array("output",gpu_frame_id, output_len);
+    cl_mem output_memory_frame = device.get_gpu_memory_array("beamform_output_buf",gpu_frame_id, output_len);
 
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);

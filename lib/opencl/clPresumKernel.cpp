@@ -7,12 +7,10 @@ clPresumKernel::clPresumKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("offsetAccumulateElements","offset_accumulator.cl", config, unique_name, host_buffers, device)
 {
-    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
     _block_size = config.get_int(unique_name, "block_size");
     _num_blocks = config.get_int(unique_name, "num_blocks");
     _buffer_depth = config.get_int(unique_name, "buffer_depth");
@@ -47,7 +45,7 @@ void clPresumKernel::build()
 
     // Accumulation kernel global and local work space sizes.
     gws[0] = 64*_num_data_sets;
-    gws[1] = (int)ceil(_num_adjusted_elements * _num_adjusted_local_freq/256.0);
+    gws[1] = (int)ceil(_num_elements * _num_local_freq/256.0);
     gws[2] = _samples_per_data_set/1024;
 
     lws[0] = 64;

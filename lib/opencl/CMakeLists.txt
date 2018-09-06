@@ -16,7 +16,6 @@ add_library ( kotekan_opencl
               clCommand.cpp
               clCommandFactory.cpp
               clProcess.cpp
-#              timer.cpp
 
 # Copy-in & general-purpose:
               clInputData.cpp

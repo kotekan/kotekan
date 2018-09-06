@@ -6,7 +6,7 @@ clPresumZero::clPresumZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("", "", config, unique_name, host_buffers, device)
 {
-     _num_elements = config.get_int(unique_name, "num_elements");
+    _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     presum_zeros = malloc(presum_len);

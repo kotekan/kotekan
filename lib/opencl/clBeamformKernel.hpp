@@ -28,8 +28,6 @@ protected:
 private:
     /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
     int32_t _num_elements;
-    int32_t _num_adjusted_elements;
-    int32_t _num_blocks;
     int32_t _num_data_sets;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
