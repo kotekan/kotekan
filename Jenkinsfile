@@ -29,6 +29,29 @@ pipeline {
                   make'''
           }
         }
+        stage('Build Minimal MacOS kotekan') {
+          agent {label 'macos'}
+          steps {
+            sh '''export PATH=${PATH}:/usr/local/bin/
+                  mkdir build_base
+                  cd build_base/
+                  cmake ..
+                  make'''
+          }
+        }
+        stage('Build Maximal MacOS kotekan') {
+          agent {label 'macos'}
+          steps {
+            sh '''export PATH=${PATH}:/usr/local/bin/
+                  mkdir build_full
+                  cd build_full/
+                  cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DUSE_FFTW=ON -DUSE_AIRSPY=ON \
+                        -DUSE_LAPACK=ON -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
+                        -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
+                  make'''
+          }
+        }
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
@@ -44,7 +67,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-pytest -s -vvv'''
+              pytest -s -vvv'''
       }
     }
   }
