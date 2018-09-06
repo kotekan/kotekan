@@ -28,6 +28,16 @@ pipeline {
                   make'''
           }
         }
+        stage('Build MacOS kotekan') {
+          agent {label 'macos silver'}
+          steps {
+            sh '''export PATH=${PATH}:/usr/local/bin/
+                  mkdir build-docs
+                  cd build-docs/
+                  cmake ..
+                  make'''
+          }
+        }
       }
     }
   }
