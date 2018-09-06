@@ -11,7 +11,8 @@ import kotekan_runner
 params = {
     'fakevis_mode': 'gaussian',
     'cadence': 1.,
-    'total_frames': 2, # make it run long enough to receive REST commands
+    'total_frames': 20, # make it run long enough to receive REST commands
+    'cadence': 0.1,
     'num_ev': 0,
     'num_elements': 5,
     'out_file': '/tmp/out.csv',
