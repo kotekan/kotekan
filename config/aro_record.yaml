@@ -5,10 +5,8 @@
 # A config used by ARO to record data to
 # disk and stream data for live-view
 #
-# Note all the RFI components are disabled since
-# they aren't currently working with the lastest code
 #
-# Author: Jacob Taylor
+# Author: Jacob Taylor, Andre Renard
 #
 ##########################################
 ---
@@ -35,15 +33,6 @@ sizeof_short: 2
 vdif_header_size: 32
 num_disks: 10
 
-#frames_per_packet: 1
-#sk_step: 256
-
-#rfi viewer config
-#waterfallX: 256
-#waterfallY: 1024
-#num_receive_threads: 1
-#waterfall_request_delay: 1 #seconds
-
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
@@ -68,12 +57,10 @@ power_buffer:
     frame_size: (samples_per_data_set/power_integration_length) * (num_freq + 1) * num_elements * sizeof_float
     metadata_pool: main_pool
 
-#rfi_buffer:
-#    kotekan_buffer: standard
-#    num_frames: buffer_depth
-#    frame_size: sizeof_float * num_freq * samples_per_data_set / sk_step
-#    metadata_pool: main_pool
+# Processes
 
+# The core mapping here is setup for a 6 core CPU with 12 threads (vcores)
+# and setup to use the first 4 real cores (8 vcores)
 dpdk:
     kotekan_process: dpdkCore
     # Format is index = lcore, value = cpu core
@@ -127,15 +114,12 @@ raw_capture:
    disk_set: E
    in_buf: vdif_buffer
 
+# These next two processes are used for live viewing of the data
+# they are not required for saving data.
 power_integration:
    kotekan_process: computeDualpolPower
    vdif_in_buf: vdif_buffer
    power_out_buf: power_buffer
-
-#rfi_vdif:
-#   kotekan_process: rfiAVXVDIF
-#   vdif_in: vdif_buffer
-#   rfi_out: rfi_buffer
 
 power_stream:
    freq: 600
@@ -156,11 +140,3 @@ power_stream:
       in_buf: power_buffer
       destination_port: 2055
       destination_ip: 10.72.0.2
-
-# Missing process?  Maybe it was renamed?
-#rfi_broadcast:
-#   kotekan_process: rfiBroadcastVDIF
-#   rfi_in: rfi_buffer
-#   destination_port: 41215
-#   destination_ip: 10.70.0.138
-#   destination_protocol: UDP
