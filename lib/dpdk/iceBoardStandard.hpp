@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Capture of a single stream of IceBoard packets feeding them into one buffer
- * - iceBoardStandard
+ * - iceBoardStandard : public iceBoardHandler
  */
 
 #ifndef ICE_BOARD_STANDARD_HPP

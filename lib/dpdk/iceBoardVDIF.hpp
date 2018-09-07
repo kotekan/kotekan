@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Contains the handler for generating VDIF frames from an ICEBoard in shuffle16 mode
+ * - iceBoardVDIF : public iceBoardHandler
+ */
+
 #ifndef ICE_BOARD_VDIF
 #define ICE_BOARD_VDIF
 
@@ -10,6 +16,35 @@
 /**
  * @brief Handler for extacting two elements from 8 links from an
  *        ICEboard running in PFB 16-element mode
+ *
+ * This mode only works when attached to an ICEboard running in shuffle16 mode with the PFB enabled.
+ * The receiving system must be connected to all 8 FPGA links.  And this hander must be used in a group of 8,
+ * with all 8 handers attached to the same output buffer and lost samples buffer.
+ * The order of the links attached to the node however does not matter.
+ *
+ * The output data stream is standard VDIF see: https://vlbi.org/vdif/
+ *
+ * Note that when one more packets is lost the entire VDIF frame is marked as invalid. This requires
+ * the use of the invalidateVDIFframes process to mark the VDIF frames as invalid.  Note once a frame is
+ * marked as invalid there is no guarantee any data will be good, including the time stamp.
+ * Only the frame lenght can be considered be correct.
+ *
+ * @par REST Endpoints
+ * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets received on it.
+ *
+ * @par Buffers
+ * @buffer out_buf  Kotekan buffer to place the VDIF frames in.
+ *       @buffer_format unit8_t array of VDIF frame
+ *       @buffer_metadata chimeMetadata
+ * @buffer lost_samples_buf Kotekan buffer of flags (one per time sample)
+ *       @buffer_format unit8_t array of flags
+ *       @buffer_metadata none
+ *
+ * @config station_id   Int   Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
+ *                            Station ID.  AQ == ARO
+ * @config offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2 would
+ *                            select the 3nd and 4rd element (one based), a value of 0 gives 1st and 2nd element
+ *
  * @author Andre Renard
  */
 class iceBoardVDIF : public iceBoardHandler {
@@ -82,6 +117,10 @@ iceBoardVDIF::iceBoardVDIF(Config &config, const std::string &unique_name,
 
     station_id = config.get_int_default(unique_name, "station_id", 0x4151); // AQ
     offset = config.get_int_default(unique_name, "offset", 0);
+
+    if (offset > 14) {
+        throw std::runtime_error("The offset value is too large: " + to_string(offset));
+    }
 
     std::string endpoint_name = unique_name + "/port_data";
     restServer::instance().register_get_callback(endpoint_name, [&] (connectionInstance &conn) {
