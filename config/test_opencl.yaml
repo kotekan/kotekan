@@ -32,10 +32,9 @@ two: 2
 #vdif_fs_2: 16
 #vdif_fs_3: 5032
 #link_map: [0,0,1,1,1,2,2,2]
-num_elements: 256
-num_local_freq: 8
-num_total_freq: 64
-num_blocks: 36
+num_elements: 256 #2048
+num_local_freq: 1
+num_blocks: 36 #2080 #36
 sizeof_int: 4
 
 # Pool
@@ -121,16 +120,16 @@ gpu:
   - name: clPresumZero
   - name: clOutputDataZero
   - name: clPresumKernel
-  - name: clPreseedKernel
-  - name: clCorrelatorKernel
+#  - name: clPreseedKernel
+#  - name: clCorrelatorKernel
+  - name: clKVCorr
 #  - name: clBeamformPhaseData
 #  - name: clBeamformKernel
-#  - name: clOutputBeamformIncohResult
 #  - name: clOutputBeamformResult
   - name: clOutputData
   gpu_0:
     kotekan_process: clProcess
-    gpu_id: 0
+    gpu_id: 1
     in_buffers:
       network_buf: gpu_input_buffer
     out_buffers:
@@ -145,6 +144,7 @@ gpu:
 
 check_data:
   real: [0]
+#  imag: [-5242880] 
   imag: [65536]
   const_data_check:
     kotekan_process: constDataCheck

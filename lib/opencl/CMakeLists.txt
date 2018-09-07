@@ -27,6 +27,7 @@ add_library ( kotekan_opencl
               clPreseedKernel.cpp
               clCorrelatorKernel.cpp
               clOutputData.cpp
+              clKVCorr.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
               clBeamformPhaseData.cpp
