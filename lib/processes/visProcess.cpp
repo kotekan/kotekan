@@ -467,10 +467,57 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // get config
+    apply_config(0);
+}
+
+void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
+    test_pattern = config.get_string(unique_name, "test_pattern");
+
+    INFO("visCheckTestPattern: mode = %s", test_pattern.c_str());
+    if (test_pattern == "simple") {
+        exp_val = {config.get_float_default(unique_name,
+                                                 "expected_val_real", 1.),
+                        config.get_float_default(unique_name,
+                                                 "expected_val_imag", 0.)};
+    }
+    else if (test_pattern == "frequency_bins") {
+        exp_val = {config.get_float_default(unique_name,
+                                                 "expected_val_real", 128.),
+                        config.get_float_default(unique_name,
+                                                 "expected_val_imag", 0.)};
+        std::vector<uint32_t> frequencies =
+                config.get_array<uint32_t>(unique_name, "frequencies");
+        std::vector<float> freq_exp_values_r =
+                config.get_array<float>(unique_name, "freq_expected_values_real");
+        std::vector<float> freq_exp_values_i =
+                config.get_array<float>(unique_name, "freq_expected_values_imag");
+
+        if (freq_exp_values_r.size() != freq_exp_values_i.size())
+            throw std::invalid_argument("visCheckTestPattern: the length of " \
+                   "freq_expected_values_real and freq_expected_values_imag " \
+                   "have to be equal (" +
+                   std::to_string(freq_exp_values_r.size()) + " != " +
+                   std::to_string(freq_exp_values_i.size()) + ").");
+        std::vector<cfloat> freq_exp_values_complx;
+        for (size_t i = 0; i < freq_exp_values_r.size(); i++)
+            freq_exp_values_complx.push_back({freq_exp_values_r[i],
+                                              freq_exp_values_i[i]});
+        if (frequencies.size() != freq_exp_values_complx.size())
+            throw std::invalid_argument("visCheckTestPattern: the length of " \
+                   "frequencies and freq_expected_values_<real/imag> have to " \
+                   "be equal (" + std::to_string(frequencies.size()) + " != " +
+                   std::to_string(freq_exp_values_complx.size()) + ").");
+        for (size_t i = 0; i < frequencies.size(); ++i)
+            exp_val_freqs[frequencies[i]] = freq_exp_values_complx[i];
+    }
+    else
+        throw std::invalid_argument("visCheckTestpattern: unknown mode: " +
+                                    test_pattern);
+
     tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
     report_freq = config.get_uint64_default(unique_name, "report_freq", 1000);
-    expected_val = {config.get_float_default(unique_name, "expected_val_real", 1.),
-                    config.get_float_default(unique_name, "expected_val_imag", 0.)};
+
+
 
     outfile_name = config.get_string(unique_name, "out_file");
 
@@ -485,10 +532,6 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     }
     outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err"
         << std::endl;
-}
-
-void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
-
 }
 
 void visCheckTestPattern::main_thread() {
@@ -536,12 +579,24 @@ void visCheckTestPattern::main_thread() {
         min_err = 0.0;
         max_err = 0.0;
 
+        cfloat expected;
+
+        if (test_pattern == "simple")
+            expected = exp_val;
+        else if (test_pattern == "frequency_bins") {
+            auto search = exp_val_freqs.find(frame.freq_id);
+            if (search == exp_val_freqs.end())
+                expected = exp_val;
+            else
+                expected = search->second;
+        }
+
 	    // Iterate over covariance matrix
 	    for (size_t i = 0; i < frame.num_prod; i++) {
 
             // Calculate the error^2 and compared this to the tolerance as it's
             // much faster than taking the square root where we don't need to.
-            float r2 = fast_norm(frame.vis[i] - expected_val);
+            float r2 = fast_norm(frame.vis[i] - expected);
 
             // check for bad values
             if (r2 > t2) {
@@ -583,6 +638,7 @@ void visCheckTestPattern::main_thread() {
             DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
                     time.tv_nsec);
             DEBUG("freq id: %d", freq_id);
+            DEBUG("expected: (%f,%f)", expected.real(), expected.imag());
 
             // gather data for report after many frames
             num_bad_tot += num_bad;

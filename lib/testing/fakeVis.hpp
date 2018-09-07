@@ -149,6 +149,10 @@ private:
     // config values
     cfloat vis_mean;
     float vis_std;
+
+    // for frequency dependant test pattern generation
+    std::map<uint32_t, cfloat> val_freqs;
+
     // random number generation
     std::default_random_engine gen;
 

@@ -50,8 +50,7 @@ fakeVis::fakeVis(Config &config,
     mode = config.get_string_default(unique_name, "mode", "default");
 
     if(fill_map.count(mode) == 0) {
-        ERROR("unknown fill type %s", mode.c_str());
-        // TODO: exit here
+        throw std::invalid_argument("unknown fill type " + mode);
     }
     INFO("Using fill type: %s", mode.c_str());
     fill = fill_map.at(mode);

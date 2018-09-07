@@ -266,7 +266,9 @@ private:
     // Config parameters
     float tolerance;
     size_t report_freq;
-    cfloat expected_val;
+    cfloat exp_val;
+    std::string test_pattern;
+    std::map<uint32_t, cfloat> exp_val_freqs;
 
     // file to dump all info in
     std::ofstream outfile;
