@@ -34,6 +34,26 @@ using std::map;
 #include "kotekanLogging.hpp"
 
 
+#ifdef WITH_OPENCL
+
+#ifdef __APPLE__
+    #include "OpenCL/opencl.h"
+#else
+    #include <CL/cl.h>
+    #include <CL/cl_ext.h>
+#endif
+
+char* oclGetOpenCLErrorCodeStr(cl_int input);
+
+#define CHECK_CL_ERROR( err )                                      \
+    if ( err ) {                                                    \
+        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s",               \
+                __FILE__, __LINE__, oclGetOpenCLErrorCodeStr(err)); \
+        exit( err );                                                \
+    }
+//WITH_OPENCL
+#endif
+
 // Store named set of gpu pointer(s) with uniform size
 struct clMemoryBlock {
     vector<cl_mem> gpu_pointers;
@@ -122,7 +142,7 @@ public:
     uint32_t gpu_buffer_depth;
 
 private:
-
+    int num_local_freq;
     map<string, clMemoryBlock> gpu_memory;
 
 

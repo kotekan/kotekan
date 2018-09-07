@@ -43,7 +43,6 @@ clCommand::clCommand(
 
 clCommand::~clCommand()
 {
-    INFO("KERNEL COMMAND: %s",kernel_command.c_str());
     if (kernel_command != ""){
         CHECK_CL_ERROR( clReleaseKernel(kernel) );
         DEBUG("kernel Freed");
