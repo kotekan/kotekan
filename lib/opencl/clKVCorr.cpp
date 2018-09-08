@@ -41,11 +41,6 @@ void clKVCorr::build()
 
     cl_int err;
 
-    unsigned int num_accumulations;
-
-    // Number of compressed accumulations.
-    num_accumulations = _samples_per_data_set/256;
-
     string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
@@ -56,10 +51,9 @@ void clKVCorr::build()
     err = clBuildProgram( program, 1, &dev_id, cl_options.c_str(), NULL, NULL );
     if (err != CL_SUCCESS){
         size_t len = 0;
-        cl_int ret = CL_SUCCESS;
-        ret = clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
+        CHECK_CL_ERROR(clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, 0, NULL, &len));
         char *buffer = (char*)calloc(len, sizeof(char));
-        ret = clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
+        CHECK_CL_ERROR(clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, len, buffer, NULL));
         INFO("CL failed. Build log follows: \n %s",buffer);
         free(buffer);
     } CHECK_CL_ERROR(err); 
@@ -91,13 +85,13 @@ void clKVCorr::build()
 
 
     // Correlation kernel global and local work space sizes.
-    gws[2] = 16*_num_data_sets;
+    gws[0] = 16*_num_data_sets;
     gws[1] = 4*_num_local_freq;
-    gws[0] = _num_blocks;//*num_accumulations;
+    gws[2] = _num_blocks;//*num_accumulations;
 
-    lws[2] = 16;
+    lws[0] = 16;
     lws[1] = 4;
-    lws[0] = 1;
+    lws[2] = 1;
 }
 
 cl_event clKVCorr::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)

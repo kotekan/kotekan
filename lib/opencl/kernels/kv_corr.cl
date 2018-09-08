@@ -13,10 +13,7 @@
 #define ygr get_group_id(1)
 #define zgr get_group_id(2)
 
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable
-#pragma OPENCL EXTENSION cl_khr_fp16 : enable
-
-__kernel //__attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE, 1)))
+__kernel __attribute__((reqd_work_group_size(8, 8, 1)))
 void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
@@ -24,10 +21,6 @@ void corr ( __global const uint *packed,
             __global const uint *id_y_map,
             __global int *block_lock)
 {
-//    local uint x_re_buf[64][4];
-//    local uint x_im_buf[64][4];
-//    local uint y_ir_buf[64][4];
-
     //figure out where to load data from
     uint addr_x = id_x_map[zg]*8 + xl;
     uint addr_y = id_y_map[zg]*8 + yl;
@@ -45,7 +38,7 @@ void corr ( __global const uint *packed,
 
 
     //seed the 8x8 workgroup with staggered time offsets
-    uint t = ((zl + yl) % 8);
+    uint t = ((xl + yl) % 8);
 
     //find the address of the work items to hand off to
     uint dest_x = ((yl+1)%8)*8 + xl;
@@ -97,7 +90,7 @@ void corr ( __global const uint *packed,
                 }
             }
         }
-        __global int *out=(corr_buf + (zg*1024 + yg*32*4 + xg*4)*2);
+        global int *out=(corr_buf + (zg*1024 + yg*32*4 + xg*4)*2);
         #pragma unroll
         for (int y=0; y<4; y++){
             #pragma unroll

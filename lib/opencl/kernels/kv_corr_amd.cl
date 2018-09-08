@@ -1,18 +1,17 @@
 //#define SAMPLES_PER_DATA_SET
 //#define NUM_ELEMENTS
 
-
-#define xl get_local_id(2)
+#define xl get_local_id(0)
 #define yl get_local_id(1)
-#define zl get_local_id(0)
+#define zl get_local_id(2)
 
-#define xg get_global_id(2)
+#define xg get_global_id(0)
 #define yg get_global_id(1)
-#define zg get_global_id(0)
+#define zg get_global_id(2)
 
-#define xgr get_group_id(2)
+#define xgr get_group_id(0)
 #define ygr get_group_id(1)
-#define zgr get_group_id(0)
+#define zgr get_group_id(2)
 
 #define n_integrate SAMPLES_PER_DATA_SET
 
@@ -20,7 +19,7 @@
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 #pragma OPENCL EXTENSION cl_amd_media_ops2 : enable
 
-__kernel //__attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE, 1)))
+__kernel __attribute__((reqd_work_group_size(16,4, 1)))
 void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
@@ -59,7 +58,7 @@ void corr ( __global const uint *packed,
 
     local uint locoflow_r[4][16][4][2];
     local uint locoflow_i[4][16][4];
-    for (; T<n_integrate + ygr*n_integrate; T+=64){
+    for (; T<n_integrate + ygr*n_integrate; T+=16384){
         //zero the accumulation buffers
         uint corr_rr_ri[4][4] = {{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
         uint corr_1i_2i[4][2] = {{0,0},    {0,0},    {0,0},    {0,0}    };
@@ -71,7 +70,7 @@ void corr ( __global const uint *packed,
         }
 
         //big 'ol outer loop, to do arbitrarily long accumulations
-        for (uint t=0; t<64; t+=64){
+        for (uint t=0; t<16384; t+=64){
             //move top bits to overflow to make room in accumulation buffers
             //had to move to before the loop; after, it jumbled the compilation
             for (int y=0; y<4; y++)
@@ -92,7 +91,7 @@ void corr ( __global const uint *packed,
             for (int y=0; y<4; y++) for (int x=0; x<4; x++)
                 corr_rr_ri[y][x]=corr_rr_ri[y][x] & 0x7fff7fff;
 
-            //accumulate 256 samples before unpacking
+            //accumulate 64 samples before unpacking
             for (int j=0; j<64; j+=8){
                 //load up 4 inputs from each side of the 4x4 block
                 uint xv = packed[(T+t+j)*NUM_ELEMENTS/4 + input_x];
@@ -134,21 +133,19 @@ void corr ( __global const uint *packed,
                     x_ii[1] = __builtin_amdgcn_ds_bpermute(dest_x,x_ii[1]);
                 }
             }
-            //unpacked into long-term real, imaginary accumulation buffer.
-            __global int *out=corr_buf + (zg*1024 + iy*32*4 + ix*4)*2;
-            #pragma unroll
-            for (int y=0; y<4; y++){
-              int r[4] = {
-                (corr_rr_ri[y][0]>>16) + 
-                  (amd_bfe(locoflow_r[yl][xl][y][0],16,8) << 15),
-                (corr_rr_ri[y][1]>>16) + 
-                  (amd_bfe(locoflow_r[yl][xl][y][0],24,8) << 15),
-                (corr_rr_ri[y][2]>>16) + 
-                  (amd_bfe(locoflow_r[yl][xl][y][1],16,8) << 15),
-                (corr_rr_ri[y][3]>>16) + 
-                  (amd_bfe(locoflow_r[yl][xl][y][1],24,8) << 15)
-              };
-              int i[4] = {
+        }
+        //unpacked into long-term real, imaginary accumulation buffer.
+        global int *out=corr_buf + (zg*1024 + iy*32*4 + ix*4)*2;
+        //out+=y_ri[0]+73; //stopping pre-VGRP allocation
+        #pragma unroll
+        for (int y=0; y<4; y++){
+            int r[4] = {
+                (corr_rr_ri[y][0]>>16) + (amd_bfe(locoflow_r[yl][xl][y][0],16,8) << 15),
+                (corr_rr_ri[y][1]>>16) + (amd_bfe(locoflow_r[yl][xl][y][0],24,8) << 15),
+                (corr_rr_ri[y][2]>>16) + (amd_bfe(locoflow_r[yl][xl][y][1],16,8) << 15),
+                (corr_rr_ri[y][3]>>16) + (amd_bfe(locoflow_r[yl][xl][y][1],24,8) << 15)
+            };
+            int i[4] = {
                 (amd_bfe(locoflow_i[yl][xl][y],    0,8) << 15) -
                 (amd_bfe(locoflow_r[yl][xl][y][0], 0,8) << 15) +
                  amd_bfe(corr_1i_2i[y][0], 0,16) - (corr_rr_ri[y][0]&0xffff),
@@ -161,14 +158,13 @@ void corr ( __global const uint *packed,
                 (amd_bfe(locoflow_i[yl][xl][y],   24,8) << 15) -
                 (amd_bfe(locoflow_r[yl][xl][y][1], 8,8) << 15) +
                  amd_bfe(corr_1i_2i[y][1],16,16) - (corr_rr_ri[y][3]&0xffff)
-              };
-              #pragma unroll
-              for (int x=0; x<4; x++){
+            };
+            #pragma unroll
+            for (int x=0; x<4; x++){
                 atomic_add(out++,r[x]);
                 atomic_add(out++,i[x]);
-              }
-              out+=56; //(32-4)*2;
             }
+            out+=56; //(32-4)*2;
         }
     }
 }
