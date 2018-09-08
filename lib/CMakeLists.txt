@@ -54,8 +54,8 @@ endif ()
 
   if (${USE_OPENCL})
          add_subdirectory(opencl)
-         target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
          target_link_libraries( kotekan_libs kotekan_opencl )
+         target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
   endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")

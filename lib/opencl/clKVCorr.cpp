@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("corr","kv_corr.cl", config, unique_name, host_buffers, device)
+    clCommand("corr","kv_corr_amd.cl", config, unique_name, host_buffers, device)
 {
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -91,12 +91,12 @@ void clKVCorr::build()
 
 
     // Correlation kernel global and local work space sizes.
-    gws[2] = 8*_num_data_sets;
-    gws[1] = 8*_num_local_freq;
+    gws[2] = 16*_num_data_sets;
+    gws[1] = 4*_num_local_freq;
     gws[0] = _num_blocks;//*num_accumulations;
 
-    lws[2] = 8;
-    lws[1] = 8;
+    lws[2] = 16;
+    lws[1] = 4;
     lws[0] = 1;
 }
 
