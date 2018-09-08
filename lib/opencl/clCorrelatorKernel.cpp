@@ -10,9 +10,7 @@ clCorrelatorKernel::clCorrelatorKernel(Config& config, const string &unique_name
     clCommand("corr","pairwise_correlator.cl", config, unique_name, host_buffers, device)
 {
     _num_elements = config.get_int(unique_name, "num_elements");
-//    _num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
-//    _num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
     _block_size = config.get_int(unique_name, "block_size");
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
     _num_blocks = config.get_int(unique_name,"num_blocks");
@@ -85,13 +83,13 @@ void clCorrelatorKernel::build()
 
 
     // Correlation kernel global and local work space sizes.
-    gws[2] = 8*_num_data_sets;
+    gws[0] = 8*_num_data_sets;
     gws[1] = 8*_num_local_freq;
-    gws[0] = _num_blocks*num_accumulations;
+    gws[2] = _num_blocks*num_accumulations;
 
-    lws[2] = 8;
+    lws[0] = 8;
     lws[1] = 8;
-    lws[0] = 1;
+    lws[2] = 1;
 }
 
 cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
