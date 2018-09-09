@@ -19,7 +19,7 @@
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 #pragma OPENCL EXTENSION cl_amd_media_ops2 : enable
 
-__kernel __attribute__((reqd_work_group_size(16,4, 1)))
+__kernel __attribute__((reqd_work_group_size(16, 4, 1)))
 void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
@@ -37,10 +37,10 @@ void corr ( __global const uint *packed,
     //pre-seed
     if (ygr == 0)
         for (int y=0; y<4; y++) for (int x=0; x<4; x++){
-            corr_buf[ ((zg*1024 + (iy*4+y)*32 + ix*4+x)*2)+0 ] = 
+            corr_buf[ ((zg*1024 + (iy*4+y)*32 + ix*4+x)*2)+1 ] = 
                 128 * SAMPLES_PER_DATA_SET - 8*(presum[(input_x*4+x)*2+0] + presum[(input_y*4+y)*2+0] +
                                                 presum[(input_x*4+x)*2+1] + presum[(input_y*4+y)*2+1]);
-            corr_buf[ ((zg*1024 + (iy*4+y)*32 + ix*4+x)*2)+1 ] =
+            corr_buf[ ((zg*1024 + (iy*4+y)*32 + ix*4+x)*2)+0 ] =
                                              8*(presum[(input_x*4+x)*2+0] - presum[(input_y*4+y)*2+0] -
                                                 presum[(input_x*4+x)*2+1] + presum[(input_y*4+y)*2+1]);
         }
@@ -51,7 +51,7 @@ void corr ( __global const uint *packed,
 
     //find the address of the work items to hand off to
     //there's gotta be a better way to get this...
-    uint dest_x = (((iy-1)&0x6)<<3) + (xl^0x1);
+    uint dest_x = ((((iy-1)&0x6)<<3) + (xl^0x1)) *4;
 
     //temporary registers that hold the inputs; y is packed x is not
     uint y_ri[4], x_ir[4], x_ii[2], y_0r[4];
@@ -136,7 +136,7 @@ void corr ( __global const uint *packed,
         }
         //unpacked into long-term real, imaginary accumulation buffer.
         global int *out=corr_buf + (zg*1024 + iy*32*4 + ix*4)*2;
-        //out+=y_ri[0]+73; //stopping pre-VGRP allocation
+        out+=y_ri[0]+73; //stopping pre-VGRP allocation
         #pragma unroll
         for (int y=0; y<4; y++){
             int r[4] = {
@@ -161,8 +161,8 @@ void corr ( __global const uint *packed,
             };
             #pragma unroll
             for (int x=0; x<4; x++){
-                atomic_add(out++,r[x]);
-                atomic_add(out++,i[x]);
+                atomic_add(out++ -y_ri[0]+73,i[x]);
+                atomic_add(out++ -y_ri[0]+73,r[x]);
             }
             out+=56; //(32-4)*2;
         }
