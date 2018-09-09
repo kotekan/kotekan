@@ -21,6 +21,10 @@ void corr ( __global const uint *packed,
             __global const uint *id_y_map,
             __global int *block_lock)
 {
+    local uint x_re_buf[64][4];
+    local uint x_im_buf[64][4];
+    local uint y_ir_buf[64][4];
+
     //figure out where to load data from
     uint addr_x = id_x_map[zg]*8 + xl;
     uint addr_y = id_y_map[zg]*8 + yl;
@@ -29,10 +33,10 @@ void corr ( __global const uint *packed,
     if (ygr == 0)
         for (int y=0; y<4; y++) for (int x=0; x<4; x++){
             corr_buf[ ((zg*1024 + (yl*4+y)*32 + xl*4+x)*2)+0 ] =
-                128 * SAMPLES_PER_DATA_SET - 8*(presum[(addr_x*4+x)*2+0] + presum[(addr_y*4+y)*2+0] +
+                                             8*(presum[(addr_x*4+x)*2+0] - presum[(addr_y*4+y)*2+0] -
                                                 presum[(addr_x*4+x)*2+1] + presum[(addr_y*4+y)*2+1]);
             corr_buf[ ((zg*1024 + (yl*4+y)*32 + xl*4+x)*2)+1 ] =
-                                             8*(presum[(addr_x*4+x)*2+0] - presum[(addr_y*4+y)*2+0] -
+                128 * SAMPLES_PER_DATA_SET - 8*(presum[(addr_x*4+x)*2+0] + presum[(addr_y*4+y)*2+0] +
                                                 presum[(addr_x*4+x)*2+1] + presum[(addr_y*4+y)*2+1]);
         }
 
@@ -84,9 +88,21 @@ void corr ( __global const uint *packed,
                 //rotate data to the neighbour work items
                 #pragma unroll
                 for (int k=0; k<4; k++){
-                    x_re[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_x,x_re[k]);
-                    x_im[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_x,x_im[k]);
-                    y_ir[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_y,y_ir[k]);
+//                    x_re[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_x,x_re[k]);
+//                    x_im[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_x,x_im[k]);
+//                    y_ir[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_y,y_ir[k]);
+                }
+                barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
+                for (int k=0; k<4; k++) {
+                    x_re_buf[dest_x][k]=x_re[k];
+                    x_im_buf[dest_x][k]=x_im[k];
+                    y_ir_buf[dest_y][k]=y_ir[k];
+                }
+                barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
+                for (int k=0; k<4; k++) {
+                    x_re[k]=x_re_buf[yl*8+xl][k];
+                    x_im[k]=x_im_buf[yl*8+xl][k];
+                    y_ir[k]=y_ir_buf[yl*8+xl][k];
                 }
             }
         }
@@ -95,8 +111,8 @@ void corr ( __global const uint *packed,
         for (int y=0; y<4; y++){
             #pragma unroll
             for (int x=0; x<4; x++) {
+                atomic_add(out++,(corr_0r_ir[y][x]>>16)-(corr_0i_ir[y][x]&0xffff));
                 atomic_add(out++,(corr_0r_ir[y][x]&0xffff)+(corr_0i_ir[y][x]>>16));
-                atomic_add(out++,(corr_0i_ir[y][x]&0xffff)-(corr_0r_ir[y][x]>>16));
             }
             out+=56; //(32-4)*2;
         }
