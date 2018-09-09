@@ -9,11 +9,11 @@
 #define yg get_global_id(1)
 #define zg get_global_id(2)
 
-#define xgr get_group_id(0)
+//#define xgr get_group_id(2)
 #define ygr get_group_id(1)
-#define zgr get_group_id(2)
+//#define zgr get_group_id(0)
 
-__kernel __attribute__((reqd_work_group_size(8, 8, 1)))
+__kernel //__attribute__((reqd_work_group_size(8, 8, 1)))
 void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
@@ -21,10 +21,6 @@ void corr ( __global const uint *packed,
             __global const uint *id_y_map,
             __global int *block_lock)
 {
-    local uint x_re_buf[64][4];
-    local uint x_im_buf[64][4];
-    local uint y_ir_buf[64][4];
-
     //figure out where to load data from
     uint addr_x = id_x_map[zg]*8 + xl;
     uint addr_y = id_y_map[zg]*8 + yl;
@@ -86,12 +82,17 @@ void corr ( __global const uint *packed,
                     corr_0i_ir[y][x] = mad24(x_im[x],y_ir[y],corr_0i_ir[y][x]);
                 }
                 //rotate data to the neighbour work items
+#if __has_builtin(__builtin_amdgcn_ds_bpermute) //use AMD instrinsics
                 #pragma unroll
                 for (int k=0; k<4; k++){
-//                    x_re[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_x,x_re[k]);
-//                    x_im[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_x,x_im[k]);
-//                    y_ir[k] = (uint)__builtin_amdgcn_ds_bpermute(dest_y,y_ir[k]);
+                    x_re[k] = __builtin_amdgcn_ds_bpermute(dest_x*4,x_re[k]);
+                    x_im[k] = __builtin_amdgcn_ds_bpermute(dest_x*4,x_im[k]);
+                    y_ir[k] = __builtin_amdgcn_ds_bpermute(dest_y*4,y_ir[k]);
                 }
+#else //brute force via local share
+                local uint x_re_buf[64][4];
+                local uint x_im_buf[64][4];
+                local uint y_ir_buf[64][4];
                 barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
                 for (int k=0; k<4; k++) {
                     x_re_buf[dest_x][k]=x_re[k];
@@ -104,6 +105,7 @@ void corr ( __global const uint *packed,
                     x_im[k]=x_im_buf[yl*8+xl][k];
                     y_ir[k]=y_ir_buf[yl*8+xl][k];
                 }
+#endif //use AMD shuffle intrinsics
             }
         }
         global int *out=(corr_buf + (zg*1024 + yg*32*4 + xg*4)*2);
