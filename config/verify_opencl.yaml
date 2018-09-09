@@ -72,7 +72,11 @@ beamform_output_buffers:
         num_frames: buffer_depth
 
 gen_data:
+<<<<<<< HEAD
   type: const
+=======
+  type: random
+>>>>>>> 8bea92390b2edbb40dcd8cdd47ce9850703f5569
   value: 153
   kotekan_process: testDataGen
   network_out_buf: gpu_input_buffer
@@ -165,5 +169,3 @@ check_data:
   const_data_check:
     kotekan_process: constDataCheck
     in_buf: cpu_output_buffer
-
-

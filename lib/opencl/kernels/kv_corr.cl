@@ -13,7 +13,7 @@
 #define ygr get_group_id(1)
 #define zgr get_group_id(0)
 
-__kernel __attribute__((reqd_work_group_size(8, 8, 1)))
+__kernel //__attribute__((reqd_work_group_size(8, 8, 1)))
 void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
