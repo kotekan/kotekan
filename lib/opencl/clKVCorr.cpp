@@ -18,7 +18,9 @@ clKVCorr::clKVCorr(Config& config, const string &unique_name,
     _num_blocks = config.get_int(unique_name,"num_blocks");
     _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
 
-    if (small_array) kernel_file_name = "kv_corr_sm.cl";
+    if (small_array) 
+        kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
+                           config.get_string_default(unique_name,"kernel","kv_corr_sm.cl");
 
     defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
 
@@ -49,6 +51,7 @@ void clKVCorr::build()
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
     cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(_samples_per_data_set);
+    cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / 4);
 
     cl_device_id dev_id = device.get_id();
 
@@ -76,17 +79,6 @@ void clKVCorr::build()
                                    (void*) &id_y_map) );
 
     zeros=(cl_int *)calloc(_num_blocks*_num_local_freq,sizeof(cl_int)); //for the output buffers
-
-    device_block_lock = clCreateBuffer(device.get_context(),
-                                        CL_MEM_COPY_HOST_PTR,
-                                        _num_blocks*_num_local_freq*sizeof(cl_int),
-                                        zeros,
-                                        &err);
-    CHECK_CL_ERROR( clSetKernelArg(kernel,
-                                   5,
-                                   sizeof(void *),
-                                   (void*) &device_block_lock));
-
 
     // Correlation kernel global and local work space sizes.
     if (small_array) {

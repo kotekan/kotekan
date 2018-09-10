@@ -20,7 +20,7 @@ gpuSimulate::gpuSimulate(Config& config,
     assert(host_block_map != nullptr);
     int block_id = 0;
     for (int y = 0; block_id < _num_blocks; y++) {
-        for (int x = y; x < _num_elements/32; x++) {
+        for (int x = y; x < _num_elements/_block_size; x++) {
             host_block_map[2*block_id+0] = x;
             host_block_map[2*block_id+1] = y;
             block_id++;
@@ -64,11 +64,11 @@ void gpuSimulate::main_thread() {
                         int imag = 0;
                         for (int t = 0; t < _samples_per_data_set; ++t){
                             int ix = (t*_num_local_freq+f)*_num_elements + (host_block_map[2*b+0])*_block_size + x;
-                            int xi = (input[ix] & 0x0f)       - 0*8;
-                            int xr =((input[ix] & 0xf0) >> 4) - 0*8;
+                            int xi = (input[ix] & 0x0f)       - 8;
+                            int xr =((input[ix] & 0xf0) >> 4) - 8;
                             int iy = (t*_num_local_freq+f)*_num_elements + (host_block_map[2*b+1])*_block_size + y;
-                            int yi = (input[iy] & 0x0f)       - 0*8;
-                            int yr =((input[iy] & 0xf0) >> 4) - 0*8;
+                            int yi = (input[iy] & 0x0f)       - 8;
+                            int yr =((input[iy] & 0xf0) >> 4) - 8;
                             real += xr*yr + xi*yi;
                             imag += xi*yr - yi*xr;
                         }
@@ -77,7 +77,7 @@ void gpuSimulate::main_thread() {
                         //INFO("real: %d, imag: %d", real, imag);
                     }
                 }
-                INFO("Done block %d of %d...", b, _num_blocks);
+                DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f, _num_local_freq);
             }
         }
 
