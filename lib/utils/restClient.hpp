@@ -27,8 +27,8 @@ public:
     /**
      * @brief Send GET or POST with json data to an endpoint.
      *
-     * To send a GET message, pass a `nullptr` as the parameter `data`.
-     * To send a POST message, pass JSON data.
+     * To send a GET message, pass an empty JSON object (`{}`) as the parameter
+     * `data`. To send a POST message, pass JSON data.
      *
      * @param path      Path to the endpoint
      *                  (e.g. "/endpoint_name")

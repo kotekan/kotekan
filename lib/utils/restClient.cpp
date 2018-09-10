@@ -11,6 +11,7 @@
 #include <event2/event.h>
 #include <event2/http.h>
 #include <event2/bufferevent.h>
+#include <event2/dns.h>
 
 restReply restClient::_reply = { false, nullptr, 0 };
 
@@ -18,12 +19,15 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     _reply.datalen = 0;
     _reply.data = nullptr;
 
-    if (req == NULL) {
+    if (req == nullptr) {
         int errcode = EVUTIL_SOCKET_ERROR();
         WARN("restClient: request failed.");
         // Print socket error
-        WARN("socket error = %s (%d)\n",
-             evutil_socket_error_to_string(errcode), errcode);
+        std::string str = evutil_socket_error_to_string(errcode);
+        WARN("restClient: socket error = %s (%d)",
+             str.c_str(), errcode);
+        _reply.success = false;
+        _reply.datalen = 0;
         return;
     }
 
@@ -33,6 +37,7 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
         _reply.success = true;
     else {
         INFO("restClient: Received respose code %d", response_code);
+        _reply.datalen = 0;
         _reply.success = false;
     }
 
@@ -44,6 +49,7 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     _reply.data = new char[_reply.datalen];
     if (_reply.data == nullptr) {
         WARN("restClient: Failure reserving memory for received data.");
+        _reply.datalen = 0;
         _reply.success = false;
         return;
     }
@@ -62,9 +68,10 @@ std::unique_ptr<restReply> restClient::send(std::string path,
                                             const unsigned short port,
                                             const int retries,
                                             const int timeout) {
-    struct event_base *base;
-    struct evhttp_connection *evcon = NULL;
-    struct evhttp_request *req;
+    struct event_base* base;
+    struct evhttp_connection* evcon = nullptr;
+    struct evhttp_request* req;
+    struct evdns_base* dns;
     struct evkeyvalq *output_headers;
     struct evbuffer *output_buffer;
 
@@ -82,14 +89,23 @@ std::unique_ptr<restReply> restClient::send(std::string path,
     base = event_base_new();
     if (!base) {
         WARN("restClient: Failure creating new event_base.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
 
     // DNS resolution is blocking (if not numeric host is passed)
-    evcon = evhttp_connection_base_new(base, NULL, host.c_str(), port);
-    if (evcon == NULL) {
+    dns = evdns_base_new(base, 1);
+    if (dns == nullptr) {
+        WARN("restClient: evdns_base_new() failed.");
+        _reply.datalen = 0;
+        _reply.success = false;
+        return std::make_unique<restReply>(_reply);
+    }
+    evcon = evhttp_connection_base_new(base, dns, host.c_str(), port);
+    if (evcon == nullptr) {
         WARN("restClient: evhttp_connection_base_new() failed.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
@@ -102,32 +118,33 @@ std::unique_ptr<restReply> restClient::send(std::string path,
     }
 
     // Fire off the request
-    req = evhttp_request_new(http_request_done, NULL);
-    if (req == NULL) {
+    req = evhttp_request_new(http_request_done, base);
+    if (req == nullptr) {
         WARN("restClient: evhttp_request_new() failed.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
-
-    //conn = evhttp_connection_base_new(base, NULL, host.c_str(), port);
-    //req = evhttp_request_new(http_request_done, base);
 
     output_headers = evhttp_request_get_output_headers(req);
     ret = evhttp_add_header(output_headers, "Host", host.c_str());
     if (ret) {
         WARN("restClient: Failure adding \"Host\" header.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
     ret = evhttp_add_header(output_headers, "Connection", "close");
     if (ret) {
         WARN("restClient: Failure adding \"Connection\" header.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
     ret = evhttp_add_header(output_headers, "Content-Type", "application/json");
     if (ret) {
         WARN("restClient: Failure adding \"Content-Type\" header.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
@@ -137,10 +154,11 @@ std::unique_ptr<restReply> restClient::send(std::string path,
         strcpy(json_string, data.dump().c_str());
 
         output_buffer = evhttp_request_get_output_buffer(req);
-        ret = evbuffer_add_reference(output_buffer, json_string, datalen, NULL,
-                                     NULL);
+        ret = evbuffer_add_reference(output_buffer, json_string, datalen,
+                                     nullptr, nullptr);
         if (ret) {
             WARN("restClient: Failure adding JSON data to event buffer.");
+            _reply.datalen = 0;
             _reply.success = false;
             return std::make_unique<restReply>(_reply);
         }
@@ -149,6 +167,7 @@ std::unique_ptr<restReply> restClient::send(std::string path,
         evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
             WARN("restClient: Failure adding \"Content-Length\" header.");
+            _reply.datalen = 0;
             _reply.success = false;
             return std::make_unique<restReply>(_reply);
         }
@@ -160,20 +179,22 @@ std::unique_ptr<restReply> restClient::send(std::string path,
     }
     if (ret) {
         WARN("restClient: evhttp_make_request() failed.");
+        _reply.datalen = 0;
         _reply.success = false;
         return std::make_unique<restReply>(_reply);
     }
 
+    // Cleanup
+    evdns_base_free(dns, 1);
     ret = event_base_dispatch(base);
     if (ret < 0) {
+        _reply.datalen = 0;
         _reply.success = false;
         WARN("restClient::send: Failure sending message %s to %s:%d%s.",
              json_string, host.c_str(), port, path.c_str());
     }
 
-    // Cleanup
-    if (evcon)
-        evhttp_connection_free(evcon);
+    evhttp_connection_free(evcon);
     event_base_free(base);
 
     return std::make_unique<restReply>(_reply);

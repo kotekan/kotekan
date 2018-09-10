@@ -9,8 +9,6 @@
 
 using json = nlohmann::json;
 
-using namespace std;
-
 struct TestContext {
     restClient client;
     json request;
@@ -27,10 +25,10 @@ struct TestContext {
 
     void callback(connectionInstance& con, json json_request) {
         INFO("callback received json: %s", json_request.dump().c_str());
-        vector<uint32_t> array;
+        std::vector<uint32_t> array;
         bool flag;
         try {
-            array = json_request["array"].get<vector<uint32_t>>();
+            array = json_request["array"].get<std::vector<uint32_t>>();
             flag = json_request["flag"].get<bool>();
             INFO("test: Received array with size %d and flag %d",
                  array.size(), flag);
@@ -43,16 +41,16 @@ struct TestContext {
         }
 
         con.send_empty_reply(HTTP_RESPONSE::OK);
-        INFO("test: Responce OK sent.");
+        INFO("test: Response OK sent.");
     }
 
     void callback_text(connectionInstance& con, json json_request) {
         INFO("test (text): callback received json: %s",
              json_request.dump().c_str());
-        vector<uint32_t> array;
+        std::vector<uint32_t> array;
         bool flag;
         try {
-            array = json_request["array"].get<vector<uint32_t>>();
+            array = json_request["array"].get<std::vector<uint32_t>>();
             flag = json_request["flag"].get<bool>();
             INFO("test (text): Received array with size %d and flag %d",
                  array.size(), flag);
@@ -81,23 +79,30 @@ struct TestContext {
 
     void check(json request) {
         restClient thread_client = restClient();
-        unique_ptr<struct restReply> ret = thread_client.send("test_restclient",
+        std::unique_ptr<struct restReply> ret = thread_client.send("test_restclient",
                                                               request);
-        json js = json::parse(string((char*)ret->data, ret->datalen));
+        BOOST_CHECK(ret->success == true);
 
-        INFO("Comparing %s with %s", js.dump().c_str(), request.dump().c_str());
-        BOOST_CHECK(js == request);
+        if (ret->success) {
+            BOOST_CHECK(ret->data != nullptr);
+            json js = json::parse(std::string((char*)ret->data, ret->datalen));
+
+            DEBUG("Comparing %s with %s", js.dump().c_str(), request.dump().c_str());
+            BOOST_CHECK(js == request);
+        }
     }
 };
 
 BOOST_FIXTURE_TEST_CASE( _send_json, TestContext ) {
+    BOOST_CHECKPOINT("Start.");
     __log_level = 4;
     __enable_syslog = 0;
-    unique_ptr<struct restReply> ret;
+    std::unique_ptr<struct restReply> ret;
 
     TestContext::init(std::bind(&TestContext::callback, this,
-                          placeholders::_1,
-                          placeholders::_2));
+                          std::placeholders::_1,
+                          std::placeholders::_2));
+    BOOST_TEST_CHECKPOINT("Init done.");
 
     ret = TestContext::client.send("test_restclient", TestContext::request);
     BOOST_CHECK(ret->success == true);
@@ -119,26 +124,30 @@ BOOST_FIXTURE_TEST_CASE( _send_json, TestContext ) {
     BOOST_CHECK(ret->success == false);
 
     TestContext::init(std::bind(&TestContext::callback_text, this,
-                          placeholders::_1,
-                          placeholders::_2));
+                          std::placeholders::_1,
+                          std::placeholders::_2));
 
     ret = TestContext::client.send("test_restclient", TestContext::request);
     BOOST_CHECK(ret->success == true);
-    BOOST_CHECK(string("this is a test").compare((char*)ret->data) == 0);
+    if (ret->success)
+        BOOST_CHECK(string("this is a test").compare((char*)ret->data) == 0);
 
     bad_request["flag"] = false;
     bad_request["array"] = {4,5,6};
     ret = TestContext::client.send("test_restclient", bad_request);
     BOOST_CHECK(ret->success == true);
+    if (ret->success) {
+        BOOST_CHECK(ret->data != nullptr);
+        json js = json::parse(std::string((char*)ret->data, ret->datalen));
+        BOOST_CHECK(js["test"] == "failed");
+    }
 
-    json js = json::parse(string((char*)ret->data, ret->datalen));
-    BOOST_CHECK(js["test"] == "failed");
-
+    // override callback
     TestContext::init(std::bind(&TestContext::pong, this,
-                          placeholders::_1,
-                          placeholders::_2));
+                          std::placeholders::_1,
+                          std::placeholders::_2));
 #define N 10
-    thread t[N];
+    std::thread t[N];
     for (int i = 0; i < N; i++) {
         bad_request["array"] = {i, i+1, i+2};
         check(bad_request);
