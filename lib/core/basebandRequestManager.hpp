@@ -105,8 +105,25 @@ public:
     /**
      * @brief The call back function for GET requests to `/baseband`.
      *
-     * The function sends an HTTP response with the status of all
+     * The function sends over `conn` an HTTP response with the status of all
      * baseband dumps received since this instance started running.
+     *
+     * The response is a JSON dictionary, with keys of unique ids of the
+     * baseband events. The key's value is the status of that baseband dump, and
+     * is a list with an element for each frequency index handled on the node.
+     * These elements are dictionaries with the following structure:
+     *   - freq_id : int
+     *     Channel's frequency index
+     *   - status : str
+     *     Channel's dump progress (`waiting/inprogress/done/error`)
+     *   - file_name : str
+     *     Destination file (relative to the request's `file_path`)
+     *   - length : int
+     *     The total number of bytes that needs to be saved for the frequency
+     *   - transferred : int
+     *     The number of bytes that has been saved so far
+     *   - reason : str
+     *     Description of the error (only present if it occurred).
      *
      * @note This function is never called directly.
      *
@@ -117,8 +134,22 @@ public:
     /**
      * @brief The call back function for GET requests to `/baseband/:event_id`.
      *
-     * The function sends an HTTP response with the status of a specified
-     * baseband dump.
+     * The function sends over `conn` an HTTP response with the status of a
+     * specified baseband dump. The response is a JSON list, with an element for
+     * each frequency index handled on the node. Each element is a dictionary
+     * with elements:
+     *   - freq_id : int
+     *     Channel's frequency index
+     *   - status : str
+     *     Channel dump progress (`waiting/inprogress/done/error`)
+     *   - file_name : str
+     *     Destination file (relative to the request's `file_path`)
+     *   - length : int
+     *     The total number of bytes that needs to be saved for the frequency
+     *   - transferred : int
+     *     The number of bytes that has been saved so far
+     *   - reason : str
+     *     Description of the error (only present if it occurred).
      *
      * @note This function is never called directly.
      *
@@ -130,7 +161,37 @@ public:
     /**
      * @brief The call back function for POST requests to `/baseband`.
      *
-     * This function is never called directly.
+     * The request MUST be a JSON dictionary, with the following elements:
+     *   - event_id : int
+     *     Unique identifier of the event
+     *   - start_unix_seconds : integer
+     *     Whole part of the start time of the dump (seconds since Unix
+     *     epoch) at the reference frequency channel
+     *   - start_unix_nano : integer
+     *     Fractional part of the start time of the dump (seconds since Unix
+     *     epoch) at the reference frequency channel, in nanoseconds
+     *   - duration_nano : integer
+     *     Duration of the dump at the reference frequency channel, in
+     *     nanoseconds
+     *   - dm : number
+     *     Dispersion measure, in pc cm-3.
+     *   - dm_error : number
+     *     Uncertainty on dispersion measure, in pc cm-3.
+     *   - file_path : string
+     *     the path relative to the archiver root where the baseband files should be saved
+     *
+     * On successful completion, sends over `conn` a JSON dictionary with keys
+     * frequency indexes handled on the node, with the values another dictionary
+     * with elements:
+     *   - file_name : str
+     *     Destination file (relative to the request's `file_path`)
+     *   - start_fpga : int
+     *     Starting FPGA time of the dump
+     *   - length_fpga : int
+     *     Length of the dump in FPGA time
+     *
+     * @note This function is never called directly, but as a callback
+     * registered with the `restServer`.
      *
      * @param conn The connection instance to send results to
      * @param request JSON dictionary with the request data
