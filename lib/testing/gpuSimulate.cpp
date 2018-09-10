@@ -37,6 +37,7 @@ void gpuSimulate::apply_config(uint64_t fpga_seq) {
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _num_blocks = config.get_int(unique_name, "num_blocks");
+    _block_size = config.get_int(unique_name, "block_size");
 }
 
 void gpuSimulate::main_thread() {
@@ -55,25 +56,29 @@ void gpuSimulate::main_thread() {
         INFO("Simulating GPU processing for %s[%d] putting result in %s[%d]",
                 input_buf->buffer_name, input_frame_id,
                 output_buf->buffer_name, output_frame_id);
-        for (int b = 0; b < _num_blocks; ++b){
-            for (int y = 0; y < 32; ++y){
-                for (int x = 0; x < 32; ++x){
-                    int real = 0;
-                    int imag = 0;
-                    for (int t = 0; t < _samples_per_data_set; ++t){
-                        int xi = (input[host_block_map[2*b+0]*32 + x + t*_num_elements] & 0x0f)       - 8;
-                        int xr =((input[host_block_map[2*b+0]*32 + x + t*_num_elements] & 0xf0) >> 4) - 8;
-                        int yi = (input[host_block_map[2*b+1]*32 + y + t*_num_elements] & 0x0f)       - 8;
-                        int yr =((input[host_block_map[2*b+1]*32 + y + t*_num_elements] & 0xf0) >> 4) - 8;
-                        real += xr*yr + xi*yi;
-                        imag += xi*yr - yi*xr;
+        for (int f = 0; f < _num_local_freq; ++f){
+            for (int b = 0; b < _num_blocks; ++b){
+                for (int y = 0; y < _block_size; ++y){
+                    for (int x = 0; x < _block_size; ++x){
+                        int real = 0;
+                        int imag = 0;
+                        for (int t = 0; t < _samples_per_data_set; ++t){
+                            int ix = (t*_num_local_freq+f)*_num_elements + (host_block_map[2*b+0])*_block_size + x;
+                            int xi = (input[ix] & 0x0f)       - 0*8;
+                            int xr =((input[ix] & 0xf0) >> 4) - 0*8;
+                            int iy = (t*_num_local_freq+f)*_num_elements + (host_block_map[2*b+1])*_block_size + y;
+                            int yi = (input[iy] & 0x0f)       - 0*8;
+                            int yr =((input[iy] & 0xf0) >> 4) - 0*8;
+                            real += xr*yr + xi*yi;
+                            imag += xi*yr - yi*xr;
+                        }
+                        output[(f*_num_blocks+b)*_block_size*_block_size*2 + x*2 + y*_block_size*2 + 0] = imag;
+                        output[(f*_num_blocks+b)*_block_size*_block_size*2 + x*2 + y*_block_size*2 + 1] = real;
+                        //INFO("real: %d, imag: %d", real, imag);
                     }
-                    output[b*32*32*2 + x*2 + y*32*2 + 0] = imag;
-                    output[b*32*32*2 + x*2 + y*32*2 + 1] = real;
-                    //INFO("real: %d, imag: %d", real, imag);
                 }
+                INFO("Done block %d of %d...", b, _num_blocks);
             }
-            INFO("Done block %d of %d...", b, _num_blocks);
         }
 
         INFO("Simulating GPU processing done for %s[%d] result is in %s[%d]",

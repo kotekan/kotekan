@@ -3,6 +3,8 @@
 #include <string>
 using std::string;
 
+#define small_array (_num_elements < 32)
+
 REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string &unique_name,
@@ -15,6 +17,8 @@ clKVCorr::clKVCorr(Config& config, const string &unique_name,
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
     _num_blocks = config.get_int(unique_name,"num_blocks");
     _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
+
+    if (small_array) kernel_file_name = "kv_corr_sm.cl";
 
     defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
 
@@ -43,7 +47,7 @@ void clKVCorr::build()
 
     string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
-    cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
+    cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
     cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(_samples_per_data_set);
 
     cl_device_id dev_id = device.get_id();
@@ -85,13 +89,21 @@ void clKVCorr::build()
 
 
     // Correlation kernel global and local work space sizes.
-    gws[0] = 8*_num_data_sets;
-    gws[1] = 8*_num_local_freq;
-    gws[2] = _num_blocks;//*num_accumulations;
-
-    lws[0] = 8;
-    lws[1] = 8;
-    lws[2] = 1;
+    if (small_array) {
+        gws[0] = _num_elements/4 * _num_local_freq;
+        gws[1] = _num_elements/4;
+        gws[2] = _num_blocks;
+        lws[0] = _num_elements/4;
+        lws[1] = _num_elements/4;
+        lws[2] = 1;
+    } else {
+        gws[0] = 8*_num_local_freq;
+        gws[1] = 8;
+        gws[2] = _num_blocks;
+        lws[0] = 8;
+        lws[1] = 8;
+        lws[2] = 1;
+    }
 }
 
 cl_event clKVCorr::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
