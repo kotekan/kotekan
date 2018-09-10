@@ -21,8 +21,8 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
 {
     vector<json> commands = config.get_json_array(unique_name, "commands");
     num_commands = commands.size();
-    use_beamforming = config.get_bool(unique_name, "enable_beamforming");
-    //use_incoh_beamforming = false; //config.get_bool(unique_name, "use_incoh_beamforming");
+    use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
+    //use_incoh_beamforming = false; //config.get<bool>(unique_name, "use_incoh_beamforming");
 
     //list_commands =  new gpu_command * [num_commands];
 

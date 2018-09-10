@@ -18,7 +18,7 @@ void beamform_incoherent_kernel::apply_config(const uint64_t& fpga_seq) {
 
     _element_mask = config.get_int_array("/beamforming", "element_mask");
     _inverse_product_remap = config.get_int_array("/processing", "inverse_product_remap");
-    _scale_factor = config.get_float("/beamforming", "scale_factor");
+    _scale_factor = config.get<float>("/beamforming", "scale_factor");
 }
 
 void beamform_incoherent_kernel::build(class device_interface& param_Device)

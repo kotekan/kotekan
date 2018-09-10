@@ -21,18 +21,19 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
     set_cpu_affinity(config.get_int_array(unique_name, "cpu_affinity"));
 
     // Set the local log level.
-    string s_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
     // Set the timeout for this process thread to exit
-    join_timeout = config.get_int_default(unique_name, "join_timeout", 60);
+    join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout",
+                                                60);
 }
 
 struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the process, not
     // just somewhere in the path to the process.
-    string buf_name = config.get_string(unique_name, name);
+    string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 

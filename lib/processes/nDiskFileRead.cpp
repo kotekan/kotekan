@@ -31,13 +31,13 @@ void nDiskFileRead::apply_config(uint64_t fpga_seq) {
     buf = get_buffer("out_buf"); //Buffer
 
     //Data paramters
-    num_disks = config.get_int(unique_name,"num_disks");
+    num_disks = config.get<uint32_t>(unique_name,"num_disks");
 
     //Data location parameters
-    disk_base = config.get_string(unique_name,"disk_base");
-    disk_set = config.get_string(unique_name,"disk_set");
-    capture = config.get_string(unique_name,"capture");
-    starting_index = config.get_int(unique_name,"starting_file_index");
+    disk_base = config.get<std::string>(unique_name,"disk_base");
+    disk_set = config.get<std::string>(unique_name,"disk_set");
+    capture = config.get<std::string>(unique_name,"capture");
+    starting_index = config.get<uint32_t>(unique_name,"starting_file_index");
 }
 
 void nDiskFileRead::main_thread() {

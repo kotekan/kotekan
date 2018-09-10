@@ -201,7 +201,7 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
 parse_reorder_default(Config& config, const std::string base_path) {
 
-    size_t num_elements = config.get_int("/", "num_elements");
+    size_t num_elements = config.get<size_t>("/", "num_elements");
 
     try {
         json reorder_config = config.get_json_array(base_path, "input_reorder");

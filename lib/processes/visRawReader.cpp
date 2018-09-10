@@ -19,12 +19,12 @@ visRawReader::visRawReader(Config &config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&visRawReader::main_thread, this)) {
 
-    filename = config.get_string(unique_name, "infile");
-    readahead_blocks = config.get_int(unique_name, "readahead_blocks");
-    if (config.get_int(unique_name, "readahead_blocks") < 0) {
+    filename = config.get<std::string>(unique_name, "infile");
+    readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
+    if (readahead_blocks < 0) {
         throw std::invalid_argument("visRawReader: config: readahead_blocks" \
-                "should be positive (is " + std::to_string(config.get_int(
-                                unique_name, "readahead_blocks")) + ").");
+                                    "should be positive (is " +
+                                    std::to_string(readahead_blocks) + ").");
     }
 
     chunked = config.exists(unique_name, "chunk_size");

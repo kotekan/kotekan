@@ -25,13 +25,13 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand("", "", config, unique_name, host_buffers, device){
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_pulsar = config.get<int16_t>(unique_name, "num_pulsar");
 
-    _feed_sep_NS = config.get_float(unique_name, "feed_sep_NS");
-    _feed_sep_EW = config.get_int(unique_name, "feed_sep_EW");
+    _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
+    _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
 
-    _gain_dir = config.get_string(unique_name, "gain_dir");
+    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
 

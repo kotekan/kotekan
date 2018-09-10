@@ -33,7 +33,7 @@ void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
     for(int i = 0; i < remap_size; ++i) {
         _inverse_product_remap[_product_remap[i]] = i;
     }
-    _scale_factor = config.get_int(unique_name, "scale_factor");
+    _scale_factor = config.get<uint32_t>(unique_name, "scale_factor");
 }
 
 void beamform_kernel::build(class device_interface& param_Device)

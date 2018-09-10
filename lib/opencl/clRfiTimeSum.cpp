@@ -33,7 +33,7 @@ void clRfiTimeSum::apply_config(const uint64_t& fpga_seq) {
     //Apply general config
     gpu_command::apply_config(fpga_seq);
     //RFI config parameters
-    _sk_step  = config.get_int_default(unique_name, "sk_step", 256);
+    _sk_step  = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _bad_inputs = config.get_int_array(unique_name, "bad_inputs");
     //Compute maske length
     mask_len = sizeof(uint8_t)*_num_elements;

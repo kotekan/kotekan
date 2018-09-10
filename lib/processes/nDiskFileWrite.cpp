@@ -29,11 +29,11 @@ nDiskFileWrite::~nDiskFileWrite() {
 }
 
 void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
-    disk_base = config.get_string(unique_name, "disk_base");
-    num_disks = config.get_int(unique_name, "num_disks");
-    disk_set = config.get_string(unique_name, "disk_set");
-    write_to_disk = config.get_bool(unique_name, "write_to_disk");
-    instrument_name = config.get_string(unique_name, "instrument_name");
+    disk_base = config.get<std::string>(unique_name, "disk_base");
+    num_disks = config.get<uint32_t>(unique_name, "num_disks");
+    disk_set = config.get<std::string>(unique_name, "disk_set");
+    write_to_disk = config.get<bool>(unique_name, "write_to_disk");
+    instrument_name = config.get<std::string>(unique_name, "instrument_name");
 }
 
 void nDiskFileWrite::save_meta_data(char *timestr) {
@@ -52,12 +52,13 @@ void nDiskFileWrite::save_meta_data(char *timestr) {
         }
 
         const int data_format_version = 3;
-        int num_freq = config.get_int(unique_name,"num_freq");
-        int num_elements = config.get_int(unique_name,"num_elements");
-        int samples_per_file = config.get_int(unique_name,"samples_per_data_set");
+        int num_freq = config.get<int>(unique_name,"num_freq");
+        int num_elements = config.get<int>(unique_name,"num_elements");
+        int samples_per_file = config.get<int>(unique_name,
+                                               "samples_per_data_set");
         const int vdif_header_len = 32;
         const int bit_depth = 4;
-        string note = config.get_string(unique_name,"note");
+        string note = config.get<std::string>(unique_name,"note");
 
         fprintf(info_file, "format_version_number=%02d\n", data_format_version);
         fprintf(info_file, "num_freq=%d\n", num_freq);

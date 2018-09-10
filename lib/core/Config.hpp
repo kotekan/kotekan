@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <cxxabi.h>
 
 #include "json.hpp"
 
@@ -20,38 +21,20 @@ public:
     // ----------------------------
     // Get config value functions.
     // ----------------------------
+    template<typename T>
+    T get(const string& base_path, const string& name);
 
-    int32_t get_int(const string& base_path, const string& name);
     // Same as get_int, but if it cannot find the value, it returns `default_value`
-    int32_t get_int_default(const string& base_path, const string& name, int32_t default_value);
+    template<typename T>
+    T get_default(const string& base_path, const string& name, T default_value);
+
     // Treats the value as an arithmetic expression with other variables,
     // and return the result of evaluating it.
     int32_t get_int_eval(const string& base_path, const string& name);
 
-    uint64_t get_uint64(const string& base_path, const string& name);
-    uint64_t get_uint64_default(const string& base_path, const string& name, uint64_t default_value);
-
-    uint32_t get_uint32(const string& base_path, const string& name);
-    uint32_t get_uint32_default(const string& base_path, const string& name, uint32_t default_value);
-
-    float get_float(const string& base_path, const string& name);
-    // Same as get_float, but if it cannot find the value, it returns `default_value`
-    float get_float_default(const string& base_path, const string& name, float default_value);
-
-    double get_double(const string& base_path, const string& name);
-    // Same as get_double, but if it cannot find the value, it returns `default_value`
-    double get_double_default(const string& base_path, const string& name, double default_value);
     // Treats the value as an arithmetic expression with other variables,
     // and return the result of evaluating it.
     double get_double_eval(const string& base_path, const string& name);
-
-    string get_string(const string& base_path, const string& name);
-    // Same as get_string, but if it cannot find the value, it returns `default_value`
-    string get_string_default(const string& base_path, const string& name, const string& default_value);
-
-    bool get_bool(const string& base_path, const string& name);
-    // Same as get_bool, but if it cannot find the value, it returns `default_value`
-    bool get_bool_default(const string& base_path, const string& name, bool default_value);
 
     // Returns true if the path exists
     bool exists(const string& base_path, const string& name);
@@ -140,6 +123,36 @@ void Config::update_value(const string &base_path, const string &name, const T &
         _json.at(path) = value;
     } catch (std::exception const & ex) {
         throw std::runtime_error("Failed to update config value at: " + update_path + " message: " + ex.what());
+    }
+}
+
+template<typename T>
+T Config::get(const string& base_path, const string& name) {
+    json json_value;
+    T value;
+    try {
+        json_value = get_value(base_path, name);
+        value = json_value.get<T>();
+    } catch (std::exception const & ex) {
+        int status;
+        throw std::runtime_error(
+                    "The value " + name + " in path " + base_path
+                    + " is not of type '" +
+                    abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
+                    + "' or doesn't exist");
+    }
+
+    return value;
+}
+
+template<typename T>
+T Config::get_default(const string& base_path, const string& name,
+                         T default_value) {
+    try {
+        T value = get<T>(base_path, name);
+        return value;
+    } catch (std::exception const & ex) {
+        return default_value;
     }
 }
 

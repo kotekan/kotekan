@@ -35,11 +35,11 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
 
     // Get file path to write to
     // TODO: communicate this from reader
-    filename = config.get_string(unique_name, "outfile");
+    filename = config.get<std::string>(unique_name, "outfile");
 
     // TODO: Get metadata from reader somehow
     // For now read from file    // Read the metadata
-    std::string md_filename = config.get_string(unique_name, "infile")
+    std::string md_filename = config.get<std::string>(unique_name, "infile")
             + ".meta";
 
     INFO("Reading metadata file: %s", md_filename.c_str());

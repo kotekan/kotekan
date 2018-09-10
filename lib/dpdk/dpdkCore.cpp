@@ -23,17 +23,22 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&dpdkCore::main_thread, this)) {
 
-    uint32_t num_mbufs = config.get_int_default(unique_name, "num_mbufs", 1024);
-    const uint32_t mbuf_cache_size = config.get_int_default(unique_name, "mbuf_cache_size", 250);
-    burst_size = config.get_int_default(unique_name, "burst_size", 32);
-    rx_ring_size = config.get_int_default(unique_name, "rx_ring_size", 512);
-    tx_ring_size = config.get_int_default(unique_name, "tx_ring_size", 512);
+    uint32_t num_mbufs = config.get_default<uint32_t>(
+                unique_name, "num_mbufs", 1024);
+    const uint32_t mbuf_cache_size = config.get_default<uint32_t>(
+                unique_name, "mbuf_cache_size", 250);
+    burst_size = config.get_default<uint32_t>(unique_name, "burst_size", 32);
+    rx_ring_size = config.get_default<uint32_t>(
+                unique_name, "rx_ring_size", 512);
+    tx_ring_size = config.get_default<uint32_t>(
+                unique_name, "tx_ring_size", 512);
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
     // into the kotekan framework.
     vector<int> lcore_cpu_map = config.get_int_array(unique_name, "lcore_cpu_map");
-    uint32_t master_lcore_cpu = config.get_int(unique_name, "master_lcore_cpu");
+    uint32_t master_lcore_cpu = config.get<uint32_t>(
+                unique_name, "master_lcore_cpu");
 
     num_lcores = lcore_cpu_map.size();
 
@@ -42,8 +47,10 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
     // This default works well for ICE boards,
     // but we might change this to something more genertic
     memset((void*)&port_conf, 0, sizeof(struct rte_eth_conf));
-    port_conf.rxmode.max_rx_pkt_len = config.get_int_default(unique_name, "max_rx_pkt_len", 5000);
-    port_conf.rxmode.jumbo_frame = (uint16_t)config.get_bool_default(unique_name, "jumbo_frame", true);
+    port_conf.rxmode.max_rx_pkt_len = config.get_default<uint32_t>(
+                unique_name, "max_rx_pkt_len", 5000);
+    port_conf.rxmode.jumbo_frame = (uint16_t)config.get_default<bool>(
+                unique_name, "jumbo_frame", true);
     port_conf.rxmode.hw_strip_crc = 0;
     port_conf.rxmode.header_split = 0;
     port_conf.rxmode.hw_ip_checksum = 1;

@@ -21,16 +21,18 @@ config(param_Config)
     num_links_per_gpu = param_Config.num_links_per_gpu(gpu_id);
 
     // Config variables
-    enable_beamforming = config.get_bool(unique_name, "enable_beamforming");
-    num_adjusted_elements = config.get_int(unique_name, "num_adjusted_elements");
-    num_adjusted_local_freq = config.get_int(unique_name, "num_adjusted_local_freq");
-    num_local_freq = config.get_int(unique_name, "num_local_freq");
-    block_size = config.get_int(unique_name, "block_size");
-    num_data_sets = config.get_int(unique_name, "num_data_sets");
-    num_elements = config.get_int(unique_name, "num_elements");
-    num_blocks = config.get_int(unique_name, "num_blocks");
-    sk_step = config.get_int(unique_name, "sk_step");
-    samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");    
+    enable_beamforming = config.get<bool>(unique_name, "enable_beamforming");
+    num_adjusted_elements = config.get<int32_t>(
+                unique_name, "num_adjusted_elements");
+    num_adjusted_local_freq = config.get<int32_t>(
+                unique_name, "num_adjusted_local_freq");
+    num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    block_size = config.get<int32_t>(unique_name, "block_size");
+    num_data_sets = config.get<int32_t>(unique_name, "num_data_sets");
+    num_elements = config.get<int32_t>(unique_name, "num_elements");
+    num_blocks = config.get<int>(unique_name, "num_blocks");
+    sk_step = config.get<int>(unique_name, "sk_step");
+    samples_per_data_set = config.get<int>(unique_name,"samples_per_data_set");
     accumulate_len = num_adjusted_local_freq *
         num_adjusted_elements * 2 * num_data_sets * sizeof(cl_int);
     aligned_accumulate_len = PAGESIZE_MEM * (ceil((double)accumulate_len / (double)PAGESIZE_MEM));

@@ -27,7 +27,7 @@ integratePowerStream::integratePowerStream(Config& config,
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf,  unique_name.c_str());
 
-    integration_length = config.get_int(unique_name, "integration");
+    integration_length = config.get<int>(unique_name, "integration");
 }
 
 integratePowerStream::~integratePowerStream() {

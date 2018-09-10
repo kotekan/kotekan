@@ -28,9 +28,9 @@ visTransform::visTransform(Config& config,
                    std::bind(&visTransform::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
@@ -187,15 +187,15 @@ visAccumulate::visAccumulate(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
-    samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
+    samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
 
     // Get the indices for reordering
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
 
-    float int_time = config.get_float_default(unique_name, "integration_time", -1.0);
+    float int_time = config.get_default<float>(unique_name, "integration_time", -1.0);
 
     // If the integration time was set then calculate the number of GPU frames
     // we need to integrate for.
@@ -209,7 +209,7 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)",
              num_gpu_frames, frame_length * num_gpu_frames, int_time);
     } else {
-        num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
+        num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
@@ -467,12 +467,12 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // get config
-    tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
-    report_freq = config.get_uint64_default(unique_name, "report_freq", 1000);
-    expected_val = {config.get_float_default(unique_name, "expected_val_real", 1.),
-                    config.get_float_default(unique_name, "expected_val_imag", 0.)};
+    tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
+    report_freq = config.get_default<size_t>(unique_name, "report_freq", 1000);
+    expected_val = {config.get_default<float>(unique_name, "expected_val_real", 1.),
+                    config.get_default<float>(unique_name, "expected_val_imag", 0.)};
 
-    outfile_name = config.get_string(unique_name, "out_file");
+    outfile_name = config.get<std::string>(unique_name, "out_file");
 
     if (tolerance < 0)
         throw std::invalid_argument("visCheckTestPattern: tolerance has to be" \

@@ -11,8 +11,8 @@ prodSubset::prodSubset(Config &config,
                    std::bind(&prodSubset::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
 
     // Get buffers
     in_buf = get_buffer("in_buf");
@@ -154,12 +154,13 @@ inline bool only_inputs_condition(uint32_t vis_ind, int n,
 std::tuple<std::vector<size_t>, std::vector<prod_ctype>>
 parse_prod_subset(Config& config, const std::string base_path) {
 
-    size_t num_elements = config.get_int(base_path, "num_elements");
+    size_t num_elements = config.get<size_t>(base_path, "num_elements");
     std::vector<size_t> prod_ind_vec;
     std::vector<prod_ctype> prod_ctype_vec;
 
     // Type of product selection based on config parameter
-    std::string prod_subset_type = config.get_string_default(base_path, "prod_subset_type", "all");
+    std::string prod_subset_type = config.get_default<std::string>(
+                base_path, "prod_subset_type", "all");
 
 
     if (prod_subset_type == "autos") {
@@ -171,8 +172,8 @@ parse_prod_subset(Config& config, const std::string base_path) {
     } else if (prod_subset_type == "baseline") {
         // Define criteria for baseline selection based on config parameters
         uint16_t xmax, ymax;
-        xmax = config.get_int(base_path, "max_ew_baseline");
-        ymax = config.get_int(base_path, "max_ns_baseline");
+        xmax = config.get<uint16_t>(base_path, "max_ew_baseline");
+        ymax = config.get<uint16_t>(base_path, "max_ns_baseline");
         // Find the products in the subset
         for (uint16_t ii=0; ii<num_elements; ii++) {
             for (uint16_t jj=ii; jj<num_elements; jj++) {

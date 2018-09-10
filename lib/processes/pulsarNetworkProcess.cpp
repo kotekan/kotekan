@@ -49,12 +49,16 @@ pulsarNetworkProcess::~pulsarNetworkProcess()
 
 void pulsarNetworkProcess::apply_config(uint64_t fpga_seq) 
 {
-    udp_pulsar_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
-    udp_pulsar_port_number = config.get_int(unique_name, "udp_pulsar_port_number");
-    number_of_nodes = config.get_int(unique_name, "number_of_nodes");
-    number_of_subnets = config.get_int(unique_name, "number_of_subnets");
-    timesamples_per_pulsar_packet = config.get_int_default(unique_name, "timesamples_per_pulsar_packet",625);
-    num_packet_per_stream = config.get_int_default(unique_name, "num_packet_per_stream",80);
+    udp_pulsar_packet_size = config.get<int>(
+                unique_name, "udp_pulsar_packet_size");
+    udp_pulsar_port_number = config.get<int>(
+                unique_name, "udp_pulsar_port_number");
+    number_of_nodes = config.get<int>(unique_name, "number_of_nodes");
+    number_of_subnets = config.get<int>(unique_name, "number_of_subnets");
+    timesamples_per_pulsar_packet = config.get_default<int>(
+                unique_name, "timesamples_per_pulsar_packet",625);
+    num_packet_per_stream = config.get_default<int>(
+                unique_name, "num_packet_per_stream",80);
 
 }
 

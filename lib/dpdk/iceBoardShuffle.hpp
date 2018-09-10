@@ -176,7 +176,8 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
         register_producer(out_bufs[i], unique_name.c_str());
     }
 
-    lost_samples_buf = buffer_container.get_buffer(config.get_string(unique_name, "lost_samples_buf"));
+    lost_samples_buf = buffer_container.get_buffer(
+                config.get<std::string>(unique_name, "lost_samples_buf"));
     register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);

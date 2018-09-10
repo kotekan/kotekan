@@ -152,7 +152,7 @@ Type configEval<Type>::factor() {
     Type ret;
 
     if (isVar()) {
-        ret = (Type)config.get_double(unique_name, current_token);
+        ret = (Type)config.get<double>(unique_name, current_token);
         next();
     } else if (isNumber()) {
         ret = (Type)stod(current_token);

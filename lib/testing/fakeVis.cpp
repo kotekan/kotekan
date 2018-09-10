@@ -25,12 +25,12 @@ fakeVis::fakeVis(Config &config,
                    std::bind(&fakeVis::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
 
     // Get the output buffer
-    std::string buffer_name = config.get_string(unique_name, "out_buf");
+    std::string buffer_name = config.get<std::string>(unique_name, "out_buf");
 
     // Fetch the buffer, register it
     out_buf = buffer_container.get_buffer(buffer_name);
@@ -47,7 +47,7 @@ fakeVis::fakeVis(Config &config,
     fill_map["gaussian_random"] = std::bind(&fakeVis::fill_mode_gaussian, this, _1);
     fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
 
-    mode = config.get_string_default(unique_name, "mode", "default");
+    mode = config.get_default<std::string>(unique_name, "mode", "default");
 
     if(fill_map.count(mode) == 0) {
         ERROR("unknown fill type %s", mode.c_str());
@@ -58,10 +58,10 @@ fakeVis::fakeVis(Config &config,
 
     if (mode == "gaussian" || mode == "gaussian_random") {
         vis_mean = {
-            config.get_float_default(unique_name, "vis_mean_real", 0.),
-            config.get_float_default(unique_name, "vis_mean_imag", 0.)
+            config.get_default<float>(unique_name, "vis_mean_real", 0.),
+            config.get_default<float>(unique_name, "vis_mean_imag", 0.)
         };
-        vis_std = config.get_float_default(unique_name, "vis_std", 1.);
+        vis_std = config.get_default<float>(unique_name, "vis_std", 1.);
 
         // initialize random number generation
         if (mode == "gaussian_random") {
@@ -71,14 +71,14 @@ fakeVis::fakeVis(Config &config,
     }
 
     // Get timing and frame params
-    cadence = config.get_float(unique_name, "cadence");
-    num_frames = config.get_int_default(unique_name, "num_frames", -1);
-    wait = config.get_bool_default(unique_name, "wait", true);
-    use_dataset_manager = config.get_bool_default(
-        unique_name, "use_dataset_manager", false);
+    cadence = config.get<float>(unique_name, "cadence");
+    num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
+    wait = config.get_default<bool>(unique_name, "wait", true);
+    use_dataset_manager = config.get_default<bool>(
+                unique_name, "use_dataset_manager", false);
 
     // Get zero_weight option
-    zero_weight = config.get_bool_default(unique_name, "zero_weight", false);
+    zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
