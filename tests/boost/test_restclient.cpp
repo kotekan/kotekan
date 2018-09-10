@@ -79,15 +79,18 @@ struct TestContext {
 
     void check(json request) {
         restClient thread_client = restClient();
-        std::unique_ptr<struct restReply> ret = thread_client.send("test_restclient",
-                                                              request);
-        BOOST_CHECK(ret->success == true);
+        bool ret = thread_client.send("test_restclient", request);
+        BOOST_CHECK(ret == true);
 
-        if (ret->success) {
-            BOOST_CHECK(ret->data != nullptr);
-            json js = json::parse(std::string((char*)ret->data, ret->datalen));
+        restReply<char> reply = thread_client.get_reply<char>();
 
-            DEBUG("Comparing %s with %s", js.dump().c_str(), request.dump().c_str());
+        if (ret) {
+            BOOST_CHECK(reply.data.empty() == false);
+            json js = json::parse(
+                        std::string(reply.data.begin(), reply.data.end()));
+
+            DEBUG("Comparing %s with %s",
+                  js.dump().c_str(), request.dump().c_str());
             BOOST_CHECK(js == request);
         }
     }
@@ -97,48 +100,81 @@ BOOST_FIXTURE_TEST_CASE( _send_json, TestContext ) {
     BOOST_CHECKPOINT("Start.");
     __log_level = 4;
     __enable_syslog = 0;
-    std::unique_ptr<struct restReply> ret;
+    bool ret;
 
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
     BOOST_TEST_CHECKPOINT("Init done.");
 
+    restReply<std::string> str_reply;
+    restReply<int> int_reply;
+    restReply<char> reply = TestContext::client.get_reply<char>();
+    BOOST_CHECK(reply.data.empty());
+
     ret = TestContext::client.send("test_restclient", TestContext::request);
-    BOOST_CHECK(ret->success == true);
+    BOOST_CHECK(ret == true);
+    reply = TestContext::client.get_reply<char>();
+    BOOST_CHECK(reply.data.empty());
 
     json bad_request;
     ret = TestContext::client.send("/test_restclient", bad_request);
-    BOOST_CHECK(ret->success == false);
+    BOOST_CHECK(ret == false);
+    reply = TestContext::client.get_reply<char>();
+    BOOST_CHECK(reply.data.empty());
 
     bad_request["array"] = 0;
     ret = TestContext::client.send("/test_restclient", bad_request);
-    BOOST_CHECK(ret->success == false);
+    BOOST_CHECK(ret == false);
+    reply = TestContext::client.get_reply<char>();
+    BOOST_CHECK(reply.data.empty());
 
     ret = TestContext::client.send("/doesntexist", TestContext::request);
-    BOOST_CHECK(ret->success == false);
+    BOOST_CHECK(ret == false);
+    reply = TestContext::client.get_reply<char>();
+    BOOST_CHECK(reply.data.empty());
 
     ret = TestContext::client.send("/test_restclient",
                                         TestContext::request,
                                         "localhost", 1);
-    BOOST_CHECK(ret->success == false);
+    BOOST_CHECK(ret == false);
+    reply = TestContext::client.get_reply<char>();
+    BOOST_CHECK(reply.data.empty());
 
     TestContext::init(std::bind(&TestContext::callback_text, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
 
     ret = TestContext::client.send("test_restclient", TestContext::request);
-    BOOST_CHECK(ret->success == true);
-    if (ret->success)
-        BOOST_CHECK(string("this is a test").compare((char*)ret->data) == 0);
+    BOOST_CHECK(ret == true);
+    if (ret) {
+        reply = TestContext::client.get_reply<char>();
+        BOOST_CHECK(string("this is a test").compare(
+                        std::string(reply.data.begin(),
+                                    reply.data.end())) == 0);
+        INFO("char reply len: %d", reply.data.length());
+        for (auto c = reply.data.begin(); c != reply.data.end(); c++) {
+            INFO("char reply: %c", *c);
+        }
+        int_reply = TestContext::client.get_reply<int>();
+        INFO("int reply len: %d", int_reply.data.length());
+        for (auto c = int_reply.data.begin(); c != int_reply.data.end(); c++) {
+            INFO("int reply: %d", *c);
+        }
+
+        str_reply = TestContext::client.get_reply<std::string>();
+        BOOST_CHECK(str_reply.data.empty());
+    }
 
     bad_request["flag"] = false;
     bad_request["array"] = {4,5,6};
     ret = TestContext::client.send("test_restclient", bad_request);
-    BOOST_CHECK(ret->success == true);
-    if (ret->success) {
-        BOOST_CHECK(ret->data != nullptr);
-        json js = json::parse(std::string((char*)ret->data, ret->datalen));
+    BOOST_CHECK(ret == true);
+    if (ret) {
+        reply = TestContext::client.get_reply<char>();
+        BOOST_CHECK(reply.data.empty() == false);
+        json js = json::parse(
+                    std::string(reply.data.begin(), reply.data.end()));
         BOOST_CHECK(js["test"] == "failed");
     }
 

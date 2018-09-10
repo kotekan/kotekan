@@ -5,16 +5,43 @@
 #ifndef RESTCLIENT_HPP
 #define RESTCLIENT_HPP
 
+#include "gsl-lite.hpp"
+
 #include "json.hpp"
 #include "restServer.hpp"
+#include "errors.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+#include <evhttp.h>
+#include <event2/event.h>
+#include <event2/http.h>
+#include <event2/bufferevent.h>
+#include <event2/dns.h>
+#include <cxxabi.h>
+
+/**
+ * @brief The REST reply.
+ *
+ * Keeps data from the servers response.
+ */
+template<typename T>
+struct restReply {
+        friend class restClient;
+    public:
+        gsl::span<T> data;
+    private:
+        std::unique_ptr<T> raw_data;
+};
 
 /**
  * @class restClient
  * @brief REST client: Send REST messages to a server and maybe get a reply.
  *
  * This class supports sending GET messages and POST messages with json data
- * using libevent. Any reply received is returned.
+ * using libevent and provides access to data from the reply of the server.
  *
  * @warning This is not thread save. Don't share an object of this between
  * threads and don't send requests from different threads at the same time.
@@ -38,14 +65,24 @@ public:
      * @param retries   Max. retries to send message (default: 0).
      * @param timeout   Timeout in seconds. If -1 is passed, the default value
      * (of 50 seconds) is set (default: -1).
-     * @return          The servers reply, indicating success, any sent data
-     * and its length.
+     * @return          `true` if successfull, otherwise `false`.
      */
-    std::unique_ptr<struct restReply> send(std::string path,
-                          const nlohmann::json& data = {},
-                          const std::string& host = "localhost",
-                          const unsigned short port = PORT_REST_SERVER,
-                          const int retries = 0, const int timeout = -1);
+    bool send(std::string path,
+              const nlohmann::json& data = {},
+              const std::string& host = "localhost",
+              const unsigned short port = PORT_REST_SERVER,
+              const int retries = 0, const int timeout = -1);
+
+    /**
+     * @brief Get the data attached to the reply of the server.
+     *
+     * If the server sent data with its reply, it will be returned in a
+     * `restReply` struct. If no data was received from the server,
+     * `data.empty()` will be true for the field `data` of the struct.
+     * @returns Any data received from the server as a reply to a message sent.
+     */
+    template<typename T>
+    struct restReply<T> get_reply();
 
     /**
      * @brief Default constructor.
@@ -57,21 +94,36 @@ private:
     /// callback function for http request
     static void http_request_done(struct evhttp_request *req, void *arg);
 
-    /// reply struct for callback to store reply
-    static struct restReply _reply;
+    /// this is where the callback stores the reply
+    static char* _data;
+    static size_t _datalen;
+    static bool _success;
 };
 
-/**
- * @brief The REST reply.
- *
- * Indicates if the REST request was successfull and keeps any data attached to
- * the servers response as well as the data size.
- */
-struct restReply {
-        bool success = false;
-        void* data = nullptr;
-        size_t datalen = 0;
-};
+template<typename T>
+restReply<T> restClient::get_reply() {
+    struct restReply<T> reply;
+
+    if (_success == false || _datalen == 0) {
+        reply.raw_data = std::unique_ptr<T>(nullptr);
+        reply.data = gsl::span<T>(nullptr, 0);
+        return reply;
+    }
+    if (_datalen % sizeof(T)) {
+        int status;
+        WARN("restClient: size of received data (%d) is not a multiple of " \
+             "the size of the requested type %s (%d).",
+             _datalen,
+             abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status),
+             sizeof(T));
+        reply.raw_data = std::unique_ptr<T>(nullptr);
+        reply.data = gsl::span<T>(nullptr, 0);
+        return reply;
+    }
+    reply.raw_data = std::unique_ptr<T>((T*)_data);
+    reply.data = gsl::span<T>((T*)_data, _datalen / sizeof(T));
+    return reply;
+}
 
 #endif // RESTCLIENT_HPP
 
