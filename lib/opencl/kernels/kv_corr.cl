@@ -28,8 +28,7 @@ void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
             __global const uint *id_x_map,
-            __global const uint *id_y_map,
-            __global int *block_lock)
+            __global const uint *id_y_map)
 {
     //figure out where to load data om
     uint addr_x = id_x_map[zg]*8 + xl;
