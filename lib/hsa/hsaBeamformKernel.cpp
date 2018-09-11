@@ -96,7 +96,7 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     INFO("Updating gains from %s", _gain_dir.c_str());
     config.update_value(unique_name, "gain_dir", _gain_dir);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    INFO("[FRB] updated gain with %s==============================", _gain_dir.c_str());
+    INFO("[FRB] updated gain with %s", _gain_dir.c_str());
 
 }
 
