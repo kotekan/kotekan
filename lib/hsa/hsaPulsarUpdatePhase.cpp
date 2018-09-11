@@ -105,6 +105,7 @@ void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json&
     INFO("Updating gains from %s", _gain_dir.c_str());
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "gain_dir", _gain_dir);
+    INFO("[PSR] updated gain with %s==============================", _gain_dir.c_str());
 }
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
