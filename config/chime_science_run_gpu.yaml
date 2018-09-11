@@ -346,7 +346,6 @@ gpu:
     kotekan_process: hsaProcess
     gpu_id: 0
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
-    gain_dir_psr: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
@@ -365,7 +364,6 @@ gpu:
     kotekan_process: hsaProcess
     gpu_id: 1
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
-    gain_dir_psr: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
@@ -384,7 +382,6 @@ gpu:
     kotekan_process: hsaProcess
     gpu_id: 2
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
-    gain_dir_psr: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
@@ -403,7 +400,6 @@ gpu:
     kotekan_process: hsaProcess
     gpu_id: 3
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
-    gain_dir_psr: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
