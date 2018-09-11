@@ -10,6 +10,7 @@
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
+#include "configEval.hpp"
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -263,7 +264,8 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
     samples_per_packet = config.get_default<uint32_t>(
                 unique_name, "samples_per_packet", 2);
 
-    alignment = config.get_int_eval(unique_name, "alignment");
+    alignment = configEval<uint64_t>(config, unique_name, "alignment")
+            .compute_result();
 }
 
 inline void iceBoardHandler::update_stats() {

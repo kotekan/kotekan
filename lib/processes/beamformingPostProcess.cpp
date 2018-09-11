@@ -72,7 +72,7 @@ void beamformingPostProcess::apply_config(uint64_t fpga_seq) {
     _samples_per_data_set = config.get<uint32_t>(unique_name,
                                                  "samples_per_data_set");
     _num_data_sets = config.get<uint32_t>(unique_name, "num_data_sets");
-    _link_map = config.get_int_array(unique_name, "link_map");
+    _link_map = config.get<std::vector<int32_t>>(unique_name, "link_map");
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
 }
 

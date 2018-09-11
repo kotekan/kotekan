@@ -70,9 +70,10 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
                 unique_name, "timesamples_per_frb_packet");
 
     vector<int32_t>bd;
-    _incoherent_beams = config.get_int_array_default(unique_name,"incoherent_beams",bd);
+    _incoherent_beams = config.get_default<std::vector<int32_t>>(
+                unique_name, "incoherent_beams", bd);
     _incoherent_truncation = config.get_default<float>(
-                unique_name, "incoherent_truncation",1e10);
+                unique_name, "incoherent_truncation", 1e10);
 
     num_L1_streams = 1024/_nbeams;
     num_samples = _samples_per_data_set / _downsample_time / _factor_upchan;

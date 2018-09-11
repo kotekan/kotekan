@@ -186,7 +186,7 @@ void bufferRecv::main_thread() {
     // Create worker threads:
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+    for (auto &i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
         CPU_SET(i, &cpuset);
 
     for (uint32_t i = 0; i < num_threads; ++i) {

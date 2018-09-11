@@ -36,7 +36,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
     // into the kotekan framework.
-    vector<int> lcore_cpu_map = config.get_int_array(unique_name, "lcore_cpu_map");
+    vector<int> lcore_cpu_map = config.get<std::vector<int>>(
+                unique_name, "lcore_cpu_map");
     uint32_t master_lcore_cpu = config.get<uint32_t>(
                 unique_name, "master_lcore_cpu");
 
@@ -120,7 +121,8 @@ void dpdkCore::create_handlers(bufferContainer &buffer_container) {
     // TODO This could likely be refactored out of this system.
     // The one problem is that we are using header only builds for efficency,
     // so the normal factory model doesn't work here.
-    vector<json> handlers_block = config.get_json_array(unique_name, "handlers");
+    vector<json> handlers_block = config.get<std::vector<json>>(
+                unique_name, "handlers");
     uint32_t port = 0;
     handlers = (dpdkRXhandler **)malloc(num_ports * sizeof(dpdkRXhandler *));
     CHECK_MEM(handlers);

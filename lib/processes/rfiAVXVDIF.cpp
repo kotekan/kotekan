@@ -89,7 +89,8 @@ void rfiAVXVDIF::main_thread() {
             this_thread[j] = std::thread(&rfiAVXVDIF::parallelSpectralKurtosis, this, j, nloop);
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                        "cpu_affinity"))
                 CPU_SET(i, &cpuset);
             pthread_setaffinity_np(this_thread[j].native_handle(), sizeof(cpu_set_t), &cpuset);
         }

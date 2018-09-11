@@ -49,7 +49,7 @@ void baselineCompression::apply_config(uint64_t fpga_seq) {
     calculate_stack = stack_type_defs.at(stack_type);
 
     if (config.exists(unique_name, "exclude_inputs")) {
-        exclude_inputs = config.get_array<uint32_t>(unique_name,
+        exclude_inputs = config.get<std::vector<uint32_t>>(unique_name,
                                                     "exclude_inputs");
     }
 
@@ -74,7 +74,8 @@ void baselineCompression::main_thread() {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         INFO("Setting thread affinity");
-        for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+        for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                    "cpu_affinity"))
             CPU_SET(i, &cpuset);
 
         pthread_setaffinity_np(thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);

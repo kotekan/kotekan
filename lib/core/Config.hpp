@@ -1,3 +1,8 @@
+/*****************************************
+@file
+@brief Access the running config.
+- Config
+*****************************************/
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
@@ -12,43 +17,43 @@ using json = nlohmann::json;
 using std::string;
 using std::vector;
 
+/**
+ * @class Config
+ * @brief Access the running config.
+ *
+ * Provides access to values from the running config and allows to update the
+ * config.
+ */
 class Config {
 public:
     Config();
     Config(const Config& orig);
     virtual ~Config();
 
-    // ----------------------------
-    // Get config value functions.
-    // ----------------------------
+    /**
+     * @brief Get a config value.
+     * @param base_path Path to the value in the config.
+     * @param name      Name of the value.
+     * @return  The requested value.
+     */
     template<typename T>
     T get(const string& base_path, const string& name);
 
-    // Same as get_int, but if it cannot find the value, it returns `default_value`
+    /**
+     * @brief Get a config value or return the default value.
+     *
+     * Same as get_int, but if it cannot find the value
+     * (or if it has the wrong type), it returns `default_value`.
+     * @param base_path     Path to the value in the config.
+     * @param name          Name of the value.
+     * @param default_value The default value.
+     * @return  The value requested or the default value.
+     */
     template<typename T>
     T get_default(const string& base_path, const string& name, T default_value);
 
-    // Treats the value as an arithmetic expression with other variables,
-    // and return the result of evaluating it.
-    int32_t get_int_eval(const string& base_path, const string& name);
-
-    // Treats the value as an arithmetic expression with other variables,
-    // and return the result of evaluating it.
-    double get_double_eval(const string& base_path, const string& name);
-
     // Returns true if the path exists
     bool exists(const string& base_path, const string& name);
-
-    vector<int32_t> get_int_array(const string& base_path, const string& name);
-    vector<int32_t> get_int_array_default(const string& base_path, const string& name, vector<int32_t> default_value);
-    vector<float> get_float_array(const string& base_path, const string& name);
-    vector<float> get_float_array_default(const string& base_path, const string& name, vector<float> default_value);
-    vector<double> get_double_array(const string& base_path, const string& name);
-    vector<string> get_string_array(const string& base_path, const string& name);
-    vector<json> get_json_array(const string& base_path, const string& name);
-
-    template<typename T>
-    vector<T> get_array(const string& base_path, const string& name);
 
     void parse_file(const string &file_name);
 
@@ -115,23 +120,24 @@ private:
 };
 
 template <typename T>
-void Config::update_value(const string &base_path, const string &name, const T &value) {
+void Config::update_value(const string &base_path, const string &name,
+                          const T &value) {
     string update_path = base_path + "/" + name;
     json::json_pointer path(update_path);
 
     try {
         _json.at(path) = value;
     } catch (std::exception const & ex) {
-        throw std::runtime_error("Failed to update config value at: " + update_path + " message: " + ex.what());
+        throw std::runtime_error("Failed to update config value at: "
+                                 + update_path + " message: " + ex.what());
     }
 }
 
 template<typename T>
 T Config::get(const string& base_path, const string& name) {
-    json json_value;
+    json json_value = get_value(base_path, name);
     T value;
     try {
-        json_value = get_value(base_path, name);
         value = json_value.get<T>();
     } catch (std::exception const & ex) {
         int status;
@@ -151,21 +157,11 @@ T Config::get_default(const string& base_path, const string& name,
     try {
         T value = get<T>(base_path, name);
         return value;
-    } catch (std::exception const & ex) {
+    } catch (std::runtime_error const & ex) {
         return default_value;
     }
 }
 
-template<typename T>
-vector<T> Config::get_array(const string& base_path, const string& name)
-{
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get<vector<T>>();
-}
 
 #endif /* CONFIG_HPP */
 

@@ -25,7 +25,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;
     mask_len = sizeof(uint8_t)*_num_elements;
     correction_frame_len = sizeof(uint32_t)*_samples_per_data_set/_sk_step;
-    _bad_inputs = config.get_int_array(unique_name, "bad_inputs");
+    _bad_inputs = config.get<std::vector<int32_t>>(unique_name, "bad_inputs");
     //Local Parameters
     rebuild_input_mask = true;
     //Allocate memory for input mask

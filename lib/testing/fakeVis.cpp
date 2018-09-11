@@ -37,7 +37,7 @@ fakeVis::fakeVis(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Get frequency IDs from config
-    freq = config.get_array<uint32_t>(unique_name, "freq_ids");
+    freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
 
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);

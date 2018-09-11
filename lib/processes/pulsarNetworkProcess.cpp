@@ -84,7 +84,9 @@ void pulsarNetworkProcess::main_thread()
     int frame_id = 0;
     uint8_t * packet_buffer = NULL;
   
-    std::vector<std::string> link_ip = config.get_string_array(unique_name, "pulsar_node_ips");
+    std::vector<std::string> link_ip =
+            config.get<std::vector<std::string>>(unique_name,
+                                                 "pulsar_node_ips");
     int number_of_pulsar_links = link_ip.size();
     INFO("number_of_pulsar_links: %d",number_of_pulsar_links);  
     

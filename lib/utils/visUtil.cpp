@@ -204,7 +204,7 @@ parse_reorder_default(Config& config, const std::string base_path) {
     size_t num_elements = config.get<size_t>("/", "num_elements");
 
     try {
-        json reorder_config = config.get_json_array(base_path, "input_reorder");
+        json reorder_config = config.get<std::vector<json>>(base_path, "input_reorder");
 
         return parse_reorder(reorder_config);
     }

@@ -29,7 +29,7 @@ visRawReader::visRawReader(Config &config,
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
-        chunk_size = config.get_int_array(unique_name, "chunk_size");
+        chunk_size = config.get<std::vector<int>>(unique_name, "chunk_size");
         if (chunk_size.size() != 3)
             throw std::invalid_argument("Chunk size needs exactly three " \
                     "elements (has " +

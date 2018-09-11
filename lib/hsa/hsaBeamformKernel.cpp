@@ -22,12 +22,13 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
 
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
     vector<float> dg = {0.0,0.0}; //re,im
-    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
+    default_gains = config.get_default<std::vector<float>>(
+                unique_name, "frb_missing_gains", dg);
 
     _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
 
-    _ew_spacing = config.get_float_array(unique_name, "ew_spacing");
+    _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
     _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float));
     for (int i=0;i<4;i++){
         _ew_spacing_c[i] = _ew_spacing[i];

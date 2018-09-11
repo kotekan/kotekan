@@ -21,7 +21,7 @@ testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
 
     type = config.get<std::string>(unique_name, "type");
     if (type == "const")
-        value = config.get_int_array(unique_name, "value");
+        value = config.get<std::vector<int32_t>>(unique_name, "value");
     assert(type == "const" || type == "random");
 }
 

@@ -33,11 +33,12 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     _gain_dir = config.get<std::string>(unique_name, "gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
-    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
+    default_gains = config.get_default<std::vector<float>>(
+                unique_name, "frb_missing_gains", dg);
 
-    _source_ra = config.get_float_array(unique_name, "source_ra");
-    _source_dec = config.get_float_array(unique_name, "source_dec");
-    _source_scl = config.get_int_array(unique_name, "psr_scaling");
+    _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
+    _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
+    _source_scl = config.get<std::vector<int>>(unique_name, "psr_scaling");
 
     for (int i=0;i<_num_pulsar;i++){
         psr_coord_latest_update.ra[i] = _source_ra[i];

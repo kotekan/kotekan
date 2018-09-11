@@ -34,7 +34,7 @@ visTransform::visTransform(Config& config,
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "in_bufs");
+        config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -379,7 +379,7 @@ visMerge::visMerge(Config& config,
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "in_bufs");
+        config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -663,7 +663,7 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
     if (config.exists(unique_name, "freq_ids")) {
-        freq_ids = config.get_array<uint32_t>(unique_name, "freq_ids");
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     }
     else {
         freq_ids.resize(1024);

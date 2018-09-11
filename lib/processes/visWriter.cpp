@@ -64,7 +64,8 @@ visWriter::visWriter(Config& config,
         auto pspec = std::get<1>(parse_prod_subset(config, unique_name));
 
         // Get the frequency IDs we are going to write
-        auto freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
+        auto freq_id_list = config.get<std::vector<uint32_t>>(
+                    unique_name, "freq_ids");
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         std::transform(freq_id_list.begin(), freq_id_list.end(),
                        std::back_inserter(fspec),

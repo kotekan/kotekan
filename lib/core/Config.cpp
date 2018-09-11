@@ -34,89 +34,6 @@ void Config::parse_file(const string& file_name) {
     }
 }
 
-int32_t Config::get_int_eval(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a number or string to eval or doesn't exist");
-    }
-    return eval_compute_int64(*this, base_path, value.get<string>());
-}
-
-double Config::get_double_eval(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a number or string to eval or doesn't exist");
-    }
-    return eval_compute_double(*this, base_path, value.get<string>());
-}
-
-vector<int32_t> Config::get_int_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<int32_t> >();
-}
-
-vector<double> Config::get_double_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<double> >();
-}
-
-vector<float> Config::get_float_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<float> >();
-}
-
-vector<int32_t> Config::get_int_array_default(const string& base_path, const string& name, vector<int32_t> default_value) {
-    try {
-        vector<int32_t> value = get_int_array(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-
-}
-
-vector<float> Config::get_float_array_default(const string& base_path, const string& name, vector<float> default_value) {
-    try {
-        vector<float> value = get_float_array(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-vector<string> Config::get_string_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<string> >();
-}
-
-vector<json> Config::get_json_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-
-    return value.get< vector<json> >();
-}
-
 void Config::update_config(json updates) {
     _json = updates;
 }
@@ -124,7 +41,7 @@ void Config::update_config(json updates) {
 int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
 
     int32_t num_links = get<int32_t>("/", "num_links");
-    vector<int32_t> link_map = get_int_array("/", "link_map");
+    vector<int32_t> link_map = get<std::vector<int32_t>>("/", "link_map");
     int32_t gpus_in_link = 0;
 
     for (int i = 0; i < num_links; ++i) {

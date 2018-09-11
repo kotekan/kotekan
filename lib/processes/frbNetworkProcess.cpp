@@ -110,7 +110,8 @@ void frbNetworkProcess::main_thread()
     uint8_t * packet_buffer = NULL;
   
     //reading the L1 ip addresses from the config file
-    std::vector<std::string> link_ip = config.get_string_array(unique_name, "L1_node_ips");
+    std::vector<std::string> link_ip =
+            config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
     int number_of_l1_links = link_ip.size();
     INFO("number_of_l1_links: %d",number_of_l1_links);
   

@@ -186,7 +186,7 @@ parse_prod_subset(Config& config, const std::string base_path) {
         }
     } else if (prod_subset_type == "have_inputs") {
         std::vector<int> input_list;
-        input_list = config.get_int_array(base_path, "input_list");
+        input_list = config.get<std::vector<int>>(base_path, "input_list");
         // Find the products in the subset
         for (uint16_t ii=0; ii<num_elements; ii++) {
             for (uint16_t jj=ii; jj<num_elements; jj++) {
@@ -199,7 +199,7 @@ parse_prod_subset(Config& config, const std::string base_path) {
         }
     } else if (prod_subset_type == "only_inputs") {
         std::vector<int> input_list;
-        input_list = config.get_int_array(base_path, "input_list");
+        input_list = config.get<std::vector<int>>(base_path, "input_list");
         // Find the products in the subset
         for (uint16_t ii=0; ii<num_elements; ii++) {
             for (uint16_t jj=ii; jj<num_elements; jj++) {

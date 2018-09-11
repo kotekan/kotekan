@@ -8,8 +8,9 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
-    _reorder_map = config.get_int_array(unique_name, "reorder_map");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
 
     input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;

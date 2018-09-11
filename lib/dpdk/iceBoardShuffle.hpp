@@ -167,7 +167,8 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
 
     DEBUG("iceBoardHandler: %s", unique_name.c_str());
 
-    std::vector<std::string> buffer_names = config.get_string_array(unique_name, "out_bufs");
+    std::vector<std::string> buffer_names =
+            config.get<std::vector<std::string>>(unique_name, "out_bufs");
     if (shuffle_size != buffer_names.size()) {
         throw std::runtime_error("Expecting 4 buffers, got " + std::to_string(port));
     }

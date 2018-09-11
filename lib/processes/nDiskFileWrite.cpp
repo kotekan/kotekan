@@ -101,7 +101,8 @@ void nDiskFileWrite::main_thread() {
     if (write_to_disk) {
         make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
         // Copy gain files
-        std::vector<std::string> gain_files = config.get_string_array(unique_name, "gain_files");
+        std::vector<std::string> gain_files =
+                config.get<std::vector<std::string>>(unique_name, "gain_files");
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
                 unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
@@ -129,7 +130,8 @@ void nDiskFileWrite::main_thread() {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         INFO("Setting thread affinity");
-        for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+        for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                    "cpu_affinity"))
             CPU_SET(i, &cpuset);
 
         pthread_setaffinity_np(file_thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);

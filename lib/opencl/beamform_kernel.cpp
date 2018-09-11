@@ -20,8 +20,10 @@ beamform_kernel::~beamform_kernel()
 void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
 
-    _element_mask = config.get_int_array(unique_name, "element_mask");
-    _product_remap = config.get_int_array(unique_name, "product_remap");
+    _element_mask = config.get<std::vector<int32_t>>(
+                unique_name, "element_mask");
+    _product_remap = config.get<std::vector<int32_t>>(
+                unique_name, "product_remap");
     int remap_size = _product_remap.size();
 
     if (remap_size != _num_elements) {

@@ -54,18 +54,19 @@ void gpuPostProcess::apply_config(uint64_t fpga_seq) {
     _num_total_freq = config.get<int32_t>(unique_name, "num_total_freq");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _num_data_sets = config.get<int32_t>(unique_name, "num_data_sets");
-    _samples_per_data_set = config.get<int32_t>(unique_name,
-                                                "samples_per_data_set");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
     _num_gpu_frames = config.get<int32_t>(unique_name, "num_gpu_frames");
     _num_blocks = config.get<int32_t>(unique_name, "num_blocks");
     _block_size = config.get<int32_t>(unique_name, "block_size");
-    _link_map = config.get_int_array(unique_name, "link_map");
+    _link_map = config.get<std::vector<int32_t>>(unique_name, "link_map");
     _num_fpga_links = config.get<int32_t>(unique_name, "num_links");
     _enable_basic_gating = config.get<bool>(unique_name, "enable_gating");
     _gate_phase = config.get<int32_t>(unique_name, "gate_phase");
     _gate_cadence = config.get<int32_t>(unique_name, "gate_cadence");
     _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
-    _product_remap = config.get_int_array(unique_name, "product_remap");
+    _product_remap = config.get<std::vector<int32_t>>(
+                unique_name, "product_remap");
 
     // Create a C style array for backwards compatiably.
     if (_product_remap_c != NULL)

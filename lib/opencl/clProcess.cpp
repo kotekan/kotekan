@@ -172,7 +172,8 @@ void clProcess::main_thread()
 
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                        "cpu_affinity"))
                 CPU_SET(i, &cpuset);
             pthread_setaffinity_np(mem_reconcil_thread_handle.native_handle(),
                                     sizeof(cpu_set_t), &cpuset);
