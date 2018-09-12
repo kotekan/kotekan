@@ -10,6 +10,7 @@
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
+#include <mutex>
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -86,13 +87,19 @@ protected:
         // in as lost packets.
         if ( ((seq % alignment) <= 100) && ((seq % alignment) >= 0 )) {
 
-            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d",
-                port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused);
-
             last_seq = seq - seq % alignment;
             cur_seq = seq;
             port_stream_id = stream_id;
             got_first_packet = true;
+
+            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, start seq num: %" PRIu64 " current seq num: %" PRIu64 "",
+                port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused, last_seq, seq);
+
+            if (!check_cross_handler_alignment(last_seq)) {
+                ERROR("DPDK failed to align packets between handlers, closing kotekan!");
+                raise(SIGINT);
+                return false;
+            }
 
             return true;
         }
@@ -213,6 +220,56 @@ protected:
         return (int64_t)cur_seq - (int64_t)last_seq;
     }
 
+    /**
+     * @brief Function to ensure all handlers align to the same FPGA seq number
+     *
+     * This function must be called at least once with
+     * @c check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
+     * In order to initalize the alignment seq number
+     *
+     * @param seq_num The seq number which should be aligned too.
+     * @return true if the alignment is good, or this is the first handler to call this function
+     *         false if the alignment fails.
+     */
+    inline bool check_cross_handler_alignment(uint64_t seq_num) {
+
+        /// Alignment mutex
+        static std::mutex alignment_mutex;
+
+        /// The first seq number seen by each handler
+        static uint64_t alignment_first_seq;
+
+        std::lock_guard<std::mutex> alignment_lock(alignment_mutex);
+
+        // This provides a way to init the alignment_first_seq to a fixed constand before we start
+        // getting packets.
+        if (seq_num == std::numeric_limits<uint64_t>::max()) {
+            alignment_first_seq = std::numeric_limits<uint64_t>::max();
+            DEBUG("Setting alignment value to MAX=%" PRIu64 "", alignment_first_seq);
+            return true;
+        }
+
+        // This case deals with the first handler setting it's seq number.
+        if (seq_num != alignment_first_seq &&
+            alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
+            DEBUG("Port %d: Got first alignemnt value of %" PRIu64 "", port, seq_num);
+            alignment_first_seq = seq_num;
+            return true;
+        }
+
+        // This case deals with each addational handler checking if it has the same
+        // first seq number.
+        if (seq_num != alignment_first_seq) {
+            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %d" PRIu64 "",
+                  port, seq_num, alignment_first_seq);
+            return false;
+        }
+
+        // Addational handler(s) got the same first seq number.
+        DEBUG("Port %d: Got alignemnt value of %" PRIu64 "", port, seq_num);
+        return true;
+    }
+
     /// The FPAG seq number of the current packet being processed
     uint64_t cur_seq = 0;
 
@@ -261,6 +318,8 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
     samples_per_packet = config.get_int_default(unique_name, "samples_per_packet", 2);
 
     alignment = config.get_int_eval(unique_name, "alignment");
+
+    check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
 }
 
 inline void iceBoardHandler::update_stats() {
