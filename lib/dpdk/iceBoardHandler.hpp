@@ -271,7 +271,7 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
     fpga_packet_size = config.get_int_default(unique_name, "fpga_packet_size", 4928);
     samples_per_packet = config.get_int_default(unique_name, "samples_per_packet", 2);
 
-    num_local_freq = config.get_int(unique_name, "num_local_freq");
+    num_local_freq = config.get_int_default(unique_name, "num_local_freq", 1);
 
     alignment = config.get_int_eval(unique_name, "alignment");
 }
