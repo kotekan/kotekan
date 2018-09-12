@@ -107,7 +107,7 @@ BOOST_FIXTURE_TEST_CASE( _send_json, TestContext ) {
                           std::placeholders::_2));
     BOOST_TEST_CHECKPOINT("Init done.");
 
-    restReply<std::string> str_reply;
+    std::string str_reply;
     restReply<int> int_reply;
     restReply<char> reply = TestContext::client.get_reply<char>();
     BOOST_CHECK(reply.data.empty());
@@ -162,8 +162,8 @@ BOOST_FIXTURE_TEST_CASE( _send_json, TestContext ) {
             INFO("int reply: %d", *c);
         }
 
-        str_reply = TestContext::client.get_reply<std::string>();
-        BOOST_CHECK(str_reply.data.empty());
+        str_reply = TestContext::client.get_reply();
+        BOOST_CHECK(std::string("this is a test") == str_reply);
     }
 
     bad_request["flag"] = false;

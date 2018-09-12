@@ -85,6 +85,17 @@ public:
     struct restReply<T> get_reply();
 
     /**
+     * @brief Get the data attached to the reply of the server as a string.
+     *
+     * If the server sent data with its reply, it will be returned in a
+     * string. If no data was received from the server,
+     * a string of length 0 will be returned.
+     * @returns Any data received from the server as a reply to a message sent
+     * (as a string).
+     */
+    std::string get_reply();
+
+    /**
      * @brief Default constructor.
      */
     restClient() = default;

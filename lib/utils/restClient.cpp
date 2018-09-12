@@ -182,3 +182,16 @@ bool restClient::send(std::string path,
 
     return _success;
 }
+
+
+std::string restClient::get_reply() {
+    if (_success == false) {
+        std::string reply(nullptr, 0);
+
+        return reply;
+    }
+
+    std::string reply(_data, _datalen);
+
+    return reply;
+}
