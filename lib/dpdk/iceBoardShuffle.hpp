@@ -381,6 +381,8 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf *mbuf) {
 
     sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
     assert(sample_location * sample_size <= out_bufs[0]->frame_size);
+    assert(sample_location >= 0);
+    assert(get_mbuf_seq_num(mbuf) == cur_seq);
     if (unlikely(sample_location * sample_size == out_bufs[0]->frame_size)) {
         // If there are no new frames to fill, we are just dropping the packet
         if (!advance_frames(cur_seq))
