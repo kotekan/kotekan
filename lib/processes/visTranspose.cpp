@@ -132,7 +132,7 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
     // keep track in which samples valid flags are present
-    write_flags = std::vector<bool>(write_t, false);
+    write_flags = std::vector<bool>(chunk_t, false);
 
     uint64_t frame_size = 0;
 
@@ -176,26 +176,24 @@ void visTranspose::main_thread() {
 
         // Only update flags if they are non-zero
         bool nz_flags = false;
-        for (uint i; i < num_input; i++) {
+        for (uint i = 0; i < num_input; i++) {
             if (frame.flags[i] != 0.) {
                 nz_flags = true;
                 break;
             }
         }
         if (nz_flags) {
+            INFO("Found non-zero flags in freq %d time %d", fi, ti);
             // Keep flags time ordered so we can write them out individually
-            std::copy(frame.flags.begin(), frame.flags.end(), input_flags.data() + ti * num_input);
+            std::copy(frame.flags.begin(), frame.flags.end(), input_flags.begin() + ti * num_input);
             // Record that this timestamp is valid
             write_flags[ti] = true;
         }
 
         // Increment within read chunk
         ti = (ti + 1) % write_t;
-        if (ti == 0) {
+        if (ti == 0)
             fi++;
-            // reset the valid flags tracker
-            write_flags = {false};
-        }
         if (fi == write_f) {
             // chunk is complete
             write();
@@ -203,7 +201,8 @@ void visTranspose::main_thread() {
             increment_chunk();
             fi = 0;
             ti = 0;
-            write_flags = {false};
+            // reset the valid flags tracker
+            std::fill(write_flags.begin(), write_flags.end(), false);
 
             // export prometheus metric
             if (frame_size == 0)
@@ -252,12 +251,12 @@ void visTranspose::write() {
     // they aren't overwritten by empty frames
     std::vector<float> flag_out;
     for (uint t = 0; t < write_t; t++) {
-        if (write_flags[t] == 0)
-            continue;
-        flag_out = {input_flags.begin() + t * num_input,
-                    input_flags.begin() + (t+1) * num_input};
-        file->write_block("flags/inputs", f_ind, t_ind, write_f, 1,
-                flag_out.data());
+        if (write_flags[t]) {
+            flag_out.assign(input_flags.begin() + t * num_input,
+                            input_flags.begin() + (t+1) * num_input);
+            file->write_block("flags/inputs", f_ind, t_ind + t, write_f, 1,
+                    flag_out.data());
+        }
     }
 }
 

@@ -42,6 +42,24 @@ def transpose(tmpdir_factory):
         mode=writer_params['mode'],
     )
 
+    # Remove the last frequency to test handling of empty frames
+    fsel_buf_name = "fake_freqsel"
+    fsel_buf = { fsel_buf_name: {
+            'kotekan_buffer': 'vis',
+            'metadata_pool': 'vis_pool',
+            'num_frames': 'buffer_depth',
+        }
+    }
+    fakevis_buffer.buffer_block.update(fsel_buf)
+    fakevis_buffer.process_block.update({"fakevis_fsel": {
+            "kotekan_process": "freqSubset",
+            "in_buf": fakevis_buffer.name,
+            "out_buf": fsel_buf_name,
+            "subset_list": writer_params['freq'][:-1]
+        }
+    })
+    fakevis_buffer.name = fsel_buf_name
+
     # Write fake data in hdf5 format
     tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
     dumph5_conf = writer_params.copy()
@@ -149,6 +167,9 @@ def test_transpose(transpose):
              'eval', 'evec', 'erms']
     for d in dsets:
         assert np.all(f_tr[d][:] == np.moveaxis(f[d], 0, -1))
+
+    # Check flags were not overwritten by empty frames
+    assert (f_tr['flags/inputs'][:] == 1.).all()
 
 @pytest.fixture(scope="module")
 def transpose_stack(tmpdir_factory):
