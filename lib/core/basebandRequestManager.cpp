@@ -3,9 +3,11 @@
 #include <iostream>
 #include <sstream>
 
+#include "basebandReadoutManager.hpp"
 #include "kotekanLogging.hpp"
 
-basebandRequestManager::basebandReadoutRegistryEntry& basebandRequestManager::basebandReadoutRegistry::operator[]( const uint32_t& key ) {
+
+basebandReadoutManager& basebandRequestManager::basebandReadoutRegistry::operator[]( const uint32_t& key ) {
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map[key];
 }
@@ -73,25 +75,12 @@ void basebandRequestManager::status_callback_all(connectionInstance& conn){
 
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
-        auto& readout_entry = element.second;
-        std::lock_guard<std::mutex> lock(readout_entry.requests_lock);
-        for (auto& req : readout_entry.request_queue) {
-            json j(req);
+        auto& readout_manager = element.second;
+
+        for (auto event : readout_manager.all()) {
+            json j(event);
             j["freq_id"] = freq_id;
-            event_readout_status[std::to_string(req.event_id)].push_back(j);
-        }
-        for (const auto& d : readout_entry.processing) {
-            json j(d);
-            j["freq_id"] = freq_id;
-            event_readout_status[std::to_string(d.request.event_id)].push_back(j);
-        }
-        {
-            std::lock_guard<std::mutex> lock(*readout_entry.current_lock);
-            if (readout_entry.current_status) {
-                json j(*readout_entry.current_status);
-                j["freq_id"] = freq_id;
-                event_readout_status[std::to_string(readout_entry.current_status->request.event_id)].push_back(j);
-            }
+            event_readout_status[std::to_string(event.request.event_id)].push_back(j);
         }
     }
 
@@ -104,40 +93,13 @@ void basebandRequestManager::status_callback_single_event(const uint64_t event_i
 
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
-        auto& readout_entry = element.second;
+        auto& readout_manager = element.second;
 
-        std::lock_guard<std::mutex> lock(readout_entry.requests_lock);
-
-        bool found = false;
-        for (auto& req : readout_entry.request_queue) {
-            if (req.event_id == event_id) {
-                json j(req);
-                j["freq_id"] = freq_id;
-                event_status.push_back(j);
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            continue;
-        }
-
-        for (const auto& d : readout_entry.processing) {
-            if (d.request.event_id == event_id) {
-                json j(d);
-                j["freq_id"] = freq_id;
-                event_status.push_back(j);
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            std::lock_guard<std::mutex> lock(*readout_entry.current_lock);
-            if (readout_entry.current_status && readout_entry.current_status->request.event_id == event_id) {
-                json j(*readout_entry.current_status);
-                j["freq_id"] = freq_id;
-                event_status.push_back(j);
-            }
+        auto event = readout_manager.find(event_id);
+        if (event) {
+            json j(*event);
+            j["freq_id"] = freq_id;
+            event_status.push_back(j);
         }
     }
 
@@ -198,7 +160,6 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
             const uint32_t freq_id = element.first;
             auto& readout_entry = element.second;
 
-            std::lock_guard<std::mutex> lock(readout_entry.requests_lock);
             const std::string readout_file_name = "baseband_" +
                 std::to_string(event_id) +
                 "_" + std::to_string(freq_id) + ".h5";
@@ -207,7 +168,7 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
                                                          duration_fpga,
                                                          dm, dm_error,
                                                          freq_id);
-            readout_entry.request_queue.push_back({
+            readout_entry.add({
                     event_id,
                     readout_slice.start_fpga,
                     readout_slice.length_fpga,
@@ -215,7 +176,6 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
                     readout_file_name,
                     now
             });
-            readout_entry.requests_cv.notify_all();
             response[std::to_string(freq_id)] = json{
                 {"file_name", readout_file_name},
                 {"start_fpga", readout_slice.start_fpga},
@@ -236,41 +196,7 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-std::shared_ptr<std::mutex> basebandRequestManager::register_readout_process(const uint32_t freq_id) {
-    return readout_registry[freq_id].current_lock;
+basebandReadoutManager& basebandRequestManager::register_readout_process(const uint32_t freq_id) {
+    return readout_registry[freq_id];
 }
 
-std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(const uint32_t freq_id) {
-    DEBUG("Waiting for notification");
-
-    auto& readout_entry = readout_registry[freq_id];
-    std::unique_lock<std::mutex> lock(readout_entry.requests_lock);
-
-    // NB: the requests_lock is released while the thread is waiting on requests_cv, and reacquired once woken
-    using namespace std::chrono_literals;
-    if (readout_entry.requests_cv.wait_for(lock, 0.1s) == std::cv_status::no_timeout) {
-        DEBUG("Notified");
-    }
-    else {
-        DEBUG("Expired");
-    }
-
-    std::lock_guard<std::mutex> current_lock(*readout_entry.current_lock);
-    if (readout_entry.current_status) {
-        // if this method is called, we know that the readout is done with the
-        // current dump
-        readout_entry.processing.push_back(*readout_entry.current_status);
-    }
-
-    if (!readout_entry.request_queue.empty()) {
-        basebandRequest req = readout_entry.request_queue.front();
-        readout_entry.request_queue.pop_front();
-
-        basebandDumpStatus s{req};
-        readout_entry.current_status = std::make_shared<basebandDumpStatus>(s);
-    }
-    else {
-        readout_entry.current_status = nullptr;
-    }
-    return readout_entry.current_status;
-}

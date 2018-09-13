@@ -22,6 +22,7 @@
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 #include "gpsTime.h"
+#include "basebandReadoutManager.hpp"
 #include "basebandRequestManager.hpp"
 #include "visUtil.hpp"
 
@@ -72,7 +73,7 @@ public:
 };
 
 
-typedef std::tuple<basebandDumpData, std::shared_ptr<basebandDumpStatus>> dump_data_status;
+typedef std::tuple<basebandDumpData, basebandDumpStatus*> dump_data_status;
 
 
 /**
@@ -126,11 +127,11 @@ private:
     std::mutex manager_lock;
 
     void listen_thread(const uint32_t freq_id,
-                       std::shared_ptr<std::mutex> status_lock);
-    void write_thread(std::shared_ptr<std::mutex> status_lock);
+                       basebandReadoutManager& readout_manager);
+    void write_thread(basebandReadoutManager& readout_manager);
     void write_dump(basebandDumpData data,
-                    std::shared_ptr<basebandDumpStatus> dump_status,
-                    std::mutex* status_lock);
+                    basebandDumpStatus* dump_status,
+                    std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
