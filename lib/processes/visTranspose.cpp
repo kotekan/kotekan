@@ -131,6 +131,8 @@ void visTranspose::main_thread() {
     uint32_t ti = 0;
     // offset for copying into buffer
     uint32_t offset = 0;
+    // keep track in which samples valid flags are present
+    write_flags = std::vector<bool>(write_t, false);
 
     uint64_t frame_size = 0;
 
@@ -171,13 +173,29 @@ void visTranspose::main_thread() {
                 1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
                 write_t, num_input);
-        strided_copy(frame.flags.data(), input_flags.data(), ti,
-                write_t, num_input);
+
+        // Only update flags if they are non-zero
+        bool nz_flags = false;
+        for (uint i; i < num_input; i++) {
+            if (frame.flags[i] != 0.) {
+                nz_flags = true;
+                break;
+            }
+        }
+        if (nz_flags) {
+            // Keep flags time ordered so we can write them out individually
+            std::copy(frame.flags.begin(), frame.flags.end(), input_flags.data() + ti * num_input);
+            // Record that this timestamp is valid
+            write_flags[ti] = true;
+        }
 
         // Increment within read chunk
         ti = (ti + 1) % write_t;
-        if (ti == 0)
+        if (ti == 0) {
             fi++;
+            // reset the valid flags tracker
+            write_flags = {false};
+        }
         if (fi == write_f) {
             // chunk is complete
             write();
@@ -185,6 +203,7 @@ void visTranspose::main_thread() {
             increment_chunk();
             fi = 0;
             ti = 0;
+            write_flags = {false};
 
             // export prometheus metric
             if (frame_size == 0)
@@ -226,11 +245,20 @@ void visTranspose::write() {
     file->write_block("gain", f_ind, t_ind, write_f, write_t,
             gain.data());
 
-    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
-            input_flags.data());
-
     file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t,
             frac_lost.data());
+
+    // Write out flags for one sample at a time to ensure
+    // they aren't overwritten by empty frames
+    std::vector<float> flag_out;
+    for (uint t = 0; t < write_t; t++) {
+        if (write_flags[t] == 0)
+            continue;
+        flag_out = {input_flags.begin() + t * num_input,
+                    input_flags.begin() + (t+1) * num_input};
+        file->write_block("flags/inputs", f_ind, t_ind, write_f, 1,
+                flag_out.data());
+    }
 }
 
 // increment between chunks
