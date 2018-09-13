@@ -1,3 +1,16 @@
+##########################################
+#
+# packet_capture.yaml
+#
+# Config for viewing the contents of packets on a system with 4 links (a CHIME node)
+#
+# This config will print the contents of a few packets to screen as a hex dump,
+# and return a binary dump of packets on demand via a REST call.
+#
+# Author: Andre Renard
+#
+##########################################
+
 ---
 type: config
 # Logging level can be one of:
@@ -55,10 +68,12 @@ dpdk:
 
 hexDump:
     kotekan_process: hexDump
+    # Change this buffer to print packets on different ports
     buf: network_input_buffer_0
     len: 4928
 
 inspect_block:
+    # 0 means dump the full frame on callback, otherwise dump the first `len` bytes 
     len: 0
     inspect_0:
         kotekan_process: restInspectFrame
