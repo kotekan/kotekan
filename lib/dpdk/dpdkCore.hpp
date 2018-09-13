@@ -136,7 +136,7 @@ protected:
  *                                 in_buf: my_buf_0
  *                               - dpdk_handler: myHandler # Handler for port 1
  *                                 in_buf: my_buf_1
- *                           Note that if a port isn't being used it should be denoted by
+ *                           Note that if a port isn't being used it must be denoted by
  *                           `- dpdk_handler: none`.   The number of handlers much match the number
  *                           of ports in the system, even if they aren't being used by the current config.
  *                           There must be a valid handler for every port referenced in @c lcore_port_map
