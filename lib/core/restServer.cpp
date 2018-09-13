@@ -291,7 +291,7 @@ void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &
     mg_send_head(nc, static_cast<int>(status), 0, error_message.c_str());
 }
 
-void connectionInstance::send_json_reply(json &json_reply) {
+void connectionInstance::send_json_reply(const json &json_reply) {
     string json_string = json_reply.dump(0);
     mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK), json_string.size(), NULL);
     mg_send(nc, (void*) json_string.c_str(), json_string.size());

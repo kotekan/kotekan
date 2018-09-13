@@ -47,7 +47,7 @@ public:
      *
      * @param json_reply The json object to send to the client.
      */
-    void send_json_reply(nlohmann::json &json_reply);
+    void send_json_reply(const nlohmann::json &json_reply);
 
     /**
      * @brief Sends a binary reply to the client

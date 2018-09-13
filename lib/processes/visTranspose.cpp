@@ -9,6 +9,7 @@
 #include "fmt.hpp"
 #include "visUtil.hpp"
 #include "visTranspose.hpp"
+#include "prometheusMetrics.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
@@ -131,6 +132,8 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
+    uint64_t frame_size = 0;
+
     // Create HDF5 file
     if (stack.size() > 0) {
         file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
@@ -182,6 +185,14 @@ void visTranspose::main_thread() {
             increment_chunk();
             fi = 0;
             ti = 0;
+
+            // export prometheus metric
+            if (frame_size == 0)
+                frame_size = frame.calculate_buffer_layout(num_input, num_prod,
+                        num_ev)["_struct"].second;
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_vistranspose_data_transposed_bytes", unique_name,
+                        frame_size * frames_so_far);
         }
 
         frames_so_far++;
