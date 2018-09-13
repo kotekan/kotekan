@@ -301,16 +301,16 @@ json iceBoardHandler::get_json_port_info() {
     for (int32_t i = 0; i < num_local_freq; ++i) {
         if (num_local_freq == 1) { // CHIME
             // Even though CHIME sets num_local_freq == 1
-            // The packets actually have 4 frequencies before the transpose
+            // The packets actually have 4 frequencies and 512 elements before the transpose
             for (int j = 0; j < 4; ++j) {
                 temp_stream_id.unused = j;
                 freq_bins.push_back(bin_number_chime(&temp_stream_id));
                 freq_mhz.push_back(freq_from_bin(bin_number_chime(&temp_stream_id)));
             }
-        } else if (num_local_freq == 8) { // Pathfinder
+        } else if (num_local_freq == 8) { // 256 element system (Pathfinder)
             freq_bins.push_back(bin_number(&temp_stream_id, i));
             freq_mhz.push_back(freq_from_bin(bin_number(&temp_stream_id, i)));
-        } else if (num_local_freq == 128) { // 128 element system
+        } else if (num_local_freq == 128) { // 16 element system
             freq_bins.push_back(bin_number_16_elem(&temp_stream_id, i));
             freq_mhz.push_back(freq_from_bin(bin_number_16_elem(&temp_stream_id, i)));
         }

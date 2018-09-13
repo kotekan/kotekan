@@ -79,7 +79,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
 
     if (num_ports > num_system_ports) {
         throw std::runtime_error("Trying to create more ports: " + to_string(num_ports)
-                                 +  ", then DPDK found: " + to_string(num_system_ports));
+                                 +  ", than DPDK found: " + to_string(num_system_ports));
     }
 
     // The plus one is for the master lcore.
