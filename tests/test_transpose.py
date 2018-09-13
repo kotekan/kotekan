@@ -160,7 +160,8 @@ def test_transpose(transpose):
     assert f_tr['flags/inputs'].shape == (n_elems, n_t)
     assert f_tr['flags/frac_lost'].shape == (n_f, n_t)
 
-    assert (f_tr['flags/frac_lost'][:] == 0.).all()
+    assert (f_tr['flags/frac_lost'][:n_f-1,:] == 0.).all()
+    assert (f_tr['flags/frac_lost'][-1:,:] == 1.).all()
 
     # transpose with numpy and see if data is the same
     dsets = ['vis', 'flags/vis_weight',

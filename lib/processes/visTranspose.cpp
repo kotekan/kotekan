@@ -131,8 +131,6 @@ void visTranspose::main_thread() {
     uint32_t ti = 0;
     // offset for copying into buffer
     uint32_t offset = 0;
-    // keep track in which samples valid flags are present
-    write_flags = std::vector<bool>(chunk_t, false);
 
     uint64_t frame_size = 0;
 
@@ -183,11 +181,10 @@ void visTranspose::main_thread() {
             }
         }
         if (nz_flags) {
-            INFO("Found non-zero flags in freq %d time %d", fi, ti);
-            // Keep flags time ordered so we can write them out individually
-            std::copy(frame.flags.begin(), frame.flags.end(), input_flags.begin() + ti * num_input);
-            // Record that this timestamp is valid
-            write_flags[ti] = true;
+            // Copy flags into the buffer. These will not be overwritten until
+            // the chunks increment in time or another non-zero frame is found
+            strided_copy(frame.flags.data(), input_flags.data(), ti,
+                    write_t, num_input);
         }
 
         // Increment within read chunk
@@ -201,8 +198,6 @@ void visTranspose::main_thread() {
             increment_chunk();
             fi = 0;
             ti = 0;
-            // reset the valid flags tracker
-            std::fill(write_flags.begin(), write_flags.end(), false);
 
             // export prometheus metric
             if (frame_size == 0)
@@ -247,20 +242,15 @@ void visTranspose::write() {
     file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t,
             frac_lost.data());
 
-    // Write out flags for one sample at a time to ensure
-    // they aren't overwritten by empty frames
-    std::vector<float> flag_out;
-    for (uint t = 0; t < write_t; t++) {
-        if (write_flags[t]) {
-            flag_out.assign(input_flags.begin() + t * num_input,
-                            input_flags.begin() + (t+1) * num_input);
-            file->write_block("flags/inputs", f_ind, t_ind + t, write_f, 1,
-                    flag_out.data());
-        }
-    }
+    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
+            input_flags.data());
 }
 
 // increment between chunks
+// cycle through all times before incrementing the frequency
+// WARNING: This order must be consistent with how visRawReader
+//      implements chunked reads. The mechanism for avoiding
+//      overwriting flags also relies on this ordering.
 void visTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
@@ -268,6 +258,8 @@ void visTranspose::increment_chunk() {
         // set incomplete chunk flag
         f_edge = (num_freq < chunk_f);
         t_ind += chunk_t;
+        // clear flags buffer for next time chunk
+        std::fill(input_flags.begin(), input_flags.end(), 0.);
         if (num_time - t_ind < chunk_t) {
             // Reached an incomplete chunk
             t_edge = true;

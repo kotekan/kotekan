@@ -74,10 +74,6 @@ private:
     std::vector<float> input_flags;
     std::vector<rstack_ctype> reverse_stack;
 
-    // Keep track of the samples within a chunk that contain
-    // valid flags to be written out
-    std::vector<bool> write_flags;
-
     // Keep track of the size to write out
     // size of frequency and time dimension of chunk when written to file
     size_t write_f, write_t;
