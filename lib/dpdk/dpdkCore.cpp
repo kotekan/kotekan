@@ -14,6 +14,7 @@ using nlohmann::json;
 #include "iceBoardShuffle.hpp"
 #include "iceBoardStandard.hpp"
 #include "iceBoardVDIF.hpp"
+#include "captureHandler.hpp"
 
 REGISTER_KOTEKAN_PROCESS(dpdkCore);
 
@@ -142,6 +143,9 @@ void dpdkCore::create_handlers(bufferContainer &buffer_container) {
                                                   buffer_container, port);
         } else if (handler_name == "iceBoardVDIF") {
             handlers[port] = new iceBoardVDIF(config, handler_unique_name,
+                                                  buffer_container, port);
+        } else if (handler_name == "captureHandler") {
+            handlers[port] = new captureHandler(config, handler_unique_name,
                                                   buffer_container, port);
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
