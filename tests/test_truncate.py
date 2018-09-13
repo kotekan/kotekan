@@ -96,9 +96,9 @@ def test_truncation(vis_data):
         assert np.all(np.abs(frame.evec.imag - frame_t.evec.imag)
                       <= np.abs(frame.evec.imag) * trunc_params['data_fixed_precision'])
         assert np.all(np.abs(frame.gain.real - frame_t.gain.real)
-                      <= np.abs(frame.gain.real) * trunc_params['weight_fixed_precision'])
+                      <= np.abs(frame.gain.real) * trunc_params['data_fixed_precision'])
         assert np.all(np.abs(frame.gain.imag - frame_t.gain.imag)
-                      <= np.abs(frame.gain.imag) * trunc_params['weight_fixed_precision'])
+                      <= np.abs(frame.gain.imag) * trunc_params['data_fixed_precision'])
 
         # test if RMSE of vis (normalised to variance) is within 5 sigma
         # of expected truncation error std deviation sqrt(err_sq_lim / 3)
