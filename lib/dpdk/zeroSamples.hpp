@@ -33,6 +33,9 @@
  *                                        - lost_samples_buffer_2
  *                                        - lost_samples_buffer_3
  *
+ * @config  zero_value                Int Default 0x88  The 8-bit value to write overtop of bad data
+ *                                    For offset encoded post PFB data this is 0x88
+ *
  * @author Andre Renard
  */
 class zeroSamples : public KotekanProcess {
@@ -73,6 +76,9 @@ private:
 
     /// Vector to hold all duplicate lost sample buffers
     vector<Buffer*> out_lost_sample_bufs;
+
+    /// The int8 "zero" value
+    uint8_t zero_value;
 };
 
 #endif /* ZERO_SAMPLES_HPP */
