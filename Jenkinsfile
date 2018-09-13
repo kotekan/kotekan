@@ -29,20 +29,15 @@ pipeline {
                   make'''
           }
         }
-        stage('Build Minimal MacOS kotekan') {
+        stage('Build MacOS kotekan') {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
                   mkdir build_base
                   cd build_base/
                   cmake ..
-                  make'''
-          }
-        }
-        stage('Build Maximal MacOS kotekan') {
-          agent {label 'macos'}
-          steps {
-            sh '''export PATH=${PATH}:/usr/local/bin/
+                  make
+                  cd ..
                   mkdir build_full
                   cd build_full/
                   cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DUSE_FFTW=ON -DUSE_AIRSPY=ON \
