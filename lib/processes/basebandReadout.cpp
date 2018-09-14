@@ -23,6 +23,46 @@
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 
+basebandReadout::writeQueue::writeQueue(const basebandReadout * readout,
+                                        const int max_length) :
+    readout(readout),
+    max_length(max_length)
+{}
+
+void basebandReadout::writeQueue::add(dump_data_status* x) {
+    std::unique_lock<std::mutex> lock(m);
+
+    // wait for space in the queue
+    while (queue.size() >= max_length) {
+        has_space.wait_for(lock, std::chrono::milliseconds(100));
+        if (readout->stop_thread) {
+            return;
+        }
+    }
+
+    std::unique_ptr<dump_data_status> px(x);
+    queue.push(std::move(px));
+
+    element_ready.notify_all();
+}
+
+std::unique_ptr<dump_data_status> basebandReadout::writeQueue::take() {
+    std::unique_lock<std::mutex> lock(m);
+
+    // wait for an element in the queue
+    while (queue.empty()) {
+        element_ready.wait_for(lock, std::chrono::milliseconds(100));
+        if (readout->stop_thread) {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<dump_data_status> x = std::move(queue.front());
+    queue.pop();
+
+    has_space.notify_all();
+    return x;
+}
 
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
@@ -37,7 +77,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
         buf(get_buffer("in_buf")),
         next_frame(0),
         oldest_frame(-1),
-        frame_locks(_num_frames_buffer)
+        frame_locks(_num_frames_buffer),
+        write_queue(this, 2)
 {
     // ensure a trailing slash in _base_dir
     if (_base_dir.back() != '/') {
@@ -192,18 +233,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                 // Wait for free space in the write queue. This prevents this thread from
                 // receiving any more dump requests until the pipe clears out. Limits the
                 // memory use and buffer congestion.
-                const int max_writes_queued = 3;
-                {
-                    std::unique_lock<std::mutex> lock(q_lock);
-                    while (write_q.size() >= max_writes_queued) {
-                        q_not_full.wait_for(lock, std::chrono::milliseconds(100));
-                        if (stop_thread) {
-                            return;
-                        }
-                    }
-                    write_q.push(dump_data_status(data, dump_status));
-                    q_not_empty.notify_one();
-                }
+                write_queue.add(new dump_data_status(data, dump_status));
             } catch (const std::bad_alloc) {
                 std::lock_guard<std::mutex> lock(*status_lock);
                 dump_status->state = basebandDumpStatus::State::ERROR;
@@ -216,17 +246,13 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
 
 void basebandReadout::write_thread(std::shared_ptr<std::mutex> status_lock) {
     while (!stop_thread) {
-        std::unique_lock<std::mutex> lock(q_lock);
-        while (write_q.empty()) {
-            q_not_empty.wait_for(lock, std::chrono::milliseconds(100));
-            if (stop_thread) {
-                return;
-            }
+        auto dump_tup = write_queue.take();
+        if (!dump_tup) {
+            continue;
         }
-        auto dump_tup = write_q.front();
 
-        auto dump_status = std::get<1>(dump_tup);
-        auto data = std::get<0>(dump_tup);
+        auto dump_status = std::get<1>(*dump_tup);
+        auto data = std::get<0>(*dump_tup);
 
         try {
             write_dump(data, dump_status, status_lock.get());
@@ -236,10 +262,6 @@ void basebandReadout::write_thread(std::shared_ptr<std::mutex> status_lock) {
             dump_status->state = basebandDumpStatus::State::ERROR;
             dump_status->reason = e.what();
         }
-
-        // release the memory for `data` before queue slot becomes available
-        write_q.pop();
-        q_not_full.notify_one();
     }
 }
 
