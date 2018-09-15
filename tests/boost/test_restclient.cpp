@@ -9,22 +9,96 @@
 
 using json = nlohmann::json;
 
+// BOOST_CHECK can't be used in threads...
+std::atomic<bool> error;
+
 struct TestContext {
-    restClient client;
-    json request;
+    static void init(std::function<void (connectionInstance&,
+                                         nlohmann::json&)> fun,
+                     std::string endpoint = "/test_restclient") {
+        restServer::instance().register_post_callback(endpoint, fun);
+        error = false;
+        usleep(5000);
+    }
 
-    void init(std::function<void (connectionInstance&, nlohmann::json&)> fun) {
-        restServer::instance().register_post_callback("/test_restclient", fun);
+    static void rq_callback(restReply reply) {
+        if(reply.first != true) {
+            error = true;
+            ERROR("test_restclient: rq_callback: restReply::success should be" \
+                  " true, was false.");
+        }
+        if(!reply.second.empty()) {
+            error = true;
+            ERROR("test_restclient: rq_callback: restReply::string should be " \
+                  "empty but was not.");
+        }
+    }
 
-        usleep(3000);
-        client = restClient();
+    static void rq_callback_fail(restReply reply) {
+        if (reply.first != false) {
+            error = true;
+            ERROR("test_restclient: rq_callback_fail: restReply::success" \
+                  " should be true, was false.");
+        }
+        if(!reply.second.empty()) {
+            error = true;
+            ERROR("test_restclient: rq_callback_fail: restReply::string " \
+                  "should be empty but was not.");
+        }
+    }
 
+    static void rq_callback_thisisatest(restReply reply) {
+        if (reply.first != true) {
+            error = true;
+            ERROR("test_restclient: rq_callback_thisisatest: restReply::" \
+                  "success should be true, was false.");
+        }
+        if (reply.second != "this is a test") {
+            error = true;
+            ERROR("test_restclient: rq_callback_thisisatest: restReply::" \
+                  "string should be 'this is a test', but was '%s'.",
+                  reply.second);
+        }
+    }
+
+    static void rq_callback_json(restReply reply) {
+        if (reply.first != true) {
+            error = true;
+            ERROR("test_restclient: rq_callback_json: restReply::" \
+                  "success should be true, was false.");
+        }
+        json js = json::parse(reply.second);
+        if (js["test"] != "failed") {
+            error = true;
+            ERROR("test_restclient: rq_callback_json: json value" \
+                  "'test' should be 'failed', but was '%s'.",
+                  js["test"]);
+        }
+    }
+
+    static void rq_callback_pong(restReply reply) {
+        json request;
         request["array"] = {1,2,3};
         request["flag"] = true;
+
+        if (reply.second.empty() != false) {
+            error = true;
+            ERROR("test_restclient: rq_callback_pong: restReply::" \
+                  "string was empty.");
+        }
+        json js = json::parse(reply.second);
+
+        if (js != request) {
+            error = true;
+            ERROR("test_restclient: rq_callback_thisisatest: restReply::" \
+                  "string should be '%s', but was '%s'.",
+                  request.dump().c_str(), js.dump().c_str());
+        }
     }
 
     void callback(connectionInstance& con, json json_request) {
-        INFO("callback received json: %s", json_request.dump().c_str());
+        INFO("test_restclient: json callback received json: %s",
+             json_request.dump().c_str());
         std::vector<uint32_t> array;
         bool flag;
         try {
@@ -36,7 +110,6 @@ struct TestContext {
             INFO("test: Couldn't parse array parameter.");
             con.send_error("Couldn't parse array parameter.",
                             HTTP_RESPONSE::BAD_REQUEST);
-            usleep(500);
             return;
         }
 
@@ -45,7 +118,7 @@ struct TestContext {
     }
 
     void callback_text(connectionInstance& con, json json_request) {
-        INFO("test (text): callback received json: %s",
+        INFO("test_restclient: text callback received json: %s",
              json_request.dump().c_str());
         std::vector<uint32_t> array;
         bool flag;
@@ -58,7 +131,6 @@ struct TestContext {
             INFO("test (text): Couldn't parse array parameter.");
             con.send_error("Couldn't parse array parameter.",
                             HTTP_RESPONSE::BAD_REQUEST);
-            usleep(500);
             return;
         }
 
@@ -77,115 +149,134 @@ struct TestContext {
         con.send_json_reply(json_request);
     }
 
-    void check(json request) {
-        restClient thread_client = restClient();
-        bool ret = thread_client.send("test_restclient", request);
+    void check() {
+        json request;
+        request["array"] = {1,2,3};
+        request["flag"] = true;
+        INFO("Threaded test.");
+
+        std::function<void(restReply)> fun = TestContext::rq_callback_pong;
+        bool ret = restClient::instance().make_request("test_restclient_pong",
+                                                       &fun,
+                                                       request);
         BOOST_CHECK(ret == true);
-
-        restReply<char> reply = thread_client.get_reply<char>();
-
-        if (ret) {
-            BOOST_CHECK(reply.data.empty() == false);
-            json js = json::parse(
-                        std::string(reply.data.begin(), reply.data.end()));
-
-            DEBUG("Comparing %s with %s",
-                  js.dump().c_str(), request.dump().c_str());
-            BOOST_CHECK(js == request);
-        }
     }
 };
 
-BOOST_FIXTURE_TEST_CASE( _send_json, TestContext ) {
+BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     BOOST_CHECKPOINT("Start.");
     __log_level = 4;
     __enable_syslog = 0;
     bool ret;
+    json request;
+    request["array"] = {1,2,3};
+    request["flag"] = true;
 
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
-    BOOST_TEST_CHECKPOINT("Init done.");
+    BOOST_CHECKPOINT("Init done.");
 
-    std::string str_reply;
-    restReply<int> int_reply;
-    restReply<char> reply = TestContext::client.get_reply<char>();
-    BOOST_CHECK(reply.data.empty());
-
-    ret = TestContext::client.send("test_restclient", TestContext::request);
+    std::function<void(restReply)> fun = TestContext::rq_callback;
+    ret = restClient::instance().make_request("test_restclient", &fun,
+                                              request);
     BOOST_CHECK(ret == true);
-    reply = TestContext::client.get_reply<char>();
-    BOOST_CHECK(reply.data.empty());
+    BOOST_CHECKPOINT("Test sending json done.");
+
+
+    /* Test send a bad json */
 
     json bad_request;
-    ret = TestContext::client.send("/test_restclient", bad_request);
-    BOOST_CHECK(ret == false);
-    reply = TestContext::client.get_reply<char>();
-    BOOST_CHECK(reply.data.empty());
+    bad_request["bla"] = 0;
+    std::function<void(restReply)> fun_fail = TestContext::rq_callback_fail;
+    ret = restClient::instance().make_request("test_restclient", &fun_fail,
+                                              bad_request);
+    BOOST_CHECK(ret == true);
+    BOOST_CHECKPOINT("Test sending bad json #1 done.");
 
     bad_request["array"] = 0;
-    ret = TestContext::client.send("/test_restclient", bad_request);
-    BOOST_CHECK(ret == false);
-    reply = TestContext::client.get_reply<char>();
-    BOOST_CHECK(reply.data.empty());
+    ret = restClient::instance().make_request("test_restclient", &fun_fail,
+                                              bad_request);
+    BOOST_CHECK(ret == true);
+    BOOST_CHECKPOINT("Test sending bad json #1 done.");
 
-    ret = TestContext::client.send("/doesntexist", TestContext::request);
-    BOOST_CHECK(ret == false);
-    reply = TestContext::client.get_reply<char>();
-    BOOST_CHECK(reply.data.empty());
 
-    ret = TestContext::client.send("/test_restclient",
-                                        TestContext::request,
-                                        "localhost", 1);
-    BOOST_CHECK(ret == false);
-    reply = TestContext::client.get_reply<char>();
-    BOOST_CHECK(reply.data.empty());
+    /* Test with bad URL */
+
+    ret = restClient::instance().make_request("doesntexist", &fun_fail,
+                                              request);
+    BOOST_CHECK(ret == true);
+    BOOST_CHECKPOINT("Test bad endpoint done.");
+
+
+    ret = restClient::instance().make_request("test_restclient", &fun_fail,
+                                              request, "localhost", 1);
+    usleep(10000);
+    BOOST_CHECK_MESSAGE(error == false,
+                        "Run pytest with -s to see where the error is.");
+}
+
+BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
+    BOOST_CHECKPOINT("Start.");
+    __log_level = 4;
+    __enable_syslog = 0;
+    bool ret;
+    json request, bad_request;
+    request["array"] = {1,2,3};
+    request["flag"] = true;
+    bad_request["array"] = 0;
+
+
+    /* Test receiveing a text reply */
 
     TestContext::init(std::bind(&TestContext::callback_text, this,
                           std::placeholders::_1,
-                          std::placeholders::_2));
+                          std::placeholders::_2),
+                      "/test_restclient_json");
 
-    ret = TestContext::client.send("test_restclient", TestContext::request);
+    std::function<void(restReply)> fun_test = TestContext::rq_callback_thisisatest;
+    ret = restClient::instance().make_request("test_restclient_json", &fun_test,
+                                              request);
     BOOST_CHECK(ret == true);
-    if (ret) {
-        reply = TestContext::client.get_reply<char>();
-        BOOST_CHECK(string("this is a test").compare(
-                        std::string(reply.data.begin(),
-                                    reply.data.end())) == 0);
-        INFO("char reply len: %d", reply.data.length());
-        for (auto c = reply.data.begin(); c != reply.data.end(); c++) {
-            INFO("char reply: %c", *c);
-        }
-        int_reply = TestContext::client.get_reply<int>();
-        INFO("int reply len: %d", int_reply.data.length());
-        for (auto c = int_reply.data.begin(); c != int_reply.data.end(); c++) {
-            INFO("int reply: %d", *c);
-        }
+    BOOST_CHECKPOINT("Test receiving text done.");
 
-        str_reply = TestContext::client.get_reply();
-        BOOST_CHECK(std::string("this is a test") == str_reply);
-    }
+
+    /* Test with json in reply */
 
     bad_request["flag"] = false;
     bad_request["array"] = {4,5,6};
-    ret = TestContext::client.send("test_restclient", bad_request);
-    BOOST_CHECK(ret == true);
-    if (ret) {
-        reply = TestContext::client.get_reply<char>();
-        BOOST_CHECK(reply.data.empty() == false);
-        json js = json::parse(
-                    std::string(reply.data.begin(), reply.data.end()));
-        BOOST_CHECK(js["test"] == "failed");
-    }
 
-    // override callback
+    INFO("sending bad json to callback_test");
+    std::function<void(restReply)> fun_json = TestContext::rq_callback_json;
+    ret = restClient::instance().make_request("test_restclient_json", &fun_json,
+                                              bad_request);
+    usleep(10000);
+    BOOST_CHECK_MESSAGE(error == false,
+                        "Run pytest with -s to see where the error is.");
+}
+
+BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
+    BOOST_CHECKPOINT("Start.");
+    __log_level = 4;
+    __enable_syslog = 0;
+    json request, bad_request;
+    request["array"] = {1,2,3};
+    request["flag"] = true;
+    bad_request["array"] = 0;
+
+
+    /* Test N threads */
+
     TestContext::init(std::bind(&TestContext::pong, this,
                           std::placeholders::_1,
-                          std::placeholders::_2));
-#define N 10
+                          std::placeholders::_2),
+                      "/test_restclient_pong");
+#define N 100
     std::thread t[N];
     for (int i = 0; i < N; i++) {
-        bad_request["array"] = {i, i+1, i+2};
-        check(bad_request);
+        check();
     }
+    usleep(10000);
+    BOOST_CHECK_MESSAGE(error == false,
+                        "Run pytest with -s to see where the error is.");
 }

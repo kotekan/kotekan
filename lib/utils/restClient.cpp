@@ -1,27 +1,101 @@
 #include "restClient.hpp"
 #include "errors.h"
-#include "json.hpp"
-#include <iostream>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <unistd.h>
 #include <evhttp.h>
 #include <event2/event.h>
 #include <event2/http.h>
-#include <event2/bufferevent.h>
 #include <event2/dns.h>
+#include <event2/thread.h>
 
-bool restClient::_success = false;
-size_t restClient::_datalen = 0;
-char* restClient::_data = nullptr;
+
+restClient &restClient::instance() {
+    static restClient client_instance;
+    return client_instance;
+}
+
+restClient::restClient() : _main_thread() {
+
+    _stop_thread = false;
+    _main_thread = std::thread(&restClient::event_thread, this);
+
+#ifndef MAC_OSX
+    pthread_setname_np(_main_thread.native_handle(), "rest_client");
+#endif
+
+    // restClient::instance() was just called the first time.
+    // wait a bit to make sure the event_base is initialized in the
+    // event_thread before someone makes a request.
+    usleep(5000);
+}
+
+restClient::~restClient() {
+    _stop_thread = true;
+    //if (event_base_loopbreak(_base))
+    //    ERROR("restClient: event_base_loopbreak() failed.");
+    _main_thread.join();
+    DEBUG("restClient: event thread stopped.");
+}
+
+void restClient::timer(evutil_socket_t fd, short event, void *arg) {
+    restClient * client = (restClient *)arg;
+    if (client->_stop_thread) {
+        event_base_loopbreak(client->_base);
+    }
+}
+
+void restClient::event_thread() {
+    INFO("restClient: libevent version: %s", event_get_version());
+
+    if (evthread_use_pthreads()) {
+        ERROR("restClient: Cannot use pthreads with libevent!");
+        raise(SIGINT);
+    }
+
+    // event base and dns base
+    _base = event_base_new();
+    if (!_base) {
+        ERROR("restClient: Failure creating new event_base.");
+        raise(SIGINT);
+    }
+
+    // DNS resolution is blocking (if not numeric host is passed)
+    _dns = evdns_base_new(_base, 1);
+    if (_dns == nullptr) {
+        ERROR("restClient: evdns_base_new() failed.");
+        raise(SIGINT);
+    }
+
+    // Create a timer to check for the exit condition
+    struct event *timer_event;
+    timer_event = event_new(_base, -1, EV_PERSIST, timer, this);
+    struct timeval interval;
+    interval.tv_sec = 0;
+    interval.tv_usec = 500000;
+    event_add(timer_event, &interval);
+
+    // run event loop
+    DEBUG("restClient: starting event loop");
+    while (!_stop_thread) {
+        if(event_base_dispatch(_base) < 0) {
+            ERROR("restClient::event_thread(): Failure in the event loop.");
+            raise(SIGINT);
+        }
+    }
+    DEBUG("restClient: exiting event loop");
+
+    // Cleanup
+    event_free(timer_event);
+    evdns_base_free(_dns, 1);
+    event_base_free(_base);
+}
 
 void restClient::http_request_done(struct evhttp_request *req, void *arg){
+    struct evhttp_connection* evcon = evhttp_request_get_connection(req);
 
-    _success = false;
-    _datalen = 0;
-    _data = nullptr;
+    // this is where we store the reply
+    std::string str_data = "";
+    std::function<void(restReply)>* ext_cb =
+            (std::function<void(restReply)>*)arg;
 
     if (req == nullptr) {
         int errcode = EVUTIL_SOCKET_ERROR();
@@ -30,59 +104,79 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
         std::string str = evutil_socket_error_to_string(errcode);
         WARN("restClient: socket error = %s (%d)",
              str.c_str(), errcode);
+        (*ext_cb)(restReply(false, str_data));
+        if (evcon != nullptr)
+            evhttp_connection_free(evcon);
         return;
     }
 
     int response_code = evhttp_request_get_response_code(req);
 
-    if (response_code == 200)
-        _success = true;
-    else {
+    if (response_code != 200) {
         INFO("restClient: Received response code %d", response_code);
+        (*ext_cb)(restReply(false, str_data));
+        if (evcon != nullptr)
+            evhttp_connection_free(evcon);
+        return;
     }
 
     // get input buffer
     evbuffer* input_buffer = evhttp_request_get_input_buffer(req);
-    _datalen = evbuffer_get_length(input_buffer);
-
-    // reserve memory
-    _data = new char[_datalen];
-    if (_data == nullptr) {
-        WARN("restClient: Failure reserving memory for received data.");
-        _success = false;
-        _datalen = 0;
+    size_t datalen = evbuffer_get_length(input_buffer);
+    if (datalen == 0) {
+        (*ext_cb)(restReply(true, str_data));
+        if (evcon != nullptr)
+            evhttp_connection_free(evcon);
         return;
     }
 
-    // copy data out of the input buffer
-    if (evbuffer_remove(input_buffer, _data, _datalen) == -1) {
-        WARN("restClient: Unable to drain input buffer.");
-        _success = false;
-        _datalen = 0;
-        _data = nullptr;
+    // peek into the input buffer
+    // (treating it as char's and putting it into a string)
+    struct evbuffer_iovec* vec_out;
+    size_t written = 0;
+    // determine how many chunks we need.
+    int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
+    if (n_vec < 0) {
+        WARN("restClient: Failure in evbuffer_peek()");
+        (*ext_cb)(restReply(false, str_data));
+        if (evcon != nullptr)
+            evhttp_connection_free(evcon);
+        return;
     }
+
+    // Allocate space for the chunks.
+    vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
+
+    n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
+    for (int i = 0; i < n_vec; i++) {
+        size_t len = vec_out[i].iov_len;
+        if (written + len > datalen)
+            len = datalen - written;
+        str_data.append((char*)vec_out[i].iov_base, len);
+        written += len;
+    }
+    free(vec_out);
+
+    // call the external callback for this request and remove it afterwards
+    (*ext_cb)(restReply(true, str_data));
+
+    if (evcon != nullptr)
+        evhttp_connection_free(evcon);
 }
 
-bool restClient::send(std::string path,
-                      const nlohmann::json& data,
-                      const std::string& host,
-                      const unsigned short port,
-                      const int retries,
-                      const int timeout) {
-    struct event_base* base;
+bool restClient::make_request(std::string path,
+                              std::function<void(restReply)>* request_done_cb,
+                              const nlohmann::json& data,
+                              const std::string& host,
+                              const unsigned short port,
+                              const int retries,
+                              const int timeout) {
     struct evhttp_connection* evcon = nullptr;
     struct evhttp_request* req;
-    struct evdns_base* dns;
     struct evkeyvalq *output_headers;
     struct evbuffer *output_buffer;
 
-    size_t datalen = data.dump().length() + 1;
-    char json_string[datalen];
-
     int ret;
-
-    _data = nullptr;
-    _datalen = 0;
 
     // Fix path in case it is nothing or missing '/' in the beginning
     if (path.length() == 0) {
@@ -90,19 +184,7 @@ bool restClient::send(std::string path,
     } else if (path.at(0) != '/')
         path = "/" + path;
 
-    base = event_base_new();
-    if (!base) {
-        WARN("restClient: Failure creating new event_base.");
-        return false;
-    }
-
-    // DNS resolution is blocking (if not numeric host is passed)
-    dns = evdns_base_new(base, 1);
-    if (dns == nullptr) {
-        WARN("restClient: evdns_base_new() failed.");
-        return false;
-    }
-    evcon = evhttp_connection_base_new(base, dns, host.c_str(), port);
+    evcon = evhttp_connection_base_new(_base, _dns, host.c_str(), port);
     if (evcon == nullptr) {
         WARN("restClient: evhttp_connection_base_new() failed.");
         return false;
@@ -115,8 +197,13 @@ bool restClient::send(std::string path,
         evhttp_connection_set_timeout(evcon, timeout);
     }
 
-    // Fire off the request
-    req = evhttp_request_new(http_request_done, base);
+    // Fire off the request and pass the external callback to the internal one.
+    // check if external callback function is callable
+    if(!(*request_done_cb)) {
+        ERROR("restClient: external callback function is not callable.");
+        return false;
+    }
+    req = evhttp_request_new(http_request_done, request_done_cb);
     if (req == nullptr) {
         WARN("restClient: evhttp_request_new() failed.");
         return false;
@@ -140,12 +227,13 @@ bool restClient::send(std::string path,
     }
 
     if (!data.empty()) {
+        size_t datalen = data.dump().length();
         char buf[256];
-        strcpy(json_string, data.dump().c_str());
 
         output_buffer = evhttp_request_get_output_buffer(req);
-        ret = evbuffer_add_reference(output_buffer, json_string, datalen,
-                                     nullptr, nullptr);
+
+        // copy data into the buffer
+        ret = evbuffer_add(output_buffer, data.dump().c_str(), datalen);
         if (ret) {
             WARN("restClient: Failure adding JSON data to event buffer.");
             return false;
@@ -161,37 +249,12 @@ bool restClient::send(std::string path,
 
         ret = evhttp_make_request(evcon, req, EVHTTP_REQ_POST, path.c_str());
     } else {
+        DEBUG("restClient: sending GET request.");
         ret = evhttp_make_request(evcon, req, EVHTTP_REQ_GET, path.c_str());
     }
     if (ret) {
         WARN("restClient: evhttp_make_request() failed.");
         return false;
     }
-
-    // Cleanup
-    evdns_base_free(dns, 1);
-    ret = event_base_dispatch(base);
-    if (ret < 0) {
-        WARN("restClient::send: Failure sending message %s to %s:%d%s.",
-             json_string, host.c_str(), port, path.c_str());
-        return false;
-    }
-
-    evhttp_connection_free(evcon);
-    event_base_free(base);
-
-    return _success;
-}
-
-
-std::string restClient::get_reply() {
-    if (_success == false) {
-        std::string reply(nullptr, 0);
-
-        return reply;
-    }
-
-    std::string reply(_data, _datalen);
-
-    return reply;
+    return true;
 }
