@@ -110,7 +110,7 @@ void corr ( __global const uint *packed,
             x_buf[dest_x][k]=x_im[k];
             //process 8 timesteps before reloading
             for (int i=0; i<COARSE_BLOCK_SIZE; i++){
-                uint xv = xp[];
+                uint xv = xp[addr_x];
                 x_re[0] = ((xv & 0x0000000f) >>  0u);
                 x_im[0] = ((xv & 0x000000f0) >>  4u);
                 x_re[1] = ((xv & 0x00000f00) >>  8u);
@@ -119,7 +119,7 @@ void corr ( __global const uint *packed,
                 x_im[2] = ((xv & 0x00f00000) >> 20u);
                 x_re[3] = ((xv & 0x0f000000) >> 24u);
                 x_im[3] = ((xv & 0xf0000000) >> 28u);
-                uint yv = yp[];
+                uint yv = yp[addr_y];
                 y_ir[0] = ((yv & 0x000000f0) << 12u) +  ((yv & 0x0000000f) >>  0u);
                 y_ir[1] = ((yv & 0x0000f000) <<  4u) +  ((yv & 0x00000f00) >>  8u);
                 y_ir[2] = ((yv & 0x00f00000) >>  4u) +  ((yv & 0x000f0000) >> 16u);

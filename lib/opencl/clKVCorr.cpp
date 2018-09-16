@@ -17,10 +17,21 @@ clKVCorr::clKVCorr(Config& config, const string &unique_name,
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
     _num_blocks = config.get_int(unique_name,"num_blocks");
     _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
+    _data_format = config.get_string_default(unique_name,"data_format","4+4b");
 
-    if (small_array)
+
+    if (_data_format == "4+4b"){
+        if (small_array)
+            kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
+                               config.get_string_default(unique_name,"kernel","kv_corr_sm.cl");
+    }
+    else if (_data_format == "dot4b"){
         kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
-                           config.get_string_default(unique_name,"kernel","kv_corr_sm.cl");
+                           config.get_string_default(unique_name,"kernel","kv_corr_dot4b.cl");
+    }
+    else{
+        throw std::invalid_argument("Unknown Data Format: "+_data_format);
+    }
 
     defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
 
@@ -47,32 +58,51 @@ void clKVCorr::build()
 
     cl_int err;
 
-    int accum_length;
-    // Correlation kernel global and local work space sizes.
-    if (small_array) {
-        accum_length = 256;
-        int num_accum = _samples_per_data_set / accum_length;
-        gws[0] = _num_elements/4 * _num_local_freq;
-        gws[1] = _num_elements/4 * num_accum;
-        gws[2] = _num_blocks;
-        lws[0] = _num_elements/4;
-        lws[1] = _num_elements/4;
-        lws[2] = 1;
-    } else {
-        accum_length = _samples_per_data_set;
+    string cl_options = "";
+
+    if (_data_format == "4+4b"){
+        int accum_length;
+        // Correlation kernel global and local work space sizes.
+        if (small_array) {
+            accum_length = 256;
+            int num_accum = _samples_per_data_set / accum_length;
+            gws[0] = _num_elements/4 * _num_local_freq;
+            gws[1] = _num_elements/4 * num_accum;
+            gws[2] = _num_blocks;
+            lws[0] = _num_elements/4;
+            lws[1] = _num_elements/4;
+            lws[2] = 1;
+        } else {
+            accum_length = _samples_per_data_set;
+            gws[0] = 8*_num_local_freq;
+            gws[1] = 8;
+            gws[2] = _num_blocks;
+            lws[0] = 8;
+            lws[1] = 8;
+            lws[2] = 1;
+        }
+        cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
+        cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
+        cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(accum_length);
+        cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / 4);
+    }
+    else if (_data_format == "dot4b"){
         gws[0] = 8*_num_local_freq;
         gws[1] = 8;
         gws[2] = _num_blocks;
         lws[0] = 8;
         lws[1] = 8;
         lws[2] = 1;
+        int _wi_size = 2;
+        cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
+        cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
+        cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(_samples_per_data_set);
+        cl_options += " -D WI_SIZE=" + std::to_string(_wi_size);
+        cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / _wi_size);
     }
-
-    string cl_options = "";
-    cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
-    cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
-    cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(accum_length);
-    cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / 4);
+    else{
+        throw std::invalid_argument("Unknown Data Format: "+_data_format);
+    }
 
     cl_device_id dev_id = device.get_id();
 

@@ -18,7 +18,7 @@ freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_total_freq: 4
 block_size: 32
-samples_per_data_set: 16384
+samples_per_data_set: 8 #16384
 num_beams: 1
 num_data_sets: 1
 num_gpus: 1
@@ -32,9 +32,9 @@ two: 2
 #vdif_fs_2: 16
 #vdif_fs_3: 5032
 #link_map: [0,0,1,1,1,2,2,2]
-num_elements: 256
+num_elements: 32 #256
 num_local_freq: 1
-num_blocks: 36 #2080
+num_blocks: 1 #36 #2080
 sizeof_int: 4
 
 # Pool
@@ -119,7 +119,7 @@ gpu:
   - name: clInputData
   - name: clPresumZero
   - name: clOutputDataZero
-  - name: clPresumKernel
+#  - name: clPresumKernel
 #  - name: clPreseedKernel
 #  - name: clCorrelatorKernel
   - name: clKVCorr

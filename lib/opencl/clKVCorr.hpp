@@ -36,6 +36,8 @@ private:
     /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
     int32_t _block_size;
 
+    string _data_format;
+
 };
 
 #endif //CL_CORRELATOR_KERNEL
