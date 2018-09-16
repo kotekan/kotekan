@@ -68,9 +68,9 @@ void corr ( __global const uint *packed,
 
         //accumulate 256 samples before unpacking
         for (int j=0; j<256; j+=COARSE_BLOCK_SIZE){
+#if __has_builtin(__builtin_amdgcn_ds_bpermute) //use AMD intrinsics
             //load up 4 inputs from each side of the 4x4 block
             uint xv = packed[((j+t)*NUM_FREQS + FREQ_ID) * NUM_ELEMENTS/4 + addr_x];
-            //uint xv = a_input(j+t,input_x);
             x_re[0] = ((xv & 0x0000000f) >>  0u);
             x_im[0] = ((xv & 0x000000f0) >>  4u);
             x_re[1] = ((xv & 0x00000f00) >>  8u);
@@ -80,7 +80,6 @@ void corr ( __global const uint *packed,
             x_re[3] = ((xv & 0x0f000000) >> 24u);
             x_im[3] = ((xv & 0xf0000000) >> 28u);
             uint yv = packed[((j+t)*NUM_FREQS + FREQ_ID) * NUM_ELEMENTS/4 + addr_y];
-            //uint yv = a_input(j+t,input_y);
             y_ir[0] = ((yv & 0x000000f0) << 12u) +  ((yv & 0x0000000f) >>  0u);
             y_ir[1] = ((yv & 0x0000f000) <<  4u) +  ((yv & 0x00000f00) >>  8u);
             y_ir[2] = ((yv & 0x00f00000) >>  4u) +  ((yv & 0x000f0000) >> 16u);
@@ -95,22 +94,44 @@ void corr ( __global const uint *packed,
                     corr_0i_ir[y][x] = mad24(x_im[x],y_ir[y],corr_0i_ir[y][x]);
                 }
                 //rotate data to the neighbour work items
-#if __has_builtin(__builtin_amdgcn_ds_bpermute) //use AMD instrinsics
                 #pragma unroll
                 for (int k=0; k<4; k++){
                     x_re[k] = __builtin_amdgcn_ds_bpermute(dest_x*4,x_re[k]);
                     x_im[k] = __builtin_amdgcn_ds_bpermute(dest_x*4,x_im[k]);
                     y_ir[k] = __builtin_amdgcn_ds_bpermute(dest_y*4,y_ir[k]);
                 }
+            }
 #else //brute force via local share
-                local uint x_re_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][4];
-                local uint x_im_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][4];
-                local uint y_ir_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][4];
+            local uint xp[COARSE_BLOCK_SIZE];
+            local uint yp[COARSE_BLOCK_SIZE];
+            //load up 4 inputs from each side of the 4x4 block
+            xp[addr_x] = packed[ ((j+t)*NUM_FREQS + FREQ_ID) * NUM_ELEMENTS/4 + addr_x ];
+            yp[addr_y] = packed[ ((j+t)*NUM_FREQS + FREQ_ID) * NUM_ELEMENTS/4 + addr_y ];
+            x_buf[dest_x][k]=x_im[k];
+            //process 8 timesteps before reloading
+            for (int i=0; i<COARSE_BLOCK_SIZE; i++){
+                uint xv = xp[];
+                x_re[0] = ((xv & 0x0000000f) >>  0u);
+                x_im[0] = ((xv & 0x000000f0) >>  4u);
+                x_re[1] = ((xv & 0x00000f00) >>  8u);
+                x_im[1] = ((xv & 0x0000f000) >> 12u);
+                x_re[2] = ((xv & 0x000f0000) >> 16u);
+                x_im[2] = ((xv & 0x00f00000) >> 20u);
+                x_re[3] = ((xv & 0x0f000000) >> 24u);
+                x_im[3] = ((xv & 0xf0000000) >> 28u);
+                uint yv = yp[];
+                y_ir[0] = ((yv & 0x000000f0) << 12u) +  ((yv & 0x0000000f) >>  0u);
+                y_ir[1] = ((yv & 0x0000f000) <<  4u) +  ((yv & 0x00000f00) >>  8u);
+                y_ir[2] = ((yv & 0x00f00000) >>  4u) +  ((yv & 0x000f0000) >> 16u);
+                y_ir[3] = ((yv & 0xf0000000) >> 12u) +  ((yv & 0x0f000000) >> 24u);
+                //16x umad24, all rolled up
+                #pragma unroll
+                for (int y=0; y<4; y++) for (int x=0; x<4; x++) {
+                    corr_0r_ir[y][x] = mad24(x_re[x],y_ir[y],corr_0r_ir[y][x]);
+                    corr_0i_ir[y][x] = mad24(x_im[x],y_ir[y],corr_0i_ir[y][x]);
+                }
                 barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
                 for (int k=0; k<4; k++) {
-                    x_re_buf[dest_x][k]=x_re[k];
-                    x_im_buf[dest_x][k]=x_im[k];
-                    y_ir_buf[dest_y][k]=y_ir[k];
                 }
                 barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
                 for (int k=0; k<4; k++) {
@@ -118,16 +139,17 @@ void corr ( __global const uint *packed,
                     x_im[k]=x_im_buf[yl*COARSE_BLOCK_SIZE+xl][k];
                     y_ir[k]=y_ir_buf[yl*COARSE_BLOCK_SIZE+xl][k];
                 }
-#endif //use AMD shuffle intrinsics
             }
+#endif //use AMD shuffle intrinsics
         }
         global int *out=(corr_buf + ((FREQ_ID*NUM_BLOCKS + BLOCK_ID)*BLOCK_SIZE*BLOCK_SIZE + yl*BLOCK_SIZE*4 + xl*4)*2);
+        out+=y_ir[0];
         #pragma unroll
         for (int y=0; y<4; y++){
             #pragma unroll
             for (int x=0; x<4; x++) {
-                atomic_add(out++,(corr_0r_ir[y][x]>>16)-(corr_0i_ir[y][x]&0xffff));
-                atomic_add(out++,(corr_0r_ir[y][x]&0xffff)+(corr_0i_ir[y][x]>>16));
+                atomic_add(out++ -y_ir[0],(corr_0r_ir[y][x]>>16)-(corr_0i_ir[y][x]&0xffff));
+                atomic_add(out++ -y_ir[0],(corr_0r_ir[y][x]&0xffff)+(corr_0i_ir[y][x]>>16));
             }
             out+=(BLOCK_SIZE-4)*2; //(32-4)*2;
         }

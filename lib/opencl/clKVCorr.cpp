@@ -18,7 +18,7 @@ clKVCorr::clKVCorr(Config& config, const string &unique_name,
     _num_blocks = config.get_int(unique_name,"num_blocks");
     _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
 
-    if (small_array) 
+    if (small_array)
         kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
                            config.get_string_default(unique_name,"kernel","kv_corr_sm.cl");
 
@@ -47,10 +47,31 @@ void clKVCorr::build()
 
     cl_int err;
 
+    int accum_length;
+    // Correlation kernel global and local work space sizes.
+    if (small_array) {
+        accum_length = 256;
+        int num_accum = _samples_per_data_set / accum_length;
+        gws[0] = _num_elements/4 * _num_local_freq;
+        gws[1] = _num_elements/4 * num_accum;
+        gws[2] = _num_blocks;
+        lws[0] = _num_elements/4;
+        lws[1] = _num_elements/4;
+        lws[2] = 1;
+    } else {
+        accum_length = _samples_per_data_set;
+        gws[0] = 8*_num_local_freq;
+        gws[1] = 8;
+        gws[2] = _num_blocks;
+        lws[0] = 8;
+        lws[1] = 8;
+        lws[2] = 1;
+    }
+
     string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
-    cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(_samples_per_data_set);
+    cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(accum_length);
     cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / 4);
 
     cl_device_id dev_id = device.get_id();
@@ -80,22 +101,6 @@ void clKVCorr::build()
 
     zeros=(cl_int *)calloc(_num_blocks*_num_local_freq,sizeof(cl_int)); //for the output buffers
 
-    // Correlation kernel global and local work space sizes.
-    if (small_array) {
-        gws[0] = _num_elements/4 * _num_local_freq;
-        gws[1] = _num_elements/4;
-        gws[2] = _num_blocks;
-        lws[0] = _num_elements/4;
-        lws[1] = _num_elements/4;
-        lws[2] = 1;
-    } else {
-        gws[0] = 8*_num_local_freq;
-        gws[1] = 8;
-        gws[2] = _num_blocks;
-        lws[0] = 8;
-        lws[1] = 8;
-        lws[2] = 1;
-    }
 }
 
 cl_event clKVCorr::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)

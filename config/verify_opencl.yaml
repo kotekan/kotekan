@@ -16,9 +16,9 @@ log_level: info
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
-num_total_freq: 4
+#num_total_freq: 16
 block_size: 4
-samples_per_data_set: 49152 #32768
+samples_per_data_set: 16384 #32768
 num_beams: 1
 num_data_sets: 1
 num_gpus: 1
