@@ -31,11 +31,11 @@ void corr ( __global const uint *packed,
             __global const uint *id_y_map)
 {
     //figure out where to load data om
-    uint addr_x = id_x_map[zg]*8 + xl;
-    uint addr_y = id_y_map[zg]*8 + yl;
+    uint addr_x = id_x_map[BLOCK_ID]*8 + xl;
+    uint addr_y = id_y_map[BLOCK_ID]*8 + yl;
 
     //pre-seed
-    if (ygr == 2)
+    if (ygr == 0)
         for (int y=0; y<4; y++) for (int x=0; x<4; x++){
             corr_buf[ ((zg*1024 + (yl*4+y)*32 + xl*4+x)*2)+0 ] =
                                              8*(presum[(addr_x*4+x)*2+0] - presum[(addr_y*4+y)*2+0] -
@@ -117,7 +117,7 @@ void corr ( __global const uint *packed,
 #endif //use AMD shuffle intrinsics
             }
         }
-        global int *out=(corr_buf + ((FREQ_ID*NUM_BLOCKS + zg)*BLOCK_SIZE*BLOCK_SIZE + yl*BLOCK_SIZE*4 + xl*4)*2);
+        global int *out=(corr_buf + ((FREQ_ID*NUM_BLOCKS + BLOCK_ID)*BLOCK_SIZE*BLOCK_SIZE + yl*BLOCK_SIZE*4 + xl*4)*2);
         #pragma unroll
         for (int y=0; y<4; y++){
             #pragma unroll

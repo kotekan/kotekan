@@ -35,7 +35,7 @@ private:
     int32_t _num_blocks;
     /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for GPU work items.
     int32_t _block_size;
-
+    /// Allow different options for the input data ordering. Current just 4+4b vs dot4b.
     string _data_format;
 
 };
