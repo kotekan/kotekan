@@ -113,6 +113,7 @@ void corr ( __global const uint *input,
                 yi[k] = __builtin_amdgcn_ds_bpermute(dest_y*4,yi[k]);
             }
 #else //brute force via local share
+//#error "Requires AMD extensions!"
             local uint xr_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];
             local uint xi_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];
             local uint yr_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];

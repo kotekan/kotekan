@@ -87,13 +87,13 @@ void clKVCorr::build()
         cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / 4);
     }
     else if (_data_format == "dot4b"){
-        gws[0] = 8*_num_local_freq;
-        gws[1] = 8;
-        gws[2] = _num_blocks;
-        lws[0] = 8;
-        lws[1] = 8;
-        lws[2] = 1;
         int _wi_size = 2;
+        gws[0] = _block_size / _wi_size*_num_local_freq;
+        gws[1] = _block_size / _wi_size;
+        gws[2] = _num_blocks;
+        lws[0] = _block_size / _wi_size;
+        lws[1] = _block_size / _wi_size;
+        lws[2] = 1;
         cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
         cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
         cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(_samples_per_data_set);
