@@ -157,7 +157,7 @@ struct TestContext {
 
         std::function<void(restReply)> fun = TestContext::rq_callback_pong;
         bool ret = restClient::instance().make_request("test_restclient_pong",
-                                                       &fun,
+                                                       fun,
                                                        request);
         BOOST_CHECK(ret == true);
     }
@@ -178,7 +178,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     BOOST_CHECKPOINT("Init done.");
 
     std::function<void(restReply)> fun = TestContext::rq_callback;
-    ret = restClient::instance().make_request("test_restclient", &fun,
+    ret = restClient::instance().make_request("test_restclient", fun,
                                               request);
     BOOST_CHECK(ret == true);
     BOOST_CHECKPOINT("Test sending json done.");
@@ -189,13 +189,13 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     json bad_request;
     bad_request["bla"] = 0;
     std::function<void(restReply)> fun_fail = TestContext::rq_callback_fail;
-    ret = restClient::instance().make_request("test_restclient", &fun_fail,
+    ret = restClient::instance().make_request("test_restclient", fun_fail,
                                               bad_request);
     BOOST_CHECK(ret == true);
     BOOST_CHECKPOINT("Test sending bad json #1 done.");
 
     bad_request["array"] = 0;
-    ret = restClient::instance().make_request("test_restclient", &fun_fail,
+    ret = restClient::instance().make_request("test_restclient", fun_fail,
                                               bad_request);
     BOOST_CHECK(ret == true);
     BOOST_CHECKPOINT("Test sending bad json #1 done.");
@@ -203,13 +203,13 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
 
     /* Test with bad URL */
 
-    ret = restClient::instance().make_request("doesntexist", &fun_fail,
+    ret = restClient::instance().make_request("doesntexist", fun_fail,
                                               request);
     BOOST_CHECK(ret == true);
     BOOST_CHECKPOINT("Test bad endpoint done.");
 
 
-    ret = restClient::instance().make_request("test_restclient", &fun_fail,
+    ret = restClient::instance().make_request("test_restclient", fun_fail,
                                               request, "localhost", 1);
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
@@ -235,7 +235,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
                       "/test_restclient_json");
 
     std::function<void(restReply)> fun_test = TestContext::rq_callback_thisisatest;
-    ret = restClient::instance().make_request("test_restclient_json", &fun_test,
+    ret = restClient::instance().make_request("test_restclient_json", fun_test,
                                               request);
     BOOST_CHECK(ret == true);
     BOOST_CHECKPOINT("Test receiving text done.");
@@ -248,7 +248,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
 
     INFO("sending bad json to callback_test");
     std::function<void(restReply)> fun_json = TestContext::rq_callback_json;
-    ret = restClient::instance().make_request("test_restclient_json", &fun_json,
+    ret = restClient::instance().make_request("test_restclient_json", fun_json,
                                               bad_request);
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,

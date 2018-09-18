@@ -51,7 +51,7 @@ public:
      * @return          `true` if successfull, otherwise `false`.
      */
     bool make_request(std::string path,
-                      std::function<void(const restReply)>* request_done_cb,
+                      std::function<void(const restReply)> request_done_cb,
                       const nlohmann::json& data = {},
                       const std::string& host = "localhost",
                       const unsigned short port = PORT_REST_SERVER,

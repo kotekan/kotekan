@@ -165,7 +165,8 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
 }
 
 bool restClient::make_request(std::string path,
-                              std::function<void(restReply)>* request_done_cb,
+                              std::function<void(const restReply)>
+                                request_done_cb,
                               const nlohmann::json& data,
                               const std::string& host,
                               const unsigned short port,
@@ -199,11 +200,11 @@ bool restClient::make_request(std::string path,
 
     // Fire off the request and pass the external callback to the internal one.
     // check if external callback function is callable
-    if(!(*request_done_cb)) {
+    if(!request_done_cb) {
         ERROR("restClient: external callback function is not callable.");
         return false;
     }
-    req = evhttp_request_new(http_request_done, request_done_cb);
+    req = evhttp_request_new(http_request_done, &request_done_cb);
     if (req == nullptr) {
         WARN("restClient: evhttp_request_new() failed.");
         return false;
