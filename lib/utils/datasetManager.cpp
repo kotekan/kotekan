@@ -102,8 +102,12 @@ state_id datasetManager::hash_state(datasetState& state) {
 std::string datasetManager::summary() const {
     int id = 0;
     std::string out;
-    std::lock_guard<std::mutex> slock(_lock_states);
-    std::lock_guard<std::mutex> dslock(_lock_dsets);
+
+    // lock both of them using std::lock to prevent a deadlock
+    std::lock(_lock_states, _lock_dsets);
+    std::lock_guard<std::mutex> slock(_lock_states, std::adopt_lock);
+    std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
+
     for(auto t : _datasets) {
         datasetState* dt = _states.at(t.first).get();
 
@@ -136,8 +140,9 @@ datasetManager::ancestors(dset_id dset) const {
 
     std::vector<std::pair<dset_id, datasetState *>> a_list;
 
-    std::lock_guard<std::mutex> slock(_lock_states);
-    std::lock_guard<std::mutex> dslock(_lock_dsets);
+    std::lock(_lock_states, _lock_dsets);
+    std::lock_guard<std::mutex> slock(_lock_states, std::adopt_lock);
+    std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
 
     // Walk up from the current node to the root, extracting pointers to the
     // states performed
