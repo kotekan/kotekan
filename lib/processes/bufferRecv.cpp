@@ -176,7 +176,7 @@ void bufferRecv::main_thread() {
 
     base = event_base_new();
     if (!base) {
-        ERROR("Failed to crate libevent base");
+        ERROR("Failed to create libevent base");
         raise(SIGINT);
         return;
     }
