@@ -337,7 +337,7 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             vdif_header->thread_id = elem;
 
             // Current time in nano seconds relative to epoch
-            uint64_t cur_time = seq * FPGA_PERIOD_NS + vdif_base_time;
+            uint64_t cur_time = (seq + time_step) * FPGA_PERIOD_NS + vdif_base_time;
             vdif_header->seconds = (cur_time) / 1000000000;
             vdif_header->data_frame = (cur_time % 1000000000) / FPGA_PERIOD_NS;
 
