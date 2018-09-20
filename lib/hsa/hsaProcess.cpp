@@ -4,6 +4,7 @@
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
 #include "util.h"
+#include "configEval.hpp"
 
 #include <iostream>
 #include <sys/time.h>
@@ -37,12 +38,14 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
     }
 
-    log_profiling = config.get_bool_default(unique_name, "log_profiling", false);
+    log_profiling = config.get_default<bool>(
+                unique_name, "log_profiling", false);
 
     device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
 
-    string g_log_level = config.get_string(unique_name, "log_level");
-    string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
+    string g_log_level = config.get<std::string>(unique_name, "log_level");
+    string s_log_level = config.get_default<std::string>(
+                unique_name, "device_interface_log_level", g_log_level);
     device->set_log_level(s_log_level);
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
@@ -53,10 +56,11 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
 
 void hsaProcess::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
-    gpu_id = config.get_int(unique_name, "gpu_id");
+    _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
+    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
 
-    frame_arrival_period = config.get_double_eval(unique_name, "frame_arrival_period");
+    frame_arrival_period = configEval<double>(
+                config, unique_name, "frame_arrival_period").compute_result();
 }
 
 hsaProcess::~hsaProcess() {

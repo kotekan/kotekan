@@ -20,19 +20,21 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    freq = config.get_int(unique_name, "freq");
-    cadence = config.get_float_default(unique_name, "cadence", 5.0);
+    freq = config.get<int>(unique_name, "freq");
+    cadence = config.get_default<float>(unique_name, "cadence", 5.0);
 
-    pre_accumulate = config.get_bool_default(unique_name, "pre_accumulate", true);
+    pre_accumulate = config.get_default<bool>(unique_name, "pre_accumulate",
+                                              true);
 
     if(pre_accumulate) {
-        samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+        samples_per_data_set = config.get<int32_t>(unique_name,
+                                                   "samples_per_data_set");
     }
-    block_size = config.get_int(unique_name, "block_size");
-    num_elements = config.get_int(unique_name, "num_elements");
-    num_frames = config.get_int_default(unique_name, "num_frames", -1);
+    block_size = config.get<int32_t>(unique_name, "block_size");
+    num_elements = config.get<int32_t>(unique_name, "num_elements");
+    num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
 
-    wait = config.get_bool_default(unique_name, "wait", true);
+    wait = config.get_default<bool>(unique_name, "wait", true);
 
     // Fill out the map with the fill modes
     fill_map["block"] = &fakeGpuBuffer::fill_mode_block;
@@ -41,7 +43,7 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     fill_map["gaussian"] = &fakeGpuBuffer::fill_mode_gaussian;
 
     // Fetch the correct fill function
-    std::string mode = config.get_string(unique_name, "mode");
+    std::string mode = config.get<std::string>(unique_name, "mode");
     fill = fill_map[mode];
 }
 

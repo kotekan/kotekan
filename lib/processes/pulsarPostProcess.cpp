@@ -96,14 +96,18 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
 }
 
 void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
-    _num_gpus = config.get_int(unique_name, "num_gpus");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _num_pol = config.get_int(unique_name, "num_pol");
-    _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
-    _udp_pulsar_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
-    _num_packet_per_stream = config.get_int(unique_name, "num_packet_per_stream");
-    _num_stream = config.get_int(unique_name, "num_stream");
+    _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
+    _samples_per_data_set = config.get<uint32_t>(unique_name,
+                                                 "samples_per_data_set");
+    _num_pulsar = config.get<uint32_t>(unique_name, "num_pulsar");
+    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
+    _timesamples_per_pulsar_packet = config.get<uint32_t>(
+                unique_name, "timesamples_per_pulsar_packet");
+    _udp_pulsar_packet_size = config.get<uint32_t>(unique_name,
+                                                   "udp_pulsar_packet_size");
+    _num_packet_per_stream = config.get<uint32_t>(unique_name,
+                                                  "num_packet_per_stream");
+    _num_stream = config.get<uint32_t>(unique_name, "num_stream");
 }
 
 void pulsarPostProcess::main_thread() {

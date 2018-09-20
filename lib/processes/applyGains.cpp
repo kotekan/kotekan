@@ -50,20 +50,22 @@ applyGains::applyGains(Config& config,
 void applyGains::apply_config(uint64_t fpga_seq) {
 
     // Number of gain versions kept. Default is 5.
-    num_kept_updates = config.get_uint64_default(unique_name, "num_kept_updates", 5);
+    num_kept_updates = config.get_default<uint64_t>(
+                unique_name, "num_kept_updates", 5);
     if (num_kept_updates < 1)
         throw std::invalid_argument("applyGains: config: num_kept_updates has" \
                                     "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
     // Time to blend old and new gains in seconds. Default is 5 minutes.
-    tcombine = config.get_float_default(unique_name, "combine_gains_time", 5*60);
+    tcombine = config.get_default<float>(
+                unique_name, "combine_gains_time", 5*60);
     if (tcombine < 0)
         throw std::invalid_argument("applyGains: config: combine_gains_time has" \
                                     "to be positive (is "
                                     + std::to_string(tcombine) + ").");
 
     // Get the path to gains directory
-    gains_dir = config.get_string(unique_name, "gains_dir");
+    gains_dir = config.get<std::string>(unique_name, "gains_dir");
 
 }
 

@@ -18,12 +18,13 @@ rawFileRead::rawFileRead(Config& config, const string& unique_name,
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
-    base_dir = config.get_string(unique_name, "base_dir");
-    file_name = config.get_string(unique_name, "file_name");
-    file_ext = config.get_string(unique_name, "file_ext");
+    base_dir = config.get<std::string>(unique_name, "base_dir");
+    file_name = config.get<std::string>(unique_name, "file_name");
+    file_ext = config.get<std::string>(unique_name, "file_ext");
 
     // Interrupt Kotekan if run out of files to read.
-    end_interrupt = config.get_bool_default(unique_name, "end_interrupt", false);
+    end_interrupt = config.get_default<bool>(unique_name, "end_interrupt",
+                                             false);
 
 }
 

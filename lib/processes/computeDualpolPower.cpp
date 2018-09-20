@@ -51,11 +51,11 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
     buf_out = get_buffer("power_out_buf");
     register_producer(buf_out, unique_name.c_str());
 
-    timesteps_in = config.get_int(unique_name, "samples_per_data_set");
-    integration_length = config.get_int(unique_name, "power_integration_length");
+    timesteps_in = config.get<int>(unique_name, "samples_per_data_set");
+    integration_length = config.get<int>(unique_name, "power_integration_length");
     timesteps_out = timesteps_in / integration_length;
-    num_freq = config.get_int(unique_name, "num_freq");
-    num_elem = config.get_int(unique_name, "num_elements");
+    num_freq = config.get<int>(unique_name, "num_freq");
+    num_elem = config.get<int>(unique_name, "num_elements");
 
     if (timesteps_in % timesteps_out)
     {
@@ -96,7 +96,8 @@ void computeDualpolPower::main_thread() {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                        "cpu_affinity"))
                 CPU_SET(i, &cpuset);
             pthread_setaffinity_np(this_thread[j].native_handle(), sizeof(cpu_set_t), &cpuset);
         }

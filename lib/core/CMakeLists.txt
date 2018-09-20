@@ -9,7 +9,6 @@ set (KOTEKAN_CORE_SOURCES
               bufferContainer.cpp
               bufferFactory.cpp
               Config.cpp
-              configEval.cpp
               configUpdater.cpp
               errors.c
               kotekanLogging.cpp

@@ -167,7 +167,8 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
 
     DEBUG("iceBoardHandler: %s", unique_name.c_str());
 
-    std::vector<std::string> buffer_names = config.get_string_array(unique_name, "out_bufs");
+    std::vector<std::string> buffer_names =
+            config.get<std::vector<std::string>>(unique_name, "out_bufs");
     if (shuffle_size != buffer_names.size()) {
         throw std::runtime_error("Expecting 4 buffers, got " + std::to_string(port));
     }
@@ -176,7 +177,8 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
         register_producer(out_bufs[i], unique_name.c_str());
     }
 
-    lost_samples_buf = buffer_container.get_buffer(config.get_string(unique_name, "lost_samples_buf"));
+    lost_samples_buf = buffer_container.get_buffer(
+                config.get<std::string>(unique_name, "lost_samples_buf"));
     register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);

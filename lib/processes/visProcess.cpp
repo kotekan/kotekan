@@ -28,13 +28,13 @@ visTransform::visTransform(Config& config,
                    std::bind(&visTransform::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "in_bufs");
+        config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -187,15 +187,15 @@ visAccumulate::visAccumulate(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
-    samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
+    samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
 
     // Get the indices for reordering
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
 
-    float int_time = config.get_float_default(unique_name, "integration_time", -1.0);
+    float int_time = config.get_default<float>(unique_name, "integration_time", -1.0);
 
     // If the integration time was set then calculate the number of GPU frames
     // we need to integrate for.
@@ -209,7 +209,7 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)",
              num_gpu_frames, frame_length * num_gpu_frames, int_time);
     } else {
-        num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
+        num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
@@ -379,7 +379,7 @@ visMerge::visMerge(Config& config,
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "in_bufs");
+        config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -467,10 +467,6 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // get config
-    apply_config(0);
-}
-
-void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
     test_pattern = config.get_string(unique_name, "test_pattern");
 
     INFO("visCheckTestPattern: mode = %s", test_pattern.c_str());
@@ -517,9 +513,7 @@ void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
     tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
     report_freq = config.get_uint64_default(unique_name, "report_freq", 1000);
 
-
-
-    outfile_name = config.get_string(unique_name, "out_file");
+    outfile_name = config.get<std::string>(unique_name, "out_file");
 
     if (tolerance < 0)
         throw std::invalid_argument("visCheckTestPattern: tolerance has to be" \
@@ -532,6 +526,10 @@ void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
     }
     outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err"
         << std::endl;
+}
+
+void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
+
 }
 
 void visCheckTestPattern::main_thread() {
@@ -719,7 +717,7 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
     if (config.exists(unique_name, "freq_ids")) {
-        freq_ids = config.get_array<uint32_t>(unique_name, "freq_ids");
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     }
     else {
         freq_ids.resize(1024);

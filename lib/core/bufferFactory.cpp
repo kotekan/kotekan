@@ -1,6 +1,7 @@
 #include "bufferFactory.hpp"
 #include "metadata.h"
 #include "Config.hpp"
+#include "configEval.hpp"
 #include "visBuffer.hpp"
 
 bufferFactory::bufferFactory(Config& _config,
@@ -49,8 +50,10 @@ void bufferFactory::build_from_tree(map<string, struct Buffer *> &buffers,
 struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &name, const string &location) {
 
     //DEBUG("Creating buffer of type: %s, at config tree path: %s", name.c_str(), location.c_str());
-    uint32_t num_frames = config.get_int_eval(location, "num_frames");
-    string metadataPool_name = config.get_string(location, "metadata_pool");
+    uint32_t num_frames = configEval<uint32_t>(
+                config, location, "num_frames").compute_result();
+    string metadataPool_name = config.get<std::string>(
+                location, "metadata_pool");
     if (metadataPools.count(metadataPool_name) != 1) {
         throw std::runtime_error("The buffer " + name +
                 " is requesting metadata pool named " + metadataPool_name + " but no pool exists.");
@@ -58,16 +61,17 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
     struct metadataPool * pool = metadataPools[metadataPool_name];
 
     if (type_name == "standard") {
-        uint32_t frame_size = config.get_int_eval(location, "frame_size");
+        uint32_t frame_size = configEval<uint32_t>(
+                    config, location, "frame_size").compute_result();
         INFO("Creating standard buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
                 name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
         return create_buffer(num_frames, frame_size, pool, name.c_str());
     }
 
     if(type_name == "vis") {
-        int num_elements = config.get_int(location, "num_elements");
-        int num_ev = config.get_int(location, "num_ev");
-        int num_prod = config.get_int_default(location, "num_prod", -1);
+        int num_elements = config.get<int>(location, "num_elements");
+        int num_ev = config.get<int>(location, "num_ev");
+        int num_prod = config.get_default<int>(location, "num_prod", -1);
 
         if(num_prod < 0) {
             num_prod = num_elements * (num_elements + 1) / 2;

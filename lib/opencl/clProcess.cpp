@@ -28,7 +28,7 @@ clProcess::clProcess(Config& config_,
     KotekanProcess(config_, unique_name, buffer_container, std::bind(&clProcess::main_thread, this))
 {
     // TODO Remove this and move it to the command objects (see hsaProcess).
-    gpu_id = config.get_int(unique_name, "gpu_id");
+    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
     in_buf = get_buffer("network_buffer");
     register_consumer(get_buffer("network_buffer"), unique_name.c_str());
     out_buf = get_buffer("output_buffer");
@@ -52,7 +52,7 @@ clProcess::clProcess(Config& config_,
 }
 
 void clProcess::apply_config(uint64_t fpga_seq) {
-    _use_beamforming = config.get_bool(unique_name, "enable_beamforming");
+    _use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
 }
 
 clProcess::~clProcess() {
@@ -172,7 +172,8 @@ void clProcess::main_thread()
 
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                        "cpu_affinity"))
                 CPU_SET(i, &cpuset);
             pthread_setaffinity_np(mem_reconcil_thread_handle.native_handle(),
                                     sizeof(cpu_set_t), &cpuset);

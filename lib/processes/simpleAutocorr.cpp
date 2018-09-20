@@ -12,9 +12,11 @@ simpleAutocorr::simpleAutocorr(Config& config, const string& unique_name,
     buf_out = get_buffer("out_buf");
     register_producer(buf_out, unique_name.c_str());
 
-    spectrum_length = config.get_int_default(unique_name,"spectrum_length",1024);
+    spectrum_length = config.get_default<int>(unique_name,
+                                              "spectrum_length", 1024);
     spectrum_out = (float*)calloc(spectrum_length, sizeof(float));
-    integration_length = config.get_int_default(unique_name,"integration_length",1024);
+    integration_length = config.get_default<int>(unique_name,
+                                                 "integration_length",1024);
 }
 
 simpleAutocorr::~simpleAutocorr() {

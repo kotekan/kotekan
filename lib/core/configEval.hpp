@@ -9,20 +9,27 @@
 #include <regex>
 #include <exception>
 
-// Matches and computes the following EBNF grammar:
-// EXP := ['+'|'-'] TERM {('+'|'-') TERM}
-// TERM := FACTOR {('*'|'/') FACTOR}
-// FACTOR := number | var | '(' EXP ')'
+
+/**
+ * @brief Gets an arithmetic expression from the config.
+ *
+ * Treats the value as an arithmetic expression with other variables,
+ * and return the result of evaluating it.
+ * Matches and computes the following EBNF grammar:
+ * EXP := ['+'|'-'] TERM {('+'|'-') TERM}
+ * TERM := FACTOR {('*'|'/') FACTOR}
+ * FACTOR := number | var | '(' EXP ')'
+ */
 template <class Type>
 class configEval {
 
 public:
-    configEval(Config &config,
-                const std::string & unique_name,
-                const std::string & expression);
+    configEval(Config &_config, const std::string &base_path,
+               const std::string &name);
+
     ~configEval();
 
-    Type compute_restult();
+    Type compute_result();
 
 private:
     Config &config;
@@ -43,9 +50,18 @@ private:
 
 template <class Type>
 configEval<Type>::configEval(Config &_config,
-                             const std::string &_unique_name,
-                             const std::string &expression) :
-    config(_config), unique_name(_unique_name) {
+                             const std::string &base_path,
+                             const std::string &name)
+                             : config(_config), unique_name(base_path) {
+
+    json value = config.get_value(base_path, name);
+
+    if (!(value.is_string() || value.is_number())) {
+        throw std::runtime_error("The value " + name + " in path " + base_path
+                                 + " isn't a number or string to eval or " \
+                                 "does not exist.");
+    }
+    const std::string &expression = value.get<string>();
 
     static const std::regex re(
         R"(([0-9]*\.?[0-9]+|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
@@ -65,7 +81,7 @@ configEval<Type>::~configEval() {
 }
 
 template <class Type>
-Type configEval<Type>::compute_restult() {
+Type configEval<Type>::compute_result() {
     return exp();
 }
 
@@ -152,7 +168,7 @@ Type configEval<Type>::factor() {
     Type ret;
 
     if (isVar()) {
-        ret = (Type)config.get_double(unique_name, current_token);
+        ret = config.get<Type>(unique_name, current_token);
         next();
     } else if (isNumber()) {
         ret = (Type)stod(current_token);
@@ -168,13 +184,6 @@ Type configEval<Type>::factor() {
     return ret;
 }
 
-int64_t eval_compute_int64(Config &config,
-                           const std::string &unique_name,
-                           const std::string &expression);
-
-double eval_compute_double(Config &config,
-                           const std::string &unique_name,
-                           const std::string &expression);
 
 #endif /* CONFIG_EVAL_HPP */
 
