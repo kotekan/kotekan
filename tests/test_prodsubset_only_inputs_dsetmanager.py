@@ -12,9 +12,9 @@ subset_params = {
     'mode': 'fill_ij',
     'freq_ids': [250],
     'buffer_depth': 5,
-    'prod_subset_type': 'have_inputs',
+    'prod_subset_type': 'only_inputs',
     'input_list': [1, 134],
-    'use_dataset_manager': False
+    'use_dataset_manager': True
 }
 
 vis_params = {}
@@ -27,13 +27,13 @@ def subset_data(tmpdir_factory):
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
         freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames'],
-        use_dataset_manager=False
+        use_dataset_manager=True
     )
 
     write_buffer = kotekan_runner.VisWriterBuffer(
         str(tmpdir), "raw",
         subset_params['freq_ids'],
-        extra_config={'use_dataset_manager': False})
+        extra_config={'use_dataset_manager': True})
 
     test = kotekan_runner.KotekanProcessTester(
         'prodSubset', vis_params,
@@ -47,15 +47,17 @@ def subset_data(tmpdir_factory):
     return write_buffer.load()
 
 
-def have_inputs_condition(prod, input_list):
+def only_inputs_condition(prod, input_list):
 
-    prod_in_list = False
+    inpa_in_list = False
+    inpb_in_list = False
     for ipt in input_list :
-        if ((prod.input_a==ipt) or (prod.input_b==ipt)):
-            prod_in_list = True
-            break
+        if (prod.input_a==ipt):
+            inpa_in_list = True
+        if (prod.input_b==ipt):
+            inpb_in_list = True
 
-    return prod_in_list
+    return (inpa_in_list and inpb_in_list)
 
 
 def test_subset(subset_data):
@@ -66,9 +68,9 @@ def test_subset(subset_data):
     vis = []
     for ii in range(num_prod):
         # With fill_ij, vis_ij = i+j*(1j)
-        prod = visutil.icmap(ii, subset_params['num_elements'])
-        if have_inputs_condition(prod,
-                                 subset_params['input_list']) :
+        prod = visutil.icmap(ii,subset_params['num_elements'])
+        if only_inputs_condition(prod,
+                            subset_params['input_list']) :
             vis.append(prod.input_a+1j*prod.input_b)
 
     evecs = (np.arange(subset_params['num_ev'])[:, None] +
@@ -82,3 +84,4 @@ def test_subset(subset_data):
                     subset_params['num_ev'])).all()
             assert (frame.evec == evecs).all()
             assert (frame.erms == 1.)
+

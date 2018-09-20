@@ -52,6 +52,7 @@
  * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to
  *                               include in subset (in units of the shortest NS baseline)
  * @conf  input_list        vector of int. The list of inputs to include.
+ * @conf  use_dataset_manager Bool (default: false) Use the dataset manager.
  *
  * @warning This will only work correctly if the full correlation triangle is
  * passed in as input.
@@ -76,6 +77,7 @@ public:
 private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
+    bool use_dataset_manager;
 
     /// Number of products in subset
     size_t subset_num_prod;
@@ -88,6 +90,9 @@ private:
 
     /// Vector of indices for subset of products
     std::vector<size_t> prod_ind;
+
+    /// Vector of subset of products
+    std::vector<prod_ctype> prod_subset;
 
 };
 

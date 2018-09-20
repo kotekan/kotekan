@@ -454,6 +454,9 @@ template<typename T>
 inline pair<dset_id, const T*>
 datasetManager::closest_ancestor_of_type(dset_id dset) const {
 
+    if (dset < 0 || _datasets.size() <= (size_t)dset)
+        return {-1, nullptr};
+
     for(auto& t : ancestors(dset)) {
         if(typeid(*(t.second)) == typeid(T)) {
             return {t.first, dynamic_cast<T*>(t.second)};
