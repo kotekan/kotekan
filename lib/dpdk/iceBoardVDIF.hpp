@@ -308,7 +308,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf *mbuf) {
 
 inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint64_t seq) {
 
-    for(uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
+    for(uint64_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (int elem = 0; elem < num_elements; ++elem) {
             int header_idx = vdif_frame_location +
                 vdif_packet_len * num_elements * time_step +
@@ -337,7 +337,7 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             vdif_header->thread_id = elem;
 
             // Current time in nano seconds relative to epoch
-            uint64_t cur_time = seq * FPGA_PERIOD_NS + vdif_base_time;
+            uint64_t cur_time = (seq + time_step) * FPGA_PERIOD_NS + vdif_base_time;
             vdif_header->seconds = (cur_time) / 1000000000;
             vdif_header->data_frame = (cur_time % 1000000000) / FPGA_PERIOD_NS;
 
