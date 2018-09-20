@@ -1,3 +1,4 @@
+
 import pytest
 import numpy as np
 
@@ -12,9 +13,10 @@ subset_params = {
     'mode': 'fill_ij',
     'freq_ids': [250],
     'buffer_depth': 5,
-    'prod_subset_type': 'have_inputs',
-    'input_list': [1, 134],
-    'use_dataset_manager': False
+    'prod_subset_type': 'baseline',
+    'max_ew_baseline': 1,
+    'max_ns_baseline': 63,
+    'use_dataset_manager': True
 }
 
 vis_params = {}
@@ -27,13 +29,13 @@ def subset_data(tmpdir_factory):
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
         freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames'],
-        use_dataset_manager=False
+        use_dataset_manager=True
     )
 
     write_buffer = kotekan_runner.VisWriterBuffer(
         str(tmpdir), "raw",
         subset_params['freq_ids'],
-        extra_config={'use_dataset_manager': False})
+        extra_config={'use_dataset_manager': True})
 
     test = kotekan_runner.KotekanProcessTester(
         'prodSubset', vis_params,
@@ -47,15 +49,16 @@ def subset_data(tmpdir_factory):
     return write_buffer.load()
 
 
-def have_inputs_condition(prod, input_list):
+def max_bl_condition(prod, xmax, ymax):
 
-    prod_in_list = False
-    for ipt in input_list :
-        if ((prod.input_a==ipt) or (prod.input_b==ipt)):
-            prod_in_list = True
-            break
+    x_sep = prod.input_a / 512 - prod.input_b / 512
+    y_sep = prod.input_a % 256 - prod.input_b % 256
+    if x_sep < 0:
+        x_sep = -x_sep
+    if y_sep < 0:
+        y_sep = -y_sep
 
-    return prod_in_list
+    return (x_sep <= xmax) and (y_sep <= ymax)
 
 
 def test_subset(subset_data):
@@ -67,12 +70,13 @@ def test_subset(subset_data):
     for ii in range(num_prod):
         # With fill_ij, vis_ij = i+j*(1j)
         prod = visutil.icmap(ii, subset_params['num_elements'])
-        if have_inputs_condition(prod,
-                                 subset_params['input_list']) :
-            vis.append(prod.input_a+1j*prod.input_b)
+        if max_bl_condition(prod,
+                            subset_params['max_ew_baseline'],
+                            subset_params['max_ns_baseline']):
+            vis.append(prod.input_a + 1j * prod.input_b)
 
-    evecs = (np.arange(subset_params['num_ev'])[:, None] +
-             1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
+    evecs = (np.arange(subset_params['num_ev'])[:, None] + 1.0J *
+             np.arange(subset_params['num_elements'])[None, :]).flatten()
 
     for t in range(subset_params['total_frames']):
         for f in range(len(subset_params['freq_ids'])):

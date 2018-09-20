@@ -363,6 +363,7 @@ datasetManager::ancestors(dset_id dset) const {
     // states performed
     while(dset >= 0) {
         datasetState * t = _states.at(_datasets.at(dset).first).get();
+
         // Walk over the inner states, given them all the same dataset id.
         while(t != nullptr) {
             a_list.emplace_back(dset, t);

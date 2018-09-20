@@ -8,10 +8,10 @@ import kotekan_runner
 
 
 params = {
-    'num_elements': 200,
+    'num_elements': 50,
     'num_ev': 0,
-    'total_frames': 128,
-    'cadence': 10.0,
+    'total_frames': 16,
+    'cadence': 1.0,
     'mode': 'gaussian',
     'buffer_depth': 5,
     'tolerance': 0.001,
@@ -60,10 +60,10 @@ def test_no_noise(test_pattern):
     assert (len(test_pattern[1]) == 0)
 
 noise_params = {
-    'num_elements': 200,
+    'num_elements': 50,
     'num_ev': 0,
-    'total_frames': 128,
-    'cadence': 5.0,
+    'total_frames': 16,
+    'cadence': 1.0,
     'mode': 'gaussian_random',
     'buffer_depth': 2,
     'tolerance': 0.01,
