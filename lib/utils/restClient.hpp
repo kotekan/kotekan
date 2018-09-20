@@ -12,7 +12,7 @@
 #include <thread>
 #include <atomic>
 
-using restReply = const std::pair<bool, std::string&>;
+using restReply = std::pair<bool, std::string&>;
 
 
 /**
@@ -42,7 +42,10 @@ public:
      *
      * @param path      Path to the endpoint
      *                  (e.g. "/endpoint_name")
-     * @param data      JSON request (`{}` to send a GET request, default: `{}`).
+     * @param request_done_cb   A callback function that when the request is
+     *                          complete.
+     * @param data      JSON request (`{}` to send a GET request,
+     *                  default: `{}`).
      * @param host      Host (default: "localhost").
      * @param port      Port (default: PORT_REST_SERVER).
      * @param retries   Max. retries to send message (default: 0).
@@ -51,7 +54,7 @@ public:
      * @return          `true` if successfull, otherwise `false`.
      */
     bool make_request(std::string path,
-                      std::function<void(const restReply)> request_done_cb,
+                      std::function<void(restReply)> request_done_cb,
                       const nlohmann::json& data = {},
                       const std::string& host = "localhost",
                       const unsigned short port = PORT_REST_SERVER,
@@ -77,10 +80,14 @@ private:
     /// callback function for http request
     static void http_request_done(struct evhttp_request *req, void *arg);
 
+    /// cleanup function that deletes evcon and the argument pair
+    static void cleanup(std::pair<std::function<void(restReply)>,
+                                         struct evhttp_connection*>* pair);
+
     /// Main event thread handle
     std::thread _main_thread;
 
-    /// Flag set to true when exit condition is reached
+    /// flag set to true when exit condition is reached
     std::atomic<bool> _stop_thread;
 
     /// event base

@@ -6,6 +6,7 @@
 #include <event2/http.h>
 #include <event2/dns.h>
 #include <event2/thread.h>
+#include <cxxabi.h>
 
 
 restClient &restClient::instance() {
@@ -30,8 +31,8 @@ restClient::restClient() : _main_thread() {
 
 restClient::~restClient() {
     _stop_thread = true;
-    //if (event_base_loopbreak(_base))
-    //    ERROR("restClient: event_base_loopbreak() failed.");
+    if (event_base_loopbreak(_base))
+        ERROR("restClient: event_base_loopbreak() failed.");
     _main_thread.join();
     DEBUG("restClient: event thread stopped.");
 }
@@ -90,12 +91,16 @@ void restClient::event_thread() {
 }
 
 void restClient::http_request_done(struct evhttp_request *req, void *arg){
-    struct evhttp_connection* evcon = evhttp_request_get_connection(req);
+    // FIXME: evcon is passed here, because evhttp_request_get_connection(req)
+    // doesn't work (libevent 2.0.* problem?)
+    // TODO: keep the evhttp_connections in a pool and reuse them
+    // (set Connection:keep-alive header)
+    auto pair = (std::pair<std::function<void(restReply)>,
+                 struct evhttp_connection*>*) arg;
+    std::function<void(restReply)> ext_cb = pair->first;
 
     // this is where we store the reply
-    std::string str_data = "";
-    std::function<void(restReply)>* ext_cb =
-            (std::function<void(restReply)>*)arg;
+    std::string str_data("");
 
     if (req == nullptr) {
         int errcode = EVUTIL_SOCKET_ERROR();
@@ -104,19 +109,22 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
         std::string str = evutil_socket_error_to_string(errcode);
         WARN("restClient: socket error = %s (%d)",
              str.c_str(), errcode);
-        (*ext_cb)(restReply(false, str_data));
-        if (evcon != nullptr)
-            evhttp_connection_free(evcon);
+        ext_cb(restReply(false, str_data));
+        cleanup(pair);
         return;
     }
 
     int response_code = evhttp_request_get_response_code(req);
 
     if (response_code != 200) {
-        INFO("restClient: Received response code %d", response_code);
-        (*ext_cb)(restReply(false, str_data));
-        if (evcon != nullptr)
-            evhttp_connection_free(evcon);
+        // TODO: change to use
+        // evhttp_request_get_response_code_line(req) (libevent 2.1)
+        INFO("restClient: Received response code %d (%s)", response_code,
+             req->response_code_line);
+        if (response_code == 0)
+            WARN("restClient: connection error.");
+        ext_cb(restReply(false, str_data));
+        cleanup(pair);
         return;
     }
 
@@ -124,9 +132,8 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     evbuffer* input_buffer = evhttp_request_get_input_buffer(req);
     size_t datalen = evbuffer_get_length(input_buffer);
     if (datalen == 0) {
-        (*ext_cb)(restReply(true, str_data));
-        if (evcon != nullptr)
-            evhttp_connection_free(evcon);
+        ext_cb(restReply(true, str_data));
+        cleanup(pair);
         return;
     }
 
@@ -138,9 +145,8 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
     if (n_vec < 0) {
         WARN("restClient: Failure in evbuffer_peek()");
-        (*ext_cb)(restReply(false, str_data));
-        if (evcon != nullptr)
-            evhttp_connection_free(evcon);
+        ext_cb(restReply(false, str_data));
+        cleanup(pair);
         return;
     }
 
@@ -157,15 +163,20 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     }
     free(vec_out);
 
-    // call the external callback for this request and remove it afterwards
-    (*ext_cb)(restReply(true, str_data));
+    // call the external callback
+    ext_cb(restReply(true, str_data));
+    cleanup(pair);
+}
 
-    if (evcon != nullptr)
-        evhttp_connection_free(evcon);
+void restClient::cleanup(std::pair<std::function<void(restReply)>,
+                              struct evhttp_connection*>* pair) {
+    if (pair->second)
+        evhttp_connection_free(pair->second);
+    delete pair;
 }
 
 bool restClient::make_request(std::string path,
-                              std::function<void(const restReply)>
+                              std::function<void(restReply)>
                                 request_done_cb,
                               const nlohmann::json& data,
                               const std::string& host,
@@ -202,11 +213,34 @@ bool restClient::make_request(std::string path,
     // check if external callback function is callable
     if(!request_done_cb) {
         ERROR("restClient: external callback function is not callable.");
+        evhttp_connection_free(evcon);
         return false;
     }
-    req = evhttp_request_new(http_request_done, &request_done_cb);
+    if (request_done_cb.target_type() != typeid(void(*)(restReply)) &&
+        request_done_cb.target_type() != typeid(
+            std::_Bind<void (*(std::_Placeholder<1>))
+            (std::pair<bool, std::string&>)>)) {
+        std::string type(request_done_cb.target_type().name());
+        int status;
+        ERROR("restClient: external callback function is not of type " \
+              "void(*)(restReply), but %s.",
+              abi::__cxa_demangle(type.c_str(), 0, 0, &status));
+        evhttp_connection_free(evcon);
+        return false;
+    }
+
+    // keep the external callback function object on the heap, so it is allowed
+    // to run out of scope on the calling side
+    // also pass the connection to the callback, so it can be freed there
+    std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair =
+            new std::pair<std::function<void(restReply)>,
+                          struct evhttp_connection*>
+            (request_done_cb, evcon);
+
+    req = evhttp_request_new(http_request_done, pair);
     if (req == nullptr) {
         WARN("restClient: evhttp_request_new() failed.");
+        evhttp_connection_free(evcon);
         return false;
     }
 
@@ -214,16 +248,22 @@ bool restClient::make_request(std::string path,
     ret = evhttp_add_header(output_headers, "Host", host.c_str());
     if (ret) {
         WARN("restClient: Failure adding \"Host\" header.");
+        evhttp_connection_free(evcon);
+        evhttp_request_free(req);
         return false;
     }
     ret = evhttp_add_header(output_headers, "Connection", "close");
     if (ret) {
         WARN("restClient: Failure adding \"Connection\" header.");
+        evhttp_connection_free(evcon);
+        evhttp_request_free(req);
         return false;
     }
     ret = evhttp_add_header(output_headers, "Content-Type", "application/json");
     if (ret) {
         WARN("restClient: Failure adding \"Content-Type\" header.");
+        evhttp_connection_free(evcon);
+        evhttp_request_free(req);
         return false;
     }
 
@@ -237,6 +277,8 @@ bool restClient::make_request(std::string path,
         ret = evbuffer_add(output_buffer, data.dump().c_str(), datalen);
         if (ret) {
             WARN("restClient: Failure adding JSON data to event buffer.");
+            evhttp_connection_free(evcon);
+            evhttp_request_free(req);
             return false;
         }
 
@@ -244,17 +286,21 @@ bool restClient::make_request(std::string path,
         evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
             WARN("restClient: Failure adding \"Content-Length\" header.");
+            evhttp_connection_free(evcon);
+            evhttp_request_free(req);
             return false;
         }
-        DEBUG("restClient: Sending %s bytes: %s", buf, data.dump().c_str());
+        DEBUG2("restClient: Sending %s bytes: %s", buf, data.dump().c_str());
 
         ret = evhttp_make_request(evcon, req, EVHTTP_REQ_POST, path.c_str());
     } else {
-        DEBUG("restClient: sending GET request.");
+        DEBUG2("restClient: sending GET request.");
         ret = evhttp_make_request(evcon, req, EVHTTP_REQ_GET, path.c_str());
     }
     if (ret) {
         WARN("restClient: evhttp_make_request() failed.");
+        evhttp_connection_free(evcon);
+        evhttp_request_free(req);
         return false;
     }
     return true;

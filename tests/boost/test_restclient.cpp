@@ -57,7 +57,7 @@ struct TestContext {
             error = true;
             ERROR("test_restclient: rq_callback_thisisatest: restReply::" \
                   "string should be 'this is a test', but was '%s'.",
-                  reply.second);
+                  reply.second.c_str());
         }
     }
 
@@ -156,7 +156,8 @@ struct TestContext {
         INFO("Threaded test.");
 
         std::function<void(restReply)> fun = TestContext::rq_callback_pong;
-        bool ret = restClient::instance().make_request("test_restclient_pong",
+        std::string path("test_restclient_pong");
+        bool ret = restClient::instance().make_request(path,
                                                        fun,
                                                        request);
         BOOST_CHECK(ret == true);

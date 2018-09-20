@@ -139,7 +139,7 @@ BOOST_FIXTURE_TEST_CASE( _general, TestContext ) {
                   << std::endl;
 
     for (auto s : dm.datasets())
-        std::cout << s.first << " - " << s.second << std::endl;
+        std::cout << s.second.first << " - " << s.second.second << std::endl;
 
     for (auto s : dm.ancestors(transformed_ds_id))
         std::cout << s.first << " - " << s.second->data_to_json().dump()

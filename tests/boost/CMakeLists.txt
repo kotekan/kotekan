@@ -14,6 +14,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # list them all here:
 set(KOTEKAN_BOOST_TEST_SOURCES
     test_dataset_manager.cpp
+    test_dataset_manager_rest.cpp
     test_updatequeue.cpp
     test_truncate.cpp
     test_restclient.cpp

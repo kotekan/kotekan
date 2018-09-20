@@ -6,10 +6,16 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
+#include <mutex>
 
 #include "json.hpp"
 #include "errors.h"
 #include "visUtil.hpp"
+#include "restClient.hpp"
+
+#define UNIQUE_NAME "/dataset_manager"
+#define TIMEOUT_REGISTER_DATASET_SEC 30
 
 // Alias certain types to give semantic meaning to the IDs
 using dset_id = int32_t;
@@ -335,6 +341,12 @@ public:
      **/
     static datasetManager& instance();
 
+    /**
+     * @brief Set and apply the static config to datasetManager
+     * @param config         The config.
+     */
+    void apply_config(Config& config);
+
     // Remove the implicit copy/assignments to prevent copying
     datasetManager(const datasetManager&) = delete;
     void operator=(const datasetManager&) = delete;
@@ -352,7 +364,8 @@ public:
      * @brief Register a state with the manager.
      *
      * @param trans A pointer to the state.
-     * @returns The id assigned to the state.
+     * @returns The id assigned to the state and a read-only pointer to the
+     * state.
      **/
     template <typename T>
     inline pair<state_id, const T*> add_state(unique_ptr<T>&& state);
@@ -376,7 +389,7 @@ public:
      *
      * @returns The set of datasets.
      **/
-    const vector<pair<state_id, dset_id>> datasets() const;
+    const std::map<dset_id, std::pair<state_id, dset_id> > datasets() const;
 
     /**
      * @brief Get the states applied to generate the given dataset.
@@ -400,7 +413,7 @@ public:
 
 private:
 
-    datasetManager() { };
+    datasetManager() = default;
 
     /**
      * @brief Calculate the hash of a datasetState to use as the state_id.
@@ -414,17 +427,44 @@ private:
      **/
     state_id hash_state(datasetState& state);
 
-    // Store the list of all the registered states.
-    map<state_id, state_uptr> _states;
+    static void register_state(state_id state);
 
-    // Store a list of the datasets registered and what states they correspond to
-    vector<pair<state_id, dset_id>> _datasets;
+    static void register_dataset(std::pair<state_id, dset_id> dset);
+
+    static void register_state_callback(restReply reply);
+
+    static void send_state_callback(restReply reply);
+
+    static void register_dataset_callback(restReply reply);
+
+    bool find_dataset_id(const std::pair<state_id, dset_id> dataset,
+                         dset_id& dataset_id);
+
+    // Store the list of all the registered states.
+    static std::map<state_id, state_uptr> _states;
+
+    // Store a list of the datasets registered and what states
+    // and input datasets they correspond to
+    // TODO: make this a bidirectional map (boost) or put all three values in a
+    // hash map (to reduce time of search-by-value) !?
+    static std::map<dset_id, std::pair<state_id, dset_id>> _datasets;
 
     // Lock for changing or using the states map.
-    mutable std::mutex _lock_states;
+    static std::mutex _lock_states;
 
     // Lock for changing or using the datasets.
-    mutable std::mutex _lock_dsets;
+    static std::mutex _lock_dsets;
+
+    // conditional variable for registering dataset
+    static std::condition_variable cv_register_dset;
+
+    // config params
+    bool _use_broker = false;
+    static std::string _path_register_state;
+    static std::string _path_send_state;
+    static std::string _path_register_dataset;
+    static std::string _ds_broker_host;
+    static unsigned short _ds_broker_port;
 };
 
 
@@ -473,8 +513,19 @@ pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     std::lock_guard<std::mutex> lock(_lock_states);
     if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
                                                            move(state))).second)
-        INFO("datasetManager a state with hash %d is already registered.",
-             hash);
+        INFO("datasetManager: a state with hash %zu is already registered " \
+             "locally.", hash);
+    if (_use_broker) {
+        try {
+            register_state(hash);
+        } catch (std::runtime_error& e) {
+            ERROR("datasetManager: Failure registering state: %s", e.what());
+            ERROR("datasetManager: Make sure the broker is running.\n" \
+                  "Exiting...");
+            raise(SIGINT);
+        }
+    }
+
     return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif
