@@ -4,6 +4,8 @@
 
 #include "frbPostProcess.hpp"
 
+#include <immintrin.h>
+
 REGISTER_KOTEKAN_PROCESS(frbPostProcess);
 
 frbPostProcess::frbPostProcess(Config& config_,
