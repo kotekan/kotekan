@@ -146,7 +146,7 @@ void basebandReadout::main_thread() {
 
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
-            INFO("Starting request-listening thread for freq_id: %d", freq_id);
+            INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
             basebandReadoutManager& mgr = basebandRequestManager::instance().register_readout_process(freq_id);
             lt = std::make_unique<std::thread>([&]{this->listen_thread(freq_id, mgr);});
 
@@ -188,7 +188,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
             const basebandRequest request = dump_status->request;
             //std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             const uint64_t event_id = request.event_id;
-            INFO("Received baseband dump request for event %d: %d samples starting at count %d. (next_frame: %d)",
+            INFO("Received baseband dump request for event %" PRIu64 ": %" PRIi64 " samples starting at count %" PRIi64 ". (next_frame: %d)",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
             {
                 std::lock_guard<std::mutex> lock(*request_mtx);
@@ -217,13 +217,13 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                     dump_status->bytes_total = data.num_elements * data.data_length_fpga;
                     dump_status->bytes_remaining = dump_status->bytes_total;
                     if (data.data_length_fpga == 0) {
-                        INFO("Captured no data for event %d and freq %d.",
-                            data.event_id, data.freq_id);
+                        INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".",
+                            event_id, freq_id);
                         dump_status->state = basebandDumpStatus::State::ERROR;
                         dump_status->reason = "No data captured.";
                         continue;
                     } else {
-                        INFO("Captured %d samples for event %d and freq %d.",
+                        INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
                             data.data_length_fpga,
                             data.event_id,
                             data.freq_id
@@ -300,8 +300,8 @@ basebandDumpData basebandReadout::get_data(
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
-    float max_wait_time = 1.;
-    float min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
+    double max_wait_time = 1.;
+    double min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
         // Too long, I won't allow it.
@@ -345,7 +345,7 @@ basebandDumpData basebandReadout::get_data(
         if (last_sample_present <= trigger_start_fpga + trigger_length_fpga) {
             int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
             time_to_wait_seq += _samples_per_data_set;
-            float wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
+            double wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
             std::this_thread::sleep_for(std::chrono::nanoseconds((int) wait_time));
@@ -574,12 +574,14 @@ void basebandReadout::write_dump(basebandDumpData data,
     if (ii_samp > data.data_length_fpga) {
         std::lock_guard<std::mutex> lock(request_mtx);
         dump_status->state = basebandDumpStatus::State::DONE;
-        INFO("Baseband dump for event %d, freq %d complete.", data.event_id, data.freq_id);
+        INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " complete.",
+             data.event_id, data.freq_id);
     } else {
         std::lock_guard<std::mutex> lock(request_mtx);
         dump_status->state = basebandDumpStatus::State::ERROR;
         dump_status->reason = "Kotekan exit before write complete.";
-        INFO("Baseband dump for event %d, freq %d incomplete.", data.event_id, data.freq_id);
+        INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " incomplete.",
+             data.event_id, data.freq_id);
     }
     // H5 file goes out of scope and is closed automatically.
 }

@@ -216,7 +216,7 @@ private:
     /// frequency to those for the frequency `freq_id`
     static basebandSlice translate_trigger(int64_t fpga_time0, int64_t fpga_width,
                                            const double dm, const double dm_error,
-                                           const int64_t freq_id,
+                                           const uint32_t freq_id,
                                            const double ref_freq_hz=L1_REFERERENCE_FREQ);
 
     void status_callback_single_event(connectionInstance& conn);
