@@ -302,6 +302,7 @@ basebandDumpData basebandReadout::get_data(
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     double max_wait_time = 1.;
     double min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
+    bool advance_info = false;
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
         // Too long, I won't allow it.
@@ -344,6 +345,13 @@ basebandDumpData basebandReadout::get_data(
         int64_t last_sample_present = frame_fpga_seq + _samples_per_data_set;
         if (last_sample_present <= trigger_start_fpga + trigger_length_fpga) {
             int64_t time_to_wait_seq = trigger_end_fpga - last_sample_present;
+            if (!advance_info) {
+                // We only need to print this the first time
+                INFO("Advance dump trigger for %" PRIu64 ", waiting for %" PRId64 " samples (%.2lf sec)",
+                     event_id, time_to_wait_seq,
+                     time_to_wait_seq * FPGA_PERIOD_NS / 1e9);
+                advance_info = true;
+            }
             time_to_wait_seq += _samples_per_data_set;
             double wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
             wait_time = std::min(wait_time, max_wait_time);
@@ -351,6 +359,9 @@ basebandDumpData basebandReadout::get_data(
             std::this_thread::sleep_for(std::chrono::nanoseconds((int) wait_time));
         } else {
             // We have the data we need, break from the loop and copy it out.
+            if (advance_info) {
+                INFO("Done waiting for dump data for %" PRIu64 ".", event_id);
+            }
             break;
         }
         unlock_range(dump_start_frame, dump_end_frame);
@@ -361,6 +372,8 @@ basebandDumpData basebandReadout::get_data(
 
     if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
+        INFO("Baseband dump trigger is too late: %d >= %d",
+             dump_start_frame, dump_end_frame);
         return basebandDumpData();
     }
 
