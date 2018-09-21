@@ -9,7 +9,7 @@ import visbuffer
 import kotekan_runner
 
 params = {
-    'fakevis_mode': 'gaussian',
+    'fakevis_mode': 'fill_ij',
     'cadence': 1.,
     'total_frames': 10, # make it run long enough to receive REST commands
     'num_ev': 0,

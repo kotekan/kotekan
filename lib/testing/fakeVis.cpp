@@ -5,7 +5,6 @@
 #include <csignal>
 #include <time.h>
 #include <math.h>
-#include <random>
 #include <functional>
 #include "datasetManager.hpp"
 #include "fmt.hpp"
@@ -43,9 +42,11 @@ fakeVis::fakeVis(Config &config,
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
     fill_map["fill_ij"] = std::bind(&fakeVis::fill_mode_fill_ij, this, _1);
     fill_map["phase_ij"] = std::bind(&fakeVis::fill_mode_phase_ij, this, _1);
-    fill_map["gaussian"] = std::bind(&fakeVis::fill_mode_gaussian, this, _1);
-    fill_map["gaussian_random"] = std::bind(&fakeVis::fill_mode_gaussian, this, _1);
     fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
+    fill_map["test_pattern_simple"] = std::bind(
+                &fakeVis::fill_mode_test_pattern_simple, this, _1);
+    fill_map["test_pattern_freq"] = std::bind(
+                &fakeVis::fill_mode_test_pattern_freq, this, _1);
 
     mode = config.get_default<std::string>(unique_name, "mode", "default");
 
@@ -54,20 +55,6 @@ fakeVis::fakeVis(Config &config,
     }
     INFO("Using fill type: %s", mode.c_str());
     fill = fill_map.at(mode);
-
-    if (mode == "gaussian" || mode == "gaussian_random") {
-        vis_mean = {
-            config.get_default<float>(unique_name, "vis_mean_real", 0.),
-            config.get_default<float>(unique_name, "vis_mean_imag", 0.)
-        };
-        vis_std = config.get_default<float>(unique_name, "vis_std", 1.);
-
-        // initialize random number generation
-        if (mode == "gaussian_random") {
-            std::random_device rd;
-            gen.seed(rd());
-        }
-    }
 
     // Get timing and frame params
     cadence = config.get<float>(unique_name, "cadence");
@@ -78,6 +65,42 @@ fakeVis::fakeVis(Config &config,
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
+
+    if (mode == "test_pattern_freq") {
+        cfloat default_val = config.get_default<cfloat>(unique_name,
+                                                 "default_val", {128., 0.});
+        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(
+                       unique_name, "frequencies");
+        std::vector<cfloat> bin_values = config.get<std::vector<cfloat>>(
+                       unique_name, "freq_values");
+        if (bins.size() != bin_values.size()) {
+            throw std::invalid_argument("fakeVis: lengths of frequencies ("
+                                        + std::to_string(bins.size())
+                                        + ") and freq_value ("
+                                        + std::to_string(bin_values.size())
+                                        + ") arrays have to be equal.");
+        }
+        if (bins.size() > freq.size()) {
+            throw std::invalid_argument(
+                        "fakeVis: length of frequencies array ("
+                        + std::to_string(bins.size()) + ") can not be larger " \
+                        "than size of freq_ids array (" +
+                        std::to_string(freq.size()) + ").");
+        }
+
+        test_pattern_value = std::vector<cfloat>(freq.size());
+        for (size_t i = 0; i < freq.size(); i++) {
+            size_t j;
+            for (j = 0; j < bins.size(); j++) {
+                if (bins.at(j) == i)
+                    break;
+            }
+            if (j == bins.size())
+                test_pattern_value[i] = default_val;
+            else
+                test_pattern_value[i] = bin_values.at(j);
+        }
+    }
 }
 
 void fakeVis::apply_config(uint64_t fpga_seq) {
@@ -248,52 +271,6 @@ void fakeVis::fill_mode_phase_ij(visFrameView& frame)
     fill_non_vis(frame);
 }
 
-void fakeVis::fill_mode_gaussian(visFrameView& frame)
-{
-    // random number generation for gaussian modes
-    std::normal_distribution<float> gauss_real{vis_mean.real(), vis_std};
-    std::normal_distribution<float> gauss_imag{vis_mean.imag(), vis_std};
-    std::normal_distribution<float> gauss(0.1 * vis_std, 0.1 * vis_std);
-
-    // Fill vis
-    int ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
-            frame.vis[ind] = {gauss_real(gen), gauss_imag(gen)};
-            ind++;
-        }
-    }
-
-    // Fill ev
-    for (uint32_t i = 0; i < num_eigenvectors; i++) {
-        for (uint32_t j = 0; j < num_elements; j++) {
-            int k = i * num_elements + j;
-            frame.evec[k] = {(float)i, gauss_real(gen)};
-        }
-        frame.eval[i] = i;
-    }
-    frame.erms = gauss_real(gen);
-
-    // // Fill weights
-    // std::default_random_engine gen;
-    // if (mode == "gaussian_random") {
-    //     std::random_device rd;
-    //     gen.seed(rd());
-    // }
-    // generate vaguely realistic weights
-    ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
-            frame.weight[ind] = 1. / pow(gauss(gen), 2);
-            ind++;
-        }
-    }
-
-    // Set flags and gains
-    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
-    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
-}
-
 void fakeVis::fill_mode_chime(visFrameView& frame)
 {
     int ind = 0;
@@ -310,6 +287,78 @@ void fakeVis::fill_mode_chime(visFrameView& frame)
         }
     }
     fill_non_vis(frame);
+}
+
+void fakeVis::fill_mode_test_pattern_simple(visFrameView& frame)
+{
+    // Fill vis
+    int ind = 0;
+    for(uint32_t i = 0; i < num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            frame.vis[ind] = {1, 0};
+            ind++;
+        }
+    }
+
+    // Fill ev
+    for (uint32_t i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t j = 0; j < num_elements; j++) {
+            int k = i * num_elements + j;
+            frame.evec[k] = {(float)i, 1};
+        }
+        frame.eval[i] = i;
+    }
+    frame.erms = 1;
+
+    // Fill weights
+    ind = 0;
+    for(uint32_t i = 0; i < num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            frame.weight[ind] = 1.;
+            ind++;
+        }
+    }
+
+    // Set flags and gains
+    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
+}
+
+void fakeVis::fill_mode_test_pattern_freq(visFrameView& frame)
+{
+    cfloat fill_value = test_pattern_value.at(frame.freq_id);
+
+    // Fill vis
+    int ind = 0;
+    for(uint32_t i = 0; i < num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            frame.vis[ind] = fill_value;
+            ind++;
+        }
+    }
+
+    // Fill ev
+    for (uint32_t i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t j = 0; j < num_elements; j++) {
+            int k = i * num_elements + j;
+            frame.evec[k] = {(float)i, fill_value.real()};
+        }
+        frame.eval[i] = i;
+    }
+    frame.erms = fill_value.real();
+
+    // Fill weights
+    ind = 0;
+    for(uint32_t i = 0; i < num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            frame.weight[ind] = fill_value.real();
+            ind++;
+        }
+    }
+
+    // Set flags and gains
+    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
 }
 
 void fakeVis::fill_non_vis(visFrameView& frame)

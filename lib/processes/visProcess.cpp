@@ -18,7 +18,7 @@ REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 REGISTER_KOTEKAN_PROCESS(visMerge);
-REGISTER_KOTEKAN_PROCESS(visCheckTestPattern);
+REGISTER_KOTEKAN_PROCESS(visTestPattern);
 REGISTER_KOTEKAN_PROCESS(registerInitialDatasetState);
 
 visTransform::visTransform(Config& config,
@@ -454,11 +454,11 @@ void visMerge::main_thread() {
 }
 
 
-visCheckTestPattern::visCheckTestPattern(Config& config,
+visTestPattern::visTestPattern(Config& config,
                    const string& unique_name,
                    bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visCheckTestPattern::main_thread, this)) {
+                   std::bind(&visTestPattern::main_thread, this)) {
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
@@ -467,51 +467,54 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // get config
-    test_pattern = config.get_string(unique_name, "test_pattern");
+    mode = config.get<std::string>(unique_name, "mode");
 
-    INFO("visCheckTestPattern: mode = %s", test_pattern.c_str());
-    if (test_pattern == "simple") {
-        exp_val = {config.get_float_default(unique_name,
-                                                 "expected_val_real", 1.),
-                        config.get_float_default(unique_name,
-                                                 "expected_val_imag", 0.)};
-    }
-    else if (test_pattern == "frequency_bins") {
-        exp_val = {config.get_float_default(unique_name,
-                                                 "expected_val_real", 128.),
-                        config.get_float_default(unique_name,
-                                                 "expected_val_imag", 0.)};
-        std::vector<uint32_t> frequencies =
-                config.get_array<uint32_t>(unique_name, "frequencies");
-        std::vector<float> freq_exp_values_r =
-                config.get_array<float>(unique_name, "freq_expected_values_real");
-        std::vector<float> freq_exp_values_i =
-                config.get_array<float>(unique_name, "freq_expected_values_imag");
+    INFO("visCheckTestPattern: mode = %s", mode.c_str());
+    if (mode == "test_pattern_simple") {
+        exp_val = config.get_default<cfloat>(unique_name,
+                                             "default_val", {1.,0});
+    } else if (mode == "test_pattern_freq") {
+        num_freq = config.get<size_t>(unique_name,"num_freq");
 
-        if (freq_exp_values_r.size() != freq_exp_values_i.size())
-            throw std::invalid_argument("visCheckTestPattern: the length of " \
-                   "freq_expected_values_real and freq_expected_values_imag " \
-                   "have to be equal (" +
-                   std::to_string(freq_exp_values_r.size()) + " != " +
-                   std::to_string(freq_exp_values_i.size()) + ").");
-        std::vector<cfloat> freq_exp_values_complx;
-        for (size_t i = 0; i < freq_exp_values_r.size(); i++)
-            freq_exp_values_complx.push_back({freq_exp_values_r[i],
-                                              freq_exp_values_i[i]});
-        if (frequencies.size() != freq_exp_values_complx.size())
-            throw std::invalid_argument("visCheckTestPattern: the length of " \
-                   "frequencies and freq_expected_values_<real/imag> have to " \
-                   "be equal (" + std::to_string(frequencies.size()) + " != " +
-                   std::to_string(freq_exp_values_complx.size()) + ").");
-        for (size_t i = 0; i < frequencies.size(); ++i)
-            exp_val_freqs[frequencies[i]] = freq_exp_values_complx[i];
-    }
-    else
+        cfloat default_val = config.get_default<cfloat>(unique_name,
+                                                 "default_val", {128., 0.});
+        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(
+                       unique_name, "frequencies");
+        std::vector<cfloat> bin_values = config.get<std::vector<cfloat>>(
+                       unique_name, "freq_values");
+        if (bins.size() != bin_values.size()) {
+            throw std::invalid_argument("fakeVis: lengths of frequencies ("
+                                        + std::to_string(bins.size())
+                                        + ") and freq_value ("
+                                        + std::to_string(bin_values.size())
+                                        + ") arrays have to be equal.");
+        }
+        if (bins.size() > num_freq) {
+            throw std::invalid_argument(
+                        "fakeVis: length of frequencies array ("
+                        + std::to_string(bins.size()) + ") can not be larger " \
+                        "than num_freq (" + std::to_string(num_freq)
+                        + ").");
+        }
+
+        exp_val_freq = std::vector<cfloat>(num_freq);
+        for (size_t i = 0; i < num_freq; i++) {
+            size_t j;
+            for (j = 0; j < bins.size(); j++) {
+                if (bins.at(j) == i)
+                    break;
+            }
+            if (j == bins.size())
+                exp_val_freq[i] = default_val;
+            else
+                exp_val_freq[i] = bin_values.at(j);
+        }
+    } else
         throw std::invalid_argument("visCheckTestpattern: unknown mode: " +
-                                    test_pattern);
+                                    mode);
 
-    tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
-    report_freq = config.get_uint64_default(unique_name, "report_freq", 1000);
+    tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
+    report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
 
     outfile_name = config.get<std::string>(unique_name, "out_file");
 
@@ -528,11 +531,11 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
         << std::endl;
 }
 
-void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
+void visTestPattern::apply_config(uint64_t fpga_seq) {
 
 }
 
-void visCheckTestPattern::main_thread() {
+void visTestPattern::main_thread() {
 
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
@@ -579,14 +582,10 @@ void visCheckTestPattern::main_thread() {
 
         cfloat expected;
 
-        if (test_pattern == "simple")
+        if (mode == "test_pattern_simple")
             expected = exp_val;
-        else if (test_pattern == "frequency_bins") {
-            auto search = exp_val_freqs.find(frame.freq_id);
-            if (search == exp_val_freqs.end())
-                expected = exp_val;
-            else
-                expected = search->second;
+        else if (mode == "test_pattern_freq") {
+            expected = exp_val_freq.at(frame.freq_id);
         }
 
 	    // Iterate over covariance matrix
