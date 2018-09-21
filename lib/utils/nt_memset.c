@@ -11,7 +11,7 @@
 
 // TODO In theory this will work with AVX and not require AVX2, check this.
 
-#ifdef WITH_AVX
+#ifdef __AVX__
 // Assumes that the dest pointer is 32 byte alligned.
 // Assumes that the len is divisible by 256
 void nt_memset(void * dest, uint8_t val, size_t len) {

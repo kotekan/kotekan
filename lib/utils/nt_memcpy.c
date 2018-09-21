@@ -6,7 +6,7 @@
 
 #include "nt_memcpy.h"
 
-#ifdef WITH_AVX
+#ifdef __AVX__
 // Assumes that the dest pointer is 16 byte alligned.
 // Assumes that the len is divisible by 128
 void nt_memcpy(void* dest, void* src, size_t len)

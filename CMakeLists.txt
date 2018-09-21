@@ -62,14 +62,6 @@ if (${USE_LAPACK})
   find_package( OpenBLAS REQUIRED )
 endif()
 
-#Look for SSE, AVX
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindInstr.cmake)
-if (${AVX2_FOUND})
-  add_definitions(-DWITH_AVX -mavx2)
-elseif(${AVX_FOUND})
-  add_definitions(-DWITH_AVX -mavx)
-endif()
-
 #Libevent is required now
 find_package(LibEvent REQUIRED )
 
