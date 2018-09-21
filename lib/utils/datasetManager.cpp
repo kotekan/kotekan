@@ -1,20 +1,27 @@
 #include <typeinfo>
 #include <functional>
 #include <algorithm>
+#include <iostream>
+#include <mutex>
 
 #include "datasetManager.hpp"
 #include "fmt.hpp"
 
 // Initialise static map of types
-std::map<std::string,
-         std::function<state_uptr(json&, state_uptr)>>
-    datasetState::_type_create_funcs;
+std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&
+datasetState::_registered_types()
+{
+    static std::map<std::string, std::function<state_uptr(json&, state_uptr)>>
+        _register;
+
+    return _register;
+}
 
 
 state_uptr datasetState::_create(std::string name, json & data,
                                  state_uptr inner) {
 
-    return _type_create_funcs[name](data, std::move(inner));
+    return _registered_types()[name](data, std::move(inner));
 }
 
 
@@ -65,7 +72,19 @@ datasetManager& datasetManager::instance() {
 }
 
 dset_id datasetManager::add_dataset(state_id state, dset_id input) {
-    _datasets.push_back({state, input});
+    std::lock_guard<std::mutex> lock(_lock_dsets);
+    // TODO: replace datasets container with something more appropriate
+    auto key = std::make_pair(state, input);
+
+    // Search for existing entry and return if it exists
+    for (size_t id = 0; id < _datasets.size(); id++) {
+        if (_datasets[id] == key) {
+            return (dset_id)id;
+        }
+    }
+
+    // ... otherwise insert a new entry and return its index.
+    _datasets.push_back(key);
     return _datasets.size() - 1;
 }
 
@@ -83,6 +102,8 @@ state_id datasetManager::hash_state(datasetState& state) {
 std::string datasetManager::summary() const {
     int id = 0;
     std::string out;
+    std::lock_guard<std::mutex> slock(_lock_states);
+    std::lock_guard<std::mutex> dslock(_lock_dsets);
     for(auto t : _datasets) {
         datasetState* dt = _states.at(t.first).get();
 
@@ -97,6 +118,7 @@ const std::map<state_id, const datasetState *> datasetManager::states() const {
 
     std::map<state_id, const datasetState *> cdt;
 
+    std::lock_guard<std::mutex> lock(_lock_states);
     for (auto& dt : _states) {
         cdt[dt.first] = dt.second.get();
     }
@@ -105,6 +127,7 @@ const std::map<state_id, const datasetState *> datasetManager::states() const {
 }
 
 const std::vector<std::pair<state_id, dset_id>> datasetManager::datasets() const {
+    std::lock_guard<std::mutex> lock(_lock_dsets);
     return _datasets;
 }
 
@@ -113,11 +136,13 @@ datasetManager::ancestors(dset_id dset) const {
 
     std::vector<std::pair<dset_id, datasetState *>> a_list;
 
+    std::lock_guard<std::mutex> slock(_lock_states);
+    std::lock_guard<std::mutex> dslock(_lock_dsets);
+
     // Walk up from the current node to the root, extracting pointers to the
     // states performed
     while(dset >= 0) {
         datasetState * t = _states.at(_datasets[dset].first).get();
-
         // Walk over the inner states, given them all the same dataset id.
         while(t != nullptr) {
             a_list.emplace_back(dset, t);

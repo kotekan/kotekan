@@ -157,13 +157,26 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
                 _keys[uri].end()) {
             // this key is not in the config file
             std::string msg = fmt::format("configUpdater: Update to endpoint " \
-                                          "'%s' contained value '%s' not " \
+                                          "'{}' contained value '{}' not " \
                                           "defined in the updatable config " \
                                           "block.",
                                           uri.c_str(), it.key().c_str());
             WARN(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
+        } else {
+            // ...and for correct types
+            if (it.value().type() != _init_values[uri].at(string(it.key())).type()) {
+                std::string msg = fmt::format(
+                            "configUpdater: Update to endpoint '{}' contained" \
+                            "value '{}' of type {} (expected type {}).",
+                            uri.c_str(), it.key().c_str(),
+                            it.value().type_name(),
+                            _init_values[uri].at(it.key()).type_name());
+                WARN(msg.c_str());
+                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
         }
     }
     // ...and for missing values
@@ -173,7 +186,7 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
                 json.find(*it) == json.end()) {
             // this key is in the config file, but missing in the update
             std::string msg = fmt::format("configUpdater: Update to endpoint " \
-                                          "'%s' is missing value '%s' that is" \
+                                          "'{}' is missing value '{}' that is" \
                                           " defined in the config file.",
                                           uri.c_str(), it->c_str());
             WARN(msg.c_str());

@@ -9,6 +9,7 @@
 #include "fmt.hpp"
 #include "visUtil.hpp"
 #include "visTranspose.hpp"
+#include "prometheusMetrics.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
@@ -67,11 +68,21 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
     ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
 
+    // Check if this is baseline-stacked data
+    if (_t["index_map"].find("stack") != _t["index_map"].end()) {
+        stack = _t["index_map"]["stack"].get<std::vector<stack_ctype>>();
+        // TODO: verify this is where it gets stored
+        reverse_stack = _t["reverse_map"]["stack"].get<std::vector<rstack_ctype>>();
+    }
+
     num_time = times.size();
     num_freq = freqs.size();
     num_input = inputs.size();
     num_prod = prods.size();
     num_ev = ev.size();
+
+    // the dimension of the visibilities is different for stacked data
+    eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
     // change archive version: remove "NT_" prefix (not transposed)
     version = metadata["archive_version"];
@@ -88,7 +99,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
                    md_filename.c_str());
 
     DEBUG("File has %d times, %d frequencies, %d products",
-                  num_time, num_freq, num_prod);
+                  num_time, num_freq, eff_prod_dim);
 
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
@@ -97,14 +108,14 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     write_f = chunk_f;
 
     // Allocate memory for collecting frames
-    vis.resize(chunk_t*chunk_f*num_prod);
-    vis_weight.resize(chunk_t*chunk_f*num_prod);
-    // TODO: fill these at this point?
-    gain_coeff.resize(chunk_t*chunk_f*num_input);
-    gain_exp.resize(chunk_t*num_input);
+    vis.resize(chunk_t*chunk_f*eff_prod_dim);
+    vis_weight.resize(chunk_t*chunk_f*eff_prod_dim);
     eval.resize(chunk_t*chunk_f*num_ev);
     evec.resize(chunk_t*chunk_f*num_ev*num_input);
     erms.resize(chunk_t*chunk_f);
+    gain.resize(chunk_t*chunk_f*num_input);
+    frac_lost.resize(chunk_t*chunk_f);
+    input_flags.resize(chunk_t*num_input);
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
@@ -121,10 +132,19 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
+    uint64_t frame_size = 0;
+
     // Create HDF5 file
-    file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
-                metadata, times, freqs, inputs, prods, num_ev, chunk)
-    );
+    if (stack.size() > 0) {
+        file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
+                    metadata, times, freqs, inputs, prods,
+                    stack, reverse_stack, num_ev, chunk)
+        );
+    } else {
+        file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
+                    metadata, times, freqs, inputs, prods, num_ev, chunk)
+        );
+    }
 
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
@@ -138,23 +158,21 @@ void visTranspose::main_thread() {
         // Time-transpose as frames come in
         // Fastest varying is time (needs to be consistent with reader!)
         offset = fi * write_t;
-        strided_copy(frame.vis.data(), vis.data(), offset*num_prod + ti,
-                write_t, num_prod);
+        strided_copy(frame.vis.data(), vis.data(), offset*eff_prod_dim + ti,
+                write_t, eff_prod_dim);
         strided_copy(frame.weight.data(), vis_weight.data(),
-                offset*num_prod + ti, write_t, num_prod);
-        // TODO: just fill until these are populated in the frames
-        std::fill(gain_coeff.begin() + (offset+ti) * num_input,
-                gain_coeff.begin() + (offset+ti+1) * num_input, (cfloat) {1, 0});
-        if (fi == 0) {
-            std::fill(gain_exp.begin() + (offset+ti) * inputs.size(),
-                      gain_exp.begin() + (offset+ti+1) * inputs.size(), 0);
-        }
-        // TODO: are sizes of eigenvectors always the number of inputs?
+                offset*eff_prod_dim + ti, write_t, eff_prod_dim);
         strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti,
                 write_t, num_ev);
         strided_copy(frame.evec.data(), evec.data(),
                 fi*num_ev*num_input*write_t + ti, write_t, num_ev*num_input);
         erms[offset + ti] = frame.erms;
+        frac_lost[offset + ti] = frame.fpga_seq_length == 0 ?
+                1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+        strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
+                write_t, num_input);
+        strided_copy(frame.flags.data(), input_flags.data(), ti,
+                write_t, num_input);
 
         // Increment within read chunk
         ti = (ti + 1) % write_t;
@@ -167,6 +185,14 @@ void visTranspose::main_thread() {
             increment_chunk();
             fi = 0;
             ti = 0;
+
+            // export prometheus metric
+            if (frame_size == 0)
+                frame_size = frame.calculate_buffer_layout(num_input, num_prod,
+                        num_ev)["_struct"].second;
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_vistranspose_data_transposed_bytes", unique_name,
+                        frame_size * frames_so_far);
         }
 
         frames_so_far++;
@@ -191,19 +217,20 @@ void visTranspose::write() {
             vis_weight.data());
     //DEBUG("wrote vis_weight");
 
-    file->write_block("gain_coeff", f_ind, t_ind, write_f, write_t,
-            gain_coeff.data());
-    //DEBUG("wrote gain_coeff");
+    if (num_ev > 0) {
+        file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
+        file->write_block("evec", f_ind, t_ind, write_f, write_t, evec.data());
+        file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
+    }
 
-    file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
-    //DEBUG("wrote eval");
+    file->write_block("gain", f_ind, t_ind, write_f, write_t,
+            gain.data());
 
-    file->write_block("evec", f_ind, t_ind, write_f, write_t, evec.data());
+    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
+            input_flags.data());
 
-    file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
-
-    file->write_block("gain_exp", f_ind, t_ind, write_f, write_t,
-            gain_exp.data());
+    file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t,
+            frac_lost.data());
 }
 
 // increment between chunks

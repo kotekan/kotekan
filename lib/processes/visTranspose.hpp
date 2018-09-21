@@ -33,6 +33,10 @@ using json = nlohmann::json;
  * @conf   infile				String. Path to the data files to read (e.g. "/path/to/0000_000", without .data/meta).
  * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
  *
+ * @par Metrics
+ * @metric kotekan_vistranspose_data_transposed_bytes
+ *         The total amount of data processed in bytes.
+ *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class visTranspose : public KotekanProcess {
@@ -62,14 +66,16 @@ private:
     std::vector<time_ctype> time;
     std::vector<cfloat> vis;
     std::vector<float> vis_weight;
-    std::vector<cfloat> gain_coeff;
-    std::vector<int32_t> gain_exp;
     std::vector<float> eval;
     std::vector<cfloat> evec;
     std::vector<float> erms;
+    std::vector<cfloat> gain;
+    std::vector<float> frac_lost;
+    std::vector<float> input_flags;
+    std::vector<rstack_ctype> reverse_stack;
 
     // Keep track of the size to write out
-    // size of frequencz and time dimension of chunk when written to file
+    // size of frequency and time dimension of chunk when written to file
     size_t write_f, write_t;
     // flags to indicate incomplete chunks
     bool t_edge = false;
@@ -83,6 +89,7 @@ private:
     std::vector<input_ctype> inputs;
     std::vector<prod_ctype> prods;
     std::vector<uint32_t> ev;
+    std::vector<stack_ctype> stack;
     json metadata;
 
     /// A unique ID for the chunk (i.e. frequency set)
@@ -94,6 +101,7 @@ private:
     size_t num_time;
     size_t num_freq;
     size_t num_ev;
+    size_t eff_prod_dim;
 
     // write datasets to file
     void write();
