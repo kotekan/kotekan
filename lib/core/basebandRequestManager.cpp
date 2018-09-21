@@ -146,7 +146,8 @@ std::shared_ptr<basebandDumpStatus> basebandRequestManager::get_next_request(con
         basebandRequest req = readout_entry.request_queue.front();
         readout_entry.request_queue.pop_front();
 
-        readout_entry.current_status = std::make_shared<basebandDumpStatus>(basebandDumpStatus{req});
+        basebandDumpStatus s{req};
+        readout_entry.current_status = std::make_shared<basebandDumpStatus>(s);
     }
     else {
         readout_entry.current_status = nullptr;
