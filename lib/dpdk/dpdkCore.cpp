@@ -1,5 +1,4 @@
 #include "dpdkCore.hpp"
-
 #include "json.hpp"
 
 #include <stdexcept>
@@ -13,6 +12,10 @@ using std::vector;
 using nlohmann::json;
 
 #include "iceBoardShuffle.hpp"
+#include "iceBoardStandard.hpp"
+#include "iceBoardVDIF.hpp"
+#include "captureHandler.hpp"
+
 
 REGISTER_KOTEKAN_PROCESS(dpdkCore);
 
@@ -44,6 +47,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
     num_lcores = lcore_cpu_map.size();
 
     dpdk_init(lcore_cpu_map, master_lcore_cpu);
+
+    num_system_ports = rte_eth_dev_count();
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
@@ -82,9 +87,9 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
 
     create_handlers(buffer_container);
 
-    if (num_ports > rte_eth_dev_count()) {
+    if (num_ports > num_system_ports) {
         throw std::runtime_error("Trying to create more ports: " + to_string(num_ports)
-                                 +  ", then DPDK found: " + to_string(rte_eth_dev_count()));
+                                 +  ", than DPDK found: " + to_string(num_system_ports));
     }
 
     // The plus one is for the master lcore.
@@ -108,9 +113,14 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name,
         throw std::runtime_error("Cannot create DPDK mbuf pool.");
     }
 
-    for (uint8_t i = 0; i < num_ports; ++i) {
-        if (port_init(i) != 0) {
-            throw std::runtime_error("DPDK Cannot init port: " + to_string(i));
+    // Init ports referenced in the lcore port mapping
+    for (vector<int> ports : lcore_port_map) {
+        for (uint32_t port : ports) {
+            // TODO This will fail in a strange way if a port is listed more than once in the config.
+            // We should have a check that each port assignment is unique.
+            if (port_init(port) != 0) {
+                throw std::runtime_error("DPDK Cannot init port: " + to_string(port));
+            }
         }
     }
 
@@ -124,13 +134,13 @@ void dpdkCore::create_handlers(bufferContainer &buffer_container) {
     vector<json> handlers_block = config.get<std::vector<json>>(
                 unique_name, "handlers");
     uint32_t port = 0;
-    handlers = (dpdkRXhandler **)malloc(num_ports * sizeof(dpdkRXhandler *));
+    if (handlers_block.size() != num_system_ports) {
+        throw std::runtime_error("The number of DPDK handlers (" + to_string(handlers_block.size()) +
+                                 ") must be equal to the number of system ports (" + to_string(num_system_ports) + ")");
+    }
+    handlers = (dpdkRXhandler **)malloc(num_system_ports * sizeof(dpdkRXhandler *));
     CHECK_MEM(handlers);
     for (json &handler : handlers_block) {
-
-        if (port >= num_ports) {
-            throw std::runtime_error("Number of handlers must match number of ports");
-        }
 
         string handler_name = handler["dpdk_handler"];
         string handler_unique_name = unique_name + "/handlers/" + to_string(port);
@@ -138,6 +148,17 @@ void dpdkCore::create_handlers(bufferContainer &buffer_container) {
         if (handler_name == "iceBoardShuffle") {
             handlers[port] = new iceBoardShuffle(config, handler_unique_name,
                                                  buffer_container, port);
+        } else if (handler_name == "iceBoardStandard") {
+            handlers[port] = new iceBoardStandard(config, handler_unique_name,
+                                                  buffer_container, port);
+        } else if (handler_name == "iceBoardVDIF") {
+            handlers[port] = new iceBoardVDIF(config, handler_unique_name,
+                                                  buffer_container, port);
+        } else if (handler_name == "captureHandler") {
+            handlers[port] = new captureHandler(config, handler_unique_name,
+                                                  buffer_container, port);
+        } else if (handler_name == "none") {
+            handlers[port] = nullptr;
         } else {
             throw std::runtime_error("The dpdk handler type '" + handler_name + "' does not exist.");
         }
@@ -191,8 +212,9 @@ void dpdkCore::main_thread() {
         // Some of these stats might be moved to this class, but
         // it seemed like it was worth leaving it upto the handler
         // to say which stats we actually care about recording.
-        for (uint32_t i = 0; i < num_ports; ++i) {
-            handlers[i]->update_stats();
+        for (uint32_t i = 0; i < num_system_ports; ++i) {
+            if (handlers[i] != nullptr)
+                handlers[i]->update_stats();
         }
 
         // Check port status
@@ -203,13 +225,15 @@ void dpdkCore::main_thread() {
 }
 
 dpdkCore::~dpdkCore() {
-    // Make sure DPDK is stopped
+    // TODO Make sure DPDK is stopped
+    // Requires an experimental feature not yet the version of DPDK used by kotekan
 
     rte_mempool_free(mbuf_pool);
 
     // Free the handlers
-    for (uint32_t i = 0; i < num_ports; ++i) {
-        delete handlers[i];
+    for (uint32_t i = 0; i < num_system_ports; ++i) {
+        if (handlers[i] != nullptr)
+            delete handlers[i];
     }
     free(handlers);
 }
@@ -219,7 +243,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     int retval;
     uint16_t q;
 
-    if (port >= rte_eth_dev_count())
+    if (port >= num_system_ports)
         return -1;
 
     // Configure the Ethernet device.
@@ -290,6 +314,16 @@ int dpdkCore::lcore_rx(void * args) {
     const uint32_t num_local_ports = port_list.num_ports;
     const uint32_t * ports = port_list.ports;
     const uint32_t burst_size = core->burst_size;
+
+    for (uint32_t i = 0; i < num_local_ports; ++i) {
+        uint32_t port = ports[i];
+        if (core->handlers[port] == nullptr) {
+            // This is the one place (static member function) where normal logging does work.
+            fprintf(stderr, "No valid handler provided for port %d", port);
+            raise(SIGINT);
+            return 0;
+        }
+    }
 
     while (!core->stop_thread) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {

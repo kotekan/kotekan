@@ -11,6 +11,7 @@
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
 #include "configEval.hpp"
+#include "json.hpp"
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -87,8 +88,8 @@ protected:
         // in as lost packets.
         if ( ((seq % alignment) <= 100) && ((seq % alignment) >= 0 )) {
 
-            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d",
-                port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused);
+            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, seq: %" PRIu64 "",
+                port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused, seq);
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;
@@ -214,6 +215,13 @@ protected:
         return (int64_t)cur_seq - (int64_t)last_seq;
     }
 
+    /**
+     * @brief Builds and returns a json object with all the port info
+     *
+     * @return The json object containing port info
+     */
+    json get_json_port_info();
+
     /// The FPAG seq number of the current packet being processed
     uint64_t cur_seq = 0;
 
@@ -251,6 +259,9 @@ protected:
     uint64_t rx_out_of_order_errors_total = 0;
     uint64_t rx_lost_samples_total = 0;
 
+    /// The number of frequences in the output stream
+    int32_t num_local_freq;
+
 };
 
 inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &unique_name,
@@ -264,8 +275,55 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
     samples_per_packet = config.get_default<uint32_t>(
                 unique_name, "samples_per_packet", 2);
 
+    num_local_freq = config.get_default<int32_t>(unique_name, "num_local_freq", 1);
     alignment = configEval<uint64_t>(config, unique_name, "alignment")
             .compute_result();
+}
+
+json iceBoardHandler::get_json_port_info() {
+    json info;
+
+    info["fpga_stream_id"] = {{"crate", port_stream_id.crate_id},
+                            {"slot", port_stream_id.slot_id},
+                            {"link", port_stream_id.link_id}};
+    info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
+    info["lost_samples"] = rx_lost_samples_total;
+
+    info["ip_cksum_errors"] = rx_ip_cksum_errors_total;
+    info["out_of_order_errors"] = rx_out_of_order_errors_total;
+
+    // This is the total number of errors from all sources other than missed packets
+    // i.e. natural packet loss.
+    info["errors_total"] = rx_errors_total;
+
+    info["nic_port"] = this->port;
+
+    vector<uint32_t> freq_bins;
+    vector<float> freq_mhz;
+    stream_id_t temp_stream_id = port_stream_id;
+    temp_stream_id.crate_id = port_stream_id.crate_id % 2;
+    for (int32_t i = 0; i < num_local_freq; ++i) {
+        if (num_local_freq == 1) { // CHIME
+            // Even though CHIME sets num_local_freq == 1
+            // The packets actually have 4 frequencies and 512 elements before the transpose
+            for (int j = 0; j < 4; ++j) {
+                temp_stream_id.unused = j;
+                freq_bins.push_back(bin_number_chime(&temp_stream_id));
+                freq_mhz.push_back(freq_from_bin(bin_number_chime(&temp_stream_id)));
+            }
+        } else if (num_local_freq == 8) { // 256 element system (Pathfinder)
+            freq_bins.push_back(bin_number(&temp_stream_id, i));
+            freq_mhz.push_back(freq_from_bin(bin_number(&temp_stream_id, i)));
+        } else if (num_local_freq == 128) { // 16 element system
+            freq_bins.push_back(bin_number_16_elem(&temp_stream_id, i));
+            freq_mhz.push_back(freq_from_bin(bin_number_16_elem(&temp_stream_id, i)));
+        }
+    }
+
+    info["freq_bins"] = freq_bins;
+    info["freq_mhz"] = freq_mhz;
+
+    return info;
 }
 
 inline void iceBoardHandler::update_stats() {

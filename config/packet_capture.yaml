@@ -1,0 +1,91 @@
+##########################################
+#
+# packet_capture.yaml
+#
+# Config for viewing the contents of packets on a system with 4 links (a CHIME node)
+#
+# This config will print the contents of a few packets to screen as a hex dump,
+# and return a binary dump of packets on demand via a REST call.
+#
+# Author: Andre Renard
+#
+##########################################
+
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+
+buffer_depth: 8
+samples_per_data_set: 32768
+packet_size: 4928
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+network_input_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * packet_size
+    metadata_pool: main_pool
+    network_input_buffer_0:
+        kotekan_buffer: standard
+    network_input_buffer_1:
+        kotekan_buffer: standard
+    network_input_buffer_2:
+        kotekan_buffer: standard
+    network_input_buffer_3:
+        kotekan_buffer: standard
+
+cpu_affinity: [2,3,8,9]
+dpdk:
+    kotekan_process: dpdkCore
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [0,1,6,7]
+    master_lcore_cpu: 2
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3.
+    lcore_port_map:
+        - [0]
+        - [1]
+        - [2]
+        - [3]
+    # One handler must be given per port.
+    handlers:
+        - dpdk_handler: captureHandler
+          out_buf: network_input_buffer_0
+        - dpdk_handler: captureHandler
+          out_buf: network_input_buffer_1
+        - dpdk_handler: captureHandler
+          out_buf: network_input_buffer_2
+        - dpdk_handler: captureHandler
+          out_buf: network_input_buffer_3
+
+hexDump:
+    kotekan_process: hexDump
+    # Change this buffer to print packets on different ports
+    buf: network_input_buffer_0
+    len: 4928
+
+inspect_block:
+    # 0 means dump the full frame on callback, otherwise dump the first `len` bytes 
+    len: 0
+    inspect_0:
+        kotekan_process: restInspectFrame
+        in_buf: network_input_buffer_0
+    inspect_1:
+        kotekan_process: restInspectFrame
+        in_buf: network_input_buffer_1
+        len: 0
+    inspect_2:
+        kotekan_process: restInspectFrame
+        in_buf: network_input_buffer_2
+        len: 0
+    inspect_3:
+        kotekan_process: restInspectFrame
+        in_buf: network_input_buffer_3
