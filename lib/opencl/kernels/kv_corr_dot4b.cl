@@ -5,6 +5,10 @@
 //#define COARSE_BLOCK_SIZE
 //#define WI_SIZE
 
+#if COARSE_BLOCK_SIZE > 8
+#error "__builtin_amdgcn_ds_bpermute won't work with this workgroup size!"
+#endif
+
 #define xl get_local_id(0)
 #define yl get_local_id(1)
 #define zl get_local_id(2)
@@ -27,7 +31,6 @@
 //the input is [Freqs, Time/8, Input, 8-times, 2-re-im]
 
 int dot4b(uint,uint);
-
 int dot4b(uint a, uint b){
     int sum=0;
     for (int i=0; i<8; i++){
@@ -104,7 +107,6 @@ void corr ( __global const uint *input,
                 corr_ii[y][x] += dot4b(xi[x],yi[y]);
             }
             //rotate data to the neighbour work items
-#if __has_builtin(__builtin_amdgcn_ds_bpermute) //use AMD instrinsics
             #pragma unroll
             for (int k=0; k<WI_SIZE; k++){
                 xr[k] = __builtin_amdgcn_ds_bpermute(dest_x*4,xr[k]);
@@ -112,27 +114,6 @@ void corr ( __global const uint *input,
                 yr[k] = __builtin_amdgcn_ds_bpermute(dest_y*4,yr[k]);
                 yi[k] = __builtin_amdgcn_ds_bpermute(dest_y*4,yi[k]);
             }
-#else //brute force via local share
-//#error "Requires AMD extensions!"
-            local uint xr_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];
-            local uint xi_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];
-            local uint yr_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];
-            local uint yi_buf[COARSE_BLOCK_SIZE*COARSE_BLOCK_SIZE][WI_SIZE];
-            barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
-            for (int k=0; k<WI_SIZE; k++) {
-                xr_buf[dest_x][k]=xr[k];
-                xi_buf[dest_x][k]=xi[k];
-                yr_buf[dest_y][k]=yr[k];
-                yi_buf[dest_y][k]=yi[k];
-            }
-            barrier(CLK_GLOBAL_MEM_FENCE); //make sure everyone is done
-            for (int k=0; k<WI_SIZE; k++) {
-                xr[k]=xr_buf[yl*COARSE_BLOCK_SIZE+xl][k];
-                xi[k]=xi_buf[yl*COARSE_BLOCK_SIZE+xl][k];
-                yr[k]=yr_buf[yl*COARSE_BLOCK_SIZE+xl][k];
-                yi[k]=yi_buf[yl*COARSE_BLOCK_SIZE+xl][k];
-            }
-#endif //use AMD shuffle intrinsics
         }
     }
     __global int *out=(corr_buf + 
