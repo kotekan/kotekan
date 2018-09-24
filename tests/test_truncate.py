@@ -5,7 +5,8 @@ import visbuffer
 import kotekan_runner
 
 trunc_params = {
-    'fakevis_mode': 'fill_ij',
+    'fakevis_mode': 'test_pattern_simple',
+    'test_pattern_value': [0, 0],
     'cadence': 2.,
     'total_frames': 10,
     'err_sq_lim': 0.003,
@@ -25,6 +26,7 @@ def vis_data(tmpdir_factory):
     fakevis_buffer = kotekan_runner.FakeVisBuffer(
             num_frames=trunc_params['total_frames'],
             mode=trunc_params['fakevis_mode'],
+            test_pattern_value=trunc_params['test_pattern_value'],
             cadence=trunc_params['cadence']);
 
     in_dump_config = trunc_params.copy()
@@ -41,7 +43,7 @@ def vis_data(tmpdir_factory):
         global_config = trunc_params,
         parallel_process_type = 'rawFileWrite',
         parallel_process_config = in_dump_config,
-        noise = "random"
+        noise = True
     )
 
     test.run()

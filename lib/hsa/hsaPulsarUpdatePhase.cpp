@@ -80,15 +80,15 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     rest_server.register_post_callback(endpoint_psrcoord,
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
-    //Piggy-back on FRB to listen for gain updates
-    endpoint_gains = unique_name + "/frb/update_gains/"+std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(endpoint_gains,
+    //listen for gain updates
+    endpoint_gains_psr = unique_name + "/update_gains_psr/"+std::to_string(device.get_gpu_id());
+    rest_server.register_post_callback(endpoint_gains_psr,
                                         std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     restServer::instance().remove_json_callback(endpoint_psrcoord);
-    restServer::instance().remove_json_callback(endpoint_gains);
+    restServer::instance().remove_json_callback(endpoint_gains_psr);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(bankID);
@@ -106,6 +106,7 @@ void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json&
     INFO("Updating gains from %s", _gain_dir.c_str());
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "gain_dir", _gain_dir);
+    INFO("[PSR] updated gain with %s", _gain_dir.c_str());
 }
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)

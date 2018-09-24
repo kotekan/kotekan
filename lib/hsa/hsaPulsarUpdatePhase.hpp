@@ -32,7 +32,7 @@
  *            specific beam at RA+Dec with a scaling factor.
  *            requires json values      "beam", "ra", "dec", "scaling"
  *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
- * @endpoint  /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain 
+ * @endpoint  /update_gains_psr/<gpu_id> ``POST`` Trigger re-load of gain 
  *            at specific path for calibration purpose.
  *            requires json values      "gain_dir"
  *            update config             "gain_dir"
@@ -159,7 +159,7 @@ private:
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;
     /// Endpoint for updating gains
-    std::string endpoint_gains;
+    std::string endpoint_gains_psr;
 
 };
 

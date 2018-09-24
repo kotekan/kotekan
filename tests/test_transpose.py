@@ -15,7 +15,8 @@ writer_params = {
     'total_frames': 10,  # One extra sample to ensure we actually get 256
     'freq': [3, 777, 554],
     'chunk_size': [2, 6, 5],
-    'mode': 'default',
+    'mode': 'test_pattern_simple',
+    'test_pattern_value': [0, 0],
     'file_type': 'hdf5fast'
 }
 
@@ -40,6 +41,7 @@ def transpose(tmpdir_factory):
         num_frames=writer_params['total_frames'],
         cadence=writer_params['cadence'],
         mode=writer_params['mode'],
+        test_pattern_value=writer_params['test_pattern_value']
     )
 
     # Write fake data in hdf5 format
@@ -62,7 +64,7 @@ def transpose(tmpdir_factory):
         params,
         parallel_process_type = 'visWriter',
         parallel_process_config = dumph5_conf,
-        noise=True
+        noise="random"
     )
 
     writer.run()

@@ -66,7 +66,11 @@ fakeVis::fakeVis(Config &config,
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 
-    if (mode == "test_pattern_freq") {
+    if (mode == "test_pattern_simple") {
+        test_pattern_value = std::vector<cfloat>(1);
+        test_pattern_value[0] = config.get_default<cfloat>(
+                    unique_name, "default_val", {1., 0.});
+    } else if (mode == "test_pattern_freq") {
         cfloat default_val = config.get_default<cfloat>(unique_name,
                                                  "default_val", {128., 0.});
         std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(

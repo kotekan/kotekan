@@ -45,6 +45,12 @@
  *                          less than zero, no limit is applied. Default is `-1`.
  * @conf  zero_weight       Bool. Set all weights to zero, if this is True.
  *                          Default is False.
+ * @conf  default_val       Cfloat. The default test pattern value for modes
+ *                          'test_pattern_simple' and 'test_pattern_freq'.
+ * @conf  frequencies       Array of UInt32. Definition of frequency IDs for
+ *                          mode 'test_pattern_freq'.
+ * @conf  freq_values       Array of CFloat. Values for the frequency IDs in
+ *                          mode 'test_pattern_freq'.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -110,8 +116,22 @@ public:
      **/
     void fill_mode_chime(visFrameView& frame);
 
+    /**
+     * @brief Fill with a simple test pattern, where all visibilities have
+     * the value of 'default_val'.
+     *
+     * @param frame Frame to fill.
+     */
     void fill_mode_test_pattern_simple(visFrameView& frame);
 
+    /**
+     * @brief Fill with a frequency dependend test pattern, where the
+     * frequencies defined in the config value 'frequencies' have the values
+     * defined in 'freq_values'. All other visibility values have the value
+     * defined in 'default_val'.
+     *
+     * @param frame Frame to fill.
+     */
     void fill_mode_test_pattern_freq(visFrameView& frame);
 
 private:

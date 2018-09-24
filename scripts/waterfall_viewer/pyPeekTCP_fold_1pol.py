@@ -211,20 +211,35 @@ c.set_label('Power (dB, arbitrary)')
 
 from matplotlib.widgets import Slider, Button
 
+#rax = plt.axes([0.82, 0.03, 0.15, 0.04])
+#check = Button(rax, 'Raw Power')
+#
+#def func(event):
+#	global medsub,check, colorscale
+#	medsub = not medsub
+#	if medsub:
+#		check.label.set_text("Med Subtracted")
+#		colorscale=med_range
+#	else:
+#		check.label.set_text("Raw Power")
+#		colorscale=full_range
+#
+#check.on_clicked(func)
+
 rax = plt.axes([0.82, 0.03, 0.15, 0.04])
-check = Button(rax, 'Raw Power')
+check = Button(rax, 'Save Data')
 
-def func(event):
-	global medsub,check, colorscale
-	medsub = not medsub
-	if medsub:
-		check.label.set_text("Med Subtracted")
-		colorscale=med_range
-	else:
-		check.label.set_text("Raw Power")
-		colorscale=full_range
+import pickle
+def save(event):
+	global check, waterfall, times, freqlist
+	freqs = freqlist.reshape(plot_freqs,-1).mean(axis=1)
+	data = 10**(waterfall/10)
+	fn = time.strftime("MP_%Y%m%d-%H%M%S.pkl")
+	pickle.dump({'freqs':freqs, 'times':times, 'data':data},open(fn,'wb'))
+	print("Data Saved to {}".format(fn))
 
-check.on_clicked(func)
+check.on_clicked(save)
+
 
 ani = animation.FuncAnimation(f, updatefig, frames=100, interval=100)
 f.show()
