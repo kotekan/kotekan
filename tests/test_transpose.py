@@ -15,7 +15,7 @@ writer_params = {
     'total_frames': 10,  # One extra sample to ensure we actually get 256
     'freq': [3, 777, 554],
     'chunk_size': [2, 6, 5],
-    'mode': 'fill_ij',
+    'mode': 'default',
     'file_type': 'hdf5fast'
 }
 
