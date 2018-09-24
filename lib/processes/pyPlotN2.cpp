@@ -23,6 +23,8 @@ pyPlotN2::pyPlotN2(Config& config, const string& unique_name,
     gpu_id = config.get_int(unique_name, "gpu_id");
     in_local = (unsigned char*)malloc(buf->frame_size);
     endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);
+
+//    INFO("Ready to Plot!");
 }
 
 pyPlotN2::~pyPlotN2() {
@@ -54,7 +56,7 @@ void pyPlotN2::main_thread() {
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
 
-        //INFO("Got buffer, id: %d", bufferID);
+        //INFO("Got buffer, id: %d", frame_id);
 
         if ((!busy) && (dump_plot))
         {
@@ -64,34 +66,38 @@ void pyPlotN2::main_thread() {
             memcpy(in_local, frame, buf->frame_size);
             stream_id = get_stream_id_t(buf, frame_id);
 
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            frame_id = ( frame_id + 1 ) % buf->num_frames;
-
             std::thread thr = std::thread(&pyPlotN2::make_plot, this);
             thr.detach();
         }
-        else{
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            frame_id = ( frame_id + 1 ) % buf->num_frames;
-        }
+
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        frame_id = ( frame_id + 1 ) % buf->num_frames;
     }
 }
 
 
 void pyPlotN2::make_plot(void)
 {
+    INFO("Dumping Plot!");
+ 
     FILE *python_script;
-    python_script = popen("python -u /usr/sbin/pyPlotN2.py","w");
+    python_script = popen("python -u /usr/local/sbin/pyPlotN2.py","w");
     { // N^2
         uint num_elements = config.get_int(unique_name, "num_elements");
-        uint block_dim = 32;
+        uint num_freqs = config.get_int_default(unique_name, "num_freqs",1);
+        uint block_dim = config.get_int(unique_name, "block_size");
         uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
         uint block_size = block_dim*block_dim*2; //real, complex
+        if (num_elements < block_dim) {
+            num_blocks = 1;
+            num_freqs = num_freqs / (block_dim/num_elements);
+            num_elements = block_dim;
+        }
 
         usleep(10000);
 
         json header = {
-            {"data_length",num_blocks*block_size},
+            {"data_length",num_blocks*block_size*num_freqs},
             {"type","CORR_MATRIX"},
             {"num_elements",num_elements},
             {"block_dim",{block_dim,block_dim,2}},
@@ -99,9 +105,11 @@ void pyPlotN2::make_plot(void)
         };
         std::string s = header.dump()+"\n";
         fwrite(s.c_str(),1,s.length(),python_script);
-        for (uint32_t i=0; i<num_blocks; i++) {
-            fwrite(in_local +i*sizeof(int)*block_size,sizeof(int),block_size,python_script);
-            fflush(python_script);
+        for (uint32_t f=0; f<num_freqs; f++) {
+            for (uint32_t i=0; i<num_blocks; i++) {
+                fwrite(in_local +(f*num_blocks+i)*sizeof(int)*block_size,sizeof(int),block_size,python_script);
+                fflush(python_script);
+            }
         }
     }
     busy = false;
