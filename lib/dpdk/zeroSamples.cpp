@@ -29,6 +29,8 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
 
     sample_size = config.get_default<uint32_t>(
                 unique_name.c_str(), "sample_size", 2048);
+    zero_value = config.get_default<uint8_t>(
+                unique_name.c_str(), "zero_value", 0x88);
 }
 
 zeroSamples::~zeroSamples() {
@@ -55,7 +57,7 @@ void zeroSamples::main_thread() {
             // Check array bounds
             assert((zero_location + sample_size) <= (uint32_t)out_buf->frame_size);
             if (flag_frame[i] == 1) {
-                nt_memset((void *)(&data_frame[zero_location]), 0x88, sample_size);
+                nt_memset((void *)(&data_frame[zero_location]), zero_value, sample_size);
                 lost_samples++;
             }
         }

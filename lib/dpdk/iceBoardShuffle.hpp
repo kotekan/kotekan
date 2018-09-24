@@ -185,13 +185,7 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
 
     std::string endpoint_name = unique_name + "/port_data";
     restServer::instance().register_get_callback(endpoint_name, [&] (connectionInstance &conn) {
-        json info;
-
-        info["fpga_stream_id"] = {{"crate", port_stream_id.crate_id},
-                             {"slot", port_stream_id.slot_id},
-                             {"link", port_stream_id.link_id}};
-        info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
-        info["lost_samples"] = rx_lost_samples_total;
+        json info = get_json_port_info();
 
         vector<uint64_t> second_stage_errors;
         second_stage_errors.assign(fpga_second_stage_shuffle_errors, fpga_second_stage_shuffle_errors + 16);
@@ -210,28 +204,6 @@ iceBoardShuffle::iceBoardShuffle(Config &config, const std::string &unique_name,
         info["fpga_third_stage_fifo_overflow_errors"] = fpga_third_stage_fifo_overflow_errors;
 
         info["shuffle_flags_set"] = rx_shuffle_flags_set;
-
-        info["ip_cksum_errors"] = rx_ip_cksum_errors_total;
-        info["out_of_order_errors"] = rx_out_of_order_errors_total;
-
-        // This is the total number of errors from all sources other than missed packets
-        // i.e. natural packet loss.
-        info["errors_total"] = rx_errors_total;
-
-        info["nic_port"] = this->port;
-
-        vector<uint32_t> freq_bins;
-        vector<float> freq_mhz;
-        stream_id_t temp_stream_id = port_stream_id;
-        temp_stream_id.crate_id = port_stream_id.crate_id % 2;
-        for (uint32_t i = 0; i < shuffle_size; ++i) {
-            temp_stream_id.unused = i;
-            freq_bins.push_back(bin_number_chime(&temp_stream_id));
-            freq_mhz.push_back(freq_from_bin(bin_number_chime(&temp_stream_id)));
-        }
-
-        info["freq_bins"] = freq_bins;
-        info["freq_mhz"] = freq_mhz;
 
         conn.send_json_reply(info);
     });
@@ -383,6 +355,8 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf *mbuf) {
 
     sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
     assert(sample_location * sample_size <= out_bufs[0]->frame_size);
+    assert(sample_location >= 0);
+    assert(get_mbuf_seq_num(mbuf) == cur_seq);
     if (unlikely(sample_location * sample_size == out_bufs[0]->frame_size)) {
         // If there are no new frames to fill, we are just dropping the packet
         if (!advance_frames(cur_seq))

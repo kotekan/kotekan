@@ -1,10 +1,5 @@
-/*****************************************
-File Contents:
-- pulsarNetworkProcess : public KotekanProcess
-*****************************************/
-
 /**
- * @file pulsarNetworkProcess.hpp
+ * @file
  * @brief Network transmission process for Pulsar obs
  *  - pulsarNetworkProcess : public KotekanProcess
  */
@@ -65,7 +60,7 @@ public:
   void apply_config(uint64_t fpga_seq) override;
   
   /// main thread
-  void main_thread();
+  void main_thread() override;
 private:
 
   /// pointer to Input Pulsar buffer 

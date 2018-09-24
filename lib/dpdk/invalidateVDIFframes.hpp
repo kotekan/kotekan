@@ -1,0 +1,72 @@
+/**
+ * @file invalidateVDIFframes.hpp
+ * @brief Process which sets the invalid bit of VDIF frames based on the contents
+ *        of the lost samples buffer.
+ * - invalidateVDIFframes : public KotekanProcess
+ */
+
+#ifndef INVALIDATE_VDIF_FRAMES_HPP
+#define INVALIDATE_VDIF_FRAMES_HPP
+
+#include "KotekanProcess.hpp"
+#include "json.hpp"
+#include <vector>
+
+/**
+ * @brief Invalidate VDIF frames in the @c out_buf based on flags in the @lost_samples_buf
+ *
+ * Note the synchronization is a little non-standard here.  We wait for the buffer
+ * which contains the flags to be full and register as a consumer on that buffer.
+ * Because we know that will only happen once the data buffer is full, we can use
+ * that as the synchronization on the data, and so can start zeroing data in the data
+ * buffer (which we operate on as a producer).
+ *
+ * @par Buffers
+ * @buffer out_buf Kotekan buffer with VDIF frame data already filled
+ *     @buffer_format Array with blocks of @C sample_size byte time samples
+ *     @buffer_metadata chimeMetadata
+ * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
+ *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
+ *     @buffer_metadata chimeMetadata
+ *
+ * @author Andre Renard
+ */
+class invalidateVDIFframes : public KotekanProcess {
+public:
+
+    /// Standard constructor
+    invalidateVDIFframes(Config& config, const string& unique_name,
+                         bufferContainer &buffer_container);
+
+    /// Destructor
+    ~invalidateVDIFframes();
+
+    /// Main thead which zeros the data from the lost_samples_buf
+    void main_thread();
+
+    /// To be removed later
+    void apply_config(uint64_t fpga_seq) {};
+
+private:
+
+    /// The buffer with the network data
+    struct Buffer * out_buf;
+
+    /// The buffer with the array of flags indicating lost data.
+    struct Buffer * lost_samples_buf;
+
+    /// Current ID for out_buf
+    int32_t out_buf_frame_id = 0;
+
+    /// Current
+    int32_t lost_samples_buf_frame_id = 0;
+
+    /// The number of VDIF frames expected
+    /// It might be possible to make this dynamic
+    const uint32_t num_elements = 2;
+
+    /// The size of each VDIF frame
+    const uint32_t vdif_frame_size = 1056;  // 32 header + 1024 data
+};
+
+#endif /* ZERO_SAMPLES_HPP */

@@ -5,11 +5,13 @@
 #include <stdint.h>
 
 #include <immintrin.h>
+#include <memory.h>
 
 #include "nt_memset.h"
 
 // TODO In theory this will work with AVX and not require AVX2, check this.
 
+#ifdef __AVX__
 // Assumes that the dest pointer is 32 byte alligned.
 // Assumes that the len is divisible by 256
 void nt_memset(void * dest, uint8_t val, size_t len) {
@@ -38,3 +40,6 @@ void nt_memset(void * dest, uint8_t val, size_t len) {
         dest_p += 8;
     }
 }
+#else
+inline void nt_memset(void* dest, uint8_t val, size_t len) {memset(dest,val,len);}
+#endif

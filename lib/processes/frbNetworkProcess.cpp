@@ -93,10 +93,8 @@ void frbNetworkProcess::main_thread()
 {
     int rack,node,nos,my_node_id;
     std::stringstream temp_ip[number_of_subnets]; 
-  
-  
+
     //parsing the host name
-  
     parse_chime_host_name(rack, node, nos, my_node_id);
     for(int i=0;i<number_of_subnets;i++)
     {
@@ -104,18 +102,16 @@ void frbNetworkProcess::main_thread()
         my_ip_address[i] = temp_ip[i].str();
         INFO("%s ",my_ip_address[i].c_str());
     }
-  
+
     //declaring and initializing variables for the buffers
     int frame_id = 0;
     uint8_t * packet_buffer = NULL;
-  
+
     //reading the L1 ip addresses from the config file
     std::vector<std::string> link_ip =
             config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
     int number_of_l1_links = link_ip.size();
     INFO("number_of_l1_links: %d",number_of_l1_links);
-  
-
 
     //initializing sockets for all the subnets (in this case these are .6 .7 .8 .9
     int *sock_fd = new int[number_of_subnets];
@@ -152,8 +148,7 @@ void frbNetworkProcess::main_thread()
             raise(SIGINT);
             return;
         }
-    
-    }   
+    }
 
 
     for(int i=0;i<number_of_l1_links;i++)
@@ -164,8 +159,7 @@ void frbNetworkProcess::main_thread()
         server_address[i].sin_port = htons(udp_frb_port_number);
         ip_socket[i] = get_vlan_from_ip(link_ip[i].c_str())-6;
     }
-  
-  
+
     int n = 256* 1024 * 1024;
     for(int i=0;i<number_of_subnets;i++)
     {
@@ -176,15 +170,14 @@ void frbNetworkProcess::main_thread()
             return;
         }
     }
-  
-     
+
     //rest server
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
     string endpoint = "/frb/update_beam_offset";
     rest_server.register_post_callback(endpoint,
     std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
-  
+
     //config.update_value(unique_name, "beam_offset", beam_offset);
 
     // declaring the timespec variables used mostly for the timing issues
@@ -196,7 +189,7 @@ void frbNetworkProcess::main_thread()
     // 384 is integration factor and 2560 fpga sampling time in ns
 
     long count=0;
-  
+
     /* every node is introducing packets to the network. To achive load balancing a sequece_id is 
     computed for each node this will make sure none of the catalyst switches are overloaded with 
     traffic at a given point of time ofcourse this will be usefull when chrony is suffucuently 
@@ -206,20 +199,17 @@ void frbNetworkProcess::main_thread()
     int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
 
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    
-  
-  
+
     //waiting for atleast two frames for the buffer to fill up takes care of the random delay at the start.
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
     add_nsec(t0,2*time_interval);  // time_interval is delay for each frame
     CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t0);
-  
-  
+
 
     // time_interval value (125829120 ns) is divided into sections of 230 ns. Each node is assigned a section according to the 
     // my_sequence_id. This will make sure that no two L0 nodes are introducing packets to the network at the same time. 
- 
+
     clock_gettime(CLOCK_REALTIME, &t0);
 
     unsigned long abs_ns = t0.tv_sec*1e9 + t0.tv_nsec;
@@ -228,17 +218,17 @@ void frbNetworkProcess::main_thread()
 
 
     add_nsec(t0,wait_ns);
-  
+
     CLOCK_ABS_NANOSLEEP(CLOCK_REALTIME, t0);
-  
+
     clock_gettime(CLOCK_MONOTONIC, &t0);
     uint64_t *packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
     uint64_t initial_fpga_count = packet_buffer_uint64[1];
     uint64_t initial_nsec= t0.tv_sec*1e9+t0.tv_nsec;
-     
+
     while(!stop_thread)
     {
-    
+
         // reading the next frame and comparing the fpga clock with the monotonic clock.   
         if(count!=0)
         {
@@ -247,9 +237,9 @@ void frbNetworkProcess::main_thread()
               break;
              packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
              clock_gettime(CLOCK_MONOTONIC, &t1);
-      
+
              add_nsec(t0,time_interval);
-      
+
              // discipline the monotonic clock with the fpga time stamps
              uint64_t offset = (t0.tv_sec*1e9+t0.tv_nsec-initial_nsec) - (packet_buffer_uint64[1]-initial_fpga_count)*2560;
              if(offset!=0) WARN("OFFSET in not zero ");
@@ -257,7 +247,7 @@ void frbNetworkProcess::main_thread()
         }
 
         t1=t0;
-     
+
         int local_beam_offset = beam_offset;
         int beam_offset_upper_limit=512;
         if (local_beam_offset > beam_offset_upper_limit) 
@@ -294,9 +284,9 @@ void frbNetworkProcess::main_thread()
                 //61521.25 is the theoretical seperation of packets in ns
                 // I have used 58880 for convinence and also hope this will take care for
                 // any clock glitches.
-         
+
                 add_nsec(t1,wait_per_packet);
-         
+
             }
         }
 

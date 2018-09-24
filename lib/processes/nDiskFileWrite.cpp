@@ -33,7 +33,10 @@ void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
     num_disks = config.get<uint32_t>(unique_name, "num_disks");
     disk_set = config.get<std::string>(unique_name, "disk_set");
     write_to_disk = config.get<bool>(unique_name, "write_to_disk");
-    instrument_name = config.get<std::string>(unique_name, "instrument_name");
+    instrument_name = config.get_default<std::string>(
+            unique_name, "instrument_name", "no_name_set");
+    write_metadata_and_gains = config.get_default<bool>(
+            unique_name, "write_metadata_and_gains", true);
 }
 
 void nDiskFileWrite::save_meta_data(char *timestr) {
@@ -83,8 +86,7 @@ void nDiskFileWrite::save_meta_data(char *timestr) {
     }
 }
 
-// TODO instead of there being N disks of this tread started, this thread should
-// start N threads to write the data.
+
 void nDiskFileWrite::main_thread() {
 
     // TODO This is a very C style, maybe make it more C++11 like?
@@ -100,6 +102,10 @@ void nDiskFileWrite::main_thread() {
 
     if (write_to_disk) {
         make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
+    }
+
+    if (write_to_disk && write_metadata_and_gains){
+
         // Copy gain files
         std::vector<std::string> gain_files =
                 config.get<std::vector<std::string>>(unique_name, "gain_files");
@@ -149,14 +155,6 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int file_num = disk_id;
     int frame_id = disk_id;
     uint8_t * frame = NULL;
-
-    sleep(1);
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    INFO("Setting thread affinity");
-    for (int j = 10; j < 12; j++) CPU_SET(j, &cpuset);
-//    CPU_SET(11-(disk_id%2),&cpuset);
-    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
     while(!stop_thread) {
 
