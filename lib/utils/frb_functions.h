@@ -1,6 +1,7 @@
 #ifndef FRB_FUNCTIONS_H
 #define FRB_FUNCTIONS_H
 
+#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
 #ifdef __cplusplus

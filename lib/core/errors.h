@@ -1,5 +1,6 @@
 #ifndef ERRORS
 #define ERRORS
+#define __STDC_FORMAT_MACROS
 
 #include <syslog.h>
 #include <stdlib.h>

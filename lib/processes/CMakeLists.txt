@@ -35,8 +35,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visWriter.cpp
               visRawReader.cpp
               restInspectFrame.cpp
-              frbNetworkProcess.cpp
-              pulsarNetworkProcess.cpp
               #RFI Pipeline Processes
               rfiVDIF.cpp
               rfiAVXVDIF.cpp
@@ -44,10 +42,11 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiRecord.cpp
               rfiBadInputFinder.cpp
               receiveFlags.cpp
+              psrRecv.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp) #frbPostProcess.cpp)
 endif ()
 
 if (${USE_AIRSPY})

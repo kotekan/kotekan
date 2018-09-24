@@ -65,6 +65,7 @@ private:
     void receive_packet(void *buffer, int length, int socket_fd);
 
     ///Output kotekanBuffer.
+    struct Buffer *in_buf;
     struct Buffer *out_buf;
 
     ///Port of the listening receiver.
@@ -74,13 +75,11 @@ private:
     ///Protocol to use: TCP or UDP. (Only TCP works now)
     string protocol;
 
-
-    ///Number of frequencies in the buffer
-    int freqs;
-    ///Number of times in the buffer
-    int times;
-    ///Number of elems in the buffer
-    int elems;
+    uint packet_length;
+    uint timesamples_per_packet;
+    uint timesamples_per_frame;
+    uint num_freq;
+    uint freqs_per_packet;
 };
 
 #endif

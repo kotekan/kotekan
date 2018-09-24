@@ -1,0 +1,68 @@
+##########################################
+#
+# chime_psr.yaml
+#
+# CHIME config to exercise full GPU functionality (N2 + FRB + Pulsar).
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: warn
+
+num_pol: 2
+num_freq: 1024
+timesamples_per_frame: 6250
+
+buffer_depth: 32
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+sizeof_float: 4
+sizeof_short: 2
+
+#N2 stuff
+block_size: 32
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+freqs_per_packet: 4
+timesamples_per_packet: 625
+udp_pulsar_packet_size: 5032
+
+pulsar_input_buffers:
+    num_frames: buffer_depth
+    frame_size: udp_pulsar_packet_size * (num_freq / freqs_per_packet) * (timesamples_per_frame / timesamples_per_packet)
+#    frame_size: udp_pulsar_packet_size * 256 * timesamples_per_frame / timesamples_per_packet
+    metadata_pool: main_pool
+    pulsar_input_buffer:
+        kotekan_buffer: standard
+
+pulsar_receive:
+  port: 1414
+  log_level: info
+  cpu_affinity: [11]
+  kotekan_process: psrRecv
+  out_buf: pulsar_input_buffer
+
+raw_capture:
+   kotekan_process: nDiskFileWrite
+#################################
+# THIS IS THE PLACE TO EDIT!!!  #
+#################################
+   note: CHIMEpulsar test run
+   instrument_name: chime_psr
+#Change this if you want to record
+   write_to_disk: true
+   gain_files: []
+   num_elements: 2
+   samples_per_data_set: 6250
+   num_disks: 10
+   disk_base: /drives/
+   disk_set: G
+   in_buf: pulsar_input_buffer
