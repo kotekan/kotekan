@@ -80,16 +80,37 @@ void psrRecv::main_thread() {
     int max_packet_length = 65536;
     char *local_buf = (char*)calloc(max_packet_length,sizeof(char));
 
-    int recv_depth = 30;
+    int recv_depth = 64;
     assert(recv_depth < out_buf->num_frames);
 
-    uint sample_idx0=0;
-    int packets_per_frame = timesamples_per_frame / timesamples_per_packet;
+    size_t packets_per_frame = timesamples_per_frame / timesamples_per_packet;
 
     struct VDIFPacket {
         VDIFHeader h;
         uint8_t data[5000];
     };
+    uint32_t si[2]={'C','X'};
+    VDIFHeader defaultHeader = {
+        /**/9, // seconds : 30;
+            0, // legacy : 1;
+            1, // invalid : 1;
+        /**/0, // data_frame : 24;
+            36, // ref_epoch : 6;
+            0, // unused : 2;
+            629, // frame_len : 24;
+            3, // log_num_chan : 5;
+            1, // vdif_version : 3;
+            (si[0]<<8) + si[1], // station_id : 16;
+        /**/0, // thread_id : 10;
+            3, // bits_depth : 5;
+            1, // data_type : 1;
+            0, // eud1 : 24;
+            0, // edv : 8;
+            0, // eud2 : 32;
+            0, // eud3 : 32;
+            0 // eud4 : 32;
+    };
+    uint64_t samples_per_second = 390625;
 
     VDIFPacket *frame[recv_depth];
     uint frame_id[recv_depth];
@@ -97,12 +118,15 @@ void psrRecv::main_thread() {
         frame_id[i] = i;
         frame[i] = (VDIFPacket*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id[i]);
         for (size_t t=0; t<packets_per_frame; t++)
-            for (size_t f=0; f<num_freq/freqs_per_packet; f++)
-                (frame[i] + (t*num_freq/freqs_per_packet + f))->h.invalid=true;
+          for (size_t f=0; f<num_freq/freqs_per_packet; f++){
+            VDIFHeader *hdr = &(frame[i] + (t*num_freq/freqs_per_packet + f))->h;
+            memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
+          }
     }
 
     bool first_pass=true;
 
+    uint64_t sample_idx0=0;
     while (!stop_thread) {
         uint32_t len = recvfrom(socket_fd,
                         local_buf,
@@ -113,6 +137,7 @@ void psrRecv::main_thread() {
         }
 
         VDIFHeader *header = (VDIFHeader *)local_buf;
+        uint64_t idx = header->seconds * samples_per_second + header->data_frame * timesamples_per_packet;
         DEBUG2("Header: \n"
              " seconds: %i\n"
              " legacy: %i\n"
@@ -152,14 +177,14 @@ void psrRecv::main_thread() {
              header->eud4
              );
         if (first_pass) {
-            sample_idx0 = header->eud3;
+            sample_idx0 = idx;
             first_pass=false;
         }
 
-        if (header->eud3 < sample_idx0) continue; //drop the packet
-        while (header->eud3 - sample_idx0 >= timesamples_per_frame*recv_depth) {
+        if (idx < sample_idx0) continue; //drop the packet
+        while (idx - sample_idx0 >= timesamples_per_frame*recv_depth) {
             int bad_packets = 0;
-            for (int i=0; i<packets_per_frame; i++){
+            for (size_t i=0; i<packets_per_frame; i++){
                 for (size_t f=0; f<num_freq/freqs_per_packet; f++){
                     VDIFPacket *p = ((VDIFPacket*)frame[0]) + (i*num_freq/freqs_per_packet + f);
                     if (p->h.invalid) bad_packets++;
@@ -174,17 +199,25 @@ void psrRecv::main_thread() {
             }
             frame_id[recv_depth-1] = (frame_id[recv_depth-1]+1)%out_buf->num_frames;
             frame[recv_depth-1] = (VDIFPacket*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id[recv_depth-1]);
-            for (int t=0; t<packets_per_frame; t++){
-                for (size_t f=0; f<num_freq/freqs_per_packet; f++){
-                    (frame[recv_depth-1] + (t*num_freq/freqs_per_packet + f))->h.invalid=true;
-                }
-            }
+            uint64_t sample_idx = sample_idx0 + recv_depth*timesamples_per_frame;
+            for (size_t t=0; t<packets_per_frame; t++)
+              for (size_t f=0; f<num_freq/freqs_per_packet; f++){
+                VDIFHeader *hdr = &(frame[recv_depth-1] + (t*num_freq/freqs_per_packet + f))->h;
+                hdr->seconds = sample_idx / samples_per_second;
+                hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
+                hdr->thread_id = f;
+                hdr->invalid = 1;
+              }
             sample_idx0 += timesamples_per_frame;
         }
 
-        uint packet_idx = (header->eud3 - sample_idx0) / timesamples_per_packet % packets_per_frame;
-        uint frame_idx  = (header->eud3 - sample_idx0) / timesamples_per_frame;
-        DEBUG2("DEBUGGING: %i %i %i", header->eud3 - sample_idx0, packet_idx, frame_idx);
+        uint packet_idx = (idx - sample_idx0) / timesamples_per_packet % packets_per_frame;
+        uint frame_idx  = (idx - sample_idx0) / timesamples_per_frame;
+        header->edv = 0;
+        header->eud1 = 0;
+        header->eud2 = 0;
+        header->eud3 = 0;
+        header->eud4 = 0;
         VDIFPacket *dest = frame[frame_idx] + packet_idx*num_freq/freqs_per_packet + header->thread_id;
 
         memcpy(dest,local_buf,packet_length);
