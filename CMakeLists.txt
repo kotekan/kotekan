@@ -154,10 +154,13 @@ find_package(Threads REQUIRED)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 # Required for some SSE/AVX intrinsics
-add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
+add_definitions(-D__STDC_LIMIT_MACROS)
 
 # Note that -lrt here is needed on some versions of CentOS
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -lrt -march=native -mtune=native -I/opt/rocm/include")
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
+endif ()
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
 if(${USE_OMP})
@@ -170,7 +173,10 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note that -lrt here is needed on some versions of CentOS
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -lrt -march=native -mtune=native -I/opt/rocm/include")
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
+endif ()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
