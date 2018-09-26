@@ -134,6 +134,8 @@ void visTranspose::main_thread() {
 
     uint64_t frame_size = 0;
 
+    found_flags = vector<bool>(write_t, false);
+
     // Create HDF5 file
     if (stack.size() > 0) {
         file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
@@ -172,19 +174,23 @@ void visTranspose::main_thread() {
         strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
                 write_t, num_input);
 
-        // Only update flags if they are non-zero
-        bool nz_flags = false;
-        for (uint i = 0; i < num_input; i++) {
-            if (frame.flags[i] != 0.) {
-                nz_flags = true;
-                break;
+        // Only copy flags if we haven't already
+        if (!found_flags[ti]) {
+            // Only update flags if they are non-zero
+            bool nz_flags = false;
+            for (uint i = 0; i < num_input; i++) {
+                if (frame.flags[i] != 0.) {
+                    nz_flags = true;
+                    break;
+                }
             }
-        }
-        if (nz_flags) {
-            // Copy flags into the buffer. These will not be overwritten until
-            // the chunks increment in time or another non-zero frame is found
-            strided_copy(frame.flags.data(), input_flags.data(), ti,
-                    write_t, num_input);
+            if (nz_flags) {
+                // Copy flags into the buffer. These will not be overwritten until
+                // the chunks increment in time
+                strided_copy(frame.flags.data(), input_flags.data(), ti,
+                        write_t, num_input);
+                found_flags[ti] = true;
+            }
         }
 
         // Increment within read chunk
@@ -260,6 +266,7 @@ void visTranspose::increment_chunk() {
         t_ind += chunk_t;
         // clear flags buffer for next time chunk
         std::fill(input_flags.begin(), input_flags.end(), 0.);
+        std::fill(found_flags.begin(), found_flags.end(), false);
         if (num_time - t_ind < chunk_t) {
             // Reached an incomplete chunk
             t_edge = true;
