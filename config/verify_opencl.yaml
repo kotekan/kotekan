@@ -17,7 +17,7 @@ num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 block_size: 32
-samples_per_data_set: 16384
+samples_per_data_set: 49152 #16384
 num_beams: 1
 num_data_sets: 1
 num_gpus: 1
@@ -28,7 +28,7 @@ sizeof_float: 4
 one: 1
 two: 2
 num_elements: 256
-num_local_freq: 2
+num_local_freq: 1
 num_blocks: 36 #(num_elements / block_size) * (num_elements / block_size + one) / two
 sizeof_int: 4
 
@@ -72,8 +72,8 @@ gen_data:
   kotekan_process: testDataGen
   network_out_buf: gpu_input_buffer
 
-data_format: dot4b
-#data_format: "4+4b"
+#data_format: dot4b
+data_format: "4+4b"
 
 gpu:
   profiling: true
@@ -84,7 +84,7 @@ gpu:
   - name: clInputData
   - name: clPresumZero
   - name: clOutputDataZero
-#  - name: clPresumKernel
+  - name: clPresumKernel
 #  - name: clPreseedKernel
 #  - name: clCorrelatorKernel
   - name: clKVCorr

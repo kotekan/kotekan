@@ -9,7 +9,7 @@ REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("corr","kv_corr.cl", config, unique_name, host_buffers, device)
+    clCommand("corr","kv_corr_amd.cl", config, unique_name, host_buffers, device)
 {
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -61,6 +61,7 @@ void clKVCorr::build()
     string cl_options = "";
 
     if (_data_format == "4+4b"){
+        INFO("Running 4+4b CHIME-like data");
         int accum_length;
         // Correlation kernel global and local work space sizes.
         if (small_array) {
@@ -74,11 +75,11 @@ void clKVCorr::build()
             lws[2] = 1;
         } else {
             accum_length = _samples_per_data_set;
-            gws[0] = 8*_num_local_freq;
-            gws[1] = 8;
+            gws[0] = 16*_num_local_freq;
+            gws[1] = 4;
             gws[2] = _num_blocks;
-            lws[0] = 8;
-            lws[1] = 8;
+            lws[0] = 16;
+            lws[1] = 4;
             lws[2] = 1;
         }
         cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
@@ -87,6 +88,7 @@ void clKVCorr::build()
         cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / 4);
     }
     else if (_data_format == "dot4b"){
+        INFO("Running experimental dot-product data");
         int _wi_size = 2;
         gws[0] = _block_size / _wi_size*_num_local_freq;
         gws[1] = _block_size / _wi_size;

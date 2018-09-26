@@ -24,8 +24,8 @@ void corr ( __global const uint *packed,
             __global int *presum,
             __global int *corr_buf,
             __global const uint *id_x_map,
-            __global const uint *id_y_map,
-            __global int *block_lock)
+            __global const uint *id_y_map)
+//            __global int *block_lock)
 {
     int ix = xl/2;
     int iy = yl*2 + (xl&0x1);
@@ -161,8 +161,8 @@ void corr ( __global const uint *packed,
             };
             #pragma unroll
             for (int x=0; x<4; x++){
-                atomic_add(out++ -y_ri[0]+73,i[x]);
-                atomic_add(out++ -y_ri[0]+73,r[x]);
+                atomic_add(out++ -y_ri[0]-73,i[x]);
+                atomic_add(out++ -y_ri[0]-73,r[x]);
             }
             out+=56; //(32-4)*2;
         }
