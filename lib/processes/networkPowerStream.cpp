@@ -51,6 +51,16 @@ networkPowerStream::networkPowerStream(Config& config,
     header.handshake_utc = -1;
 
     frame_idx=0;
+
+        // Prevent SIGPIPE on send failure.
+        // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
+#ifdef SO_NOSIGPIPE
+        int set = 1;
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE,
+                       (void *)&set, sizeof(int)) < 0) {
+            ERROR("bufferSend: setsockopt() NOSIGPIPE ");
+        }
+#endif
 }
 
 networkPowerStream::~networkPowerStream() {
@@ -140,8 +150,8 @@ void networkPowerStream::main_thread() {
                                                 packet_buffer,
                                                 packet_length,
                                                 0);
-
                         if (bytes_sent != packet_length) {
+                            ERROR("Lost TCP connection!");
                             while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
                             tcp_connected=false;

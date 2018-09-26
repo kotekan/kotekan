@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <errno.h>
-#include <linux/falloc.h>
+//#include <linux/falloc.h>
 #include "fmt.hpp"
 #include "datasetManager.hpp"
 #include "visCompression.hpp"
@@ -96,7 +96,13 @@ void visFileRaw::create_file(
 
     // Preallocate data file (without increasing the length)
 #ifdef __linux__
+    // Note not all versions of linux support this feature, and they don't
+    // include the macro FALLOC_FL_KEEP_SIZE in that case
+#ifdef FALLOC_FL_KEEP_SIZE
     fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
+#else
+    WARN("fallocate not supported on this system!");
+#endif
 #endif
 }
 

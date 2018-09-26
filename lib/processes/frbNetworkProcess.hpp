@@ -63,7 +63,7 @@ public:
   void update_offset_callback(connectionInstance& conn, json& json_request);
 
   /// main thread
-  void main_thread();
+  void main_thread() override;
 private:
 
   /// pointer to Input FRB buffer 

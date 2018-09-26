@@ -32,9 +32,12 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visProcess.cpp
               visCompression.cpp
               timeDownsample.cpp
+              frbPostProcess.cpp
               visWriter.cpp
               visRawReader.cpp
               restInspectFrame.cpp
+              frbNetworkProcess.cpp
+              pulsarNetworkProcess.cpp
               #RFI Pipeline Processes
               rfiVDIF.cpp
               rfiAVXVDIF.cpp
@@ -46,7 +49,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp) #frbPostProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES}   )
 endif ()
 
 if (${USE_AIRSPY})
@@ -80,6 +83,14 @@ endif ()
 
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
+target_link_libraries( kotekan_processes ${EVENT_LIBRARIES} )
+
+if (${USE_AIRSPY})
+  target_link_libraries ( kotekan_processes -lairspy)
+endif ()
+if (${USE_FFTW})
+  target_link_libraries ( kotekan_processes -lfftw3f)
+endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
