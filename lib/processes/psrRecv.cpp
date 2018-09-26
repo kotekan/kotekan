@@ -175,7 +175,7 @@ void psrRecv::main_thread() {
                     if (p->h.invalid) bad_packets++;
                 }
             }
-            INFO("Frame %02i closed, bad packets: %i (%2.1f\%)", frame_id[0], bad_packets, 
+            DEBUG("Frame %02i closed, bad packets: %i (%2.1f\%)", frame_id[0], bad_packets, 
                     100*float(bad_packets)/packets_per_frame/(num_freq/freqs_per_packet));
             mark_frame_full(out_buf, unique_name.c_str(), frame_id[0]);
             for (int i=1; i < recv_depth; i++){
