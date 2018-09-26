@@ -16,10 +16,11 @@
  *
  * This is an hsaCommand that launches the kernel (pulsar_beamformer) for 
  * brute-force coherent beamforming and is most applicable to pulsar observations. 
- * An array of phases (shape @c n_psr x @c n_elem) is calculated by hsaPulsarUpdatePhase.cpp. 
+ * An array of phases (shape @c n_psr x @c n_elem x 2) is calculated by hsaPulsarUpdatePhase.cpp. 
  * The default number of pulsar beams to be formed is 10. The phases are matrix 
  * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension 
- * (@c n_samp x @c n_psr).
+ * (@c n_samp x @c n_psr x @c n_pol x 2). Output data type is 4-4b int packed as char. Currently 
+ * it is float, as we are pending on decision of data truncation scheme.
  *
  * @requires_kernel    pulsar_beamformer.hasco
  *
@@ -33,10 +34,9 @@
  *     @gpu_mem_format       Array of @c uint8_t
  *     @gpu_mem_metadata     chimeMetadata
  * @gpu_mem  beamform_phase  Array of phases of size phase_len
-       @gpu_mem_type         static
+       @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     none
- *
  *
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   num_pulsar           Int (default 10). Number of pulsar beams to be formed
@@ -45,13 +45,7 @@
  * @conf   command              String (defualt: "pulsarbf"). Kernel command.
  * @conf   kernel               String (default: "pulsar_beamformer.hsaco"). Kernel filename.
  *
- * 
- * @todo   Currently the phases are intialized to some dummy values (beam_id/10) in 
- *         the constructor. This shouldn't be necessary because the phases 
- *         should have been calculated in another piece of code (hsaPulsarUpdatePhase.cpp), 
- *         and will be overwriten in execute to sensible values. I haven't checked in 
- *         hsaPulsarUpdatePhase.cpp to master yet that is why I inserted those dummy values
- *         to be on the safe side. This will be tidied up in a few days. 
+ * @todo   finalize output truncation scheme
  *
  * @author Cherry Ng
  *
@@ -78,12 +72,10 @@ private:
     /// Output length, should be 10psr x nsamp x 2 pol x 2 for complex / 2 since we pack two 4-bit in one
     int32_t output_frame_len;
 
-
     ///Length of the array of phases for beamforming, should be 10 psr * 2048 elem * 2 for complex
     int32_t phase_len;
     /// pointer to the phase array
     float * host_phase;
-
 
     ///numbler of elements, should be 2048
     int32_t _num_elements;

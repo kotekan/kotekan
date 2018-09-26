@@ -50,9 +50,6 @@ gpuPostProcess::~gpuPostProcess() {
 }
 
 void gpuPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
-
     _num_elem = config.get_int(unique_name, "num_elements");
     _num_total_freq = config.get_int(unique_name, "num_total_freq");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -147,8 +144,11 @@ void gpuPostProcess::main_thread() {
     assert(offset == frame_size);
 
     // Add version information to the header.
-    strcpy(header->kotekan_git_hash, GIT_COMMIT_HASH);
-    header->kotekan_version = KOTEKAN_VERSION;
+    strcpy(header->kotekan_git_hash, get_git_commit_hash());
+    // TODO This needs to be replaced by the actual version string instead
+    // However the plan is remove this function entirely soon, since it
+    // only works with chrx which is now EOL.
+    header->kotekan_version = 2.3;
 
     // This is a bit of a hack for gating, there is are better ways to do this.
     int gated_buf_size = sizeof(struct gate_frame_header)

@@ -26,12 +26,12 @@ networkPowerStream::networkPowerStream(Config& config,
 
     //PER BUFFER
     times = config.get_int(unique_name, "samples_per_data_set") /
-            config.get_int(unique_name, "integration_length");
+            config.get_int(unique_name, "power_integration_length");
     freqs = config.get_int(unique_name, "num_freq");
     elems = config.get_int(unique_name, "num_elements");
 
-    freq0 = config.get_float_default(unique_name, "freq", 1420.)*1e6;
-    sample_bw = config.get_float_default(unique_name, "sample_bw", 10.)*1e6;
+    freq0 = config.get_float_default(unique_name, "freq", 600.)*1e6;
+    sample_bw = config.get_float_default(unique_name, "sample_bw", 200.)*1e6;
 
     dest_port = config.get_int(unique_name, "destination_port");
     dest_server_ip = config.get_string(unique_name, "destination_ip");
@@ -46,17 +46,20 @@ networkPowerStream::networkPowerStream(Config& config,
     header.raw_cadence = 1 / (sample_bw / freqs);//2.56e-6;
     header.num_freqs = freqs;
     header.num_elems = elems;
-    header.samples_summed = config.get_int(unique_name, "integration_length");
+    header.samples_summed = config.get_int(unique_name, "power_integration_length");
     header.handshake_idx = -1;
     header.handshake_utc = -1;
 
     frame_idx=0;
 
-#ifdef MAC_OSX
-    //MacOS throws SIGPIPE on a TCP disconnect,
-    //blows up kotekan if we don't ignore it.
-    INFO("Disabling SIGPIPE on OSX.");
-    signal(SIGPIPE, SIG_IGN);
+        // Prevent SIGPIPE on send failure.
+        // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
+#ifdef SO_NOSIGPIPE
+        int set = 1;
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE,
+                       (void *)&set, sizeof(int)) < 0) {
+            ERROR("bufferSend: setsockopt() NOSIGPIPE ");
+        }
 #endif
 }
 

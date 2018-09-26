@@ -34,7 +34,7 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
     protocol = config.get_string(unique_name,"protocol");
 
     times = config.get_int(unique_name, "samples_per_data_set") /
-            config.get_int(unique_name, "integration_length");
+            config.get_int(unique_name, "power_integration_length");
 
 }
 

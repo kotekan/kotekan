@@ -1,12 +1,79 @@
 #include "visUtil.hpp"
 #include <cstring>
 
+// Initialise the serial from a std::string
+input_ctype::input_ctype() {
+    chan_id = 0;
+    std::memset(correlator_input, 0, 32);
+}
 
 // Initialise the serial from a std::string
 input_ctype::input_ctype(uint16_t id, std::string serial) {
     chan_id = id;
     std::memset(correlator_input, 0, 32);
     serial.copy(correlator_input, 32);
+}
+
+bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs)
+{
+    return (lhs.stack != rhs.stack) || (lhs.conjugate != rhs.conjugate);
+}
+
+// JSON converters
+void to_json(json& j, const freq_ctype& f) {
+    j = json{{"centre", f.centre}, {"width", f.width}};
+}
+
+void to_json(json& j, const input_ctype& i) {
+    j = json{{"chan_id", i.chan_id}, {"correlator_input", i.correlator_input}};
+}
+
+void to_json(json& j, const prod_ctype& p) {
+    j = json{{"input_a", p.input_a}, {"input_b", p.input_b}};
+}
+
+void to_json(json& j, const time_ctype& t) {
+    j = json{{"fpga_count", t.fpga_count}, {"ctime", t.ctime}};
+}
+
+void to_json(json& j, const stack_ctype& t) {
+    j = json{{"prod", t.prod}, {"conjugate", t.conjugate}};
+}
+
+void to_json(json& j, const rstack_ctype& t) {
+    j = json{{"stack", t.stack}, {"conjugate", t.conjugate}};
+}
+
+void from_json(const json& j, freq_ctype& f) {
+    f.centre = j.at("centre").get<double>();
+    f.width = j.at("width").get<double>();
+}
+
+void from_json(const json& j, input_ctype& i) {
+    i.chan_id = j.at("chan_id").get<uint32_t>();
+    std::string t = j.at("correlator_input").get<std::string>();
+    std::memset(i.correlator_input, 0, 32);
+    t.copy(i.correlator_input, 32);
+}
+
+void from_json(const json& j, prod_ctype& p) {
+    p.input_a = j.at("input_a").get<uint16_t>();
+    p.input_b = j.at("input_b").get<uint16_t>();
+}
+
+void from_json(const json& j, time_ctype& t) {
+    t.fpga_count = j.at("fpga_count").get<uint64_t>();
+    t.ctime = j.at("ctime").get<double>();
+}
+
+void from_json(const json& j, stack_ctype& t) {
+    t.prod = j.at("prod").get<uint32_t>();
+    t.conjugate = j.at("conjugate").get<bool>();
+}
+
+void from_json(const json& j, rstack_ctype& t) {
+    t.stack = j.at("stack").get<uint32_t>();
+    t.conjugate = j.at("conjugate").get<bool>();
 }
 
 // Copy the visibility triangle out of the buffer of data, allowing for a

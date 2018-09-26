@@ -10,7 +10,7 @@ json_data = []
 n_gpus = 1
 
 for gpu_id in range(0,n_gpus):
-    r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id), headers=headers))
+    r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id)))
     json_data.append(r[gpu_id].json())
 
 kernels = []

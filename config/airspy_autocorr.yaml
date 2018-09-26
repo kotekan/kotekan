@@ -49,6 +49,7 @@ airspy_input:
 
 spectrum_output:
   integration_length: 64
+  power_integration_length: 64
   spectrum_length: 1024
 
   post_fengine_buf:

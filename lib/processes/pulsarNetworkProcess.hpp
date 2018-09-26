@@ -11,7 +11,8 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
-#include <timing_mach.h>
+#include "tx_utils.hpp"
+#include "restServer.hpp"
 
 /**
  * @class pulsarNetworkProcess
@@ -58,12 +59,6 @@ public:
   /// Applies the config parameters
   void apply_config(uint64_t fpga_seq) override;
   
-  /// parse hostname to derive the ip_address using gethosname()
-  void parse_host_name();
-
-  /// function to add nano seconds to timespec useful for flow control purpose
-  void add_nsec(struct timespec &temp, long nsec);
-
   /// main thread
   void main_thread() override;
 private:
@@ -91,6 +86,12 @@ private:
 
   /// host name from the gethosename()
   char *my_host_name;
+  
+  /// samples per packet
+  int timesamples_per_pulsar_packet;
+
+  /// packets per stream in a buffer frame
+  int num_packet_per_stream; 
 };
  
 #endif

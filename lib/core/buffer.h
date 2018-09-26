@@ -57,7 +57,6 @@ extern "C" {
  * @brief Internal structure for tracking consumer and producer names.
  */
 struct ProcessInfo {
-
     /// Set to 1 if the process is active
     int in_use;
 
@@ -179,6 +178,9 @@ struct Buffer {
      * A 0 at index I means the frame at index I is not full, one means it is full.
      */
     int * is_full;
+
+    /// The last time a frame was marked as full (used for arrival rate)
+    double last_arrival_time;
 
     /// Array of buffer info objects, for tracking information about each buffer.
     struct metadataContainer ** metadata;
@@ -321,6 +323,13 @@ int is_frame_empty(struct Buffer * buf, const int frame_id);
 int get_num_full_frames(struct Buffer * buf);
 
 /**
+ * @brief Returns the last time a frame was marked as full
+ * @param buf The buffer to get the last arrival time for.
+ * @return A double (with units: seconds) containing the unix time of the last frame arrival
+ */
+double get_last_arrival_time(struct Buffer * buf);
+
+/**
  * @brief Prints a picture of the frames which are currently full.
  *
  * @param[in] buf The buffer object
@@ -340,6 +349,60 @@ void print_buffer_status(struct Buffer * buf);
  * @param[in] frame_id The frame ID to assign a metadata object too.
  */
 void allocate_new_metadata_object(struct Buffer * buf, int frame_id);
+
+/**
+ * @brief Swaps the provided frame of memory with the internal frame
+ *        given by @c frame_id
+ *
+ * @warning The frame returned will no longer be controlled by this buffer,
+ *          and so must be freeded by the system taking it.  Also the frame
+ *          given will be used and freed by the buffer, so the providing system
+ *          must not attempt to free it.
+ * @warning This function should only be use by single producer processes.
+ * @warning The extra frame provided to this function must be allocated with
+ *          @c buffer_malloc() and the frame returned by this function must be
+ *          freed with @c buffer_free()
+ * @warning Take care when using this function!
+ *
+ * @param buf The buffer object to swap with
+ * @param frame_id The frame to swap
+ * @param external_frame The extra frame to use in place of the existing internal frame.
+ * @return The internal frame
+ */
+uint8_t * swap_external_frame(struct Buffer * buf, int frame_id, uint8_t * external_frame);
+
+/**
+ * @brief Swaps frames between two buffers with identical size for the given frame_ids
+ *
+ * This function does not swap metadata.  That should be passed with the %c pass_metadata function
+ *
+ * @warning This function should only be used with a single consumer @c from_buf, and given to a
+ *          single producer @to_buf.
+ * @warning The buffer sizes must be identical.
+ * @warning Take care with this function!
+ *
+ * @param from_buf The buffer to take the frame from, and swap with the @c to_buf frame.
+ * @param from_frame_id The frame ID to move to the @c to_buf
+ * @param to_buf The buffer to take the frame from @c from_buf
+ * @param to_frame_id The frame to replace with the frame from @c from_buf
+ */
+void swap_frames(struct Buffer * from_buf, int from_frame_id,
+                 struct Buffer * to_buf, int to_frame_id);
+
+/**
+ * @brief Allocates a frame with the required malloc method
+ *
+ * @param len The size of the frame to allocate in bytes.
+ * @return A pointer to the new memory, or @c NULL if allocation failed.
+ */
+uint8_t * buffer_malloc(ssize_t len);
+
+/**
+ * @brief Deallocate a frame of memory with the required free method.
+ *
+ * @param frame_pointer The pointer to the memory to free.
+ */
+void buffer_free(uint8_t * frame_pointer);
 
 /**
  * @brief Gets the raw metadata block for the given frame

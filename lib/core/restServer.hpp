@@ -7,6 +7,7 @@
 #include <thread>
 #include <functional>
 #include <map>
+#include <atomic>
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -46,7 +47,7 @@ public:
      *
      * @param json_reply The json object to send to the client.
      */
-    void send_json_reply(nlohmann::json &json_reply);
+    void send_json_reply(const nlohmann::json &json_reply);
 
     /**
      * @brief Sends a binary reply to the client
@@ -84,6 +85,13 @@ public:
      * @return The full http request message
      */
     std::string get_full_message();
+
+    /**
+     * @brief Get the uri
+     *
+     * @return The uri of the http request message
+     */
+    std::string get_uri();
 private:
 
     /// The connection details
@@ -278,6 +286,9 @@ private:
 
     /// Main server thread handle
     std::thread main_thread;
+
+    /// Flag set to true when exit condition is reached
+    std::atomic<bool> stop_thread;
 };
 
 #endif /* REST_SERVER_HPP */

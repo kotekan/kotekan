@@ -9,6 +9,8 @@
 #include <iostream>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(clProcess);
+
 using namespace std;
 
 REGISTER_KOTEKAN_PROCESS(clProcess);

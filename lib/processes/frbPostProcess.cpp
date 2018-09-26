@@ -4,6 +4,8 @@
 
 #include "frbPostProcess.hpp"
 
+#include <immintrin.h>
+
 REGISTER_KOTEKAN_PROCESS(frbPostProcess);
 
 frbPostProcess::frbPostProcess(Config& config_,
@@ -29,7 +31,7 @@ frbPostProcess::frbPostProcess(Config& config_,
     frb_header_offset = new float[_nbeams * _num_gpus];
 
     if (posix_memalign((void**)&ib,32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float))){
-        ERROR("Couldn't allocate memory.");
+        throw std::runtime_error("Couldn't allocate frbPostProcess memory.");
     }
 }
 
@@ -60,8 +62,6 @@ void frbPostProcess::write_header(unsigned char * dest){
 }
 
 void frbPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
 
     _num_gpus = config.get_int(unique_name, "num_gpus");
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
@@ -152,8 +152,10 @@ void frbPostProcess::main_thread() {
         for (uint T = 0; T < num_samples; T+=_timesamples_per_frb_packet) { //loop 128 time samples, in 8 
             for (int stream = 0; stream<num_L1_streams; stream++) { //loop 256 streams (output)
                 for (int b=0; b<_nbeams;b++){ //loop 4 beams / stream
-                    int beam_id = stream*_num_gpus + b;
-                    frb_header_beam_ids[b] = beam_id;
+                    int beam_id = stream*_nbeams + b;
+                    //frb_header_beam_ids[b] = beam_id;
+		    //Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
+		    frb_header_beam_ids[b] = (beam_id)%256 + (int((beam_id)/256)*1000);
                     for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
                         float* in_data = ((float *)in_frame[thread_id]) + 
                                           (stream * _nbeams + b) * num_samples * _factor_upchan_out;

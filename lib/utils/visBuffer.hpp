@@ -38,7 +38,7 @@ struct visMetadata {
     /// ID of the frequency bin
     uint32_t freq_id;
     /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
-    uint32_t dataset_id;
+    int32_t dataset_id;
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
@@ -66,7 +66,7 @@ struct visMetadata {
  *
  * @todo This may want changing to use reference wrappers instead of bare
  *       references.
- * 
+ *
  * @author Richard Shaw
  */
 class visFrameView {
@@ -130,6 +130,28 @@ public:
     visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
 
     /**
+     * @brief Copy a whole frame from a buffer and create a view of it.
+     *
+     * This will attempt to do a zero copy transfer of the frame for speed, and
+     * fall back on a full copy if any other processes consume from the input
+     * buffer.
+     *
+     * @note This will allocate metadata for the destination.
+     *
+     * @warning This may invalidate anything pointing at the input buffer.
+     *
+     * @param buf_src        The buffer to copy from.
+     * @param frame_id_src   The buffer location to copy from.
+     * @param buf_dest       The buffer to copy into.
+     * @param frame_id_dest  The buffer location to copy into.
+     *
+     * @returns A visFrameView of the copied frame.
+     *
+     */
+    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src,
+                                   Buffer* buf_dest, int frame_id_dest);
+
+    /**
      * @brief Get the layout of the buffer from the structural parameters.
      *
      * @param num_elements     Number of elements.
@@ -144,13 +166,31 @@ public:
                                                  uint32_t num_prod,
                                                  uint32_t num_ev);
 
-    /// Return a summary of the visibility buffer contents
+    /**
+     * @brief Return a summary of the visibility buffer contents.
+     *
+     * @returns A string summarising the contents.
+     **/
     std::string summary() const;
 
-    /// Copy the non-const parts of the metadata
+    /**
+     * @brief Copy the non-const parts of the metadata.
+     *
+     * Transfers all the non-structural metadata from the source frame.
+     *
+     * @param frame_to_copy Frame to copy metadata from.
+     *
+     **/
     void copy_nonconst_metadata(visFrameView frame_to_copy);
 
-    // Copy the non-visibility parts of the buffer
+    /**
+     * @brief Copy the non-visibility parts of the buffer.
+     *
+     * Transfers all the datasets except the visibilities and their weights.
+     *
+     * @param frame_to_copy Frame to copy metadata from.
+     *
+     **/
     void copy_nonvis_buffer(visFrameView frame_to_copy);
 
     /**
@@ -166,16 +206,28 @@ public:
      */
      void fill_chime_metadata(const chimeMetadata * chime_metadata);
 
+    /**
+     * @brief Read only access to the metadata.
+     * @returns The metadata.
+     **/
+    const visMetadata * metadata() const { return _metadata; }
+
+    /**
+     * @brief Read only access to the frame data.
+     * @returns The data.
+     **/
+    const uint8_t * data() const { return _frame; }
+
 private:
 
     // References to the buffer and metadata we are viewing
     Buffer * const buffer;
     const int id;
-    visMetadata * const metadata;
+    visMetadata * const _metadata;
 
     // Pointer to frame data. In theory this is redundant as it can be derived
     // from buffer and id, but it's nice for brevity
-    uint8_t * const frame;
+    uint8_t * const _frame;
 
     // The calculated layout of the buffer
     struct_layout buffer_layout;
@@ -201,18 +253,22 @@ public:
     /// A reference to the frequency ID.
     uint32_t& freq_id;
     /// A reference to the dataset ID.
-    uint32_t& dataset_id;
+    int32_t& dataset_id;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;
     /// View of the weight data.
     const gsl::span<float> weight;
+    /// View of the input flags
+    const gsl::span<float> flags;
     /// View of the eigenvalues.
     const gsl::span<float> eval;
     /// View of the eigenvectors (packed as ev,feed).
     const gsl::span<cfloat> evec;
     /// The RMS of residual visibilities
     float& erms;
+    /// View of the applied gains
+    const gsl::span<cfloat> gain;
 
 };
 

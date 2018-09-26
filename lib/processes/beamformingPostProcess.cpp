@@ -69,9 +69,6 @@ void beamformingPostProcess::fill_headers(unsigned char * out_buf,
 }
 
 void beamformingPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
-
     _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
     _num_data_sets = config.get_int(unique_name, "num_data_sets");
     _link_map = config.get_int_array(unique_name, "link_map");

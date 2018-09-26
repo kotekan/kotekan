@@ -31,32 +31,6 @@ extern "C" {
 #include <pthread.h>
 }
 
-// DPDK!
-#ifdef WITH_DPDK
-extern "C" {
-#include <rte_config.h>
-#include <rte_common.h>
-#include <rte_log.h>
-#include <rte_memory.h>
-#include <rte_memcpy.h>
-#include <rte_memzone.h>
-#include <rte_eal.h>
-#include <rte_per_lcore.h>
-#include <rte_launch.h>
-#include <rte_atomic.h>
-#include <rte_cycles.h>
-#include <rte_prefetch.h>
-#include <rte_lcore.h>
-#include <rte_per_lcore.h>
-#include <rte_branch_prediction.h>
-#include <rte_interrupts.h>
-#include <rte_pci.h>
-#include <rte_random.h>
-#include <rte_debug.h>
-#include <rte_ring.h>
-}
-#include "network_dpdk.h"
-#endif
 #include "errors.h"
 #include "buffer.h"
 
@@ -70,6 +44,7 @@ extern "C" {
 #include "gpsTime.h"
 #include "KotekanProcess.hpp"
 #include "prometheusMetrics.hpp"
+#include "basebandRequestManager.hpp"
 #include "processFactory.hpp"
 
 #ifdef WITH_HSA
@@ -103,10 +78,10 @@ void print_help() {
 }
 
 void print_version() {
-    printf("Kotekan version %s\n", KOTEKAN_VERSION_STR);
-    printf("Build branch: %s\n", GIT_BRANCH);
-    printf("Git commit hash: %s\n\n", GIT_COMMIT_HASH);
-    printf("CMake build settings: \n%s\n", CMAKE_BUILD_SETTINGS);
+    printf("Kotekan version %s\n", get_kotekan_version());
+    printf("Build branch: %s\n", get_git_branch());
+    printf("Git commit hash: %s\n\n", get_git_commit_hash());
+    printf("CMake build settings: \n%s\n", get_cmake_build_options());
 
     printf("Available kotekan processes:\n");
     std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
@@ -122,10 +97,10 @@ void print_version() {
 json get_json_version_into() {
     // Create version information
     json version_json;
-    version_json["kotekan_version"] = KOTEKAN_VERSION_STR;
-    version_json["branch"] = GIT_BRANCH;
-    version_json["git_commit_hash"] = GIT_COMMIT_HASH;
-    version_json["cmake_build_settings"] = CMAKE_BUILD_SETTINGS;
+    version_json["kotekan_version"] = get_kotekan_version();
+    version_json["branch"] = get_git_branch();
+    version_json["git_commit_hash"] = get_git_commit_hash();
+    version_json["cmake_build_settings"] = get_cmake_build_options();
     vector<string> available_processes;
     std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
     for (auto &process_maker : known_processes)
@@ -133,34 +108,6 @@ json get_json_version_into() {
     version_json["available_processes"] = available_processes;
     return version_json;
 }
-
-#ifdef WITH_DPDK
-void dpdk_setup() {
-
-    char  arg0[] = "./kotekan";
-    char  arg1[] = "-n";
-    char  arg2[] = "4";
-    char  arg3[] = "-c";
-#ifdef WITH_OPENCL
-    char  arg4[] = "0xF";
-#elif DPDK_VDIF_MODE
-    char  arg4[] = "0x3CF";
-#else
-    // TODO This is a CHIME specific value with cores 0,1,6,7 active.
-    // This value should be made dynamic
-    char  arg4[] = "0xC3";
-#endif
-    char  arg5[] = "-m";
-    char  arg6[] = "256";
-    char* argv2[] = { &arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL };
-    int   argc2   = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
-
-    /* Initialize the Environment Abstraction Layer (EAL). */
-    int ret2 = rte_eal_init(argc2, argv2);
-    if (ret2 < 0)
-        exit(EXIT_FAILURE);
-}
-#endif
 
 std::string exec(const std::string &cmd) {
     std::array<char, 256> buffer;
@@ -321,10 +268,6 @@ int main(int argc, char ** argv) {
         }
     }
 
-#ifdef WITH_DPDK
-    dpdk_setup();
-#endif
-
 #ifdef WITH_HSA
     kotekan_hsa_start();
 #endif
@@ -346,11 +289,8 @@ int main(int argc, char ** argv) {
     }
 
     // Load configuration file.
-    //INFO("Kotekan starting with config file %s", config_file_name);
-    const char git_hash[] = GIT_COMMIT_HASH;
-    const char git_branch[] = GIT_BRANCH;
-    INFO("Kotekan %f starting build: %s, on branch: %s",
-            KOTEKAN_VERSION, git_hash, git_branch);
+    INFO("Kotekan version %s starting...",
+            get_kotekan_version());
 
     Config config;
 
@@ -377,7 +317,7 @@ int main(int argc, char ** argv) {
         string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
         std::string json_string = exec(exec_command.c_str());
         json config_json = json::parse(json_string.c_str());
-        config.update_config(config_json, 0);
+        config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, gps_time);
         } catch (const std::exception &ex) {
@@ -395,7 +335,7 @@ int main(int argc, char ** argv) {
             conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
         }
 
-        config.update_config(json_config, 0);
+        config.update_config(json_config);
 
         try {
             start_new_kotekan_mode(config, false);
@@ -438,6 +378,11 @@ int main(int argc, char ** argv) {
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
+    rest_server.register_get_callback("/kill", [&](connectionInstance &conn) {
+        raise(SIGINT);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
+    });
+
     rest_server.register_get_callback("/status", [&](connectionInstance &conn){
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         json reply;
@@ -453,6 +398,9 @@ int main(int argc, char ** argv) {
 
     prometheusMetrics &metrics = prometheusMetrics::instance();
     metrics.register_with_server(&rest_server);
+
+    basebandRequestManager &baseband = basebandRequestManager::instance();
+    baseband.register_with_server(&rest_server);
 
     for(EVER){
         sleep(1);

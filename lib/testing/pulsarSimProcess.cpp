@@ -160,16 +160,12 @@ void pulsarSimProcess::fill_headers(unsigned char * out_buf,
 }
 
 void pulsarSimProcess::apply_config(uint64_t fpga_seq) {
-        if (!config.update_needed(fpga_seq))
-                return;
-
         _num_gpus = config.get_int(unique_name, "num_gpus");
         _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
         _num_pulsar = config.get_int(unique_name, "num_pulsar");
         _num_pol = config.get_int(unique_name, "num_pol");
         _udp_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
         _udp_header_size = config.get_int(unique_name, "udp_pulsar_header_size");
-            
 }
 
 void pulsarSimProcess::main_thread() {

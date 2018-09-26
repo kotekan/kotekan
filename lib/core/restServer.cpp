@@ -20,6 +20,7 @@ restServer &restServer::instance() {
 
 restServer::restServer() : main_thread() {
 
+    stop_thread = false;
     main_thread = std::thread(&restServer::mongoose_thread, this);
 
 #ifndef MAC_OSX
@@ -33,6 +34,8 @@ restServer::restServer() : main_thread() {
 }
 
 restServer::~restServer() {
+    stop_thread = true;
+    main_thread.join();
 }
 
 void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
@@ -224,7 +227,7 @@ void restServer::mongoose_thread() {
     INFO("restServer: started server on port %s", port);
 
     // run event loop
-    for (;;) mg_mgr_poll(&mgr, 1000);
+    while (!stop_thread) mg_mgr_poll(&mgr, 1000);
 
     mg_mgr_free(&mgr);
 }
@@ -248,6 +251,11 @@ connectionInstance::connectionInstance(mg_connection* nc_, int ev_, void* ev_dat
 
 connectionInstance::~connectionInstance() {
 
+}
+
+string connectionInstance::get_uri() {
+    struct http_message *msg = (struct http_message *)ev_data;
+    return string(msg->uri.p, msg->uri.len);
 }
 
 string connectionInstance::get_body() {
@@ -283,7 +291,7 @@ void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &
     mg_send_head(nc, static_cast<int>(status), 0, error_message.c_str());
 }
 
-void connectionInstance::send_json_reply(json &json_reply) {
+void connectionInstance::send_json_reply(const json &json_reply) {
     string json_string = json_reply.dump(0);
     mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK), json_string.size(), NULL);
     mg_send(nc, (void*) json_string.c_str(), json_string.size());

@@ -19,29 +19,31 @@ To build just the base framework:
 Cmake build options:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
-* `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` - Includes DPDK support.
+* `-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc` - Includes DPDK support.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries. Direct toolchain calls are used by default.
 * `-DUSE_PRECOMPILED_OPENCL=ON` - For HSA, use precompiled OpenCL .hsaco binaries.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
-* `-DDPDK_VDIF=ON` - Adjusts DPDK defines to optimize for single dish VDIF capture mode.
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
 * `-DUSE_LAPACK=ON` - Build processes depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
 * `-DOPENBLAS_PATH=<openblas_prefix>` - Path to OpenBLAS installation, if not in the `CMAKE_PREFIX_PATH`
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
+* `-DUSE_OMP=ON` Build processes using OpenMP. This requires a compiler supporting OpenMP (>= 3.0)
+* `-DOPENSSL_ROOT_DIR=<openssl_root_dir>` Only required for non-standard install locations of OpenSSL
+* `-DBOOST_TESTS=ON` Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
 
 **Examples:**
 
 To build with HSA, DPDK and debug symbols:
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.3/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
 
 To install kotekan (only works on CentOS at the moment):
 

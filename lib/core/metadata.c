@@ -40,6 +40,14 @@ void reset_metadata_object(struct metadataContainer * container) {
     memset(container->metadata, 0, container->metadata_size);
 }
 
+void lock_metadata(struct metadataContainer * container) {
+    CHECK_ERROR( pthread_mutex_lock(&container->metadata_lock) );
+}
+
+void unlock_metadata(struct metadataContainer * container) {
+    CHECK_ERROR( pthread_mutex_unlock(&container->metadata_lock) );
+}
+
 void increment_metadata_ref_count(struct metadataContainer * container) {
     lock_metadata(container);
     container->ref_count += 1;
