@@ -2,7 +2,8 @@
 #
 # chime_psr.yaml
 #
-# CHIME config to exercise full GPU functionality (N2 + FRB + Pulsar).
+# CHIME config to capture VDIF frames from CHIME/pulsar,
+# assemble them into frames, and stripe those frames to drivesets.
 #
 # Author: Keith Vanderlinde
 #
