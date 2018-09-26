@@ -33,35 +33,12 @@ psrRecv::psrRecv(Config& config,
     num_freq = config.get_int(unique_name,"num_freq");
 
     port = config.get_int(unique_name,"port");
-
-//    out_buf = get_buffer("out_buf");
-//    register_producer(out_buf, unique_name.c_str());
 }
 
 psrRecv::~psrRecv() {
 }
 
 void psrRecv::apply_config(uint64_t fpga_seq) {
-}
-
-void psrRecv::receive_packet(void *buffer, int length, int socket_fd){
-    ssize_t rec = 0;
-    while (rec < length) {
-        int result = recv(socket_fd, ((char*)buffer) + rec, length - rec, 0);
-        if (result == -1) {
-            ERROR("RECV = -1 %i",errno);
-            // Handle error ...
-            break;
-        }
-        else if (result == 0) {
-            ERROR("RECV = 0 %i",errno);
-            // Handle disconnect ...
-            break;
-        }
-        else {
-            rec += result;
-        }
-    }
 }
 
 void psrRecv::main_thread() {
@@ -85,13 +62,15 @@ void psrRecv::main_thread() {
 
     size_t packets_per_frame = timesamples_per_frame / timesamples_per_packet;
 
+    //Currently hardcoding a number of things here...
+    //samples per packet, most of the header, samples_per_second, ...
     struct VDIFPacket {
         VDIFHeader h;
         uint8_t data[5000];
     };
     uint32_t si[2]={'C','X'};
     VDIFHeader defaultHeader = {
-        /**/9, // seconds : 30;
+        /**/0, // seconds : 30;
             0, // legacy : 1;
             1, // invalid : 1;
         /**/0, // data_frame : 24;
@@ -121,6 +100,7 @@ void psrRecv::main_thread() {
           for (size_t f=0; f<num_freq/freqs_per_packet; f++){
             VDIFHeader *hdr = &(frame[i] + (t*num_freq/freqs_per_packet + f))->h;
             memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
+            hdr->thread_id = f;
           }
     }
 
@@ -137,6 +117,7 @@ void psrRecv::main_thread() {
         }
 
         VDIFHeader *header = (VDIFHeader *)local_buf;
+        if (header->invalid) continue;
         uint64_t idx = header->seconds * samples_per_second + header->data_frame * timesamples_per_packet;
         DEBUG2("Header: \n"
              " seconds: %i\n"
@@ -203,6 +184,7 @@ void psrRecv::main_thread() {
             for (size_t t=0; t<packets_per_frame; t++)
               for (size_t f=0; f<num_freq/freqs_per_packet; f++){
                 VDIFHeader *hdr = &(frame[recv_depth-1] + (t*num_freq/freqs_per_packet + f))->h;
+                memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
                 hdr->seconds = sample_idx / samples_per_second;
                 hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
                 hdr->thread_id = f;

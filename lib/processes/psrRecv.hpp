@@ -35,7 +35,6 @@
  * @conf   num_freq               Int. Number of time samples to sum.
  * @conf   num_elements           Int. Number of time samples to sum.
  * @conf   port                   Int. Number of time samples to sum.
- * @conf   ip                     Int. Number of time samples to sum.
  * @conf   protocol               String. Should be @c "TCP" or @c "UDP"
  *
  * @warning UDP stream receiption doesn't work at the moment.
@@ -61,19 +60,11 @@ public:
 
 
 private:
-    ///Simple function to receive data of @c length bytes.
-    void receive_packet(void *buffer, int length, int socket_fd);
-
     ///Output kotekanBuffer.
-    struct Buffer *in_buf;
     struct Buffer *out_buf;
 
     ///Port of the listening receiver.
     uint32_t port;
-    ///IP of the listening receiver.
-    string server_ip;
-    ///Protocol to use: TCP or UDP. (Only TCP works now)
-    string protocol;
 
     uint packet_length;
     uint timesamples_per_packet;
