@@ -116,6 +116,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     gain.resize(chunk_t*chunk_f*num_input);
     frac_lost.resize(chunk_t*chunk_f);
     input_flags.resize(chunk_t*num_input);
+    std::fill(input_flags.begin(), input_flags.end(), 0.);
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
