@@ -96,14 +96,7 @@ void psrRecv::main_thread() {
     for (int i=0; i<recv_depth; i++) {
         frame_id[i] = i;
         frame[i] = (VDIFPacket*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id[i]);
-        for (size_t t=0; t<packets_per_frame; t++)
-          for (size_t f=0; f<num_freq/freqs_per_packet; f++){
-            VDIFHeader *hdr = &(frame[i] + (t*num_freq/freqs_per_packet + f))->h;
-            memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
-            hdr->thread_id = f;
-          }
     }
-
     bool first_pass=true;
 
     uint64_t sample_idx0=0;
@@ -160,6 +153,17 @@ void psrRecv::main_thread() {
         if (first_pass) {
             sample_idx0 = idx;
             first_pass=false;
+            for (int i=0; i<recv_depth; i++) {
+                uint64_t sample_idx = sample_idx0 + i*timesamples_per_frame;
+                for (size_t t=0; t<packets_per_frame; t++)
+                  for (size_t f=0; f<num_freq/freqs_per_packet; f++){
+                    VDIFHeader *hdr = &(frame[i] + (t*num_freq/freqs_per_packet + f))->h;
+                    memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
+                    hdr->seconds = sample_idx / samples_per_second;
+                    hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
+                    hdr->thread_id = f;
+                  }
+            }
         }
 
         if (idx < sample_idx0) continue; //drop the packet
@@ -188,7 +192,6 @@ void psrRecv::main_thread() {
                 hdr->seconds = sample_idx / samples_per_second;
                 hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
                 hdr->thread_id = f;
-                hdr->invalid = 1;
               }
             sample_idx0 += timesamples_per_frame;
         }
