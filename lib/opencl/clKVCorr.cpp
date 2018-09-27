@@ -9,7 +9,7 @@ REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("corr","kv_corr_amd.cl", config, unique_name, host_buffers, device)
+    clCommand("corr","kv_corr.cl", config, unique_name, host_buffers, device)
 {
     _num_elements = config.get_int(unique_name, "num_elements");
     _num_local_freq = config.get_int(unique_name, "num_local_freq");
@@ -18,12 +18,20 @@ clKVCorr::clKVCorr(Config& config, const string &unique_name,
     _num_blocks = config.get_int(unique_name,"num_blocks");
     _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
     _data_format = config.get_string_default(unique_name,"data_format","4+4b");
-
+    _full_complicated = config.get_bool_default(unique_name,"full_complicated",false);
 
     if (_data_format == "4+4b"){
         if (small_array)
             kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
                                config.get_string_default(unique_name,"kernel","kv_corr_sm.cl");
+        else if (_full_complicated)
+        {
+            if (small_array)
+                throw std::invalid_argument("Can't do full_complicated with num_elements < 32");
+            else
+                kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
+                                   config.get_string_default(unique_name,"kernel","kv_corr_amd.cl");
+        }
     }
     else if (_data_format == "dot4b"){
         kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
@@ -75,11 +83,11 @@ void clKVCorr::build()
             lws[2] = 1;
         } else {
             accum_length = _samples_per_data_set;
-            gws[0] = 16*_num_local_freq;
-            gws[1] = 4;
+            gws[0] = (_full_complicated?16:8)*_num_local_freq;
+            gws[1] = (_full_complicated?4:8);
             gws[2] = _num_blocks;
-            lws[0] = 16;
-            lws[1] = 4;
+            lws[0] = (_full_complicated?16:8);
+            lws[1] = (_full_complicated?4:8);
             lws[2] = 1;
         }
         cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);

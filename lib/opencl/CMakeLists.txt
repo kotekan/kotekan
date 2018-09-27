@@ -35,9 +35,9 @@ add_library ( kotekan_opencl
               clOutputBeamformResult.cpp
 
 #RFI Kernels
-              clRfiTimeSum.cpp
-              clRfiInputSum.cpp
-              clRfiOutput.cpp
+              #clRfiTimeSum.cpp
+              #clRfiInputSum.cpp
+              #clRfiOutput.cpp
               )
 
 add_custom_target(kernel_copy

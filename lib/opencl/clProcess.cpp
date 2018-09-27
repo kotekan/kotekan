@@ -9,8 +9,6 @@
 #include <iostream>
 #include <sys/time.h>
 
-REGISTER_KOTEKAN_PROCESS(clProcess);
-
 using namespace std;
 
 REGISTER_KOTEKAN_PROCESS(clProcess);
@@ -25,9 +23,6 @@ clProcess::clProcess(Config& config_,
     gpu_id = config.get_int(unique_name, "gpu_id");
 
     final_signals.resize(_gpu_buffer_depth);
-
-//    frame_arrival_period = config.get_double_eval(unique_name, "frame_arrival_period");
-//    _use_beamforming = config.get_bool(unique_name, "enable_beamforming");
 
     json in_bufs = config.get_value(unique_name, "in_buffers");
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {

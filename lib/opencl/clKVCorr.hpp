@@ -37,7 +37,8 @@ private:
     int32_t _block_size;
     /// Allow different options for the input data ordering. Current just 4+4b vs dot4b.
     string _data_format;
-
+    /// This will enable use of the AMD-intrinsic-laden overly-complex & optimized kernel.
+    bool _full_complicated;
 };
 
 #endif //CL_CORRELATOR_KERNEL
