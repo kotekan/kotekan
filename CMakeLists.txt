@@ -91,7 +91,6 @@ if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
   include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
-  #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
   add_definitions(-DWITH_OPENCL)
   # Required for some CentOS gcc version
   add_definitions(-D__STDC_FORMAT_MACROS)

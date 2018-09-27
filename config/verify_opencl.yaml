@@ -74,6 +74,7 @@ gen_data:
 
 #data_format: dot4b
 data_format: "4+4b"
+full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
 gpu:
   profiling: true
