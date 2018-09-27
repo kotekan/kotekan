@@ -7,7 +7,6 @@
 #include <memory>
 #include <mutex>
 #include <condition_variable>
-#include <mutex>
 
 #include "json.hpp"
 #include "errors.h"
@@ -15,7 +14,7 @@
 #include "restClient.hpp"
 
 #define UNIQUE_NAME "/dataset_manager"
-#define TIMEOUT_REGISTER_DATASET_SEC 30
+#define TIMEOUT_BROKER_SEC 30
 
 // Alias certain types to give semantic meaning to the IDs
 using dset_id = int32_t;
@@ -56,7 +55,7 @@ public:
     virtual ~datasetState() {};
 
     /**
-     * @brief Create a dataset from a full json serialisation.
+     * @brief Create a dataset state from a full json serialisation.
      *
      * This will correctly instantiate the correct types and reconstruct all
      * inner states.
@@ -326,10 +325,28 @@ private:
  * If a process is altering more than one type of dataset state, it can add
  * `inner` states to the one it passes to the dataset manager.
  *
- * @author Richard Shaw, Rick Nitsche
- *
- * TODO: Centralized datasetBroker, so that states can be shared over multiple
+ * The dataset broker is a centralized part of the dataset management system.
+ * Using it allows the synchronization of datasets and states between multiple
  * kotekan instances.
+ *
+ * @config use_ds_broker    If true, states and datasets will be registered with
+ *                          the dataset broker. If an ancestor can not be found
+ *                          locally, `closest_ancestor_of_type` will ask the
+ *                          broker.
+ * @config ds_broker_port   The port of the dataset broker (if `use_ds_broker`
+ *                          is `True`).
+ * @config ds_broker_host   Address to the dataset broker (if 'use_ds_broke` is
+ *                          `True`. Prefer numerical address).
+ * @config _path register_state     Path to the `register-state` endpoint (if
+ *                                  `use_ds_broker` is `True`).
+ * @config _path send_state         Path to the `send-state` endpoint (if
+ *                                  `use_ds_broker` is `True`).
+ * @config _path register_dataset   Path to the `register-dataset` endpoint (if
+ *                                  `use_ds_broker` is `True`).
+ * @config _path request_ancestors  Path to the `request_ancestors` endpoint (if
+ *                                  `use_ds_broker` is `True`).
+ *
+ * @author Richard Shaw, Rick Nitsche
  **/
 class datasetManager {
 public:
@@ -354,6 +371,10 @@ public:
     /**
      * @brief Register a new dataset.
      *
+     * If `use_ds_broker` is set, this function will ask the dataset broker to
+     * assign an ID to the new dataset and is blocking. If you want to
+     * do something while waiting for the return value, use an std::future.
+     *
      * @param trans The ID of an already registered state.
      * @param input ID of the input dataset.
      * @returns The ID assigned to the new dataset.
@@ -362,6 +383,13 @@ public:
 
     /**
      * @brief Register a state with the manager.
+     *
+     * If `use_ds_broker` is set, this function will also register the new state
+     * with the broker (not blocking).
+     *
+     * The second argument of this function can be ignored. Its purpose is to
+     * prevent compilation of this function with `T` not having the base class
+     * `datasetState`.
      *
      * @param trans A pointer to the state.
      * @returns The id assigned to the state and a read-only pointer to the
@@ -405,6 +433,12 @@ public:
     /**
      * @brief Find the closest ancestor of a given type.
      *
+     * If `use_ds_broker` is set and no ancestor of the given type is found,
+     * this will ask the broker for a complete list of ancestors for the given
+     * dataset. In that case, this function is blocking, until the broker
+     * answeres. If you want to do something else, while waiting for the return
+     * value of this function, use std::future.
+     *
      * @returns The dataset ID and the state that generated it.
      * Returns `{-1, nullptr}` if not found in ancestors.
      **/
@@ -427,42 +461,66 @@ private:
      **/
     state_id hash_state(datasetState& state);
 
+    /// register the given state with the dataset broker
     static void register_state(state_id state);
 
+    /// register the given dataset with the dataset broker
     static void register_dataset(std::pair<state_id, dset_id> dset);
 
+    /// callback function for register_state()
     static void register_state_callback(restReply reply);
 
+    /// callback function for sending a state to the dataset broker
+    /// from register_state_callback()
     static void send_state_callback(restReply reply);
 
+    /// callback function for register_dataset()
     static void register_dataset_callback(restReply reply);
 
+    /// request the ancestors of the given dataset from the dataset broker
+    static void request_ancestors(dset_id dset);
+
+    /// callback function for request_ancestors()
+    static void request_ancestors_callback(restReply reply);
+
+    /// find the ID of the given dataset and assign it to the given dataset_id.
+    /// Returns false if the dataset was not found, otherwise true.
     bool find_dataset_id(const std::pair<state_id, dset_id> dataset,
                          dset_id& dataset_id);
 
-    // Store the list of all the registered states.
+    /// Store the list of all the registered states.
     static std::map<state_id, state_uptr> _states;
 
-    // Store a list of the datasets registered and what states
-    // and input datasets they correspond to
     // TODO: make this a bidirectional map (boost) or put all three values in a
     // hash map (to reduce time of search-by-value) !?
+    /// Store a list of the datasets registered and what states
+    /// and input datasets they correspond to
     static std::map<dset_id, std::pair<state_id, dset_id>> _datasets;
 
-    // Lock for changing or using the states map.
+    /// Lock for changing or using the states map.
     static std::mutex _lock_states;
 
-    // Lock for changing or using the datasets.
+    /// Lock for changing or using the datasets.
     static std::mutex _lock_dsets;
 
-    // conditional variable for registering dataset
+    /// Lock for the ancestors request cv.
+    static std::mutex _lock_rqst;
+
+    /// Lock for the register dataset cv.
+    static std::mutex _lock_reg;
+
+    /// conditional variable for registering dataset
     static std::condition_variable cv_register_dset;
+
+    /// conditional variable for requesting ancestors
+    static std::condition_variable cv_request_ancestors;
 
     // config params
     bool _use_broker = false;
     static std::string _path_register_state;
     static std::string _path_send_state;
     static std::string _path_register_dataset;
+    static std::string _path_request_ancestors;
     static std::string _ds_broker_host;
     static unsigned short _ds_broker_port;
 };
@@ -494,8 +552,14 @@ template<typename T>
 inline pair<dset_id, const T*>
 datasetManager::closest_ancestor_of_type(dset_id dset) const {
 
-    if (dset < 0 || _datasets.size() <= (size_t)dset)
+    if (dset < 0)
         return {-1, nullptr};
+    if (!_use_broker) {
+        std::unique_lock<std::mutex> dslck(_lock_dsets);
+        if (_datasets.size() <= (size_t)dset)
+            return {-1, nullptr};
+        dslck.unlock();
+    }
 
     for(auto& t : ancestors(dset)) {
         if(typeid(*(t.second)) == typeid(T)) {
@@ -503,8 +567,46 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
         }
     }
 
-    return {-1, nullptr};
+    // no ancestor found locally -> ask broker
+    if (_use_broker) {
 
+        // lock for conditional variable
+        std::unique_lock<std::mutex> lck(_lock_rqst);
+
+        try {
+            request_ancestors(dset);
+        } catch (std::runtime_error& e) {
+            ERROR("datasetManager: Failure requesting ancestors: %s", e.what());
+            ERROR("datasetManager: Make sure the broker is running.\n" \
+                  "Exiting...");
+            raise(SIGINT);
+        }
+        // set timeout to hear back from callback function
+        std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
+        auto time_point = std::chrono::system_clock::now() + timeout;
+
+        for(auto& t : ancestors(dset)) {
+            if(typeid(*(t.second)) == typeid(T)) {
+                return {t.first, dynamic_cast<T*>(t.second)};
+            }
+        }
+        while(true) {
+            if (cv_request_ancestors.wait_until(lck, time_point)
+                  == std::cv_status::timeout) {
+                ERROR("datasetManager: Timeout while requesting ancestors of " \
+                      "dataset %d.", dset);
+                ERROR("datasetManager: Exiting...");
+                raise(SIGINT);
+            }
+            for(auto& t : ancestors(dset)) {
+                if(typeid(*(t.second)) == typeid(T)) {
+                    return {t.first, dynamic_cast<T*>(t.second)};
+                }
+            }
+        }
+    }
+
+    return {-1, nullptr};
 }
 
 // FIXME: add sth like
@@ -513,11 +615,15 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
 template <typename T>
 pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
     state_id hash = hash_state(*state);
-    std::lock_guard<std::mutex> lock(_lock_states);
+
+    // insert the new state
+    std::unique_lock<std::mutex> slock(_lock_states);
     if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
                                                            move(state))).second)
         INFO("datasetManager: a state with hash %zu is already registered " \
              "locally.", hash);
+    slock.unlock();
+
     if (_use_broker) {
         try {
             register_state(hash);
@@ -529,6 +635,7 @@ pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
         }
     }
 
+    slock.lock();
     return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif
