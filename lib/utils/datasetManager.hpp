@@ -396,7 +396,10 @@ public:
      * state.
      **/
     template <typename T>
-    inline pair<state_id, const T*> add_state(unique_ptr<T>&& state);
+    inline pair<state_id, const T*> add_state(
+            unique_ptr<T>&& state,
+            typename std::enable_if<is_base_of<datasetState, T>::value>::type*
+            = 0);
 
     /**
      * @brief Return the state table.
@@ -613,7 +616,11 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
 // typename enable_if_t<is_base_of<datasetState, T>::value>::state
 // So that compilation for T not having datasetState as a base class fails.
 template <typename T>
-pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
+pair<state_id, const T*> datasetManager::add_state(
+        unique_ptr<T>&& state,
+        typename std::enable_if<is_base_of<datasetState, T>::value>::type*)
+{
+
     state_id hash = hash_state(*state);
 
     // insert the new state

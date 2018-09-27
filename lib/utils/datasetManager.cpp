@@ -415,7 +415,7 @@ void datasetManager::request_ancestors_callback(restReply reply) {
                                 s_id, move(state))).second)
             INFO("datasetManager::request_ancestors_callback: received a " \
                  "state (with hash %zu) that is already registered " \
-                 "locally.", s.key());
+                 "locally.", s.key().c_str());
     }
 
     // release the states lock and acquire the datasets lock
