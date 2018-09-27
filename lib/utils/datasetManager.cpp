@@ -203,23 +203,28 @@ void datasetManager::register_state(state_id state)
 }
 
 void datasetManager::register_state_callback(restReply reply) {
-    // did the broker know this state already?
-    if (reply.first == true && reply.second.empty()) {
-        return;
-    // check if the broker wants the whole dataset state
-    } else if (reply.first == true) {
+    DEBUG("datasetManager: broker replied: %s", reply.second.c_str());
+    if (reply.first == true) {
         json js_reply;
 
         try {
             js_reply = json::parse(reply.second);
         } catch (exception& e) {
-            WARN("datasetManager: failure parsing reply received from broker " \
-                 "after registering dataset state (reply: %s): %s",
-                 reply.second.c_str(), e.what());
-            return;
+            ERROR("datasetManager: failure parsing reply received from broker " \
+                  "after registering dataset state (reply: %s): %s",
+                  reply.second.c_str(), e.what());
+            ERROR("datasetManager: exiting...");
+            raise(SIGINT);
         }
 
         try {
+            if (js_reply.at("result") != "success")
+                throw std::runtime_error("received error from broker: "
+                                         + js_reply.at("result").dump());
+            // did the broker know this state already?
+            if (js_reply.find("request") == js_reply.end())
+                return;
+            // does the broker want the whole dataset state?
             if (js_reply.at("request") == "get_state") {
                 state_id state = js_reply.at("hash");
                 _lock_states.lock();
@@ -244,20 +249,40 @@ void datasetManager::register_state_callback(restReply reply) {
                             "(reply: " + reply.second + ").");
             }
         } catch (exception& e) {
-            WARN("datasetManager: failure in register_state_callback: %s",
-                 e.what());
+            ERROR("datasetManager: failure registering dataset state with " \
+                  "broker: %s", e.what());
+            ERROR("datasetManager: exiting...");
+            raise(SIGINT);
         }
     }
     else {
-        WARN("datasetManager: failure registering dataset state with broker.");
+        ERROR("datasetManager: failure registering dataset state with broker.");
+        ERROR("datasetManager: exiting...");
+        raise(SIGINT);
     }
 }
 
 void datasetManager::send_state_callback(restReply reply) {
+    json js_reply;
     if (reply.first == true) {
-        return;
+        try {
+            js_reply = json::parse(reply.second);
+            if (js_reply.at("result") != "success")
+                throw std::runtime_error("received error from broker: "
+                                         + js_reply.at("result").dump());
+            // success
+            return;
+        } catch (exception& e) {
+            ERROR("datasetManager: failure parsing reply received from broker "\
+                  "after sending dataset state (reply: %s): %s",
+                  reply.second.c_str(), e.what());
+            ERROR("datasetManager: exiting...");
+            raise(SIGINT);
+        }
     }
-    WARN("datasetManager: failure sending state to broker.");
+    ERROR("datasetManager: failure sending dataset state to broker.");
+    ERROR("datasetManager: exiting...");
+    raise(SIGINT);
 }
 
 void datasetManager::register_dataset(std::pair<state_id, dset_id> dset) {
@@ -280,8 +305,8 @@ void datasetManager::register_dataset_callback(restReply reply) {
     dset_id new_ds_id = 0;
     std::pair<state_id, dset_id> new_dset;
 
-    if (reply.first == false || (reply.first == true && reply.second.empty())) {
-        ERROR("datasetManager: failure registering dataset state with broker.");
+    if (reply.first == false) {
+        ERROR("datasetManager: failure registering dataset with broker.");
         ERROR("datasetManager: exiting...");
         raise(SIGINT);
     }
@@ -290,6 +315,9 @@ void datasetManager::register_dataset_callback(restReply reply) {
 
     try {
         js_reply = json::parse(reply.second);
+        if (js_reply.at("result") != "success")
+            throw std::runtime_error("received error from broker: "
+                                     + js_reply.at("result").dump());
         new_ds_id = js_reply.at("new_ds_id");
         new_dset = std::pair<state_id, dset_id>(
                     js_reply.at("state_id"), js_reply.at("base_dset_id"));
@@ -303,9 +331,9 @@ void datasetManager::register_dataset_callback(restReply reply) {
 
     std::unique_lock<std::mutex> lock(_lock_dsets);
     // insert a new entry and return its index.
-    if (!_datasets.insert(std::pair<dset_id,
-                          std::pair<state_id, dset_id>>(new_ds_id,
-                                                        new_dset)).second) {
+    if (!_datasets.insert(
+            std::pair<dset_id, std::pair<state_id, dset_id>>(
+                new_ds_id, new_dset)).second) {
         ERROR("datasetManager: A dataset with ID %d is already known.\n " \
               "Exiting...", new_ds_id);
         raise(SIGINT);

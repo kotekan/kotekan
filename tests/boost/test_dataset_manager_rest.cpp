@@ -4,6 +4,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <string>
 #include <iostream>
+#include "fmt.hpp"
 #include "json.hpp"
 #include "visUtil.hpp"
 #include "restClient.hpp"
@@ -38,37 +39,45 @@ struct TestContext {
 
     void register_state(connectionInstance& con, json& js) {
         DEBUG("test: /register-state received: %s", js.dump().c_str());
+        json reply;
         try {
             js.at("hash");
         } catch (exception& e) {
-            BOOST_CHECK_MESSAGE(false, "Failure parsing register state message"\
-                                "from datasetManager: " + js.dump() + "\n"
-                                + e.what());
+            std::string error = fmt::format(
+                "Failure parsing register state message from datasetManager: " \
+                "{}\n{}.", js.dump(), e.what());
+            reply["result"] = error;
+            con.send_json_reply(reply);
+            BOOST_CHECK_MESSAGE(false, error);
         }
 
         BOOST_CHECK(js.at("hash").is_number());
-        json reply;
         reply["request"] = "get_state";
         reply["hash"] = js.at("hash");
+        reply["result"] = "success";
         con.send_json_reply(reply);
         DEBUG("test: /register-state: replied with %s", reply.dump().c_str());
     }
 
     void send_state(connectionInstance& con, json& js) {
         DEBUG("test: /send-state received: %s", js.dump().c_str());
+        json reply;
         try {
             js.at("hash");
             js.at("state");
             js.at("state").at("type");
             js.at("state").at("data");
         } catch (exception& e) {
-            BOOST_CHECK_MESSAGE(false, "Failure parsing send state message" \
-                                "from datasetManager: " + js.dump() + "\n"
-                                + e.what());
+            std::string error = fmt::format(
+                        "Failure parsing send-state message from " \
+                        "datasetManager: {}\n{}.", js.dump(), e.what());
+            reply["result"] = error;
+            con.send_json_reply(reply);
+            BOOST_CHECK_MESSAGE(false, error);
         }
 
         BOOST_CHECK(js.at("hash").is_number());
-        
+
         // check the received state
         std::vector<input_ctype> inputs = {input_ctype(1, "1"),
                                            input_ctype(2, "2"),
@@ -88,27 +97,32 @@ struct TestContext {
 
         BOOST_CHECK(same_state->to_json() == received_state->to_json());
 
-        con.send_empty_reply(HTTP_RESPONSE::OK);
-        DEBUG("test: /send-state: replied with OK");
+        reply["result"] = "success";
+        con.send_json_reply(reply);
+        DEBUG("test: /send-state: replied with %s", reply.dump().c_str());
     }
 
     void register_dataset(connectionInstance& con, json& js) {
         DEBUG("test: /register-dataset received: %s", js.dump().c_str());
+        json reply;
         try {
             js.at("state_id");
             js.at("base_ds_id");
         } catch (exception& e) {
-            BOOST_CHECK_MESSAGE(false, "Failure parsing register dataset " \
-                                "message from datasetManager: " + js.dump()
-                                + "\n" + e.what());
+            std::string error = fmt::format(
+                        "Failure parsing register-dataset message from " \
+                        "datasetManager: {}\n{}.", js.dump(), e.what());
+            reply["result"] = error;
+            con.send_json_reply(reply);
+            BOOST_CHECK_MESSAGE(false, error);
         }
 
         BOOST_CHECK(js.at("state_id").is_number());
         BOOST_CHECK(js.at("base_ds_id").is_number());
-        json reply;
         reply["new_ds_id"] = _dset_id_count++;
         reply["state_id"] = js.at("state_id");
         reply["base_dset_id"] = js.at("base_ds_id");
+        reply["result"] = "success";
         con.send_json_reply(reply);
         DEBUG("test: /register-dataset: replied with %s", reply.dump().c_str());
     }
@@ -198,21 +212,27 @@ struct TestContext2 {
 
     void register_state(connectionInstance& con, json& js) {
         DEBUG("test: /register-state received: %s", js.dump().c_str());
+        json reply;
         try {
             js.at("hash");
         } catch (exception& e) {
-            BOOST_CHECK_MESSAGE(false, "Failure parsing register state message"\
-                                "from datasetManager: " + js.dump() + "\n"
-                                + e.what());
+            std::string error = fmt::format(
+                        "Failure parsing register state message from " \
+                        "datasetManager: {}\n{}.", js.dump(), e.what());
+            reply["result"] = "success";
+            con.send_json_reply(reply);
+            BOOST_CHECK_MESSAGE(false, error);
         }
 
         BOOST_CHECK(js.at("hash").is_number());
-        con.send_empty_reply(HTTP_RESPONSE::OK);
-        DEBUG("test: /register-state: replied with OK");
+        reply["result"] = "success";
+        con.send_json_reply(reply);
+        DEBUG("test: /register-state: replied with %s", reply.dump().c_str());
     }
 
     void send_state(connectionInstance& con, json& js) {
         DEBUG("test: /send-state received: %s", js.dump().c_str());
+        json reply;
         try {
             js.at("hash");
             js.at("state");
@@ -220,9 +240,12 @@ struct TestContext2 {
             js.at("state").at("data");
             js.at("inner");
         } catch (exception& e) {
-            BOOST_CHECK_MESSAGE(false, "Failure parsing send state message" \
-                                "from datasetManager: " + js.dump() + "\n"
-                                + e.what());
+            std::string error = fmt::format(
+                        "Failure parsing send state message from " \
+                        "datasetManager: {}\n{}.", js.dump(), e.what());
+            reply["result"] = reply;
+            con.send_json_reply(reply);
+            BOOST_CHECK_MESSAGE(false, error);
         }
 
         BOOST_CHECK(js.at("hash").is_number());
@@ -246,27 +269,32 @@ struct TestContext2 {
 
         BOOST_CHECK(same_state->to_json() == received_state->to_json());
 
-        con.send_empty_reply(HTTP_RESPONSE::OK);
-        DEBUG("test: /send-state: replied with OK");
+        reply["result"] = "success";
+        con.send_json_reply(reply);
+        DEBUG("test: /send-state: replied with %s", reply.dump().c_str());
     }
 
     void register_dataset(connectionInstance& con, json& js) {
         DEBUG("test: /register-dataset received: %s", js.dump().c_str());
+        json reply;
         try {
             js.at("state_id");
             js.at("base_ds_id");
         } catch (exception& e) {
-            BOOST_CHECK_MESSAGE(false, "Failure parsing register dataset " \
-                                "message from datasetManager: " + js.dump()
-                                + "\n" + e.what());
+            std::string error = fmt::format(
+                "Failure parsing register-dataset message from " \
+                "datasetManager: {}\n{}.", js.dump(), e.what());
+            reply["result"] = error;
+            con.send_json_reply(reply);
+            BOOST_CHECK_MESSAGE(false, error);
         }
 
         BOOST_CHECK(js.at("state_id").is_number());
         BOOST_CHECK(js.at("base_ds_id").is_number());
-        json reply;
         reply["new_ds_id"] = _dset_id_count++;
         reply["state_id"] = js.at("state_id");
         reply["base_dset_id"] = js.at("base_ds_id");
+        reply["result"] = "success";
         con.send_json_reply(reply);
         DEBUG("test: /register-dataset: replied with %s", reply.dump().c_str());
     }
