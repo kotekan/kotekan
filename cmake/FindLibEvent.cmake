@@ -12,8 +12,8 @@
   set(EVENT_FIND_QUIETLY TRUE)
 endif (EVENT_INCLUDE_DIR AND EVENT_LIBRARY)
  find_path(EVENT_INCLUDE_DIR event.h
-  PATHS /usr/include
-  PATH_SUFFIXES event
+  PATHS /usr/include /usr/local/include
+  PATH_SUFFIXES event2
 )
  find_library(EVENT_LIBRARY
   NAMES event

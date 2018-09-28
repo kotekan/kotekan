@@ -64,7 +64,9 @@ endif()
 
 #Libevent is required now
 find_package(LibEvent REQUIRED )
-
+include_directories(${EVENT_INCLUDE_DIR}/../)
+link_directories(${EVENT_LIBRARIES})
+MESSAGE("Libevent " ${EVENT_LIBRARY})
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
 else()
@@ -168,7 +170,7 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 # Note C++11
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 

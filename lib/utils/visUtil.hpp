@@ -166,7 +166,8 @@ inline prod_ctype icmap(uint32_t k, uint16_t n) {
  * @return       Index into blocked array.
  */
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t b_ix = cmap(i / block, j / block, N / block);
+    uint32_t num_blocks1 = ((N - 1) / block) + 1;  // Blocks needed to tile 1D
+    uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);
 }
@@ -268,20 +269,28 @@ void copy_vis_triangle(
 /**
  * @brief Apply a function over the visibility triangle.
  *
- * This function is best by passing a lambda function/closure that does the
- * computation you want. It allows you to avoid doing the index computation
- * yourself.
+ * This will call a function for every set of indices in a *GPU output buffer*.
+ * The function is given the index into the GPU buffer and the correlation
+ * triangle. To actually process any data use the a lambda/closure and bind the
+ * data you want to be able to access.
+ *
+ * To support multi-frequency GPU buffer this takes a frequency index which
+ * will change the GPU buffer offset. As the visibility buffers are single
+ * frequency that offset will be unaffected.
  *
  * @param inputmap  Vector of feed indices to use.
  * @param block     Block size.
  * @param N         Number of inputs in input data.
+ * @param freq      Frequency index to use. This just gives an offset into the
+ *                  visibility triangle.
  * @param f         Function to apply. It takes three arguments.
  *                    - The product index into the correlation triangle.
  *                    - The same product in the GPU packed data.
  *                    - Whether we need to conjugate to map between the two.
  */
 void map_vis_triangle(const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
+    size_t block, size_t N, uint32_t freq,
+    std::function<void(int32_t, int32_t, bool)> f
 );
 
 
