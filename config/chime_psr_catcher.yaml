@@ -15,9 +15,8 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: warn
 
-num_pol: 2
-num_freq: 1024
-timesamples_per_frame: 3125 #6250
+num_vdif_threads: 256
+timesamples_per_frame: 3125
 
 buffer_depth: 128
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
@@ -36,8 +35,10 @@ recv_depth: 64
 
 pulsar_input_buffers:
     num_frames: buffer_depth
-    frame_size: udp_pulsar_packet_size * (num_freq / freqs_per_packet) * (timesamples_per_frame / timesamples_per_packet)
-#    frame_size: udp_pulsar_packet_size * 256 * timesamples_per_frame / timesamples_per_packet
+    num_frames: buffer_depth
+    vdif_packet_size: 5032
+    num_vdif_frames: 5
+    frame_size: vdif_packet_size * num_vdif_threads * num_vdif_frames
     metadata_pool: main_pool
     pulsar_input_buffer:
         kotekan_buffer: standard
@@ -60,7 +61,7 @@ raw_capture:
    write_to_disk: true
    gain_files: []
    num_elements: 2
-   samples_per_data_set: 6250
+#   samples_per_data_set: 6250
    num_disks: 10
    disk_base: /drives/
    disk_set: G

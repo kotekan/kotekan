@@ -35,7 +35,7 @@
  *     @buffer_metadata none
  *
  * @conf   timesamples_per_frame  Int. Number of time samples to pack into each kotekan frame.
- * @conf   num_freq               Int. Number of frequencies to be contained in each frame.
+ * @conf   num_vdif_threads       Int. Number of frequencies to be contained in each frame.
  * @conf   port                   Int. Port to listen on for the incoming UDP samples.
  * @conf   recv_depth             Int. Number of frames to hold open at a time..
  *
@@ -66,10 +66,10 @@ private:
     uint32_t port;
     ///Number of time samples to pack into each outgoing frame.
     uint timesamples_per_frame;
-    ///Number of frequencies to pack into each outgoing frame.
-    uint num_freq;
+    ///Number of vdif threads to pack into each outgoing frame.
+    uint num_vdif_threads;
     ///Port to listen for UDP packets on.
-    uint recv_depth;
+    int recv_depth;
 };
 
 #endif

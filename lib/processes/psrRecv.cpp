@@ -33,9 +33,9 @@ psrRecv::psrRecv(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     timesamples_per_frame = config.get_int(unique_name,"timesamples_per_frame");
-    num_freq = config.get_int(unique_name,"num_freq");
-    port = config.get_int(unique_name,"port");
+    num_vdif_threads = config.get_int(unique_name,"num_vdif_threads");
     recv_depth = config.get_int(unique_name,"recv_depth");
+    port = config.get_int(unique_name,"port");
 
     assert(recv_depth < out_buf->num_frames);
 }
@@ -143,8 +143,8 @@ void psrRecv::main_thread() {
             for (int i=0; i<recv_depth; i++) {
                 uint64_t sample_idx = sample_idx0 + i*timesamples_per_frame;
                 for (size_t t=0; t<packets_per_frame; t++)
-                  for (size_t f=0; f<num_freq/freqs_per_packet; f++){
-                    VDIFHeader *hdr = &(frame[i] + (t*num_freq/freqs_per_packet + f))->h;
+                  for (size_t f=0; f<num_vdif_threads; f++){
+                    VDIFHeader *hdr = &(frame[i] + (t*num_vdif_threads + f))->h;
                     memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
                     hdr->seconds = sample_idx / samples_per_second;
                     hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
@@ -157,13 +157,13 @@ void psrRecv::main_thread() {
         while (idx - sample_idx0 >= timesamples_per_frame*recv_depth) {
             int bad_packets = 0;
             for (size_t i=0; i<packets_per_frame; i++){
-                for (size_t f=0; f<num_freq/freqs_per_packet; f++){
-                    VDIFPacket *p = ((VDIFPacket*)frame[0]) + (i*num_freq/freqs_per_packet + f);
+                for (size_t f=0; f<num_vdif_threads; f++){
+                    VDIFPacket *p = ((VDIFPacket*)frame[0]) + (i*num_vdif_threads + f);
                     if (p->h.invalid) bad_packets++;
                 }
             }
             DEBUG("Frame %02i closed, bad packets: %i (%2.1f\%)", frame_id[0], bad_packets, 
-                    100*float(bad_packets)/packets_per_frame/(num_freq/freqs_per_packet));
+                    100*float(bad_packets)/packets_per_frame/num_vdif_threads);
             mark_frame_full(out_buf, unique_name.c_str(), frame_id[0]);
             for (int i=1; i < recv_depth; i++){
                 frame[i-1] = frame[i];
@@ -173,8 +173,8 @@ void psrRecv::main_thread() {
             frame[recv_depth-1] = (VDIFPacket*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id[recv_depth-1]);
             uint64_t sample_idx = sample_idx0 + recv_depth*timesamples_per_frame;
             for (size_t t=0; t<packets_per_frame; t++)
-              for (size_t f=0; f<num_freq/freqs_per_packet; f++){
-                VDIFHeader *hdr = &(frame[recv_depth-1] + (t*num_freq/freqs_per_packet + f))->h;
+              for (size_t f=0; f<num_vdif_threads; f++){
+                VDIFHeader *hdr = &(frame[recv_depth-1] + (t*num_vdif_threads + f))->h;
                 memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
                 hdr->seconds = sample_idx / samples_per_second;
                 hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
@@ -190,7 +190,7 @@ void psrRecv::main_thread() {
         header->eud2 = 0;
         header->eud3 = 0;
         header->eud4 = 0;
-        VDIFPacket *dest = frame[frame_idx] + packet_idx*num_freq/freqs_per_packet + header->thread_id;
+        VDIFPacket *dest = frame[frame_idx] + packet_idx*num_vdif_threads + header->thread_id;
 
         memcpy(dest,local_buf,sizeof(VDIFPacket));
     }
