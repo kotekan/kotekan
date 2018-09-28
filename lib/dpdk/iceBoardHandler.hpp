@@ -12,7 +12,6 @@
 #include "prometheusMetrics.hpp"
 #include "json.hpp"
 #include <mutex>
-#include "configEval.hpp"
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -334,8 +333,7 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
 
     num_local_freq = config.get_default<int32_t>(
                 unique_name, "num_local_freq", 1);
-    alignment = configEval<uint64_t>(config, unique_name, "alignment")
-            .compute_result();
+    alignment = config.get<uint64_t>(unique_name, "alignment");
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
 }
 

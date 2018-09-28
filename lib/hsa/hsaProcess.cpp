@@ -4,7 +4,6 @@
 #include "fpga_header_functions.h"
 #include "KotekanProcess.hpp"
 #include "util.h"
-#include "configEval.hpp"
 
 #include <iostream>
 #include <sys/time.h>
@@ -59,8 +58,7 @@ void hsaProcess::apply_config(uint64_t fpga_seq) {
     _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
     gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
 
-    frame_arrival_period = configEval<double>(
-                config, unique_name, "frame_arrival_period").compute_result();
+    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 }
 
 hsaProcess::~hsaProcess() {
