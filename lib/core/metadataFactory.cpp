@@ -3,7 +3,6 @@
 #include "chimeMetadata.h"
 #include "visBuffer.hpp"
 #include "Config.hpp"
-#include "configEval.hpp"
 
 metadataFactory::metadataFactory(Config& config) : config(config) {
 }
@@ -52,8 +51,7 @@ struct metadataPool* metadataFactory::new_pool(const string &pool_type, const st
 
     INFO("Creating metadata pool of type: %s, at config tree path: %s", pool_type.c_str(), location.c_str());
 
-    uint32_t num_metadata_objects = configEval<uint32_t>(
-                config, location, "num_metadata_objects").compute_result();
+    uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
 
     if (pool_type == "chimeMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata));

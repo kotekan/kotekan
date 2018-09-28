@@ -29,8 +29,8 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
 
     sample_size = config.get_default<uint32_t>(
                 unique_name.c_str(), "sample_size", 2048);
-
-    zero_value = config.get_default<uint8_t>(unique_name.c_str(), "zero_value", 0x88);
+    zero_value = config.get_default<uint8_t>(
+                unique_name.c_str(), "zero_value", 0x88);
 }
 
 zeroSamples::~zeroSamples() {

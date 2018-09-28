@@ -70,8 +70,7 @@ inline captureHandler::captureHandler(Config &config, const std::string &unique_
                        bufferContainer &buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
-    out_buf = buffer_container.get_buffer(
-                config.get<std::string>(unique_name, "out_buf"));
+    out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());
 
     packet_size = config.get<uint32_t>(unique_name, "packet_size");

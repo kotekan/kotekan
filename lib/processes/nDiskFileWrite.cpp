@@ -34,9 +34,9 @@ void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
     disk_set = config.get<std::string>(unique_name, "disk_set");
     write_to_disk = config.get<bool>(unique_name, "write_to_disk");
     instrument_name = config.get_default<std::string>(
-                unique_name, "instrument_name", "no_name_set");
+            unique_name, "instrument_name", "no_name_set");
     write_metadata_and_gains = config.get_default<bool>(
-                unique_name, "write_metadata_and_gains", true);
+            unique_name, "write_metadata_and_gains", true);
 }
 
 void nDiskFileWrite::save_meta_data(char *timestr) {

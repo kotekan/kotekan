@@ -80,7 +80,6 @@ void pulsarNetworkProcess::main_thread()
 
     int frame_id = 0;
     uint8_t * packet_buffer = NULL;
-
     std::vector<std::string> link_ip =
             config.get<std::vector<std::string>>(unique_name,
                                                  "pulsar_node_ips");

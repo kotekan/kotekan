@@ -2,6 +2,9 @@ cmake_minimum_required (VERSION 2.8)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
+# This is required early on for some versions of GCC, do not remove.
+add_definitions(/D__STDC_FORMAT_MACROS)
+
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
@@ -151,8 +154,12 @@ find_package(Threads REQUIRED)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 # Required for some SSE/AVX intrinsics
-add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
+add_definitions(-D__STDC_LIMIT_MACROS)
 
+# Note that -lrt here is needed on some versions of CentOS
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
+endif ()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
@@ -165,7 +172,10 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # 
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
-# Note C++11
+# Note that -lrt here is needed on some versions of CentOS
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
+endif ()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")

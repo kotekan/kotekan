@@ -1,7 +1,6 @@
 #include "bufferFactory.hpp"
 #include "metadata.h"
 #include "Config.hpp"
-#include "configEval.hpp"
 #include "visBuffer.hpp"
 
 bufferFactory::bufferFactory(Config& _config,
@@ -50,8 +49,7 @@ void bufferFactory::build_from_tree(map<string, struct Buffer *> &buffers,
 struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &name, const string &location) {
 
     //DEBUG("Creating buffer of type: %s, at config tree path: %s", name.c_str(), location.c_str());
-    uint32_t num_frames = configEval<uint32_t>(
-                config, location, "num_frames").compute_result();
+    uint32_t num_frames =  config.get<uint32_t>(location, "num_frames");
     string metadataPool_name = config.get<std::string>(
                 location, "metadata_pool");
     if (metadataPools.count(metadataPool_name) != 1) {
@@ -61,8 +59,7 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
     struct metadataPool * pool = metadataPools[metadataPool_name];
 
     if (type_name == "standard") {
-        uint32_t frame_size = configEval<uint32_t>(
-                    config, location, "frame_size").compute_result();
+        uint32_t frame_size = config.get<uint32_t>(location, "frame_size");
         INFO("Creating standard buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
                 name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
         return create_buffer(num_frames, frame_size, pool, name.c_str());
