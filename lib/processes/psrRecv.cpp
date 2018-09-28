@@ -16,6 +16,13 @@
 
 REGISTER_KOTEKAN_PROCESS(psrRecv);
 
+/* A BUNCH OF CHIME-SPECIFIC PACKET PARAMETERS */
+#define pols_per_packet 2
+#define freqs_per_packet 4
+#define timesamples_per_packet 625
+#define samples_per_second 390625ull
+/* A BUNCH OF CHIME-SPECIFIC PACKET PARAMETERS */
+
 psrRecv::psrRecv(Config& config,
                                        const string& unique_name,
                                        bufferContainer &buffer_container) :
@@ -25,14 +32,12 @@ psrRecv::psrRecv(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    packet_length = config.get_int(unique_name,"udp_pulsar_packet_size");
-    timesamples_per_packet = config.get_int(unique_name,"timesamples_per_packet");
     timesamples_per_frame = config.get_int(unique_name,"timesamples_per_frame");
-
-    freqs_per_packet = config.get_int(unique_name,"freqs_per_packet");
     num_freq = config.get_int(unique_name,"num_freq");
-
     port = config.get_int(unique_name,"port");
+    recv_depth = config.get_int(unique_name,"recv_depth");
+
+    assert(recv_depth < out_buf->num_frames);
 }
 
 psrRecv::~psrRecv() {
@@ -57,39 +62,13 @@ void psrRecv::main_thread() {
     int max_packet_length = 65536;
     char *local_buf = (char*)calloc(max_packet_length,sizeof(char));
 
-    int recv_depth = 64;
-    assert(recv_depth < out_buf->num_frames);
-
     size_t packets_per_frame = timesamples_per_frame / timesamples_per_packet;
 
-    //Currently hardcoding a number of things here...
-    //samples per packet, most of the header, samples_per_second, ...
     struct VDIFPacket {
         VDIFHeader h;
-        uint8_t data[5000];
+        uint8_t data[pols_per_packet * freqs_per_packet * timesamples_per_packet];
     };
-    uint32_t si[2]={'C','X'};
-    VDIFHeader defaultHeader = {
-        /**/0, // seconds : 30;
-            0, // legacy : 1;
-            1, // invalid : 1;
-        /**/0, // data_frame : 24;
-            36, // ref_epoch : 6;
-            0, // unused : 2;
-            629, // frame_len : 24;
-            3, // log_num_chan : 5;
-            1, // vdif_version : 3;
-            (si[0]<<8) + si[1], // station_id : 16;
-        /**/0, // thread_id : 10;
-            3, // bits_depth : 5;
-            1, // data_type : 1;
-            0, // eud1 : 24;
-            0, // edv : 8;
-            0, // eud2 : 32;
-            0, // eud3 : 32;
-            0 // eud4 : 32;
-    };
-    uint64_t samples_per_second = 390625;
+    VDIFHeader defaultHeader;
 
     VDIFPacket *frame[recv_depth];
     uint frame_id[recv_depth];
@@ -102,9 +81,9 @@ void psrRecv::main_thread() {
     uint64_t sample_idx0=0;
     while (!stop_thread) {
         uint32_t len = recvfrom(socket_fd,
-                        local_buf,
-                        max_packet_length, 0, NULL, 0);
-        if (len != packet_length) {
+                                local_buf,
+                                max_packet_length, 0, NULL, 0);
+        if (len != sizeof(VDIFPacket)) {
             ERROR("BAD UDP PACKET! %i %i", len,errno);
             continue;
         }
@@ -153,6 +132,14 @@ void psrRecv::main_thread() {
         if (first_pass) {
             sample_idx0 = idx;
             first_pass=false;
+            defaultHeader.invalid      = 1;
+            defaultHeader.ref_epoch    = header->ref_epoch;
+            defaultHeader.frame_len    = header->frame_len;
+            defaultHeader.log_num_chan = header->log_num_chan;
+            defaultHeader.vdif_version = header->vdif_version;
+            defaultHeader.station_id   = header->station_id;
+            defaultHeader.bits_depth   = header->bits_depth;
+            defaultHeader.data_type    = header->data_type;
             for (int i=0; i<recv_depth; i++) {
                 uint64_t sample_idx = sample_idx0 + i*timesamples_per_frame;
                 for (size_t t=0; t<packets_per_frame; t++)
@@ -205,6 +192,6 @@ void psrRecv::main_thread() {
         header->eud4 = 0;
         VDIFPacket *dest = frame[frame_idx] + packet_idx*num_freq/freqs_per_packet + header->thread_id;
 
-        memcpy(dest,local_buf,packet_length);
+        memcpy(dest,local_buf,sizeof(VDIFPacket));
     }
 }

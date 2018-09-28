@@ -32,9 +32,7 @@ main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 15 * buffer_depth
 
-freqs_per_packet: 4
-timesamples_per_packet: 625
-udp_pulsar_packet_size: 5032
+recv_depth: 64
 
 pulsar_input_buffers:
     num_frames: buffer_depth

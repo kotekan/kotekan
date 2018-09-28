@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Process to receive an intensity stream from a remote client.
+ * @brief Process to gather, order, and assemble CHIME node VDIF streams.
  *  - psrRecv : public KotekanProcess
  */
 
@@ -14,31 +14,31 @@
 #include "KotekanProcess.hpp"
 #include <atomic>
 
-
 /**
  * @class psrRecv
- * @brief Process to take an intensity stream and stream to a remote client.
+ * @brief Process to gather, order, and assemble CHIME node VDIF streams.
  *
- * This is a consumer process which takes intensity data from a buffer and streams
- * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes.
+ * This is a producer process which listens for CHIME VDIF UDP packets,
+ * assembling them into waiting buffers. VDIF packets marked invalid are ignored,
+ * others are copied into the correct position in the output buffer.
  *
- * In TCP mode, the process should continually attempt to establish a TCP connection,
- * then transmit data once successful.
+ * This process holds @c recv_depth frames open at any given time,
+ * closing the oldest and opening a new one as soon as it receives a
+ * packet requiring that new frame. On opening a new frame, it is seeded
+ * with the anticipated VDIF headers (ensuring all written data contains
+ * valid headers and is compatible with the baseband python package),
+ * and marked as invalid until replaced by a valid incoming packet.
  *
  * @par Buffers
- * @buffer out_buf Input kotekan buffer containing power data to be sent.
+ * @buffer out_buf Kotekan buffer where the incoming packets will be stuffed.
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   samples_per_data_set   Int. Number of time samples to sum.
- * @conf   integration_length     Int. Number of time samples to sum.
- * @conf   num_freq               Int. Number of time samples to sum.
- * @conf   num_elements           Int. Number of time samples to sum.
- * @conf   port                   Int. Number of time samples to sum.
- * @conf   protocol               String. Should be @c "TCP" or @c "UDP"
+ * @conf   timesamples_per_frame  Int. Number of time samples to pack into each kotekan frame.
+ * @conf   num_freq               Int. Number of frequencies to be contained in each frame.
+ * @conf   port                   Int. Port to listen on for the incoming UDP samples.
+ * @conf   recv_depth             Int. Number of frames to hold open at a time..
  *
- * @warning UDP stream receiption doesn't work at the moment.
- * @note    Lots of updating required once buffers are typed...
  *
  * @author Keith Vanderlinde
  *
@@ -46,8 +46,7 @@
 class psrRecv : public KotekanProcess {
 public:
     ///Constructor.
-    psrRecv(Config& config,
-                           const string& unique_name,
+    psrRecv(Config& config,const string& unique_name,
                            bufferContainer &buffer_container);
     ///Destructor.
     virtual ~psrRecv();
@@ -65,12 +64,12 @@ private:
 
     ///Port of the listening receiver.
     uint32_t port;
-
-    uint packet_length;
-    uint timesamples_per_packet;
+    ///Number of time samples to pack into each outgoing frame.
     uint timesamples_per_frame;
+    ///Number of frequencies to pack into each outgoing frame.
     uint num_freq;
-    uint freqs_per_packet;
+    ///Port to listen for UDP packets on.
+    uint recv_depth;
 };
 
 #endif
