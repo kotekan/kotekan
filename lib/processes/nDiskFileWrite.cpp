@@ -53,9 +53,9 @@ void nDiskFileWrite::save_meta_data(char *timestr) {
         }
 
         const int data_format_version = 3;
-        int num_freq = config.get_int(unique_name,"num_freq");
-        int num_elements = config.get_int(unique_name,"num_elements");
-        int samples_per_file = config.get_int(unique_name,"samples_per_data_set");
+        int num_freq = config.get_int_default(unique_name,"num_freq",-1);
+        int num_elements = config.get_int_default(unique_name,"num_elements",-1);
+        int samples_per_file = config.get_int_default(unique_name,"samples_per_data_set",-1);
         const int vdif_header_len = 32;
         const int bit_depth = 4;
         string note = config.get_string(unique_name,"note");
