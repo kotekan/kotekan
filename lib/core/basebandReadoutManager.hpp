@@ -1,7 +1,9 @@
 /**
  * @file
  * @brief Manager for tracking baseband buffer writeout requests
- *  - airspyInput : public KotekanProcess
+ *  - basebandReadoutManager
+ *  - basebandRequest
+ *  - basebandDumpStatus
  */
 
 #ifndef BASEBAND_READOUT_MANAGER_HPP

@@ -1,7 +1,7 @@
 /**
  * @file
- * @brief Manager for tracking baseband buffer writeout requests
- *  - airspyInput : public KotekanProcess
+ * @brief Manager for tracking baseband readout processes and handling REST API
+ *  - basebandRequestManager
  */
 
 #ifndef BASEBAND_REQUEST_MANAGER_HPP
@@ -18,6 +18,7 @@
 #include <memory>
 
 
+/// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
 void to_json(json& j, const basebandDumpStatus& s);
 
 
