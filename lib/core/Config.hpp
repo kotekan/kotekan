@@ -127,7 +127,7 @@ public:
 
     /**
      * @brief Checks if a value exists at the given location "base_path" + "name"
-     * 
+     *
      * @param base_path JSON pointer string were the value should be serched for.
      * @param name The name of the value (the key)
      * @return true if the key exists in the path, and false otherwise.
