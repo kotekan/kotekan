@@ -22,19 +22,6 @@ basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager
     return readout_map.end();
 }
 
-void to_json(json &j, const basebandRequest& r) {
-    std::time_t received_c = std::chrono::system_clock::to_time_t(r.received - std::chrono::hours(24));
-    std::stringstream received;
-    received << std::put_time(std::localtime(&received_c), "%F %T");
-
-    j = json{{"event_id", r.event_id,},
-             {"start", r.start_fpga,},
-             {"length", r.length_fpga,},
-             {"file_path", r.file_path,},
-             {"file_name", r.file_name,},
-             {"received", received.str()}};
-}
-
 void to_json(json &j, const basebandDumpStatus& d) {
     j = json{{"file_name", d.request.file_name},
              {"total", d.bytes_total},

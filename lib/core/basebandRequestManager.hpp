@@ -18,8 +18,6 @@
 #include <memory>
 
 
-void to_json(json& j, const basebandRequest& r);
-
 struct basebandSlice {
     /// Starting FPGA frame of the dump
     int64_t start_fpga;
