@@ -17,10 +17,10 @@
 REGISTER_KOTEKAN_PROCESS(psrRecv);
 
 /* A BUNCH OF CHIME-SPECIFIC PACKET PARAMETERS */
-#define pols_per_packet 2
-#define freqs_per_packet 4
-#define timesamples_per_packet 625
-#define samples_per_second 390625ull
+#define POLS_PER_PACKET 2
+#define FREQS_PER_PACKET 4
+#define TIMESAMPLES_PER_PACKET 625
+#define SAMPLES_PER_SECOND 390625ull
 /* A BUNCH OF CHIME-SPECIFIC PACKET PARAMETERS */
 
 psrRecv::psrRecv(Config& config,
@@ -62,11 +62,11 @@ void psrRecv::main_thread() {
     int max_packet_length = 65536;
     char *local_buf = (char*)calloc(max_packet_length,sizeof(char));
 
-    size_t packets_per_frame = timesamples_per_frame / timesamples_per_packet;
+    size_t packets_per_frame = timesamples_per_frame / TIMESAMPLES_PER_PACKET;
 
     struct VDIFPacket {
         VDIFHeader h;
-        uint8_t data[pols_per_packet * freqs_per_packet * timesamples_per_packet];
+        uint8_t data[POLS_PER_PACKET * FREQS_PER_PACKET * TIMESAMPLES_PER_PACKET];
     };
     VDIFHeader defaultHeader;
 
@@ -75,6 +75,7 @@ void psrRecv::main_thread() {
     for (int i=0; i<recv_depth; i++) {
         frame_id[i] = i;
         frame[i] = (VDIFPacket*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id[i]);
+        if (frame[i] == NULL) return;
     }
     bool first_pass=true;
 
@@ -90,7 +91,7 @@ void psrRecv::main_thread() {
 
         VDIFHeader *header = (VDIFHeader *)local_buf;
         if (header->invalid) continue;
-        uint64_t idx = header->seconds * samples_per_second + header->data_frame * timesamples_per_packet;
+        uint64_t idx = header->seconds * SAMPLES_PER_SECOND + header->data_frame * TIMESAMPLES_PER_PACKET;
         DEBUG2("Header: \n"
              " seconds: %i\n"
              " legacy: %i\n"
@@ -146,9 +147,9 @@ void psrRecv::main_thread() {
                   for (size_t f=0; f<num_vdif_threads; f++){
                     VDIFHeader *hdr = &(frame[i] + (t*num_vdif_threads + f))->h;
                     memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
-                    hdr->seconds    =  (t*timesamples_per_packet + sample_idx) / samples_per_second;
-                    hdr->data_frame = ((t*timesamples_per_packet + sample_idx) % samples_per_second) / timesamples_per_packet;
-                    hdr->thread_id = f;
+                    hdr->seconds    =  (t*TIMESAMPLES_PER_PACKET + sample_idx) / SAMPLES_PER_SECOND;
+                    hdr->data_frame = ((t*TIMESAMPLES_PER_PACKET + sample_idx) % SAMPLES_PER_SECOND) / TIMESAMPLES_PER_PACKET;
+                    hdr->thread_id  = f;
                   }
             }
         }
@@ -171,19 +172,20 @@ void psrRecv::main_thread() {
             }
             frame_id[recv_depth-1] = (frame_id[recv_depth-1]+1)%out_buf->num_frames;
             frame[recv_depth-1] = (VDIFPacket*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id[recv_depth-1]);
+            if (frame[recv_depth-1] == NULL) return;
             uint64_t sample_idx = sample_idx0 + recv_depth*timesamples_per_frame;
             for (size_t t=0; t<packets_per_frame; t++)
               for (size_t f=0; f<num_vdif_threads; f++){
                 VDIFHeader *hdr = &(frame[recv_depth-1] + (t*num_vdif_threads + f))->h;
                 memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
-                hdr->seconds    =  (t*timesamples_per_packet + sample_idx) / samples_per_second;
-                hdr->data_frame = ((t*timesamples_per_packet + sample_idx) % samples_per_second) / timesamples_per_packet;
-                hdr->thread_id = f;
+                hdr->seconds    =  (t*TIMESAMPLES_PER_PACKET + sample_idx) / SAMPLES_PER_SECOND;
+                hdr->data_frame = ((t*TIMESAMPLES_PER_PACKET + sample_idx) % SAMPLES_PER_SECOND) / TIMESAMPLES_PER_PACKET;
+                hdr->thread_id  = f;
               }
             sample_idx0 += timesamples_per_frame;
         }
 
-        uint packet_idx = (idx - sample_idx0) / timesamples_per_packet % packets_per_frame;
+        uint packet_idx = (idx - sample_idx0) / TIMESAMPLES_PER_PACKET % packets_per_frame;
         uint frame_idx  = (idx - sample_idx0) / timesamples_per_frame;
         header->edv = 0;
         header->eud1 = 0;
