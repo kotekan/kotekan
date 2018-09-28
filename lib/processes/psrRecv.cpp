@@ -146,8 +146,8 @@ void psrRecv::main_thread() {
                   for (size_t f=0; f<num_vdif_threads; f++){
                     VDIFHeader *hdr = &(frame[i] + (t*num_vdif_threads + f))->h;
                     memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
-                    hdr->seconds = sample_idx / samples_per_second;
-                    hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
+                    hdr->seconds    =  (t*timesamples_per_packet + sample_idx) / samples_per_second;
+                    hdr->data_frame = ((t*timesamples_per_packet + sample_idx) % samples_per_second) / timesamples_per_packet;
                     hdr->thread_id = f;
                   }
             }
@@ -176,8 +176,8 @@ void psrRecv::main_thread() {
               for (size_t f=0; f<num_vdif_threads; f++){
                 VDIFHeader *hdr = &(frame[recv_depth-1] + (t*num_vdif_threads + f))->h;
                 memcpy(hdr,&defaultHeader,sizeof(VDIFHeader));
-                hdr->seconds = sample_idx / samples_per_second;
-                hdr->data_frame = t + (sample_idx % samples_per_second) / timesamples_per_packet;
+                hdr->seconds    =  (t*timesamples_per_packet + sample_idx) / samples_per_second;
+                hdr->data_frame = ((t*timesamples_per_packet + sample_idx) % samples_per_second) / timesamples_per_packet;
                 hdr->thread_id = f;
               }
             sample_idx0 += timesamples_per_frame;
