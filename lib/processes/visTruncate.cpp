@@ -123,15 +123,15 @@ void visTruncate::main_thread() {
             output_frame.evec[i] = tr_evec;
         }
 
-        // truncate gains using same precision as weights
+        // truncate gains using same precision as eigenvectors
         #pragma omp parallel for private(tr_evec)
         for (size_t i = 0; i < output_frame.gain.size(); i++) {
 
             tr_evec = {
                 bit_truncate_float(output_frame.gain[i].real(),
-                        std::abs(w_prec * output_frame.gain[i].real())),
+                        std::abs(vis_prec * output_frame.gain[i].real())),
                 bit_truncate_float(output_frame.gain[i].imag(),
-                        std::abs(w_prec * output_frame.gain[i].imag()))
+                        std::abs(vis_prec * output_frame.gain[i].imag()))
             };
             output_frame.gain[i] = tr_evec;
         }

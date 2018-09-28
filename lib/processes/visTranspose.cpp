@@ -116,6 +116,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     gain.resize(chunk_t*chunk_f*num_input);
     frac_lost.resize(chunk_t*chunk_f);
     input_flags.resize(chunk_t*num_input);
+    std::fill(input_flags.begin(), input_flags.end(), 0.);
 }
 
 void visTranspose::apply_config(uint64_t fpga_seq) {
@@ -133,6 +134,8 @@ void visTranspose::main_thread() {
     uint32_t offset = 0;
 
     uint64_t frame_size = 0;
+
+    found_flags = vector<bool>(write_t, false);
 
     // Create HDF5 file
     if (stack.size() > 0) {
@@ -171,8 +174,25 @@ void visTranspose::main_thread() {
                 1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
                 write_t, num_input);
-        strided_copy(frame.flags.data(), input_flags.data(), ti,
-                write_t, num_input);
+
+        // Only copy flags if we haven't already
+        if (!found_flags[ti]) {
+            // Only update flags if they are non-zero
+            bool nz_flags = false;
+            for (uint i = 0; i < num_input; i++) {
+                if (frame.flags[i] != 0.) {
+                    nz_flags = true;
+                    break;
+                }
+            }
+            if (nz_flags) {
+                // Copy flags into the buffer. These will not be overwritten until
+                // the chunks increment in time
+                strided_copy(frame.flags.data(), input_flags.data(), ti,
+                        write_t, num_input);
+                found_flags[ti] = true;
+            }
+        }
 
         // Increment within read chunk
         ti = (ti + 1) % write_t;
@@ -226,14 +246,18 @@ void visTranspose::write() {
     file->write_block("gain", f_ind, t_ind, write_f, write_t,
             gain.data());
 
-    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
-            input_flags.data());
-
     file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t,
             frac_lost.data());
+
+    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
+            input_flags.data());
 }
 
 // increment between chunks
+// cycle through all times before incrementing the frequency
+// WARNING: This order must be consistent with how visRawReader
+//      implements chunked reads. The mechanism for avoiding
+//      overwriting flags also relies on this ordering.
 void visTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
@@ -241,6 +265,9 @@ void visTranspose::increment_chunk() {
         // set incomplete chunk flag
         f_edge = (num_freq < chunk_f);
         t_ind += chunk_t;
+        // clear flags buffer for next time chunk
+        std::fill(input_flags.begin(), input_flags.end(), 0.);
+        std::fill(found_flags.begin(), found_flags.end(), false);
         if (num_time - t_ind < chunk_t) {
             // Reached an incomplete chunk
             t_edge = true;
