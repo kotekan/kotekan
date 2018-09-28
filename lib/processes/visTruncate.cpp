@@ -17,16 +17,16 @@ visTruncate::visTruncate(Config &config, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     // Get truncation parameters from config
-    err_sq_lim = config.get_float(unique_name, "err_sq_lim");
+    err_sq_lim = config.get<float>(unique_name, "err_sq_lim");
     if (err_sq_lim < 0)
         throw std::invalid_argument("visTruncate: config: err_sq_lim should" \
                " be positive (is " + std::to_string(err_sq_lim) + ").");
-    w_prec = config.get_float(unique_name, "weight_fixed_precision");
+    w_prec = config.get<float>(unique_name, "weight_fixed_precision");
     if (w_prec < 0)
         throw std::invalid_argument("visTruncate: config: " \
                 "weight_fixed_precision should be positive (is "
                 + std::to_string(w_prec) + ").");
-    vis_prec = config.get_float(unique_name, "data_fixed_precision");
+    vis_prec = config.get<float>(unique_name, "data_fixed_precision");
     if (vis_prec < 0)
         throw std::invalid_argument("visTruncate: config: " \
                 "data_fixed_precision should be positive (is "

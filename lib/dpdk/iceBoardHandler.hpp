@@ -324,14 +324,16 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
                        bufferContainer &buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
-    sample_size = config.get_int_default(unique_name, "sample_size", 2048);
-    fpga_packet_size = config.get_int_default(unique_name, "fpga_packet_size", 4928);
-    samples_per_packet = config.get_int_default(unique_name, "samples_per_packet", 2);
+    sample_size = config.get_default<uint32_t>(
+                unique_name, "sample_size", 2048);
+    fpga_packet_size = config.get_default<uint32_t>(
+                unique_name, "fpga_packet_size", 4928);
+    samples_per_packet = config.get_default<uint32_t>(
+                unique_name, "samples_per_packet", 2);
 
-    num_local_freq = config.get_int_default(unique_name, "num_local_freq", 1);
-
-    alignment = config.get_int_eval(unique_name, "alignment");
-
+    num_local_freq = config.get_default<int32_t>(
+                unique_name, "num_local_freq", 1);
+    alignment = config.get<uint64_t>(unique_name, "alignment");
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
 }
 

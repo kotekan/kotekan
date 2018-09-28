@@ -98,7 +98,7 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
                                  "not found in '"
                                  + subscriber->get_unique_name()
                                  + "' in the config file.");
-    subscribe(_config->get_string(subscriber->get_unique_name(),
+    subscribe(_config->get<std::string>(subscriber->get_unique_name(),
                                   "updatable_config"), callback);
 }
 
@@ -112,7 +112,7 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
                                      "' was not found in '" +
                                      subscriber->get_unique_name() +
                                      "/updatable_config' in the config file.");
-        subscribe(_config->get_string(subscriber->get_unique_name() +
+        subscribe(_config->get<std::string>(subscriber->get_unique_name() +
                                      "/updatable_config/", callback.first),
                                      callback.second);
     }

@@ -10,8 +10,8 @@ constDataCheck::constDataCheck(Config& config,
 
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
-    ref_real = config.get_int_array(unique_name, "real");
-    ref_imag = config.get_int_array(unique_name, "imag");
+    ref_real = config.get<std::vector<int32_t>>(unique_name, "real");
+    ref_imag = config.get<std::vector<int32_t>>(unique_name, "imag");
 }
 
 constDataCheck::~constDataCheck() {

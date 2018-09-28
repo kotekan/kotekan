@@ -23,7 +23,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     register_consumer(in_buf, unique_name.c_str());
 
     // get chunk dimensions for write from config file
-    chunk = config.get_int_array(unique_name, "chunk_size");
+    chunk = config.get<std::vector<int>>(unique_name, "chunk_size");
     if (chunk.size() != 3)
         throw std::invalid_argument("Chunk size needs exactly three elements " \
                 "(has " + std::to_string(chunk.size()) + ").");
@@ -35,11 +35,11 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
 
     // Get file path to write to
     // TODO: communicate this from reader
-    filename = config.get_string(unique_name, "outfile");
+    filename = config.get<std::string>(unique_name, "outfile");
 
     // TODO: Get metadata from reader somehow
     // For now read from file    // Read the metadata
-    std::string md_filename = config.get_string(unique_name, "infile")
+    std::string md_filename = config.get<std::string>(unique_name, "infile")
             + ".meta";
 
     INFO("Reading metadata file: %s", md_filename.c_str());

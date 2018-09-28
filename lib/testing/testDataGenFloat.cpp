@@ -14,13 +14,14 @@ testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
-    type = config.get_string(unique_name, "type");
+    type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type=="ramp");
     if (type == "const")
-        value = config.get_int(unique_name, "value");
+        value = config.get<int>(unique_name, "value");
     if (type=="ramp")
-        value = config.get_float(unique_name, "value");
-    _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
+        value = config.get<float>(unique_name, "value");
+    _pathfinder_test_mode = config.get_default<bool>(
+                unique_name, "pathfinder_test_mode", false);
 }
 
 testDataGenFloat::~testDataGenFloat() {

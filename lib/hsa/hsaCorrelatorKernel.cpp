@@ -11,12 +11,13 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     //N_INTG is the number summed in each workitem
     //if there are more, they get split across multiple workitems
     //time slice id is identified by the Y group.
-    _n_intg = config.get_int(unique_name, "n_intg");
+    _n_intg = config.get<int32_t>(unique_name, "n_intg");
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    int block_size = config.get_int(unique_name, "block_size");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    int block_size = config.get<int>(unique_name, "block_size");
     _num_blocks = (int32_t)(_num_elements / block_size) *
                     (_num_elements / block_size + 1) / 2.;
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;

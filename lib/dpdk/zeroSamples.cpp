@@ -12,7 +12,8 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    _duplicate_ls_buffer = config.get_bool_default(unique_name, "duplicate_ls_buffer", false);
+    _duplicate_ls_buffer = config.get_default<bool>(
+                unique_name, "duplicate_ls_buffer", false);
     //Register as producer for all desired multiplied lost samples buffers
     if(_duplicate_ls_buffer){
         json in_bufs = config.get_value(unique_name, "out_lost_sample_buffers");
@@ -26,9 +27,10 @@ zeroSamples::zeroSamples(Config& config, const string& unique_name,
     lost_samples_buf = get_buffer("lost_samples_buf");
     register_consumer(lost_samples_buf, unique_name.c_str());
 
-    sample_size = config.get_int_default(unique_name.c_str(), "sample_size", 2048);
-
-    zero_value = config.get_int_default(unique_name.c_str(), "zero_value", 0x88);
+    sample_size = config.get_default<uint32_t>(
+                unique_name.c_str(), "sample_size", 2048);
+    zero_value = config.get_default<uint8_t>(
+                unique_name.c_str(), "zero_value", 0x88);
 }
 
 zeroSamples::~zeroSamples() {

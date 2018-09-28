@@ -23,23 +23,26 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
-    type = config.get_string(unique_name, "type");
+    type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type=="ramp" || type=="tpluse");
     if (type == "const")
-        value = config.get_int(unique_name, "value");
+        value = config.get<int>(unique_name, "value");
     if (type=="ramp")
-        value = config.get_int(unique_name, "value");
-    _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
+        value = config.get<int>(unique_name, "value");
+    _pathfinder_test_mode = config.get_default<bool>(
+                unique_name, "pathfinder_test_mode", false);
 
-    samples_per_data_set = config.get_int_default(unique_name, "samples_per_data_set", 32768);
-    stream_id = config.get_int_default(unique_name, "stream_id", 0);
-    num_frames = config.get_int_default(unique_name, "num_frames", -1);
+    samples_per_data_set = config.get_default<int>(
+                unique_name, "samples_per_data_set", 32768);
+    stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
-    wait = config.get_bool_default(unique_name, "wait", true);
+    wait = config.get_default<bool>(unique_name, "wait", true);
     // Whether to wait for is rest signal to start or generate next frame. Useful for testing processes
     // that must interact rest commands. Valid modes are "start", "step", and "none".
-    rest_mode = config.get_string_default(unique_name, "rest_mode", "none");
+    rest_mode = config.get_default<std::string>(unique_name, "rest_mode",
+                                                "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
 

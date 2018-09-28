@@ -68,15 +68,24 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
 
 void frbNetworkProcess::apply_config(uint64_t fpga_seq)
 {
-    udp_frb_packet_size = config.get_int_default(unique_name, "udp_frb_packet_size", 4264);
-    udp_frb_port_number = config.get_int_default(unique_name, "udp_frb_port_number", 1313);
-    number_of_nodes = config.get_int_default(unique_name, "number_of_nodes", 256);
-    number_of_subnets = config.get_int_default(unique_name, "number_of_subnets",4);
-    packets_per_stream = config.get_int_default(unique_name, "packets_per_stream",8);
-    beam_offset = config.get_int_default(unique_name, "beam_offset",0);
-    time_interval = config.get_uint64_default(unique_name, "time_interval",125829120);
-    column_mode = config.get_bool_default(unique_name, "column_mode", false);
-    samples_per_packet = config.get_int_default(unique_name, "timesamples_per_frb_packet",16);
+    udp_frb_packet_size = config.get_default<int>(
+                unique_name, "udp_frb_packet_size", 4264);
+    udp_frb_port_number = config.get_default<int>(
+                unique_name, "udp_frb_port_number", 1313);
+    number_of_nodes = config.get_default<int>(
+                unique_name, "number_of_nodes", 256);
+    number_of_subnets = config.get_default<int>(
+                unique_name, "number_of_subnets",4);
+    packets_per_stream = config.get_default<int>(
+                unique_name, "packets_per_stream",8);
+    beam_offset = config.get_default<int>(
+                unique_name, "beam_offset",0);
+    time_interval = config.get_default<unsigned long>(
+                unique_name, "time_interval",125829120);
+    column_mode = config.get_default<bool>(
+                unique_name, "column_mode", false);
+    samples_per_packet = config.get_default<int>(
+                unique_name, "timesamples_per_frb_packet",16);
 }
 
 
@@ -99,7 +108,8 @@ void frbNetworkProcess::main_thread()
     uint8_t * packet_buffer = NULL;
 
     //reading the L1 ip addresses from the config file
-    std::vector<std::string> link_ip = config.get_string_array(unique_name, "L1_node_ips");
+    std::vector<std::string> link_ip =
+            config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
     int number_of_l1_links = link_ip.size();
     INFO("number_of_l1_links: %d",number_of_l1_links);
 
