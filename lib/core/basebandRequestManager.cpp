@@ -97,10 +97,11 @@ void basebandRequestManager::status_callback_single_event(const uint64_t event_i
     }
 }
 
-basebandSlice basebandRequestManager::translate_trigger(const int64_t fpga_time0, const int64_t fpga_width,
-                                                        const double dm, const double dm_error,
-                                                        const uint32_t freq_id,
-                                                        const double ref_freq_hz) {
+basebandRequestManager::basebandSlice basebandRequestManager::translate_trigger(
+        const int64_t fpga_time0, const int64_t fpga_width,
+        const double dm, const double dm_error,
+        const uint32_t freq_id,
+        const double ref_freq_hz) {
     const double freq = FPGA_FREQ0 + FPGA_DELTA_FREQ * freq_id;
     const double freq_inv_sq_diff = (1. / (freq*freq) - 1. / (ref_freq_hz*ref_freq_hz));
     double min_delay = K_DM * (dm - N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;

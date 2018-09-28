@@ -18,13 +18,6 @@
 #include <memory>
 
 
-struct basebandSlice {
-    /// Starting FPGA frame of the dump
-    int64_t start_fpga;
-    /// Length of the dump in FPGA frames
-    int64_t length_fpga;
-};
-
 void to_json(json& j, const basebandDumpStatus& s);
 
 
@@ -209,6 +202,9 @@ private:
 
     /// TODO verify. I'm assuming dm_error is 1-sigma.
     static constexpr double N_DM_ERROR_TOL = 3;
+
+    /// convenience wrapper for a pair of starting FPGA frame and length of the dump in FPGA frames
+    struct basebandSlice { int64_t start_fpga; int64_t length_fpga; };
 
     /// Utility function that adjusts the trigger times given for the reference
     /// frequency to those for the frequency `freq_id`
