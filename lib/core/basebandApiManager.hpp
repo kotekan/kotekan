@@ -1,11 +1,11 @@
 /**
  * @file
  * @brief Manager for tracking baseband readout processes and handling REST API
- *  - basebandRequestManager
+ *  - basebandApiManager
  */
 
-#ifndef BASEBAND_REQUEST_MANAGER_HPP
-#define BASEBAND_REQUEST_MANAGER_HPP
+#ifndef BASEBAND_API_MANAGER_HPP
+#define BASEBAND_API_MANAGER_HPP
 
 #include "basebandReadoutManager.hpp"
 #include "json.hpp"
@@ -23,7 +23,7 @@ void to_json(json& j, const basebandDumpStatus& s);
 
 
 /**
- * @class basebandRequestManager
+ * @class basebandApiManager
  * @brief Class for receiving baseband dump requests and sending request status
  *
  * This class must be registered with a kotekan REST server instance,
@@ -37,13 +37,13 @@ void to_json(json& j, const basebandDumpStatus& s);
  *
  * @author Davor Cubranic
  */
-class basebandRequestManager {
+class basebandApiManager {
 public:
     /**
-     * @brief Returns the singleton instance of the ``basebandRequestManager`` object.
-     * @return A pointer to the ``basebandRequestManager`` object
+     * @brief Returns the singleton instance of the ``basebandApiManager`` object.
+     * @return A reference to the ``basebandApiManager`` object
      */
-    static basebandRequestManager& instance();
+    static basebandApiManager& instance();
 
     /**
      * @brief Registers this class with the REST server, creating the
@@ -158,7 +158,7 @@ public:
 
 private:
     /// Constructor, not used directly
-    basebandRequestManager() = default;
+    basebandApiManager() = default;
 
     /// Sampling frequency (Hz)
     static constexpr double ADC_SAMPLE_RATE = 800e6;
@@ -236,4 +236,4 @@ private:
     basebandReadoutRegistry readout_registry;
 };
 
-#endif /* BASEBAND_REQUEST_MANAGER_HPP */
+#endif /* BASEBAND_API_MANAGER_HPP */

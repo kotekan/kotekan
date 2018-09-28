@@ -133,7 +133,7 @@ private:
      * updated in-place. Worker threads having a pointer into the elements is
      * safe as long as the readout manager is guaranteed to outlive them, which
      * it will be as the manager is itself owned by the
-     * `basebandRequestManager`, and is created in the main process.
+     * `basebandApiManager`, and is created in the main process.
     */
     std::forward_list<basebandDumpStatus> requests;
 

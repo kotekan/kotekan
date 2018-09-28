@@ -23,7 +23,6 @@
 #include "KotekanProcess.hpp"
 #include "gpsTime.h"
 #include "basebandReadoutManager.hpp"
-#include "basebandRequestManager.hpp"
 #include "visUtil.hpp"
 
 

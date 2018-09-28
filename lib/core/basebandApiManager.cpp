@@ -1,4 +1,4 @@
-#include "basebandRequestManager.hpp"
+#include "basebandApiManager.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -7,17 +7,17 @@
 #include "kotekanLogging.hpp"
 
 
-basebandReadoutManager& basebandRequestManager::basebandReadoutRegistry::operator[]( const uint32_t& key ) {
+basebandReadoutManager& basebandApiManager::basebandReadoutRegistry::operator[]( const uint32_t& key ) {
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map[key];
 }
 
-basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager::basebandReadoutRegistry::begin() noexcept {
+basebandApiManager::basebandReadoutRegistry::iterator basebandApiManager::basebandReadoutRegistry::begin() noexcept {
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map.begin();
 }
 
-basebandRequestManager::basebandReadoutRegistry::iterator basebandRequestManager::basebandReadoutRegistry::end() noexcept {
+basebandApiManager::basebandReadoutRegistry::iterator basebandApiManager::basebandReadoutRegistry::end() noexcept {
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map.end();
 }
@@ -44,20 +44,20 @@ void to_json(json &j, const basebandDumpStatus& d) {
     }
 }
 
-basebandRequestManager& basebandRequestManager::instance() {
-    static basebandRequestManager _instance;
+basebandApiManager& basebandApiManager::instance() {
+    static basebandApiManager _instance;
     return _instance;
 }
 
-void basebandRequestManager::register_with_server(restServer* rest_server) {
+void basebandApiManager::register_with_server(restServer* rest_server) {
   using namespace std::placeholders;
   rest_server->register_get_callback("/baseband",
-                                     std::bind(&basebandRequestManager::status_callback_all, this, _1));
+                                     std::bind(&basebandApiManager::status_callback_all, this, _1));
   rest_server->register_post_callback("/baseband",
-                                      std::bind(&basebandRequestManager::handle_request_callback, this, _1, _2));
+                                      std::bind(&basebandApiManager::handle_request_callback, this, _1, _2));
 }
 
-void basebandRequestManager::status_callback_all(connectionInstance& conn){
+void basebandApiManager::status_callback_all(connectionInstance& conn){
     std::map<std::string, std::vector<json>>  event_readout_status;
 
     for (auto& element : readout_registry) {
@@ -75,7 +75,7 @@ void basebandRequestManager::status_callback_all(connectionInstance& conn){
 }
 
 
-void basebandRequestManager::status_callback_single_event(const uint64_t event_id, connectionInstance& conn){
+void basebandApiManager::status_callback_single_event(const uint64_t event_id, connectionInstance& conn){
     std::vector<json> event_status;
 
     for (auto& element : readout_registry) {
@@ -97,7 +97,7 @@ void basebandRequestManager::status_callback_single_event(const uint64_t event_i
     }
 }
 
-basebandRequestManager::basebandSlice basebandRequestManager::translate_trigger(
+basebandApiManager::basebandSlice basebandApiManager::translate_trigger(
         const int64_t fpga_time0, const int64_t fpga_width,
         const double dm, const double dm_error,
         const uint32_t freq_id,
@@ -116,7 +116,7 @@ basebandRequestManager::basebandSlice basebandRequestManager::translate_trigger(
 }
 
 
-void basebandRequestManager::handle_request_callback(connectionInstance& conn, json& request){
+void basebandApiManager::handle_request_callback(connectionInstance& conn, json& request){
     auto now = std::chrono::system_clock::now();
     try {
         uint64_t event_id = request["event_id"];
@@ -184,7 +184,7 @@ void basebandRequestManager::handle_request_callback(connectionInstance& conn, j
 }
 
 
-basebandReadoutManager& basebandRequestManager::register_readout_process(const uint32_t freq_id) {
+basebandReadoutManager& basebandApiManager::register_readout_process(const uint32_t freq_id) {
     return readout_registry[freq_id];
 }
 
