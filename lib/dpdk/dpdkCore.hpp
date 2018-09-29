@@ -67,7 +67,7 @@ public:
                   config(config), unique_name(unique_name),
                   buffer_container(buffer_container), port(port) {
 
-        set_log_level(config.get_string(unique_name, "log_level"));
+        set_log_level(config.get<std::string>(unique_name, "log_level"));
     };
 
     /**

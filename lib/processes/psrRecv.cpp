@@ -32,10 +32,10 @@ psrRecv::psrRecv(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    timesamples_per_frame = config.get_int(unique_name,"timesamples_per_frame");
-    num_vdif_threads = config.get_int(unique_name,"num_vdif_threads");
-    recv_depth = config.get_int(unique_name,"recv_depth");
-    port = config.get_int(unique_name,"port");
+    timesamples_per_frame = config.get<int>(unique_name,"timesamples_per_frame");
+    num_vdif_threads = config.get<int>(unique_name,"num_vdif_threads");
+    recv_depth = config.get<int>(unique_name,"recv_depth");
+    port = config.get<int>(unique_name,"port");
 
     assert(recv_depth < out_buf->num_frames);
 }

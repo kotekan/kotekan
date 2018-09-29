@@ -107,16 +107,19 @@ iceBoardVDIF::iceBoardVDIF(Config &config, const std::string &unique_name,
                            bufferContainer &buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
-    out_buf = buffer_container.get_buffer(config.get_string(unique_name, "out_buf"));
+    out_buf = buffer_container.get_buffer(
+                config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());
 
-    lost_samples_buf = buffer_container.get_buffer(config.get_string(unique_name, "lost_samples_buf"));
+    lost_samples_buf = buffer_container.get_buffer(
+                config.get<std::string>(unique_name, "lost_samples_buf"));
     register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);
 
-    station_id = config.get_int_default(unique_name, "station_id", 0x4151); // AQ
-    offset = config.get_int_default(unique_name, "offset", 0);
+    station_id = config.get_default<uint32_t>(
+                unique_name, "station_id", 0x4151); // AQ
+    offset = config.get_default<uint32_t>(unique_name, "offset", 0);
 
     if (offset > 14) {
         throw std::runtime_error("The offset value is too large: " + to_string(offset));

@@ -26,8 +26,8 @@ bufferStatus::~bufferStatus() {
 
 void bufferStatus::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    time_delay = config.get_int_default(unique_name, "time_delay", 1000000);
-    print_status = config.get_bool_default(unique_name, "print_status", true);
+    time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
+    print_status = config.get_default<bool>(unique_name, "print_status", true);
 }
 
 void bufferStatus::main_thread() {

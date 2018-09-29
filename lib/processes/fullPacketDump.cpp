@@ -19,7 +19,7 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_container,
                     std::bind(&fullPacketDump::main_thread, this)) {
 
-    link_id = config.get_int(unique_name, "link_id");
+    link_id = config.get<int>(unique_name, "link_id");
     buf = get_buffer("network_in_buf");
     register_consumer(buf, unique_name.c_str());
 
@@ -41,10 +41,10 @@ fullPacketDump::~fullPacketDump() {
 
 void fullPacketDump::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    _packet_size = config.get_int(unique_name, "udp_packet_size");
-    _dump_to_disk = config.get_bool(unique_name, "dump_to_disk");
-    _file_base = config.get_string(unique_name, "file_base");
-    _data_set = config.get_string(unique_name, "data_set");
+    _packet_size = config.get<int>(unique_name, "udp_packet_size");
+    _dump_to_disk = config.get<bool>(unique_name, "dump_to_disk");
+    _file_base = config.get<std::string>(unique_name, "file_base");
+    _data_set = config.get<std::string>(unique_name, "data_set");
 }
 
 void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_request) {

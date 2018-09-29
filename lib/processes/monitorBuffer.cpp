@@ -11,8 +11,9 @@ PROCESS_CONSTRUCTOR(monitorBuffer) {
     // Note we do not register as a producer or consumer here.
     buffers = get_buffer_array("bufs");
     // Timeout is in seconds
-    timeout = config.get_int_default(unique_name, "timeout", 60);
-    fill_threshold = config.get_float_default(unique_name, "fill_threshold", 2.0);
+    timeout = config.get_default<int>(unique_name, "timeout", 60);
+    fill_threshold = config.get_default<float>(unique_name, "fill_threshold",
+                                               2.0);
 
 }
 

@@ -33,19 +33,20 @@ networkOutputSim::networkOutputSim(Config &config_,
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
-    num_links_in_group = config.get_int(unique_name, "num_links_in_group");
-    link_id = config.get_int(unique_name,"link_id");
-    pattern = config.get_int(unique_name,"pattern");
-    stream_id = config.get_int(unique_name,"stream_id");
+    num_links_in_group = config.get<int>(unique_name, "num_links_in_group");
+    link_id = config.get<int>(unique_name,"link_id");
+    pattern = config.get<int>(unique_name,"pattern");
+    stream_id = config.get<int>(unique_name,"stream_id");
 }
 
 networkOutputSim::~networkOutputSim() {
 }
 
 void networkOutputSim::apply_config(uint64_t fpga_seq) {
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_elem = config.get_int(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _num_elem = config.get<int32_t>(unique_name, "num_elements");
 }
 
 void networkOutputSim::main_thread() {

@@ -28,12 +28,16 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer &buffer_container) :
         KotekanProcess(config, unique_name, buffer_container,
                        std::bind(&basebandReadout::main_thread, this)),
-        _base_dir(config.get_string_default(unique_name, "base_dir", "./")),
-        _num_frames_buffer(config.get_int(unique_name, "num_frames_buffer")),
-        _num_elements(config.get_int(unique_name, "num_elements")),
-        _samples_per_data_set(config.get_int(unique_name, "samples_per_data_set")),
-        _max_dump_samples(config.get_int_default(unique_name, "max_dump_samples", 1 << 30)),
-        _write_throttle(config.get_float_default(unique_name, "write_throttle", 0.)),
+        _base_dir(config.get_default<std::string>(
+                      unique_name, "base_dir", "./")),
+        _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
+        _num_elements(config.get<int>(unique_name, "num_elements")),
+        _samples_per_data_set(config.get<int>(
+                                  unique_name, "samples_per_data_set")),
+        _max_dump_samples(config.get_default<uint64_t>(
+                              unique_name, "max_dump_samples", 1 << 30)),
+        _write_throttle(config.get_default<float>(
+                            unique_name, "write_throttle", 0.)),
         buf(get_buffer("in_buf")),
         next_frame(0),
         oldest_frame(-1),
