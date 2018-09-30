@@ -26,8 +26,12 @@ rfiBroadcast::rfiBroadcast(Config& config,
                    std::bind(&rfiBroadcast::main_thread, this)){
     //Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
+    //Get buffer from framework
+    rfi_mask_buf = get_buffer("rfi_mask");
     //Register process as consumer
     register_consumer(rfi_buf, unique_name.c_str());
+    //Register process as consumer
+    register_consumer(rfi_mask_buf, unique_name.c_str());
     //Intialize internal config
     apply_config(0);
     //Initialize rest server endpoint
@@ -77,9 +81,11 @@ void rfiBroadcast::apply_config(uint64_t fpga_seq) {
 void rfiBroadcast::main_thread() {
     //Intialize variables
     uint32_t frame_id = 0;
+    uint32_t frame_mask_id = 0;
     uint32_t i, j, f;
     uint32_t bytes_sent = 0;
     uint8_t * frame = NULL;
+    uint8_t * frame_mask = NULL;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
@@ -113,17 +119,25 @@ void rfiBroadcast::main_thread() {
             //Initialize arrays
             float rfi_data [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
             float rfi_avg[total_links][_num_local_freq];
+            //Initialize arrays
+            uint8_t rfi_mask [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
+            uint32_t mask_total = 0;
             //Zero Average array
             memset(rfi_avg, (float)0, sizeof(rfi_avg));
             //Loop through all frames that should be averages together
             for(f = 0; f < _frames_per_packet*total_links; f++){
+                //Get Frame of Mask
+                frame_mask = wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
+                if (frame_mask == NULL) break;
+                //Copy RFI mask to array
+                memcpy(rfi_mask[link_id], frame_mask, rfi_mask_buf->frame_size);
                 //Get Frame
                 frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
                 if (frame == NULL) break;
                 //Copy frame data to array
                 memcpy(rfi_data[link_id], frame, rfi_buf->frame_size);
+                //Adjust Header on initial frame
                 if(f == 0){
-                    //Adjust Header on initial frame
                     if(replay){ rfi_header.seq_num = (int64_t)fake_seq; }
                     else{ rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id); }
                 }
@@ -134,10 +148,14 @@ void rfiBroadcast::main_thread() {
                 for(i = 0; i < _num_local_freq; i++){
                     for(j = 0; j < _samples_per_data_set/_sk_step; j++){
                         rfi_avg[link_id][i] += rfi_data[link_id][i + _num_local_freq*j];
+                        mask_total += rfi_mask[link_id][i + _num_local_freq*j];
+//                        DEBUG("RFI Mask %d, Mask Total: %d, Frame Size: %d",rfi_mask[link_id][i + _num_local_freq*j], mask_total,rfi_mask_buf->frame_size);
                     }
                 }
                 //Mark Frame Empty
+                mark_frame_empty(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
                 mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+                frame_mask_id = (frame_mask_id + 1) % rfi_mask_buf->num_frames;
                 frame_id = (frame_id + 1) % rfi_buf->num_frames;
                 link_id = (link_id + 1) % total_links;
             }
@@ -150,7 +168,10 @@ void rfiBroadcast::main_thread() {
                 //Normalize Sum (Take Average)
                 for(i = 0; i < _num_local_freq; i++){
                     rfi_avg[j][i] /= _frames_per_packet*(_samples_per_data_set/_sk_step);
-                    if(i == 0) DEBUG("SK value %f for freq %d, stream %d", rfi_avg[j][i], i, StreamIDs[j]);
+                    if(i == 0){
+                        DEBUG("SK value %f for freq %d, stream %d", rfi_avg[j][i], i, StreamIDs[j]);
+                        DEBUG("Percent Masked %f for freq %d stream %d", 100.0*(float)mask_total/rfi_mask_buf->frame_size, i, StreamIDs[j]);
+                    }
                 }
                 //Add Stream ID to header
                 rfi_header.streamID = StreamIDs[j];

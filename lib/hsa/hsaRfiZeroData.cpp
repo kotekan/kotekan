@@ -1,15 +1,15 @@
-#include "hsaRfiTimeSum.hpp"
+#include "hsaRfiZeroData.hpp"
 #include "hsaBase.h"
 #include <math.h>
 #include <unistd.h>
 #include <mutex>
 
-REGISTER_HSA_COMMAND(hsaRfiTimeSum);
+REGISTER_HSA_COMMAND(hsaRfiZeroData);
 
-hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
+hsaRfiZeroData::hsaRfiZeroData(Config& config,const string &unique_name,
                          bufferContainer& host_buffers,
                          hsaDeviceInterface& device):
-    hsaCommand("rfi_chime_timesum", "rfi_chime_timesum_private.hsaco", config, unique_name, host_buffers, device){
+    hsaCommand("rfi_chime_zero", "rfi_chime_zero.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     _num_elements = config.get_int(unique_name, "num_elements");
@@ -19,34 +19,25 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
     _sk_step = config.get_int_default(unique_name, "sk_step", 256);
     //Compute Buffer lengths
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
-    output_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
-    lost_samples_frame_len = sizeof(uint8_t)*_samples_per_data_set;
-    lost_samples_correction_len = sizeof(uint32_t)*_samples_per_data_set/_sk_step;
-    //Local Parameters
+    mask_len = sizeof(uint8_t)*_num_local_freq*_samples_per_data_set/_sk_step;
 }
 
-hsaRfiTimeSum::~hsaRfiTimeSum() {
+hsaRfiZeroData::~hsaRfiZeroData() {
 }
 
-hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {
         void *input;
-        void *output;
-//        void *LostSamples;
-//        void *LostSamplesCorrection;
+        void *mask;
         uint32_t sk_step;
-        uint32_t num_elements;
     } args;
     //Initialize arguments
     memset(&args, 0, sizeof(args));
     //Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    args.output = device.get_gpu_memory("timesum", output_frame_len);
-//    args.LostSamples = device.get_gpu_memory_array("lost_samples", gpu_frame_id, lost_samples_frame_len);
-//    args.LostSamplesCorrection = device.get_gpu_memory("lost_sample_correction", lost_samples_correction_len);
+    args.mask = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, mask_len);
     args.sk_step = _sk_step;
-    args.num_elements = _num_elements;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters

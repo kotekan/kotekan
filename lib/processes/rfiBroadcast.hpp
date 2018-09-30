@@ -66,6 +66,8 @@ public:
 private:
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer *rfi_buf;
+    /// Kotekan buffer containing kurtosis estimates
+    struct Buffer *rfi_mask_buf;
     //General Config Parameters
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
