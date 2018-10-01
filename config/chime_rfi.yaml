@@ -336,26 +336,26 @@ rfi_broadcast:
     rfi_mask: gpu_rfi_mask_output_buffer_3
     destination_port: 41218
 
-#rfi_bad_input_finder:
-#  log_level: DEBUG
-#  destination_ip: 10.1.13.1
-#  destination_port: 41219
-#  gpu_0:
-#    bi_frames_per_packet: 10
-#    kotekan_process: rfiBadInputFinder
-#    rfi_in: gpu_rfi_bad_input_buffer_0
-#  gpu_1:
-#    bi_frames_per_packet: 10
-#    kotekan_process: rfiBadInputFinder
-#    rfi_in: gpu_rfi_bad_input_buffer_1
-#  gpu_2:
-#    bi_frames_per_packet: 10
-#    kotekan_process: rfiBadInputFinder
-#    rfi_in: gpu_rfi_bad_input_buffer_2
-#  gpu_3:
-#    bi_frames_per_packet: 10
-#    kotekan_process: rfiBadInputFinder
-#    rfi_in: gpu_rfi_bad_input_buffer_3
+rfi_bad_input_finder:
+  log_level: DEBUG
+  destination_ip: 10.1.13.1
+  destination_port: 41219
+  gpu_0:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_0
+  gpu_1:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_1
+  gpu_2:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_2
+  gpu_3:
+    bi_frames_per_packet: 10
+    kotekan_process: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_3
 
 rfi_record:
   total_links: 1

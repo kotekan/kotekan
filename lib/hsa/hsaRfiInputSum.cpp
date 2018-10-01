@@ -19,8 +19,8 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     _samples_per_data_set = config.get<uint32_t>(
                 unique_name, "samples_per_data_set");
     //RFI Config Parameters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
-    _num_sigma = config.get_int_default(unique_name, "num_sigma", 5);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
+    _num_sigma = config.get_default<uint32_t>(unique_name, "num_sigma", 5);
     //Compute Buffer lengths
     input_frame_len = sizeof(float)*_num_elements*_num_local_freq*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;

@@ -10,11 +10,11 @@ hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
     _network_buf = host_buffers.get_buffer("network_buf");
     _rfi_mask_output_buf = host_buffers.get_buffer("rfi_mask_output_buf");
     //Config parameters
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     //Rfi paramters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     //Initialize ID's
     _network_buf_id = 0;
     _rfi_mask_output_buf_id = 0;

@@ -12,11 +12,11 @@ hsaRfiZeroData::hsaRfiZeroData(Config& config,const string &unique_name,
     hsaCommand("rfi_chime_zero", "rfi_chime_zero.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     //RFI Config Parameters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     //Compute Buffer lengths
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
     mask_len = sizeof(uint8_t)*_num_local_freq*_samples_per_data_set/_sk_step;
