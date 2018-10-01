@@ -61,6 +61,8 @@ public:
     void main_thread();
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
+    //Callback function called by rest server
+    void rest_zero(connectionInstance& conn);
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 private:
@@ -91,6 +93,8 @@ private:
     uint32_t total_links;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
+    /// The current percentage of the data being masked
+    uint32_t perc_zeroed;
     /// The address for UDP stream to be sent to
     string dest_server_ip;
     /// The streaming protocol, only UDP is supported
@@ -99,6 +103,8 @@ private:
     int socket_fd;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
+    /// Rest server callback mutex
+    std::mutex rest_zero_callback_mutex;
     /// String to hold endpoint
     string endpoint;
 };

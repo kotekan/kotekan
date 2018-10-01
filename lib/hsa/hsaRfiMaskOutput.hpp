@@ -54,6 +54,18 @@ private:
     int32_t _rfi_mask_output_buf_precondition_id;
     /// ID for _rfi_mask_output_buf_execute
     int32_t _rfi_mask_output_buf_execute_id;
+    //General Config Parameters
+    /// Number of elements (2048 for CHIME or 256 for Pathfinder)
+    uint32_t _num_elements;
+    /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
+    uint32_t _num_local_freq;
+    /// Total number of frequencies (1024)
+    uint32_t _num_total_freq;
+    /// Number of time samples per frame (Usually 32768 or 49152)
+    uint32_t _samples_per_data_set;
+    //RFI config parameters
+    /// The kurtosis step (How many timesteps per kurtosis estimate)
+    uint32_t  _sk_step;
 };
 
 #endif

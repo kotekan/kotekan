@@ -37,9 +37,12 @@ rfiBroadcast::rfiBroadcast(Config& config,
     //Initialize rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint = unique_name + "/rfi_broadcast";
+    endpoint = unique_name + "/change_params";
     rest_server.register_post_callback(endpoint,
             std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
+    endpoint = unique_name + "/percent_zeroed";
+    rest_server.register_get_callback(endpoint,
+            std::bind(&rfiBroadcast::rest_zero, this, _1));
 }
 
 rfiBroadcast::~rfiBroadcast() {
@@ -59,6 +62,19 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
     //Unlock mutex
     rest_callback_mutex.unlock();
 }
+
+void rfiBroadcast::rest_zero(connectionInstance& conn) {
+    //Notify that request was received
+    INFO("RFI Broadcast: Current Zeroing Percentage Sent")
+    //Lock mutex
+    rest_zero_callback_mutex.lock();
+    json reply;
+    reply["percentage_zeroed"] = perc_zeroed;
+    conn.send_json_reply(reply);
+    //Unlock mutex
+    rest_zero_callback_mutex.unlock();
+}
+
 
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
     //Standard Config parameters
@@ -89,6 +105,7 @@ void rfiBroadcast::main_thread() {
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
+    perc_zeroed = 0;
     //Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)_rfi_combined, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
                       .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, .frames_per_packet=_frames_per_packet};
@@ -161,6 +178,8 @@ void rfiBroadcast::main_thread() {
             }
             //Lock callback mutex
             rest_callback_mutex.lock();
+            rest_zero_callback_mutex.lock();
+            perc_zeroed = 100.0*(float)mask_total/(rfi_mask_buf->frame_size*_frames_per_packet*total_links);
             //Reset Timer (can't time previous loop due to wait for frame blocking call)
             double start_time = e_time();
             //Loop through each link to send data seperately
@@ -191,6 +210,7 @@ void rfiBroadcast::main_thread() {
             fake_seq += _samples_per_data_set*_frames_per_packet;
             //Unlock callback mutex
             rest_callback_mutex.unlock();
+            rest_zero_callback_mutex.unlock();
             DEBUG("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms",frame_id, total_links, bytes_sent, (e_time()-start_time)*1000);
         }
     }

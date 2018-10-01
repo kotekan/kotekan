@@ -9,6 +9,12 @@ hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
     //Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
     _rfi_mask_output_buf = host_buffers.get_buffer("rfi_mask_output_buf");
+    //Config parameters
+    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _num_elements = config.get_int(unique_name, "num_elements");
+    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    //Rfi paramters
+    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
     //Initialize ID's
     _network_buf_id = 0;
     _rfi_mask_output_buf_id = 0;
@@ -47,6 +53,16 @@ hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, const uint64_t& fpga_se
 
 void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
+
+    uint8_t * frame_mask = _rfi_mask_output_buf->frames[_rfi_mask_output_buf_id];
+    uint32_t total_lost = 0;
+    uint8_t rfi_mask [_num_local_freq*_samples_per_data_set/_sk_step];
+    //Copy RFI mask to array
+    memcpy(rfi_mask, frame_mask, _rfi_mask_output_buf->frame_size);
+    for(int32_t i = 0; i < _rfi_mask_output_buf->frame_size; i++){
+         if(rfi_mask[i] == 1) total_lost += _sk_step*_num_elements;
+    }
+    atomic_add_lost_timesamples(_network_buf, _network_buf_id, total_lost);
     // Copy the information contained in the input buffer
     pass_metadata(_network_buf, _network_buf_id,
                   _rfi_mask_output_buf, _rfi_mask_output_buf_id);
