@@ -1,6 +1,6 @@
 /*
  * @file
- * @brief Copy RFI Output gpu to host
+ * @brief Copy RFI Mask from gpu to host
  *  - hsaRfiMaskOutput : public hsaCommand
  */
 #ifndef HSA_RFI_MASK_OUTPUT_H
@@ -10,17 +10,14 @@
 
 /*
  * @class hsaRfiMaskOutput
- * @brief hsaCommand for copying RFI output gpu to host.
+ * @brief hsaCommand for copying RFI mask from gpu to host.
  *
- * This is an hsaCommand that async copy RFI output buffer from GPU 
- * to CPU. It marks the RFI output buffer to be full when done so that 
- * it can be reused. This code also passes metadata along. The finalize_frame 
- * function has been hacked by not marking _network_buf empty, for 
- * concurrent run with N2, because the equivalent output code from the N2 
- * side is already marking network buffer empty.
+ * This is an hsaCommand that async copies the RFI Mask buffer from GPU 
+ * to CPU. It marks the RFI Mask buffer to be full when done so that 
+ * it can be reused. This code also passes metadata along.
  *
  * @par GPU Memory
- * @gpu_mem  rfi_mask_output      Output of SK estimates, size: sizeof_float x nfreqs x nsamps / sk_step
+ * @gpu_mem  rfi_mask_output The RFI mask, array of uint_t, 0 means not masked, 1 means masked
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     chimeMetadata

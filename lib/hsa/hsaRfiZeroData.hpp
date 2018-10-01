@@ -1,6 +1,6 @@
 /*
  * @file
- * @brief RFI time sum, performs prallel sum of power, and square power of incoherent beam.
+ * @brief Zeros data flagged by the RFI pipeline
  *  - hsaRfiZeroData : public hsaCommand
  */
 #ifndef HSA_RFI_ZERO_DATA_H
@@ -12,17 +12,20 @@
 
 /*
  * @class hsaRfiZeroData
- * @brief hsaCommand to performs prallel sum of power and square power across time.
+ * @brief hsaCommand to zero input data marked as containing large amounts of RFI
  *
- * This is an hsaCommand that launches the kernel (rfi_chime_timesum.hsaco) to perform 
- * a parallel sum of power and square power estimates across time. The sum is then normalized 
- * by the mean power and sent to the hsaRfiIputSum command. 
+ * This is an hsaCommand that launches the kernel (rfi_chime_zero.hsaco) to set all
+ * values detected to have a significant amount of RFI to zero
  *
  * @requires_kernel    rfi_chime_zero.hasco
  *
  *
  * @par GPU Memory
  * @gpu_mem  input              Input data of size input_frame_len
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c uint8_t
+ *     @gpu_mem_metadata        chimeMetadata
+ * @gpu_mem  mask               The RFI mask to be aplied
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c uint8_t
  *     @gpu_mem_metadata        chimeMetadata
@@ -47,7 +50,7 @@ public:
                             bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiZeroData();
-    /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
+    /// Executes rfi_chime_zero.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 private:

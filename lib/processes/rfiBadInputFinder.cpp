@@ -155,7 +155,6 @@ void rfiBadInputFinder::main_thread() {
         //Compute statistics
         float med = median(rfi_data, _num_local_freq*_num_elements);
         float std = deviation(rfi_data, _num_local_freq*_num_elements, 0.1);
-        INFO("Med: %f std: %f",med, std)
         //Compute number of faulty frames based on stats
         for(uint32_t i = 0; i <  _num_local_freq*_num_elements; i++){
             if(rfi_data[i] > med + 3*std || rfi_data[i] < med - 3*std){
@@ -170,15 +169,8 @@ void rfiBadInputFinder::main_thread() {
         //After 10 frames
         rest_callback_mutex.lock();
         if(frame_counter == _frames_per_packet){
-            INFO("%d %d",frame_counter, _frames_per_packet)
             //Reset counter
             frame_counter = 0;
-            for(uint8_t i = 0; i < 2048; i++){
-                if(faulty_counter[i] == 10){
-                    INFO("%d ,",i);
-                    break;
-                }
-            }
             //Add Header to packet
             memcpy(packet_buffer, &rfi_header, sizeof(rfi_header));
             //Add Data to packet
