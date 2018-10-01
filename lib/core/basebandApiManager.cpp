@@ -102,7 +102,7 @@ basebandApiManager::basebandSlice basebandApiManager::translate_trigger(
         const double dm, const double dm_error,
         const uint32_t freq_id,
         const double ref_freq_hz) {
-    const double freq = FPGA_FREQ0 + FPGA_DELTA_FREQ * freq_id;
+    const double freq = ADC_SAMPLE_RATE + FPGA_DELTA_FREQ * freq_id;
     const double freq_inv_sq_diff = (1. / (freq*freq) - 1. / (ref_freq_hz*ref_freq_hz));
     double min_delay = K_DM * (dm - N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
     double max_delay = K_DM * (dm + N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;

@@ -170,9 +170,6 @@ private:
     static constexpr double FPGA_FRAME_RATE = 1. / (FPGA_PERIOD_NS * 1E-9); // =390,625
     // Can also be done as FPGA_FRAME_RATE = ADC_SAMPLE_RATE / FPGA_NSAMP_FFT
 
-    /// Reference frequency in the L0 subsystem
-    static constexpr double FPGA_FREQ0 = 800e6;
-
     /// Width of frequency bin, used to calculate frequency of an index, relative to FPGA_FREQ0
     static constexpr double FPGA_DELTA_FREQ  = - ADC_SAMPLE_RATE / FPGA_NSAMP_FFT;
 
