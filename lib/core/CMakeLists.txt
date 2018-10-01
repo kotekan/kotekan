@@ -4,7 +4,8 @@ project( kotekan_core )
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 set (KOTEKAN_CORE_SOURCES
-              basebandRequestManager.cpp
+              basebandReadoutManager.cpp
+              basebandApiManager.cpp
               buffer.c
               bufferContainer.cpp
               bufferFactory.cpp

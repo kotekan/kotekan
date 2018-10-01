@@ -69,7 +69,7 @@ class KotekanRunner(object):
                 import requests
                 import json
                 # Wait a moment for rest servers to start up.
-                time.sleep(1)
+                time.sleep(1.)
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == 'wait':
                         time.sleep(endpoint)
