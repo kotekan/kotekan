@@ -18,7 +18,7 @@ REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 REGISTER_KOTEKAN_PROCESS(visMerge);
-REGISTER_KOTEKAN_PROCESS(visCheckTestPattern);
+REGISTER_KOTEKAN_PROCESS(visTestPattern);
 REGISTER_KOTEKAN_PROCESS(registerInitialDatasetState);
 
 visTransform::visTransform(Config& config,
@@ -454,11 +454,11 @@ void visMerge::main_thread() {
 }
 
 
-visCheckTestPattern::visCheckTestPattern(Config& config,
+visTestPattern::visTestPattern(Config& config,
                    const string& unique_name,
                    bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visCheckTestPattern::main_thread, this)) {
+                   std::bind(&visTestPattern::main_thread, this)) {
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
@@ -467,10 +467,54 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // get config
+    mode = config.get<std::string>(unique_name, "mode");
+
+    INFO("visCheckTestPattern: mode = %s", mode.c_str());
+    if (mode == "test_pattern_simple") {
+        exp_val = config.get_default<cfloat>(unique_name,
+                                             "default_val", {1.,0});
+    } else if (mode == "test_pattern_freq") {
+        num_freq = config.get<size_t>(unique_name,"num_freq");
+
+        cfloat default_val = config.get_default<cfloat>(unique_name,
+                                                 "default_val", {128., 0.});
+        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(
+                       unique_name, "frequencies");
+        std::vector<cfloat> bin_values = config.get<std::vector<cfloat>>(
+                       unique_name, "freq_values");
+        if (bins.size() != bin_values.size()) {
+            throw std::invalid_argument("fakeVis: lengths of frequencies ("
+                                        + std::to_string(bins.size())
+                                        + ") and freq_value ("
+                                        + std::to_string(bin_values.size())
+                                        + ") arrays have to be equal.");
+        }
+        if (bins.size() > num_freq) {
+            throw std::invalid_argument(
+                        "fakeVis: length of frequencies array ("
+                        + std::to_string(bins.size()) + ") can not be larger " \
+                        "than num_freq (" + std::to_string(num_freq)
+                        + ").");
+        }
+
+        exp_val_freq = std::vector<cfloat>(num_freq);
+        for (size_t i = 0; i < num_freq; i++) {
+            size_t j;
+            for (j = 0; j < bins.size(); j++) {
+                if (bins.at(j) == i)
+                    break;
+            }
+            if (j == bins.size())
+                exp_val_freq[i] = default_val;
+            else
+                exp_val_freq[i] = bin_values.at(j);
+        }
+    } else
+        throw std::invalid_argument("visCheckTestpattern: unknown mode: " +
+                                    mode);
+
     tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
-    report_freq = config.get_default<size_t>(unique_name, "report_freq", 1000);
-    expected_val = {config.get_default<float>(unique_name, "expected_val_real", 1.),
-                    config.get_default<float>(unique_name, "expected_val_imag", 0.)};
+    report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
 
     outfile_name = config.get<std::string>(unique_name, "out_file");
 
@@ -487,11 +531,11 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
         << std::endl;
 }
 
-void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
+void visTestPattern::apply_config(uint64_t fpga_seq) {
 
 }
 
-void visCheckTestPattern::main_thread() {
+void visTestPattern::main_thread() {
 
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
@@ -536,12 +580,20 @@ void visCheckTestPattern::main_thread() {
         min_err = 0.0;
         max_err = 0.0;
 
+        cfloat expected;
+
+        if (mode == "test_pattern_simple")
+            expected = exp_val;
+        else if (mode == "test_pattern_freq") {
+            expected = exp_val_freq.at(frame.freq_id);
+        }
+
 	    // Iterate over covariance matrix
 	    for (size_t i = 0; i < frame.num_prod; i++) {
 
             // Calculate the error^2 and compared this to the tolerance as it's
             // much faster than taking the square root where we don't need to.
-            float r2 = fast_norm(frame.vis[i] - expected_val);
+            float r2 = fast_norm(frame.vis[i] - expected);
 
             // check for bad values
             if (r2 > t2) {
@@ -583,6 +635,7 @@ void visCheckTestPattern::main_thread() {
             DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
                     time.tv_nsec);
             DEBUG("freq id: %d", freq_id);
+            DEBUG("expected: (%f,%f)", expected.real(), expected.imag());
 
             // gather data for report after many frames
             num_bad_tot += num_bad;
