@@ -14,9 +14,10 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     //Data Parameters
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
     //RFI Config Parameters
     _sk_step = config.get_int_default(unique_name, "sk_step", 256);
     _num_sigma = config.get_int_default(unique_name, "num_sigma", 5);
@@ -26,7 +27,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     input_mask_len = sizeof(uint8_t)*_num_elements;
     output_mask_len = sizeof(uint8_t)*_num_local_freq*_samples_per_data_set/_sk_step;
     correction_frame_len = sizeof(uint32_t)*_samples_per_data_set/_sk_step;
-    _bad_inputs = config.get_int_array(unique_name, "bad_inputs");
+    _bad_inputs = config.get<std::vector<int32_t>>(unique_name, "bad_inputs");
     //Local Parameters
     rebuild_input_mask = true;
     //Allocate memory for input mask

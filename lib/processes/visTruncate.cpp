@@ -17,16 +17,16 @@ visTruncate::visTruncate(Config &config, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     // Get truncation parameters from config
-    err_sq_lim = config.get_float(unique_name, "err_sq_lim");
+    err_sq_lim = config.get<float>(unique_name, "err_sq_lim");
     if (err_sq_lim < 0)
         throw std::invalid_argument("visTruncate: config: err_sq_lim should" \
                " be positive (is " + std::to_string(err_sq_lim) + ").");
-    w_prec = config.get_float(unique_name, "weight_fixed_precision");
+    w_prec = config.get<float>(unique_name, "weight_fixed_precision");
     if (w_prec < 0)
         throw std::invalid_argument("visTruncate: config: " \
                 "weight_fixed_precision should be positive (is "
                 + std::to_string(w_prec) + ").");
-    vis_prec = config.get_float(unique_name, "data_fixed_precision");
+    vis_prec = config.get<float>(unique_name, "data_fixed_precision");
     if (vis_prec < 0)
         throw std::invalid_argument("visTruncate: config: " \
                 "data_fixed_precision should be positive (is "
@@ -123,15 +123,15 @@ void visTruncate::main_thread() {
             output_frame.evec[i] = tr_evec;
         }
 
-        // truncate gains using same precision as weights
+        // truncate gains using same precision as eigenvectors
         #pragma omp parallel for private(tr_evec)
         for (size_t i = 0; i < output_frame.gain.size(); i++) {
 
             tr_evec = {
                 bit_truncate_float(output_frame.gain[i].real(),
-                        std::abs(w_prec * output_frame.gain[i].real())),
+                        std::abs(vis_prec * output_frame.gain[i].real())),
                 bit_truncate_float(output_frame.gain[i].imag(),
-                        std::abs(w_prec * output_frame.gain[i].imag()))
+                        std::abs(vis_prec * output_frame.gain[i].imag()))
             };
             output_frame.gain[i] = tr_evec;
         }

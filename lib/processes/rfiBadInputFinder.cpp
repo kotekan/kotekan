@@ -59,18 +59,22 @@ void rfiBadInputFinder::rest_callback(connectionInstance& conn, json& json_reque
 
 void rfiBadInputFinder::apply_config(uint64_t fpga_seq) {
     //Standard Config parameters
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_total_freq = config.get_int_default(unique_name, "num_total_freq", 1024);
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_total_freq = config.get_default<uint32_t>(
+                unique_name, "num_total_freq", 1024);
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
     //Rfi paramters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
-    _rfi_combined = config.get_bool_default(unique_name,"rfi_combined", true);
-    _frames_per_packet = config.get_int_default(unique_name, "bi_frames_per_packet",10);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
+    _frames_per_packet = config.get_default<uint32_t>(
+                unique_name, "bi_frames_per_packet",10);
     //Process specific paramters
-    dest_port = config.get_int(unique_name, "destination_port");
-    dest_server_ip = config.get_string(unique_name, "destination_ip");
-    dest_protocol = config.get_string_default(unique_name, "destination_protocol", "UDP");
+    dest_port = config.get<uint32_t>(unique_name, "destination_port");
+    dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
+    dest_protocol = config.get_default<std::string>(
+                unique_name, "destination_protocol", "UDP");
 }
 
 float rfiBadInputFinder::median(float array[], uint32_t num){

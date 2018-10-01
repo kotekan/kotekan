@@ -69,9 +69,9 @@ public:
     virtual ~pulsarPostProcess();
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
     /// Initializes internal variables from config
-    virtual void apply_config(uint64_t fpga_seq);
+    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
     void fill_headers(unsigned char * out_buf,

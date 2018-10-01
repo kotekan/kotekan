@@ -18,28 +18,30 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
     buffer_container(buffer_container_),
     main_thread_fn(main_thread_ref) {
 
-    set_cpu_affinity(config.get_int_array(unique_name, "cpu_affinity"));
+    set_cpu_affinity(config.get<std::vector<int>>(unique_name, "cpu_affinity"));
 
     // Set the local log level.
-    string s_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
     // Set the timeout for this process thread to exit
-    join_timeout = config.get_int_default(unique_name, "join_timeout", 60);
+    join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout",
+                                                60);
 }
 
 struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the process, not
     // just somewhere in the path to the process.
-    string buf_name = config.get_string(unique_name, name);
+    string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 
 std::vector<struct Buffer *> KotekanProcess::get_buffer_array(const std::string & name) {
     std::vector<struct Buffer *> bufs;
 
-    std::vector<std::string> buf_names = config.get_string_array(unique_name, name);
+    std::vector<std::string> buf_names = config.get<std::vector<std::string>>(
+        unique_name, name);
     for (auto &buf_name : buf_names) {
         bufs.push_back(buffer_container.get_buffer(buf_name));
     }

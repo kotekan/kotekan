@@ -10,18 +10,21 @@ airspyInput::airspyInput(Config& config, const string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
 
-    freq = config.get_float_default(unique_name,"freq",1420) * 1000000;    //MHz
-    sample_bw = config.get_float_default(unique_name,"sample_bw",2.5)*1000000; //BW in Hz
-    gain_lna = config.get_int_default(unique_name,"gain_lna",5); //MAX: 14
-    gain_if  = config.get_int_default(unique_name,"gain_if",5);  //MAX: 15
-    gain_mix = config.get_int_default(unique_name,"gain_mix",5); //MAX: 15
-    biast_power = config.get_bool_default(unique_name,"biast_power",false) ? 1 : 0;
+    freq = config.get_default<float>(unique_name,"freq",1420) * 1000000;   //MHz
+    sample_bw = config.get_default<float>(unique_name,"sample_bw",2.5)*1000000; //BW in Hz
+    gain_lna = config.get_default<int>(unique_name,"gain_lna",5); //MAX: 14
+    gain_if  = config.get_default<int>(unique_name,"gain_if",5);  //MAX: 15
+    gain_mix = config.get_default<int>(unique_name,"gain_mix",5); //MAX: 15
+    biast_power = config.get_default<bool>(unique_name,"biast_power",false)
+            ? 1 : 0;
 }
 
 airspyInput::~airspyInput() {
-   airspy_stop_rx(a_device);
-   airspy_close(a_device);
-   airspy_exit();
+    if (a_device != NULL) {
+        airspy_stop_rx(a_device);
+        airspy_close(a_device);
+    }
+    airspy_exit();
 }
 
 void airspyInput::apply_config(uint64_t fpga_seq) {
@@ -35,6 +38,10 @@ void airspyInput::main_thread() {
 
     airspy_init();
     a_device=init_device();
+    if (a_device == NULL) {
+        raise(SIGINT);
+        return;
+    }
     airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
 }
 
@@ -80,73 +87,99 @@ struct airspy_device *airspyInput::init_device(){
     struct airspy_device *dev;
     result = airspy_open(&dev);
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_open() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_exit();
+        ERROR("airspy_open() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
-    //Note: Despite the name, this sets the sample bandwidth! Odd behaviour from libairspy.
-    result = airspy_set_samplerate(dev, sample_bw);
-    if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_samplerate() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_close(dev);
-        airspy_exit();
+    { //get the viable sample rates, compare to the config, and set choose the appropriate one
+        uint32_t supported_samplerate_count;
+        result = airspy_get_samplerates(dev, &supported_samplerate_count, 0);
+        if (result != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_samplerate() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+            return NULL;
+        }
+        uint32_t *supported_samplerates = (uint32_t *) malloc(supported_samplerate_count * sizeof(uint32_t));
+        result = airspy_get_samplerates(dev, supported_samplerates, supported_samplerate_count);
+        if (result != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_samplerate() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+            return NULL;
+        }
+        int samplerate_idx=-1;
+        for (uint i=0; i<supported_samplerate_count; i++){
+            INFO("Samplerate: idx %i = %i Hz",i,supported_samplerates[i]);
+            if (supported_samplerates[i] == sample_bw) samplerate_idx=i;
+        }
+        if (samplerate_idx<0){
+            ERROR("Unsupported sample rate: %f Hz",sample_bw);
+            return NULL;
+        }
+        INFO("Selected sample rate: %i Hz -> idx %i",sample_bw,samplerate_idx)
+        result = airspy_set_samplerate(dev, samplerate_idx);
+        if (result != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_samplerate() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+            return NULL;
+        }
     }
 
-//    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_RAW);
     result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_IQ);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_sample_type() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_close(dev);
-        airspy_exit();
+        ERROR("airspy_set_sample_type() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_freq(dev, freq);
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_set_freq() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_set_freq() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_vga_gain(dev, gain_if);
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_set_vga_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_set_vga_gain() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_mixer_gain(dev, gain_mix);
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_set_mixer_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_set_mixer_gain() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
     result = airspy_set_mixer_agc(dev, 0); //Auto gain control: 0/1
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_set_mixer_agc() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_set_mixer_agc() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_set_lna_gain(dev, gain_lna);
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_set_lna_gain() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_set_lna_gain() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
 
     result = airspy_set_rf_bias(dev, biast_power);
     if( result != AIRSPY_SUCCESS ) {
-        ERROR("airspy_set_rf_bias() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
-        airspy_close(dev);
-        airspy_exit();
+        ERROR("airspy_set_rf_bias() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
 
     result = airspy_board_id_read(dev, &board_id);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_board_id_read() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_board_id_read() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
-    INFO("Board ID Number: %d (%s)\n", board_id, airspy_board_id_name((enum airspy_board_id)board_id));
+    INFO("Board ID Number: %d (%s)", board_id, airspy_board_id_name((enum airspy_board_id)board_id));
 
     airspy_read_partid_serialno_t read_partid_serialno;
     result = airspy_board_partid_serialno_read(dev, &read_partid_serialno);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_board_partid_serialno_read() failed: %s (%d)\n", airspy_error_name((enum airspy_error)result), result);
+        ERROR("airspy_board_partid_serialno_read() failed: %s (%d)", airspy_error_name((enum airspy_error)result), result);
+        return NULL;
     }
-    INFO("Part ID Number: 0x%08X 0x%08X\n",
+    INFO("Part ID Number: 0x%08X 0x%08X",
         read_partid_serialno.part_id[0],
         read_partid_serialno.part_id[1]);
-    INFO("Serial Number: 0x%08X%08X\n",
+    INFO("Serial Number: 0x%08X%08X",
         read_partid_serialno.serial_no[2],
         read_partid_serialno.serial_no[3]);
 

@@ -7,8 +7,8 @@ hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
     hsaCommand("","", config, unique_name, host_buffers, device) {
     command_type = CommandType::COPY_IN;
 
-    int block_size = config.get_int(unique_name, "block_size");
-    int num_elements = config.get_int(unique_name, "num_elements");
+    int block_size = config.get<int>(unique_name, "block_size");
+    int num_elements = config.get<int>(unique_name, "num_elements");
     _num_blocks = (int32_t)(num_elements / block_size) *
                     (num_elements / block_size + 1) / 2.;
     output_len = _num_blocks * block_size * block_size * 2 * sizeof(int32_t);

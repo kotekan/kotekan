@@ -22,7 +22,7 @@
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 #include "gpsTime.h"
-#include "basebandRequestManager.hpp"
+#include "basebandReadoutManager.hpp"
 #include "visUtil.hpp"
 
 
@@ -72,7 +72,7 @@ public:
 };
 
 
-typedef std::tuple<basebandDumpData, std::shared_ptr<basebandDumpStatus>> dump_data_status;
+typedef std::tuple<basebandDumpData, basebandDumpStatus*> dump_data_status;
 
 
 /**
@@ -124,20 +124,13 @@ private:
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
     std::mutex manager_lock;
-    std::queue<dump_data_status> write_q;
-    /// exclusive access to `write_q`
-    std::mutex q_lock;
-    /// wait for the notification that the `write_q` is not empty
-    std::condition_variable q_not_empty;
-    /// wait for the notification that the `write_q` is not full
-    std::condition_variable q_not_full;
 
     void listen_thread(const uint32_t freq_id,
-                       std::shared_ptr<std::mutex> status_lock);
-    void write_thread(std::shared_ptr<std::mutex> status_lock);
+                       basebandReadoutManager& readout_manager);
+    void write_thread(basebandReadoutManager& readout_manager);
     void write_dump(basebandDumpData data,
-                    std::shared_ptr<basebandDumpStatus> dump_status,
-                    std::mutex* status_lock);
+                    basebandDumpStatus* dump_status,
+                    std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
@@ -157,6 +150,38 @@ private:
             int64_t trigger_start_fpga,
             int64_t trigger_length_fpga
             );
+
+    /**
+     * @brief Concurrent bounded queue, with KotekanProcess.stop_thread
+     * awareness.
+     */
+    class writeQueue {
+    public:
+        writeQueue(const basebandReadout * readout,
+                   const int max_length);
+        writeQueue() = delete;
+        writeQueue(const writeQueue&) = delete;
+
+        /**
+         * Remove an element from the front of the queue, blocking if it's empty
+         * (returns a null if the readout process stop_thread flag is set)
+        */
+        std::unique_ptr<dump_data_status> take();
+
+        /**
+         * Add an element to the end of the queue, blocking if it's full
+         * (exiting early if the readout process stop_thread flag is set)
+         */
+        void add(dump_data_status*);
+    private:
+        const basebandReadout * readout;
+        const int max_length;
+        std::queue<std::unique_ptr<dump_data_status>> queue;
+        std::mutex m;
+        std::condition_variable element_ready;
+        std::condition_variable has_space;
+    };
+    writeQueue write_queue;
 };
 
 #endif

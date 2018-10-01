@@ -98,7 +98,7 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
                                  "not found in '"
                                  + subscriber->get_unique_name()
                                  + "' in the config file.");
-    subscribe(_config->get_string(subscriber->get_unique_name(),
+    subscribe(_config->get<std::string>(subscriber->get_unique_name(),
                                   "updatable_config"), callback);
 }
 
@@ -112,7 +112,7 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
                                      "' was not found in '" +
                                      subscriber->get_unique_name() +
                                      "/updatable_config' in the config file.");
-        subscribe(_config->get_string(subscriber->get_unique_name() +
+        subscribe(_config->get<std::string>(subscriber->get_unique_name() +
                                      "/updatable_config/", callback.first),
                                      callback.second);
     }
@@ -164,6 +164,19 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             WARN(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
+        } else {
+            // ...and for correct types
+            if (it.value().type() != _init_values[uri].at(string(it.key())).type()) {
+                std::string msg = fmt::format(
+                            "configUpdater: Update to endpoint '{}' contained" \
+                            "value '{}' of type {} (expected type {}).",
+                            uri.c_str(), it.key().c_str(),
+                            it.value().type_name(),
+                            _init_values[uri].at(it.key()).type_name());
+                WARN(msg.c_str());
+                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
         }
     }
     // ...and for missing values
