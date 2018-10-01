@@ -273,7 +273,7 @@ zero_samples:
 #            - lost_samples_buffer_3
 
 baseband:
-    max_dump_samples: 100000
+    max_dump_samples: 400000
     #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
     num_frames_buffer: 110
     base_dir: /mnt/frb-archiver/
