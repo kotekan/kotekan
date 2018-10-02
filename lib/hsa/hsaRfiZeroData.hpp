@@ -29,10 +29,6 @@
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c uint8_t
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  sk_step            The time ingration length (samples)
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
  *
  * @conf   num_elements         Int. Number of elements.
  * @conf   num_local_freq       Int. Number of local freq.

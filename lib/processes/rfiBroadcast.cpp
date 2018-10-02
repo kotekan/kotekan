@@ -16,6 +16,7 @@
 #include "util.h"
 #include "errors.h"
 #include "chimeMetadata.h"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(rfiBroadcast);
 
@@ -40,13 +41,14 @@ rfiBroadcast::rfiBroadcast(Config& config,
     endpoint = unique_name + "/change_params";
     rest_server.register_post_callback(endpoint,
             std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
-    endpoint = unique_name + "/percent_zeroed";
-    rest_server.register_get_callback(endpoint,
+    endpoint_zero = unique_name + "/percent_zeroed";
+    rest_server.register_get_callback(endpoint_zero,
             std::bind(&rfiBroadcast::rest_zero, this, _1));
 }
 
 rfiBroadcast::~rfiBroadcast() {
     restServer::instance().remove_json_callback(endpoint);
+    restServer::instance().remove_json_callback(endpoint_zero);
 }
 
 void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
@@ -64,15 +66,12 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
 }
 
 void rfiBroadcast::rest_zero(connectionInstance& conn) {
+    std::lock_guard<std::mutex> lock(rest_zero_callback_mutex);
     //Notify that request was received
     INFO("RFI Broadcast: Current Zeroing Percentage Sent")
-    //Lock mutex
-    rest_zero_callback_mutex.lock();
     json reply;
-    reply["percentage_zeroed"] = perc_zeroed;
+    reply["percentage_zeroed"] = perc_zeroed.average();
     conn.send_json_reply(reply);
-    //Unlock mutex
-    rest_zero_callback_mutex.unlock();
 }
 
 
@@ -109,7 +108,6 @@ void rfiBroadcast::main_thread() {
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
-    perc_zeroed = 0;
     //Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)_rfi_combined, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
                       .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, .frames_per_packet=_frames_per_packet};
@@ -141,7 +139,6 @@ void rfiBroadcast::main_thread() {
             float rfi_data [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
             float rfi_avg[total_links][_num_local_freq];
             //Initialize arrays
-            uint8_t rfi_mask [total_links][_num_local_freq*_samples_per_data_set/_sk_step];
             uint32_t mask_total = 0;
             //Zero Average array
             memset(rfi_avg, (float)0, sizeof(rfi_avg));
@@ -150,8 +147,6 @@ void rfiBroadcast::main_thread() {
                 //Get Frame of Mask
                 frame_mask = wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
                 if (frame_mask == NULL) break;
-                //Copy RFI mask to array
-                memcpy(rfi_mask[link_id], frame_mask, rfi_mask_buf->frame_size);
                 //Get Frame
                 frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
                 if (frame == NULL) break;
@@ -169,8 +164,8 @@ void rfiBroadcast::main_thread() {
                 for(i = 0; i < _num_local_freq; i++){
                     for(j = 0; j < _samples_per_data_set/_sk_step; j++){
                         rfi_avg[link_id][i] += rfi_data[link_id][i + _num_local_freq*j];
-                        mask_total += rfi_mask[link_id][i + _num_local_freq*j];
-//                        DEBUG("RFI Mask %d, Mask Total: %d, Frame Size: %d",rfi_mask[link_id][i + _num_local_freq*j], mask_total,rfi_mask_buf->frame_size);
+                        mask_total += frame_mask[i + _num_local_freq*j];
+//                        DEBUG("RFI Mask %d, Mask Total: %d, Frame Size: %d",, mask_total,rfi_mask_buf->frame_size);
                     }
                 }
                 //Mark Frame Empty
@@ -183,7 +178,8 @@ void rfiBroadcast::main_thread() {
             //Lock callback mutex
             rest_callback_mutex.lock();
             rest_zero_callback_mutex.lock();
-            perc_zeroed = 100.0*(float)mask_total/(rfi_mask_buf->frame_size*_frames_per_packet*total_links);
+            float tmp = 100.0*(float)mask_total/(rfi_mask_buf->frame_size*_frames_per_packet*total_links);
+            perc_zeroed.add_sample(tmp);
             //Reset Timer (can't time previous loop due to wait for frame blocking call)
             double start_time = e_time();
             //Loop through each link to send data seperately

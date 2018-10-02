@@ -46,7 +46,7 @@ frb_scaling: 0.05 #1.0
 #RFI stuff
 sk_step: 256
 rfi_combined: True
-num_sigma: 5
+rfi_sigma_cut: 5
 
 # Pool
 main_pool:

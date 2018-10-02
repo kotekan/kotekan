@@ -28,22 +28,22 @@
  *              update config             "num_bad_inputs"
  *
  * @par GPU Memory
- * @gpu_mem  input              Input data of size input_frame_len
+ * @gpu_mem  timesum            Input data from the hsaRfiTimeSum command  of size input_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  output             Output data of size output_frame_len
+ * @gpu_mem  rfi_output          Output data of size output_frame_len
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  num_elements       The total number of elements
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
- * @gpu_mem  M                  The total SK integration length
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
+ * @gpu_mem  input_mask         Inputs to be ignored/masked (1 for mask, 0 for don't mask)
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c uint8_t
+ *     @gpu_mem_metadata        chimeMetadata
+ * @gpu_mem  rfi_mask_output    Mask used to zero input data (1 for RFI, 0 for clean)
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c float
+ *     @gpu_mem_metadata        chimeMetadata
  *
  * @conf   num_elements         Int. Number of elements.
  * @conf   num_local_freq       Int. Number of local freq.

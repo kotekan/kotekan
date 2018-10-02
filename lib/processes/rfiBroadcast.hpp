@@ -14,6 +14,7 @@
 #include "restServer.hpp"
 #include "chimeMetadata.h"
 #include "rfi_functions.h"
+#include "visUtil.hpp"
 
 /*
  * @class rfiBroadcast
@@ -93,8 +94,6 @@ private:
     uint32_t total_links;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
-    /// The current percentage of the data being masked
-    uint32_t perc_zeroed;
     /// The address for UDP stream to be sent to
     string dest_server_ip;
     /// The streaming protocol, only UDP is supported
@@ -107,6 +106,10 @@ private:
     std::mutex rest_zero_callback_mutex;
     /// String to hold endpoint
     string endpoint;
+    /// String to hold endpoint
+    string endpoint_zero;
+    /// Moving average of frame zeroing percentage to send to prometheus
+    movingAverage perc_zeroed;
 };
 
 #endif

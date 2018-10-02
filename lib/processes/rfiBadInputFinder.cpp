@@ -31,6 +31,8 @@ rfiBadInputFinder::rfiBadInputFinder(Config& config,
     register_consumer(rfi_buf, unique_name.c_str());
     //Intialize internal config
     apply_config(0);
+    // Set stats variables
+    stats_sigma = 3;
     //Initialize rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -111,6 +113,7 @@ float rfiBadInputFinder::deviation(float array[], uint32_t num, float outliercut
 }
 
 void rfiBadInputFinder::main_thread() {
+
     //Intialize frame variables
     uint32_t frame_id = 0;
     uint8_t * frame = NULL;
@@ -161,7 +164,7 @@ void rfiBadInputFinder::main_thread() {
         float std = deviation(rfi_data, _num_local_freq*_num_elements, 0.1);
         //Compute number of faulty frames based on stats
         for(uint32_t i = 0; i <  _num_local_freq*_num_elements; i++){
-            if(rfi_data[i] > med + 3*std || rfi_data[i] < med - 3*std){
+            if(rfi_data[i] > med + stats_sigma*std || rfi_data[i] < med - stats_sigma*std){
                 faulty_counter[i]++;
             }
         }

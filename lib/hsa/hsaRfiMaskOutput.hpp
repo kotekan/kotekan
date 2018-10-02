@@ -16,6 +16,9 @@
  * to CPU. It marks the RFI Mask buffer to be full when done so that 
  * it can be reused. This code also passes metadata along.
  *
+ * Note: This commands MUST only be used before the hsaOutputData command. This command presumes that
+ * the network buffer has not been marked empty yet.
+ *
  * @par GPU Memory
  * @gpu_mem  rfi_mask_output The RFI mask, array of uint_t, 0 means not masked, 1 means masked
  *     @gpu_mem_type         staging

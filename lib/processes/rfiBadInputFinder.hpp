@@ -92,6 +92,13 @@ private:
     /// Number of frames to average per UDP packet
     uint32_t _frames_per_packet;
     //Process specific config parameters
+    /*
+    The number of standard deviations required for a frame to be considered an 'outlier'.
+    This is not the threshold used to determine faulty inputs. It sets the statistical
+    framework for which bad input likelihoods are determined. Downstream processes depend
+    heavily on this value.
+    */
+    uint32_t stats_sigma;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to
