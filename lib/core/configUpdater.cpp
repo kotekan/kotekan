@@ -166,13 +166,28 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             return;
         } else {
             // ...and for correct types
-            if (it.value().type() != _init_values[uri].at(string(it.key())).type()) {
+            if (it.value().type_name() !=
+                _init_values[uri].at(it.key()).type_name()) {
                 std::string msg = fmt::format(
                             "configUpdater: Update to endpoint '{}' contained" \
-                            "value '{}' of type {} (expected type {}).",
+                            " value '{}' of type {} (expected type {}).",
                             uri.c_str(), it.key().c_str(),
                             it.value().type_name(),
                             _init_values[uri].at(it.key()).type_name());
+
+                WARN(msg.c_str());
+                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
+
+            if (it.value().type() == nlohmann::json::value_t::number_float &&
+                _init_values[uri].at(it.key()).type() != it.value().type()) {
+                std::string msg = fmt::format(
+                            "configUpdater: Update to endpoint '{}' contained" \
+                            " value '{}' of type float (expected type {}).",
+                            uri.c_str(), it.key().c_str(),
+                            _init_values[uri].at(it.key()).type_name());
+
                 WARN(msg.c_str());
                 con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
                 return;
