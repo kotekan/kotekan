@@ -387,5 +387,5 @@ buffer_status:
 #RFI Live-view Paramters
 waterfallX: 1024
 num_receive_threads: 4
-colorscale: 0.03
+colorscale: 0.028
 waterfall_request_delay: 60

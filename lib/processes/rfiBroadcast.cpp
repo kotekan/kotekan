@@ -17,6 +17,7 @@
 #include "errors.h"
 #include "chimeMetadata.h"
 #include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
 
 REGISTER_KOTEKAN_PROCESS(rfiBroadcast);
 
@@ -108,6 +109,7 @@ void rfiBroadcast::main_thread() {
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
+    prometheusMetrics &metrics = prometheusMetrics::instance();
     //Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)_rfi_combined, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
                       .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, .frames_per_packet=_frames_per_packet};
@@ -178,8 +180,19 @@ void rfiBroadcast::main_thread() {
             //Lock callback mutex
             rest_callback_mutex.lock();
             rest_zero_callback_mutex.lock();
+            //Compute Current Mask Percentage
             float tmp = 100.0*(float)mask_total/(rfi_mask_buf->frame_size*_frames_per_packet*total_links);
             perc_zeroed.add_sample(tmp);
+
+            //Get current frequency bin and set add the prometheus metric
+            stream_id_t current_stream_id = extract_stream_id(StreamIDs[0]);
+            uint32_t current_freq_bin = bin_number_chime(&current_stream_id);
+            std::string tags = "freq_bin=\"" + std::to_string(current_freq_bin) + "\"";
+            metrics.add_process_metric("kotekan_rfi_broadcast_mask_percent",
+                                unique_name,
+                                perc_zeroed.average(),
+                                tags);
+
             //Reset Timer (can't time previous loop due to wait for frame blocking call)
             double start_time = e_time();
             //Loop through each link to send data seperately

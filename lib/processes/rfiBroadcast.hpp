@@ -15,6 +15,7 @@
 #include "chimeMetadata.h"
 #include "rfi_functions.h"
 #include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
 
 /*
  * @class rfiBroadcast
