@@ -45,7 +45,12 @@ pulsarNetworkProcess::~pulsarNetworkProcess()
 {
     free(my_host_name);
     for(int i=0;i<number_of_subnets;i++) free(my_ip_address[i]);
+     
     free(my_ip_address);
+    free(socket_ids);
+    free(myaddr);
+    free(server_address);
+    free(sock_fd);
 }
 
 
@@ -68,8 +73,21 @@ void pulsarNetworkProcess::main_thread()
     //parsing the host name
 
     int rack,node,nos,my_node_id;
-    my_ip_address = new char*[number_of_subnets];
-    for(int i=0;i<number_of_subnets;i++) my_ip_address[i] = new char[100];
+    std::vector<std::string> link_ip =
+            config.get<std::vector<std::string>>(unique_name,
+                                                 "pulsar_node_ips");
+    int number_of_pulsar_links = link_ip.size();
+    INFO("number_of_pulsar_links: %d",number_of_pulsar_links);
+     
+    //Allocating buffers 
+    sock_fd = (int*) malloc(sizeof(int)*number_of_subnets);
+    server_address = (sockaddr_in*) malloc(sizeof(sockaddr_in)*number_of_pulsar_links);
+    myaddr = (sockaddr_in*) malloc(sizeof(sockaddr_in)*number_of_pulsar_links);
+
+    socket_ids = (int*) malloc(sizeof(int)*number_of_pulsar_links);
+
+    my_ip_address = (char**) malloc(sizeof(char*)*number_of_subnets);
+    for(int i=0;i<number_of_subnets;i++) my_ip_address[i] = (char*) malloc(sizeof(char)*100);
     //std::stringstream temp_ip[number_of_subnets];
     INFO("number of subnets %d\n",number_of_subnets); 
     
@@ -78,20 +96,18 @@ void pulsarNetworkProcess::main_thread()
     parse_chime_host_name(rack, node, nos, my_node_id);
     for(int i=0;i<number_of_subnets;i++)
     {  
-      std::sprintf(my_ip_address[i],"10.%d.%d.1%d",i+15,nos+rack,node);
+      if(std::snprintf(my_ip_address[i],100,"10.%d.%d.1%d",i+15,nos+rack,node)>100)
+      {
+         ERROR("buffer spill over ");
+         raise(SIGINT);
+         return;
+      }
       INFO("%s ",my_ip_address[i]);
     }
 
     int frame_id = 0;
     uint8_t * packet_buffer = NULL;
-    std::vector<std::string> link_ip =
-            config.get<std::vector<std::string>>(unique_name,
-                                                 "pulsar_node_ips");
-    int number_of_pulsar_links = link_ip.size();
-    INFO("number_of_pulsar_links: %d",number_of_pulsar_links);  
-
-    int *sock_fd = new int[number_of_subnets];
-
+    
     for(int i=0;i<number_of_subnets;i++) 
     {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -104,12 +120,7 @@ void pulsarNetworkProcess::main_thread()
         }
     }
 
-    //struct sockaddr_in server_address[number_of_pulsar_links], myaddr[number_of_subnets];
-    struct sockaddr_in *server_address = new sockaddr_in[number_of_pulsar_links];
-    struct sockaddr_in *myaddr = new sockaddr_in[number_of_pulsar_links];
-
-    int *socket_ids = new int[number_of_subnets];
-
+    
     for(int i=0;i<number_of_subnets;i++) 
     {
         std::memset((char *)&myaddr[i], 0, sizeof(myaddr[i]));
