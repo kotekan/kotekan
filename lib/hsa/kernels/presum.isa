@@ -81,7 +81,7 @@ CHIME_presum: ; @CHIME_presum
 	s_waitcnt lgkmcnt(0)
 	s_lshr_b32 s6, s4, 16
 	s_mul_i32 s9, s9, s6
-	v_add_i32_e32 v4, vcc, s9, v1
+	v_add_u32_e32 v4, vcc, s9, v1
 	v_lshlrev_b32_e32 v3, 10, v4
 	v_or_b32_e32 v5, 2, v3
 	v_mul_lo_i32 v5, s5, v5
@@ -89,22 +89,22 @@ CHIME_presum: ; @CHIME_presum
 	v_or_b32_e32 v1, 3, v3
 	s_mul_i32 s8, s8, s4
 	v_or_b32_e32 v3, 1, v3
-	v_add_i32_e32 v5, vcc, v0, v5
+	v_add_u32_e32 v5, vcc, v0, v5
 	v_mul_lo_i32 v6, s5, v3
-	v_add_i32_e32 v3, vcc, s8, v5
+	v_add_u32_e32 v3, vcc, s8, v5
 	v_mul_lo_i32 v5, s5, v4
 	v_mul_lo_i32 v2, s5, v1
-	v_add_i32_e32 v4, vcc, v0, v6
-	v_add_i32_e32 v1, vcc, s8, v0
+	v_add_u32_e32 v4, vcc, v0, v6
+	v_add_u32_e32 v1, vcc, s8, v0
 	v_lshlrev_b32_e32 v5, 10, v5
-	v_add_i32_e32 v2, vcc, v0, v2
-	v_add_i32_e32 v0, vcc, v0, v5
+	v_add_u32_e32 v2, vcc, v0, v2
+	v_add_u32_e32 v0, vcc, v0, v5
 	s_movk_i32 s6, 0x400
 	v_mov_b32_e32 v8, s7
-	v_add_i32_e32 v2, vcc, s8, v2
+	v_add_u32_e32 v2, vcc, s8, v2
 	s_lshl_b32 s4, s5, 2
-	v_add_i32_e32 v4, vcc, s8, v4
-	v_add_i32_e32 v0, vcc, s8, v0
+	v_add_u32_e32 v4, vcc, s8, v4
+	v_add_u32_e32 v0, vcc, s8, v0
 	v_mov_b32_e32 v6, 0
 	v_mov_b32_e32 v7, s6
 	v_mov_b32_e32 v9, 0
@@ -116,14 +116,14 @@ CHIME_presum: ; @CHIME_presum
 	v_mov_b32_e32 v15, 0
 	v_mov_b32_e32 v14, 0
 BB0_1:                                  ; =>This Inner Loop Header: Depth=1
-	v_add_i32_e32 v16, vcc, v6, v0
+	v_add_u32_e32 v16, vcc, v6, v0
 	v_ashrrev_i32_e32 v17, 31, v16
 	v_lshlrev_b64 v[16:17], 2, v[16:17]
 	v_mov_b32_e32 v20, s3
-	v_add_i32_e32 v18, vcc, s2, v16
+	v_add_u32_e32 v18, vcc, s2, v16
 	v_addc_u32_e32 v19, vcc, v17, v20, vcc
 	flat_load_dword v18, v[18:19]
-	v_add_i32_e32 v16, vcc, v6, v4
+	v_add_u32_e32 v16, vcc, v6, v4
 	v_ashrrev_i32_e32 v17, 31, v16
 	v_lshlrev_b64 v[16:17], 2, v[16:17]
 	s_waitcnt vmcnt(0) lgkmcnt(0)
@@ -135,18 +135,18 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_bfe_u32 v26, v18, 24, 4
 	v_bfe_u32 v24, v18, 16, 4
 	v_lshrrev_b32_e32 v18, 28, v18
-	v_add_i32_e32 v14, vcc, v19, v14
-	v_add_i32_e32 v15, vcc, v21, v15
-	v_add_i32_e32 v12, vcc, v22, v12
-	v_add_i32_e32 v13, vcc, v23, v13
-	v_add_i32_e32 v19, vcc, v24, v10
-	v_add_i32_e32 v11, vcc, v25, v11
-	v_add_i32_e32 v5, vcc, v26, v5
-	v_add_i32_e32 v18, vcc, v18, v9
-	v_add_i32_e32 v9, vcc, s2, v16
+	v_add_u32_e32 v14, vcc, v19, v14
+	v_add_u32_e32 v15, vcc, v21, v15
+	v_add_u32_e32 v12, vcc, v22, v12
+	v_add_u32_e32 v13, vcc, v23, v13
+	v_add_u32_e32 v19, vcc, v24, v10
+	v_add_u32_e32 v11, vcc, v25, v11
+	v_add_u32_e32 v5, vcc, v26, v5
+	v_add_u32_e32 v18, vcc, v18, v9
+	v_add_u32_e32 v9, vcc, s2, v16
 	v_addc_u32_e32 v10, vcc, v20, v17, vcc
 	flat_load_dword v16, v[9:10]
-	v_add_i32_e32 v9, vcc, v6, v3
+	v_add_u32_e32 v9, vcc, v6, v3
 	v_ashrrev_i32_e32 v10, 31, v9
 	v_lshlrev_b64 v[9:10], 2, v[9:10]
 	s_waitcnt vmcnt(0) lgkmcnt(0)
@@ -158,18 +158,18 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_bfe_u32 v22, v16, 8, 4
 	v_bfe_u32 v25, v16, 20, 4
 	v_lshrrev_b32_e32 v16, 28, v16
-	v_add_i32_e32 v14, vcc, v17, v14
-	v_add_i32_e32 v15, vcc, v21, v15
-	v_add_i32_e32 v17, vcc, v22, v12
-	v_add_i32_e32 v13, vcc, v23, v13
-	v_add_i32_e32 v19, vcc, v24, v19
-	v_add_i32_e32 v21, vcc, v25, v11
-	v_add_i32_e32 v5, vcc, v26, v5
-	v_add_i32_e32 v16, vcc, v16, v18
-	v_add_i32_e32 v11, vcc, s2, v9
+	v_add_u32_e32 v14, vcc, v17, v14
+	v_add_u32_e32 v15, vcc, v21, v15
+	v_add_u32_e32 v17, vcc, v22, v12
+	v_add_u32_e32 v13, vcc, v23, v13
+	v_add_u32_e32 v19, vcc, v24, v19
+	v_add_u32_e32 v21, vcc, v25, v11
+	v_add_u32_e32 v5, vcc, v26, v5
+	v_add_u32_e32 v16, vcc, v16, v18
+	v_add_u32_e32 v11, vcc, s2, v9
 	v_addc_u32_e32 v12, vcc, v20, v10, vcc
 	flat_load_dword v11, v[11:12]
-	v_add_i32_e32 v9, vcc, v6, v2
+	v_add_u32_e32 v9, vcc, v6, v2
 	v_ashrrev_i32_e32 v10, 31, v9
 	v_lshlrev_b64 v[9:10], 2, v[9:10]
 	s_waitcnt vmcnt(0) lgkmcnt(0)
@@ -181,18 +181,18 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_bfe_u32 v24, v11, 16, 4
 	v_bfe_u32 v25, v11, 20, 4
 	v_lshrrev_b32_e32 v11, 28, v11
-	v_add_i32_e32 v15, vcc, v18, v15
-	v_add_i32_e32 v18, vcc, v24, v19
-	v_add_i32_e32 v14, vcc, v12, v14
-	v_add_i32_e32 v17, vcc, v22, v17
-	v_add_i32_e32 v13, vcc, v23, v13
-	v_add_i32_e32 v19, vcc, v25, v21
-	v_add_i32_e32 v5, vcc, v26, v5
-	v_add_i32_e32 v16, vcc, v11, v16
-	v_add_i32_e32 v11, vcc, s2, v9
+	v_add_u32_e32 v15, vcc, v18, v15
+	v_add_u32_e32 v18, vcc, v24, v19
+	v_add_u32_e32 v14, vcc, v12, v14
+	v_add_u32_e32 v17, vcc, v22, v17
+	v_add_u32_e32 v13, vcc, v23, v13
+	v_add_u32_e32 v19, vcc, v25, v21
+	v_add_u32_e32 v5, vcc, v26, v5
+	v_add_u32_e32 v16, vcc, v11, v16
+	v_add_u32_e32 v11, vcc, s2, v9
 	v_addc_u32_e32 v12, vcc, v20, v10, vcc
 	flat_load_dword v9, v[11:12]
-	v_add_i32_e32 v6, vcc, s4, v6
+	v_add_u32_e32 v6, vcc, s4, v6
 	s_waitcnt vmcnt(0) lgkmcnt(0)
 	v_bfe_u32 v12, v9, 8, 4
 	v_and_b32_e32 v10, 15, v9
@@ -202,15 +202,15 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_bfe_u32 v21, v9, 16, 4
 	v_bfe_u32 v22, v9, 20, 4
 	v_lshrrev_b32_e32 v9, 28, v9
-	v_add_i32_e32 v14, vcc, v10, v14
-	v_add_i32_e32 v15, vcc, v11, v15
-	v_add_i32_e32 v12, vcc, v12, v17
-	v_add_i32_e32 v13, vcc, v20, v13
-	v_add_i32_e32 v10, vcc, v21, v18
-	v_add_i32_e32 v11, vcc, v22, v19
-	v_add_i32_e32 v5, vcc, v23, v5
-	v_add_i32_e32 v9, vcc, v9, v16
-	v_add_i32_e32 v7, vcc, -4, v7
+	v_add_u32_e32 v14, vcc, v10, v14
+	v_add_u32_e32 v15, vcc, v11, v15
+	v_add_u32_e32 v12, vcc, v12, v17
+	v_add_u32_e32 v13, vcc, v20, v13
+	v_add_u32_e32 v10, vcc, v21, v18
+	v_add_u32_e32 v11, vcc, v22, v19
+	v_add_u32_e32 v5, vcc, v23, v5
+	v_add_u32_e32 v9, vcc, v9, v16
+	v_add_u32_e32 v7, vcc, -4, v7
 	v_addc_u32_e32 v8, vcc, -1, v8, vcc
 	v_cmp_ne_i64_e32 vcc, 0, v[7:8]
 	s_and_b64 vcc, exec, vcc
@@ -221,14 +221,14 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_or_b32_e32 v2, 1, v0
 	v_mov_b32_e32 v3, v1
 	v_lshlrev_b64 v[2:3], 2, v[2:3]
-	v_add_i32_e32 v6, vcc, s0, v2
+	v_add_u32_e32 v6, vcc, s0, v2
 	v_mov_b32_e32 v4, s1
 	v_addc_u32_e32 v7, vcc, v3, v4, vcc
 	v_lshlrev_b32_e32 v2, 3, v15
 	flat_atomic_add v[6:7], v2
 	s_waitcnt vmcnt(0) lgkmcnt(0)
 	v_lshlrev_b64 v[2:3], 2, v[0:1]
-	v_add_i32_e32 v6, vcc, s0, v2
+	v_add_u32_e32 v6, vcc, s0, v2
 	v_addc_u32_e32 v7, vcc, v4, v3, vcc
 	v_lshlrev_b32_e32 v2, 3, v14
 	flat_atomic_add v[6:7], v2
@@ -236,7 +236,7 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_or_b32_e32 v6, 3, v0
 	v_mov_b32_e32 v7, v1
 	v_lshlrev_b64 v[6:7], 2, v[6:7]
-	v_add_i32_e32 v14, vcc, s0, v6
+	v_add_u32_e32 v14, vcc, s0, v6
 	v_or_b32_e32 v2, 2, v0
 	v_mov_b32_e32 v3, v1
 	v_addc_u32_e32 v15, vcc, v4, v7, vcc
@@ -244,7 +244,7 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_lshlrev_b64 v[2:3], 2, v[2:3]
 	flat_atomic_add v[14:15], v6
 	s_waitcnt vmcnt(0) lgkmcnt(0)
-	v_add_i32_e32 v6, vcc, s0, v2
+	v_add_u32_e32 v6, vcc, s0, v2
 	v_addc_u32_e32 v7, vcc, v4, v3, vcc
 	v_lshlrev_b32_e32 v2, 3, v12
 	flat_atomic_add v[6:7], v2
@@ -252,7 +252,7 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_or_b32_e32 v6, 5, v0
 	v_mov_b32_e32 v7, v1
 	v_lshlrev_b64 v[6:7], 2, v[6:7]
-	v_add_i32_e32 v12, vcc, s0, v6
+	v_add_u32_e32 v12, vcc, s0, v6
 	v_or_b32_e32 v2, 4, v0
 	v_mov_b32_e32 v3, v1
 	v_addc_u32_e32 v13, vcc, v4, v7, vcc
@@ -260,7 +260,7 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_lshlrev_b64 v[2:3], 2, v[2:3]
 	flat_atomic_add v[12:13], v6
 	s_waitcnt vmcnt(0) lgkmcnt(0)
-	v_add_i32_e32 v6, vcc, s0, v2
+	v_add_u32_e32 v6, vcc, s0, v2
 	v_addc_u32_e32 v7, vcc, v4, v3, vcc
 	v_lshlrev_b32_e32 v2, 3, v10
 	flat_atomic_add v[6:7], v2
@@ -269,13 +269,13 @@ BB0_1:                                  ; =>This Inner Loop Header: Depth=1
 	v_or_b32_e32 v0, 7, v0
 	v_mov_b32_e32 v3, v1
 	v_lshlrev_b64 v[0:1], 2, v[0:1]
-	v_add_i32_e32 v6, vcc, s0, v0
+	v_add_u32_e32 v6, vcc, s0, v0
 	v_addc_u32_e32 v7, vcc, v4, v1, vcc
 	v_lshlrev_b32_e32 v0, 3, v9
 	flat_atomic_add v[6:7], v0
 	s_waitcnt vmcnt(0) lgkmcnt(0)
 	v_lshlrev_b64 v[0:1], 2, v[2:3]
-	v_add_i32_e32 v2, vcc, s0, v0
+	v_add_u32_e32 v2, vcc, s0, v0
 	v_addc_u32_e32 v3, vcc, v4, v1, vcc
 	v_lshlrev_b32_e32 v0, 3, v5
 	flat_atomic_add v[2:3], v0
