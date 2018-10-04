@@ -339,11 +339,11 @@ gpu:
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
   - name: hsaBeamformPulsar
-  - name: hsaPresumKernel
   - name: hsaRfiTimeSum
   - name: hsaRfiBadInput
   - name: hsaRfiInputSum
   - name: hsaRfiZeroData
+  - name: hsaPresumKernel
   - name: hsaCorrelatorKernel
   - name: hsaRfiBadInputOutput
   - name: hsaRfiMaskOutput

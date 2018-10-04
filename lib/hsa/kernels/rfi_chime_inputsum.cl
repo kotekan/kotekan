@@ -59,7 +59,7 @@ rfi_chime_inputsum(
             float SK =  ((n+1)/(n-1))*((sq_power_across_input[0]/(n*N)) - 1);
             output[address] = SK;
             float sigma = sqrt((double)((4*n*n)/(N*(n-1)*(n+2)*(n+3))));
-            if(SK > 1 + num_sigma*sigma || SK < 1 - num_sigma*sigma) OutputMask[address] = 1;
+            if(SK > 1 + rfi_sigma_cut*sigma || SK < 1 - rfi_sigma_cut*sigma) OutputMask[address] = 1;
             else OutputMask[address] = 0;
         }
     }
