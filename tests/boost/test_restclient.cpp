@@ -2,6 +2,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <unistd.h>
+#include <fmt.hpp>
 
 #include "restServer.hpp"
 #include "restClient.hpp"
@@ -154,7 +155,7 @@ struct TestContext {
         con.send_json_reply(json_request);
     }
 
-    void check() {
+    static void check() {
         json request;
         request["array"] = {1,2,3};
         request["flag"] = true;
@@ -165,7 +166,10 @@ struct TestContext {
         bool ret = restClient::instance().make_request(path,
                                                        fun,
                                                        request);
-        BOOST_CHECK(ret == true);
+        if (ret != true) {
+            INFO("test: restClient::make_request failed.");
+            error = true;
+        }
     }
 };
 
@@ -220,7 +224,11 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
-    BOOST_CHECK(cb_called_count == 3);
+    std::string fail_msg = fmt::format("Only {} callback functions where " \
+                                       "called (expected 3). This suggests " \
+                                       "some requests were never sent by the " \
+                                       "restClient.", cb_called_count);
+    BOOST_CHECK_MESSAGE(cb_called_count == 3, fail_msg);
 }
 
 BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
@@ -260,8 +268,11 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
-    BOOST_CHECK(cb_called_count == 2);
-}
+    std::string fail_msg = fmt::format("Only {} callback functions where " \
+                                       "called (expected 2). This suggests " \
+                                       "some requests were never sent by the " \
+                                       "restClient.", cb_called_count);
+    BOOST_CHECK_MESSAGE(cb_called_count == 2, fail_msg);}
 
 BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
     BOOST_CHECKPOINT("Start.");
@@ -280,12 +291,19 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
                           std::placeholders::_2),
                       "/test_restclient_pong");
 #define N 100
-    // FIXME std::thread t[N];
+    std::thread t[N];
     for (int i = 0; i < N; i++) {
-        check();
+        t[i] = std::thread(check);
+    }
+    for (int i = 0; i < N; i++) {
+        t[i].join();
     }
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
-    BOOST_CHECK(cb_called_count == N);
+    std::string fail_msg = fmt::format("Only {} callback functions where " \
+                                       "called (expected {}). This suggests " \
+                                       "some requests were never sent by the " \
+                                       "restClient.", cb_called_count, N);
+    BOOST_CHECK_MESSAGE(cb_called_count == N, fail_msg);
 }
