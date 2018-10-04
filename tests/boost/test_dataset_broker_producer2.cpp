@@ -1,4 +1,4 @@
-#define BOOST_TEST_MODULE "test_dataset_broker_producer"
+#define BOOST_TEST_MODULE "test_dataset_broker_producer2"
 
 #include <boost/test/included/unit_test.hpp>
 #include <string>
@@ -82,5 +82,5 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                   << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(2000000);
+    usleep(1000000);
 }
