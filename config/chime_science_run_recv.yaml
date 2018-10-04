@@ -63,7 +63,7 @@ vis_buffer:
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
 # Subset of good frequencies to output whole for monitoring
-mfreq: &mfreq [107, 214, 262, 344, 425, 519, 619, 726, 775, 938]
+mfreq: &mfreq [107, 344, 619, 938]
 
 allfreq: &allfreq [
           0,    1,    2,    3,    4,    5,    6,    7,    8,    9,   10,   11,   12,   13,   14,   15,   16,
@@ -264,7 +264,7 @@ archive_writers:
 
   file_length: 512
   file_type: raw
-  write_ev: True
+  write_ev: False
   weights_type: inverse_var
   root_path: /data/untransposed/
 
@@ -294,6 +294,7 @@ archive_writers:
     in_buf: visbuf_10s_cal
     prod_subset_type: autos
     instrument_name: chimecal
+    write_ev: True
     file_length: 256
     << : *cal_subset_params
 
