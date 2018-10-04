@@ -17,7 +17,7 @@ rfi_chime_inputsum(
      const uint num_elements,
      const uint num_bad_inputs,
      const uint sk_step,
-     const uint num_sigma
+     const uint rfi_sigma_cut
 )
 {
     //Get work ID's

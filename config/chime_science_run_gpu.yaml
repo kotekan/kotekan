@@ -334,17 +334,17 @@ gpu:
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
+  - name: hsaBeamformReorder
+  - name: hsaBeamformKernel
+  - name: hsaBeamformTranspose
+  - name: hsaBeamformUpchan
+  - name: hsaBeamformPulsar
   - name: hsaPresumKernel
   - name: hsaRfiTimeSum
   - name: hsaRfiBadInput
   - name: hsaRfiInputSum
   - name: hsaRfiZeroData
   - name: hsaCorrelatorKernel
-  - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchan
-  - name: hsaBeamformPulsar
   - name: hsaRfiBadInputOutput
   - name: hsaRfiMaskOutput
   - name: hsaRfiOutput

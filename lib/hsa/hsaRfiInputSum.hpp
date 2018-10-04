@@ -90,7 +90,7 @@ private:
     /// The total number of faulty inputs
     uint32_t _num_bad_inputs;
     /// The number of standard deviations in SK which constitute RFI
-    uint32_t _num_sigma;
+    uint32_t _rfi_sigma_cut;
     /// Vector to hold a list of inputs which are currently malfunctioning
     vector<int32_t> _bad_inputs;
     /// Boolean to hold whether or not the current kernel execution is the first or not.

@@ -20,7 +20,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                 unique_name, "samples_per_data_set");
     //RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _num_sigma = config.get_default<uint32_t>(unique_name, "rfi_sigma_cut", 5);
+    _rfi_sigma_cut = config.get_default<uint32_t>(unique_name, "rfi_sigma_cut", 5);
     //Compute Buffer lengths
     input_frame_len = sizeof(float)*_num_elements*_num_local_freq*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_samples_per_data_set/_sk_step;
@@ -91,7 +91,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
         uint32_t num_elements;
         uint32_t num_bad_inputs;
         uint32_t sk_step;
-        uint32_t num_sigma;
+        uint32_t rfi_sigma_cut;
     } args;
     //Initialize arguments
     memset(&args, 0, sizeof(args));
@@ -104,7 +104,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     args.num_elements = _num_elements;
     args.num_bad_inputs = _bad_inputs.size();
     args.sk_step = _sk_step;
-    args.num_sigma = _num_sigma;
+    args.rfi_sigma_cut = _rfi_sigma_cut;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     //Set kernel execution parameters
