@@ -5,6 +5,11 @@
 //#define COARSE_BLOCK_SIZE
 //#define WI_SIZE
 
+
+
+//#define SDOT8
+
+
 #if COARSE_BLOCK_SIZE > 8
 #error "__builtin_amdgcn_ds_bpermute won't work with this workgroup size!"
 #endif
@@ -65,19 +70,15 @@ void corr ( __global const uint *input,
     uint xr[WI_SIZE], xi[WI_SIZE], yr[WI_SIZE], yi[WI_SIZE];
 
     //zero the accumulation buffers
-    int corr_rr[WI_SIZE][WI_SIZE];
-    int corr_ir[WI_SIZE][WI_SIZE];
-    int corr_ri[WI_SIZE][WI_SIZE];
-    int corr_ii[WI_SIZE][WI_SIZE];
+    int corr_r[WI_SIZE][WI_SIZE];
+    int corr_i[WI_SIZE][WI_SIZE];
 
     #pragma unroll
-    for (int i=0; i<WI_SIZE; i++) for (int j=0; j<WI_SIZE; j++)
-    {
-        corr_rr[i][j]=0;
-        corr_ir[i][j]=0;
-        corr_ri[i][j]=0;
-        corr_ii[i][j]=0;
-    }
+    for (int i=0; i<WI_SIZE; i++)
+        for (int j=0; j<WI_SIZE; j++) {
+            corr_r[i][j]=0;
+            corr_i[i][j]=0;
+        }
 
     //accumulate
     for (int j=0; j<SAMPLES_PER_DATA_SET/8; j+=COARSE_BLOCK_SIZE){
@@ -101,10 +102,17 @@ void corr ( __global const uint *input,
         for (int i=0; i<COARSE_BLOCK_SIZE; i++){
             #pragma unroll
             for (int y=0; y<WI_SIZE; y++) for (int x=0; x<WI_SIZE; x++) {
-                corr_rr[y][x] += dot4b(xr[x],yr[y]);
-                corr_ir[y][x] += dot4b(xi[x],yr[y]);
-                corr_ri[y][x] += dot4b(xr[x],yi[y]);
-                corr_ii[y][x] += dot4b(xi[x],yi[y]);
+#ifndef SDOT8
+                corr_r[y][x] += dot4b(xr[x],yr[y]);
+                corr_r[y][x] += dot4b(xi[x],yi[y]);
+                corr_i[y][x] += dot4b(xr[x],yi[y]);
+                corr_i[y][x] -= dot4b(xi[x],yr[y]);
+#else
+                corr_r[y][x] =  __builtin_amdgcn_sdot8(xr[x],yr[y], corr_r[y][x]);
+                corr_r[y][x] =  __builtin_amdgcn_sdot8(xi[x],yi[y], corr_r[y][x]);
+                corr_i[y][x] =  __builtin_amdgcn_sdot8(xr[x],yi[y], corr_i[y][x]);
+                corr_i[y][x] = -__builtin_amdgcn_sdot8(xi[x],yr[y],-corr_i[y][x]);
+#endif
             }
             //rotate data to the neighbour work items
             #pragma unroll
@@ -124,8 +132,8 @@ void corr ( __global const uint *input,
     for (int y=0; y<WI_SIZE; y++){
         #pragma unroll
         for (int x=0; x<WI_SIZE; x++) {
-            atomic_add(out++,corr_ri[y][x]-corr_ir[y][x]);
-            atomic_add(out++,corr_rr[y][x]+corr_ii[y][x]);
+            atomic_add(out++,corr_i[y][x]); //ri-ir
+            atomic_add(out++,corr_r[y][x]); //rr+ii
         }
         out+=(BLOCK_SIZE-WI_SIZE)*2;
     }

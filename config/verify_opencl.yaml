@@ -27,9 +27,9 @@ cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
 one: 1
 two: 2
-num_elements: 256
+num_elements: 2048
 num_local_freq: 1
-num_blocks: 36 #(num_elements / block_size) * (num_elements / block_size + one) / two
+num_blocks: 2080 #(num_elements / block_size) * (num_elements / block_size + one) / two
 sizeof_int: 4
 
 # Pool
@@ -67,14 +67,14 @@ beamform_output_buffers:
         num_frames: buffer_depth
 
 gen_data:
-  type: random #const
+  type: const
   value: 153
   kotekan_process: testDataGen
   network_out_buf: gpu_input_buffer
 
-#data_format: dot4b
-data_format: "4+4b"
-full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
+data_format: dot4b
+#data_format: "4+4b"
+#full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
 gpu:
   profiling: true
@@ -83,9 +83,9 @@ gpu:
   log_level: debug2
   commands:
   - name: clInputData
-  - name: clPresumZero
+ # - name: clPresumZero
   - name: clOutputDataZero
-  - name: clPresumKernel
+#  - name: clPresumKernel
 #  - name: clPreseedKernel
 #  - name: clCorrelatorKernel
   - name: clKVCorr
@@ -98,20 +98,20 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer
 
-cpu:
-  kotekan_process: gpuSimulate
-  log_level: debug
-  network_in_buf: gpu_input_buffer
-  corr_out_buf: cpu_output_buffer
-
-check_data:
-  kotekan_process: testDataCheckInt
-  first_buf: gpu_output_buffer
-  second_buf: cpu_output_buffer
+#cpu:
+#  kotekan_process: gpuSimulate
+#  log_level: debug
+#  network_in_buf: gpu_input_buffer
+#  corr_out_buf: cpu_output_buffer
 
 #check_data:
-#  imag: [0]
-#  real: [98304] #[65536]
-#  const_data_check:
-#    kotekan_process: constDataCheck
-#    in_buf: cpu_output_buffer
+#  kotekan_process: testDataCheckInt
+#  first_buf: gpu_output_buffer
+#  second_buf: cpu_output_buffer
+
+check_data:
+  imag: [0]
+  real: [4816896] #98 * samples_per_dataset
+  const_data_check:
+    kotekan_process: constDataCheck
+    in_buf: gpu_output_buffer
