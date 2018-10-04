@@ -11,6 +11,7 @@ using json = nlohmann::json;
 
 // BOOST_CHECK can't be used in threads...
 std::atomic<bool> error;
+std::atomic<int> cb_called_count;
 
 struct TestContext {
     static void init(std::function<void (connectionInstance&,
@@ -18,6 +19,7 @@ struct TestContext {
                      std::string endpoint = "/test_restclient") {
         restServer::instance().register_post_callback(endpoint, fun);
         error = false;
+        cb_called_count = 0;
         usleep(5000);
     }
 
@@ -97,6 +99,7 @@ struct TestContext {
     }
 
     void callback(connectionInstance& con, json json_request) {
+        cb_called_count++;
         INFO("test_restclient: json callback received json: %s",
              json_request.dump().c_str());
         std::vector<uint32_t> array;
@@ -118,6 +121,7 @@ struct TestContext {
     }
 
     void callback_text(connectionInstance& con, json json_request) {
+        cb_called_count++;
         INFO("test_restclient: text callback received json: %s",
              json_request.dump().c_str());
         std::vector<uint32_t> array;
@@ -145,6 +149,7 @@ struct TestContext {
     }
 
     void pong(connectionInstance& con, json json_request) {
+        cb_called_count++;
         INFO("pong: json: %s", json_request.dump().c_str());
         con.send_json_reply(json_request);
     }
@@ -215,6 +220,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
+    BOOST_CHECK(cb_called_count == 3);
 }
 
 BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
@@ -254,6 +260,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
+    BOOST_CHECK(cb_called_count == 2);
 }
 
 BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
@@ -273,11 +280,12 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
                           std::placeholders::_2),
                       "/test_restclient_pong");
 #define N 100
-    std::thread t[N];
+    // FIXME std::thread t[N];
     for (int i = 0; i < N; i++) {
         check();
     }
     usleep(10000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
+    BOOST_CHECK(cb_called_count == N);
 }

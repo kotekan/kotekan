@@ -93,7 +93,7 @@ void restClient::event_thread() {
 void restClient::http_request_done(struct evhttp_request *req, void *arg){
     // FIXME: evcon is passed here, because evhttp_request_get_connection(req)
     // doesn't work (libevent 2.0.* problem?)
-    // TODO: keep the evhttp_connections in a pool and reuse them
+    // TODO: maybe keep the evhttp_connections in a pool and reuse them
     // (set Connection:keep-alive header)
     auto pair = (std::pair<std::function<void(restReply)>,
                  struct evhttp_connection*>*) arg;

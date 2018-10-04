@@ -408,8 +408,8 @@ void datasetManager::request_ancestors_callback(restReply reply) {
          s != js_reply.at("ancestors").at("states").end(); s++) {
         state_id s_id;
         sscanf(s.key().c_str(), "%zu", &s_id);
-        DEBUG2("datasetManager received state_id: %zu", s_id);
-        DEBUG2("datasetManager received state: %s", s.value().dump().c_str());
+        DEBUG("datasetManager received state_id: %zu", s_id);
+        DEBUG("datasetManager received state: %s", s.value().dump().c_str());
         state_uptr state = datasetState::from_json(s.value());
         if (!_states.insert(std::pair<state_id, unique_ptr<datasetState>>(
                                 s_id, move(state))).second)
@@ -447,40 +447,27 @@ void datasetManager::request_ancestors_callback(restReply reply) {
                   base_ds_id);
             raise(SIGINT);
         }
-        DEBUG2("datasetManager received dataset with id %d (state_id: %zu" \
+        DEBUG("datasetManager received dataset with id %d (state_id: %zu" \
               ", base_ds_id: %d).", ds_id, s_id, base_ds_id);
         auto new_dset = std::make_pair(s_id, base_ds_id);
 
-        // Search for existing entry
-        for (auto dset = _datasets.begin(); dset != _datasets.end(); dset++) {
-            if (dset->second == new_dset) {
-                if (dset->first != ds_id) {
-                    ERROR("datasetManager: failure parsing reply received from"\
-                          " broker after requesting ancestors: received " \
-                          "dataset (ID: %d), that is known locally with a " \
-                          "different ID (%d): state_id: %zu, base_ds_id: %d.\n"\
-                          "datasetManager: exciting...",
-                          ds_id, dset->first, s_id, base_ds_id);
-                    raise(SIGINT);
-                }
-                DEBUG("datasetManager::request_ancestors_callback: received " \
-                      "dataset that is already known locally: %d (%zu, %d).",
-                      ds_id, s_id, base_ds_id);
-                continue;
-            } else {
-                // insert the new dataset.
-                if (!_datasets.insert(
-                        std::pair<dset_id, std::pair<state_id, dset_id>>(
-                            ds_id, new_dset)).second) {
-                    // we just checked for this case, so if we end up here,
-                    // something is seriously wrong
-                    ERROR("datasetManager: A dataset with ID %d is already " \
-                          "known (If you see this, there is a bug in " \
-                          "datasetManager.).\ndatasetManager: Exiting...",
-                          ds_id);
-                    raise(SIGINT);
-                }
+        // insert the new dataset and check if it was a known before
+        auto inserted = _datasets.insert(
+                    std::pair<dset_id, std::pair<state_id, dset_id>>(ds_id,
+                                                                     new_dset));
+        if (!inserted.second) {
+            if (inserted.first->first != ds_id) {
+                ERROR("datasetManager: failure parsing reply received from"\
+                      " broker after requesting ancestors: received " \
+                      "dataset (ID: %d), that is known locally with a " \
+                      "different ID (%d): state_id: %zu, base_ds_id: %d.\n"\
+                      "datasetManager: exciting...",
+                      ds_id, inserted.first->first, s_id, base_ds_id);
+                raise(SIGINT);
             }
+            DEBUG("datasetManager::request_ancestors_callback: received " \
+                  "dataset that is already known locally: %d (%zu, %d).",
+                  ds_id, s_id, base_ds_id);
         }
     }
 
@@ -534,8 +521,10 @@ datasetManager::ancestors(dset_id dset) const {
     std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
 
     // make sure we know this dataset before running into trouble
-    if (_datasets.find(dset) == _datasets.end())
+    if (_datasets.find(dset) == _datasets.end()) {
+        DEBUG("datasetManager: dataset %d was not found.", dset);
         return a_list;
+    }
 
     // Walk up from the current node to the root, extracting pointers to the
     // states performed

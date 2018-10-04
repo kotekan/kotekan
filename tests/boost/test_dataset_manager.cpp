@@ -5,6 +5,7 @@
 #include <iostream>
 #include "json.hpp"
 #include "visUtil.hpp"
+#include "test_utils.hpp"
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -13,53 +14,8 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
-struct TestContext {
-    void check_equal(const vector<input_ctype>& a, const vector<input_ctype>& b) {
-        auto ita = a.begin();
-        auto itb = b.begin();
 
-        while(ita != a.end() || itb != b.end()) {
-            BOOST_CHECK_EQUAL(ita->chan_id, itb->chan_id);
-            BOOST_CHECK_EQUAL(ita->correlator_input, itb->correlator_input);
-            if(ita != a.end())
-                ++ita;
-            if(itb != b.end())
-                ++itb;
-        }
-    }
-
-    void check_equal(const vector<prod_ctype>& a, const vector<prod_ctype>& b) {
-        auto ita = a.begin();
-        auto itb = b.begin();
-
-        while(ita != a.end() || itb != b.end()) {
-            BOOST_CHECK_EQUAL(ita->input_a, itb->input_a);
-            BOOST_CHECK_EQUAL(ita->input_b, itb->input_b);
-            if(ita != a.end())
-                ++ita;
-            if(itb != b.end())
-                ++itb;
-        }
-    }
-
-    void check_equal(const std::vector<std::pair<uint32_t, freq_ctype>>& a,
-                     const std::vector<std::pair<uint32_t, freq_ctype>>& b) {
-        auto ita = a.begin();
-        auto itb = b.begin();
-
-        while(ita != a.end() || itb != b.end()) {
-            BOOST_CHECK_EQUAL(ita->first, itb->first);
-            BOOST_CHECK_EQUAL(ita->second.centre, itb->second.centre);
-            BOOST_CHECK_EQUAL(ita->second.width, itb->second.width);
-            if(ita != a.end())
-                ++ita;
-            if(itb != b.end())
-                ++itb;
-        }
-    }
-};
-
-BOOST_FIXTURE_TEST_CASE( _general, TestContext ) {
+BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
     __log_level = 4;
     datasetManager& dm = datasetManager::instance();
     // generate datasets:

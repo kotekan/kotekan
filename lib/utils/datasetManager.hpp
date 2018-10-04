@@ -8,6 +8,10 @@
 #include <mutex>
 #include <condition_variable>
 
+#ifndef MAC_OSX
+#include <cxxabi.h>
+#endif
+
 #include "json.hpp"
 #include "errors.h"
 #include "visUtil.hpp"
@@ -596,8 +600,16 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
         while(true) {
             if (cv_request_ancestors.wait_until(lck, time_point)
                   == std::cv_status::timeout) {
+#ifdef MAC_OSX
+                ERROR("datasetManager: Timeout while requesting ancestors " \
+                      "of dataset %d.", dset);
+#else
+                int status;
                 ERROR("datasetManager: Timeout while requesting ancestors of " \
-                      "dataset %d.", dset);
+                      "type %s of dataset %d.",
+                      abi::__cxa_demangle(typeid(T).name(), 0, 0, &status),
+                      dset);
+#endif
                 ERROR("datasetManager: Exiting...");
                 raise(SIGINT);
             }
