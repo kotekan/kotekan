@@ -73,7 +73,7 @@ private:
   int udp_pulsar_port_number;
 
   /// node ip addresses
-  std::string my_ip_address[2];
+  char **my_ip_address;
   
   /// number of L0 nodes
   int number_of_nodes;

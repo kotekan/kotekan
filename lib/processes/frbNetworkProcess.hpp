@@ -76,7 +76,7 @@ private:
   int udp_frb_port_number;
 
   /// node ip addresses
-  std::string my_ip_address[4];
+  char **my_ip_address;
 
   /// number of L0 nodes
   int number_of_nodes;

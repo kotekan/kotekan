@@ -48,6 +48,8 @@ frbNetworkProcess::~frbNetworkProcess()
 {
     restServer::instance().remove_json_callback("/frb/update_beam_offset");
     free(my_host_name);
+    for(int i=0;i<number_of_subnets;i++) free(my_ip_address[i]);
+    free(my_ip_address);
 }
 
 
@@ -92,15 +94,19 @@ void frbNetworkProcess::apply_config(uint64_t fpga_seq)
 void frbNetworkProcess::main_thread()
 {
     int rack,node,nos,my_node_id;
-    std::stringstream temp_ip[number_of_subnets]; 
+    
+    my_ip_address = new char*[number_of_subnets];
+    for(int i=0;i<number_of_subnets;i++) my_ip_address[i] = new char[100];
+    //std::stringstream temp_ip[number_of_subnets];
+    INFO("number of subnets %d\n",number_of_subnets);
+ 
 
     //parsing the host name
     parse_chime_host_name(rack, node, nos, my_node_id);
     for(int i=0;i<number_of_subnets;i++)
     {
-        temp_ip[i]<<"10."<<i+6<<"."<<nos+rack<<".1"<<node;
-        my_ip_address[i] = temp_ip[i].str();
-        INFO("%s ",my_ip_address[i].c_str());
+        std::sprintf(my_ip_address[i],"10.%d.%d.1%d",i+6,nos+rack,node);
+        INFO("%s ",my_ip_address[i]);
     }
 
     //declaring and initializing variables for the buffers
@@ -122,14 +128,15 @@ void frbNetworkProcess::main_thread()
 
         if (sock_fd[i] < 0)
         {
-            ERROR("Network Thread: socket() failed: %s", strerror(errno));
+            ERROR("Network Thread: socket() failed: %s ", strerror(errno));
             raise(SIGINT);
             return;
         }
     }
 
-    struct sockaddr_in server_address[number_of_l1_links], myaddr[number_of_subnets];
-    int ip_socket[number_of_l1_links];
+    struct sockaddr_in *server_address = new sockaddr_in[number_of_l1_links];
+    struct sockaddr_in *myaddr = new sockaddr_in[number_of_l1_links];
+    int *ip_socket = new int[number_of_l1_links];
 
 
     for(int i=0;i<number_of_subnets;i++)
@@ -137,14 +144,14 @@ void frbNetworkProcess::main_thread()
         std::memset((char *)&myaddr[i], 0, sizeof(myaddr[i]));
 
         myaddr[i].sin_family = AF_INET;
-        inet_pton(AF_INET, my_ip_address[i].c_str(), &myaddr[i].sin_addr);
+        inet_pton(AF_INET, my_ip_address[i], &myaddr[i].sin_addr);
 
         myaddr[i].sin_port = htons(udp_frb_port_number);
 
         // Binding port to the socket
         if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) 
         {
-            ERROR("port binding failed");
+            ERROR("port binding failed ");
             raise(SIGINT);
             return;
         }
@@ -225,7 +232,7 @@ void frbNetworkProcess::main_thread()
     uint64_t *packet_buffer_uint64 = reinterpret_cast <uint64_t*>(packet_buffer);
     uint64_t initial_fpga_count = packet_buffer_uint64[1];
     uint64_t initial_nsec= t0.tv_sec*1e9+t0.tv_nsec;
-
+    
     while(!stop_thread)
     {
 

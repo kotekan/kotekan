@@ -44,6 +44,8 @@ std::bind(&pulsarNetworkProcess::main_thread, this))
 pulsarNetworkProcess::~pulsarNetworkProcess()
 {
     free(my_host_name);
+    for(int i=0;i<number_of_subnets;i++) free(my_ip_address[i]);
+    free(my_ip_address);
 }
 
 
@@ -66,16 +68,18 @@ void pulsarNetworkProcess::main_thread()
     //parsing the host name
 
     int rack,node,nos,my_node_id;
-    std::stringstream temp_ip[number_of_subnets];
-
+    my_ip_address = new char*[number_of_subnets];
+    for(int i=0;i<number_of_subnets;i++) my_ip_address[i] = new char[100];
+    //std::stringstream temp_ip[number_of_subnets];
+    INFO("number of subnets %d\n",number_of_subnets); 
+    
     //parsing the host name
 
     parse_chime_host_name(rack, node, nos, my_node_id);
     for(int i=0;i<number_of_subnets;i++)
     {  
-      temp_ip[i]<<"10."<<i+15<<"."<<nos+rack<<".1"<<node;
-      my_ip_address[i] = temp_ip[i].str();
-      INFO("%s ",my_ip_address[i].c_str());
+      std::sprintf(my_ip_address[i],"10.%d.%d.1%d",i+15,nos+rack,node);
+      INFO("%s ",my_ip_address[i]);
     }
 
     int frame_id = 0;
@@ -100,7 +104,10 @@ void pulsarNetworkProcess::main_thread()
         }
     }
 
-    struct sockaddr_in server_address[number_of_pulsar_links], myaddr[number_of_subnets];
+    //struct sockaddr_in server_address[number_of_pulsar_links], myaddr[number_of_subnets];
+    struct sockaddr_in *server_address = new sockaddr_in[number_of_pulsar_links];
+    struct sockaddr_in *myaddr = new sockaddr_in[number_of_pulsar_links];
+
     int *socket_ids = new int[number_of_subnets];
 
     for(int i=0;i<number_of_subnets;i++) 
@@ -108,14 +115,14 @@ void pulsarNetworkProcess::main_thread()
         std::memset((char *)&myaddr[i], 0, sizeof(myaddr[i]));
 
         myaddr[i].sin_family = AF_INET;
-        inet_pton(AF_INET, my_ip_address[i].c_str(), &myaddr[i].sin_addr);
+        inet_pton(AF_INET, my_ip_address[i], &myaddr[i].sin_addr);
 
         myaddr[i].sin_port = htons(udp_pulsar_port_number);
 
         // Binding port to the socket
         if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) 
         {
-            ERROR("port binding failed");
+            ERROR("port binding failed ");
             raise(SIGINT);
             return;
         }
@@ -135,7 +142,7 @@ void pulsarNetworkProcess::main_thread()
     {  
         if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
         {
-            ERROR("network thread: setsockopt() failed \n");
+            ERROR("network thread: setsockopt() failed ");
             raise(SIGINT);
             return;
         }
