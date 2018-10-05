@@ -58,8 +58,9 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     uint32_t total_lost = 0;
     //Copy RFI mask to array
     for(int32_t i = 0; i < _rfi_mask_output_buf->frame_size; i++){
-         if(frame_mask[i] == 1) total_lost += _sk_step*_num_elements;
+         if(frame_mask[i] == 1) total_lost += _sk_step;
     }
+    INFO("Total Lost %d",total_lost)
     atomic_add_lost_timesamples(_network_buf, _network_buf_id, total_lost);
     // Copy the information contained in the input buffer
     pass_metadata(_network_buf, _network_buf_id,
