@@ -68,6 +68,7 @@ num_pol: 2
 sk_step: 256
 rfi_combined: True
 rfi_sigma_cut: 5
+rfi_add_lostsamples: True
 
 #RFI Live-view Paramters
 waterfallX: 1024

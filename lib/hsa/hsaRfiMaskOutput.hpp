@@ -66,6 +66,8 @@ private:
     //RFI config parameters
     /// The kurtosis step (How many timesteps per kurtosis estimate)
     uint32_t  _sk_step;
+    /// A Flag wich sets whether or not we compute and add the lost samples due to RFI flagging
+    bool _rfi_add_lostsamples;
 };
 
 #endif
