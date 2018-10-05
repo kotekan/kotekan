@@ -67,6 +67,8 @@ endif()
 
 #Libevent is required now
 find_package(LibEvent REQUIRED )
+include_directories(${EVENT_INCLUDE_DIR}/../)
+link_directories(${EVENT_LIBRARY_DIR})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
