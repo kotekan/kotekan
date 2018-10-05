@@ -65,28 +65,68 @@ class VisBuffer(object):
 
         _data = self._buffer[ctypes.sizeof(VisMetadata):]
 
-        num_prod = self.metadata.num_prod
-        num_elements = self.metadata.num_elements
-        num_eigen = self.metadata.num_ev
+        layout = self.__class__._calculate_layout(self.metadata.num_elements,
+                                                  self.metadata.num_prod,
+                                                  self.metadata.num_ev)
+
+        for member in layout['members']:
+
+            arr = np.frombuffer(_data[member['start']:member['end']],
+                                dtype=member['dtype'])
+            setattr(self, member['name'], arr)
+        
+    @classmethod
+    def _calculate_layout(cls, num_elements, num_prod, num_ev):
+        """Calculate the buffer layout.
+
+        Parameters
+        ----------
+        num_elements, num_prod, num_ev : int
+            Length of each dimension.
+
+        Returns
+        -------
+        layout : dict
+            Structure of buffer.
+        """
 
         structure = [
             ('vis', np.complex64, num_prod),
             ('weight', np.float32, num_prod),
-            ("eval", np.float32,  num_eigen),
-            ("evec", np.complex64, num_eigen * num_elements),
-            ("erms", np.float32,  1)
+            ('flags', np.float32, num_elements),
+            ("eval", np.float32,  num_ev),
+            ("evec", np.complex64, num_ev * num_elements),
+            ("erms", np.float32,  1),
+            ("gain", np.complex64, num_elements)
         ]
 
         end = 0
 
+        members = []
+        maxsize = 0
+
         for name, dtype, num in structure:
+
+            member = {}
+
             size = np.dtype(dtype).itemsize
 
-            start = _offset(end, size)
-            end = start + num * size
+            # Update the maximum size
+            maxsize = size if maxsize < size else maxsize
 
-            arr = np.frombuffer(_data[start:end], dtype=dtype)
-            setattr(self, name, arr)
+            member['start'] = _offset(end, size)
+            end = member['start'] + num * size
+            member['end'] = end
+            member['size'] = num * size
+            member['num'] = num
+            member['dtype'] = dtype
+            member['name'] = name
+
+            members.append(member)
+
+        struct_end = _offset(members[-1]['end'], maxsize)
+        layout = {'size': struct_end, 'members': members}
+        return layout
 
     @classmethod
     def from_file(cls, filename):
@@ -105,9 +145,69 @@ class VisBuffer(object):
 
     @classmethod
     def load_files(cls, pattern):
+        """Read a set of dump files as visBuffers.
+
+        Parameters
+        ----------
+        pattern : str
+            A globable pattern to read.
+        
+        Returns
+        -------
+        buffers : list of VisBuffers
+        """
         import glob
 
         return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
+
+    @classmethod
+    def to_files(cls, buffers, basename):
+        """Write a list of buffers to disk.
+
+        Parameters
+        ----------
+        buffers : list of VisBuffers
+            Buffers to write.
+        basename : str
+            Basename for filenames.
+        """
+        pat = basename + "_%07d.dump"
+        
+        msize_c = ctypes.c_int(ctypes.sizeof(VisMetadata))
+
+        for ii, buf in enumerate(buffers):
+
+            with open(pat % ii, 'wb+') as fh:
+                fh.write(msize_c)
+                fh.write(bytearray(buf._buffer))
+
+
+    @classmethod
+    def new_from_params(cls, num_elements, num_prod, num_ev, insert_size=True):
+        """Create a new VisBuffer owning its own memory.
+
+        Parameters
+        ----------
+        num_elements, num_prod, num_ev
+            Structural parameters.
+
+        Returns
+        -------
+        buffer : VisBuffer
+        """
+
+        layout = cls._calculate_layout(num_elements, num_prod, num_ev)
+        meta_size = ctypes.sizeof(VisMetadata)
+
+        buf = np.zeros(meta_size + layout['size'], dtype=np.uint8)
+
+        # Set the structure in the metadata
+        metadata = VisMetadata.from_buffer(buf[:meta_size])
+        metadata.num_elements = num_elements
+        metadata.num_prod = num_prod
+        metadata.num_ev = num_ev
+
+        return cls(buf, skip=0)
 
 
 def _offset(offset, size):

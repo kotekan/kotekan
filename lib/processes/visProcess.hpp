@@ -177,7 +177,7 @@ private:
  *
  * In reality this probably works on any buffer format, though it is only
  * tested against visBuffer data.
- * 
+ *
  * @par Buffers
  * @buffer in_bufs The set of buffers to merge together.
  *         @buffer_format visBuffer.
@@ -214,9 +214,10 @@ private:
  * @class visCheckTestPattern
  * @brief Checks if the visibility data matches a given expected pattern.
  *
- * Errors are calculated as the norm of the difference between the expected and the actual (complex) visibility value.
- * Writes out to a csv file specified in the configuration and prints a report
- * in a configured interval. The columns have the following meaning:
+ * Errors are calculated as the norm of the difference between the expected and
+ * the actual (complex) visibility value.
+ * For bad frames, the following data is written to a csv file specified in the
+ * config:
  * fpga_count:  FPGA counter for the frame
  * time:        the frames timestamp
  * freq_id:     the frames frequency ID
@@ -224,24 +225,45 @@ private:
  * avg_err:     average error of bad values
  * min_err:     minimum error of bad values
  * max_err:     maximum error of bad balues
+ * expected:    the visibility value that was expected according to the mode
+ *
+ * Additionally a report is printed in a configured interval.
+ *
+ * The modes are defined as follows:
+ * `test_pattern_simple`: All visibility values are `1 + 0j`.
+ * `test_pattern_freq`: The value `frequencies` defines frequency bins, the
+ * visibilities in frames for those defined frequencies will have the values
+ * defined in `freq_values` (in the same order). The visibilities in all other
+ * frames will have the value, set by `default_val`.
  *
  * @par Buffers
  * @buffer in_buf               The buffer to debug
  *         @buffer_format       visBuffer structured
  *         @buffer_metadata     visMetadata
+ * @buffer out_buf              All frames found to contain errors
+ *         @buffer_format       visBuffer structured
+ *         @buffer_metadata     visMetadata
  *
  * @conf  out_file              String. Path to the file to dump all output in.
  * @conf  report_freq           Int. Number of frames to print a summary for.
- * @conf  expected_val_real     Float. Real part of the expected visibility value.
- * @conf  expected_val_imag     Float. Imaginary part of the expected visibility value.
- * @conf  tolerance             Float. Defines what difference to the expected value is an error.
+ * @conf  default_val           CFloat. Default expected visibility value.
+ * @conf  freq_values           Array of CFloat. Expected visibility value for
+ * each frequency bin (used in mode `test_pattern_freq`).
+ * @conf  frequencies           Array of Float. Frequency bins (used in mode
+ * `test_pattern_freq`).
+ * @conf  num_freq              Float. Total number of frequencies in the frames
+ * (used in mode `test_pattern_freq`).
+ * @conf  tolerance             Float. Defines what difference to the expected
+ * value is an error.
+ * @conf mode                   String. One of `test_pattern_simple` and
+ * `test_pattern_freq`.
  *
  * @author Rick Nitsche
  */
-class visCheckTestPattern : public KotekanProcess {
+class visTestPattern : public KotekanProcess {
 
 public:
-    visCheckTestPattern(Config &config,
+    visTestPattern(Config &config,
              const string& unique_name,
              bufferContainer &buffer_container);
 
@@ -251,6 +273,7 @@ public:
 
 private:
     Buffer * in_buf;
+    Buffer * out_buf;
 
     // A (freq_id, dataset_id) pair
     using fd_pair = typename std::pair<uint32_t, uint32_t>;
@@ -261,10 +284,60 @@ private:
     // Config parameters
     float tolerance;
     size_t report_freq;
-    cfloat expected_val;
+    std::string mode;
+    cfloat exp_val;
+    std::vector<cfloat> exp_val_freq;
+    size_t num_freq;
 
     // file to dump all info in
     std::ofstream outfile;
     std::string outfile_name;
 };
+
+
+/**
+ * @brief Register the initial state of the buffers with the datasetManager.
+ *
+ * This task tags a stream with a properly allocated dataset_id and adds
+ * associated datasetStates to the datasetManager.
+ *
+ * @note If there are no other consumers on this buffer it will be able to do a
+ *       much faster zero copy transfer of the frame from input to output
+ *       buffer.
+ *
+ * @par Buffers
+ * @buffer in_bufs The untagged data.
+ *         @buffer_format visBuffer structured.
+ *         @buffer_metadata visMetadata
+ * @buffer out_buf The tagged data.
+ *         @buffer_format visBuffer structured
+ *         @buffer_metadata visMetadata
+ *
+ * @author Richard Shaw
+ */
+class registerInitialDatasetState : public KotekanProcess {
+
+public:
+
+    // Default constructor
+    registerInitialDatasetState(Config &config,
+                                const string& unique_name,
+                                bufferContainer &buffer_container);
+
+    void apply_config(uint64_t fpga_seq) override;
+
+    // Main loop for the process
+    void main_thread() override;
+
+private:
+
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<input_ctype> _inputs;
+    std::vector<prod_ctype> _prods;
+
+    // Buffers to read/write
+    Buffer* in_buf;
+    Buffer* out_buf;
+};
+
 #endif

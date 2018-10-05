@@ -69,17 +69,20 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
 
 void rfiRecord::apply_config(uint64_t fpga_seq) {
     //General config parameters
-    _num_freq = config.get_int_default(unique_name, "num_total_freq", 1024);
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_freq = config.get_default<uint32_t>(
+                unique_name, "num_total_freq", 1024);
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
     //RFI config parameters
-    _sk_step = config.get_int_default(unique_name, "sk_step",256);
-    _rfi_combined = config.get_bool_default(unique_name,"rfi_combined", true);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step",256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
     //Process specific parameters
-    _total_links = config.get_int_default(unique_name, "total_links",1);
-    _write_to = config.get_string(unique_name, "write_to");
-    _write_to_disk = config.get_bool_default(unique_name, "write_to_disk",false);
+    _total_links = config.get_default<uint32_t>(unique_name, "total_links",1);
+    _write_to = config.get<std::string>(unique_name, "write_to");
+    _write_to_disk = config.get_default<bool>(
+                unique_name, "write_to_disk",false);
 }
 
 void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts) {
@@ -160,20 +163,27 @@ void rfiRecord::main_thread() {
                      file_num/1024);
             //Open that file
             fd = open(file_name, O_WRONLY | O_APPEND | O_CREAT, 0666);
-            if (fd == -1) {
+            if (fd < 0) {
                 ERROR("Cannot open file %s", file_name);
             }
-            //Write buffer to that file
-            write(fd,&fpga_seq_num, sizeof(int64_t));
-            ssize_t bytes_writen = write(fd, frame, rfi_buf->frame_size);
-            if (bytes_writen != rfi_buf->frame_size) {
-                ERROR("Failed to write buffer to disk");
+            else {
+                //Write buffer to that file
+                ssize_t bytes_writen = write(fd,&fpga_seq_num, sizeof(int64_t));
+                if (bytes_writen !=  sizeof(int64_t)) {
+                    ERROR("Failed to write seq_num to disk");
+                }
+                bytes_writen = write(fd, frame, rfi_buf->frame_size);
+                if (bytes_writen != rfi_buf->frame_size) {
+                    ERROR("Failed to write buffer to disk");
+                }
+                //Close that file
+                if (close(fd) < 0) {
+                    ERROR("Cannot close file %s", file_name);
+                }
+                else{
+                    INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
+                }
             }
-            //Close that file
-            if (close(fd) == -1) {
-                ERROR("Cannot close file %s", file_name);
-            }
-            INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",frame_id, link_id+1, _total_links, (e_time()-start_time)*1000);
         }
         //Unlock callback mutex
         rest_callback_mutex.unlock();

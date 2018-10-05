@@ -15,31 +15,11 @@
 #include "fmt.hpp"
 
 
-// Initialise the type map
-std::map<std::string, std::function<visFile*()>> visFile::_type_list;
+std::map<std::string, std::function<visFile*()>>& visFile::_registered_types()
+{
+    static std::map<std::string, std::function<visFile*()>> _register;
 
-std::shared_ptr<visFile> visFile::create(
-    const std::string& type,
-    const std::string& name,
-    const std::map<std::string, std::string>& metadata,
-    const std::vector<freq_ctype>& freqs,
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods,
-    size_t num_ev, size_t max_time
-) {
-
-    if(_type_list.find(type) == _type_list.end()) {
-        throw std::runtime_error(
-            fmt::format("Cannot create visFile of unknown type {}", type)
-        );
-    }
-
-    // Lookup the registered file and create an instance
-    INFO("Creating file %s of type %s", name.c_str(), type.c_str());
-    auto file = std::shared_ptr<visFile>(_type_list[type]());
-    file->create_file(name, metadata, freqs, inputs, prods, num_ev, max_time);
-
-    return file;
+    return _register;
 }
 
 
@@ -72,12 +52,13 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
             uint32_t ind;
             std::tie(file, ind) = vis_file_map.rbegin()->second;  // Unpack the last entry
 
-            if(file->num_time() < rollover) {
+            if((rollover == 0 || file->num_time() < rollover) && !change_file) {
                 // Extend the time axis and add into the sample map
                 ind = file->extend_time(new_time);
                 vis_file_map[count] = std::make_tuple(file, ind);
             } else {
                 add_file(new_time);
+                change_file = false;
             }
 
             // As we've added a new sample we need to delete the earliest sample
@@ -128,6 +109,37 @@ void visFileBundle::add_file(time_ctype first_time) {
     auto file = mk_file(file_name, acq_name, root_path);
     auto ind = file->extend_time(first_time);
     vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
+}
+
+void visCalFileBundle::set_file_name(std::string fname, std::string aname) {
+    file_name = fname;
+    acq_name = aname;
+}
+
+void visCalFileBundle::add_file(time_ctype first_time) {
+    // Create directory
+    mkdir((root_path + "/" + acq_name).c_str(), 0755);
+    // Create the file, create room for the first sample and add into the file map
+    auto file = mk_file(file_name, acq_name, root_path);
+    auto ind = file->extend_time(first_time);
+    vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
+}
+
+void visCalFileBundle::swap_file(std::string new_fname, std::string new_aname) {
+    // Change the file and and request writing to a new file
+    set_file_name(new_fname, new_aname);
+    change_file = true;
+}
+
+void visCalFileBundle::clear_file_map() {
+    // RFlush and remove all entries in the map
+    std::shared_ptr<visFile> file;
+    uint32_t ind;
+    for (size_t i = 0; i < vis_file_map.size(); i++) {
+        std::tie(file, ind) = vis_file_map[i];
+        file->deactivate_time(ind); // Cleanup the sample
+    }
+    vis_file_map.clear();
 }
 
 std::string create_lockfile(std::string filename) {

@@ -28,10 +28,13 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               simpleAutocorr.cpp
               freqSlicer.cpp
               prodSubset.cpp
+              countCheck.cpp
               visProcess.cpp
+              visCompression.cpp
               timeDownsample.cpp
-              visRawReader.cpp
+              frbPostProcess.cpp
               visWriter.cpp
+              visRawReader.cpp
               restInspectFrame.cpp
               frbNetworkProcess.cpp
               pulsarNetworkProcess.cpp
@@ -41,10 +44,11 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiBroadcast.cpp
               rfiRecord.cpp
               rfiBadInputFinder.cpp
+              receiveFlags.cpp
               )
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} frbNetworkProcess.cpp pulsarNetworkProcess.cpp frbPostProcess.cpp)
+       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES}   )
 endif ()
 
 if (${USE_AIRSPY})
@@ -55,13 +59,22 @@ if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
-# This is temporarily disabled because it requires a newer version of hdf5
-# not available in most computers
 # HDF5 stuff
 if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5
+  # Disable for the moment as requires too modern HDF5 not available in most computers
   #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp applyGains.cpp)
 endif ()
+
+# HDF5 and OpenMP
+if (${USE_HDF5} AND ${USE_OMP})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp)
+endif()
+
+# OpenMP
+if (${USE_OMP})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTruncate.cpp)
+endif()
 
 if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
@@ -69,6 +82,14 @@ endif ()
 
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
+target_link_libraries( kotekan_processes ${EVENT_LIBRARIES} )
+
+if (${USE_AIRSPY})
+  target_link_libraries ( kotekan_processes -lairspy)
+endif ()
+if (${USE_FFTW})
+  target_link_libraries ( kotekan_processes -lfftw3f)
+endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})

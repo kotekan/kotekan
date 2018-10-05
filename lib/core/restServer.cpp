@@ -233,7 +233,8 @@ void restServer::mongoose_thread() {
 }
 
 void restServer::set_server_affinity(Config &config) {
-    vector<int32_t> cpu_affinity = config.get_int_array("/rest_server", "cpu_affinity");
+    vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>(
+        "/rest_server", "cpu_affinity");
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -251,6 +252,11 @@ connectionInstance::connectionInstance(mg_connection* nc_, int ev_, void* ev_dat
 
 connectionInstance::~connectionInstance() {
 
+}
+
+string connectionInstance::get_uri() {
+    struct http_message *msg = (struct http_message *)ev_data;
+    return string(msg->uri.p, msg->uri.len);
 }
 
 string connectionInstance::get_body() {
@@ -286,7 +292,7 @@ void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &
     mg_send_head(nc, static_cast<int>(status), 0, error_message.c_str());
 }
 
-void connectionInstance::send_json_reply(json &json_reply) {
+void connectionInstance::send_json_reply(const json &json_reply) {
     string json_string = json_reply.dump(0);
     mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK), json_string.size(), NULL);
     mg_send(nc, (void*) json_string.c_str(), json_string.size());

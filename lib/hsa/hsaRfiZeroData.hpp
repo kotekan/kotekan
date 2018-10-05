@@ -1,0 +1,67 @@
+/*
+ * @file
+ * @brief Zeros data flagged by the RFI pipeline
+ *  - hsaRfiZeroData : public hsaCommand
+ */
+#ifndef HSA_RFI_ZERO_DATA_H
+#define HSA_RFI_ZERO_DATA_H
+
+#include "hsaCommand.hpp"
+#include "restServer.hpp"
+#include <mutex>
+
+/*
+ * @class hsaRfiZeroData
+ * @brief hsaCommand to zero input data marked as containing large amounts of RFI
+ *
+ * This is an hsaCommand that launches the kernel (rfi_chime_zero.hsaco) to set all
+ * values detected to have a significant amount of RFI to zero
+ *
+ * @requires_kernel    rfi_chime_zero.hasco
+ *
+ *
+ * @par GPU Memory
+ * @gpu_mem  input              Input data of size input_frame_len
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c uint8_t
+ *     @gpu_mem_metadata        chimeMetadata
+ * @gpu_mem  mask               The RFI mask to be aplied
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c uint8_t
+ *     @gpu_mem_metadata        chimeMetadata
+ *
+ * @conf   num_elements         Int. Number of elements.
+ * @conf   num_local_freq       Int. Number of local freq.
+ * @conf   samples_per_data_set Int. Number of time samples in a data set.
+ * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
+ *
+ * @author Jacob Taylor
+ */
+class hsaRfiZeroData: public hsaCommand
+{
+
+public:
+    /// Constructor, initializes internal variables.
+    hsaRfiZeroData(Config& config, const string &unique_name,
+                            bufferContainer& host_buffers, hsaDeviceInterface& device);
+    /// Destructor, cleans up local allocs
+    virtual ~hsaRfiZeroData();
+    /// Executes rfi_chime_zero.hsaco kernel. Allocates kernel variables.
+    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+                         hsa_signal_t precede_signal) override;
+private:
+    /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
+    uint32_t input_frame_len;
+    /// Length of the RFI mask
+    uint32_t mask_len;
+    /// Number of elements (2048 for CHIME or 256 for Pathfinder)
+    uint32_t _num_elements;
+    /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
+    uint32_t _num_local_freq;
+    /// Number of time samples per frame (Usually 32768 or 49152)
+    uint32_t _samples_per_data_set;
+    /// Integration length of spectral kurtosis estimate in time
+    uint32_t _sk_step;
+};
+
+#endif

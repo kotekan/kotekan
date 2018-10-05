@@ -11,10 +11,13 @@ __kernel void
 rfi_chime_inputsum(
      __global float *input,
      __global float *output,
-     __global uint *LostSampleCorrection,
+     __global uchar *InputMask,
+     __global uchar *OutputMask,
+//     __global uint *LostSampleCorrection,
      const uint num_elements,
      const uint num_bad_inputs,
-     const uint sk_step
+     const uint sk_step,
+     const uint rfi_sigma_cut
 )
 {
     //Get work ID's
@@ -30,10 +33,10 @@ rfi_chime_inputsum(
     __local float sq_power_across_input[256];
     //Compute index in input array
     uint base_index = gx + gy*num_elements + gz*num_elements*gy_size;
-    sq_power_across_input[lx] = input[base_index];
+    sq_power_across_input[lx] = (1-InputMask[lx])*input[base_index];
     //Partial sum if more than 256 inputs
     for(int i = 1; i < num_elements/lx_size; i++){
-        sq_power_across_input[lx] += input[base_index + i*lx_size];
+        sq_power_across_input[lx] += (1-InputMask[lx + i*lx_size])*input[base_index + i*lx_size];
     }
     //Sum Across Input in local memory
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -45,8 +48,19 @@ rfi_chime_inputsum(
     }
     //Compute spectral kurtosis estimate and add to output
     if(lx == 0){
-        uint M = (num_elements-num_bad_inputs)*(sk_step-LostSampleCorrection[gz]);
-        if(M == 0) output[gy + gz*gy_size] = -1.0; 
-        else output[gy + gz*gy_size] = (((float)M+1)/((float)M-1))*((sq_power_across_input[0]/M) - 1); 
+        float n = (float)sk_step; // - LostSampleCorrection[gz];
+        float N = (float)(num_elements-num_bad_inputs);
+        uint address = gy + gz*gy_size;
+        if(n*N == 0){
+            output[address] = -1.0;
+            OutputMask[address] = 1;
+        } 
+        else{
+            float SK =  ((n+1)/(n-1))*((sq_power_across_input[0]/(n*N)) - 1);
+            output[address] = SK;
+            float sigma = sqrt((double)((4*n*n)/(N*(n-1)*(n+2)*(n+3))));
+            if(SK > 1 + rfi_sigma_cut*sigma || SK < 1 - rfi_sigma_cut*sigma) OutputMask[address] = 1;
+            else OutputMask[address] = 0;
+        }
     }
 }

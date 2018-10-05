@@ -24,13 +24,14 @@ eigenVis::eigenVis(Config& config,
     register_consumer(input_buffer, unique_name.c_str());
     output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
-    num_diagonals_filled =  config.get_int_default(unique_name,
+    num_eigenvectors =  config.get<int32_t>(unique_name, "num_ev");
+    num_diagonals_filled =  config.get_default<int32_t>(unique_name,
                                                    "num_diagonals_filled", 0);
     // Read a list from the config, but permit it to be absent (implying empty).
     try {
-        for (auto e : config.get_int_array(unique_name, "exclude_inputs")) {
-            exclude_inputs.push_back((int32_t) e);
+        for (int32_t e : config.get<std::vector<int32_t>>(unique_name,
+                                                          "exclude_inputs")) {
+            exclude_inputs.push_back(e);
         }
     } catch (std::runtime_error const & ex) {
         // Missing, leave empty.

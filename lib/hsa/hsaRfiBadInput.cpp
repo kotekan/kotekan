@@ -12,11 +12,11 @@ hsaRfiBadInput::hsaRfiBadInput(Config& config,const string &unique_name,
     hsaCommand("rfi_bad_input", "rfi_bad_input.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     //RFI Config Parameters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     //Compute Buffer lengths
     input_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
     output_frame_len = sizeof(float)*_num_local_freq*_num_elements;
@@ -46,7 +46,7 @@ hsa_signal_t hsaRfiBadInput::execute(int gpu_frame_id, const uint64_t& fpga_seq,
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters
     kernelParams params;
-    params.workgroup_size_x = 256;
+    params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.grid_size_x = _num_elements;
     params.grid_size_y = _num_local_freq;

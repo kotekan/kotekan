@@ -25,7 +25,6 @@
 #include <string>
 #include <array>
 #include <csignal>
-#include "configEval.hpp"
 
 extern "C" {
 #include <pthread.h>
@@ -44,6 +43,7 @@ extern "C" {
 #include "gpsTime.h"
 #include "KotekanProcess.hpp"
 #include "prometheusMetrics.hpp"
+#include "basebandApiManager.hpp"
 #include "processFactory.hpp"
 
 #ifdef WITH_HSA
@@ -77,10 +77,10 @@ void print_help() {
 }
 
 void print_version() {
-    printf("Kotekan version %s\n", KOTEKAN_VERSION_STR);
-    printf("Build branch: %s\n", GIT_BRANCH);
-    printf("Git commit hash: %s\n\n", GIT_COMMIT_HASH);
-    printf("CMake build settings: \n%s\n", CMAKE_BUILD_SETTINGS);
+    printf("Kotekan version %s\n", get_kotekan_version());
+    printf("Build branch: %s\n", get_git_branch());
+    printf("Git commit hash: %s\n\n", get_git_commit_hash());
+    printf("CMake build settings: \n%s\n", get_cmake_build_options());
 
     printf("Available kotekan processes:\n");
     std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
@@ -96,10 +96,10 @@ void print_version() {
 json get_json_version_into() {
     // Create version information
     json version_json;
-    version_json["kotekan_version"] = KOTEKAN_VERSION_STR;
-    version_json["branch"] = GIT_BRANCH;
-    version_json["git_commit_hash"] = GIT_COMMIT_HASH;
-    version_json["cmake_build_settings"] = CMAKE_BUILD_SETTINGS;
+    version_json["kotekan_version"] = get_kotekan_version();
+    version_json["branch"] = get_git_branch();
+    version_json["git_commit_hash"] = get_git_commit_hash();
+    version_json["cmake_build_settings"] = get_cmake_build_options();
     vector<string> available_processes;
     std::map<std::string, kotekanProcessMaker*> known_processes = processFactoryRegistry::get_registered_processes();
     for (auto &process_maker : known_processes)
@@ -122,7 +122,7 @@ std::string exec(const std::string &cmd) {
 
 void update_log_levels(Config &config) {
     // Adjust the log level
-    string s_log_level = config.get_string("/", "log_level");
+    string s_log_level = config.get<std::string>("/", "log_level");
     logLevel log_level;
 
     if (strcasecmp(s_log_level.c_str(), "off") == 0) {
@@ -156,14 +156,14 @@ bool set_gps_time(Config &config) {
         !config.exists("/gps_time", "error") &&
         config.exists("/gps_time", "frame0_nano")) {
 
-        uint64_t frame0 = config.get_uint64("/gps_time", "frame0_nano");
+        uint64_t frame0 = config.get<uint64_t>("/gps_time", "frame0_nano");
         set_global_gps_time(frame0);
         INFO("Set FPGA frame 0 time to %" PRIu64 " nanoseconds since Unix Epoch\n", frame0);
         return true;
     }
 
     if (config.exists("/gps_time", "error")) {
-        string error_message = config.get_string("/gps_time", "error");
+        string error_message = config.get<std::string>("/gps_time", "error");
         ERROR("*****\nGPS time lookup failed with reason: \n %s\n ******\n",
                 error_message.c_str());
     } else {
@@ -288,11 +288,8 @@ int main(int argc, char ** argv) {
     }
 
     // Load configuration file.
-    //INFO("Kotekan starting with config file %s", config_file_name);
-    const char git_hash[] = GIT_COMMIT_HASH;
-    const char git_branch[] = GIT_BRANCH;
-    INFO("Kotekan %f starting build: %s, on branch: %s",
-            KOTEKAN_VERSION, git_hash, git_branch);
+    INFO("Kotekan version %s starting...",
+            get_kotekan_version());
 
     Config config;
 
@@ -400,6 +397,9 @@ int main(int argc, char ** argv) {
 
     prometheusMetrics &metrics = prometheusMetrics::instance();
     metrics.register_with_server(&rest_server);
+
+    basebandApiManager &baseband = basebandApiManager::instance();
+    baseband.register_with_server(&rest_server);
 
     for(EVER){
         sleep(1);

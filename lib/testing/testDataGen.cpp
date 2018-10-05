@@ -4,6 +4,7 @@
 #include <mutex>
 #include <unistd.h>
 #include <sys/time.h>
+#include <csignal>
 
 #include "errors.h"
 #include "chimeMetadata.h"
@@ -22,23 +23,26 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
-    type = config.get_string(unique_name, "type");
-    assert(type == "const" || type == "random" || type=="ramp");
+    type = config.get<std::string>(unique_name, "type");
+    assert(type == "const" || type == "random" || type=="ramp" || type=="tpluse");
     if (type == "const")
-        value = config.get_int(unique_name, "value");
+        value = config.get<int>(unique_name, "value");
     if (type=="ramp")
-        value = config.get_int(unique_name, "value");
-    _pathfinder_test_mode = config.get_bool_default(unique_name, "pathfinder_test_mode", false);
+        value = config.get<int>(unique_name, "value");
+    _pathfinder_test_mode = config.get_default<bool>(
+                unique_name, "pathfinder_test_mode", false);
 
-    samples_per_data_set = config.get_int_default(unique_name, "samples_per_data_set", 32768);
-    stream_id = config.get_int_default(unique_name, "stream_id", 0);
-    num_frames = config.get_int_default(unique_name, "num_frames", -1);
+    samples_per_data_set = config.get_default<int>(
+                unique_name, "samples_per_data_set", 32768);
+    stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
-    wait = config.get_bool_default(unique_name, "wait", true);
+    wait = config.get_default<bool>(unique_name, "wait", true);
     // Whether to wait for is rest signal to start or generate next frame. Useful for testing processes
     // that must interact rest commands. Valid modes are "start", "step", and "none".
-    rest_mode = config.get_string_default(unique_name, "rest_mode", "none");
+    rest_mode = config.get_default<std::string>(unique_name, "rest_mode",
+                                                "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
 
@@ -114,6 +118,7 @@ void testDataGen::main_thread() {
         //std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
+        int num_elements = buf->frame_size/sizeof(uint8_t) / samples_per_data_set;
         for (uint j = 0; j < buf->frame_size/sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant) break;
@@ -128,6 +133,8 @@ void testDataGen::main_thread() {
                 new_imaginary = rand()%16;
                 temp_output = ((new_real<<4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
+            } else if (type == "tpluse") {
+                frame[j] = seq_num + j / num_elements + j % num_elements;
             }
         }
         DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
@@ -135,10 +142,13 @@ void testDataGen::main_thread() {
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         frame_id_abs +=1;
-        if (num_frames >=0 && frame_id_abs >= num_frames) break;
+        if (num_frames >=0 && frame_id_abs >= num_frames) {
+            std::raise(SIGINT);
+            break;
+        };
         frame_id = frame_id_abs % buf->num_frames;
 
-        if (_pathfinder_test_mode == true){
+        if (_pathfinder_test_mode == true) {
             //Test PF seq_num increment.
             if (link_id == 7){
                 link_id = 0;

@@ -15,19 +15,20 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     hsaCommand("zero_padded_FFT512","unpack_shift_beamform_flip.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _gain_dir = config.get_string(unique_name, "gain_dir");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
+    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
 
-    scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
+    scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
     vector<float> dg = {0.0,0.0}; //re,im
-    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
+    default_gains = config.get_default<std::vector<float>>(
+                unique_name, "frb_missing_gains", dg);
 
-    _northmost_beam = config.get_float(unique_name, "northmost_beam");
+    _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
 
-    _ew_spacing = config.get_float_array(unique_name, "ew_spacing");
+    _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
     _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float));
     for (int i=0;i<4;i++){
         _ew_spacing_c[i] = _ew_spacing[i];
@@ -96,6 +97,7 @@ void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& js
     INFO("Updating gains from %s", _gain_dir.c_str());
     config.update_value(unique_name, "gain_dir", _gain_dir);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
+    INFO("[FRB] updated gain with %s", _gain_dir.c_str());
 
 }
 
@@ -109,7 +111,7 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     }
     _ew_spacing_c[ew_id] = json_request["ew_beam"];
     update_EW_beam=true;
-    config.update_value(unique_name, "ew_spacing/" + std::to_string(ew_id), _ew_spacing_c[ew_id]);
+    config.update_value(unique_name, "ew_spacing/" + std::to_string(ew_id), json_request["ew_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 
 }
@@ -124,7 +126,7 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
     update_NS_beam=true;
 
-    config.update_value(unique_name, "northmost_beam", _northmost_beam);
+    config.update_value(unique_name, "northmost_beam", json_request["northmost_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "gain_dir", _gain_dir);
 }

@@ -28,22 +28,22 @@
  *              update config             "num_bad_inputs"
  *
  * @par GPU Memory
- * @gpu_mem  input              Input data of size input_frame_len
+ * @gpu_mem  timesum            Input data from the hsaRfiTimeSum command  of size input_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  output             Output data of size output_frame_len
+ * @gpu_mem  rfi_output          Output data of size output_frame_len
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  num_elements       The total number of elements
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
- * @gpu_mem  M                  The total SK integration length
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
+ * @gpu_mem  input_mask         Inputs to be ignored/masked (1 for mask, 0 for don't mask)
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c uint8_t
+ *     @gpu_mem_metadata        chimeMetadata
+ * @gpu_mem  rfi_mask_output    Mask used to zero input data (1 for RFI, 0 for clean)
+ *     @gpu_mem_type            staging
+ *     @gpu_mem_format          Array of @c float
+ *     @gpu_mem_metadata        chimeMetadata
  *
  * @conf   num_elements         Int. Number of elements.
  * @conf   num_local_freq       Int. Number of local freq.
@@ -71,8 +71,14 @@ private:
     uint32_t input_frame_len;
     /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
     uint32_t output_frame_len;
+    /// Length of the input mask, should be sizeof_uchar x n_elem
+    uint32_t input_mask_len;
+    /// Length of the output mask, should be sizeof_uchar x n_freq x nsamp / sk_step
+    uint32_t output_mask_len;
     /// Length of lost sample correction frame
     uint32_t correction_frame_len;
+    /// Array to hold the input mask (which inputs are currently functioning)
+    uint8_t *input_mask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
@@ -83,8 +89,12 @@ private:
     uint32_t _sk_step;
     /// The total number of faulty inputs
     uint32_t _num_bad_inputs;
-    /// The total integration length of the spectral kurtosis estimate
-    uint32_t _M;
+    /// The number of standard deviations in SK which constitute RFI
+    uint32_t _rfi_sigma_cut;
+    /// Vector to hold a list of inputs which are currently malfunctioning
+    vector<int32_t> _bad_inputs;
+    /// Boolean to hold whether or not the current kernel execution is the first or not.
+    bool rebuild_input_mask;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
     /// Sring to hold endpoint name

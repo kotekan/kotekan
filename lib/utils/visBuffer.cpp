@@ -61,9 +61,11 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     // Bind the regions of the buffer to spans and refernces on the view
     vis(bind_span<cfloat>(_frame, buffer_layout["vis"])),
     weight(bind_span<float>(_frame, buffer_layout["weight"])),
+    flags(bind_span<float>(_frame, buffer_layout["flags"])),
     eval(bind_span<float>(_frame, buffer_layout["eval"])),
     evec(bind_span<cfloat>(_frame, buffer_layout["evec"])),
-    erms(bind_scalar<float>(_frame, buffer_layout["erms"]))
+    erms(bind_scalar<float>(_frame, buffer_layout["erms"])),
+    gain(bind_span<cfloat>(_frame, buffer_layout["gain"]))
 
 {
     // Initialise the structure if not already done
@@ -120,6 +122,56 @@ std::string visFrameView::summary() const {
 }
 
 
+visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src,
+                                      Buffer* buf_dest, int frame_id_dest)
+{
+    allocate_new_metadata_object(buf_dest, frame_id_dest);
+
+    // Buffer sizes must match exactly
+    if (buf_src->frame_size != buf_dest->frame_size) {
+        std::string msg = fmt::format(
+            "Buffer sizes must match for direct copy (src %i != dest %i).",
+            buf_src->frame_size, buf_dest->frame_size);
+        throw std::runtime_error(msg);
+    }
+
+    // Metadata sizes must match exactly
+    if (buf_src->metadata[frame_id_src]->metadata_size !=
+        buf_dest->metadata[frame_id_dest]->metadata_size) {
+        std::string msg = fmt::format(
+            "Metadata sizes must match for direct copy (src %i != dest %i).",
+            buf_src->metadata[frame_id_src]->metadata_size,
+            buf_dest->metadata[frame_id_dest]->metadata_size);
+        throw std::runtime_error(msg);
+    }
+
+    // Calculate the number of consumers on the source buffer
+    int num_consumers = 0;
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf_src->consumers[i].in_use == 1) {
+            num_consumers++;
+        }
+    }
+
+    // Copy or transfer the data part.
+    if (num_consumers == 1) {
+        // Transfer frame contents with directly...
+        swap_frames(buf_src, frame_id_src, buf_dest, frame_id_dest);
+    } else if (num_consumers > 1) {
+        // Copy the frame data over, leaving the source intact
+        std::memcpy(buf_dest->frames[frame_id_dest],
+                    buf_src->frames[frame_id_src], buf_src->frame_size);
+    }
+
+    // Copy over the metadata
+    std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
+                buf_src->metadata[frame_id_src]->metadata,
+                buf_src->metadata[frame_id_src]->metadata_size);
+
+    return visFrameView(buf_dest, frame_id_dest);
+}
+
+
 // Copy the non-const parts of the metadata
 void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
@@ -132,13 +184,25 @@ void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
 
 // Copy the non-visibility parts of the buffer
 void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
-    std::copy(frame_to_copy.eval.begin(), 
-              frame_to_copy.eval.end(), 
+
+    // Copy eigenvector parts
+    std::copy(frame_to_copy.eval.begin(),
+              frame_to_copy.eval.end(),
               eval.begin());
     std::copy(frame_to_copy.evec.begin(),
-              frame_to_copy.evec.end(), 
+              frame_to_copy.evec.end(),
               evec.begin());
     erms = frame_to_copy.erms;
+
+    // Copy per input flags
+    std::copy(frame_to_copy.flags.begin(),
+              frame_to_copy.flags.end(),
+              flags.begin());
+
+    // Copy gains
+    std::copy(frame_to_copy.gain.begin(),
+              frame_to_copy.gain.end(),
+              gain.begin());
 }
 
 struct_layout visFrameView::calculate_buffer_layout(
@@ -150,9 +214,11 @@ struct_layout visFrameView::calculate_buffer_layout(
     std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
         std::make_tuple("vis", sizeof(cfloat), num_prod),
         std::make_tuple("weight", sizeof(float),  num_prod),
+        std::make_tuple("flags", sizeof(float),  num_elements),
         std::make_tuple("eval", sizeof(float),  num_ev),
         std::make_tuple("evec", sizeof(cfloat), num_ev * num_elements),
-        std::make_tuple("erms", sizeof(float),  1)
+        std::make_tuple("erms", sizeof(float),  1),
+        std::make_tuple("gain", sizeof(cfloat), num_elements)
     };
 
     return struct_alignment(buffer_members);

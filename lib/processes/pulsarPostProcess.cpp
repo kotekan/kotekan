@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "gpsTime.h"
 #include <functional>
 #include <string>
 
@@ -31,7 +32,7 @@ pulsarPostProcess::pulsarPostProcess(Config& config_,
         std::bind(&pulsarPostProcess::main_thread, this)){
 
     apply_config(0);
-    assert(_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
+    assert (_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
@@ -69,6 +70,14 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
                 uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr]*100);
                 uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr]+90)*100);
                 vdif_header->eud4 = ((ra_part<<16) & 0xFFFF0000) + (dec_part & 0xFFFF);
+                struct timespec time_now_from_compute;
+                time_now_from_compute = compute_gps_time(fpga_now);
+                if (time_now->tv_sec != time_now_from_compute.tv_sec) {
+		  ERROR("[Time Check] mismatch in fill header packet=%d beam=%d time_now->tv_sec=%ld time_now_from_compute.tv_sec=%ld", i, psr, time_now->tv_sec, time_now_from_compute.tv_sec);
+                }
+                if (time_now->tv_nsec != time_now_from_compute.tv_nsec) {
+		  ERROR("[Time Check] mismatch in fill header packet=%d beam=%d time_now->tv_nsec=%ld time_now_from_compute.tv_nsec=%ld", i, psr, time_now->tv_nsec, time_now_from_compute.tv_nsec);
+                }
                 if (_timesamples_per_pulsar_packet == 3125) {
                     memcpy(&out_buf[(f*_num_pulsar+psr)*_num_packet_per_stream*_udp_pulsar_packet_size + i*_udp_pulsar_packet_size], vdif_header, sizeof(struct VDIFHeader));
                 }
@@ -80,21 +89,25 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
         //Increment time for the next frame
         time_now->tv_nsec +=_timesamples_per_pulsar_packet*2560;
         if (time_now->tv_nsec > 999999999) {
+            time_now->tv_sec += (uint)(time_now->tv_nsec / 1000000000.);
             time_now->tv_nsec = time_now->tv_nsec % 1000000000;
-            time_now->tv_sec += (uint)(time_now->tv_nsec / 1000000000);
         }
     } //end packet
 }
 
 void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
-    _num_gpus = config.get_int(unique_name, "num_gpus");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _num_pol = config.get_int(unique_name, "num_pol");
-    _timesamples_per_pulsar_packet = config.get_int(unique_name, "timesamples_per_pulsar_packet");
-    _udp_pulsar_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
-    _num_packet_per_stream = config.get_int(unique_name, "num_packet_per_stream");
-    _num_stream = config.get_int(unique_name, "num_stream");
+    _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
+    _samples_per_data_set = config.get<uint32_t>(unique_name,
+                                                 "samples_per_data_set");
+    _num_pulsar = config.get<uint32_t>(unique_name, "num_pulsar");
+    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
+    _timesamples_per_pulsar_packet = config.get<uint32_t>(
+                unique_name, "timesamples_per_pulsar_packet");
+    _udp_pulsar_packet_size = config.get<uint32_t>(unique_name,
+                                                   "udp_pulsar_packet_size");
+    _num_packet_per_stream = config.get<uint32_t>(unique_name,
+                                                  "num_packet_per_stream");
+    _num_stream = config.get<uint32_t>(unique_name, "num_stream");
 }
 
 void pulsarPostProcess::main_thread() {
@@ -157,9 +170,6 @@ void pulsarPostProcess::main_thread() {
         }
         uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 
-        //GPS time, need ch_master
-        time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
-
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             assert(first_seq_number ==
                    (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
@@ -168,14 +178,34 @@ void pulsarPostProcess::main_thread() {
             freq_ids[i] = bin_number_chime(&stream_id);
         }
 
+
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
             // testing sync code
             startup = 0;
-	    uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
-	    current_input_location = seq_number_offset;
-	    first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
 
+            //GPS time, need ch_master
+	    time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
+
+	    struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
+	    if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
+	        ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld time_now_from_compute2.tv_sec=%ld", time_now.tv_sec, time_now_from_compute2.tv_sec);
+	    }
+	    if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
+	       ERROR("[Time Check] mismatch in execute time_now.tv_nsec=%ld time_now_from_compute2.tv_nsec=%ld", time_now.tv_nsec, time_now_from_compute2.tv_nsec);
+	    }
+	    if (is_gps_global_time_set() != 1) {
+  	        ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set() );
+	    }
+            uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+            current_input_location = seq_number_offset;
+            first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
+            time_now.tv_nsec +=seq_number_offset*2560;
+            if (time_now.tv_nsec > 999999999) {
+                time_now.tv_sec += (uint)(time_now.tv_nsec / 1000000000.);
+                time_now.tv_nsec = time_now.tv_nsec % 1000000000;
+            }
+            
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
             fill_headers((unsigned char*)out_frame,
