@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
         std::cout << s.first << " - " << s.second->data_to_json().dump()
                   << std::endl;
 
-    usleep(2000000);
+    usleep(1000000);
 }
 
 
@@ -126,5 +126,5 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
                   << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(2000000);
+    usleep(1000000);
 }
