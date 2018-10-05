@@ -287,7 +287,7 @@ zero_samples:
 #            - lost_samples_buffer_3
 
 baseband:
-    max_dump_samples: 100000
+    max_dump_samples: 400000
     #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
     num_frames_buffer: 110
     base_dir: /mnt/frb-archiver/
@@ -776,7 +776,10 @@ pulsar:
       - 10.16.50.13
       - 10.15.50.14
       - 10.16.50.15
-#      - 10.15.50.16
+      - 10.15.50.16
+      - 10.16.50.17
+#      - 10.15.50.18
+#      - 10.16.50.19
 
 
 #### N2 GPU Post processing and Tx ####
@@ -833,7 +836,7 @@ eigcalc:
   num_diagonals_filled: 30
   cpu_affinity: [4, 10]
   exclude_inputs: [
-      84,  206,  319,  550,  638,  688,  742,  784,  971, 1020, 1023,
+      84,  142,  319,  550,  638,  688,  742,  784,  971, 1020, 1023,
     1058, 1166, 1225, 1285, 1380, 1521, 1738, 1794, 1982, 1984, 1987
   ]
   eig0:

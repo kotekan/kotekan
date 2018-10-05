@@ -6,7 +6,7 @@
 # Find the AMD clang
 # This should really test something about the clang to
 # see if it is the AMD varient, and not just check a known path.
-find_program(AMD_CLANG clang PATH /opt/rocm/hcc-1.0/bin/ /opt/amd/llvm/bin/ NO_DEFAULT_PATH)
+find_program(AMD_CLANG clang PATH /opt/rocm/hcc/bin/ /opt/rocm/hcc-1.0/bin/ /opt/amd/llvm/bin/ NO_DEFAULT_PATH)
 if(NOT AMD_CLANG)
     message(FATAL_ERROR "AMD clang not found!")
 else()

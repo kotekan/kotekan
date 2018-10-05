@@ -1,5 +1,6 @@
 #include "Config.hpp"
 #include "errors.h"
+#include "visUtil.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -12,6 +13,30 @@
 #endif
 
 using std::vector;
+
+// Instantiation of the most common types to prevent them being built inline
+// everywhere used.
+template float Config::get(const string& base_path, const string& name);
+template double Config::get(const string& base_path, const string& name);
+template uint32_t Config::get(const string& base_path, const string& name);
+template uint64_t Config::get(const string& base_path, const string& name);
+template int32_t Config::get(const string& base_path, const string& name);
+template int16_t Config::get(const string& base_path, const string& name);
+template uint16_t Config::get(const string& base_path, const string& name);
+template bool Config::get(const string& base_path, const string& name);
+template std::string Config::get(const string& base_path, const string& name);
+template std::vector<int32_t> Config::get(const string& base_path,
+                                          const string& name);
+template std::vector<uint32_t> Config::get(const string& base_path,
+                                           const string& name);
+template std::vector<float> Config::get(const string& base_path,
+                                        const string& name);
+template std::vector<std::string> Config::get(const string& base_path,
+                                              const string& name);
+template std::vector<nlohmann::json> Config::get(const string& base_path,
+                                                 const string& name);
+template std::vector<std::complex<float>> Config::get(const string& base_path,
+                                                      const string& name);
 
 Config::Config() {
 }
