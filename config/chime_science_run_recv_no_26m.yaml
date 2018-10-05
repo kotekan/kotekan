@@ -62,7 +62,7 @@ vis_buffer:
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
 # Subset of good frequencies to output whole for monitoring
-mfreq: &mfreq [107, 214, 262, 344, 425, 519, 619, 726, 775, 938]
+mfreq: &mfreq [107, 344, 619, 938]
 
 allfreq: &allfreq [
           0,    1,    2,    3,    4,    5,    6,    7,    8,    9,   10,   11,   12,   13,   14,   15,   16,
@@ -194,7 +194,7 @@ stacking:
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
-  exclude_inputs: [206, 1166, 1225, 1521]
+  exclude_inputs: [142, 1166, 1225, 1521]
   num_threads: 2
   cpu_affinity: [2, 3]
 
@@ -214,7 +214,7 @@ cal_subset:
 
 timing_subset_params: &timing_subset_params
   prod_subset_type: only_inputs
-  input_list: [206, 1166]
+  input_list: [142, 1166]
 
 timing_subset:
   kotekan_process: prodSubset
@@ -263,7 +263,7 @@ archive_writers:
 
   file_length: 512
   file_type: raw
-  write_ev: True
+  write_ev: False
   weights_type: inverse_var
   root_path: /data/untransposed/
 
@@ -293,6 +293,7 @@ archive_writers:
     in_buf: visbuf_10s_cal
     prod_subset_type: autos
     instrument_name: chimecal
+    write_ev: True
     file_length: 256
     << : *cal_subset_params
 
