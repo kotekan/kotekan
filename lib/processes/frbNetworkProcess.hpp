@@ -76,7 +76,7 @@ private:
   int udp_frb_port_number;
 
   /// node ip addresses
-  std::string my_ip_address[4];
+  char **my_ip_address;
 
   /// number of L0 nodes
   int number_of_nodes;
@@ -104,6 +104,19 @@ private:
   
   //Beam Configuration Mode
   bool column_mode;
+  
+  /// array of local file descriptors
+  int *sock_fd;
+
+  /// array of socket endpoint addresses for pulsar links
+  struct sockaddr_in *server_address;
+
+  /// array of socket endpoint addresses for local links
+  struct sockaddr_in *myaddr;
+
+  /// array of socket ids
+  int *ip_socket;
+
 };
  
 #endif

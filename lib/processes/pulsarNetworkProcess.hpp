@@ -73,7 +73,7 @@ private:
   int udp_pulsar_port_number;
 
   /// node ip addresses
-  std::string my_ip_address[2];
+  char **my_ip_address;
   
   /// number of L0 nodes
   int number_of_nodes;
@@ -92,6 +92,20 @@ private:
 
   /// packets per stream in a buffer frame
   int num_packet_per_stream; 
+
+  /// local socket file descriptor 
+  int *sock_fd;
+
+  /// array of remote endpoint addresses 
+  struct sockaddr_in *server_address;
+    
+  /// array of local endpoint addresses
+  struct sockaddr_in *myaddr;
+
+  /// array of socket ids
+  int *socket_ids;
+
+
 };
  
 #endif
