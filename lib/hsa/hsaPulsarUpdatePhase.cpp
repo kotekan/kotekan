@@ -63,7 +63,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     host_phase_0 = (float *)hsa_host_malloc(phase_frame_len);
     host_phase_1 = (float *)hsa_host_malloc(phase_frame_len);
     int index = 0;
-    for (int b=0; b < _num_pulsar*_num_elements; b++){
+    for (uint b=0; b < _num_pulsar*_num_elements; b++){
         host_phase_0[index++] = 0;
         host_phase_0[index++] = 0;
     }
@@ -72,7 +72,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_use_0 = 0;
     bank_use_1 = 0;
     second_last = 0;
-    
+
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();

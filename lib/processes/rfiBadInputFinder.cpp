@@ -150,8 +150,10 @@ void rfiBadInputFinder::main_thread() {
         //Get a frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
+#ifdef DEBUGGING
         //Reset Timer
         double start_time = e_time();
+#endif
         //Copy frame data to array
         memcpy(rfi_data, frame, rfi_buf->frame_size);
         //Add frame metadata to header

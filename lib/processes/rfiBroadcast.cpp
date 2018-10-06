@@ -193,8 +193,10 @@ void rfiBroadcast::main_thread() {
                                 perc_zeroed.average(),
                                 tags);
 
+#ifdef DEBUGGING
             //Reset Timer (can't time previous loop due to wait for frame blocking call)
             double start_time = e_time();
+#endif
             //Loop through each link to send data seperately
             for(j = 0; j < total_links; j++){
                 //Normalize Sum (Take Average)
