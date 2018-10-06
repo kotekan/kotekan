@@ -104,7 +104,7 @@ void computeDualpolPower::main_thread() {
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
 
-        DEBUG("TIME USED FOR INTEGRATION: %fms\n",(etime()-start_time)*1000);
+        DEBUG("TIME USED FOR INTEGRATION: %fms\n",(e_time()-start_time)*1000);
 
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
