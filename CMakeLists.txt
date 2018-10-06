@@ -5,7 +5,9 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 # This is required early on for some versions of GCC, do not remove.
 add_definitions(/D__STDC_FORMAT_MACROS)
 
-cmake_policy(SET CMP0075 NEW)
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.12.0") 
+    cmake_policy(SET CMP0075 NEW)
+endif ()
 
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
