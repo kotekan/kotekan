@@ -263,7 +263,7 @@ protected:
         // This case deals with each addational handler checking if it has the same
         // first seq number.
         if (seq_num != alignment_first_seq) {
-            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %d" PRIu64 "",
+            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %" PRIu64 "",
                   port, seq_num, alignment_first_seq);
             return false;
         }
@@ -279,56 +279,6 @@ protected:
      * @return The json object containing port info
      */
     json get_json_port_info();
-
-    /**
-     * @brief Function to ensure all handlers align to the same FPGA seq number
-     *
-     * This function must be called at least once with
-     * @c check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
-     * In order to initalize the alignment seq number
-     *
-     * @param seq_num The seq number which should be aligned too.
-     * @return true if the alignment is good, or this is the first handler to call this function
-     *         false if the alignment fails.
-     */
-    inline bool check_cross_handler_alignment(uint64_t seq_num) {
-
-        /// Alignment mutex
-        static std::mutex alignment_mutex;
-
-        /// The first seq number seen by each handler
-        static uint64_t alignment_first_seq;
-
-        std::lock_guard<std::mutex> alignment_lock(alignment_mutex);
-
-        // This provides a way to init the alignment_first_seq to a fixed constand before we start
-        // getting packets.
-        if (seq_num == std::numeric_limits<uint64_t>::max()) {
-            alignment_first_seq = std::numeric_limits<uint64_t>::max();
-            DEBUG("Setting alignment value to MAX=%" PRIu64 "", alignment_first_seq);
-            return true;
-        }
-
-        // This case deals with the first handler setting it's seq number.
-        if (seq_num != alignment_first_seq &&
-            alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
-            DEBUG("Port %d: Got first alignemnt value of %" PRIu64 "", port, seq_num);
-            alignment_first_seq = seq_num;
-            return true;
-        }
-
-        // This case deals with each addational handler checking if it has the same
-        // first seq number.
-        if (seq_num != alignment_first_seq) {
-            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %d" PRIu64 "",
-                  port, seq_num, alignment_first_seq);
-            return false;
-        }
-
-        // Addational handler(s) got the same first seq number.
-        DEBUG("Port %d: Got alignemnt value of %" PRIu64 "", port, seq_num);
-        return true;
-    }
 
     /// The FPAG seq number of the current packet being processed
     uint64_t cur_seq = 0;
