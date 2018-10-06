@@ -8,9 +8,9 @@ hsaPresumKernel::hsaPresumKernel(
     hsaCommand("CHIME_presum","presum.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
 

@@ -126,6 +126,19 @@ void from_json(const json& j, time_ctype& f);
 void from_json(const json& j, stack_ctype& f);
 void from_json(const json& j, rstack_ctype& f);
 
+// Conversion of std::complex<T> to and from json
+namespace std {
+    template<class T>
+    void to_json(json& j, const std::complex<T>& p) {
+        j = json{{"real", p.real()}, {"imag", p.imag()}};
+    }
+
+    template<class T>
+    void from_json(const json& j, std::complex<T>& p) {
+        p = std::complex<T>{j.at("real").get<T>(), j.at("imag").get<T>()};
+    }
+}
+
 /**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.

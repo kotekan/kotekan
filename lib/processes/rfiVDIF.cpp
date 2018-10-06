@@ -31,12 +31,12 @@ rfiVDIF::~rfiVDIF() {
 
 void rfiVDIF::apply_config(uint64_t fpga_seq) {
     //General data paramters
-    _num_elements = config.get_int(unique_name,"num_elements");
-    _num_local_freq = config.get_int(unique_name,"num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
+    _num_elements = config.get<uint32_t>(unique_name,"num_elements");
+    _num_local_freq = config.get<uint32_t>(unique_name,"num_local_freq");
+    _samples_per_data_set = config.get<uint32_t>(unique_name,"samples_per_data_set");
     //Rfi parameters
-    _rfi_combined = config.get_bool_default(unique_name,"rfi_combined",true);
-    _sk_step = config.get_int_default(unique_name,"sk_step", 256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined",true);
+    _sk_step = config.get_default<uint32_t>(unique_name,"sk_step", 256);
 }
 
 void rfiVDIF::main_thread() {

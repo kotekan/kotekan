@@ -79,17 +79,19 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
 }
 
 void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _factor_upchan = config.get_int(unique_name, "factor_upchan");
-    _downsample_time = config.get_int(unique_name, "downsample_time");
-    _downsample_freq = config.get_int(unique_name, "downsample_freq");
-    _reorder_map = config.get_int_array(unique_name, "reorder_map");
-    _gain_dir = config.get_string(unique_name, "gain_dir");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
+    _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
+    _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
+    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
+    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
-    default_gains = config.get_float_array_default(unique_name,"frb_missing_gains",dg);
+    default_gains = config.get_default<std::vector<float>>(
+            unique_name, "frb_missing_gains", dg);
 
-    scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
+    scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){

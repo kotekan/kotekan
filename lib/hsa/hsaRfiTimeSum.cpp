@@ -12,11 +12,12 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
     hsaCommand("rfi_chime_timesum", "rfi_chime_timesum_private.hsaco", config, unique_name, host_buffers, device){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
     //RFI Config Parameters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     //Compute Buffer lengths
     input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
     output_frame_len = sizeof(float)*_num_local_freq*_num_elements*_samples_per_data_set/_sk_step;
@@ -26,11 +27,9 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {
-    restServer::instance().remove_json_callback(endpoint);
 }
 
 hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
-    std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {
         void *input;

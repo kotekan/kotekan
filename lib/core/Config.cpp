@@ -1,6 +1,6 @@
 #include "Config.hpp"
 #include "errors.h"
-#include "configEval.hpp"
+#include "visUtil.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -13,6 +13,30 @@
 #endif
 
 using std::vector;
+
+// Instantiation of the most common types to prevent them being built inline
+// everywhere used.
+template float Config::get(const string& base_path, const string& name);
+template double Config::get(const string& base_path, const string& name);
+template uint32_t Config::get(const string& base_path, const string& name);
+template uint64_t Config::get(const string& base_path, const string& name);
+template int32_t Config::get(const string& base_path, const string& name);
+template int16_t Config::get(const string& base_path, const string& name);
+template uint16_t Config::get(const string& base_path, const string& name);
+template bool Config::get(const string& base_path, const string& name);
+template std::string Config::get(const string& base_path, const string& name);
+template std::vector<int32_t> Config::get(const string& base_path,
+                                          const string& name);
+template std::vector<uint32_t> Config::get(const string& base_path,
+                                           const string& name);
+template std::vector<float> Config::get(const string& base_path,
+                                        const string& name);
+template std::vector<std::string> Config::get(const string& base_path,
+                                              const string& name);
+template std::vector<nlohmann::json> Config::get(const string& base_path,
+                                                 const string& name);
+template std::vector<std::complex<float>> Config::get(const string& base_path,
+                                                      const string& name);
 
 Config::Config() {
 }
@@ -34,223 +58,14 @@ void Config::parse_file(const string& file_name) {
     }
 }
 
-int32_t Config::get_int(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_number_integer() && !value.is_number_float() ) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an integer or doesn't exist");
-    }
-    return value.get<int32_t>();
-}
-
-uint32_t Config::get_uint32(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_number_integer() && !value.is_number_float() ) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an integer or doesn't exist");
-    }
-    return value.get<uint32_t>();
-}
-
-uint64_t Config::get_uint64(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_number_integer() && !value.is_number_float() ) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an integer or doesn't exist");
-    }
-    return value.get<uint64_t>();
-}
-
-int32_t Config::get_int_default(const string& base_path, const string& name, int32_t default_value) {
-    try {
-        int32_t value = get_int(base_path, name);
-        return value;
-    } catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-uint64_t Config::get_uint64_default(const string& base_path, const string& name, uint64_t default_value) {
-    try {
-        uint64_t value = get_uint64(base_path, name);
-        return value;
-    } catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-uint32_t Config::get_uint32_default(const string& base_path, const string& name, uint32_t default_value) {
-    try {
-        uint32_t value = get_uint32(base_path, name);
-        return value;
-    } catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-int32_t Config::get_int_eval(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a number or string to eval or doesn't exist");
-    }
-    return eval_compute_int64(*this, base_path, value.get<string>());
-}
-
-double Config::get_double(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_number()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a double or doesn't exist");
-    }
-    return value.get<double>();
-}
-
-double Config::get_double_default(const string& base_path, const string& name, double default_value) {
-    try {
-        double value = get_double(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-double Config::get_double_eval(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a number or string to eval or doesn't exist");
-    }
-    return eval_compute_double(*this, base_path, value.get<string>());
-}
-
-float Config::get_float(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_number_float()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a float or doesn't exist");
-    }
-    return value.get<float>();
-}
-
-float Config::get_float_default(const string& base_path, const string& name, float default_value) {
-    try {
-        float value = get_float(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-string Config::get_string(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_string()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a string or doesn't exist");
-    }
-    return value.get<string>();
-}
-
-string Config::get_string_default(const string& base_path, const string& name, const string& default_value) {
-    try {
-        string value = get_string(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-bool Config::get_bool(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_boolean()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't a boolean or doesn't exist");
-    }
-    return value.get<bool>();
-}
-
-bool Config::get_bool_default(const string& base_path, const string& name, bool default_value) {
-    try {
-        bool value = get_bool(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-vector<int32_t> Config::get_int_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<int32_t> >();
-}
-
-vector<double> Config::get_double_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<double> >();
-}
-
-vector<float> Config::get_float_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<float> >();
-}
-
-vector<int32_t> Config::get_int_array_default(const string& base_path, const string& name, vector<int32_t> default_value) {
-    try {
-        vector<int32_t> value = get_int_array(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-
-}
-
-vector<float> Config::get_float_array_default(const string& base_path, const string& name, vector<float> default_value) {
-    try {
-        vector<float> value = get_float_array(base_path, name);
-        return value;
-    }  catch (std::exception const & ex) {
-        return default_value;
-    }
-}
-
-vector<string> Config::get_string_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-    return value.get< vector<string> >();
-}
-
-vector<json> Config::get_json_array(const string& base_path, const string& name) {
-    json value = get_value(base_path, name);
-
-    if (!value.is_array()) {
-        throw std::runtime_error("The value " + name + " in path " + base_path + " isn't an array or doesn't exist");
-    }
-
-    return value.get< vector<json> >();
-}
-
 void Config::update_config(json updates) {
     _json = updates;
 }
 
 int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
 
-    int32_t num_links = get_int("/", "num_links");
-    vector<int32_t> link_map = get_int_array("/", "link_map");
+    int32_t num_links = get<int32_t>("/", "num_links");
+    vector<int32_t> link_map = get<std::vector<int32_t>>("/", "link_map");
     int32_t gpus_in_link = 0;
 
     for (int i = 0; i < num_links; ++i) {

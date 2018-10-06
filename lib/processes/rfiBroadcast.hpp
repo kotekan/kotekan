@@ -14,6 +14,8 @@
 #include "restServer.hpp"
 #include "chimeMetadata.h"
 #include "rfi_functions.h"
+#include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
 
 /*
  * @class rfiBroadcast
@@ -61,11 +63,15 @@ public:
     void main_thread();
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
+    //Callback function called by rest server
+    void rest_zero(connectionInstance& conn);
     //Intializes config variables
     virtual void apply_config(uint64_t fpga_seq);
 private:
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer *rfi_buf;
+    /// Kotekan buffer containing kurtosis estimates
+    struct Buffer *rfi_mask_buf;
     //General Config Parameters
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
@@ -97,8 +103,14 @@ private:
     int socket_fd;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
+    /// Rest server callback mutex
+    std::mutex rest_zero_callback_mutex;
     /// String to hold endpoint
     string endpoint;
+    /// String to hold endpoint
+    string endpoint_zero;
+    /// Moving average of frame zeroing percentage to send to prometheus
+    movingAverage perc_zeroed;
 };
 
 #endif

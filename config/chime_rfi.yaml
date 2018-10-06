@@ -46,7 +46,8 @@ frb_scaling: 0.05 #1.0
 #RFI stuff
 sk_step: 256
 rfi_combined: True
-bad_inputs: []
+rfi_sigma_cut: 5
+rfi_add_lostsamples: True
 
 # Pool
 main_pool:
@@ -106,6 +107,19 @@ gpu_rfi_output_buffers:
     gpu_rfi_output_buffer_3:
         kotekan_buffer: standard
 
+gpu_rfi_mask_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / sk_step
+    metadata_pool: main_pool
+    gpu_rfi_mask_output_buffer_0:
+        kotekan_buffer: standard
+    gpu_rfi_mask_output_buffer_1:
+        kotekan_buffer: standard
+    gpu_rfi_mask_output_buffer_2:
+        kotekan_buffer: standard
+    gpu_rfi_mask_output_buffer_3:
+        kotekan_buffer: standard
+
 gpu_rfi_bad_input_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_float * num_elements * num_local_freq
@@ -125,18 +139,18 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
-duplicate_lost_samples_buffers:
-    num_frames: 2* buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
-    lost_samples_buffer_0:
-        kotekan_buffer: standard
-    lost_samples_buffer_1:
-        kotekan_buffer: standard
-    lost_samples_buffer_2:
-        kotekan_buffer: standard
-    lost_samples_buffer_3:
-        kotekan_buffer: standard
+#duplicate_lost_samples_buffers:
+#    num_frames: 2* buffer_depth
+#    frame_size: samples_per_data_set * num_local_freq * num_data_sets
+#    metadata_pool: main_pool
+#    lost_samples_buffer_0:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_1:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_2:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_3:
+#        kotekan_buffer: standard
 
 #Processes
 #gen_data:
@@ -184,7 +198,7 @@ dpdk:
     lost_samples_buf: lost_samples_buffer
 
 zero_samples:
-    duplicate_ls_buffer: True
+    duplicate_ls_buffer: False
     lost_samples_buf: lost_samples_buffer
     zero_0:
         kotekan_process: zeroSamples
@@ -212,21 +226,23 @@ gpu:
   gain_dir: "../../kotekan/"
   commands:
   - name: hsaInputData
-  - name: hsaInputLostSamples
+#  - name: hsaInputLostSamples
   - name: hsaPresumZero
   - name: hsaOutputDataZero
   - name: hsaBarrier
   - name: hsaPresumKernel
+  - name: hsaRfiTimeSum
+  - name: hsaRfiBadInput
+  - name: hsaRfiInputSum
+  - name: hsaRfiZeroData
   - name: hsaCorrelatorKernel
 #  - name: hsaBeamformReorder
 #  - name: hsaBeamformKernel
 #  - name: hsaBeamformTranspose
 #  - name: hsaBeamformUpchan
 #  - name: hsaBeamformOutputData
-  - name: hsaRfiTimeSum
-  - name: hsaRfiBadInput
-  - name: hsaRfiInputSum
   - name: hsaRfiBadInputOutput
+  - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
   - name: hsaOutputData
   enable_delay: true
@@ -238,79 +254,92 @@ gpu:
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
-    gpu_id: 0
+    gpu_id: 0    
+    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
     in_buffers:
       network_buf: network_buffer_0
-      lost_samples_buf: lost_samples_buffer_0
+#      lost_samples_buf: lost_samples_buffer_0
     out_buffers:
       output_buf: gpu_output_buffer_0
       beamform_output_buf: beamform_output_buffer_0
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
   gpu_1:
     kotekan_process: hsaProcess
     gpu_id: 1
+    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
     in_buffers:
       network_buf: network_buffer_1
-      lost_samples_buf: lost_samples_buffer_1
+#      lost_samples_buf: lost_samples_buffer_1
     out_buffers:
       output_buf: gpu_output_buffer_1
       beamform_output_buf: beamform_output_buffer_1
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
   gpu_2:
     kotekan_process: hsaProcess
     gpu_id: 2
+    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
     in_buffers:
       network_buf: network_buffer_2
-      lost_samples_buf: lost_samples_buffer_2
+#      lost_samples_buf: lost_samples_buffer_2
     out_buffers:
       output_buf: gpu_output_buffer_2
       beamform_output_buf: beamform_output_buffer_2
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
   gpu_3:
     kotekan_process: hsaProcess
     gpu_id: 3
+    bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
     in_buffers:
       network_buf: network_buffer_3
-      lost_samples_buf: lost_samples_buffer_3
+#      lost_samples_buf: lost_samples_buffer_3
     out_buffers:
       output_buf: gpu_output_buffer_3
       beamform_output_buf: beamform_output_buffer_3
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
 
 rfi_broadcast:
   log_level: DEBUG
   total_links: 1
   destination_protocol: UDP
   destination_ip: 10.1.113.19
-#  destination_ip: 10.1.13.1
-#  destination_ip: 127.0.0.1
+##  destination_ip: 10.1.13.1
+##  destination_ip: 127.0.0.1
   gpu_0:
     frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_0
+    rfi_mask: gpu_rfi_mask_output_buffer_0
     destination_port: 41215
   gpu_1:
     frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_1
+    rfi_mask: gpu_rfi_mask_output_buffer_1
     destination_port: 41216
   gpu_2:
     frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_2
+    rfi_mask: gpu_rfi_mask_output_buffer_2
     destination_port: 41217
   gpu_3:
     frames_per_packet: 1
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_3
+    rfi_mask: gpu_rfi_mask_output_buffer_3
     destination_port: 41218
 
 rfi_bad_input_finder:
-  destination_ip: 10.1.113.19
+  log_level: DEBUG
+  destination_ip: 10.1.13.1
   destination_port: 41219
   gpu_0:
     bi_frames_per_packet: 10
@@ -352,8 +381,12 @@ rfi_record:
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_3
 
+buffer_status:
+  kotekan_process: bufferStatus
+  time_delay: 5000000
+
 #RFI Live-view Paramters
 waterfallX: 1024
 num_receive_threads: 4
-colorscale: 0.03
+colorscale: 0.028
 waterfall_request_delay: 60

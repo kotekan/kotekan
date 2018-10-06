@@ -52,10 +52,11 @@ gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
 }
 
 void gpuBeamformPulsarSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _num_pol = config.get_int(unique_name, "num_pol");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _num_pol = config.get<int32_t>(unique_name, "num_pol");
 }
 
 void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double *input_unpacked, double *phase, unsigned char *cpu_output, int _samples_per_data_set, int _num_elements, int _num_pulsar, int _num_pol)

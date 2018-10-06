@@ -19,9 +19,9 @@ recvSingleDishVDIF::~recvSingleDishVDIF() {
 }
 
 void recvSingleDishVDIF::apply_config(uint64_t fpga_seq) {
-    num_freq = config.get_int(unique_name,"num_freq");
-    orig_port = config.get_int(unique_name,"orig_port");
-    orig_ip = config.get_string(unique_name,"orig_ip");
+    num_freq = config.get<int>(unique_name,"num_freq");
+    orig_port = config.get<uint32_t>(unique_name,"orig_port");
+    orig_ip = config.get<std::string>(unique_name,"orig_ip");
 }
 
 void recvSingleDishVDIF::main_thread() {

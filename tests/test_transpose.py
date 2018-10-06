@@ -15,7 +15,8 @@ writer_params = {
     'total_frames': 10,  # One extra sample to ensure we actually get 256
     'freq': [3, 777, 554],
     'chunk_size': [2, 6, 5],
-    'mode': 'gaussian_random',
+    'mode': 'test_pattern_simple',
+    'test_pattern_value': [0, 0],
     'file_type': 'hdf5fast'
 }
 
@@ -40,7 +41,26 @@ def transpose(tmpdir_factory):
         num_frames=writer_params['total_frames'],
         cadence=writer_params['cadence'],
         mode=writer_params['mode'],
+        test_pattern_value=writer_params['test_pattern_value']
     )
+
+    # Remove the last frequency to test handling of empty frames
+    fsel_buf_name = "fake_freqsel"
+    fsel_buf = { fsel_buf_name: {
+            'kotekan_buffer': 'vis',
+            'metadata_pool': 'vis_pool',
+            'num_frames': 'buffer_depth',
+        }
+    }
+    fakevis_buffer.buffer_block.update(fsel_buf)
+    fakevis_buffer.process_block.update({"fakevis_fsel": {
+            "kotekan_process": "freqSubset",
+            "in_buf": fakevis_buffer.name,
+            "out_buf": fsel_buf_name,
+            "subset_list": writer_params['freq'][:-1]
+        }
+    })
+    fakevis_buffer.name = fsel_buf_name
 
     # Write fake data in hdf5 format
     tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
@@ -61,7 +81,8 @@ def transpose(tmpdir_factory):
         None,
         params,
         parallel_process_type = 'visWriter',
-        parallel_process_config = dumph5_conf
+        parallel_process_config = dumph5_conf,
+        noise="random"
     )
 
     writer.run()
@@ -142,13 +163,17 @@ def test_transpose(transpose):
     assert f_tr['flags/inputs'].shape == (n_elems, n_t)
     assert f_tr['flags/frac_lost'].shape == (n_f, n_t)
 
-    assert (f_tr['flags/frac_lost'][:] == 0.).all()
+    assert (f_tr['flags/frac_lost'][:n_f-1,:] == 0.).all()
+    assert (f_tr['flags/frac_lost'][-1:,:] == 1.).all()
 
     # transpose with numpy and see if data is the same
     dsets = ['vis', 'flags/vis_weight',
              'eval', 'evec', 'erms']
     for d in dsets:
         assert np.all(f_tr[d][:] == np.moveaxis(f[d], 0, -1))
+
+    # Check flags were not overwritten by empty frames
+    assert (f_tr['flags/inputs'][:] == 1.).all()
 
 @pytest.fixture(scope="module")
 def transpose_stack(tmpdir_factory):

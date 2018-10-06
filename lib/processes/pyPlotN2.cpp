@@ -20,7 +20,7 @@ pyPlotN2::pyPlotN2(Config& config, const string& unique_name,
 {
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
-    gpu_id = config.get_int(unique_name, "gpu_id");
+    gpu_id = config.get<int>(unique_name, "gpu_id");
     in_local = (unsigned char*)malloc(buf->frame_size);
     endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);
 }
@@ -83,7 +83,7 @@ void pyPlotN2::make_plot(void)
     FILE *python_script;
     python_script = popen("python -u /usr/sbin/pyPlotN2.py","w");
     { // N^2
-        uint num_elements = config.get_int(unique_name, "num_elements");
+        uint num_elements = config.get<uint>(unique_name, "num_elements");
         uint block_dim = 32;
         uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
         uint block_size = block_dim*block_dim*2; //real, complex

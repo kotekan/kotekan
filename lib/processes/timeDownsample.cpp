@@ -19,7 +19,7 @@ timeDownsample::timeDownsample(Config &config,
     register_producer(out_buf, unique_name.c_str());
 
     // Get the number of time samples to combine
-    nsamp = config.get_int_default(unique_name, "num_samples", 2);
+    nsamp = config.get_default<int>(unique_name, "num_samples", 2);
 
     nprod = num_elements * (num_elements + 1) / 2;
 

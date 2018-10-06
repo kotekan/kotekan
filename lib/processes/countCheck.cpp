@@ -20,7 +20,8 @@ countCheck::countCheck(Config& config,
     register_consumer(in_buf, unique_name.c_str());
 
     // Fetch tolerance from config.
-    start_time_tolerance = config.get_int_default(unique_name, "start_time_tolerance", 3);
+    start_time_tolerance = config.get_default<int>(
+                unique_name, "start_time_tolerance", 3);
 
     // Initialize the start_time to zero:
     start_time = 0;

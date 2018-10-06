@@ -4,6 +4,8 @@
 
 #include "frbPostProcess.hpp"
 
+#include <immintrin.h>
+
 REGISTER_KOTEKAN_PROCESS(frbPostProcess);
 
 frbPostProcess::frbPostProcess(Config& config_,
@@ -28,7 +30,9 @@ frbPostProcess::frbPostProcess(Config& config_,
     frb_header_scale = new float[_nbeams * _num_gpus];
     frb_header_offset = new float[_nbeams * _num_gpus];
 
-    ib = (float*)aligned_alloc(32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float));
+    if (posix_memalign((void**)&ib,32,_num_gpus * num_samples * _factor_upchan_out * sizeof(float))){
+        throw std::runtime_error("Couldn't allocate frbPostProcess memory.");
+    }
 }
 
 frbPostProcess::~frbPostProcess() {
@@ -59,17 +63,21 @@ void frbPostProcess::write_header(unsigned char * dest){
 
 void frbPostProcess::apply_config(uint64_t fpga_seq) {
 
-    _num_gpus = config.get_int(unique_name, "num_gpus");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _downsample_time = config.get_int(unique_name, "downsample_time");
-    _factor_upchan = config.get_int(unique_name, "factor_upchan");
-    _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
-    _nbeams = config.get_int(unique_name, "num_beams");
-    _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
+    _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
+    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
+    _factor_upchan_out = config.get<int32_t>(unique_name, "factor_upchan_out");
+    _nbeams = config.get<int32_t>(unique_name, "num_beams");
+    _timesamples_per_frb_packet = config.get<int32_t>(
+                unique_name, "timesamples_per_frb_packet");
 
     vector<int32_t>bd;
-    _incoherent_beams = config.get_int_array_default(unique_name,"incoherent_beams",bd);
-    _incoherent_truncation = config.get_float_default(unique_name, "incoherent_truncation",1e10);
+    _incoherent_beams = config.get_default<std::vector<int32_t>>(
+                unique_name, "incoherent_beams", bd);
+    _incoherent_truncation = config.get_default<float>(
+                unique_name, "incoherent_truncation", 1e10);
 
     num_L1_streams = 1024/_nbeams;
     num_samples = _samples_per_data_set / _downsample_time / _factor_upchan;
