@@ -273,6 +273,7 @@ protected:
         return true;
     }
 
+    /**
      * @brief Builds and returns a json object with all the port info
      *
      * @return The json object containing port info
