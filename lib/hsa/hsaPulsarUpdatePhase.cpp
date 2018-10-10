@@ -63,7 +63,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     host_phase_0 = (float *)hsa_host_malloc(phase_frame_len);
     host_phase_1 = (float *)hsa_host_malloc(phase_frame_len);
     int index = 0;
-    for (int b=0; b < _num_pulsar*_num_elements; b++){
+    for (uint b=0; b < _num_pulsar*_num_elements; b++){
         host_phase_0[index++] = 0;
         host_phase_0[index++] = 0;
     }

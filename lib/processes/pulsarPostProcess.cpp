@@ -151,7 +151,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.eud3 = 0;  // UD: fpga count low bit
     vdif_header.eud4 = 0;  // 16-b RA + 16-b Dec
 
-    int frame = 0;
+    uint frame = 0;
     uint in_frame_location = 0; //goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
@@ -244,7 +244,7 @@ void pulsarPostProcess::main_thread() {
                     float * in_buf_data = (float *)in_frame[thread_id];
                     for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
                         for (uint32_t p=0;p<_num_pol; ++p) {
-                            uint32_t out_index;
+                            uint32_t out_index=0;
                             if (_timesamples_per_pulsar_packet == 3125) {
                                 //freq->beam->packets->[time-pol]
                                 out_index = (thread_id*_num_pulsar+psr) *_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size 
