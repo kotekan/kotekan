@@ -118,7 +118,7 @@ private:
      * @param freq_now    freq of this gpu
      * @param freq_ref    reference freq, which determines the N-S extent of the beams
      */
-    void calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref);
+    void calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref);
 
     /**
      * @brief Calculate phase delays for the E-W beams
@@ -178,7 +178,7 @@ private:
     float * _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam 
-    float freq_ref;
+    double freq_ref;
 
     ///Flag to control gains to be only loaded on request.
     bool update_gains;

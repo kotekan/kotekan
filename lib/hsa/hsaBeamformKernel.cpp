@@ -139,7 +139,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref) {
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
