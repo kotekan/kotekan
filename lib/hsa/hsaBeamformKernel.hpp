@@ -47,8 +47,8 @@
  *              update config             ew_spacing[ew_id]
  * 
  * @par GPU Memory
- * @gpu_mem  input              Input data of size input_frame_len
- *     @gpu_mem_type            staging
+ * @gpu_mem  input_reordered    Input data of size input_frame_len
+ *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c uchar
  *     @gpu_mem_metadata        chimeMetadata
  * @gpu_mem  beamform_output    Output data of size output_frame_len
