@@ -32,7 +32,7 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 void visFileH5::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t num_ev, size_t max_time)
 {
     auto& dm = datasetManager::instance();
 
@@ -264,7 +264,7 @@ void visFileH5::write_sample(
 void visFileH5Fast::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time
+    dset_id_t dataset, size_t num_ev, size_t max_time
 ) {
     visFileH5::create_file(name, metadata, dataset, num_ev, max_time);
     setup_raw();

@@ -159,7 +159,6 @@ struct TestContext {
         json request;
         request["array"] = {1,2,3};
         request["flag"] = true;
-        INFO("Threaded test.");
 
         std::function<void(restReply)> fun = TestContext::rq_callback_pong;
         std::string path("test_restclient_pong");

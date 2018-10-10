@@ -17,8 +17,10 @@
 #define TIMEOUT_BROKER_SEC 30
 
 // Alias certain types to give semantic meaning to the IDs
-using dset_id = int32_t;
-using state_id = size_t;  // This is the output format of a std::hash (64bit so we shouldn't have collisions)
+// This is the output format of a std::hash
+// (64bit so we shouldn't have collisions)
+using dset_id_t = size_t;
+using state_id_t = size_t;
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -29,6 +31,85 @@ class datasetState;
 class datasetManager;
 
 using state_uptr = unique_ptr<datasetState>;
+
+/**
+ * @brief The description of a dataset consisting of a dataset state and a base
+ * dataset.
+ *
+ * A dataset is described by a dataset state applied to a base dataset. If the
+ * flag for this dataset being a root dataset (a dataset that has no base
+ * dataset), the base dataset ID value is not defined.
+ */
+class dataset {
+public:
+    /**
+    * @brief Dataset constructor.
+    * @param state      The state of this dataset.
+    * @param base_dset  The ID of the base datset.
+    * @param is_root    True if this is a root dataset (has no base dataset).
+    */
+    dataset(state_id_t state, dset_id_t base_dset, bool is_root = false)
+        : _state(state), _base_dset(base_dset), _is_root(is_root)
+    { }
+
+    /**
+     * @brief Dataset constructor from json object.
+     * The json object must have the following fields:
+     * is_root:     boolean
+     * state:       integer
+     * base_dset    integer
+     * @param js    Json object describing a dataset.
+     */
+    dataset(json& js);
+
+    /**
+     * @brief Access to the root dataset flag.
+     * @return True if this is a root dataset (has no base dataset),
+     * otherwise False.
+     */
+    const bool is_root() const;
+
+    /**
+     * @brief Access to the dataset state ID of this dataset.
+     * @return The dataset state ID.
+     */
+    const state_id_t state() const;
+
+    /**
+     * @brief Access to the ID of the base dataset.
+     * @return The base dataset ID. Undefined if this is a root dataset.
+     */
+    const dset_id_t base_dset() const;
+
+    /**
+     * @brief Hashes the dataset.
+     * @return A hash of the json serialization of this dataset.
+     */
+    const dset_id_t hash() const;
+
+    /**
+     * @brief Generates a json serialization of this dataset.
+     * @return A json serialization.
+     */
+    json to_json() const;
+
+    /**
+     * @brief Compare to another dataset.
+     * @param ds    Dataset to compare with.
+     * @return True if datasets identical, False otherwise.
+     */
+    const bool equals(dataset& ds) const;
+
+private:
+    /// Dataset state.
+    state_id_t _state;
+
+    /// Base dataset ID.
+    dset_id_t _base_dset;
+
+    /// Is this a root dataset?
+    bool _is_root;
+};
 
 /**
  * @brief A base class for representing state changes done to datasets.
@@ -379,7 +460,7 @@ public:
      * @param input ID of the input dataset.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id add_dataset(state_id trans, dset_id input);
+    dset_id_t add_dataset(const dataset ds);
 
     /**
      * @brief Register a state with the manager.
@@ -396,7 +477,7 @@ public:
      * state.
      **/
     template <typename T>
-    inline pair<state_id, const T*> add_state(
+    inline pair<state_id_t, const T*> add_state(
             unique_ptr<T>&& state,
             typename std::enable_if<is_base_of<datasetState, T>::value>::type*
             = 0);
@@ -413,14 +494,14 @@ public:
      *
      * @returns The set of states.
      **/
-    const map<state_id, const datasetState *> states() const;
+    const map<state_id_t, const datasetState *> states() const;
 
     /**
      * @brief Get a read-only vector of the datasets.
      *
      * @returns The set of datasets.
      **/
-    const std::map<dset_id, std::pair<state_id, dset_id> > datasets() const;
+    const std::map<dset_id_t, dataset> datasets() const;
 
     /**
      * @brief Get the states applied to generate the given dataset.
@@ -431,7 +512,7 @@ public:
      * @returns A vector of the dataset ID and the state that was
      *          applied to previous element in the vector to generate it.
      **/
-    const vector<pair<dset_id, datasetState *>> ancestors(dset_id dset) const;
+    const vector<pair<dset_id_t, datasetState *>> ancestors(dset_id_t dset) const;
 
     /**
      * @brief Find the closest ancestor of a given type.
@@ -443,10 +524,10 @@ public:
      * value of this function, use std::future.
      *
      * @returns The dataset ID and the state that generated it.
-     * Returns `{-1, nullptr}` if not found in ancestors.
+     * Returns `{<undefined>, nullptr}` if not found in ancestors.
      **/
     template<typename T>
-    inline pair<dset_id, const T*> closest_ancestor_of_type(dset_id) const;
+    inline pair<dset_id_t, const T*> closest_ancestor_of_type(dset_id_t) const;
 
 private:
 
@@ -462,13 +543,13 @@ private:
      * @note This deliberately isn't a method of datasetState itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    state_id hash_state(datasetState& state);
+    state_id_t hash_state(datasetState& state);
 
     /// register the given state with the dataset broker
-    static void register_state(state_id state);
+    static void register_state(state_id_t state);
 
     /// register the given dataset with the dataset broker
-    static void register_dataset(std::pair<state_id, dset_id> dset);
+    static void register_dataset(const dset_id_t hash, const dataset ds);
 
     /// callback function for register_state()
     static void register_state_callback(restReply reply);
@@ -481,24 +562,17 @@ private:
     static void register_dataset_callback(restReply reply);
 
     /// request the ancestors of the given dataset from the dataset broker
-    static void request_ancestors(dset_id dset);
+    static void request_ancestors(dset_id_t dset);
 
     /// callback function for request_ancestors()
     static void request_ancestors_callback(restReply reply);
 
-    /// find the ID of the given dataset and assign it to the given dataset_id.
-    /// Returns false if the dataset was not found, otherwise true.
-    bool find_dataset_id(const std::pair<state_id, dset_id> dataset,
-                         dset_id& dataset_id);
-
     /// Store the list of all the registered states.
-    static std::map<state_id, state_uptr> _states;
+    static std::map<state_id_t, state_uptr> _states;
 
-    // TODO: make this a bidirectional map (boost) or put all three values in a
-    // hash map (to reduce time of search-by-value) !?
     /// Store a list of the datasets registered and what states
     /// and input datasets they correspond to
-    static std::map<dset_id, std::pair<state_id, dset_id>> _datasets;
+    static std::map<dset_id_t, dataset> _datasets;
 
     /// Lock for changing or using the states map.
     static std::mutex _lock_states;
@@ -552,15 +626,13 @@ inline int datasetState::_register_state_type() {
 }
 
 template<typename T>
-inline pair<dset_id, const T*>
-datasetManager::closest_ancestor_of_type(dset_id dset) const {
+inline pair<dset_id_t, const T*>
+datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
 
-    if (dset < 0)
-        return {-1, nullptr};
     if (!_use_broker) {
         std::unique_lock<std::mutex> dslck(_lock_dsets);
-        if (_datasets.size() <= (size_t)dset)
-            return {-1, nullptr};
+        if (_datasets.find(dset) == _datasets.end())
+            return {0, nullptr};
         dslck.unlock();
     }
 
@@ -609,27 +681,24 @@ datasetManager::closest_ancestor_of_type(dset_id dset) const {
         }
     }
 
-    return {-1, nullptr};
+    return {0, nullptr};
 }
 
-// FIXME: add sth like
-// typename enable_if_t<is_base_of<datasetState, T>::value>::state
-// So that compilation for T not having datasetState as a base class fails.
 template <typename T>
-pair<state_id, const T*> datasetManager::add_state(
+pair<state_id_t, const T*> datasetManager::add_state(
         unique_ptr<T>&& state,
         typename std::enable_if<is_base_of<datasetState, T>::value>::type*)
 {
 
-    state_id hash = hash_state(*state);
+    state_id_t hash = hash_state(*state);
 
     // insert the new state
-    std::unique_lock<std::mutex> slock(_lock_states);
-    if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
+    // FIXME: check for and handle hash collicion
+    std::lock_guard<std::mutex> slock(_lock_states);
+    if (!_states.insert(std::pair<state_id_t, unique_ptr<T>>(hash,
                                                            move(state))).second)
         INFO("datasetManager: a state with hash %zu is already registered " \
              "locally.", hash);
-    slock.unlock();
 
     if (_use_broker) {
         try {
@@ -642,7 +711,6 @@ pair<state_id, const T*> datasetManager::add_state(
         }
     }
 
-    slock.lock();
-    return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
+    return pair<state_id_t, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 #endif

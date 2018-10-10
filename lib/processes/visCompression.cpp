@@ -86,18 +86,41 @@ void baselineCompression::main_thread() {
     }
 }
 
+void baselineCompression::set_dataset_ids(dset_id_t input_frame_dset_id) {
+    auto& dm = datasetManager::instance();
+    state_id_t stack_state_id;
+
+    input_dset_id = input_frame_dset_id;
+
+    auto input_state_ptr = dm.closest_ancestor_of_type<inputState>(
+        input_dset_id).second;
+    prod_state_ptr = dm.closest_ancestor_of_type<prodState>(
+        input_dset_id).second;
+
+    auto sspec = calculate_stack(input_state_ptr->get_inputs(),
+                                 prod_state_ptr->get_prods());
+    auto sstate = std::make_unique<stackState>(
+        sspec.first, std::move(sspec.second));
+
+    std::tie(stack_state_id, stack_state_ptr) =
+        dm.add_state(std::move(sstate));
+    output_dset_id = dm.add_dataset(dataset(stack_state_id,
+                                            input_dset_id));
+}
+
 void baselineCompression::compress_thread(int thread_id) {
 
     // use the thread id as an offset on frame ids
     unsigned int output_frame_id = thread_id;
     unsigned int input_frame_id = thread_id;
 
-    auto& dm = datasetManager::instance();
-    const stackState * stack_state_ptr = nullptr;
-    const prodState * prod_state_ptr = nullptr;
-    dset_id input_dset_id = -1;
-    dset_id output_dset_id = -1;
-    state_id stack_state_id;
+    // Wait for the input buffer to be filled with data
+    // in order to get dataset ID
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           input_frame_id) == nullptr) {
+        return;
+    }
+    set_dataset_ids(visFrameView(in_buf, input_frame_id).dataset_id);
 
     while (!stop_thread) {
 
@@ -120,23 +143,8 @@ void baselineCompression::compress_thread(int thread_id) {
 
         // If the input dataset has changed construct a new stack spec from the
         // datasetManager
-        if (input_dset_id != input_frame.dataset_id) {
-            input_dset_id = input_frame.dataset_id;
-
-            auto input_state_ptr = dm.closest_ancestor_of_type<inputState>(
-                input_dset_id).second;
-            prod_state_ptr = dm.closest_ancestor_of_type<prodState>(
-                input_dset_id).second;
-
-            auto sspec = calculate_stack(input_state_ptr->get_inputs(),
-                                         prod_state_ptr->get_prods());
-            auto sstate = std::make_unique<stackState>(
-                sspec.first, std::move(sspec.second));
-
-            std::tie(stack_state_id, stack_state_ptr) =
-                dm.add_state(std::move(sstate));
-            output_dset_id = dm.add_dataset(stack_state_id, input_dset_id);
-        }
+        if (input_dset_id != input_frame.dataset_id)
+            set_dataset_ids(input_frame.dataset_id);
 
         const auto& stack_map = stack_state_ptr->get_rstack_map();
         const auto& prods = prod_state_ptr->get_prods();

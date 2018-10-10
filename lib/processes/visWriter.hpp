@@ -113,11 +113,11 @@ protected:
     Buffer * in_buf;
 
     /// Dataset ID of current stream
-    dset_id dataset;
+    dset_id_t ds_id;
 
     /// State ID for the internal datasetState used if the datasetManager is not
     /// being used externally
-    state_id writer_dstate;
+    state_id_t writer_dstate;
 
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;

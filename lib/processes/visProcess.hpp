@@ -107,9 +107,9 @@ private:
     Buffer * in_buf;
 
     // A (freq_id, dataset_id) pair
-    using fd_pair = typename std::pair<uint32_t, uint32_t>;
+    using fd_pair = typename std::pair<uint32_t, uint64_t>;
 
-    // Count the number of frames receiver for every {freq_id, dataset_id}
+    // Count the number of frames received for every {freq_id, dataset_id}
     std::map<fd_pair, uint64_t> frame_counts;
 };
 
@@ -256,12 +256,6 @@ public:
 private:
     Buffer * in_buf;
     Buffer * out_buf;
-
-    // A (freq_id, dataset_id) pair
-    using fd_pair = typename std::pair<uint32_t, uint32_t>;
-
-    // Count the number of frames receiver for every {freq_id, dataset_id}
-    std::map<fd_pair, uint64_t> frame_counts;
 
     // Config parameters
     float tolerance;

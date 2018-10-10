@@ -12,6 +12,7 @@
 #include "errors.h"
 #include "util.h"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 /**
  * @class prodSubset
@@ -75,6 +76,10 @@ public:
     void main_thread();
 
 private:
+    /// keeps track of the input dataset ID
+    /// and gets new output dataset ID from manager
+    void set_dataset_ids(dset_id_t input_frame_dset_id);
+
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
     bool use_dataset_manager;
@@ -94,6 +99,9 @@ private:
     /// Vector of subset of products
     std::vector<prod_ctype> prod_subset;
 
+    // dataset IDs
+    dset_id_t input_dset_id;
+    dset_id_t output_dset_id;
 };
 
 

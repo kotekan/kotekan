@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "datasetManager.hpp"
 
 
 /**
@@ -89,6 +90,9 @@ public:
     void main_thread();
 
 private:
+    // tracks the input dataset ID and gets a new output dataset ID from manager
+    void set_dataset_ids(dset_id_t input_frame_dset_id);
+
     // List of frequencies for the subset
     std::vector<uint32_t> subset_list;
 
@@ -96,6 +100,10 @@ private:
     Buffer * out_buf;
     /// Input buffer with all frequencies
     Buffer * in_buf;
+
+    // dataset IDs
+    dset_id_t input_dset_id;
+    dset_id_t output_dset_id;
 };
 
 

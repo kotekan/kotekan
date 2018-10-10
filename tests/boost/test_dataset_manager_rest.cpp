@@ -109,9 +109,13 @@ struct TestContext {
     void register_dataset(connectionInstance& con, json& js) {
         DEBUG("test: /register-dataset received: %s", js.dump().c_str());
         json reply;
+        json js_ds;
         try {
-            js.at("state_id");
-            js.at("base_ds_id");
+            js.at("hash");
+            js_ds = js.at("dataset");
+            js_ds.at("is_root");
+            js_ds.at("state");
+            js_ds.at("base_dset");
         } catch (exception& e) {
             std::string error = fmt::format(
                         "Failure parsing register-dataset message from " \
@@ -121,12 +125,16 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("state_id").is_number());
-        BOOST_CHECK(js.at("base_ds_id").is_number());
+        BOOST_CHECK(js_ds.at("state").is_number());
+        BOOST_CHECK(js_ds.at("base_dset").is_number());
+        BOOST_CHECK(js_ds.at("is_root").is_boolean());
+        BOOST_CHECK(js.at("hash").is_number());
+
+        dataset recvd(js_ds);
+
+        BOOST_CHECK(recvd.hash() == js.at("hash"));
+
         reply["result"] = "success";
-        reply["base_dset_id"] = js.at("base_ds_id");
-        reply["state_id"] = js.at("state_id");
-        reply["new_ds_id"] = _dset_id_count++;
         con.send_json_reply(reply);
         DEBUG("test: /request-ancestors: replied with %s", reply.dump().c_str());
     }
@@ -186,20 +194,21 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                                                           {2, {2, 2.2}},
                                                           {3, {3, 3}}};
 
-    std::pair<state_id, const inputState*> input_state =
+    std::pair<state_id_t, const inputState*> input_state =
             dm.add_state(std::make_unique<inputState>(inputs,
                                                make_unique<prodState>(prods,
                                                make_unique<freqState>(freqs))));
 
-    dset_id init_ds_id = dm.add_dataset(input_state.first, -1);
+    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
 
     // register first state again
-    std::pair<state_id, const inputState*>input_state3 =
+    std::pair<state_id_t, const inputState*>input_state3 =
             dm.add_state(std::make_unique<inputState>(inputs,
                               make_unique<prodState>(prods,
                               make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dset_id init_ds_id3 = dm.add_dataset(input_state3.first, init_ds_id);
+    dset_id_t init_ds_id3 = dm.add_dataset(dataset(input_state3.first,
+                                                   init_ds_id));
 
     std::cout << dm.summary() << std::endl;
 
@@ -208,7 +217,8 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                   << std::endl;
 
     for (auto s : dm.datasets())
-        std::cout << s.second.first << " - " << s.second.second << std::endl;
+        std::cout << s.second.state() << " - " << s.second.base_dset() <<
+                     std::endl;
 
     for (auto s : dm.ancestors(init_ds_id3))
         std::cout << s.first << " - " << s.second->data_to_json().dump()

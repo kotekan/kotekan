@@ -117,15 +117,53 @@ void freqSubset::apply_config(uint64_t fpga_seq) {
 
 }
 
-void freqSubset::main_thread() {
-
+void freqSubset::set_dataset_ids(dset_id_t input_frame_dset_id) {
     auto& dm = datasetManager::instance();
-    dset_id input_dset_id = -1;
-    dset_id output_dset_id = -1;
+
+    // create new frequency dataset state
+    input_dset_id = input_frame_dset_id;
+    const freqState* input_freq_ptr =
+           dm.closest_ancestor_of_type<freqState>(input_dset_id).second;
+    if (input_freq_ptr == nullptr) {
+        ERROR("freqSubset: Could not find freqState for incoming " \
+              "dataset with ID %d.", input_dset_id);
+        raise(SIGINT);
+        return;
+    }
+
+    const vector<pair<uint32_t, freq_ctype>>& input_freqs =
+            input_freq_ptr->get_freqs();
+    vector<pair<uint32_t, freq_ctype>> output_freqs;
+
+    for (uint32_t i = 0; i < subset_list.size(); i++) {
+        try {
+            output_freqs.push_back(input_freqs.at(subset_list[i]));
+        } catch (std::out_of_range e) {
+            WARN("freqSlicer: Could not find frequency with ID %d in " \
+                 "incoming dataset %d: %s", subset_list[i],
+                 input_dset_id, e.what());
+        }
+    }
+
+    state_uptr fstate = std::make_unique<freqState>(output_freqs);
+    state_id_t freq_state_id = dm.add_state(std::move(fstate)).first;
+    output_dset_id = dm.add_dataset(dataset(freq_state_id,
+                                            input_dset_id));
+}
+
+void freqSubset::main_thread() {
 
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
     unsigned int freq;
+
+    // Wait for the input buffer to be filled with data
+    // in order to get the dataset ID
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           input_frame_id) == nullptr) {
+        return;
+    }
+    set_dataset_ids(visFrameView(in_buf, input_frame_id).dataset_id);
 
     while (!stop_thread) {
 
@@ -139,36 +177,8 @@ void freqSubset::main_thread() {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
-        if (input_dset_id != input_frame.dataset_id) {
-            // create new frequency dataset state
-            input_dset_id = input_frame.dataset_id;
-            const freqState* input_freq_ptr =
-                   dm.closest_ancestor_of_type<freqState>(input_dset_id).second;
-            if (input_freq_ptr == nullptr) {
-                ERROR("freqSubset: Could not find freqState for incoming " \
-                      "dataset with ID %d.", input_dset_id);
-                raise(SIGINT);
-                return;
-            }
-
-            const vector<pair<uint32_t, freq_ctype>>& input_freqs =
-                    input_freq_ptr->get_freqs();
-            vector<pair<uint32_t, freq_ctype>> output_freqs;
-
-            for (uint32_t i = 0; i < subset_list.size(); i++) {
-                try {
-                    output_freqs.push_back(input_freqs.at(subset_list[i]));
-                } catch (std::out_of_range e) {
-                    WARN("freqSlicer: Could not find frequency with ID %d in " \
-                         "incoming dataset %d: %s", subset_list[i],
-                         input_dset_id, e.what());
-                }
-            }
-
-            state_uptr fstate = std::make_unique<freqState>(output_freqs);
-            state_id freq_state_id = dm.add_state(std::move(fstate)).first;
-            output_dset_id = dm.add_dataset(freq_state_id, input_dset_id);
-        }
+        if (input_dset_id != input_frame.dataset_id)
+            set_dataset_ids(input_frame.dataset_id);
 
         // frequency index of this frame
         freq = input_frame.freq_id;

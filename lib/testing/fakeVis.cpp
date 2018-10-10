@@ -99,7 +99,7 @@ void fakeVis::main_thread() {
 
     // If configured, register datasetStates to describe the properties of the
     // created stream
-    dset_id dataset = 0;
+    dset_id_t ds_id = 0;
     if (use_dataset_manager) {
 
         auto& dm = datasetManager::instance();
@@ -124,7 +124,9 @@ void fakeVis::main_thread() {
         auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
 
         auto s = dm.add_state(std::move(pstate));
-        dataset = dm.add_dataset(s.first, -1);  // Register a root state
+
+        // Register a root state
+        ds_id = dm.add_dataset(dataset(s.first, 0, true));
     }
 
     while (!stop_thread) {
@@ -146,7 +148,7 @@ void fakeVis::main_thread() {
             auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
-            output_frame.dataset_id = dataset;
+            output_frame.dataset_id = ds_id;
 
             // Set the frequency index
             output_frame.freq_id = f;

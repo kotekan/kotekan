@@ -25,7 +25,7 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 void visFileRaw::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t num_ev, size_t max_time)
 {
     INFO("Creating new output file %s", name.c_str());
 

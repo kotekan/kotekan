@@ -12,6 +12,9 @@
 // the code to test:
 #include "datasetManager.hpp"
 
+// dataset id from producer
+#define DSET_ID 10014618525185544200UL
+
 using json = nlohmann::json;
 
 using namespace std::string_literals;
@@ -45,13 +48,13 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                                                               {2, {2, 2.2}},
                                                               {3, {3, 3}}};
 
-    auto freq_state = dm.closest_ancestor_of_type<freqState>(1);
+    auto freq_state = dm.closest_ancestor_of_type<freqState>(DSET_ID);
     check_equal(old_freqs, freq_state.second->get_freqs());
 
-    auto prod_state = dm.closest_ancestor_of_type<prodState>(1);
+    auto prod_state = dm.closest_ancestor_of_type<prodState>(DSET_ID);
     check_equal(old_prods, prod_state.second->get_prods());
 
-    auto input_state = dm.closest_ancestor_of_type<inputState>(1);
+    auto input_state = dm.closest_ancestor_of_type<inputState>(DSET_ID);
     check_equal(old_inputs, input_state.second->get_inputs());
 
     // change states:
@@ -61,12 +64,13 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                                                               {3, {3, 3}}};
 
 
-    std::pair<state_id, const inputState*> new_input_state =
+    std::pair<state_id_t, const inputState*> new_input_state =
             dm.add_state(std::make_unique<inputState>(new_inputs,
                                            make_unique<prodState>(old_prods,
                                            make_unique<freqState>(new_freqs))));
 
-    dset_id init_ds_id = dm.add_dataset(new_input_state.first, 1);
+    dset_id_t init_ds_id = dm.add_dataset(dataset(new_input_state.first,
+                                                  DSET_ID));
 
     std::cout << dm.summary() << std::endl;
 
@@ -75,7 +79,8 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                   << std::endl;
 
     for (auto s : dm.datasets())
-        std::cout << s.second.first << " - " << s.second.second << std::endl;
+        std::cout << s.second.state() << " - " << s.second.base_dset() <<
+                     std::endl;
 
     for (auto s : dm.ancestors(init_ds_id))
         std::cout << s.first << " - " << s.second->data_to_json().dump()

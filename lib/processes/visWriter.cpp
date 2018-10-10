@@ -153,10 +153,10 @@ void visWriter::main_thread() {
             return;
 
         // Check the dataset ID hasn't changed
-        } else if (use_dataset_manager && frame.dataset_id != dataset) {
+        } else if (use_dataset_manager && frame.dataset_id != ds_id) {
             string msg = fmt::format(
                 "Unexpected dataset ID={} received (expected id={}).",
-                frame.dataset_id, dataset
+                frame.dataset_id, ds_id
             );
             ERROR(msg.c_str());
             raise(SIGINT);
@@ -219,22 +219,22 @@ bool visWriter::init_acq() {
     // Get the dataset ID that the downstream files can use to determine what
     // they will be writing.
     if (use_dataset_manager) {
-        dataset = frame.dataset_id;
+        ds_id = frame.dataset_id;
     } else {
-        dataset = dm.add_dataset(writer_dstate, -1);
+        ds_id = dm.add_dataset(dataset(writer_dstate, 0, true));
     }
 
     // Get the frequency spec to determine the freq_ids expected at this Writer.
     auto fstate = dm.closest_ancestor_of_type<freqState>(
-        dataset).second;
+        ds_id).second;
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         freq_id_map[f.first] = ind++;
 
     // Get the product spec and (if available) the stackState to determine the
     // number of vis entries we are expecting
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    auto pstate = dm.closest_ancestor_of_type<prodState>(ds_id).second;
+    auto sstate = dm.closest_ancestor_of_type<stackState>(ds_id).second;
     num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
@@ -279,7 +279,7 @@ bool visWriter::init_acq() {
 void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::make_unique<visFileBundle>(
         file_type, root_path, instrument_name, metadata, chunk_id,
-        rollover, window, dataset, num_ev, file_length
+        rollover, window, ds_id, num_ev, file_length
     );
 }
 
@@ -354,7 +354,7 @@ void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::unique_ptr<visCalFileBundle>(
         new visCalFileBundle(
             file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, dataset, num_ev, file_length
+            window, ds_id, num_ev, file_length
         )
     );
 
