@@ -34,10 +34,6 @@ struct TestContext {
                     "/register-dataset", std::bind(
                         &TestContext::register_dataset, this,
                         std::placeholders::_1, std::placeholders::_2));
-        restServer::instance().register_post_callback(
-                    "/request-ancestors", std::bind(
-                        &TestContext::request_ancestors, this,
-                        std::placeholders::_1, std::placeholders::_2));
         usleep(1000);
     }
 
@@ -138,29 +134,6 @@ struct TestContext {
         con.send_json_reply(reply);
         DEBUG("test: /request-ancestors: replied with %s", reply.dump().c_str());
     }
-
-    void request_ancestors(connectionInstance& con, json& js) {
-        DEBUG("test: /request-ancestors received: %s", js.dump().c_str());
-        json reply;
-        try {
-            js.at("ds_id");
-        } catch (exception& e) {
-            std::string error = fmt::format(
-                        "Failure parsing request-ancestors message from " \
-                        "datasetManager: {}\n{}.", js.dump(), e.what());
-            reply["result"] = error;
-            con.send_json_reply(reply);
-            BOOST_CHECK_MESSAGE(false, error);
-        }
-
-        BOOST_CHECK(js.at("ds_id").is_number());
-        reply["new_ds_id"] = _dset_id_count++;
-        reply["state_id"] = js.at("state_id");
-        reply["base_dset_id"] = js.at("base_ds_id");
-        reply["result"] = "success";
-        con.send_json_reply(reply);
-        DEBUG("test: /register-dataset: replied with %s", reply.dump().c_str());
-    }
 };
 
 BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
@@ -174,7 +147,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";
-    json_config["request_ancestors_path"] = "/request-ancestors";
+    json_config["request_ancestor_path"] = "/request-ancestor";
 
     TestContext::init();
 

@@ -16,11 +16,11 @@ std::mutex datasetManager::_lock_dsets;
 std::mutex datasetManager::_lock_rqst;
 std::mutex datasetManager::_lock_reg;
 std::condition_variable datasetManager::cv_register_dset;
-std::condition_variable datasetManager::cv_request_ancestors;
+std::condition_variable datasetManager::cv_request_ancestor;
 std::string datasetManager::_path_register_state;
 std::string datasetManager::_path_send_state;
 std::string datasetManager::_path_register_dataset;
-std::string datasetManager::_path_request_ancestors;
+std::string datasetManager::_path_request_ancestor;
 std::string datasetManager::_ds_broker_host;
 unsigned short datasetManager::_ds_broker_port;
 
@@ -133,13 +133,13 @@ void datasetManager::apply_config(Config& config) {
                                                  "send_state_path");
         _path_register_dataset = config.get_string(UNIQUE_NAME,
                                                  "register_dataset_path");
-        _path_request_ancestors = config.get_string(UNIQUE_NAME,
-                                                    "request_ancestors_path");
+        _path_request_ancestor = config.get_string(UNIQUE_NAME,
+                                                    "request_ancestor_path");
 
         DEBUG("datasetManager: expecting broker at %s:%d, endpoints: %s, %s, " \
               "%s, %s", _ds_broker_host.c_str(), _ds_broker_port,
               _path_register_state.c_str(), _path_send_state.c_str(),
-              _path_register_dataset.c_str(), _path_request_ancestors.c_str());
+              _path_register_dataset.c_str(), _path_request_ancestor.c_str());
     }
 }
 
@@ -149,14 +149,16 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
     std::lock_guard<std::mutex> lck_ds(_lock_dsets);
 
     // insert the new entry
-    if (!_datasets.insert(std::pair<dset_id_t, dataset>(new_dset_id, ds)).second)
+    if (!_datasets.insert(
+            std::pair<dset_id_t, dataset>(new_dset_id, ds)).second)
     {
         // There is already a dataset with the same hash.
         // Search for existing entry and return if it exists.
         auto find = _datasets.find(new_dset_id);
         if (!ds.equals(find->second)) {
             // FIXME: hash collision. make the value a vector and store same
-            // hash entries
+            // hash entries? This would mean the state/dset has to be sent when
+            // registering.
             ERROR("datasetManager: hash collision\ndatasetManager: Exiting...");
             raise(SIGINT);
         }
@@ -191,8 +193,7 @@ state_id_t datasetManager::hash_state(datasetState& state) {
     return hash_function(state.to_json().dump());
 }
 
-void datasetManager::register_state(state_id_t state)
-{
+void datasetManager::register_state(state_id_t state) {
     json js_post;
     js_post["hash"] = state;
 
@@ -334,22 +335,26 @@ void datasetManager::register_dataset_callback(restReply reply) {
     }
 }
 
-void datasetManager::request_ancestors(dset_id_t dset) {
+void datasetManager::request_ancestor(dset_id_t dset_id, const char* type) {
     json js_post;
-    js_post["ds_id"] = dset;
+    js_post["ds_id"] = dset_id;
+    js_post["type"] = type;
 
     std::function<void(restReply)> callback(
-                datasetManager::request_ancestors_callback);
+                datasetManager::request_ancestor_callback);
     if (restClient::instance().make_request(
-            _path_request_ancestors,
+            _path_request_ancestor,
             callback,
             js_post, _ds_broker_host, _ds_broker_port) == false)
-        throw std::runtime_error("datasetManager: failed requesting ancestors" \
-                                 " of dataset " + std::to_string(dset)
+        throw std::runtime_error("datasetManager: failed requesting ancestor" \
+                                 " of type " + std::string(type)
+                                 + " of dataset " + std::to_string(dset_id)
                                  + " with broker.");
+    DEBUG("datasetManager: requesting ancestor of type %s of dataset %zu",
+          type, dset_id);
 }
 
-void datasetManager::request_ancestors_callback(restReply reply) {
+void datasetManager::request_ancestor_callback(restReply reply) {
 
     json js_reply;
 
@@ -357,20 +362,21 @@ void datasetManager::request_ancestors_callback(restReply reply) {
         js_reply = json::parse(reply.second);
         if (js_reply.at("result") != "success")
             throw std::runtime_error("datasetManager: Broker answered with " \
-                                     "error after requesting ancestors.");
+                                     "error after requesting ancestor.");
     } catch (std::exception& e) {
         ERROR("datasetManager: failure parsing reply received from broker " \
-              "after requesting ancestors (reply: %s): %s.\ndatasetManager: " \
+              "after requesting ancestor (reply: %s): %s.\ndatasetManager: " \
               "exciting...", reply.second.c_str(), e.what());
         raise(SIGINT);
     }
 
     // in case the broker doesn't have any ancestors to the dataset
     try {
-        js_reply.at("ancestors");
+        js_reply.at("states");
+        js_reply.at("datasets");
     } catch (std::exception& e) {
-        DEBUG("datasetManager::request_ancestors_callback(): broker did not " \
-              "reply with any ancestors.");
+        DEBUG("datasetManager::request_ancestor_callback(): broker did not " \
+              "reply with any ancestor.");
         return;
     }
 
@@ -381,8 +387,8 @@ void datasetManager::request_ancestors_callback(restReply reply) {
     std::unique_lock<std::mutex> slck(_lock_states, std::adopt_lock);
 
     // register the received states
-    for (json::iterator s = js_reply.at("ancestors").at("states").begin();
-         s != js_reply.at("ancestors").at("states").end(); s++) {
+    for (json::iterator s = js_reply.at("states").begin();
+            s != js_reply.at("states").end(); s++) {
         state_id_t s_id;
         sscanf(s.key().c_str(), "%zu", &s_id);
         DEBUG("datasetManager received state_id: %zu", s_id);
@@ -392,9 +398,8 @@ void datasetManager::request_ancestors_callback(restReply reply) {
                                 s_id, move(state))).second)
             INFO("datasetManager::request_ancestors_callback: received a " \
                  "state (with hash %zu) that is already registered " \
-                 "locally.", s.key().c_str());
+                 "locally.", s_id);
     }
-
     // release the states lock and acquire the datasets lock
     // WARN: this is only acceptable as long as no other thread will ever try to
     // acquire both _lock_datasets and _lock_rqst
@@ -402,8 +407,8 @@ void datasetManager::request_ancestors_callback(restReply reply) {
     std::unique_lock<std::mutex> dslck(_lock_dsets);
 
     // register the received datasets
-    for (json::iterator ds = js_reply.at("ancestors").at("datasets").begin();
-         ds != js_reply.at("ancestors").at("datasets").end(); ds++) {
+    for (json::iterator ds = js_reply.at("datasets").begin();
+         ds != js_reply.at("datasets").end(); ds++) {
 
         try {
             dset_id_t ds_id;
@@ -441,7 +446,7 @@ void datasetManager::request_ancestors_callback(restReply reply) {
     }
 
     // tell closest_ancestor_of_type() that the work is done
-    cv_request_ancestors.notify_all();
+    cv_request_ancestor.notify_all();
 }
 
 std::string datasetManager::summary() const {
@@ -500,7 +505,13 @@ datasetManager::ancestors(dset_id_t dset) const {
     // states performed
     bool root = false;
     while(!root) {
-        datasetState * t = _states.at(_datasets.at(dset).state()).get();
+        datasetState* t;
+        try {
+            t = _states.at(_datasets.at(dset).state()).get();
+        } catch (...) {
+            // we don't have the base dataset
+            break;
+        }
 
         // Walk over the inner states, given them all the same dataset id.
         while(t != nullptr) {

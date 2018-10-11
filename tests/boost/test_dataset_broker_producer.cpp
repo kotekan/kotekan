@@ -26,7 +26,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";
-    json_config["request_ancestors_path"] = "/request-ancestors";
+    json_config["request_ancestor_path"] = "/request-ancestor";
 
     datasetManager& dm = datasetManager::instance();
     Config conf;
@@ -51,12 +51,12 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
 
     dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
 
-//    // register same state
+    // register same state
     std::pair<state_id_t, const inputState*>input_state2 =
             dm.add_state(std::make_unique<inputState>(inputs,
                               make_unique<prodState>(prods,
                               make_unique<freqState>(freqs))));
-//    // register new dataset with the twin state
+    // register new dataset with the twin state
     dset_id_t init_ds_id2 = dm.add_dataset(dataset(input_state2.first,
                                                    init_ds_id));
 
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";
-    json_config["request_ancestors_path"] = "/request-ancestors";
+    json_config["request_ancestor_path"] = "/request-ancestor";
 
     datasetManager& dm = datasetManager::instance();
     Config conf;
@@ -112,21 +112,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
                                                make_unique<prodState>(prods,
                                                make_unique<freqState>(freqs))));
 
-    dset_id_t init_ds_id2 = dm.add_dataset(dataset(input_state.first, 0, true));
-
-    std::cout << dm.summary() << std::endl;
-
-    for (auto s : dm.states())
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
-
-    for (auto s : dm.datasets())
-        std::cout << s.second.state() << " - " << s.second.base_dset() <<
-                     std::endl;
-
-    for (auto s : dm.ancestors(init_ds_id2))
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
+    dm.add_dataset(dataset(input_state.first, 0, true));
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(1000000);

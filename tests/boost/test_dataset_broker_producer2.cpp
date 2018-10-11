@@ -30,7 +30,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";
-    json_config["request_ancestors_path"] = "/request-ancestors";
+    json_config["request_ancestor_path"] = "/request-ancestor";
 
     datasetManager& dm = datasetManager::instance();
     Config conf;
@@ -64,10 +64,10 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                                                               {3, {3, 3}}};
 
 
+    // add new input state and new freq state
     std::pair<state_id_t, const inputState*> new_input_state =
             dm.add_state(std::make_unique<inputState>(new_inputs,
-                                           make_unique<prodState>(old_prods,
-                                           make_unique<freqState>(new_freqs))));
+                                           make_unique<freqState>(new_freqs)));
 
     dset_id_t init_ds_id = dm.add_dataset(dataset(new_input_state.first,
                                                   DSET_ID));

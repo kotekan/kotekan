@@ -561,11 +561,11 @@ private:
     /// callback function for register_dataset()
     static void register_dataset_callback(restReply reply);
 
-    /// request the ancestors of the given dataset from the dataset broker
-    static void request_ancestors(dset_id_t dset);
+    /// request closest ancestor of type
+    static void request_ancestor(dset_id_t dset_id, const char* type);
 
-    /// callback function for request_ancestors()
-    static void request_ancestors_callback(restReply reply);
+    /// callback function for request_ancestor()
+    static void request_ancestor_callback(restReply reply);
 
     /// Store the list of all the registered states.
     static std::map<state_id_t, state_uptr> _states;
@@ -590,14 +590,14 @@ private:
     static std::condition_variable cv_register_dset;
 
     /// conditional variable for requesting ancestors
-    static std::condition_variable cv_request_ancestors;
+    static std::condition_variable cv_request_ancestor;
 
     // config params
     bool _use_broker = false;
     static std::string _path_register_state;
     static std::string _path_send_state;
     static std::string _path_register_dataset;
-    static std::string _path_request_ancestors;
+    static std::string _path_request_ancestor;
     static std::string _ds_broker_host;
     static unsigned short _ds_broker_port;
 };
@@ -649,7 +649,7 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
         std::unique_lock<std::mutex> lck(_lock_rqst);
 
         try {
-            request_ancestors(dset);
+            request_ancestor(dset, typeid(T).name());
         } catch (std::runtime_error& e) {
             ERROR("datasetManager: Failure requesting ancestors: %s", e.what());
             ERROR("datasetManager: Make sure the broker is running.\n" \
@@ -666,10 +666,10 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
             }
         }
         while(true) {
-            if (cv_request_ancestors.wait_until(lck, time_point)
+            if (cv_request_ancestor.wait_until(lck, time_point)
                   == std::cv_status::timeout) {
                 ERROR("datasetManager: Timeout while requesting ancestors of " \
-                      "type %s of dataset %d.", typeid(T).name(), dset);
+                      "type %s of dataset %zu.", typeid(T).name(), dset);
                 ERROR("datasetManager: Exiting...");
                 raise(SIGINT);
             }
