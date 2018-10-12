@@ -128,7 +128,8 @@ struct TestContext {
 
         dataset recvd(js_ds);
 
-        BOOST_CHECK(recvd.hash() == js.at("hash"));
+        static std::hash<std::string> hash_function;
+        BOOST_CHECK(hash_function(recvd.to_json().dump()) == js.at("hash"));
 
         reply["result"] = "success";
         con.send_json_reply(reply);

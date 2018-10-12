@@ -82,12 +82,6 @@ public:
     const dset_id_t base_dset() const;
 
     /**
-     * @brief Hashes the dataset.
-     * @return A hash of the json serialization of this dataset.
-     */
-    const dset_id_t hash() const;
-
-    /**
      * @brief Generates a json serialization of this dataset.
      * @return A json serialization.
      */
@@ -543,7 +537,19 @@ private:
      * @note This deliberately isn't a method of datasetState itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    state_id_t hash_state(datasetState& state);
+    static const state_id_t hash_state(datasetState& state);
+
+    /**
+     * @brief Calculate the hash of a dataset to use as the dset_id.
+     *
+     * @param state Dataset to hash.
+     *
+     * @returns Hash to use as ID.
+     *
+     * @note This deliberately isn't a method of dataset itself to ensure
+     * that only the manager can issue hashes/IDs.
+     **/
+    static const dset_id_t hash_dataset(dataset& ds);
 
     /// register the given state with the dataset broker
     static void register_state(state_id_t state);

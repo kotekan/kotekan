@@ -42,13 +42,6 @@ const dset_id_t dataset::base_dset() const {
     return _base_dset;
 }
 
-const dset_id_t dataset::hash() const {
-    static std::hash<std::string> hash_function;
-
-    // TODO: see datasetManager::hash_state
-    return hash_function(to_json().dump());
-}
-
 json dataset::to_json() const {
     json j;
     j["is_root"] = _is_root;
@@ -182,15 +175,21 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
     return new_dset_id;
 }
 
-state_id_t datasetManager::hash_state(datasetState& state) {
+// TODO: decide if this is the best way of hashing the state and dataset.
+// It has the advantage of being simple, there's a slight issue in that json
+// technically doesn't guarantee order of items in an object, but in
+// practice nlohmann::json ensures they are alphabetical by default. It
+// might also be a little slow as it requires full serialisation.
+const state_id_t datasetManager::hash_state(datasetState& state) {
     static std::hash<std::string> hash_function;
 
-    // TODO: decide if this is the best way of hashing the state. It has the
-    // advantage of being simple, there's a slight issue in that json
-    // technically doesn't guarantee order of items in an object, but in
-    // practice nlohmann::json ensures they are alphabetical by default. It
-    // might also be a little slow as it requires full serialisation.
     return hash_function(state.to_json().dump());
+}
+
+const state_id_t datasetManager::hash_dataset(dataset& ds) {
+    static std::hash<std::string> hash_function;
+
+    return hash_function(ds.to_json().dump());
 }
 
 void datasetManager::register_state(state_id_t state) {
@@ -418,12 +417,12 @@ void datasetManager::request_ancestor_callback(restReply reply) {
                   ds.value().dump().c_str());
             dataset new_dset = dataset(ds.value());
 
-            if (ds_id != new_dset.hash()) {
+            if (ds_id != hash_dataset(new_dset)) {
                 WARN("datasetManager: failure parsing reply received from"\
                      " broker after requesting ancestors: the dataset (%s) has " \
                      "the hash %zu, but %zu was received from the broker. " \
                      "Ignoring this dataset...",
-                      ds.value().dump().c_str(), ds_id, new_dset.hash());
+                      ds.value().dump().c_str(), ds_id, hash_dataset(new_dset));
                 continue;
             }
 
