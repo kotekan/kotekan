@@ -2,6 +2,9 @@ cmake_minimum_required (VERSION 2.8)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
+# This is required early on for some versions of GCC, do not remove.
+add_definitions(/D__STDC_FORMAT_MACROS)
+
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
@@ -29,11 +32,13 @@ if (${USE_HCC} AND (CMAKE_CXX_COMPILER MATCHES ".*hcc"))
 else ()
   set(USE_HCC OFF)
 endif ()
+
 if (${USE_HSA})
   find_package( HSA )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
+
 if (${USE_OPENCL})
   find_package( OpenCL )
   set(USE_OPENCL ${OPENCL_FOUND})
@@ -48,7 +53,6 @@ if (${USE_FFTW})
   find_package( FFTW)
   set(USE_FFTW ${FFTW_FOUND})
   add_definitions(-DWITH_FFTW)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lfftw3f ")
 endif()
 
 if (${USE_LAPACK})
@@ -61,9 +65,11 @@ if (${USE_LAPACK})
   find_package( OpenBLAS REQUIRED )
 endif()
 
+#Libevent is required now
+find_package(LibEvent REQUIRED )
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
-  add_definitions(-mavx2)
 else()
  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
@@ -81,7 +87,6 @@ endif ()
 if (${USE_HSA})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
   link_directories ( /opt/rocm/hsa/lib/ )
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lhsa-runtime64 ")
   add_definitions(-DWITH_HSA)
   set(GPU_MODULES ${GPU_MODULES} "HSA ")
 endif ()
@@ -100,7 +105,6 @@ if (${USE_DPDK})
   set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
 endif ()
 if (${USE_AIRSPY})
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lairspy ")
   add_definitions(-DWITH_AIRSPY)
   set(INPUT_MODULES ${INPUT_MODULES} "AIRSPY ")
 endif ()
@@ -148,11 +152,14 @@ endif()
 find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
-#include_directories (${KOTEKAN_SOURCE_DIR}/lib/sim_output)
 
 # Required for some SSE/AVX intrinsics
-add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
+add_definitions(-D__STDC_LIMIT_MACROS)
 
+# Note that -lrt here is needed on some versions of CentOS
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
+endif ()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
@@ -165,7 +172,10 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # 
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
-# Note C++11
+# Note that -lrt here is needed on some versions of CentOS
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
+endif ()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")

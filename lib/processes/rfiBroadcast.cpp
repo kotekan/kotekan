@@ -58,20 +58,24 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
 
 void rfiBroadcast::apply_config(uint64_t fpga_seq) {
     //Standard Config parameters
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_total_freq = config.get_int_default(unique_name, "num_total_freq", 1024);
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_total_freq = config.get_default<uint32_t>(
+                unique_name, "num_total_freq", 1024);
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
     //Rfi paramters
-    _sk_step = config.get_int_default(unique_name, "sk_step", 256);
-    _rfi_combined = config.get_bool_default(unique_name,"rfi_combined", true);
-    _frames_per_packet = config.get_int_default(unique_name, "frames_per_packet",1);
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
+    _frames_per_packet = config.get_default<uint32_t>(
+                unique_name, "frames_per_packet",1);
     //Process specific paramters
-    total_links = config.get_int_default(unique_name, "total_links",1);
-    dest_port = config.get_int(unique_name, "destination_port");
-    dest_server_ip = config.get_string(unique_name, "destination_ip");
-    dest_protocol = config.get_string_default(unique_name, "destination_protocol", "UDP");
-    replay = config.get_bool_default(unique_name, "replay", false);
+    total_links = config.get_default<uint32_t>(unique_name, "total_links",1);
+    dest_port = config.get<uint32_t>(unique_name, "destination_port");
+    dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
+    dest_protocol = config.get_default<std::string>(
+                unique_name, "destination_protocol", "UDP");
+    replay = config.get_default<bool>(unique_name, "replay", false);
 }
 
 void rfiBroadcast::main_thread() {

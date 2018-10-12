@@ -20,11 +20,14 @@ bufferSend::bufferSend(Config& config,
     register_consumer(buf, unique_name.c_str());
 
     connected = false;
-    server_ip = config.get_string(unique_name, "server_ip");
-    server_port = config.get_int_default(unique_name, "server_port", 11024);
+    server_ip = config.get<std::string>(unique_name, "server_ip");
+    server_port = config.get_default<uint32_t>(unique_name, "server_port",
+                                               11024);
 
-    send_timeout = config.get_int_default(unique_name, "send_timeout", 20);
-    reconnect_time = config.get_int_default(unique_name, "reconnect_time", 5);
+    send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout",
+                                                20);
+    reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time",
+                                                  5);
 
     dropped_frame_count = 0;
 

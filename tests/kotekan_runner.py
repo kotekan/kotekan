@@ -69,7 +69,7 @@ class KotekanRunner(object):
                 import requests
                 import json
                 # Wait a moment for rest servers to start up.
-                time.sleep(1)
+                time.sleep(1.)
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == 'wait':
                         time.sleep(endpoint)
@@ -456,24 +456,50 @@ class KotekanProcessTester(KotekanRunner):
         Name of the process to be run in parallel with the process under test (It will use the same in buffers).
     parallel_process_config : dict
         any configurations to the parallel process
+    noise : string
+        If it is not None, gaussian noise with SD=1 is added to the input,
+        if it is "random" the random number generator will be initialized with
+        a random seed.
     """
 
     def __init__(self, process_type, process_config, buffers_in,
                  buffers_out, global_config={}, parallel_process_type=None,
-                 parallel_process_config={}, rest_commands=None):
+                 parallel_process_config={}, rest_commands=None, noise=False):
 
         config = process_config.copy()
         parallel_config = parallel_process_config.copy()
+        noise_config = {}
 
-        if buffers_in is None:
-            buffers_in = []
-        elif isinstance(buffers_in, (list, tuple)):
-            config['in_bufs'] = [buf.name for buf in buffers_in]
-            parallel_config['in_bufs'] = [buf.name for buf in buffers_in]
+        if noise:
+          if buffers_in is None:
+              buffers_in = []
+          else:
+              noise_config['in_buf'] = buffers_in.name
+              buffers_in = [buffers_in]
+          noise_config['kotekan_process'] = 'visNoise'
+          noise_config['out_buf'] = 'noise_buf'
+          if noise == "random":
+              noise_config['random'] = True
+          noise_block = {('visNoise_test'): noise_config}
+          config['in_buf'] = 'noise_buf'
+          parallel_config['in_buf'] = 'noise_buf'
+          noise_buffer = {
+            "noise_buf": {
+              'kotekan_buffer': 'vis',
+              'metadata_pool': 'vis_pool',
+              'num_frames': 'buffer_depth',
+            }
+          }
         else:
-            config['in_buf'] = buffers_in.name
-            parallel_config['in_buf'] = buffers_in.name
-            buffers_in = [buffers_in]
+          if buffers_in is None:
+              buffers_in = []
+          elif isinstance(buffers_in, (list, tuple)):
+              config['in_bufs'] = [buf.name for buf in buffers_in]
+              parallel_config['in_bufs'] = [buf.name for buf in buffers_in]
+          else:
+              config['in_buf'] = buffers_in.name
+              parallel_config['in_buf'] = buffers_in.name
+              buffers_in = [buffers_in]
 
         if buffers_out is None:
             buffers_out = []
@@ -496,6 +522,10 @@ class KotekanProcessTester(KotekanRunner):
             parallel_config['kotekan_process'] = parallel_process_type
             process_block.update(
                 {(parallel_process_type + "_test_parallel"): parallel_config})
+
+        if noise:
+            process_block.update(noise_block)
+            buffer_block.update(noise_buffer)
 
         super(KotekanProcessTester, self).__init__(buffer_block, process_block,
                                                    global_config, rest_commands)

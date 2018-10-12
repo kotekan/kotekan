@@ -116,18 +116,19 @@ datasetManager& datasetManager::instance() {
 }
 
 void datasetManager::apply_config(Config& config) {
-    _use_broker = config.get_bool_default(UNIQUE_NAME, "use_ds_broker", false);
+    _use_broker = config.get_default<bool>(UNIQUE_NAME, "use_ds_broker", false);
     if (_use_broker) {
-        _ds_broker_port = config.get_uint32(UNIQUE_NAME, "ds_broker_port");
-        _ds_broker_host = config.get_string(UNIQUE_NAME, "ds_broker_host");
-        _path_register_state = config.get_string(UNIQUE_NAME,
-                                                 "register_state_path");
-        _path_send_state = config.get_string(UNIQUE_NAME,
-                                                 "send_state_path");
-        _path_register_dataset = config.get_string(UNIQUE_NAME,
-                                                 "register_dataset_path");
-        _path_request_ancestor = config.get_string(UNIQUE_NAME,
-                                                    "request_ancestor_path");
+        _ds_broker_port = config.get<uint32_t>(UNIQUE_NAME, "ds_broker_port");
+        _ds_broker_host = config.get<std::string>(
+                    UNIQUE_NAME, "ds_broker_host");
+        _path_register_state = config.get<std::string>(
+                    UNIQUE_NAME, "register_state_path");
+        _path_send_state = config.get<std::string>(
+                    UNIQUE_NAME, "send_state_path");
+        _path_register_dataset = config.get<std::string>(
+                    UNIQUE_NAME, "register_dataset_path");
+        _path_request_ancestor = config.get<std::string>(
+                    UNIQUE_NAME, "request_ancestor_path");
 
         DEBUG("datasetManager: expecting broker at %s:%d, endpoints: %s, %s, " \
               "%s, %s", _ds_broker_host.c_str(), _ds_broker_port,
@@ -137,14 +138,13 @@ void datasetManager::apply_config(Config& config) {
 }
 
 dset_id_t datasetManager::add_dataset(dataset ds) {
-    dset_id_t new_dset_id = ds.hash();
+    dset_id_t new_dset_id = hash_dataset(ds);
 
     std::lock_guard<std::mutex> lck_ds(_lock_dsets);
 
     // insert the new entry
     if (!_datasets.insert(
-            std::pair<dset_id_t, dataset>(new_dset_id, ds)).second)
-    {
+            std::pair<dset_id_t, dataset>(new_dset_id, ds)).second) {
         // There is already a dataset with the same hash.
         // Search for existing entry and return if it exists.
         auto find = _datasets.find(new_dset_id);

@@ -40,7 +40,7 @@ baselineCompression::baselineCompression(Config &config,
 
 void baselineCompression::apply_config(uint64_t fpga_seq) {
 
-    std::string stack_type = config.get_string(unique_name, "stack_type");
+    std::string stack_type = config.get<std::string>(unique_name, "stack_type");
     if(stack_type_defs.count(stack_type) == 0) {
         ERROR("unknown stack type %s", stack_type.c_str());
         return;
@@ -49,11 +49,11 @@ void baselineCompression::apply_config(uint64_t fpga_seq) {
     calculate_stack = stack_type_defs.at(stack_type);
 
     if (config.exists(unique_name, "exclude_inputs")) {
-        exclude_inputs = config.get_array<uint32_t>(unique_name,
+        exclude_inputs = config.get<std::vector<uint32_t>>(unique_name,
                                                     "exclude_inputs");
     }
 
-    num_threads = config.get_uint32_default(unique_name, "num_threads", 1);
+    num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("baselineCompression: apply_config: "
                                     "num_threads has to be at least 1.");
@@ -74,7 +74,8 @@ void baselineCompression::main_thread() {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         INFO("Setting thread affinity");
-        for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+        for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                    "cpu_affinity"))
             CPU_SET(i, &cpuset);
 
         pthread_setaffinity_np(thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);

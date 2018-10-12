@@ -22,9 +22,9 @@ rawFileWrite::rawFileWrite(Config& config,
 
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
-    base_dir = config.get_string(unique_name, "base_dir");
-    file_name = config.get_string(unique_name, "file_name");
-    file_ext = config.get_string(unique_name, "file_ext");
+    base_dir = config.get<std::string>(unique_name, "base_dir");
+    file_name = config.get<std::string>(unique_name, "file_name");
+    file_ext = config.get<std::string>(unique_name, "file_ext");
 }
 
 rawFileWrite::~rawFileWrite() {

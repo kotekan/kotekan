@@ -18,7 +18,7 @@ freqSplit::freqSplit(Config& config,
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> output_buffer_names =
-        config.get_string_array(unique_name, "out_bufs");
+        config.get<std::vector<std::string>>(unique_name, "out_bufs");
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
@@ -99,8 +99,9 @@ freqSubset::freqSubset(Config& config,
                    std::bind(&freqSubset::main_thread, this)) {
 
     // Get list of frequencies to subset from config
-    for (auto ff : config.get_int_array(unique_name, "subset_list")) {
-        subset_list.push_back((uint32_t) ff);
+    for (uint32_t ff : config.get<std::vector<uint32_t>>(unique_name,
+                                                         "subset_list")) {
+        subset_list.push_back(ff);
     }
 
     // Setup the input buffer

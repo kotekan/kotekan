@@ -35,15 +35,15 @@ receiveFlags::receiveFlags(Config &config, const string& unique_name,
 
 void receiveFlags::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    int num = config.get_int(unique_name, "num_elements");
+    int num = config.get<int>(unique_name, "num_elements");
     if (num < 0)
         throw std::invalid_argument("receiveFlags: config: invalid value for" \
                                     " num_elements: "
                                     + std::to_string(num));
     num_elements = (size_t)num;
 
-    num_kept_updates = config.get_uint32_default(unique_name,
-                                                 "num_kept_updates", 5);
+    num_kept_updates = config.get_default<uint32_t>(
+                unique_name, "num_kept_updates", 5);
 }
 
 bool receiveFlags::flags_callback(nlohmann::json &json) {

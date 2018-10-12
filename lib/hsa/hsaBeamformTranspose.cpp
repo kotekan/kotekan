@@ -7,8 +7,9 @@ hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string &unique_
     hsaCommand("transpose", "transpose.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
 
     beamform_frame_len  = _num_elements * _samples_per_data_set * 2 * sizeof(float);
     output_frame_len = _num_elements * (_samples_per_data_set+32) * 2 * sizeof(float);

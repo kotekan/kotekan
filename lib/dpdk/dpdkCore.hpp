@@ -65,7 +65,10 @@ public:
     dpdkRXhandler(Config &config, const std::string &unique_name,
                   bufferContainer &buffer_container, int port) :
                   config(config), unique_name(unique_name),
-                  buffer_container(buffer_container), port(port) {};
+                  buffer_container(buffer_container), port(port) {
+
+        set_log_level(config.get<std::string>(unique_name, "log_level"));
+    };
 
     /**
      * @brief Default virtual destructor.
@@ -133,6 +136,10 @@ protected:
  *                                 in_buf: my_buf_0
  *                               - dpdk_handler: myHandler # Handler for port 1
  *                                 in_buf: my_buf_1
+ *                           Note that if a port isn't being used it must be denoted by
+ *                           `- dpdk_handler: none`.   The number of handlers much match the number
+ *                           of ports in the system, even if they aren't being used by the current config.
+ *                           There must be a valid handler for every port referenced in @c lcore_port_map
  * @config   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
  *                            updating stats, and other low volume operatings)
  *
@@ -204,6 +211,9 @@ private:
     /// Number of ports handled
     uint32_t num_ports;
 
+    /// The number of ports the system has (can be different from num_ports)
+    uint32_t num_system_ports;
+
     /// The maximum number of packets returned by @c rte_eth_rx_burst
     uint32_t burst_size;
 
@@ -222,8 +232,9 @@ private:
     /// One of these port list structs exists per lcore
     struct portList * lcore_port_list;
 
-    /// One of these exists per port
+    /// One of these exists per system port
     dpdkRXhandler ** handlers;
+
 };
 
 

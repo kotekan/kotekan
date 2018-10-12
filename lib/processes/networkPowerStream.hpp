@@ -40,7 +40,6 @@
  * @conf   dest_protocol          String. Should be @c "TCP" or @c "UDP"
  *
  * @warning UDP stream doesn't work at the moment.
- * @bug     On a mac, exits silently when TCP receiver disconnects. (Ok on linux.)
  * @note    Lots of updating required once buffers are typed...
  *
  * @author Keith Vanderlinde

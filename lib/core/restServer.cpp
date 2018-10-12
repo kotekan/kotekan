@@ -235,7 +235,8 @@ void restServer::mongoose_thread() {
 }
 
 void restServer::set_server_affinity(Config &config) {
-    vector<int32_t> cpu_affinity = config.get_int_array("/rest_server", "cpu_affinity");
+    vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>(
+        "/rest_server", "cpu_affinity");
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);

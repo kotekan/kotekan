@@ -132,12 +132,12 @@ allfreq: &allfreq [
 updatable_config:
   flagging:
     kotekan_update_endpoint: "json"
-    start_time: 1535048997
+    start_time: 1535048997.
     tag: "initial_flags"
     bad_inputs: [ ]
   gains:
     kotekan_update_endpoint: "json"
-    start_time: 1535048997
+    start_time: 1535048997.
     tag: "gain_20180830T074323.149037Z_cyga"
 
 

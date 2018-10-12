@@ -25,7 +25,7 @@ using std::string;
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer holing the data to be written
- *  @buffer_format Array of VDIF frames. 
+ *  @buffer_format Array of VDIF frames.
  *  @buffer_metadata none
  *
  * @conf num_disks      Int , the number of drives to read from
@@ -33,11 +33,13 @@ using std::string;
  * @conf disk_set       String, the disk name.
  * @conf write_to_disk  Bool, whether to actually save, alternately operating in dummy mode
  * @conf instrument_name String, used in filenames and stored to metadata text file.
+ * @conf write_metadata_and_gains  Bool, Default true.  Flag to control if VDIF/ARO style gains
+ *                                 and metadata are copied to the acquisition folder.
  *
- * @todo    Make more general, to support more than just ICEboard-generated data (mostly just updating .
+ * @todo    Make more general, to support more than just ICEboard-generated data.
  *
  * Worked Example with n = 3:
- * 
+ *
  * Config Parameters:
  *
  * - num_disk: 3
@@ -52,17 +54,17 @@ using std::string;
  * - /drives/D/0/20170805T155218Z_aro_vdif/settings.txt
  * - /drives/D/0/20170805T155218Z_aro_vdif/0000000.vdif
  * - /drives/D/0/20170805T155218Z_aro_vdif/0000003.vdif
- * - /drives/D/0/20170805T155218Z_aro_vdif/0000006.vdif 
- * 
+ * - /drives/D/0/20170805T155218Z_aro_vdif/0000006.vdif
+ *
  * Drive 1:
  *
  * - /drives/D/1/20170805T155218Z_aro_vdif/settings.txt
  * - /drives/D/1/20170805T155218Z_aro_vdif/0000001.vdif
  * - /drives/D/1/20170805T155218Z_aro_vdif/0000004.vdif
- * - /drives/D/1/20170805T155218Z_aro_vdif/0000007.vdif 
+ * - /drives/D/1/20170805T155218Z_aro_vdif/0000007.vdif
  *
  * Drive 2:
- * 
+ *
  * - /drives/D/2/20170805T155218Z_aro_vdif/settings.txt
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000002.vdif
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000005.vdif
@@ -77,7 +79,7 @@ public:
                    const string& unique_name,
                    bufferContainer &buffer_containter);
 
-    ///Destructor, currently does nothing 
+    ///Destructor, currently does nothing
     virtual ~nDiskFileWrite();
 
     ///Applies the config parameters
@@ -105,6 +107,9 @@ private:
     string disk_set;
     ///Boolean config parameter to enable or disable file output
     bool write_to_disk;
+
+    ///Flag to enable or disable writing out the metadata and gains
+    bool write_metadata_and_gains;
 
     ///Function to make subdirectories dataset_name on each disk in the disk set
     void mk_dataset_dir();

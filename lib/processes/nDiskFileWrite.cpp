@@ -29,11 +29,14 @@ nDiskFileWrite::~nDiskFileWrite() {
 }
 
 void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
-    disk_base = config.get_string(unique_name, "disk_base");
-    num_disks = config.get_int(unique_name, "num_disks");
-    disk_set = config.get_string(unique_name, "disk_set");
-    write_to_disk = config.get_bool(unique_name, "write_to_disk");
-    instrument_name = config.get_string(unique_name, "instrument_name");
+    disk_base = config.get<std::string>(unique_name, "disk_base");
+    num_disks = config.get<uint32_t>(unique_name, "num_disks");
+    disk_set = config.get<std::string>(unique_name, "disk_set");
+    write_to_disk = config.get<bool>(unique_name, "write_to_disk");
+    instrument_name = config.get_default<std::string>(
+            unique_name, "instrument_name", "no_name_set");
+    write_metadata_and_gains = config.get_default<bool>(
+            unique_name, "write_metadata_and_gains", true);
 }
 
 void nDiskFileWrite::save_meta_data(char *timestr) {
@@ -52,12 +55,13 @@ void nDiskFileWrite::save_meta_data(char *timestr) {
         }
 
         const int data_format_version = 3;
-        int num_freq = config.get_int(unique_name,"num_freq");
-        int num_elements = config.get_int(unique_name,"num_elements");
-        int samples_per_file = config.get_int(unique_name,"samples_per_data_set");
+        int num_freq = config.get<int>(unique_name,"num_freq");
+        int num_elements = config.get<int>(unique_name,"num_elements");
+        int samples_per_file = config.get<int>(unique_name,
+                                               "samples_per_data_set");
         const int vdif_header_len = 32;
         const int bit_depth = 4;
-        string note = config.get_string(unique_name,"note");
+        string note = config.get<std::string>(unique_name,"note");
 
         fprintf(info_file, "format_version_number=%02d\n", data_format_version);
         fprintf(info_file, "num_freq=%d\n", num_freq);
@@ -82,8 +86,7 @@ void nDiskFileWrite::save_meta_data(char *timestr) {
     }
 }
 
-// TODO instead of there being N disks of this tread started, this thread should
-// start N threads to write the data.
+
 void nDiskFileWrite::main_thread() {
 
     // TODO This is a very C style, maybe make it more C++11 like?
@@ -99,8 +102,13 @@ void nDiskFileWrite::main_thread() {
 
     if (write_to_disk) {
         make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
+    }
+
+    if (write_to_disk && write_metadata_and_gains){
+
         // Copy gain files
-        std::vector<std::string> gain_files = config.get_string_array(unique_name, "gain_files");
+        std::vector<std::string> gain_files =
+                config.get<std::vector<std::string>>(unique_name, "gain_files");
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
                 unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
@@ -128,7 +136,8 @@ void nDiskFileWrite::main_thread() {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         INFO("Setting thread affinity");
-        for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+        for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                    "cpu_affinity"))
             CPU_SET(i, &cpuset);
 
         pthread_setaffinity_np(file_thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);
@@ -146,14 +155,6 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int file_num = disk_id;
     int frame_id = disk_id;
     uint8_t * frame = NULL;
-
-    sleep(1);
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    INFO("Setting thread affinity");
-    for (int j = 10; j < 12; j++) CPU_SET(j, &cpuset);
-//    CPU_SET(11-(disk_id%2),&cpuset);
-    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
     while(!stop_thread) {
 
