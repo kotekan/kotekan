@@ -92,7 +92,10 @@ void restClient::event_thread() {
 
 void restClient::http_request_done(struct evhttp_request *req, void *arg){
     // FIXME: evcon is passed here, because evhttp_request_get_connection(req)
-    // doesn't work (libevent 2.0.* problem?)
+    // always returns NULL and there is no way to free the connection on
+    // completion in libevent < 2.1
+    // libevent 2.1 has a evhttp_connection_free_on_completion, but using it,
+    // the bufferevent never gets deleted...
     // TODO: maybe keep the evhttp_connections in a pool and reuse them
     // (set Connection:keep-alive header)
     auto pair = (std::pair<std::function<void(restReply)>,
@@ -117,10 +120,13 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     int response_code = evhttp_request_get_response_code(req);
 
     if (response_code != 200) {
-        // TODO: change to use
-        // evhttp_request_get_response_code_line(req) (libevent 2.1)
+#if LIBEVENT_VERSION_NUMBER < 0x02010000
         INFO("restClient: Received response code %d (%s)", response_code,
              req->response_code_line);
+#else
+        INFO("restClient: Received response code %d (%s)", response_code,
+             evhttp_request_get_response_code_line(req));
+#endif
         if (response_code == 0)
             WARN("restClient: connection error.");
         ext_cb(restReply(false, str_data));
