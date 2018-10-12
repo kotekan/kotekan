@@ -45,9 +45,9 @@ endforeach(testSrc)
 
 # compile source files for broker test
 set(BROKER_BOOST_TEST_SOURCES
-    test_dataset_broker_producer.cpp
-    test_dataset_broker_producer2.cpp
-    test_dataset_broker_consumer.cpp
+    dataset_broker_producer.cpp
+    dataset_broker_producer2.cpp
+    dataset_broker_consumer.cpp
 )
 
 # Run through each source
@@ -60,4 +60,13 @@ foreach(testSrc ${BROKER_BOOST_TEST_SOURCES})
     # test_dataset_broker.py
     set_target_properties(${testName} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker)
+
+    # they only work together with the broker
+    add_dependencies(${testName} dataset_broker)
 endforeach(testSrc)
+
+# get dataset-broker.py from the ch_acq repo
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker/dataset_broker.py
+                   COMMAND git archive --remote=git@bitbucket.org:chime/ch_acq.git refs/heads/dataset-broker dataset_broker.py | tar -x -p -C ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker/
+                   )
+add_custom_target(dataset_broker ALL DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker/dataset_broker.py)

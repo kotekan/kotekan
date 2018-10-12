@@ -8,10 +8,10 @@ import signal
 
 import kotekan_runner
 
-producer_path = "./boost/dataset-broker/test_dataset_broker_producer"
-producer2_path = "./boost/dataset-broker/test_dataset_broker_producer2"
-consumer_path = "./boost/dataset-broker/test_dataset_broker_consumer"
-broker_path = "/home/rick/chacq/ch_acq/dataset_broker.py"
+producer_path = "./boost/dataset-broker/dataset_broker_producer"
+producer2_path = "./boost/dataset-broker/dataset_broker_producer2"
+consumer_path = "./boost/dataset-broker/dataset_broker_consumer"
+broker_path = "./boost/dataset-broker/dataset_broker.py"
 
 def test_produce_consume():
     if not os.path.isfile(producer_path) or not os.path.isfile(consumer_path):
