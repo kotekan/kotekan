@@ -198,5 +198,5 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
         std::cout << s.first << " - " << s.second->data_to_json().dump()
                   << std::endl;
 
-    usleep(3000);
+    usleep(500000);
 }

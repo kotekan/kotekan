@@ -220,7 +220,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
 
     ret = restClient::instance().make_request("test_restclient", fun_fail,
                                               request, "localhost", 1);
-    usleep(10000);
+    usleep(500000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format("Only {} callback functions where " \
@@ -264,7 +264,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
     std::function<void(restReply)> fun_json = TestContext::rq_callback_json;
     ret = restClient::instance().make_request("test_restclient_json", fun_json,
                                               bad_request);
-    usleep(10000);
+    usleep(500000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format("Only {} callback functions where " \
@@ -297,7 +297,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
     for (int i = 0; i < N; i++) {
         t[i].join();
     }
-    usleep(10000);
+    usleep(1000000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format("Only {} callback functions where " \

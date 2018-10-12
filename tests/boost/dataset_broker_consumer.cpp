@@ -84,5 +84,5 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
     check_equal(p.second->get_prods(), prods);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(500000);
 }

@@ -87,5 +87,5 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                   << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(500000);
 }

@@ -115,5 +115,5 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
     dm.add_dataset(dataset(input_state.first, 0, true));
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(500000);
 }
