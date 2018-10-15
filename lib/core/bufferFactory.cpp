@@ -65,6 +65,14 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
         return create_buffer(num_frames, frame_size, pool, name.c_str());
     }
 
+    if (type_name == "hsa") {
+        uint32_t frame_size = config.get<uint32_t>(location, "frame_size");
+        uint32_t gpu_id = config.get<uint32_t>(location, "gpu_id");
+        INFO("Creating HSA compatible buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
+                name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
+        return create_hsa_buffer(num_frames, frame_size, pool, name.c_str(), gpu_id);
+    }
+
     if(type_name == "vis") {
         int num_elements = config.get<int>(location, "num_elements");
         int num_ev = config.get<int>(location, "num_ev");

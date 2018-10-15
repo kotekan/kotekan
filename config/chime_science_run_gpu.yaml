@@ -87,52 +87,68 @@ network_buffers:
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
   network_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 0
   network_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 1
   network_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 2
   network_buffer_3:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 3
 
 gpu_n2_buffers:
   num_frames: buffer_depth
   frame_size: 4 * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
   metadata_pool: main_pool
   gpu_n2_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 0
   gpu_n2_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 1
   gpu_n2_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 2
   gpu_n2_output_buffer_3:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 3
 
 gpu_beamform_output_buffers:
   num_frames: buffer_depth
   frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
   metadata_pool: main_pool
   gpu_beamform_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 0
   gpu_beamform_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 1
   gpu_beamform_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 2
   gpu_beamform_output_buffer_3:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 3
 
 pulsar_output_buffers:
     num_frames: buffer_depth
     frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     beamform_pulsar_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     beamform_pulsar_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     beamform_pulsar_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 # Metadata pool
 vis_pool:
@@ -182,39 +198,51 @@ gpu_rfi_output_buffers:
     frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
     metadata_pool: main_pool
     gpu_rfi_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_rfi_mask_output_buffers:
     num_frames: buffer_depth
     frame_size: num_local_freq * samples_per_data_set / sk_step
     metadata_pool: main_pool
     gpu_rfi_mask_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_mask_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_mask_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_mask_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_rfi_bad_input_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_float * num_elements * num_local_freq
     metadata_pool: main_pool
     gpu_rfi_bad_input_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_bad_input_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_bad_input_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_bad_input_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 lost_samples_buffer:
     kotekan_buffer: standard
@@ -359,6 +387,7 @@ gpu:
   buffer_depth: 4
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
+  log_profiling: false
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
