@@ -753,6 +753,7 @@ void frame_hsa_free(uint8_t * frame_pointer) {
         hsa_host_free(frame_pointer);
     #else
         ERROR("HSA not enabled, cannot free frame");
+        exit(-1);
     #endif
 }
 

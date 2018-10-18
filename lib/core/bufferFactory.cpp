@@ -37,6 +37,9 @@ void bufferFactory::build_from_tree(map<string, struct Buffer *> &buffers,
                 throw std::runtime_error("The buffer named " + name + " has already been defined!");
             }
             buffers[name] = new_buffer(buffer_type, name, path + "/" + it.key());
+            if (buffers[name] == NULL) {
+                throw std::runtime_error("Cannot create buffer named '" + name + "'");
+            }
             continue;
         }
 
