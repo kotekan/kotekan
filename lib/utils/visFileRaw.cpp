@@ -52,7 +52,7 @@ void visFileRaw::create_file(
     std::iota(eval_index.begin(), eval_index.end(), 0);
     file_metadata["index_map"]["ev"] = eval_index;
 
-    if (sstate) {
+    if (sstate->is_stacked()) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
     }
@@ -61,7 +61,8 @@ void visFileRaw::create_file(
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();
     size_t ninput = istate->get_inputs().size();
-    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    size_t nvis = sstate->is_stacked() ?
+                sstate->get_num_stack() : pstate->get_prods().size();
 
     // Set the alignment (in kB)
     // TODO: find some way of getting this from config

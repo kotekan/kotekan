@@ -46,7 +46,7 @@ void visFileH5::create_file(
         throw std::runtime_error("Could not create file.");
     }
 
-    if(sstate) {
+    if(sstate->is_stacked()) {
         throw std::runtime_error("H5 writers do not currently worked with "
                                  "stacked data.");
     }

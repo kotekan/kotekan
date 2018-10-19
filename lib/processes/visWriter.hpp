@@ -8,6 +8,7 @@
 #define VIS_WRITER_HPP
 
 #include <cstdint>
+#include <future>
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -128,19 +129,22 @@ protected:
     // Number of eigenvectors to write out
     size_t num_ev;
 
-    /// Number of products to write
-    size_t num_vis;
+    /// Mutex for updating file_bundle (used in for visCalWriter)
+    std::mutex write_mutex;
 
-    /// Frequency IDs that we are expecting
-    std::map<uint32_t, uint32_t> freq_id_map;
+private:
+    /// Gets states from the dataset manager and returns some metadata
+    static std::pair<size_t, std::map<uint32_t, uint32_t>>
+    get_states(dset_id_t ds);
+
+    /// Number of products to write and freqency map
+    std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>
+    future_metadata;
 
     /// Keep track of the average write time
     movingAverage write_time;
 
     uint32_t dropped_frame_count = 0;
-
-    /// Mutex for updating file_bundle (used in for visCalWriter)
-    std::mutex write_mutex;
 };
 
 /**

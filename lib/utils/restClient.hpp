@@ -46,7 +46,8 @@ public:
      *                          complete.
      * @param data      JSON request (`{}` to send a GET request,
      *                  default: `{}`).
-     * @param host      Host (default: "localhost").
+     * @param host      Host (default: "127.0.0.1", Prefer numerical, because
+     *                  the DNS lookup is blocking).
      * @param port      Port (default: PORT_REST_SERVER).
      * @param retries   Max. retries to send message (default: 0).
      * @param timeout   Timeout in seconds. If -1 is passed, the default value
@@ -56,7 +57,7 @@ public:
     bool make_request(std::string path,
                       std::function<void(restReply)> request_done_cb,
                       const nlohmann::json& data = {},
-                      const std::string& host = "localhost",
+                      const std::string& host = "127.0.0.1",
                       const unsigned short port = PORT_REST_SERVER,
                       const int retries = 0, const int timeout = -1);
 

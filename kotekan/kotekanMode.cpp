@@ -6,6 +6,7 @@
 #include "restServer.hpp"
 #include "configUpdater.hpp"
 #include "json.hpp"
+#include "datasetManager.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
     restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
@@ -71,6 +72,9 @@ void kotekanMode::initalize_processes() {
 
     // Update REST server
     restServer::instance().set_server_affinity(config);
+
+    // Apply config to datasetManager
+    datasetManager::instance().apply_config(config);
 }
 
 void kotekanMode::join() {

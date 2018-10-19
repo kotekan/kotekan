@@ -144,7 +144,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
     json json_config;
     json_config["use_ds_broker"] = true;
     json_config["ds_broker_port"] = 12048;
-    json_config["ds_broker_host"] = "localhost";
+    json_config["ds_broker_host"] = "127.0.0.1";
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";

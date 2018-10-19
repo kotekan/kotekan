@@ -82,9 +82,12 @@ visWriter::visWriter(Config& config,
             ispec, std::move(freq_state));
         state_uptr prod_state = std::make_unique<prodState>(
             pspec, std::move(input_state));
+        // empty stack state
+        state_uptr stack_state =
+                std::make_unique<stackState>(std::move(prod_state));
 
         // Register the initial state with the manager
-        auto s = dm.add_state(std::move(prod_state));
+        auto s = dm.add_state(std::move(stack_state), true);
         writer_dstate = s.first;
     }
 
@@ -110,6 +113,12 @@ void visWriter::main_thread() {
 
     unsigned int frame_id = 0;
 
+    // Frequency IDs that we are expecting
+    std::map<uint32_t, uint32_t> freq_id_map;
+
+    // number of products
+    size_t num_vis;
+
     // Look over the current buffers for information to setup the acquisition
     if (!init_acq())
         return;
@@ -129,24 +138,8 @@ void visWriter::main_thread() {
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        // Check if the frequency we are receiving is on the list of frequencies
-        // we are processing
-        if (freq_id_map.count(frame.freq_id) == 0) {
-            WARN("Frequency id=%i not enabled for visWriter, discarding frame",
-                 frame.freq_id);
-
-        // Check that the number of visibilities matches what we expect
-        } else if (frame.num_prod != num_vis) {
-            string msg = fmt::format(
-                "Number of products in frame doesn't match file ({} != {}).",
-                frame.num_prod, num_vis
-            );
-            ERROR(msg.c_str());
-            raise(SIGINT);
-            return;
-
         // Check the number of eigen vectors is as expected
-        } else if (num_ev > 0  and frame.num_ev != num_ev) {
+        if (num_ev > 0  and frame.num_ev != num_ev) {
 
             string msg = fmt::format(
                 "Number of eigenvectors in frame doesn't match file ({} != {}).",
@@ -161,6 +154,47 @@ void visWriter::main_thread() {
             string msg = fmt::format(
                 "Unexpected dataset ID={} received (expected id={}).",
                 frame.dataset_id, ds_id
+            );
+            ERROR(msg.c_str());
+            raise(SIGINT);
+            return;
+        }
+
+        // wait for the future from get_states before reading freq_id_map
+        if (future_metadata.valid()) {
+            try {
+                std::tie(num_vis, freq_id_map) = future_metadata.get();
+            } catch (std::runtime_error& e) {
+                WARN("visWriter: Dropping frame, failure in datasetManager: %s",
+                     e.what());
+                dropped_frame_count++;
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_viswriter_dropped_frame_total",
+                    unique_name, dropped_frame_count
+                );
+
+                // Mark the buffer and move on
+                mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+
+                // Advance the current frame ids
+                frame_id = (frame_id + 1) % in_buf->num_frames;
+
+                continue;
+            }
+        }
+
+        // Check if the frequency we are receiving is on the list of frequencies
+        // we are processing
+        if (freq_id_map.count(frame.freq_id) == 0) {
+            WARN("Frequency id=%i not enabled for visWriter, discarding frame",
+                 frame.freq_id);
+
+        // Check that the number of visibilities matches what we expect
+        } else if (frame.num_prod != num_vis) {
+            string msg = fmt::format(
+                "Number of products in frame doesn't match state or file " \
+                        "({} != {}).",
+                frame.num_prod, num_vis
             );
             ERROR(msg.c_str());
             raise(SIGINT);
@@ -208,7 +242,27 @@ void visWriter::main_thread() {
     }
 }
 
+std::pair<size_t, std::map<uint32_t, uint32_t>>
+visWriter::get_states(dset_id_t ds) {
 
+    auto& dm = datasetManager::instance();
+    std::map<uint32_t, uint32_t> fmap;
+
+    // Get the frequency spec to determine the freq_ids expected at this Writer.
+    auto fstate = dm.closest_ancestor_of_type<freqState>(ds).second;
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs())
+        fmap[f.first] = ind++;
+
+    // Get the product spec and (if available) the stackState to determine the
+    // number of vis entries we are expecting
+    auto pstate = dm.closest_ancestor_of_type<prodState>(ds).second;
+    auto sstate = dm.closest_ancestor_of_type<stackState>(ds).second;
+
+    return {sstate->is_stacked() ?
+            sstate->get_num_stack() : pstate->get_prods().size(),
+            fmap};
+}
 
 bool visWriter::init_acq() {
 
@@ -224,22 +278,11 @@ bool visWriter::init_acq() {
     // they will be writing.
     if (use_dataset_manager) {
         ds_id = frame.dataset_id;
-    } else {
-        ds_id = dm.add_dataset(dataset(writer_dstate, 0, true));
-    }
+    } else
+        ds_id = dm.add_dataset(dataset(writer_dstate, 0, true), true);
 
-    // Get the frequency spec to determine the freq_ids expected at this Writer.
-    auto fstate = dm.closest_ancestor_of_type<freqState>(
-        ds_id).second;
-    uint ind = 0;
-    for (auto& f : fstate->get_freqs())
-        freq_id_map[f.first] = ind++;
-
-    // Get the product spec and (if available) the stackState to determine the
-    // number of vis entries we are expecting
-    auto pstate = dm.closest_ancestor_of_type<prodState>(ds_id).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(ds_id).second;
-    num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    // get dataset states
+    future_metadata = std::async(get_states, ds_id);
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;

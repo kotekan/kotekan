@@ -7,14 +7,16 @@
 #include <memory>
 #include <mutex>
 #include <condition_variable>
+#include <fmt.hpp>
 
 #include "json.hpp"
 #include "errors.h"
 #include "visUtil.hpp"
 #include "restClient.hpp"
+#include "prometheusMetrics.hpp"
 
 #define UNIQUE_NAME "/dataset_manager"
-#define TIMEOUT_BROKER_SEC 30
+#define TIMEOUT_BROKER_SEC 10
 
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
@@ -176,7 +178,6 @@ private:
      * @brief Create a datasetState subclass from a json serialisation.
      *
      * @param name  Name of subclass to create.
-     * @param tag   Unique string label.
      * @param data  Serialisation of config.
      * @param inner Inner state to compose with.
      * @returns The created datasetState.
@@ -368,6 +369,125 @@ private:
 };
 
 
+std::vector<stack_ctype> invert_stack(
+    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map);
+
+
+/**
+ * @brief A dataset state that describes a redundant baseline stacking.
+ *
+ * @author Richard Shaw
+ */
+class stackState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The stack information as serialized by
+     *              stackState::to_json().
+     * @param inner An inner state or a nullptr.
+     */
+    stackState(json& data, state_uptr inner) :
+        datasetState(move(inner))
+    {
+        try {
+            _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
+            _num_stack = data["num_stack"].get<uint32_t>();
+            _stacked = data["stacked"].get<bool>();
+        } catch (exception& e) {
+             throw std::runtime_error("stackState: Failure parsing json data: "s
+                                      + e.what());
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param rstack_map Definition of how the products were stacked.
+     * @param num_stack Number of stacked visibilites.
+     * @param inner  An inner state (optional).
+     */
+    stackState(uint32_t num_stack, std::vector<rstack_ctype>&& rstack_map,
+               state_uptr inner=nullptr) :
+        datasetState(std::move(inner)),
+        _num_stack(num_stack),
+        _rstack_map(rstack_map),
+        _stacked(true) { }
+
+
+    /**
+     * @brief Constructor for an empty stack state
+     *
+     * This constructs a stackState describing a dataset that is not stacked.
+     */
+    stackState(state_uptr inner=nullptr) :
+        datasetState(std::move(inner)),
+        _stacked(false) {}
+
+
+    /**
+     * @brief Get stack map information (read only).
+     *
+     * For every product this says which stack to add the product into and
+     * whether it needs conjugating before doing so.
+     *
+     * @return The stack map.
+     */
+    const std::vector<rstack_ctype>& get_rstack_map() const
+    {
+        return _rstack_map;
+    }
+
+    /**
+     * @brief Get the number of stacks (read only).
+     *
+     * @return The number of stacks.
+     */
+    const uint32_t get_num_stack() const
+    {
+        return _num_stack;
+    }
+
+    /**
+     * @brief Tells if the data is stacked (read only).
+     *
+     * @return True for stacked data, otherwise False.
+     */
+    const bool is_stacked() const
+    {
+        return _stacked;
+    }
+
+    /**
+     * @brief Calculate and return the stack->prod mapping.
+     *
+     * This is calculated on demand and so a full fledged vector is returned.
+     *
+     * @returns The stack map.
+     **/
+    std::vector<stack_ctype> get_stack_map() const
+    {
+        return invert_stack(_num_stack, _rstack_map);
+    }
+
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override
+    {
+        return {{"rstack", _rstack_map }, {"num_stack", _num_stack},
+                {"stacked", _stacked}};
+    }
+
+private:
+
+    /// Total number of stacks
+    uint32_t _num_stack;
+
+    /// The stack definition
+    std::vector<rstack_ctype> _rstack_map;
+
+    /// Is the data stacked at all?
+    bool _stacked;
+};
+
+
 /**
  * @brief Manages sets of state changes applied to datasets.
  *
@@ -404,22 +524,29 @@ private:
  * Using it allows the synchronization of datasets and states between multiple
  * kotekan instances.
  *
- * @config use_ds_broker    If true, states and datasets will be registered with
+ * @conf use_ds_broker Bool. If true, states and datasets will be
+ *                          registered with
  *                          the dataset broker. If an ancestor can not be found
  *                          locally, `closest_ancestor_of_type` will ask the
  *                          broker.
- * @config ds_broker_port   The port of the dataset broker (if `use_ds_broker`
- *                          is `True`).
- * @config ds_broker_host   Address to the dataset broker (if 'use_ds_broke` is
- *                          `True`. Prefer numerical address).
- * @config _path register_state     Path to the `register-state` endpoint (if
- *                                  `use_ds_broker` is `True`).
- * @config _path send_state         Path to the `send-state` endpoint (if
- *                                  `use_ds_broker` is `True`).
- * @config _path register_dataset   Path to the `register-dataset` endpoint (if
- *                                  `use_ds_broker` is `True`).
- * @config _path request_ancestors  Path to the `request_ancestors` endpoint (if
- *                                  `use_ds_broker` is `True`).
+ * @conf ds_broker_port   Int. The port of the dataset broker
+ *                          (if `use_ds_broker` is `True`).
+ * @conf ds_broker_host   String. Address to the dataset broker
+ *                          (if 'use_ds_broke` is `True`. Prefer numerical
+ *                          address, because the DNS lookup is blocking).
+ * @conf _path register_state     String. Path to the `register-state`
+ *                                  endpoint (if `use_ds_broker` is `True`).
+ * @conf _path send_state         String. Path to the `send-state` endpoint
+ *                                  (if `use_ds_broker` is `True`).
+ * @conf _path register_dataset   String. Path to the `register-dataset`
+ *                                  endpoint (if `use_ds_broker` is `True`).
+ * @conf _path request_ancestors  String. Path to the `request_ancestors`
+ *                                  endpoint (if `use_ds_broker` is `True`).
+ *
+ *
+ * @par metrics
+ * @metric kotekan_datasetbroker_error_count Number of errors encountered in
+ *                                           communication with the broker.
  *
  * @author Richard Shaw, Rick Nitsche
  **/
@@ -447,32 +574,33 @@ public:
      * @brief Register a new dataset.
      *
      * If `use_ds_broker` is set, this function will ask the dataset broker to
-     * assign an ID to the new dataset and is blocking. If you want to
-     * do something while waiting for the return value, use an std::future.
+     * assign an ID to the new dataset.
      *
-     * @param trans The ID of an already registered state.
-     * @param input ID of the input dataset.
+     * @param ds The dataset to be added.
+     * @param ignore_broker If true, the dataset is not sent to the broker.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id_t add_dataset(const dataset ds);
+    dset_id_t add_dataset(const dataset ds, bool ignore_broker = false);
 
     /**
      * @brief Register a state with the manager.
      *
      * If `use_ds_broker` is set, this function will also register the new state
-     * with the broker (not blocking).
+     * with the broker.
      *
-     * The second argument of this function can be ignored. Its purpose is to
+     * The third argument of this function is to
      * prevent compilation of this function with `T` not having the base class
      * `datasetState`.
      *
-     * @param trans A pointer to the state.
+     * @param state The state to be added.
+     * @param ignore_broker If true, the state is not sent to the broker.
      * @returns The id assigned to the state and a read-only pointer to the
      * state.
      **/
     template <typename T>
     inline pair<state_id_t, const T*> add_state(
             unique_ptr<T>&& state,
+            bool ignore_broker = false,
             typename std::enable_if<is_base_of<datasetState, T>::value>::type*
             = 0);
 
@@ -518,14 +646,15 @@ public:
      * value of this function, use std::future.
      *
      * @returns The dataset ID and the state that generated it.
-     * Returns `{<undefined>, nullptr}` if not found in ancestors.
+     * Returns `{<undefined>, nullptr}` if not found in ancestors or in a
+     * failure case.
      **/
     template<typename T>
     inline pair<dset_id_t, const T*> closest_ancestor_of_type(dset_id_t) const;
 
 private:
-
-    datasetManager() = default;
+    /// Constructor
+    datasetManager();
 
     /**
      * @brief Calculate the hash of a datasetState to use as the state_id.
@@ -542,7 +671,7 @@ private:
     /**
      * @brief Calculate the hash of a dataset to use as the dset_id.
      *
-     * @param state Dataset to hash.
+     * @param ds Dataset to hash.
      *
      * @returns Hash to use as ID.
      *
@@ -597,6 +726,9 @@ private:
 
     /// conditional variable for requesting ancestors
     static std::condition_variable cv_request_ancestor;
+
+    /// counter for connection and parsing errors
+    static std::atomic<uint32_t> conn_error_count;
 
     // config params
     bool _use_broker = false;
@@ -657,10 +789,13 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
         try {
             request_ancestor(dset, typeid(T).name());
         } catch (std::runtime_error& e) {
-            ERROR("datasetManager: Failure requesting ancestors: %s", e.what());
-            ERROR("datasetManager: Make sure the broker is running.\n" \
-                  "Exiting...");
-            raise(SIGINT);
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
+            std::string msg = fmt::format(
+                        "datasetManager: Failure requesting ancestors, make " \
+                        "sure the broker is running: {}", e.what());
+            throw std::runtime_error(msg);
         }
         // set timeout to hear back from callback function
         std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
@@ -674,10 +809,19 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
         while(true) {
             if (cv_request_ancestor.wait_until(lck, time_point)
                   == std::cv_status::timeout) {
-                ERROR("datasetManager: Timeout while requesting ancestors of " \
-                      "type %s of dataset %zu.", typeid(T).name(), dset);
-                ERROR("datasetManager: Exiting...");
-                raise(SIGINT);
+                for(auto& t : ancestors(dset)) {
+                    if(typeid(*(t.second)) == typeid(T)) {
+                        return {t.first, dynamic_cast<T*>(t.second)};
+                    }
+                }
+                std::string msg = fmt::format(
+                            "datasetManager: Timeout while requesting " \
+                            "ancestors of type {} of dataset {}.",
+                            typeid(T).name(), dset);
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                            ++conn_error_count);
+                throw std::runtime_error(msg);
             }
             for(auto& t : ancestors(dset)) {
                 if(typeid(*(t.second)) == typeid(T)) {
@@ -693,6 +837,7 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
 template <typename T>
 pair<state_id_t, const T*> datasetManager::add_state(
         unique_ptr<T>&& state,
+        bool ignore_broker,
         typename std::enable_if<is_base_of<datasetState, T>::value>::type*)
 {
 
@@ -701,22 +846,27 @@ pair<state_id_t, const T*> datasetManager::add_state(
     // insert the new state
     // FIXME: check for and handle hash collicion
     std::lock_guard<std::mutex> slock(_lock_states);
-    if (!_states.insert(std::pair<state_id_t, unique_ptr<T>>(hash,
-                                                           move(state))).second)
+    if (!_states.insert(
+            std::pair<state_id_t, unique_ptr<T>>(hash, move(state))).second)
         INFO("datasetManager: a state with hash %zu is already registered " \
              "locally.", hash);
 
-    if (_use_broker) {
+    if (_use_broker && !ignore_broker) {
         try {
             register_state(hash);
         } catch (std::runtime_error& e) {
-            ERROR("datasetManager: Failure registering state: %s", e.what());
-            ERROR("datasetManager: Make sure the broker is running.\n" \
-                  "Exiting...");
-            raise(SIGINT);
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
+            std::string msg = fmt::format(
+                        "datasetManager: Failure registering state: {}\n" \
+                        "datasetManager: Make sure the broker is running."
+                        , e.what());
+            throw std::runtime_error(msg);
         }
     }
 
-    return pair<state_id_t, const T*>(hash, (const T*)(_states.at(hash).get()));
+    return std::pair<state_id_t, const T*>(hash,
+                                           (const T*)(_states.at(hash).get()));
 }
 #endif

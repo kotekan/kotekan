@@ -5,6 +5,9 @@ Management of Dataset States
 .. doxygenclass:: datasetManager
     :members:
 
+.. doxygenclass:: dataset
+    :members:
+
 .. doxygenclass:: datasetState
     :members:
 
@@ -17,3 +20,5 @@ Management of Dataset States
 .. doxygenclass:: prodState
     :members:
 
+.. doxygenclass:: stackState
+    :members:

@@ -22,7 +22,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
     json json_config;
     json_config["use_ds_broker"] = true;
     json_config["ds_broker_port"] = 12050;
-    json_config["ds_broker_host"] = "localhost";
+    json_config["ds_broker_host"] = "127.0.0.1";
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";
@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
     json json_config;
     json_config["use_ds_broker"] = true;
     json_config["ds_broker_port"] = 12050;
-    json_config["ds_broker_host"] = "localhost";
+    json_config["ds_broker_host"] = "127.0.0.1";
     json_config["register_state_path"] = "/register-state";
     json_config["send_state_path"] = "/send-state";
     json_config["register_dataset_path"] = "/register-dataset";

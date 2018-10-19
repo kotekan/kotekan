@@ -23,6 +23,7 @@ std::string datasetManager::_path_register_dataset;
 std::string datasetManager::_path_request_ancestor;
 std::string datasetManager::_ds_broker_host;
 unsigned short datasetManager::_ds_broker_port;
+std::atomic<uint32_t> datasetManager::conn_error_count;
 
 dataset::dataset(json& js) {
     _state = js["state"];
@@ -109,10 +110,30 @@ std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     return out;
 }
 
+
+std::vector<stack_ctype> invert_stack(
+    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map)
+{
+    std::vector<stack_ctype> res(num_stack);
+    size_t num_prod = stack_map.size();
+
+    for(uint32_t i = 0; i < num_prod; i++) {
+        uint32_t j = num_prod - i - 1;
+        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
+    }
+
+    return res;
+}
+
+
 datasetManager& datasetManager::instance() {
     static datasetManager dm;
 
     return dm;
+}
+
+datasetManager::datasetManager() {
+    conn_error_count = 0;
 }
 
 void datasetManager::apply_config(Config& config) {
@@ -137,7 +158,7 @@ void datasetManager::apply_config(Config& config) {
     }
 }
 
-dset_id_t datasetManager::add_dataset(dataset ds) {
+dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
     dset_id_t new_dset_id = hash_dataset(ds);
 
     std::lock_guard<std::mutex> lck_ds(_lock_dsets);
@@ -159,16 +180,19 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
         return new_dset_id;
     }
 
-    if (_use_broker) {
+    if (_use_broker && !ignore_broker) {
         try {
             register_dataset(new_dset_id, ds);
         } catch (std::runtime_error& e) {
-            ERROR("datasetManager: Failure registering new dataset " \
-                  "(dataset state %zu applied to dataset %zu): %s", ds.state(),
-                  ds.base_dset(), e.what());
-            ERROR("datasetManager: Make sure the broker is running. " \
-                  "Exiting...");
-            raise(SIGINT);
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
+            std::string msg = fmt::format(
+                        "datasetManager: Failure registering new dataset " \
+                        "(dataset state {} applied to dataset {}}): {}\n" \
+                        "datasetManager: Make sure the broker is running.",
+                        ds.state(), ds.base_dset(), e.what());
+            throw std::runtime_error(msg);
         }
     }
 
@@ -214,11 +238,13 @@ void datasetManager::register_state_callback(restReply reply) {
         try {
             js_reply = json::parse(reply.second);
         } catch (exception& e) {
-            ERROR("datasetManager: failure parsing reply received from broker " \
+            WARN("datasetManager: failure parsing reply received from broker " \
                   "after registering dataset state (reply: %s): %s",
                   reply.second.c_str(), e.what());
-            ERROR("datasetManager: exiting...");
-            raise(SIGINT);
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
+            return;
         }
 
         try {
@@ -256,16 +282,18 @@ void datasetManager::register_state_callback(restReply reply) {
                             "(reply: " + reply.second + ").");
             }
         } catch (exception& e) {
-            ERROR("datasetManager: failure registering dataset state with " \
+            WARN("datasetManager: failure registering dataset state with " \
                   "broker: %s", e.what());
-            ERROR("datasetManager: exiting...");
-            raise(SIGINT);
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
         }
     }
     else {
-        ERROR("datasetManager: failure registering dataset state with broker.");
-        ERROR("datasetManager: exiting...");
-        raise(SIGINT);
+        WARN("datasetManager: failure registering dataset state with broker.");
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++conn_error_count);
     }
 }
 
@@ -280,16 +308,18 @@ void datasetManager::send_state_callback(restReply reply) {
             // success
             return;
         } catch (exception& e) {
-            ERROR("datasetManager: failure parsing reply received from broker "\
+            WARN("datasetManager: failure parsing reply received from broker "\
                   "after sending dataset state (reply: %s): %s",
                   reply.second.c_str(), e.what());
-            ERROR("datasetManager: exiting...");
-            raise(SIGINT);
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
         }
     }
-    ERROR("datasetManager: failure sending dataset state to broker.");
-    ERROR("datasetManager: exiting...");
-    raise(SIGINT);
+    WARN("datasetManager: failure sending dataset state to broker.");
+    prometheusMetrics::instance().add_process_metric(
+                "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                ++conn_error_count);
 }
 
 void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
@@ -313,9 +343,11 @@ void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
 void datasetManager::register_dataset_callback(restReply reply) {
 
     if (reply.first == false) {
-        ERROR("datasetManager: failure registering dataset with broker.");
-        ERROR("datasetManager: exiting...");
-        raise(SIGINT);
+        WARN("datasetManager: failure registering dataset with broker.");
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++conn_error_count);
+        return;
     }
 
     json js_reply;
@@ -326,11 +358,12 @@ void datasetManager::register_dataset_callback(restReply reply) {
             throw std::runtime_error("received error from broker: "
                                      + js_reply.at("result").dump());
     } catch (exception& e) {
-        ERROR("datasetManager: failure parsing reply received from broker "\
+        WARN("datasetManager: failure parsing reply received from broker "\
              "after registering dataset (reply: %s): %s",
               reply.second.c_str(), e.what());
-        ERROR("datasetManager: exiting...");
-        raise(SIGINT);
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++conn_error_count);
     }
 }
 
@@ -363,10 +396,13 @@ void datasetManager::request_ancestor_callback(restReply reply) {
             throw std::runtime_error("datasetManager: Broker answered with " \
                                      "error after requesting ancestor.");
     } catch (std::exception& e) {
-        ERROR("datasetManager: failure parsing reply received from broker " \
-              "after requesting ancestor (reply: %s): %s.\ndatasetManager: " \
-              "exciting...", reply.second.c_str(), e.what());
-        raise(SIGINT);
+        WARN("datasetManager: failure parsing reply received from broker " \
+              "after requesting ancestor (reply: %s): %s.",
+             reply.second.c_str(), e.what());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++conn_error_count);
+        return;
     }
 
     // in case the broker doesn't have any ancestors to the dataset
@@ -390,9 +426,9 @@ void datasetManager::request_ancestor_callback(restReply reply) {
             s != js_reply.at("states").end(); s++) {
         state_id_t s_id;
         sscanf(s.key().c_str(), "%zu", &s_id);
-        DEBUG("datasetManager received state_id: %zu", s_id);
-        DEBUG("datasetManager received state: %s", s.value().dump().c_str());
+
         state_uptr state = datasetState::from_json(s.value());
+
         if (!_states.insert(std::pair<state_id_t, unique_ptr<datasetState>>(
                                 s_id, move(state))).second)
             INFO("datasetManager::request_ancestors_callback: received a " \
@@ -412,9 +448,6 @@ void datasetManager::request_ancestor_callback(restReply reply) {
         try {
             dset_id_t ds_id;
             sscanf(ds.key().c_str(), "%zu", &ds_id);
-
-            DEBUG("datasetManager received dataset with id %zu : %s).", ds_id,
-                  ds.value().dump().c_str());
             dataset new_dset = dataset(ds.value());
 
             if (ds_id != hash_dataset(new_dset)) {
@@ -435,12 +468,13 @@ void datasetManager::request_ancestor_callback(restReply reply) {
                       ds_id, ds.value().dump().c_str());
             }
         } catch (exception& e) {
-            ERROR("datasetManager: failure parsing reply received from"\
+            WARN("datasetManager: failure parsing reply received from"\
                   " broker after requesting ancestors: the following " \
                   " exception was thrown when parsing dataset %s with ID %s:" \
-                  " %s\ndatasetManager: exciting...",
-                  ds.key().c_str(), ds.value().dump().c_str(), e.what());
-            raise(SIGINT);
+                  " %s", ds.key().c_str(), ds.value().dump().c_str(), e.what());
+            prometheusMetrics::instance().add_process_metric(
+                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        ++conn_error_count);
         }
     }
 
@@ -458,16 +492,24 @@ std::string datasetManager::summary() const {
     std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
 
     for(auto t : _datasets) {
-        datasetState* dt = _states.at(t.second.state()).get();
+        try{
+            datasetState* dt = _states.at(t.second.state()).get();
 
-        out += fmt::format("{:>30} : {:2} -> {:2}\n",
-                           *dt, t.second.base_dset(), id);
-        id++;
+            out += fmt::format("{:>30} : {:2} -> {:2}\n",
+                               *dt, t.second.base_dset(), id);
+            id++;
+        } catch (std::out_of_range& e) {
+            // this is fine
+            DEBUG("This datasetManager instance does not know state %zu, " \
+                  "referenced by dataset %zu. (std::out_of_range: %s)",
+                  t.second.state(), t.first, e.what());
+        }
     }
     return out;
 }
 
-const std::map<state_id_t, const datasetState *> datasetManager::states() const {
+const std::map<state_id_t, const datasetState *> datasetManager::states() const
+{
 
     std::map<state_id_t, const datasetState *> cdt;
 
@@ -532,3 +574,4 @@ datasetManager::ancestors(dset_id_t dset) const {
 REGISTER_DATASET_STATE(freqState);
 REGISTER_DATASET_STATE(inputState);
 REGISTER_DATASET_STATE(prodState);
+REGISTER_DATASET_STATE(stackState);

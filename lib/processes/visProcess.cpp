@@ -742,6 +742,11 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
         }
     }
 
+    // Get the stack specification
+    _num_stack = config.get_default<uint32_t>(
+                unique_name, "num_stack", _prods.size());
+    _rstack_map = config.get_default<std::vector<rstack_ctype>>(
+                unique_name, "rstack_map", std::vector<rstack_ctype>());
 }
 
 
@@ -758,9 +763,12 @@ void registerInitialDatasetState::main_thread() {
         _inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
         _prods, std::move(input_state));
+    //empty stackState
+    state_uptr stack_state =
+            std::make_unique<stackState>(std::move(prod_state));
 
     // Register the initial state with the manager
-    auto s = dm.add_state(std::move(prod_state));
+    auto s = dm.add_state(std::move(stack_state));
     state_id_t initial_state = s.first;
 
     // Get the new dataset ID, this uses the current root ID and then decrements

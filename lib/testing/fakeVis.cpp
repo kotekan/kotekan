@@ -38,6 +38,13 @@ fakeVis::fakeVis(Config &config,
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
 
+    // Was a fixed dataset ID configured?
+    if (config.exists(unique_name, "dataset_id")) {
+        _dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
+        _fixed_dset_id = true;
+    } else
+        _fixed_dset_id = false;
+
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
     fill_map["fill_ij"] = std::bind(&fakeVis::fill_mode_fill_ij, this, _1);
@@ -127,32 +134,38 @@ void fakeVis::main_thread() {
     // created stream
     dset_id_t ds_id = 0;
     if (use_dataset_manager) {
-
         auto& dm = datasetManager::instance();
 
-        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-        std::transform(
-            std::begin(freq), std::end(freq), std::back_inserter(fspec),
-            [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
-            });
-        auto fstate = std::make_unique<freqState>(fspec);
+        if (_fixed_dset_id) {
+            ds_id = _dset_id;
+        } else {
+            std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+            std::transform(
+                std::begin(freq), std::end(freq), std::back_inserter(fspec),
+                [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                    return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                });
+            auto fstate = std::make_unique<freqState>(fspec);
 
-        std::vector<input_ctype> ispec;
-        for (uint32_t i = 0; i < num_elements; i++)
-            ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
-        auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
+            std::vector<input_ctype> ispec;
+            for (uint32_t i = 0; i < num_elements; i++)
+                ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
+            auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
 
-        std::vector<prod_ctype> pspec;
-        for (uint16_t i = 0; i < num_elements; i++)
-            for (uint16_t j = i; j < num_elements; j++)
-                pspec.push_back({i, j});
-        auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+            std::vector<prod_ctype> pspec;
+            for (uint16_t i = 0; i < num_elements; i++)
+                for (uint16_t j = i; j < num_elements; j++)
+                    pspec.push_back({i, j});
+            auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
 
-        auto s = dm.add_state(std::move(pstate));
+            //empty stackState
+            auto sstate = std::make_unique<stackState>(std::move(pstate));
 
-        // Register a root state
-        ds_id = dm.add_dataset(dataset(s.first, 0, true));
+            auto s = dm.add_state(std::move(sstate));
+
+            // Register a root state
+            ds_id = dm.add_dataset(dataset(s.first, 0, true));
+        }
     }
 
     while (!stop_thread) {

@@ -15,7 +15,8 @@ params = {
     'mode': 'default',
     'buffer_depth': 5,
     'freq_ids': range(50),
-    'subset_list': [0, 12, 34, 35]
+    'subset_list': [0, 12, 34, 35],
+    'use_dataset_manager': True
 }
 
 @pytest.fixture(scope="module")
@@ -80,7 +81,7 @@ def test_freqslice(vis_data):
     # Count frames by frequency
     counts = [ 0 ] * len(params['subset_list'])
     for frame in vis_data:
-        # get freq is from fakeVis
+        # get freq ids from fakeVis
         fid = int(frame.vis[2].real)
         assert fid in params['subset_list']
         # keep track of number of frames so far
@@ -93,7 +94,7 @@ def test_write(write_data):
     counts = [ 0 ] * len(params['subset_list'])
     for t in range(params['total_frames']):
         for f in range(len(params['subset_list'])):
-            # get freq is from fakeVis
+            # get freq ids from fakeVis
             fid = int(write_data[t][f].vis[2].real)
             assert fid in params['subset_list']
             # Check the order
