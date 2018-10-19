@@ -60,78 +60,102 @@ network_buffers:
     frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
     metadata_pool: main_pool
     network_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     network_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     network_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     network_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 beamform_output_buffers:
     num_frames: buffer_depth
     frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
     metadata_pool: main_pool
     beamform_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     beamform_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     beamform_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     beamform_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_output_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_float * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
     metadata_pool: main_pool
     gpu_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_rfi_output_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
     metadata_pool: main_pool
     gpu_rfi_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_rfi_mask_output_buffers:
     num_frames: buffer_depth
     frame_size: num_local_freq * samples_per_data_set / sk_step
     metadata_pool: main_pool
     gpu_rfi_mask_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_mask_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_mask_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_mask_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_rfi_bad_input_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_float * num_elements * num_local_freq
     metadata_pool: main_pool
     gpu_rfi_bad_input_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_bad_input_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_bad_input_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_bad_input_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 lost_samples_buffer:
     kotekan_buffer: standard
@@ -254,7 +278,7 @@ gpu:
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
-    gpu_id: 0    
+    gpu_id: 0
     bad_inputs: [2, 8, 11, 12, 53, 92, 93, 128, 143, 147, 148, 159, 193, 195, 206, 207, 226, 238, 255, 279, 284, 288, 385, 389, 390, 392, 393, 394, 395, 396, 397, 398, 399, 407, 408, 420, 452, 453, 520, 521, 523, 608, 640, 642, 644, 651, 652, 653, 655, 658, 683, 691, 695, 696, 701, 741, 745, 815, 832, 901, 908, 909, 949, 1026, 1033, 1061, 1062, 1073, 1077, 1078, 1132, 1133, 1134, 1148, 1221, 1248, 1262, 1266, 1272, 1273, 1302, 1321, 1344, 1368, 1380, 1391, 1392, 1404, 1407, 1419, 1420, 1430, 1431, 1474, 1478, 1510, 1511, 1520, 1523, 1526, 1532, 1544, 1545, 1572, 1692, 1693, 1708, 1787, 1806, 1822, 1834, 1845, 1847, 2000, 2021, 2032, 2033, 2034, 2035, 2041, 2043]
     in_buffers:
       network_buf: network_buffer_0
