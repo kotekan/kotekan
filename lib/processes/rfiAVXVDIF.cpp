@@ -82,8 +82,10 @@ void rfiAVXVDIF::main_thread() {
         //Get output frame
         out_local = (uint8_t *) wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
         if(out_local == NULL) break;
+#ifdef DEBUGGING
         //Start timer
         double start_time = e_time();
+#endif
         //Create threads to do parallel spectral kurtosis
         for (uint32_t j = 0; j < nthreads; j++) {
             this_thread[j] = std::thread(&rfiAVXVDIF::parallelSpectralKurtosis, this, j, nloop);

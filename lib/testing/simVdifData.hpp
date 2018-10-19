@@ -14,7 +14,6 @@ public:
     void main_thread() override;
 private:
     struct Buffer *buf;
-    double time_available;
     double start_time, stop_time;
 
 };

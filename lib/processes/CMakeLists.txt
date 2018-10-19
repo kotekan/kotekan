@@ -47,10 +47,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               receiveFlags.cpp
               )
 
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-       set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES}   )
-endif ()
-
 if (${USE_AIRSPY})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} airspyInput.cpp)
 endif ()

@@ -5,6 +5,12 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 # This is required early on for some versions of GCC, do not remove.
 add_definitions(/D__STDC_FORMAT_MACROS)
 
+# This quiets a noisy cmake warning on newer versions,
+# triggered by some of our CMake/FindXYZ.cmake scripts.
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0") 
+    cmake_policy(SET CMP0075 NEW)
+endif ()
+
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
@@ -96,7 +102,6 @@ if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
   include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
-  #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
   add_definitions(-DWITH_OPENCL)
   set(GPU_MODULES ${GPU_MODULES} "OpenCL")
 endif ()

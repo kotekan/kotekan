@@ -81,9 +81,6 @@ private:
   /// number of pulsar VLANS
   int number_of_subnets;
 
-  /// node id derived from the hostname 
-  int my_node_id;
-
   /// host name from the gethosename()
   char *my_host_name;
   

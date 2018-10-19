@@ -104,7 +104,7 @@ private:
     float * host_gain;
 
     /// Number of elements, should be 2048
-    int32_t _num_elements;
+    uint32_t _num_elements;
     /// Number of pulsar beams, should be 10
     int16_t _num_pulsar;
 
