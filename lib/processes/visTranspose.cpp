@@ -45,7 +45,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     INFO("Reading metadata file: %s", md_filename.c_str());
     struct stat st;
     if (stat(md_filename.c_str(), &st) == -1)
-        throw std::ios_base::failure("visRawReader: Error reading from " \
+        throw std::ios_base::failure("visTranspose: Error reading from " \
                                 "metadata file: " + md_filename);
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
@@ -55,7 +55,7 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     if (metadata_file) // read only if no error
         metadata_file.read((char *)&packed_json[0], filesize);
     if (!metadata_file) // check if open and read successful
-        throw std::ios_base::failure("visRawReader: Error reading from " \
+        throw std::ios_base::failure("visTranspose: Error reading from " \
                                 "metadata file: " + md_filename);
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
