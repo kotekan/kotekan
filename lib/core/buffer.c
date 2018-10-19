@@ -150,7 +150,6 @@ struct Buffer * create_buffer(int num_frames, int frame_size,
                                                        frame_size,
                                                        pool,
                                                        buffer_name);
-
     if (buf == NULL) return NULL;
 
     // Create the frames.
@@ -171,10 +170,8 @@ struct Buffer * create_hsa_buffer(int num_frames, int frame_size,
                                                        frame_size,
                                                        pool,
                                                        buffer_name);
-
-    buf->is_hsa_memory = 1;
-
     if (buf == NULL) return NULL;
+    buf->is_hsa_memory = 1;
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
