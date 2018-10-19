@@ -324,9 +324,8 @@ void freqSubset::main_thread() {
                     }
                     broker_retry = false;
                 }
-                output_frame.dataset_id = output_dset_id;
-            } else
-                output_frame.dataset_id = 0;
+            }
+            output_frame.dataset_id = output_dset_id;
 
             // Mark the output buffer and move on
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

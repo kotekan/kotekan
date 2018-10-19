@@ -38,19 +38,18 @@ void prodSubset::apply_config(uint64_t fpga_seq) {
 
 }
 
-void prodSubset::set_dataset_ids(dset_id_t input_frame_dset_id) {
+dset_id_t prodSubset::set_states(dset_id_t ds_id,
+                                 std::vector<prod_ctype>& prod_subset,
+                                 size_t subset_num_prod) {
     auto& dm = datasetManager::instance();
 
     // create new product dataset state
-    input_dset_id = input_frame_dset_id;
     const prodState* input_prod_ptr =
-           dm.closest_ancestor_of_type<prodState>(input_dset_id).second;
-    if (input_prod_ptr == nullptr) {
-        ERROR("prodSubset: Could not find prodState for incoming " \
-              "dataset with ID %d.", input_dset_id);
-        raise(SIGINT);
-        return;
-    }
+           dm.closest_ancestor_of_type<prodState>(ds_id).second;
+    if (input_prod_ptr == nullptr)
+        throw std::runtime_error("prodSubset: Could not find prodState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
 
     const vector<prod_ctype>& input_prods = input_prod_ptr->get_prods();
     vector<prod_ctype> output_prods;
@@ -60,26 +59,26 @@ void prodSubset::set_dataset_ids(dset_id_t input_frame_dset_id) {
     // check if prod_subset is a subset of the closest prodState
     for (uint32_t i = 0; i < subset_num_prod; i++) {
         if (std::find(input_prods.cbegin(), input_prods.cend(),
-                      prod_subset.at(i)) == input_prods.cend()) {
-            WARN("freqSlicer: Could not find product with ID %d in " \
-                 "incoming dataset %d. Removing it from the product " \
-                 "subset.", prod_ind[i], input_dset_id);
+                      prod_subset.at(i)) == input_prods.cend())
             output_prods.erase(std::find(input_prods.cbegin(),
                                          input_prods.cend(),
                                          prod_subset[i]));
-        }
     }
 
     state_uptr pstate = std::make_unique<prodState>(prod_subset);
     state_id_t prod_state_id = dm.add_state(std::move(pstate)).first;
-    output_dset_id = dm.add_dataset(dataset(prod_state_id,
-                                            input_dset_id));
+    return dm.add_dataset(dataset(prod_state_id, ds_id));
 }
 
 void prodSubset::main_thread() {
 
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
+
+    bool broker_retry = false;
+
+    dset_id_t input_dset_id;
+    dset_id_t output_dset_id = 0;
 
     if (use_dataset_manager) {
         // Wait for the input buffer to be filled with data
@@ -88,7 +87,10 @@ void prodSubset::main_thread() {
                                input_frame_id) == nullptr) {
             return;
         }
-        set_dataset_ids(visFrameView(in_buf, input_frame_id).dataset_id);
+        input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
+        future_output_dset_id = std::async(set_states, input_dset_id,
+                                           std::ref(prod_subset),
+                                           subset_num_prod);
     }
 
     while (!stop_thread) {
@@ -99,18 +101,23 @@ void prodSubset::main_thread() {
             break;
         }
 
+        // Get a view of the current frame
+        auto input_frame = visFrameView(in_buf, input_frame_id);
+
+        // check if the input dataset has changed
+        if ((broker_retry || input_dset_id != input_frame.dataset_id)
+                && use_dataset_manager) {
+            input_dset_id = input_frame.dataset_id;
+            future_output_dset_id = std::async(set_states, input_dset_id,
+                                               std::ref(prod_subset),
+                                               subset_num_prod);
+        }
+
         // Wait for the output buffer frame to be free
         if(wait_for_empty_frame(out_buf, unique_name.c_str(),
                                 output_frame_id) == nullptr) {
             break;
         }
-
-        // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
-
-        // check if the input dataset has changed
-        if (input_dset_id != input_frame.dataset_id && use_dataset_manager)
-            set_dataset_ids(input_frame.dataset_id);
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
@@ -129,6 +136,28 @@ void prodSubset::main_thread() {
         output_frame.copy_nonvis_buffer(input_frame);
         // Copy metadata
         output_frame.copy_nonconst_metadata(input_frame);
+
+        if (use_dataset_manager) {
+            if (future_output_dset_id.valid()) {
+                try {
+                    output_dset_id = future_output_dset_id.get();
+                } catch (std::runtime_error& e) {
+                    WARN("prodSubset: Dropping frame, failure in " \
+                         "datasetManager: %s",
+                         e.what());
+
+                    // Mark the input buffer and move on
+                    mark_frame_empty(in_buf, unique_name.c_str(),
+                                      input_frame_id);
+                    // Advance the current input frame id
+                    input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
+
+                    broker_retry = true;
+                    continue;
+                }
+                broker_retry = false;
+            }
+        }
 
         // set the dataset ID in the outgoing frame
         output_frame.dataset_id = output_dset_id;

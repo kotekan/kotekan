@@ -7,6 +7,7 @@
 #define PROD_SUB
 
 #include <unistd.h>
+#include <future>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "errors.h"
@@ -78,7 +79,10 @@ public:
 private:
     /// keeps track of the input dataset ID
     /// and gets new output dataset ID from manager
-    void set_dataset_ids(dset_id_t input_frame_dset_id);
+    ///
+    static dset_id_t set_states(dset_id_t ds_id,
+                                std::vector<prod_ctype>& prod_subset,
+                                size_t subset_num_prod);
 
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
@@ -100,8 +104,7 @@ private:
     std::vector<prod_ctype> prod_subset;
 
     // dataset IDs
-    dset_id_t input_dset_id;
-    dset_id_t output_dset_id;
+    std::future<dset_id_t> future_output_dset_id;
 };
 
 
