@@ -48,8 +48,7 @@ void private_reset_producers(struct Buffer * buf, const int ID);
 // Resets the list of consumers for the given ID
 void private_reset_consumers(struct Buffer * buf, const int ID);
 
-
-struct Buffer* create_buffer(int num_frames, int len,
+struct Buffer* private_create_buffer_common(int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name)
 {
 
@@ -65,6 +64,7 @@ struct Buffer* create_buffer(int num_frames, int len,
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
 
     buf->shutdown_signal = 0;
+    buf->is_hsa_memory = 0;
 
     // Copy the buffer buffer name.
     buf->buffer_name = strdup(buffer_name);
@@ -139,9 +139,43 @@ struct Buffer* create_buffer(int num_frames, int len,
 
     buf->last_arrival_time = 0;
 
+    return buf;
+}
+
+
+struct Buffer * create_buffer(int num_frames, int frame_size,
+                  struct metadataPool * pool, const char * buffer_name) {
+
+    struct Buffer * buf = private_create_buffer_common(num_frames,
+                                                       frame_size,
+                                                       pool,
+                                                       buffer_name);
+    if (buf == NULL) return NULL;
+
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = buffer_malloc(buf->aligned_frame_size);
+        buf->frames[i] = frame_malloc(buf->aligned_frame_size);
+        if (buf->frames[i] == NULL)
+            return NULL;
+    }
+
+    return buf;
+}
+
+struct Buffer * create_hsa_buffer(int num_frames, int frame_size,
+                  struct metadataPool * pool, const char * buffer_name,
+                  int32_t gpu_id) {
+
+    struct Buffer * buf = private_create_buffer_common(num_frames,
+                                                       frame_size,
+                                                       pool,
+                                                       buffer_name);
+    if (buf == NULL) return NULL;
+    buf->is_hsa_memory = 1;
+
+    // Create the frames.
+    for (int i = 0; i < num_frames; ++i) {
+        buf->frames[i] = frame_hsa_malloc(buf->aligned_frame_size, gpu_id);
         if (buf->frames[i] == NULL)
             return NULL;
     }
@@ -152,7 +186,11 @@ struct Buffer* create_buffer(int num_frames, int len,
 void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_frames; ++i) {
-        buffer_free(buf->frames[i]);
+        if (buf->is_hsa_memory == 1) {
+            frame_hsa_free(buf->frames[i]);
+        } else {
+            frame_free(buf->frames[i]);
+        }
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -655,18 +693,10 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
 }
 
-uint8_t * buffer_malloc(ssize_t len) {
+uint8_t * frame_malloc(ssize_t len) {
 
     uint8_t * frame = NULL;
 
-#ifdef WITH_HSA
-    // Is this memory aligned?
-    frame = hsa_host_malloc(len);
-    if (frame == NULL) {
-        return NULL;
-    }
-
-#else
     // Create a page alligned block of memory for the buffer
     int err = 0;
     err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
@@ -684,7 +714,6 @@ uint8_t * buffer_malloc(ssize_t len) {
         free(frame);
         return NULL;
     }
-#endif
 
     // Zero the new frame
     memset(frame, 0x0, len);
@@ -692,12 +721,37 @@ uint8_t * buffer_malloc(ssize_t len) {
     return frame;
 }
 
-void buffer_free(uint8_t * frame_pointer) {
+uint8_t * frame_hsa_malloc(ssize_t len, uint32_t gpu_id) {
 #ifdef WITH_HSA
-    hsa_host_free(frame_pointer);
+    uint8_t * frame = NULL;
+
+    // Is this memory aligned?
+    frame = hsa_host_malloc(len, gpu_id);
+    if (frame == NULL) {
+        return NULL;
+    }
+
+    // Zero the new frame
+    memset(frame, 0x0, len);
+
+    return frame;
 #else
-    free(frame_pointer);
+    ERROR("HSA not enabled, cannot alloc frame");
+    return NULL;
 #endif
+}
+
+void frame_free(uint8_t * frame_pointer) {
+    free(frame_pointer);
+}
+
+void frame_hsa_free(uint8_t * frame_pointer) {
+    #ifdef WITH_HSA
+        hsa_host_free(frame_pointer);
+    #else
+        ERROR("HSA not enabled, cannot free frame");
+        exit(-1);
+    #endif
 }
 
 // Do not call if there is no metadata

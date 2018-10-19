@@ -1,5 +1,6 @@
 #include "signalContainer.hpp"
 #include "errors.h"
+#include "util.h"
 #include <unistd.h>
 
 
