@@ -5,6 +5,8 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 # This is required early on for some versions of GCC, do not remove.
 add_definitions(/D__STDC_FORMAT_MACROS)
 
+# This quiets a noisy cmake warning on newer versions,
+# triggered by some of our CMake/FindXYZ.cmake scripts.
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0") 
     cmake_policy(SET CMP0075 NEW)
 endif ()
