@@ -30,7 +30,7 @@
  *     @buffer_metadata none
  *
  * @conf   samples_per_data_set   Int. Number of time samples to sum.
- * @conf   integration_length     Int. Number of time samples to sum.
+ * @conf   power_integration_length     Int. Number of time samples to sum.
  * @conf   num_freq               Int. Number of time samples to sum.
  * @conf   num_elements           Int. Number of time samples to sum.
  * @conf   freq0                  Float (default 1420.0).
@@ -40,7 +40,6 @@
  * @conf   dest_protocol          String. Should be @c "TCP" or @c "UDP"
  *
  * @warning UDP stream doesn't work at the moment.
- * @bug     Kotekan exits when TCP receiver goes away. Figure out!
  * @note    Lots of updating required once buffers are typed...
  *
  * @author Keith Vanderlinde

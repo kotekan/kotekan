@@ -43,7 +43,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
     cpu_beamform_output = (double *)malloc(input_len * sizeof(double));
     transposed_output = (double *)malloc(transposed_len * sizeof(double));
     tmp128 = (double *)malloc(_factor_upchan*2*sizeof(double));
-    cpu_final_output = (unsigned char *)malloc(output_len*sizeof(unsigned char));
+    cpu_final_output = (float *)malloc(output_len*sizeof(float));
 
     cpu_gain = (float *) malloc(2*2048*sizeof(float));
 
@@ -79,16 +79,19 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
 }
 
 void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _factor_upchan = config.get_int(unique_name, "factor_upchan");
-    _downsample_time = config.get_int(unique_name, "downsample_time");
-    _downsample_freq = config.get_int(unique_name, "downsample_freq");
-    _reorder_map = config.get_int_array(unique_name, "reorder_map");
-    _gain_dir = config.get_string(unique_name, "gain_dir");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
+    _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
+    _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
+    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
+    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
+    vector<float> dg = {0.0,0.0}; //re,im
+    default_gains = config.get_default<std::vector<float>>(
+            unique_name, "frb_missing_gains", dg);
 
-    scaling = config.get_float_default(unique_name, "frb_scaling", 1.0);
-    zero_missing_gains = config.get_bool_default(unique_name,"frb_zero_missing_gains", true);
+    scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
@@ -281,10 +284,9 @@ void gpuBeamformSimulate::main_thread() {
     int nbeams = nbeamsEW*nbeamsNS;
 
     while(!stop_thread) {
-
         unsigned char * input = (unsigned char *)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
         if (input == NULL) break;
-        unsigned char * output = (unsigned char *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+        float * output = (float *)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
 
         if (output == NULL) break;
 
@@ -314,8 +316,8 @@ void gpuBeamformSimulate::main_thread() {
         if (ptr_myfile == NULL){
             ERROR("CPU verification code: Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                cpu_gain[i*2] = (zero_missing_gains? 0.0:1.0) * scaling;
-                cpu_gain[i*2+1] = 0.0;
+                cpu_gain[i*2]   = default_gains[0] * scaling;
+                cpu_gain[i*2+1] = default_gains[1] * scaling;
             }
         }
         else {
@@ -324,8 +326,8 @@ void gpuBeamformSimulate::main_thread() {
                 ERROR("Couldn't read gain file...");
             }
             for (uint32_t i=0; i<2048; i++){
-                cpu_gain[i*2  ] = cpu_gain[i*2  ] * scaling;
-                cpu_gain[i*2+1] = cpu_gain[i*2+1] * scaling;
+                cpu_gain[i*2]   = cpu_gain[i*2  ] * scaling;
+                cpu_gain[i*2+1] = cpu_gain[i*2  ] * scaling;
             }
             fclose(ptr_myfile);
         }
@@ -351,11 +353,11 @@ void gpuBeamformSimulate::main_thread() {
                             //Real
                             input_unpacked_padded[index++] =
                               input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
-                              -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+                              +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
                             //Imag
                             input_unpacked_padded[index++] =
                               input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)+1]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2]
-                              +input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
+                              -input_unpacked[2*(j*npol*nbeams+p*nbeams+b*nbeamsNS+i)]*cpu_gain[(p*nbeams+b*nbeamsNS+i)*2+1];
                         } else{
                             input_unpacked_padded[index++] = 0;
                             input_unpacked_padded[index++] = 0;
@@ -414,15 +416,11 @@ void gpuBeamformSimulate::main_thread() {
                           }
                       }
                   }
-                  float tmp = out_sq/48.;
-                  if (tmp > 255) tmp = 255;
-                  cpu_final_output[out_id] = roundf(tmp);
+                  cpu_final_output[out_id] = out_sq;
                 }
             }
         }
-        for (int i = 0; i < output_buf->frame_size; i++) {
-            output[i] = (unsigned char)cpu_final_output[i];
-        }
+        memcpy(output,cpu_final_output,output_buf->frame_size);
 
         INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
                 input_buf->buffer_name, input_buf_id,

@@ -3,12 +3,31 @@
 #include "processFactory.hpp"
 #include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
+#include "restServer.hpp"
+#include "configUpdater.hpp"
+#include "json.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
+    restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
+        conn.send_json_reply(config.get_full_config_json());
+    });
 
+#ifdef WITH_SSL
+    restServer::instance().register_get_callback("/config_md5sum", [&] (connectionInstance &conn) {
+        nlohmann::json reply;
+        reply["md5sum"] = config.get_md5sum();
+        conn.send_json_reply(reply);
+    });
+#endif
+
+    restServer::instance().add_aliases_from_config(config);
 }
 
 kotekanMode::~kotekanMode() {
+
+    configUpdater::instance().reset();
+    restServer::instance().remove_get_callback("/config");
+    restServer::instance().remove_all_aliases();
 
     for (auto const &process : processes) {
         if (process.second != nullptr) {
@@ -37,6 +56,10 @@ void kotekanMode::initalize_processes() {
     metadataFactory metadata_factory(config);
     metadata_pools = metadata_factory.build_pools();
 
+    // Create Config Updater
+    configUpdater &config_updater = configUpdater::instance();
+    config_updater.apply_config(config);
+
     // Create Buffers
     bufferFactory buffer_factory(config, metadata_pools);
     buffers = buffer_factory.build_buffers();
@@ -46,6 +69,8 @@ void kotekanMode::initalize_processes() {
     processFactory process_factory(config, buffer_container);
     processes = process_factory.build_processes();
 
+    // Update REST server
+    restServer::instance().set_server_affinity(config);
 }
 
 void kotekanMode::join() {

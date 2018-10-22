@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaOutputData);
 
 hsaOutputData::hsaOutputData(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("","", config, unique_name, host_buffers, device){
+    hsaCommand("hsaOutputData","", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");

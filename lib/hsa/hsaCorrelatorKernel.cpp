@@ -11,12 +11,13 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     //N_INTG is the number summed in each workitem
     //if there are more, they get split across multiple workitems
     //time slice id is identified by the Y group.
-    _n_intg = config.get_int(unique_name, "n_intg");
+    _n_intg = config.get<int32_t>(unique_name, "n_intg");
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    int block_size = config.get_int(unique_name, "block_size");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    int block_size = config.get<int>(unique_name, "block_size");
     _num_blocks = (int32_t)(_num_elements / block_size) *
                     (_num_elements / block_size + 1) / 2.;
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
@@ -28,7 +29,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
 
 
     // Allocate and copy the block map
-    host_block_map = (uint32_t *)hsa_host_malloc(block_map_len);
+    host_block_map = (uint32_t *)hsa_host_malloc(block_map_len, device.get_gpu_id());
     int block_id = 0;
     for (int y = 0; block_id < _num_blocks; y++) {
         for (int x = y; x < _num_elements/block_size; x++) {
@@ -43,7 +44,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     device.sync_copy_host_to_gpu(device_block_map, host_block_map, block_map_len);
 
     // Create the extra kernel args object.
-    host_kernel_args = (corr_kernel_config_t *)hsa_host_malloc(sizeof(corr_kernel_config_t));
+    host_kernel_args = (corr_kernel_config_t *)hsa_host_malloc(sizeof(corr_kernel_config_t), device.get_gpu_id());
     host_kernel_args->n_elem = _num_elements;
     host_kernel_args->n_intg = _n_intg;
     host_kernel_args->n_iter = _samples_per_data_set;

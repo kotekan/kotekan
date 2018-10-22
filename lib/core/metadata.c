@@ -40,6 +40,14 @@ void reset_metadata_object(struct metadataContainer * container) {
     memset(container->metadata, 0, container->metadata_size);
 }
 
+void lock_metadata(struct metadataContainer * container) {
+    CHECK_ERROR( pthread_mutex_lock(&container->metadata_lock) );
+}
+
+void unlock_metadata(struct metadataContainer * container) {
+    CHECK_ERROR( pthread_mutex_unlock(&container->metadata_lock) );
+}
+
 void increment_metadata_ref_count(struct metadataContainer * container) {
     lock_metadata(container);
     container->ref_count += 1;
@@ -47,15 +55,18 @@ void increment_metadata_ref_count(struct metadataContainer * container) {
 }
 
 void decrement_metadata_ref_count(struct metadataContainer * container) {
+    uint32_t local_ref_count;
+
     lock_metadata(container);
 
     assert(container->ref_count > 0);
 
     container->ref_count -= 1;
+    local_ref_count = container->ref_count;
 
     unlock_metadata(container);
 
-    if (container->ref_count == 0) {
+    if (local_ref_count == 0) {
         return_metadata_to_pool(container->parent_pool, container);
     }
 }

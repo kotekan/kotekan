@@ -7,14 +7,18 @@ REGISTER_HSA_COMMAND(hsaInputData);
 
 hsaInputData::hsaInputData( Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device){
+    hsaCommand("hsaInputData", "", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_IN;
 
     int header_size = 0;
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _enable_delay = config.get_bool_default(unique_name, "enable_delay", false);
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _enable_delay = config.get_default<bool>(
+                unique_name, "enable_delay", false);
+    _delay_max_fraction = config.get_default<float>(
+                unique_name, "delay_max_fraction", 0.5);
     if(_num_elements <= 2) //TODO FIND BETTER WORK AROUND FOR DISTINGUISHING VDIF/CHIME INPUT LENGTH
                 header_size = 32;
     input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;
@@ -26,7 +30,7 @@ hsaInputData::hsaInputData( Config& config, const string &unique_name,
         std::random_device rd;  // Seed
         std::mt19937 gen(rd());
         double max_delay = (double)_samples_per_data_set/_sample_arrival_rate;
-        std::uniform_real_distribution<> dis(0.0, max_delay*0.75);
+        std::uniform_real_distribution<> dis(0.0, max_delay*_delay_max_fraction);
         _random_delay = dis(gen);
         INFO("Setting fixed delay to: %f", _random_delay);
     }
@@ -61,7 +65,10 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id)
         double delay = _random_delay - (current_time - (d_recv_time + expected_delay));
         DEBUG2("frame_time: %f, expected_delay: %f, current_time: %f, random_delay: %f, actual delay: %f",
                 d_recv_time, expected_delay, current_time, _random_delay, delay);
-        if (delay > 0)
+        // The above forumal shouldn't produce a delay less than _random_dela, unless
+        // something is wrong with the time value given, in which case this delay
+        // could cause the system to become unstable, so the second condition guards against this.
+        if (delay > 0 && delay < (_random_delay + 0.01))
             usleep((int)(delay*1000000));
     }
 

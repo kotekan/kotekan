@@ -12,6 +12,8 @@ prometheusMetrics &prometheusMetrics::instance() {
 
 
 prometheusMetrics::~prometheusMetrics() {
+    restServer::instance().remove_get_callback("/metrics");
+
     for (auto &process_metric : process_metrics)
         delete process_metric.second;
 }

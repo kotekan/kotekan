@@ -15,6 +15,8 @@ add_library ( kotekan_testing
               testDataCheck.cpp
               testDataGen.cpp
               testDataGenQuad.cpp
+              testDataGenFloat.cpp
               test_data_generation.c
+              pulsarSimProcess.cpp
+              visNoise.cpp
               )
-add_definitions(/D__STDC_FORMAT_MACROS)

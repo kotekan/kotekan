@@ -2,6 +2,7 @@
 #include "errors.h"
 #include "util.h"
 #include <errno.h>
+#include <csignal>
 
 inline bool file_exists(char * name) {
     struct stat buf;
@@ -17,9 +18,14 @@ rawFileRead::rawFileRead(Config& config, const string& unique_name,
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
-    base_dir = config.get_string(unique_name, "base_dir");
-    file_name = config.get_string(unique_name, "file_name");
-    file_ext = config.get_string(unique_name, "file_ext");
+    base_dir = config.get<std::string>(unique_name, "base_dir");
+    file_name = config.get<std::string>(unique_name, "file_name");
+    file_ext = config.get<std::string>(unique_name, "file_ext");
+
+    // Interrupt Kotekan if run out of files to read.
+    end_interrupt = config.get_default<bool>(unique_name, "end_interrupt",
+                                             false);
+
 }
 
 rawFileRead::~rawFileRead() {
@@ -46,9 +52,17 @@ void rawFileRead::main_thread() {
                 file_ext.c_str());
 
         if (!file_exists(full_path)) {
-            INFO("rawFileRead: No file named %s, exiting read thread.", full_path);
-            break;
-        }
+            // Interrupt Kotekan if run out of files to read.
+            if (end_interrupt) {
+                INFO("No more files to read. Shutting down Kotekan.");
+                sleep(1);
+                std::raise(SIGINT);
+                break;
+            } else {
+                INFO("rawFileRead: No file named %s, exiting read thread.", full_path);
+                break;
+            }
+        } 
 
         // Get an empty buffer to write into
         frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);

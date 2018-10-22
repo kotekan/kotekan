@@ -19,10 +19,11 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
     device(device_),
     unique_name(unique_name_)
 {
-    vector<json> commands = config.get_json_array(unique_name, "commands");
+    std::vector<json> commands = config.get<std::vector<json>>(
+                unique_name, "commands");
     num_commands = commands.size();
-    use_beamforming = config.get_bool(unique_name, "enable_beamforming");
-    //use_incoh_beamforming = false; //config.get_bool(unique_name, "use_incoh_beamforming");
+    use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
+    //use_incoh_beamforming = false; //config.get<bool>(unique_name, "use_incoh_beamforming");
 
     //list_commands =  new gpu_command * [num_commands];
 
@@ -49,10 +50,12 @@ gpu_command_factory::gpu_command_factory(class device_interface & device_
             list_commands.push_back(new output_beamform_result("output_beamform_result", config, unique_name));
         } else if (commands[i]["name"] == "output_data_result") {
             list_commands.push_back(new output_data_result("output_data_result", config, unique_name));
-        } else if (commands[i]["name"] == "rfi_kernel") {
-            list_commands.push_back(new rfi_kernel(commands[i]["kernel"].get<string>().c_str(), "rfi_kernel", config, unique_name));
-        } else if (commands[i]["name"] == "output_rfi") {
-            list_commands.push_back(new output_rfi("output_rfi", config, unique_name));
+        } else if (commands[i]["name"] == "clRfiTimeSum") {
+            list_commands.push_back(new clRfiTimeSum(commands[i]["kernel"].get<string>().c_str(), "clRfiTimeSum", config, unique_name));
+        } else if (commands[i]["name"] == "clRfiInputSum") {
+            list_commands.push_back(new clRfiInputSum(commands[i]["kernel"].get<string>().c_str(), "clRfiInputSum", config, unique_name));
+        } else if (commands[i]["name"] == "clRfiOutput") {
+            list_commands.push_back(new clRfiOutput("clRfiOutput", config, unique_name));
         }
 
         // TODO This should just be part of the constructor.

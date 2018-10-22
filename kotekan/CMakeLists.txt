@@ -7,12 +7,8 @@ SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
-#include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
-#include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
-#include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
-#include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
-#include_directories (${KOTEKAN_SOURCE_DIR}/lib/testing)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 link_directories (${KOTEKAN_BINARY_DIR}/lib)
@@ -25,13 +21,6 @@ target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
 target_link_libraries( kotekan libinclude )
 
-if (${USE_DPDK})
-	include_directories ( ${RTE_SDK}/${RTE_TARGET}/include )
-    link_directories ( ${RTE_SDK}/${RTE_TARGET}/lib )
-    SET( DPDK_LIBS  "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_pmd_e1000 -lrte_mempool -lrte_pmd_i40e -lrte_ring -lrte_ethdev -lrte_kvargs -lrte_pmd_ixgbe -ldl -Wl,--no-whole-archive" )
-    target_link_libraries ( kotekan ${DPDK_LIBS} )
-endif ()
-
 if (${USE_OPENCL})
     add_custom_target(kernel_opencl_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -43,10 +32,6 @@ if (${USE_OPENCL})
     install(FILES kotekan_opencl_test.yaml DESTINATION /etc/kotekan/ COMPONENT config)
 endif ()
 
-add_dependencies( kotekan kotekan_libs )
-
-install(TARGETS kotekan DESTINATION /usr/sbin COMPONENT binaries)
-#install(FILES kotekan.conf DESTINATION /etc/kotekan/ COMPONENT config)
-install(PROGRAMS ../scripts/yaml_to_json.py DESTINATION /usr/sbin COMPONENT scripts)
+install(TARGETS kotekan DESTINATION /usr/local/bin COMPONENT binaries)
 
 add_definitions(/D__STDC_FORMAT_MACROS)

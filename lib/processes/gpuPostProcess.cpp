@@ -46,46 +46,27 @@ gpuPostProcess::~gpuPostProcess() {
     if (_product_remap_c != nullptr)
         delete _product_remap_c;
 
-    if (_rest_copy_vis != nullptr)
-        delete _rest_copy_vis;
-
     free(in_buf);
 }
 
-void gpuPostProcess::vis_endpoint(connectionInstance& conn, json& json_request) {
-    //std::lock_guard<std::mutex> lock(_rest_copy_lock);
-    int freq = 0;
-    try {
-        freq = json_request["freq"];
-    } catch (...) {
-        conn.send_error("Could not parse freq", STATUS_BAD_REQUEST);
-    }
-    if (freq > _num_total_freq) {
-        conn.send_error("freq out of range", STATUS_BAD_REQUEST);
-    }
-    int num_values = ((_num_elem * (_num_elem + 1)) / 2 );
-    conn.send_binary_reply((uint8_t *)&_rest_copy_vis[num_values * freq], num_values * sizeof(complex_int_t));
-}
-
 void gpuPostProcess::apply_config(uint64_t fpga_seq) {
-    if (!config.update_needed(fpga_seq))
-        return;
-
-    _num_elem = config.get_int(unique_name, "num_elements");
-    _num_total_freq = config.get_int(unique_name, "num_total_freq");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
-    _num_blocks = config.get_int(unique_name, "num_blocks");
-    _block_size = config.get_int(unique_name, "block_size");
-    _link_map = config.get_int_array(unique_name, "link_map");
-    _num_fpga_links = config.get_int(unique_name, "num_links");
-    _enable_basic_gating = config.get_bool(unique_name, "enable_gating");
-    _gate_phase = config.get_int(unique_name, "gate_phase");
-    _gate_cadence = config.get_int(unique_name, "gate_cadence");
-    _num_gpus = config.get_int(unique_name, "num_gpus");
-    _product_remap = config.get_int_array(unique_name, "product_remap");
+    _num_elem = config.get<int32_t>(unique_name, "num_elements");
+    _num_total_freq = config.get<int32_t>(unique_name, "num_total_freq");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _num_data_sets = config.get<int32_t>(unique_name, "num_data_sets");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _num_gpu_frames = config.get<int32_t>(unique_name, "num_gpu_frames");
+    _num_blocks = config.get<int32_t>(unique_name, "num_blocks");
+    _block_size = config.get<int32_t>(unique_name, "block_size");
+    _link_map = config.get<std::vector<int32_t>>(unique_name, "link_map");
+    _num_fpga_links = config.get<int32_t>(unique_name, "num_links");
+    _enable_basic_gating = config.get<bool>(unique_name, "enable_gating");
+    _gate_phase = config.get<int32_t>(unique_name, "gate_phase");
+    _gate_cadence = config.get<int32_t>(unique_name, "gate_cadence");
+    _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
+    _product_remap = config.get<std::vector<int32_t>>(
+                unique_name, "product_remap");
 
     // Create a C style array for backwards compatiably.
     if (_product_remap_c != NULL)
@@ -165,8 +146,11 @@ void gpuPostProcess::main_thread() {
     assert(offset == frame_size);
 
     // Add version information to the header.
-    strcpy(header->kotekan_git_hash, GIT_COMMIT_HASH);
-    header->kotekan_version = KOTEKAN_VERSION;
+    strcpy(header->kotekan_git_hash, get_git_commit_hash());
+    // TODO This needs to be replaced by the actual version string instead
+    // However the plan is remove this function entirely soon, since it
+    // only works with chrx which is now EOL.
+    header->kotekan_version = 2.3;
 
     // This is a bit of a hack for gating, there is are better ways to do this.
     int gated_buf_size = sizeof(struct gate_frame_header)
@@ -179,15 +163,6 @@ void gpuPostProcess::main_thread() {
 
     // Changing destination pointer for the different gates
     complex_int_t * vis = visibilities;
-
-    // REST server section
-    // TODO move to a function?
-    // TODO also clean up this function.
-    _rest_copy_vis = new complex_int_t[num_values];
-    using namespace std::placeholders;
-    restServer * rest_server = get_rest_server();
-    rest_server->register_json_callback("/vis", std::bind(&gpuPostProcess::vis_endpoint, this, _1, _2));
-    // end REST server section
 
     // Wait for full buffers.
     while(!stop_thread) {
@@ -368,12 +343,6 @@ void gpuPostProcess::main_thread() {
                         }
                         memcpy(gate_frame, gated_buf, gated_buf_size);
                         mark_frame_full(gate_buf, unique_name.c_str(), out_buffer_ID);
-                    }
-
-                    // memcpy visibilities into REST buffer.
-                    {
-                        //std::lock_guard<std::mutex> lock(_rest_copy_lock);
-                        memcpy(_rest_copy_vis, visibilities, num_values * sizeof(complex_int_t));
                     }
 
                     memcpy(out_frame, buf, frame_size);

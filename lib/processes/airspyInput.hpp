@@ -8,6 +8,7 @@
 #define AIRSPY_INPUT_HPP
 
 #include <unistd.h>
+#include <signal.h>
 #include <libairspy/airspy.h>
 
 #include "KotekanProcess.hpp"
@@ -132,9 +133,9 @@ private:
 
     //options
     /// Frequency of the LO, in Hz
-    int freq;
+    uint freq;
     /// Sampling bandwidth, in Hz. Should be 2500000 or 10000000
-    int sample_bw;
+    uint sample_bw;
     /// Gain of the LNA, should be an integer in the range 0-14
     int gain_lna;
     /// Gain of the mixer amp, should be an integer in the range 0-15

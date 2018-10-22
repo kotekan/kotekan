@@ -33,10 +33,10 @@ gpuSimulate::~gpuSimulate() {
 }
 
 void gpuSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_blocks = config.get_int(unique_name, "num_blocks");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
+    _num_blocks = config.get<int32_t>(unique_name, "num_blocks");
 }
 
 void gpuSimulate::main_thread() {

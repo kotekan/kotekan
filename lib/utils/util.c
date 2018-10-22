@@ -10,9 +10,43 @@
 #include "util.h"
 
 double e_time(void){
-    static struct timeval now;
+    struct timeval now;
     gettimeofday(&now, NULL);
     return (double)(now.tv_sec  + now.tv_usec/1000000.0);
+}
+
+void make_rfi_dirs(int streamID, const char * write_to, const char* time_dir){
+    //Initialize variables
+    int err = 0;
+    char dir_name[100];
+    //Create sub-directory for current stream
+    snprintf(dir_name, 100, "%s/%d", write_to, streamID);
+    err = mkdir(dir_name, 0777);
+    //If there is an error
+    if (err == -1) {
+        //If that error is NOT that the directory already exists
+        if (errno != EEXIST) {
+            perror("Error creating data set directory.\n");
+            printf("The directory was: %s/%d\n", write_to, streamID);
+            exit(errno);
+        }
+    }
+    //Create sub-sub-directory for current capture
+    dir_name[0] = '\0';
+    snprintf(dir_name, 100, "%s/%d/%s", write_to, streamID, time_dir);
+    err = mkdir(dir_name, 0777);
+    //If there is an error
+    if (err == -1) {
+        //If that error is that the directory already exists
+        if (errno == EEXIST) {
+            printf("The data set: %s, already exists.\nPlease delete the data set, or use another name.\n", time_dir);
+        } else {
+            //IF the error is more serious
+            perror("Error creating data set directory.\n");
+            printf("The directory was: %s/%d/%s\n", write_to, streamID, time_dir);
+        }
+        exit(errno);
+    }
 }
 
 void make_dirs(char * disk_base, char * data_set, int num_disks) {

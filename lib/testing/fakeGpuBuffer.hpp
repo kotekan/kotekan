@@ -7,6 +7,7 @@
 #define FAKE_GPU_BUFFER_HPP
 
 #include "buffer.h"
+#include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 
 
@@ -24,7 +25,7 @@
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in
  *                              the correlator data
  * @conf  block_size            Int. The block size of the packed data
- * @conf  num_eigenvectors      Int. The number of eigenvectors to be stored
+ * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  freq_id               Int. The single frequency ID to generate frames
  *                              for.
  * @conf  cadence               Float. The interval of time (in seconds)
@@ -55,7 +56,7 @@ public:
                 bufferContainer &buffer_container);
     ~fakeGpuBuffer();
     void apply_config(uint64_t fpga_seq) override;
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Fill with a pattern useful for debugging the packing.
@@ -65,11 +66,27 @@ public:
      *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
      */
-    void fill_mode_block(int32_t* data, int frame_num);
+    void fill_mode_block(int32_t* data, int frame_num,
+                         chimeMetadata* metadata);
 
     /**
-     * Fill with a pattern for debugging the accumulation.
+     * @brief Fill with a pattern for testing lost packet renormalisation.
+     *
+     * Fill each element with its block row (real value) and block column
+     * (imaginary). Each frame has a number of lost packets equivalent to the
+     * frame number.
+     *
+     * @param data      The output frame data to fill.
+     * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
+     */
+    void fill_mode_lostsamples(int32_t* data, int frame_num,
+                               chimeMetadata* metadata);
+
+    /**
+     * @brief Fill with a pattern for debugging the accumulation.
      *
      * Fill each element with its full correlation index (real = row; column =
      * imag), with real and imaginary parts being shifted every 4th frame.
@@ -79,18 +96,22 @@ public:
      *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
      */
-    void fill_mode_accumulate(int32_t* data, int frame_num);
+    void fill_mode_accumulate(int32_t* data, int frame_num,
+                              chimeMetadata* metadata);
 
     /**
-     * Fill with a pattern with Gaussian noise with radiometer variance.
+     * @brief Fill with a pattern with Gaussian noise with radiometer variance.
      *
      * The underlying inputs are uncorrelated with variance of 1.
      * 
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
      */
-    void fill_mode_gaussian(int32_t* data, int frame_num);
+    void fill_mode_gaussian(int32_t* data, int frame_num,
+                            chimeMetadata* metadata);
 private:
 
     Buffer* out_buf;
@@ -106,7 +127,7 @@ private:
     int32_t num_frames;
 
     // Function pointer for fill modes
-    typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int);
+    typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int, chimeMetadata *);
 
     // A map to look up the modes by name at run time
     std::map<std::string, fill_func> fill_map;

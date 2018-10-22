@@ -11,6 +11,8 @@
 #include <iostream>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(clProcess);
+
 using namespace std;
 
 //double e_time_1(void){
@@ -19,8 +21,6 @@ using namespace std;
 //    return (double)(now.tv_sec  + now.tv_usec/1000000.0);
 //}
 
-REGISTER_KOTEKAN_PROCESS(clProcess);
-
 // TODO Remove the GPU_ID from this constructor
 clProcess::clProcess(Config& config_,
         const string& unique_name,
@@ -28,15 +28,15 @@ clProcess::clProcess(Config& config_,
     KotekanProcess(config_, unique_name, buffer_container, std::bind(&clProcess::main_thread, this))
 {
     // TODO Remove this and move it to the command objects (see hsaProcess).
-    gpu_id = config.get_int(unique_name, "gpu_id");
+    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
     in_buf = get_buffer("network_buffer");
     register_consumer(get_buffer("network_buffer"), unique_name.c_str());
     out_buf = get_buffer("output_buffer");
     register_producer(get_buffer("output_buffer"), unique_name.c_str());
     beamforming_out_buf = get_buffer("beam_out_buf");
     register_producer(get_buffer("beam_out_buf"), unique_name.c_str());
-//    rfi_out_buf = get_buffer("rfi_out_buf");
-//    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
+    rfi_out_buf = get_buffer("rfi_out_buf");
+    register_producer(get_buffer("rfi_out_buf"), unique_name.c_str());
 
     //beamforming_out_incoh_buf = NULL;  //get_buffer("beam_incoh_out_buf");
 
@@ -52,7 +52,7 @@ clProcess::clProcess(Config& config_,
 }
 
 void clProcess::apply_config(uint64_t fpga_seq) {
-    _use_beamforming = config.get_bool(unique_name, "enable_beamforming");
+    _use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
 }
 
 clProcess::~clProcess() {
@@ -75,7 +75,7 @@ void clProcess::main_thread()
     device->prepareCommandQueue(true);
 
     device->allocateMemory();
-//    DEBUG("Device Initialized\n");
+    DEBUG("Device Initialized\n");
 
     //callBackData ** cb_data = new callBackData * [device->getInBuf()->num_buffers];
     //CHECK_MEM(cb_data);
@@ -98,6 +98,7 @@ void clProcess::main_thread()
 
     double last_time = e_time();
     timer tt;
+    int time_count = 0;
     kill_thread * kill = new kill_thread;
     
     while (!stop_thread) {
@@ -131,7 +132,7 @@ void clProcess::main_thread()
         if (_use_beamforming) {
             wait_for_empty_frame(device->get_beamforming_out_buf(), unique_name.c_str(), frame_id);
         }
-//        wait_for_empty_frame(device->getRfiBuf(), unique_name.c_str(), frame_id);
+        wait_for_empty_frame(device->getRfiBuf(), unique_name.c_str(), frame_id);
         // Todo get/set time information here as well.
 
         CHECK_ERROR( pthread_mutex_lock(&loopCnt->lock));
@@ -148,7 +149,7 @@ void clProcess::main_thread()
         cb_data[frame_id]->start_time = e_time();
         cb_data[frame_id]->unique_name = unique_name;
         cb_data[frame_id]->kill = kill;
-//	    cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
+        cb_data[frame_id]->rfi_out_buf = device->getRfiBuf();
         if (_use_beamforming == 1)
         {
             cb_data[frame_id]->beamforming_out_buf = device->get_beamforming_out_buf();
@@ -156,12 +157,13 @@ void clProcess::main_thread()
 
         sequenceEvent = NULL;
 
-        //DEBUG("cb_data initialized\n");
+        DEBUG("cb_data initialized\n");
         usleep(gpu_id*10000);
         for (uint32_t i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
             sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
             cb_data[frame_id]->listCommands[i] = currentCommand;
+            tt.time_opencl_multi_kernel(sequenceEvent, currentCommand->get_name());
         }
 
         if (first_run)
@@ -170,14 +172,15 @@ void clProcess::main_thread()
 
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+            for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                        "cpu_affinity"))
                 CPU_SET(i, &cpuset);
             pthread_setaffinity_np(mem_reconcil_thread_handle.native_handle(),
                                     sizeof(cpu_set_t), &cpuset);
 
             first_run = false;
         }
-        //DEBUG("Commands Queued\n");
+        DEBUG("Commands Queued\n");
         // Setup call back.
         CHECK_CL_ERROR( clSetEventCallback(sequenceEvent,
                                             CL_COMPLETE,
@@ -191,6 +194,14 @@ void clProcess::main_thread()
         
         if (frame_id == 0 && first_seq == true){
             first_seq = false;
+        }
+        time_count++;
+        if(time_count == 10){
+            for (int i = 0; i < factory->getNumCommands(); i++){
+                currentCommand = factory->getNextCommand();
+                //tt.broadcast(currentCommand->get_name());
+            }
+            time_count = 0;
         }
     }
 
@@ -311,15 +322,15 @@ void clProcess::mem_reconcil_thread()
             }
             pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
                              cb_data[j]->out_buf, cb_data[j]->buffer_id);
-//            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
-//                             cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
+            pass_metadata(cb_data[j]->in_buf, cb_data[j]->buffer_id,
+                             cb_data[j]->rfi_out_buf, cb_data[j]->buffer_id);
             // Mark the input buffer as "empty" so that it can be reused.
             mark_frame_empty(cb_data[j]->in_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             // Mark the output buffer as full, so it can be processed.
             mark_frame_full(cb_data[j]->out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
-//            mark_frame_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
+            mark_frame_full(cb_data[j]->rfi_out_buf, cb_data[j]->unique_name.c_str(), cb_data[j]->buffer_id);
 
             for (int i = 0; i < cb_data[j]->numCommands; i++){
                 cb_data[j]->listCommands[i]->cleanMe(cb_data[j]->buffer_id);

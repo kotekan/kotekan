@@ -20,27 +20,30 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    freq = config.get_int(unique_name, "freq");
-    cadence = config.get_float_default(unique_name, "cadence", 5.0);
+    freq = config.get<int>(unique_name, "freq");
+    cadence = config.get_default<float>(unique_name, "cadence", 5.0);
 
-    pre_accumulate = config.get_bool_default(unique_name, "pre_accumulate", true);
+    pre_accumulate = config.get_default<bool>(unique_name, "pre_accumulate",
+                                              true);
 
     if(pre_accumulate) {
-        samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+        samples_per_data_set = config.get<int32_t>(unique_name,
+                                                   "samples_per_data_set");
     }
-    block_size = config.get_int(unique_name, "block_size");
-    num_elements = config.get_int(unique_name, "num_elements");
-    num_frames = config.get_int_default(unique_name, "num_frames", -1);
+    block_size = config.get<int32_t>(unique_name, "block_size");
+    num_elements = config.get<int32_t>(unique_name, "num_elements");
+    num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
 
-    wait = config.get_bool_default(unique_name, "wait", true);
+    wait = config.get_default<bool>(unique_name, "wait", true);
 
     // Fill out the map with the fill modes
     fill_map["block"] = &fakeGpuBuffer::fill_mode_block;
+    fill_map["lostsamples"] = &fakeGpuBuffer::fill_mode_lostsamples;
     fill_map["accumulate"] = &fakeGpuBuffer::fill_mode_accumulate;
     fill_map["gaussian"] = &fakeGpuBuffer::fill_mode_gaussian;
 
     // Fetch the correct fill function
-    std::string mode = config.get_string(unique_name, "mode");
+    std::string mode = config.get<std::string>(unique_name, "mode");
     fill = fill_map[mode];
 }
 
@@ -90,9 +93,6 @@ void fakeGpuBuffer::main_thread() {
         DEBUG("Simulating GPU buffer in %s[%d]",
               out_buf->buffer_name, frame_id);
 
-        // Fill the buffer with the specified mode
-        (this->*fill)(output, frame_count);
-
         allocate_new_metadata_object(out_buf, frame_id);
         set_fpga_seq_num(out_buf, frame_id, fpga_seq);
         set_stream_id_t(out_buf, frame_id, s);
@@ -102,8 +102,11 @@ void fakeGpuBuffer::main_thread() {
         set_first_packet_recv_time(out_buf, frame_id, tv);
         set_gps_time(out_buf, frame_id, ts);
 
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+        // Fill the buffer with the specified mode
+        (this->*fill)(output, frame_count,
+                      (chimeMetadata *)out_buf->metadata[frame_id]->metadata);
 
+        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % out_buf->num_frames;
         frame_count++;
@@ -129,7 +132,8 @@ void fakeGpuBuffer::main_thread() {
 }
 
 
-void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number) {
+void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number,
+                                    chimeMetadata* metadata) {
 
     int nb1 = num_elements / block_size;
     int num_blocks = nb1 * (nb1 + 1) / 2;
@@ -147,8 +151,28 @@ void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number) {
     }
 }
 
+void fakeGpuBuffer::fill_mode_lostsamples(int32_t* data, int frame_number,
+                                          chimeMetadata* metadata) {
 
-void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number) {
+    uint32_t norm = samples_per_data_set - frame_number;
+
+    // Every frame has one more lost packet than the last
+    for(int i = 0; i < num_elements; i++) {
+        for(int j = i; j < num_elements; j++) {
+            uint32_t bi = prod_index(i, j, block_size, num_elements);
+
+            // The visibilities are row + 1j * col, scaled by the total number
+            // of frames.
+            data[2 * bi    ] = j * norm;  // Imag
+            data[2 * bi + 1] = i * norm;  // Real
+        }
+    }
+
+    metadata->lost_timesamples = frame_number;
+}
+
+void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number,
+                                         chimeMetadata* metadata) {
 
     for(int i = 0; i < num_elements; i++) {
         for(int j = i; j < num_elements; j++) {
@@ -167,7 +191,8 @@ void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number) {
     }
 }
 
-void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number) {
+void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number,
+                                       chimeMetadata* metadata) {
 
     std::random_device rd{};
     std::mt19937 gen{rd()};

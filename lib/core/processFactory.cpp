@@ -6,10 +6,12 @@ processFactory::processFactory(Config& config,
     config(config),
     buffer_container(buffer_container) {
 
+#ifdef DEBUGGING
     auto known_processes = processFactoryRegistry::get_registered_processes();
     for (auto &process : known_processes){
-        INFO("Registered Kotekan Process: %s",process.first.c_str());
+        DEBUG("Registered Kotekan Process: %s",process.first.c_str());
     }
+#endif
 }
 
 processFactory::~processFactory() {

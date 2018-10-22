@@ -1,10 +1,5 @@
-/*****************************************
-File Contents:
-- pulsarNetworkProcess : public KotekanProcess
-*****************************************/
-
 /**
- * @file pulsarNetworkProcess.hpp
+ * @file
  * @brief Network transmission process for Pulsar obs
  *  - pulsarNetworkProcess : public KotekanProcess
  */
@@ -16,7 +11,8 @@ File Contents:
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include <string>
-
+#include "tx_utils.hpp"
+#include "restServer.hpp"
 
 /**
  * @class pulsarNetworkProcess
@@ -63,14 +59,8 @@ public:
   /// Applies the config parameters
   void apply_config(uint64_t fpga_seq) override;
   
-  /// parse hostname to derive the ip_address using gethosname()
-  void parse_host_name();
-
-  /// function to add nano seconds to timespec useful for flow control purpose
-  void add_nsec(struct timespec &temp, long nsec);
-
   /// main thread
-  void main_thread();
+  void main_thread() override;
 private:
 
   /// pointer to Input Pulsar buffer 
@@ -83,7 +73,7 @@ private:
   int udp_pulsar_port_number;
 
   /// node ip addresses
-  std::string my_ip_address[2];
+  char **my_ip_address;
   
   /// number of L0 nodes
   int number_of_nodes;
@@ -91,11 +81,28 @@ private:
   /// number of pulsar VLANS
   int number_of_subnets;
 
-  /// node id derived from the hostname 
-  int my_node_id;
-
   /// host name from the gethosename()
   char *my_host_name;
+  
+  /// samples per packet
+  int timesamples_per_pulsar_packet;
+
+  /// packets per stream in a buffer frame
+  int num_packet_per_stream; 
+
+  /// local socket file descriptor 
+  int *sock_fd;
+
+  /// array of remote endpoint addresses 
+  struct sockaddr_in *server_address;
+    
+  /// array of local endpoint addresses
+  struct sockaddr_in *myaddr;
+
+  /// array of socket ids
+  int *socket_ids;
+
+
 };
  
 #endif

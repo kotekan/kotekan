@@ -119,17 +119,13 @@ void decrement_metadata_ref_count(struct metadataContainer * container);
  *
  * @param[in] container The container to request the lock for
  */
-inline void lock_metadata(struct metadataContainer * container) {
-    CHECK_ERROR( pthread_mutex_lock(&container->metadata_lock) );
-}
+void lock_metadata(struct metadataContainer * container);
 
 /**
  * @brief Unlocks the lock associated with the metadata container
  * @param[in] container The container to unlock
  */
-inline void unlock_metadata(struct metadataContainer * container) {
-    CHECK_ERROR( pthread_mutex_unlock(&container->metadata_lock) );
-}
+void unlock_metadata(struct metadataContainer * container);
 
 // *** Metadata pool section ***
 

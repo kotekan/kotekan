@@ -3786,9 +3786,7 @@ int mg_normalize_uri_path(const struct mg_str *in, struct mg_str *out) {
 #define MG_DISABLE_CGI 1
 #endif
 
-#include "version.h"
-
-static const char *mg_version_header = "Kotekan/" KOTEKAN_VERSION_STR " - " GIT_BRANCH " - " GIT_COMMIT_HASH;
+static const char *mg_version_header = "Kotekan";
 
 enum mg_http_proto_data_type { DATA_NONE, DATA_FILE, DATA_PUT };
 

@@ -30,6 +30,7 @@ class hsaInputData: public hsaCommand
         int32_t _num_local_freq;
         int32_t _num_elements;
         int32_t _samples_per_data_set;
+        float _delay_max_fraction;
 
         // Random delay in seconds
         double _random_delay;

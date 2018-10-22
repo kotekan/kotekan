@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "vdif_functions.h"
+#include "utils/util.h"
 
 using std::string;
 
@@ -15,174 +16,137 @@ rfiVDIF::rfiVDIF(Config& config, const string& unique_name,
     KotekanProcess(config, unique_name, buffer_containter,
                      std::bind(&rfiVDIF::main_thread, this))
 {
-    //Apply kotekan config
-    apply_config(0);
+    //Get relevant buffers
+    buf_in  = get_buffer("vdif_in");
+    buf_out = get_buffer("rfi_out");
     //Register process as consumer and producer
     register_consumer(buf_in, unique_name.c_str());
     register_producer(buf_out,  unique_name.c_str());
+    //Apply kotekan config
+    apply_config(0);
 }
 
 rfiVDIF::~rfiVDIF() {
 }
 
 void rfiVDIF::apply_config(uint64_t fpga_seq) {
-
-    //Buffers
-    buf_in  = get_buffer("vdif_in");
-    buf_out = get_buffer("rfi_out");
-
-    //Data paramters
-    num_elements = config.get_int(unique_name,"num_elements");
-    num_frequencies = config.get_int(unique_name,"num_freq");
-    num_timesteps = config.get_int(unique_name,"samples_per_data_set");
-    
-    //Rfi paramters
-    COMBINED = config.get_bool(unique_name,"RFI_combined");
-    SK_STEP = config.get_int(unique_name,"sk_step");
+    //General data paramters
+    _num_elements = config.get<uint32_t>(unique_name,"num_elements");
+    _num_local_freq = config.get<uint32_t>(unique_name,"num_local_freq");
+    _samples_per_data_set = config.get<uint32_t>(unique_name,"samples_per_data_set");
+    //Rfi parameters
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined",true);
+    _sk_step = config.get_default<uint32_t>(unique_name,"sk_step", 256);
 }
 
 void rfiVDIF::main_thread() {
-
     //Frame parameters
-    int buf_in_id = 0;
+    uint32_t frame_in_id = 0;
+    uint32_t frame_out_id = 0;
     uint8_t * in_frame = NULL;
-    int buf_out_id = 0;
     uint8_t * out_frame = NULL;
-
     //Set the VDIF block size
-    unsigned int VDIF_BLOCK_SIZE = num_frequencies + sizeof(VDIFHeader);
- 
+    uint32_t VDIF_BLOCK_SIZE = _num_local_freq + sizeof(VDIFHeader);
     //Counters and indices
-    unsigned int i, j, k, block_counter, power, RFI_INDEX;
+    uint32_t i, j, k, block_counter, power, rfi_index;
     long ptr_counter;
-
-    //Holders for real/imag componenets	
-    char real, imag; 
-
+    //Holders for real/imag componenets
+    char real, imag;
     //Total integration length
     float M;
-
     //Declare power arrays
-    float power_arr[num_elements][num_frequencies]; 
-    float power_sq_arr[num_elements][num_frequencies];
-
+    float power_arr[_num_elements][_num_local_freq];
+    float power_sq_arr[_num_elements][_num_local_freq];
     //Invalid Data array
-    unsigned int invalid_data_counter[num_elements];
-    unsigned int RFI_Buffer_Size = num_elements*num_frequencies*(num_timesteps/SK_STEP);
-    float S2[num_frequencies];
-
+    uint32_t invalid_data_counter[_num_elements];
+    uint32_t RFI_Buffer_Size = _num_elements*_num_local_freq*(_samples_per_data_set/_sk_step);
+    float S2[_num_local_freq];
     //Create empty Buffer for RFI Values
-    if(COMBINED){
-        RFI_Buffer_Size /= num_elements;
+    if(_rfi_combined){
+        RFI_Buffer_Size /= _num_elements;
     }
-
     //Buffer to hold kurtosis estimates
     float RFI_Buffer[RFI_Buffer_Size];
-
+    //Initialize Arrays for a single block
+    uint8_t block[VDIF_BLOCK_SIZE];
     //Value of current block's element index
-    int current_element;
-
-    while (!stop_thread) { //Endless loop
-
+    int32_t current_element;
+    //Endless Loop
+    while (!stop_thread) {
         //Get a new frame
-        in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), frame_in_id);
         if (in_frame == NULL) break;
+        //Start timer
+        double start_time = e_time();
         //Reset Counters
-        RFI_INDEX = 0;
+        rfi_index = 0;
         block_counter = 0;
         ptr_counter = 0;
-
         //Loop through frame
         while(ptr_counter < buf_in->frame_size){
-
-            //Initialize Arrays for a single block
-            unsigned char block[VDIF_BLOCK_SIZE]; 
-            
-            if(block_counter == 0){ //Reset after each SK_Step
-                for(i = 0; i < num_elements; i++){
-                    invalid_data_counter[i] = 0;
-                    for (j = 0; j < num_frequencies; j++){
-                        power_arr[i][j] = 0;
-                        power_sq_arr[i][j] = 0;
-                    }
-                }
+            //Reset after each _sk_step
+            if(block_counter == 0){
+                memset(power_arr, (float)0, sizeof(power_arr));
+                memset(power_sq_arr, (float)0, sizeof(power_sq_arr));
+                memset(invalid_data_counter, (uint32_t)0, sizeof(invalid_data_counter));
             }
-
             //Read in first block
-            memcpy(block,
-                    in_frame+ptr_counter,
-                    VDIF_BLOCK_SIZE);
-
+            memcpy(block,in_frame+ptr_counter,VDIF_BLOCK_SIZE);
+            //Update number of blocks read
+            block_counter++;
             //Update the buffer location
             ptr_counter += VDIF_BLOCK_SIZE;
-
             //Find current input number
-            current_element = (int)block[14];
+            current_element = (int32_t)block[14];
 
             //Check Validity of the block
             //TODO Why doesn't this work?
             //if((block[3] & 0x1) == 0x1){
             //      invalid_data_counter[current_element]++;
-            //      continue;		
+            //      continue;
             //}
-            
+
             //Sum Across Time
-            for(i = 0; i < num_frequencies; i++){
+            for(i = 0; i < _num_local_freq; i++){
                 real = ((block[sizeof(VDIFHeader) + i] >> 4) & 0xF)-8;
                 imag = (block[sizeof(VDIFHeader) + i] & 0xF)-8;
                 power = real*real + imag*imag; //Compute power
                 power_arr[current_element][i] += power;
                 power_sq_arr[current_element][i] += power*power;
             }
-            
-            //Update number of blocks read
-            block_counter++; 
-
             //After a certain amount of timesteps
-            if(block_counter == num_elements*SK_STEP){
-
-                if(COMBINED){
-                    
+            if(block_counter == _num_elements*_sk_step){
+                if(_rfi_combined){
                     //Compute the correct value for M
-                    M = num_elements*SK_STEP;
-                    for(i = 0; i < num_elements; i++){
-
+                    M = _num_elements*_sk_step;
+                    for(i = 0; i < _num_elements; i++){
                         M -= invalid_data_counter[i];
-                        for (j = 0; j < num_frequencies; j++){
+                        for (j = 0; j < _num_local_freq; j++){
                             //Normalize
-                            power_sq_arr[i][j] /= (power_arr[i][j]/SK_STEP)*(power_arr[i][j]/SK_STEP);
+                            power_sq_arr[i][j] /= (power_arr[i][j]/_sk_step)*(power_arr[i][j]/_sk_step);
                         }
-                    }   
-                    for(i = 0; i < num_frequencies; i++){
-
+                    }
+                    for(i = 0; i < _num_local_freq; i++){
                         S2[i] = 0; //Intialize
                         //Sum Across Input
-                        for (j = 0; j < num_elements; j++){
-                
+                        for (j = 0; j < _num_elements; j++){
                             S2[i] += power_sq_arr[j][i];
-
                         }
-
                         //Compute Kurtosis for each frequency
-                        RFI_Buffer[RFI_INDEX] = ((M+1)/(M-1))*(S2[i]/M-1);
-                        RFI_INDEX++;
-                        //INFO("Pre Value %f M %f Second Value %f S2 %f S2/M %f",((M+1)/(M-1)),M, (S2[i]/M-1),S2[i], S2[i]/M)
-                    }					        				    
+                        RFI_Buffer[rfi_index] = ((M+1)/(M-1))*(S2[i]/M-1);
+                        rfi_index++;
+                    }
                 }
                 else{
-
                     //For each element
-                    for(k = 0; k < num_elements; k ++){
-
+                    for(k = 0; k < _num_elements; k ++){
                         //Compute the correct value for M
-                        M = SK_STEP - (float)invalid_data_counter[k];
-
-                        for(i = 0; i < num_frequencies; i++){
-
+                        M = _sk_step - (float)invalid_data_counter[k];
+                        for(i = 0; i < _num_local_freq; i++){
                             //Compute Kurtosis for each frequency
-                            RFI_Buffer[RFI_INDEX] = (((M+1)/(M-1))*((M*power_sq_arr[k][i])/(power_arr[k][i]*power_arr[k][i])-1));
-                            RFI_INDEX++;
-                            
+                            RFI_Buffer[rfi_index] = (((M+1)/(M-1))*((M*power_sq_arr[k][i])/(power_arr[k][i]*power_arr[k][i])-1));
+                            INFO("SK value %f", RFI_Buffer[rfi_index]);
+                            rfi_index++;
                         }
                     }
                 }
@@ -190,27 +154,17 @@ void rfiVDIF::main_thread() {
                 block_counter = 0;
             }
         }
-        //INFO("FIRST SK Value %f",RFI_Buffer[100])
-        out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
+        //Wait for output frame
+        out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
         if (out_frame == NULL) break;
-
+        //Copy results to output frame
         memcpy(out_frame,RFI_Buffer,RFI_Buffer_Size*sizeof(float));
-
-        mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
-        mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
-
-        buf_out_id = (buf_out_id + 1) % buf_out->num_frames;
-        buf_in_id = (buf_in_id + 1) % buf_in->num_frames;
-        INFO("Frame %d Complete Stream ID\n", buf_in_id); 
-
-        //Testing
-        /*
-        float counter = 0;
-        for(k = 0; k < RFI_Buffer_Size; k ++){
-            if(RFI_Buffer[k] > 1 + 6/(22.627)|| RFI_Buffer[k] < 1 - 6/(22.627)){
-                counter++;
-            }
-        }
-        INFO("Percent RFI %f",counter/RFI_Buffer_Size);*/
+        //Mark output frame full and input frame empty
+        mark_frame_full(buf_out, unique_name.c_str(), frame_out_id);
+        mark_frame_empty(buf_in, unique_name.c_str(), frame_in_id);
+        //Move forward one frame
+        frame_out_id = (frame_out_id + 1) % buf_out->num_frames;
+        frame_in_id = (frame_in_id + 1) % buf_in->num_frames;
+        INFO("Frame %d Complete Time %fms", frame_in_id, (e_time()-start_time)*1000);
     }
 }

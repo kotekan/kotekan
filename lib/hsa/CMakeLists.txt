@@ -17,11 +17,17 @@ add_library ( kotekan_hsa
 
 # Copy-in & general-purpose:
               hsaInputData.cpp
+              hsaInputLostSamples.cpp
               hsaBarrier.cpp
 
-# RFI Kernels:
+# RFI Kernels & copy-out:
               hsaRfiVdif.cpp
-              hsaRfi.cpp
+              hsaRfiTimeSum.cpp
+              hsaRfiInputSum.cpp
+              hsaRfiBadInput.cpp
+              hsaRfiZeroData.cpp
+              hsaRfiBadInputOutput.cpp
+              hsaRfiMaskOutput.cpp
               hsaRfiOutput.cpp
 
 # CHIME N2 Kernels & copy-out:
@@ -41,6 +47,7 @@ add_library ( kotekan_hsa
 
 # CHIME/Pulsar Kernels & copy-out:
               hsaBeamformPulsar.cpp
+              hsaBeamformPulsarOutput.cpp
               hsaBeamformPulsarOneFeed.cpp
               hsaPulsarUpdatePhase.cpp
               )

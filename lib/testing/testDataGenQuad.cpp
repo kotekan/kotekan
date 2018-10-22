@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+REGISTER_KOTEKAN_PROCESS(testDataGenQuad);
+
 testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name,
@@ -17,9 +19,9 @@ testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
     for (int i=0; i<4; i++)
         register_producer(buf[i], unique_name.c_str());
 
-    type = config.get_string(unique_name, "type");
+    type = config.get<std::string>(unique_name, "type");
     if (type == "const")
-        value = config.get_int_array(unique_name, "value");
+        value = config.get<std::vector<int32_t>>(unique_name, "value");
     assert(type == "const" || type == "random");
 }
 

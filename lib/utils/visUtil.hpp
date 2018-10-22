@@ -17,6 +17,7 @@
 #include <sys/time.h>
 #include <string>
 #include <vector>
+#include <functional>
 
 #include "gsl-lite.hpp"
 #include "json.hpp"
@@ -47,6 +48,12 @@ struct freq_ctype {
  * @brief Correlator input index map
  */
 struct input_ctype {
+
+    /**
+     * @brief Default constructor.
+     **/
+    input_ctype();
+
     /**
      * @brief Allow initialisation from a std::string
      * @param id     Input ID
@@ -81,6 +88,58 @@ struct prod_ctype {
 };
 
 /**
+ * @brief Stack index map type (stack -> product)
+ */
+struct stack_ctype {
+    /// Index of an example product
+    uint32_t prod;
+    /// Conjugate before stack
+    bool conjugate;
+};
+
+/**
+ * @brief Reverse stack map (product -> stack)
+ */
+struct rstack_ctype {
+    /// Index of stack this product goes into
+    uint32_t stack;
+    /// Conjugate before stack
+    bool conjugate;
+};
+
+/// Comparison operator for stacks
+bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs);
+
+
+// Conversions of the index types to json
+void to_json(json& j, const freq_ctype& f);
+void to_json(json& j, const input_ctype& f);
+void to_json(json& j, const prod_ctype& f);
+void to_json(json& j, const time_ctype& f);
+void to_json(json& j, const stack_ctype& f);
+void to_json(json& j, const rstack_ctype& f);
+
+void from_json(const json& j, freq_ctype& f);
+void from_json(const json& j, input_ctype& f);
+void from_json(const json& j, prod_ctype& f);
+void from_json(const json& j, time_ctype& f);
+void from_json(const json& j, stack_ctype& f);
+void from_json(const json& j, rstack_ctype& f);
+
+// Conversion of std::complex<T> to and from json
+namespace std {
+    template<class T>
+    void to_json(json& j, const std::complex<T>& p) {
+        j = json{{"real", p.real()}, {"imag", p.imag()}};
+    }
+
+    template<class T>
+    void from_json(const json& j, std::complex<T>& p) {
+        p = std::complex<T>{j.at("real").get<T>(), j.at("imag").get<T>()};
+    }
+}
+
+/**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
  * @param  j Column index.
@@ -89,6 +148,26 @@ struct prod_ctype {
  */
 inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
     return (n * (n + 1) / 2) - ((n - i) * (n - i + 1) / 2) + (j - i);
+}
+
+/**
+ * @brief Convert a product index to an input pair.
+ * @param k Product index.
+ * @param n Total number of inputs.
+ * @return Product pair indices.
+ *
+ * @todo This is super inefficient.
+ **/
+inline prod_ctype icmap(uint32_t k, uint16_t n) {
+    uint16_t ii;
+    for (ii = 0; ii < n; ii++) {
+        if (cmap(ii, n - 1, n) >= k) {
+            break;
+        }
+    }
+
+    uint16_t j = k - cmap(ii, ii, n) + ii;
+    return {ii, j};
 }
 
 /**
@@ -137,6 +216,44 @@ inline timespec double_to_ts(double dtime) {
 
 
 /**
+ * @brief Subtraction of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a - b as timespec.
+ **/
+inline timespec operator-(const timespec & a, const timespec & b)
+{
+    if(a.tv_nsec < b.tv_nsec)
+        return {a.tv_sec - b.tv_sec - 1, 1000000000 + a.tv_nsec - b.tv_nsec};
+    else
+        return {a.tv_sec - b.tv_sec, a.tv_nsec - b.tv_nsec};
+}
+
+
+/**
+ * @brief Comparison of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    True if (a == b), False otherwise.
+ **/
+inline bool operator==(const timespec & a, const timespec & b) {
+    return (a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec);
+}
+
+
+/**
+ * @brief Comparison of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    True if (a > b), False otherwise.
+ **/
+inline bool operator>(const timespec & a,const timespec & b) {
+    return (a.tv_sec > b.tv_sec ||
+            (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec));
+}
+
+
+/**
  * @brief Get the current UNIX time as a double.
  * @return  UNIX time as double.
  **/
@@ -158,6 +275,26 @@ inline double current_time() {
 void copy_vis_triangle(
     const int32_t * inputdata, const std::vector<uint32_t>& inputmap,
     size_t block, size_t N, gsl::span<cfloat> output
+);
+
+
+/**
+ * @brief Apply a function over the visibility triangle.
+ *
+ * This function is best by passing a lambda function/closure that does the
+ * computation you want. It allows you to avoid doing the index computation
+ * yourself.
+ *
+ * @param inputmap  Vector of feed indices to use.
+ * @param block     Block size.
+ * @param N         Number of inputs in input data.
+ * @param f         Function to apply. It takes three arguments.
+ *                    - The product index into the correlation triangle.
+ *                    - The same product in the GPU packed data.
+ *                    - Whether we need to conjugate to map between the two.
+ */
+void map_vis_triangle(const std::vector<uint32_t>& inputmap,
+    size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
 );
 
 
@@ -191,9 +328,27 @@ struct_layout struct_alignment(
 
 
 /**
+ * @brief Calculate the norm of a complex number (i.e. |z|^2).
+ *
+ * In theory std::norm should do this, but the version in libstdc++ is super
+ * slow.
+ *
+ * @param z  Number to find the norm of.
+ * @returns  Norm of z.
+ **/
+template<typename T>
+inline T fast_norm(const std::complex<T>& z)
+{
+    T r = std::real(z);
+    T i = std::imag(z);
+    return (r * r + i * i);
+}
+
+
+/**
  * @class movingAverage
  * @brief Calculate an exponentially weighted moving average of a time series.
- * 
+ *
  * @author Richard Shaw
  **/
 class movingAverage {
@@ -202,7 +357,7 @@ public:
 
     /**
      * @brief Create a moving average calculation.
-     * 
+     *
      * @param  length  The length scale to average over. This is defined as
      *                 the lag at which all newer samples carry the same weight as all earlier
      *                 samples. Or equivalently the distance at which the weight per sample has
@@ -212,14 +367,14 @@ public:
 
     /**
      * @brief Add a new sample in the time series.
-     * 
+     *
      * @param  value  The sample to add.
      **/
     void add_sample(double value);
 
     /**
      * @brief Return the moving average of the current set of samples.
-     * 
+     *
      * @returns  The current moving average.
      **/
     double average();
@@ -230,6 +385,78 @@ private:
 
     bool initialised = false;
 };
+
+// Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612
+// TODO: write a more generalised version with variadic arguments
+/**
+ * @brief Zip together two vectors to create a vector of the pairs.
+ *
+ * This is similar to using Python's zip(first, second). It will zip up until
+ * the point that one of the vectors ends.
+ *
+ * @param first  The first vector to zip.
+ * @param second The second vector to zip.
+ *
+ * @returns A vector of the zipped pairs.
+ **/
+template< typename T, typename U >
+inline std::vector< std::pair< T, U > > zip( const std::vector< T >& first, const std::vector< U >& second )
+{
+    size_t min_size = std::min(first.size(), second.size());
+    std::vector< std::pair<T, U> > result;
+    result.reserve(min_size);
+
+    for( unsigned int i = 0; i < min_size; ++i )
+    {
+        result.push_back({first[i], second[i]});
+    }
+    return result;
+}
+
+/**
+ * @brief Split a vector of pairs into a pair of vectors.
+ *
+ * This is similar to using Python's zip(*both).
+ *
+ * @param both A vector of pairs.
+ *
+ * @returns A pair of the unzipped vectors.
+ **/
+template< typename T, typename U >
+inline std::pair< std::vector<T>, std::vector<U> > unzip(
+    const std::vector< std::pair<T, U> >& both)
+{
+    std::pair< std::vector< T >, std::vector< U > > result;
+    result.first.reserve(both.size());
+    result.second.reserve(both.size());
+
+    for (auto& p : both) {
+        result.first.push_back(p.first);
+        result.second.push_back(p.second);
+    }
+    return result;
+}
+
+/**
+ * @brief Apply a function 1->1 over a vector.
+ *
+ * @param vec  Vector to use.
+ * @param func Function to apply.
+ *
+ * @returns Vector with the mapped elements.
+ **/
+template<typename T, typename U>
+inline std::vector<U> func_map(const std::vector<T>& vec,
+                               std::function<U(const T&)> func)
+{
+    std::vector<U> ret;
+    ret.reserve(vec.size());
+
+    for(const T& x : vec) {
+        ret.push_back(func(x));
+    }
+    return ret;
+}
 
 
 #endif

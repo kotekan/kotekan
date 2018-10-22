@@ -1,5 +1,6 @@
 #include "visBuffer.hpp"
 #include "gpsTime.h"
+#include "fmt.hpp"
 
 
 template<typename T>
@@ -24,14 +25,14 @@ visFrameView::visFrameView(Buffer * buf, int frame_id) :
     visFrameView(buf, frame_id,
                  ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_elements,
                  ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_prod,
-                 ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_eigenvectors)
+                 ((visMetadata *)(buf->metadata[frame_id]->metadata))->num_ev)
 {
 }
 
 visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                           uint32_t num_eigenvectors) :
+                           uint32_t num_ev) :
     visFrameView(buf, frame_id, num_elements,
-                 num_elements * (num_elements + 1) / 2, num_eigenvectors)
+                 num_elements * (num_elements + 1) / 2, num_ev)
 {
 }
 
@@ -39,46 +40,55 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
                            uint32_t n_prod, uint32_t n_eigenvectors) :
     buffer(buf),
     id(frame_id),
-    metadata((visMetadata *)buf->metadata[id]->metadata),
-    frame(buffer->frames[id]),
+    _metadata((visMetadata *)buf->metadata[id]->metadata),
+    _frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(calculate_buffer_layout(n_elements, n_prod, n_eigenvectors)),
 
     // Set the const refs to the structural metadata
-    num_elements(metadata->num_elements),
-    num_prod(metadata->num_prod),
-    num_eigenvectors(metadata->num_eigenvectors),
+    num_elements(_metadata->num_elements),
+    num_prod(_metadata->num_prod),
+    num_ev(_metadata->num_ev),
 
-    // Set the refs to the general metadata
-    time(std::tie(metadata->fpga_seq_num, metadata->ctime)),
-    freq_id(metadata->freq_id),
-    dataset_id(metadata->dataset_id),
+    // Set the refs to the general _metadata
+    time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
+    fpga_seq_length(_metadata->fpga_seq_length),
+    fpga_seq_total(_metadata->fpga_seq_total),
+    freq_id(_metadata->freq_id),
+    dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and refernces on the view
-    vis(bind_span<cfloat>(frame, buffer_layout["vis"])),
-    weight(bind_span<float>(frame, buffer_layout["weight"])),
-    eigenvalues(bind_span<float>(frame, buffer_layout["evals"])),
-    eigenvectors(bind_span<cfloat>(frame, buffer_layout["evecs"])),
-    rms(bind_scalar<float>(frame, buffer_layout["rms"]))
+    vis(bind_span<cfloat>(_frame, buffer_layout["vis"])),
+    weight(bind_span<float>(_frame, buffer_layout["weight"])),
+    flags(bind_span<float>(_frame, buffer_layout["flags"])),
+    eval(bind_span<float>(_frame, buffer_layout["eval"])),
+    evec(bind_span<cfloat>(_frame, buffer_layout["evec"])),
+    erms(bind_scalar<float>(_frame, buffer_layout["erms"])),
+    gain(bind_span<cfloat>(_frame, buffer_layout["gain"]))
 
 {
     // Initialise the structure if not already done
     // NOTE: the provided structure params have already been used to calculate
     // the layout, but here we need to make sure the metadata tracks them too.
-    metadata->num_elements = n_elements;
-    metadata->num_prod = n_prod;
-    metadata->num_eigenvectors = n_eigenvectors;
+    _metadata->num_elements = n_elements;
+    _metadata->num_prod = n_prod;
+    _metadata->num_ev = n_eigenvectors;
 
     // Check that the actual buffer size is big enough to contain the calculated
     // view
     size_t required_size = buffer_layout["_struct"].second;
 
     if(required_size > (uint32_t)buffer->frame_size) {
-        throw std::runtime_error(
-            "Visibility buffer too small. Must be a minimum of " +
-            std::to_string((int)required_size) + " bytes."
+
+        std::string s = fmt::format(
+            "Visibility buffer [{}] too small. Must be a minimum of\
+             {} bytes for elements={}, products={}, ev={}",
+            buffer->buffer_name, required_size, n_elements, n_prod,
+            n_eigenvectors
         );
+
+        throw std::runtime_error(s);
     }
 }
 
@@ -86,10 +96,10 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
 visFrameView::visFrameView(Buffer * buf, int frame_id,
                            visFrameView frame_to_copy) :
     visFrameView(buf, frame_id, frame_to_copy.num_elements,
-                 frame_to_copy.num_prod, frame_to_copy.num_eigenvectors)
+                 frame_to_copy.num_prod, frame_to_copy.num_ev)
 {
     // Copy over the metadata values
-    *metadata = *(frame_to_copy.metadata);
+    *_metadata = *(frame_to_copy.metadata());
 
     // Copy the frame data here:
     // NOTE: this copies the full buffer memory, not only the individual components
@@ -101,22 +111,102 @@ visFrameView::visFrameView(Buffer * buf, int frame_id,
 
 std::string visFrameView::summary() const {
 
-    std::ostringstream s;
-
     auto tm = gmtime(&(std::get<1>(time).tv_sec));
 
-    s << "visBuffer[name=" << buffer->buffer_name << "]:"
-      << " freq=" << freq_id
-      << " dataset=" << dataset_id
-      << " fpga_seq=" << std::get<0>(time)
-      << " time=" << std::put_time(tm, "%F %T");
+    string s = fmt::format(
+        "visBuffer[name={}]: freq={} dataset={} fpga_start={} time={:%F %T}",
+        buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm
+    );
 
-    return s.str();
+    return s;
 }
 
 
+visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src,
+                                      Buffer* buf_dest, int frame_id_dest)
+{
+    allocate_new_metadata_object(buf_dest, frame_id_dest);
+
+    // Buffer sizes must match exactly
+    if (buf_src->frame_size != buf_dest->frame_size) {
+        std::string msg = fmt::format(
+            "Buffer sizes must match for direct copy (src %i != dest %i).",
+            buf_src->frame_size, buf_dest->frame_size);
+        throw std::runtime_error(msg);
+    }
+
+    // Metadata sizes must match exactly
+    if (buf_src->metadata[frame_id_src]->metadata_size !=
+        buf_dest->metadata[frame_id_dest]->metadata_size) {
+        std::string msg = fmt::format(
+            "Metadata sizes must match for direct copy (src %i != dest %i).",
+            buf_src->metadata[frame_id_src]->metadata_size,
+            buf_dest->metadata[frame_id_dest]->metadata_size);
+        throw std::runtime_error(msg);
+    }
+
+    // Calculate the number of consumers on the source buffer
+    int num_consumers = 0;
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf_src->consumers[i].in_use == 1) {
+            num_consumers++;
+        }
+    }
+
+    // Copy or transfer the data part.
+    if (num_consumers == 1) {
+        // Transfer frame contents with directly...
+        swap_frames(buf_src, frame_id_src, buf_dest, frame_id_dest);
+    } else if (num_consumers > 1) {
+        // Copy the frame data over, leaving the source intact
+        std::memcpy(buf_dest->frames[frame_id_dest],
+                    buf_src->frames[frame_id_src], buf_src->frame_size);
+    }
+
+    // Copy over the metadata
+    std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
+                buf_src->metadata[frame_id_src]->metadata,
+                buf_src->metadata[frame_id_src]->metadata_size);
+
+    return visFrameView(buf_dest, frame_id_dest);
+}
+
+
+// Copy the non-const parts of the metadata
+void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
+    _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
+    _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
+    _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
+    _metadata->ctime = frame_to_copy.metadata()->ctime;
+    _metadata->freq_id = frame_to_copy.metadata()->freq_id;
+    _metadata->dataset_id = frame_to_copy.metadata()->dataset_id;
+}
+
+// Copy the non-visibility parts of the buffer
+void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
+
+    // Copy eigenvector parts
+    std::copy(frame_to_copy.eval.begin(),
+              frame_to_copy.eval.end(),
+              eval.begin());
+    std::copy(frame_to_copy.evec.begin(),
+              frame_to_copy.evec.end(),
+              evec.begin());
+    erms = frame_to_copy.erms;
+
+    // Copy per input flags
+    std::copy(frame_to_copy.flags.begin(),
+              frame_to_copy.flags.end(),
+              flags.begin());
+
+    // Copy gains
+    std::copy(frame_to_copy.gain.begin(),
+              frame_to_copy.gain.end(),
+              gain.begin());
+}
+
 struct_layout visFrameView::calculate_buffer_layout(
-    uint32_t num_elements, uint32_t num_prod, uint32_t num_eigenvectors
+    uint32_t num_elements, uint32_t num_prod, uint32_t num_ev
 )
 {
     // TODO: get the types of each element using a template on the member
@@ -124,14 +214,15 @@ struct_layout visFrameView::calculate_buffer_layout(
     std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
         std::make_tuple("vis", sizeof(cfloat), num_prod),
         std::make_tuple("weight", sizeof(float),  num_prod),
-        std::make_tuple("evals", sizeof(float),  num_eigenvectors),
-        std::make_tuple("evecs", sizeof(cfloat), num_eigenvectors * num_elements),
-        std::make_tuple("rms", sizeof(float),  1)
+        std::make_tuple("flags", sizeof(float),  num_elements),
+        std::make_tuple("eval", sizeof(float),  num_ev),
+        std::make_tuple("evec", sizeof(cfloat), num_ev * num_elements),
+        std::make_tuple("erms", sizeof(float),  1),
+        std::make_tuple("gain", sizeof(cfloat), num_elements)
     };
 
     return struct_alignment(buffer_members);
 }
-
 
 void visFrameView::fill_chime_metadata(const chimeMetadata * chime_metadata) {
 

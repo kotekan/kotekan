@@ -16,21 +16,21 @@ __kernel void pulsarbf( __global uint *data, __global float2 *phase,  __global u
   
     uint data_temp = data[(t*nsamp/TS+get_group_id(2))*512 + get_group_id(0)*256 + get_local_id(0) ];
     sum[get_local_id(0)].REAL = ph0.REAL*((float)((data_temp&0x000000f0)>>4u)-8) 
-      - ph0.IMAG*((float)((data_temp & 0x0000000f)>>0u)-8) 
-      + ph1.REAL*((float)((data_temp & 0x0000f000)>>12u)-8) 
-      - ph1.IMAG*((float)((data_temp & 0x00000f00)>>8u) - 8)
+      - ph0.IMAG*((float)((data_temp & 0x0000000f)>> 0u)-8)
+      + ph1.REAL*((float)((data_temp & 0x0000f000)>>12u)-8)
+      - ph1.IMAG*((float)((data_temp & 0x00000f00)>> 8u)-8)
       + ph2.REAL*((float)((data_temp & 0x00f00000)>>20u)-8)
       - ph2.IMAG*((float)((data_temp & 0x000f0000)>>16u)-8)
       + ph3.REAL*((float)((data_temp & 0xf0000000)>>28u)-8)
       - ph3.IMAG*((float)((data_temp & 0x0f000000)>>24u)-8);
 
     sum[get_local_id(0)].IMAG = ph0.IMAG*((float)((data_temp&0x000000f0)>>4u)-8) 
-      + ph0.REAL *((float)((data_temp & 0x0000000f)>>0u)-8) 
-      + ph1.IMAG*((float)((data_temp & 0x0000f000)>>12u)-8) 
-      + ph1.REAL*((float)((data_temp & 0x00000f00)>>8u) - 8)
+      + ph0.REAL*((float)((data_temp & 0x0000000f)>> 0u)-8)
+      + ph1.IMAG*((float)((data_temp & 0x0000f000)>>12u)-8)
+      + ph1.REAL*((float)((data_temp & 0x00000f00)>> 8u)-8)
       + ph2.IMAG*((float)((data_temp & 0x00f00000)>>20u)-8)
       + ph2.REAL*((float)((data_temp & 0x000f0000)>>16u)-8)
-      + ph3.IMAG*((float)((data_temp & 0xf0000000)>>28u)-8)				   
+      + ph3.IMAG*((float)((data_temp & 0xf0000000)>>28u)-8)
       + ph3.REAL*((float)((data_temp & 0x0f000000)>>24u)-8);
     
     barrier(CLK_LOCAL_MEM_FENCE);

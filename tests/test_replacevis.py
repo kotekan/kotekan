@@ -7,7 +7,7 @@ import kotekan_runner
 
 replace_params = {
     'num_elements': 16,
-    'num_eigenvectors': 0,
+    'num_ev': 0,
     'total_frames': 128,
     'cadence': 5.0,
     'fill_ij': True,

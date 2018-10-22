@@ -27,11 +27,8 @@ vdifStream::~vdifStream() {
 }
 
 void vdifStream::apply_config(uint64_t fpga_seq) {
-    //if (!config.update_needed(fpga_seq))
-    //    return;
-
-    _vdif_port = config.get_int(unique_name, "vdif_port");
-    _vdif_server_ip = config.get_string(unique_name, "vdif_server_ip");
+    _vdif_port = config.get<uint32_t>(unique_name, "vdif_port");
+    _vdif_server_ip = config.get<std::string>(unique_name, "vdif_server_ip");
 }
 
 void vdifStream::main_thread() {
