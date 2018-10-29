@@ -9,6 +9,7 @@ import kotekan_runner
 
 
 default_params = {
+    'max_dump_samples': 3500,
     'num_elements': 256,
     'total_frames': 60,
     'stream_id': 0,
@@ -97,7 +98,7 @@ def test_io_errors_and_max_samples(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            wait(0.1),
+            wait(0.5),
             command_trigger(1437, 1839, 10, "doesnt_exist"),
             command_trigger(10457, 3237, 31),
             wait(0.1),
@@ -126,7 +127,7 @@ def test_negative_start_time(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            wait(0.1),
+            wait(0.5),
             command_trigger(-1, 3237, 31),
             wait(0.1),
             command_rest_frames(25),
@@ -147,10 +148,10 @@ def test_basic(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            wait(0.1),
+            wait(0.5),
             command_trigger(1437, 1839, 10),
-            command_trigger(40457, 3237, 17),
-            command_trigger(51039, 2091, 31),
+            command_trigger(20457, 3237, 17),
+            command_trigger(41039, 2091, 31),
             wait(0.1),
             command_rest_frames(60),
             ]
@@ -203,12 +204,15 @@ def test_bigdump(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            wait(0.1),
-            command_trigger(5437, 25423),    # Bigger than ring buffer.
+            wait(0.5),
+            command_trigger(1000, 25423),    # Bigger than ring buffer.
             command_rest_frames(60),
             ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
-    assert len(dump_files) == 0
+    assert len(dump_files) == 1
+    f = h5py.File(dump_files[0], 'r')
+    assert f['baseband'].shape == (default_params['max_dump_samples'],
+                                   default_params['num_elements'])
 
 
 def test_overload_no_crash(tmpdir_factory):
@@ -223,7 +227,7 @@ def test_overload_no_crash(tmpdir_factory):
 
     rest_commands = [
             command_rest_frames(1),
-            wait(0.1),
+            wait(0.5),
             ]
     random.seed()
     tf = params['total_frames']
