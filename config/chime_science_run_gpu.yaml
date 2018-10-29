@@ -63,6 +63,9 @@ feed_sep_NS : 0.3048
 feed_sep_EW : 22.0
 num_pulsar: 10
 num_pol: 2
+pulsar_gain:
+  kotekan_update_endpoint: json
+  pulsar_gain_dir: /mnt/gong/cherry/
 
 #RFI stuff
 sk_step: 256
@@ -363,17 +366,17 @@ gpu:
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
+  - name: hsaPresumKernel
+  - name: hsaCorrelatorKernel
+  - name: hsaRfiTimeSum
+  - name: hsaRfiBadInput
+  - name: hsaRfiInputSum
+  #- name: hsaRfiZeroData
   - name: hsaBeamformReorder
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
   - name: hsaBeamformPulsar
-  - name: hsaRfiTimeSum
-  - name: hsaRfiBadInput
-  - name: hsaRfiInputSum
-  #- name: hsaRfiZeroData
-  - name: hsaPresumKernel
-  - name: hsaCorrelatorKernel
   - name: hsaRfiBadInputOutput
   - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
@@ -391,6 +394,7 @@ gpu:
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
+    updatable_gain: /pulsar_gain
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
@@ -410,6 +414,7 @@ gpu:
   gpu_1:
     kotekan_process: hsaProcess
     gpu_id: 1
+    updatable_gain: /pulsar_gain
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
@@ -429,6 +434,7 @@ gpu:
   gpu_2:
     kotekan_process: hsaProcess
     gpu_id: 2
+    updatable_gain: /pulsar_gain
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
@@ -448,6 +454,7 @@ gpu:
   gpu_3:
     kotekan_process: hsaProcess
     gpu_id: 3
+    updatable_gain: /pulsar_gain
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]

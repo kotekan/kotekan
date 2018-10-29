@@ -6,6 +6,7 @@
 #include "bufferContainer.hpp"
 #include "restServer.hpp"
 #include "hsaPulsarUpdatePhase.hpp"
+#include "configUpdater.hpp"
 
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
@@ -81,32 +82,23 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
     //listen for gain updates
-    endpoint_gains_psr = unique_name + "/update_gains_psr/"+std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(endpoint_gains_psr,
-                                        std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1, _2));
+    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain"),
+                                        std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1));
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     restServer::instance().remove_json_callback(endpoint_psrcoord);
-    restServer::instance().remove_json_callback(endpoint_gains_psr);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(bankID);
     hsa_host_free(host_gain);
 }
 
-void hsaPulsarUpdatePhase::update_gains_callback(connectionInstance& conn, json& json_request) {
-    try {
-        _gain_dir = json_request["gain_dir"];
-    } catch (...) {
-        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
-    return;
-    }
+bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json &json) {
     update_gains=true;
-    INFO("Updating gains from %s", _gain_dir.c_str());
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
-    config.update_value(unique_name, "gain_dir", _gain_dir);
-    INFO("[PSR] updated gain with %s", _gain_dir.c_str());
+    _gain_dir = json.at("pulsar_gain_dir");
+    INFO("[PSR] Updating gains from %s", _gain_dir.c_str());
+    return true;
 }
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
