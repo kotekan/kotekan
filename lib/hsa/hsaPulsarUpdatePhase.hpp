@@ -27,15 +27,13 @@
  * Each of the 10 source position (and an associated scaling factor) can be 
  * changed/re-pointed on a per beam basis via endpoint.
  *
+ * The gain path is registered as a subscriber to an updatable config block.
+ *
  * @par REST Endpoints
  * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
  *            specific beam at RA+Dec with a scaling factor.
  *            requires json values      "beam", "ra", "dec", "scaling"
  *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
- * @endpoint  /update_gains_psr/<gpu_id> ``POST`` Trigger re-load of gain 
- *            at specific path for calibration purpose.
- *            requires json values      "gain_dir"
- *            update config             "gain_dir"
  *
  * @par GPU Memory
  * @gpu_mem  beamform_phase     Array of phase delays size 2048x10x2
@@ -72,7 +70,7 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Endpoint for providing new directory path for gain updates
-    void update_gains_callback(connectionInstance& conn, json& json_request);
+    bool update_gains_callback(nlohmann::json &json);
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays at each input
     void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gain, float *output);
@@ -158,8 +156,6 @@ private:
 
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;
-    /// Endpoint for updating gains
-    std::string endpoint_gains_psr;
 
 };
 
