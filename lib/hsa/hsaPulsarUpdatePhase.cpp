@@ -1,3 +1,5 @@
+//curl localhost:12048/pulsar_gain -X POST -H 'Content-Type: appication/json' -d '{"pulsar_gain_dir":"the_new_path"}'
+
 #include <string>
 #include <math.h>
 #include <time.h>
