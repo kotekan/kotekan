@@ -30,13 +30,11 @@
  * beams. The ordering of the output data is time-pol-beamEW-beamNS, where beamNS
  * is the fastest varying.
  *
+ * The gain path is registered as a subscriber to an updatable config block.
+ *
  * @requires_kernel    unpack_shift_beamform_flip.hasco
  *
  * @par REST Endpoints
- * @endpoint    /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain
- *              at specific path for calibration purpose.
- *              requires json values      "gain_dir"
- *              update config             "gain_dir"
  * @endpoint    /frb/update_NS_beam/<gpu id> ``POST`` Trigger re-set of 
  *              FFT beam spacing in N-S
  *              requires json values      northmost_beam
@@ -103,7 +101,7 @@ public:
                          hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates
-    void update_gains_callback(connectionInstance& conn, json& json_request);
+    void update_gains_callback(nlohmann::json &json);
     /// Endpoint for setting N-S beam extent
     void update_NS_beam_callback(connectionInstance& conn, json& json_request);
     /// Endpoint for setting E-W beam sky angle
@@ -189,8 +187,6 @@ private:
     ///Flag to update EW beam
     bool update_EW_beam;
 
-    /// The endpoint name for the gain update call
-    std::string endpoint_gains;
     /// Endpoint for updating NS beams
     std::string endpoint_NS_beam;
     /// Endpoint for updating EW beams

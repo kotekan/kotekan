@@ -1,4 +1,5 @@
 #include "hsaBeamformKernel.hpp"
+#include "configUpdater.hpp"
 
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
@@ -61,19 +62,21 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
 
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint_gains = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(endpoint_gains,
-            std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
+    //endpoint_gains = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
+    //    rest_server.register_post_callback(endpoint_gains,
+    //				       std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
     endpoint_NS_beam = unique_name + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_NS_beam,
             std::bind(&hsaBeamformKernel::update_NS_beam_callback, this, _1, _2));
     endpoint_EW_beam = unique_name + "/frb/update_EW_beam/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_EW_beam,
             std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
+    //listen for gain updates
+    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain_frb"),
+					std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
-    restServer::instance().remove_json_callback(endpoint_gains);
     restServer::instance().remove_json_callback(endpoint_NS_beam);
     restServer::instance().remove_json_callback(endpoint_EW_beam);
     hsa_host_free(host_map);
@@ -84,21 +87,12 @@ hsaBeamformKernel::~hsaBeamformKernel() {
 }
 
 
-void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& json_request) {
+void hsaBeamformKernel::update_gains_callback(nlohmann::json &json) {
     //we're not fussy about exactly when the gains update, so no need for a lock here
-    try {
-        _gain_dir = json_request["gain_dir"];
-    } catch (...) {
-        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    //nothing will happen until this gets changed.
     update_gains=true;
-    INFO("Updating gains from %s", _gain_dir.c_str());
-    config.update_value(unique_name, "gain_dir", _gain_dir);
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    _gain_dir = json.at("frb_gain_dir");
     INFO("[FRB] updated gain with %s", _gain_dir.c_str());
-
+    return true;
 }
 
 void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& json_request) {

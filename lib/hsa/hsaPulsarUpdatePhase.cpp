@@ -84,7 +84,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
     //listen for gain updates
-    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain"),
+    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain_psr"),
                                         std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1));
 }
 
