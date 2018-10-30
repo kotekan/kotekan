@@ -4,7 +4,7 @@
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_gains/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"gain_dir":"/etc/kotekan/gains/"}'
+// curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
 // Update NS beam
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
 // Update EW beam
@@ -62,9 +62,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
 
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    //endpoint_gains = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    //    rest_server.register_post_callback(endpoint_gains,
-    //				       std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
     endpoint_NS_beam = unique_name + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_NS_beam,
             std::bind(&hsaBeamformKernel::update_NS_beam_callback, this, _1, _2));
@@ -73,7 +70,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
             std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
     //listen for gain updates
     configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain_frb"),
-					std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
+                                        std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
