@@ -84,7 +84,7 @@ hsaBeamformKernel::~hsaBeamformKernel() {
 }
 
 
-void hsaBeamformKernel::update_gains_callback(nlohmann::json &json) {
+bool hsaBeamformKernel::update_gains_callback(nlohmann::json &json) {
     //we're not fussy about exactly when the gains update, so no need for a lock here
     update_gains=true;
     _gain_dir = json.at("frb_gain_dir");

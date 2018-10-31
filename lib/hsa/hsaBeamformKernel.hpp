@@ -101,7 +101,7 @@ public:
                          hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates
-    void update_gains_callback(nlohmann::json &json);
+    bool update_gains_callback(nlohmann::json &json);
     /// Endpoint for setting N-S beam extent
     void update_NS_beam_callback(connectionInstance& conn, json& json_request);
     /// Endpoint for setting E-W beam sky angle
