@@ -42,7 +42,7 @@ struct TestContext {
         json reply;
         try {
             js.at("hash");
-        } catch (exception& e) {
+        } catch (std::exception& e) {
             std::string error = fmt::format(
                 "Failure parsing register state message from datasetManager: " \
                 "{}\n{}.", js.dump(), e.what());
@@ -67,7 +67,7 @@ struct TestContext {
             js.at("state");
             js.at("state").at("type");
             js.at("state").at("data");
-        } catch (exception& e) {
+        } catch (std::exception& e) {
             std::string error = fmt::format(
                         "Failure parsing send-state message from " \
                         "datasetManager: {}\n{}.", js.dump(), e.what());
@@ -91,8 +91,8 @@ struct TestContext {
 
         state_uptr same_state = std::make_unique<inputState>(
                     inputs,
-                    make_unique<prodState>(prods,
-                                           make_unique<freqState>(freqs)));
+                    std::make_unique<prodState>
+                    (prods, std::make_unique<freqState>(freqs)));
         state_uptr received_state = datasetState::from_json(js.at("state"));
 
         BOOST_CHECK(same_state->to_json() == received_state->to_json());
@@ -112,7 +112,7 @@ struct TestContext {
             js_ds.at("is_root");
             js_ds.at("state");
             js_ds.at("base_dset");
-        } catch (exception& e) {
+        } catch (std::exception& e) {
             std::string error = fmt::format(
                         "Failure parsing register-dataset message from " \
                         "datasetManager: {}\n{}.", js.dump(), e.what());
@@ -169,17 +169,17 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                                                           {3, {3, 3}}};
 
     std::pair<state_id_t, const inputState*> input_state =
-            dm.add_state(std::make_unique<inputState>(inputs,
-                                               make_unique<prodState>(prods,
-                                               make_unique<freqState>(freqs))));
+            dm.add_state(std::make_unique<inputState>
+                         (inputs, std::make_unique<prodState>(prods,
+                          std::make_unique<freqState>(freqs))));
 
     dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
 
     // register first state again
     std::pair<state_id_t, const inputState*>input_state3 =
             dm.add_state(std::make_unique<inputState>(inputs,
-                              make_unique<prodState>(prods,
-                              make_unique<freqState>(freqs))));
+                              std::make_unique<prodState>(prods,
+                              std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
     dset_id_t init_ds_id3 = dm.add_dataset(dataset(input_state3.first,
                                                    init_ds_id));

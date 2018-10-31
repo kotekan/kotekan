@@ -45,15 +45,16 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
 
     // create new frequency dataset state
     const freqState* input_freq_ptr =
-           dm.closest_ancestor_of_type<freqState>(input_dset_id).second;
+            dm.dataset_state<freqState>(input_dset_id);
     if (input_freq_ptr == nullptr)
         throw std::runtime_error("freqSplit: Could not find freqState " \
                                  "ancestor of dataset "
                                  + std::to_string(input_dset_id));
 
-    const vector<pair<uint32_t, freq_ctype>>& input_freqs =
+    const std::vector<std::pair<uint32_t, freq_ctype>>& input_freqs =
             input_freq_ptr->get_freqs();
-    vector<pair<uint32_t, freq_ctype>> output_freqs_lower, output_freqs_higher;
+    std::vector<std::pair<uint32_t, freq_ctype>> output_freqs_lower,
+            output_freqs_higher;
 
     for (size_t i = 0; i < input_freqs.size(); i++) {
         if (input_freqs.at(i).first < SPLIT_FREQ)
@@ -147,7 +148,7 @@ void freqSplit::main_thread() {
             if (_output_dset_id.valid()) {
                 try {
                     output_dset_id = _output_dset_id.get();
-                } catch (exception& e) {
+                } catch (std::exception& e) {
                    WARN("freqSplit: Dropping frame, failure in " \
                         "datasetManager: %s", e.what());
 
@@ -211,7 +212,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
 
     // create new frequency dataset state
     const freqState* input_freq_ptr =
-           dm.closest_ancestor_of_type<freqState>(input_dset_id).second;
+            dm.dataset_state<freqState>(input_dset_id);
     if (input_freq_ptr == nullptr)
         throw std::runtime_error("freqSubset: Could not find freqState " \
                                  "ancestor of dataset "
@@ -226,7 +227,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     for (auto const& i : vec_input_freqs) {
         input_freqs.insert(i);
     }
-    vector<pair<uint32_t, freq_ctype>> output_freqs;
+    std::vector<std::pair<uint32_t, freq_ctype>> output_freqs;
 
     for (uint32_t i = 0; i < subset_list.size(); i++)
         if (input_freqs.find(subset_list.at(i)) != input_freqs.end())
@@ -307,7 +308,7 @@ void freqSubset::main_thread() {
                 if (_output_dset_id.valid()) {
                     try {
                         output_dset_id = _output_dset_id.get();
-                    } catch (exception& e) {
+                    } catch (std::exception& e) {
                        WARN("freqSubset: Dropping frame, failure in " \
                             "datasetManager: %s",
                             e.what());

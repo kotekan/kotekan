@@ -60,23 +60,4 @@ foreach(testSrc ${BROKER_BOOST_TEST_SOURCES})
     # test_dataset_broker.py
     set_target_properties(${testName} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker)
-
-    # they only work together with the broker
-    add_dependencies(${testName} ch_acq)
 endforeach(testSrc)
-
-find_package(Git REQUIRED)
-include(ExternalProject)
-ExternalProject_Add(ch_acq
-                    PREFIX            ${CMAKE_BINARY_DIR}/ext
-                    GIT_REPOSITORY    git@bitbucket.org:chime/ch_acq.git
-                    GIT_TAG           dataset-broker
-                    BUILD_COMMAND     ""
-                    CONFIGURE_COMMAND ""
-                    INSTALL_COMMAND   ""
-                    UPDATE_COMMAND    ${GIT_EXECUTABLE} pull
-                    UPDATE_DISCONNECTED 0
-                    LOG_DOWNLOAD        ON
-                    LOG_UPDATE          ON
-)
-

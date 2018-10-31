@@ -26,13 +26,12 @@ using state_id_t = size_t;
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
-using namespace std;
 
 // Forward declarations
 class datasetState;
 class datasetManager;
 
-using state_uptr = unique_ptr<datasetState>;
+using state_uptr = std::unique_ptr<datasetState>;
 
 /**
  * @brief The description of a dataset consisting of a dataset state and a base
@@ -189,7 +188,7 @@ private:
     state_uptr _inner_state = nullptr;
 
     // List of registered subclass creating functions
-    static map<string, function<state_uptr(json&, state_uptr)>>&
+    static map<string, std::function<state_uptr(json&, state_uptr)>>&
         _registered_types();
 
     // Add as friend so it can walk the inner state
@@ -202,7 +201,7 @@ private:
 
 
 // Printing for datasetState
-ostream& operator<<(ostream&, const datasetState&);
+std::ostream& operator<<(std::ostream&, const datasetState&);
 
 
 /**
@@ -221,8 +220,8 @@ public:
     freqState(json & data, state_uptr inner) :
         datasetState(move(inner)) {
         try {
-            _freqs = data.get<vector<pair<uint32_t, freq_ctype>>>();
-        } catch (exception& e) {
+            _freqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
+        } catch (std::exception& e) {
              throw std::runtime_error("freqState: Failure parsing json data ("
                                       + data.dump() + "): " + e.what());
         }
@@ -234,7 +233,7 @@ public:
      *              {frequency ID, frequency index map}.
      * @param inner An inner state (optional).
      */
-    freqState(vector<pair<uint32_t, freq_ctype>> freqs,
+    freqState(std::vector<std::pair<uint32_t, freq_ctype>> freqs,
               state_uptr inner=nullptr) :
         datasetState(move(inner)),
         _freqs(freqs) {};
@@ -245,7 +244,7 @@ public:
      * @return The frequency information as a vector of
      *         {frequency ID, frequency index map}
      */
-    const vector<pair<uint32_t, freq_ctype>>& get_freqs() const {
+    const std::vector<std::pair<uint32_t, freq_ctype>>& get_freqs() const {
         return _freqs;
     }
 
@@ -257,7 +256,7 @@ private:
     }
 
     /// IDs that describe the subset that this dataset state defines
-    vector<pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
 };
 
 
@@ -277,8 +276,8 @@ public:
     inputState(json & data, state_uptr inner) :
         datasetState(move(inner)) {
         try {
-            _inputs = data.get<vector<input_ctype>>();
-        } catch (exception& e) {
+            _inputs = data.get<std::vector<input_ctype>>();
+        } catch (std::exception& e) {
              throw std::runtime_error("inputState: Failure parsing json data ("
                                       + data.dump() + "): " + e.what());
         }
@@ -290,7 +289,7 @@ public:
      *               input index maps.
      * @param inner  An inner state (optional).
      */
-    inputState(vector<input_ctype> inputs, state_uptr inner=nullptr) :
+    inputState(std::vector<input_ctype> inputs, state_uptr inner=nullptr) :
         datasetState(move(inner)),
         _inputs(inputs) {};
 
@@ -299,7 +298,7 @@ public:
      *
      * @return The input information as a vector of input index maps.
      */
-    const vector<input_ctype>& get_inputs() const {
+    const std::vector<input_ctype>& get_inputs() const {
         return _inputs;
     }
 
@@ -311,7 +310,7 @@ private:
     }
 
     /// The subset that this dataset state defines
-    vector<input_ctype> _inputs;
+    std::vector<input_ctype> _inputs;
 };
 
 
@@ -331,8 +330,8 @@ public:
     prodState(json & data, state_uptr inner) :
         datasetState(move(inner)) {
         try {
-            _prods = data.get<vector<prod_ctype>>();
-        } catch (exception& e) {
+            _prods = data.get<std::vector<prod_ctype>>();
+        } catch (std::exception& e) {
              throw std::runtime_error("prodState: Failure parsing json data ("
                                       + data.dump() + "): " + e.what());
         }
@@ -344,7 +343,7 @@ public:
      *              product index maps.
      * @param inner An inner state (optional).
      */
-    prodState(vector<prod_ctype> prods, state_uptr inner=nullptr) :
+    prodState(std::vector<prod_ctype> prods, state_uptr inner=nullptr) :
         datasetState(move(inner)),
         _prods(prods) {};
 
@@ -353,7 +352,7 @@ public:
      *
      * @return The prod information as a vector of product index maps.
      */
-    const vector<prod_ctype>& get_prods() const {
+    const std::vector<prod_ctype>& get_prods() const {
         return _prods;
     }
 
@@ -365,7 +364,7 @@ private:
     }
 
     /// IDs that describe the subset that this dataset state defines
-    vector<prod_ctype> _prods;
+    std::vector<prod_ctype> _prods;
 };
 
 
@@ -393,9 +392,9 @@ public:
             _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
             _num_stack = data["num_stack"].get<uint32_t>();
             _stacked = data["stacked"].get<bool>();
-        } catch (exception& e) {
-             throw std::runtime_error("stackState: Failure parsing json data: "s
-                                      + e.what());
+        } catch (std::exception& e) {
+             throw std::runtime_error("stackState: Failure parsing json data: "
+                                      + std::string(e.what()));
         }
     };
 
@@ -500,7 +499,7 @@ private:
  * frame to get a set of states from the datasetManager.
  * E.g.
  * ```
- * pair<dset_id, const inputState*> input_state =
+ * std::pair<dset_id, const inputState*> input_state =
  *          dm.closest_ancestor_of_type<inputState>(ds_id_from_frame);
  * const std::vector<input_ctype>& inputs = input_state.second->get_inputs();
  * ```
@@ -598,11 +597,11 @@ public:
      * state.
      **/
     template <typename T>
-    inline pair<state_id_t, const T*> add_state(
-            unique_ptr<T>&& state,
+    inline std::pair<state_id_t, const T*> add_state(
+            std::unique_ptr<T>&& state,
             bool ignore_broker = false,
-            typename std::enable_if<is_base_of<datasetState, T>::value>::type*
-            = 0);
+            typename std::enable_if<std::is_base_of<datasetState,
+                                    T>::value>::type* = 0);
 
     /**
      * @brief Return the state table.
@@ -634,7 +633,8 @@ public:
      * @returns A vector of the dataset ID and the state that was
      *          applied to previous element in the vector to generate it.
      **/
-    const vector<pair<dset_id_t, datasetState *>> ancestors(dset_id_t dset) const;
+    const std::vector<std::pair<dset_id_t, datasetState *>>
+    ancestors(dset_id_t dset) const;
 
     /**
      * @brief Find the closest ancestor of a given type.
@@ -645,12 +645,12 @@ public:
      * answeres. If you want to do something else, while waiting for the return
      * value of this function, use std::future.
      *
-     * @returns The dataset ID and the state that generated it.
-     * Returns `{<undefined>, nullptr}` if not found in ancestors or in a
+     * @returns A read-only pointer to the ancestor state.
+     * Returns a `nullptr` if not found in ancestors or in a
      * failure case.
      **/
     template<typename T>
-    inline pair<dset_id_t, const T*> closest_ancestor_of_type(dset_id_t) const;
+    inline const T* dataset_state(dset_id_t) const;
 
 private:
     /// Constructor
@@ -697,10 +697,13 @@ private:
     static void register_dataset_callback(restReply reply);
 
     /// request closest ancestor of type
-    static void request_ancestor(dset_id_t dset_id, const char* type);
+    static void request_ancestor(dset_id_t dset_id, const char *type);
 
     /// callback function for request_ancestor()
     static void request_ancestor_callback(restReply reply);
+
+    template<typename T>
+    static inline const T* get_closest_ancestor(dset_id_t dset);
 
     /// Store the list of all the registered states.
     static std::map<state_id_t, state_uptr> _states;
@@ -721,14 +724,11 @@ private:
     /// Lock for the register dataset cv.
     static std::mutex _lock_reg;
 
-    /// conditional variable for registering dataset
-    static std::condition_variable cv_register_dset;
-
     /// conditional variable for requesting ancestors
-    static std::condition_variable cv_request_ancestor;
+    static std::condition_variable _cv_request_ancestor;
 
     /// counter for connection and parsing errors
-    static std::atomic<uint32_t> conn_error_count;
+    static std::atomic<uint32_t> _conn_error_count;
 
     // config params
     bool _use_broker = false;
@@ -758,27 +758,32 @@ inline int datasetState::_register_state_type() {
     // Generate a lambda function that creates an instance of the type
     datasetState::_registered_types()[key] =
         [](json & data, state_uptr inner) -> state_uptr {
-            return make_unique<T>(data, move(inner));
+            return std::make_unique<T>(data, move(inner));
         };
     return 0;
 }
 
+/* TODO:
+ * atm this receives a list from the broker of all it is missing to know the
+ * ancestor itself. Instead, receive only the requested ancexstor state and
+ * cache it in a hash map. The callback function then receives a string
+ * describing the type and has to find the type_index to use as a key for the
+ * hash map and it has to dynamically cast to that type. */
 template<typename T>
-inline pair<dset_id_t, const T*>
-datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
-
+inline const T* datasetManager::dataset_state(dset_id_t dset) const {
     if (!_use_broker) {
-        std::unique_lock<std::mutex> dslck(_lock_dsets);
-        if (_datasets.find(dset) == _datasets.end())
-            return {0, nullptr};
-        dslck.unlock();
-    }
-
-    for(auto& t : ancestors(dset)) {
-        if(typeid(*(t.second)) == typeid(T)) {
-            return {t.first, dynamic_cast<T*>(t.second)};
+        // check if we know that dataset at all
+        {
+            std::unique_lock<std::mutex> dslck(_lock_dsets);
+            if (_datasets.find(dset) == _datasets.end())
+                return nullptr;
         }
     }
+
+    // is the ancestor known locally?
+    const T* ancestor = get_closest_ancestor<T>(dset);
+    if (ancestor)
+        return ancestor;
 
     // no ancestor found locally -> ask broker
     if (_use_broker) {
@@ -791,7 +796,7 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
         } catch (std::runtime_error& e) {
             prometheusMetrics::instance().add_process_metric(
                         "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++conn_error_count);
+                        ++_conn_error_count);
             std::string msg = fmt::format(
                         "datasetManager: Failure requesting ancestors, make " \
                         "sure the broker is running: {}", e.what());
@@ -801,44 +806,35 @@ datasetManager::closest_ancestor_of_type(dset_id_t dset) const {
         std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
         auto time_point = std::chrono::system_clock::now() + timeout;
 
-        for(auto& t : ancestors(dset)) {
-            if(typeid(*(t.second)) == typeid(T)) {
-                return {t.first, dynamic_cast<T*>(t.second)};
-            }
-        }
         while(true) {
-            if (cv_request_ancestor.wait_until(lck, time_point)
-                  == std::cv_status::timeout) {
-                for(auto& t : ancestors(dset)) {
-                    if(typeid(*(t.second)) == typeid(T)) {
-                        return {t.first, dynamic_cast<T*>(t.second)};
-                    }
-                }
+            if (!_cv_request_ancestor.wait_until(lck, time_point,
+                               std::bind(get_closest_ancestor<T>, dset))) {
+
                 std::string msg = fmt::format(
                             "datasetManager: Timeout while requesting " \
                             "ancestors of type {} of dataset {}.",
                             typeid(T).name(), dset);
                 prometheusMetrics::instance().add_process_metric(
                             "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                            ++conn_error_count);
+                            ++_conn_error_count);
                 throw std::runtime_error(msg);
             }
-            for(auto& t : ancestors(dset)) {
-                if(typeid(*(t.second)) == typeid(T)) {
-                    return {t.first, dynamic_cast<T*>(t.second)};
-                }
-            }
+            // If the request was successful, the ancestor will be here:
+            ancestor = get_closest_ancestor<T>(dset);
+            if (ancestor)
+                return ancestor;
         }
     }
 
-    return {0, nullptr};
+    // not found
+    return nullptr;
 }
 
 template <typename T>
-pair<state_id_t, const T*> datasetManager::add_state(
-        unique_ptr<T>&& state,
+std::pair<state_id_t, const T*> datasetManager::add_state(
+        std::unique_ptr<T>&& state,
         bool ignore_broker,
-        typename std::enable_if<is_base_of<datasetState, T>::value>::type*)
+        typename std::enable_if<std::is_base_of<datasetState, T>::value>::type*)
 {
 
     state_id_t hash = hash_state(*state);
@@ -847,7 +843,7 @@ pair<state_id_t, const T*> datasetManager::add_state(
     // FIXME: check for and handle hash collicion
     std::lock_guard<std::mutex> slock(_lock_states);
     if (!_states.insert(
-            std::pair<state_id_t, unique_ptr<T>>(hash, move(state))).second)
+            std::pair<state_id_t, std::unique_ptr<T>>(hash, move(state))).second)
         INFO("datasetManager: a state with hash %zu is already registered " \
              "locally.", hash);
 
@@ -857,7 +853,7 @@ pair<state_id_t, const T*> datasetManager::add_state(
         } catch (std::runtime_error& e) {
             prometheusMetrics::instance().add_process_metric(
                         "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++conn_error_count);
+                        ++_conn_error_count);
             std::string msg = fmt::format(
                         "datasetManager: Failure registering state: {}\n" \
                         "datasetManager: Make sure the broker is running."
@@ -869,4 +865,45 @@ pair<state_id_t, const T*> datasetManager::add_state(
     return std::pair<state_id_t, const T*>(hash,
                                            (const T*)(_states.at(hash).get()));
 }
+
+template<typename T>
+inline const T*
+datasetManager::get_closest_ancestor(dset_id_t dset) {
+
+    std::lock(_lock_dsets, _lock_states);
+    std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
+    std::lock_guard<std::mutex> slock(_lock_states, std::adopt_lock);
+
+    // Walk up from the current node to the root, extracting pointers to the
+    // states
+    bool root = false;
+    while(!root) {
+        datasetState* t;
+        try {
+            t = _states.at(_datasets.at(dset).state()).get();
+        } catch (std::out_of_range& e) {
+            // we don't have the base dataset
+            DEBUG2("datasetManager: found a dead reference when looking for " \
+                   "locally known ancestor: %s", e.what());
+            break;
+        }
+
+        // Walk over the inner states.
+        while(t != nullptr) {
+            if(typeid(*t) == typeid(T))
+                return dynamic_cast<T*>(t);
+            t = t->_inner_state.get();
+        }
+
+        // if this is the root dataset, we are done
+        root = _datasets.at(dset).is_root();
+
+        // Move on to the parent dataset...
+        dset = _datasets.at(dset).base_dset();
+    }
+
+    // not found
+    return nullptr;
+}
+
 #endif

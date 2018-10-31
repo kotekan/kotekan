@@ -36,10 +36,10 @@ void visFileH5::create_file(
 {
     auto& dm = datasetManager::instance();
 
-    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    auto istate = dm.dataset_state<inputState>(dataset);
+    auto pstate = dm.dataset_state<prodState>(dataset);
+    auto fstate = dm.dataset_state<freqState>(dataset);
+    auto sstate = dm.dataset_state<stackState>(dataset);
 
     if (!istate || !pstate || !fstate) {
         ERROR("Required datasetStates not found for dataset_id=%i", dataset);

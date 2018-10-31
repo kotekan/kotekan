@@ -60,14 +60,14 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
         std::cout << s.first << " - " << s.second->data_to_json().dump()
                   << std::endl;
 
-    auto i = dm.closest_ancestor_of_type<inputState>(DSET_ID);
-    check_equal(i.second->get_inputs(), inputs);
+    auto i = dm.dataset_state<inputState>(DSET_ID);
+    check_equal(i->get_inputs(), inputs);
 
-    auto f = dm.closest_ancestor_of_type<freqState>(DSET_ID);
-    check_equal(f.second->get_freqs(), freqs);
+    auto f = dm.dataset_state<freqState>(DSET_ID);
+    check_equal(f->get_freqs(), freqs);
 
     // for this ancestor it will have to ask the broker again!
-    auto p = dm.closest_ancestor_of_type<prodState>(DSET_ID);
+    auto p = dm.dataset_state<prodState>(DSET_ID);
     std::cout << dm.summary() << std::endl;
 
     for (auto s : dm.states())
@@ -81,7 +81,7 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
     for (auto s : dm.ancestors(DSET_ID))
         std::cout << s.first << " - " << s.second->data_to_json().dump()
                   << std::endl;
-    check_equal(p.second->get_prods(), prods);
+    check_equal(p->get_prods(), prods);
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(500000);

@@ -249,15 +249,15 @@ visWriter::get_states(dset_id_t ds) {
     std::map<uint32_t, uint32_t> fmap;
 
     // Get the frequency spec to determine the freq_ids expected at this Writer.
-    auto fstate = dm.closest_ancestor_of_type<freqState>(ds).second;
+    auto fstate = dm.dataset_state<freqState>(ds);
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         fmap[f.first] = ind++;
 
     // Get the product spec and (if available) the stackState to determine the
     // number of vis entries we are expecting
-    auto pstate = dm.closest_ancestor_of_type<prodState>(ds).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(ds).second;
+    auto pstate = dm.dataset_state<prodState>(ds);
+    auto sstate = dm.dataset_state<stackState>(ds);
 
     return {sstate->is_stacked() ?
             sstate->get_num_stack() : pstate->get_prods().size(),

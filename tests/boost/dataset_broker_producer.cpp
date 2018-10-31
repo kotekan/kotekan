@@ -45,17 +45,17 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
                                                           {3, {3, 3}}};
 
     std::pair<state_id_t, const inputState*> input_state =
-            dm.add_state(std::make_unique<inputState>(inputs,
-                                               make_unique<prodState>(prods,
-                                               make_unique<freqState>(freqs))));
+            dm.add_state(std::make_unique<inputState>
+                         (inputs, std::make_unique<prodState>(prods,
+                          std::make_unique<freqState>(freqs))));
 
     dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
 
     // register same state
     std::pair<state_id_t, const inputState*>input_state2 =
             dm.add_state(std::make_unique<inputState>(inputs,
-                              make_unique<prodState>(prods,
-                              make_unique<freqState>(freqs))));
+                              std::make_unique<prodState>(prods,
+                              std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
     dset_id_t init_ds_id2 = dm.add_dataset(dataset(input_state2.first,
                                                    init_ds_id));
@@ -108,9 +108,9 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
                                                           {3, {3, 3}}};
 
     std::pair<state_id_t, const inputState*> input_state =
-            dm.add_state(std::make_unique<inputState>(inputs,
-                                               make_unique<prodState>(prods,
-                                               make_unique<freqState>(freqs))));
+            dm.add_state(std::make_unique<inputState>
+                         (inputs, std::make_unique<prodState>(prods,
+                          std::make_unique<freqState>(freqs))));
 
     dm.add_dataset(dataset(input_state.first, 0, true));
 

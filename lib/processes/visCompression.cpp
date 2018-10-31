@@ -91,8 +91,8 @@ void baselineCompression::get_states(dset_id_t ds_id) {
     auto& dm = datasetManager::instance();
     state_id_t stack_state_id;
 
-    auto input_state_ptr = dm.closest_ancestor_of_type<inputState>(ds_id).second;
-    prod_state_ptr = dm.closest_ancestor_of_type<prodState>(ds_id).second;
+    auto input_state_ptr = dm.dataset_state<inputState>(ds_id);
+    prod_state_ptr = dm.dataset_state<prodState>(ds_id);
 
     auto sspec = calculate_stack(input_state_ptr->get_inputs(),
                                  prod_state_ptr->get_prods());

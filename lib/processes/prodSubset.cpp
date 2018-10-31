@@ -45,7 +45,7 @@ dset_id_t prodSubset::set_states(dset_id_t ds_id,
 
     // create new product dataset state
     const prodState* input_prod_ptr =
-           dm.closest_ancestor_of_type<prodState>(ds_id).second;
+            dm.dataset_state<prodState>(ds_id);
     if (input_prod_ptr == nullptr)
         throw std::runtime_error("prodSubset: Could not find prodState for " \
                                  "incoming dataset with ID "
