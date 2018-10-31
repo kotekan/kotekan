@@ -188,7 +188,7 @@ visAccumulate::visAccumulate(Config& config,
 
     // Fetch any simple configuration
     num_elements = config.get_int(unique_name, "num_elements");
-    num_freq_in_frame = config.get_int(unique_name, "num_freq_in_frame");
+    num_freq_in_frame = config.get_int_default(unique_name, "num_freq_in_frame", 1);
     block_size = config.get_int(unique_name, "block_size");
     num_eigenvectors =  config.get_int(unique_name, "num_ev");
     samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
