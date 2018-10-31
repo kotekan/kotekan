@@ -44,17 +44,28 @@ std::bind(&pulsarNetworkProcess::main_thread, this))
 pulsarNetworkProcess::~pulsarNetworkProcess()
 {
     free(my_host_name);
+    for(int i=0;i<number_of_subnets;i++) free(my_ip_address[i]);
+     
+    free(my_ip_address);
+    free(socket_ids);
+    free(myaddr);
+    free(server_address);
+    free(sock_fd);
 }
 
 
 void pulsarNetworkProcess::apply_config(uint64_t fpga_seq) 
 {
-    udp_pulsar_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
-    udp_pulsar_port_number = config.get_int(unique_name, "udp_pulsar_port_number");
-    number_of_nodes = config.get_int(unique_name, "number_of_nodes");
-    number_of_subnets = config.get_int(unique_name, "number_of_subnets");
-    timesamples_per_pulsar_packet = config.get_int_default(unique_name, "timesamples_per_pulsar_packet",625);
-    num_packet_per_stream = config.get_int_default(unique_name, "num_packet_per_stream",80);
+    udp_pulsar_packet_size = config.get<int>(
+                unique_name, "udp_pulsar_packet_size");
+    udp_pulsar_port_number = config.get<int>(
+                unique_name, "udp_pulsar_port_number");
+    number_of_nodes = config.get<int>(unique_name, "number_of_nodes");
+    number_of_subnets = config.get<int>(unique_name, "number_of_subnets");
+    timesamples_per_pulsar_packet = config.get_default<int>(
+                unique_name, "timesamples_per_pulsar_packet",625);
+    num_packet_per_stream = config.get_default<int>(
+                unique_name, "num_packet_per_stream",80);
 }
 
 void pulsarNetworkProcess::main_thread() 
@@ -62,27 +73,41 @@ void pulsarNetworkProcess::main_thread()
     //parsing the host name
 
     int rack,node,nos,my_node_id;
-    std::stringstream temp_ip[number_of_subnets];
+    std::vector<std::string> link_ip =
+            config.get<std::vector<std::string>>(unique_name,
+                                                 "pulsar_node_ips");
+    int number_of_pulsar_links = link_ip.size();
+    INFO("number_of_pulsar_links: %d",number_of_pulsar_links);
+     
+    //Allocating buffers 
+    sock_fd = (int*) malloc(sizeof(int)*number_of_subnets);
+    server_address = (sockaddr_in*) malloc(sizeof(sockaddr_in)*number_of_pulsar_links);
+    myaddr = (sockaddr_in*) malloc(sizeof(sockaddr_in)*number_of_pulsar_links);
 
+    socket_ids = (int*) malloc(sizeof(int)*number_of_pulsar_links);
+
+    my_ip_address = (char**) malloc(sizeof(char*)*number_of_subnets);
+    for(int i=0;i<number_of_subnets;i++) my_ip_address[i] = (char*) malloc(sizeof(char)*100);
+    //std::stringstream temp_ip[number_of_subnets];
+    INFO("number of subnets %d\n",number_of_subnets); 
+    
     //parsing the host name
 
     parse_chime_host_name(rack, node, nos, my_node_id);
     for(int i=0;i<number_of_subnets;i++)
     {  
-      temp_ip[i]<<"10."<<i+15<<"."<<nos+rack<<".1"<<node;
-      my_ip_address[i] = temp_ip[i].str();
-      INFO("%s ",my_ip_address[i].c_str());
+      if(std::snprintf(my_ip_address[i],100,"10.%d.%d.1%d",i+15,nos+rack,node)>100)
+      {
+         ERROR("buffer spill over ");
+         raise(SIGINT);
+         return;
+      }
+      INFO("%s ",my_ip_address[i]);
     }
 
     int frame_id = 0;
     uint8_t * packet_buffer = NULL;
-
-    std::vector<std::string> link_ip = config.get_string_array(unique_name, "pulsar_node_ips");
-    int number_of_pulsar_links = link_ip.size();
-    INFO("number_of_pulsar_links: %d",number_of_pulsar_links);  
-
-    int *sock_fd = new int[number_of_subnets];
-
+    
     for(int i=0;i<number_of_subnets;i++) 
     {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -95,22 +120,20 @@ void pulsarNetworkProcess::main_thread()
         }
     }
 
-    struct sockaddr_in server_address[number_of_pulsar_links], myaddr[number_of_subnets];
-    int *socket_ids = new int[number_of_subnets];
-
+    
     for(int i=0;i<number_of_subnets;i++) 
     {
         std::memset((char *)&myaddr[i], 0, sizeof(myaddr[i]));
 
         myaddr[i].sin_family = AF_INET;
-        inet_pton(AF_INET, my_ip_address[i].c_str(), &myaddr[i].sin_addr);
+        inet_pton(AF_INET, my_ip_address[i], &myaddr[i].sin_addr);
 
         myaddr[i].sin_port = htons(udp_pulsar_port_number);
 
         // Binding port to the socket
         if (bind(sock_fd[i], (struct sockaddr *)&myaddr[i], sizeof(myaddr[i])) < 0) 
         {
-            ERROR("port binding failed");
+            ERROR("port binding failed ");
             raise(SIGINT);
             return;
         }
@@ -130,7 +153,7 @@ void pulsarNetworkProcess::main_thread()
     {  
         if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF,(void *) &n, sizeof(n))  < 0)
         {
-            ERROR("network thread: setsockopt() failed \n");
+            ERROR("network thread: setsockopt() failed ");
             raise(SIGINT);
             return;
         }

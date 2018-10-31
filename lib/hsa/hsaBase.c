@@ -1,10 +1,17 @@
 #include "hsaBase.h"
 #include <sys/mman.h>
+#include "util.h"
 
 hsa_agent_t cpu_agent;
 hsa_amd_memory_pool_t host_region;
 
-// Internal healer function.
+// Parameters for the get_gpu_agent function
+struct gpu_config_t {
+  int gpu_id;
+  hsa_agent_t *agent;
+};
+
+// Internal heaper function.
 static hsa_status_t get_cpu_agent(hsa_agent_t agent, void* data) {
     if (data == NULL) {
         return HSA_STATUS_ERROR_INVALID_ARGUMENT;
@@ -22,6 +29,35 @@ static hsa_status_t get_cpu_agent(hsa_agent_t agent, void* data) {
         return HSA_STATUS_INFO_BREAK;
     }
 
+    return HSA_STATUS_SUCCESS;
+}
+
+// Internal helper function
+static hsa_status_t get_gpu_agent(hsa_agent_t agent, void* data) {
+    hsa_device_type_t device_type;
+    hsa_status_t status;
+    int num;
+
+    struct gpu_config_t *gpu_config = (struct gpu_config_t*)data;
+
+    status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+    assert(status == HSA_STATUS_SUCCESS);
+    status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NODE, &num);
+    assert(status == HSA_STATUS_SUCCESS);
+    if ((HSA_DEVICE_TYPE_GPU == device_type) &&
+        (gpu_config->gpu_id == (num-1)))
+    {
+        uint32_t features = 0;
+        hsa_agent_get_info(agent, HSA_AGENT_INFO_FEATURE, &features);
+        if (features & HSA_AGENT_FEATURE_KERNEL_DISPATCH) {
+            hsa_queue_type_t queue_type;
+            hsa_agent_get_info(agent, HSA_AGENT_INFO_QUEUE_TYPE, &queue_type);
+            if (queue_type == HSA_QUEUE_TYPE_MULTI) {
+                *gpu_config->agent = agent;
+                return HSA_STATUS_INFO_BREAK;
+            }
+        }
+    }
     return HSA_STATUS_SUCCESS;
 }
 
@@ -69,7 +105,7 @@ void kotekan_hsa_start() {
     assert(hsa_status == HSA_STATUS_SUCCESS);
 }
 
-void * hsa_host_malloc(size_t len) {
+void * hsa_host_malloc(size_t len, uint32_t gpu_id) {
     void * ptr;
 
     hsa_status_t hsa_status;
@@ -80,6 +116,20 @@ void * hsa_host_malloc(size_t len) {
         ERROR("Error locking memory - check ulimit -a to check memlock limits");
         return NULL;
     }
+
+    // This part allows the GPU to access the memory we created directly
+    hsa_agent_t gpu_agent;
+    struct gpu_config_t agent_data;
+    agent_data.agent = &gpu_agent;
+    agent_data.gpu_id = gpu_id;
+
+    hsa_status = hsa_iterate_agents(get_gpu_agent, &agent_data);
+    if(hsa_status == HSA_STATUS_INFO_BREAK)
+        hsa_status = HSA_STATUS_SUCCESS;
+    assert(hsa_status == HSA_STATUS_SUCCESS);
+
+    hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, ptr);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
 
     return ptr;
 }

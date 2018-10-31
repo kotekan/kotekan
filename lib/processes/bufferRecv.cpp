@@ -29,9 +29,11 @@ bufferRecv::bufferRecv(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&bufferRecv::main_thread, this)) {
 
-    listen_port = config.get_int_default(unique_name, "listen_port", 11024);
-    num_threads = config.get_int_default(unique_name, "num_threads", 1);
-    connection_timeout = config.get_int_default(unique_name, "connection_timeout", 60);
+    listen_port = config.get_default<uint32_t>(
+                unique_name, "listen_port", 11024);
+    num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
+    connection_timeout = config.get_default<int>(
+                unique_name, "connection_timeout", 60);
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
@@ -184,7 +186,7 @@ void bufferRecv::main_thread() {
     // Create worker threads:
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (auto &i : config.get_int_array(unique_name, "cpu_affinity"))
+    for (auto &i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
         CPU_SET(i, &cpuset);
 
     for (uint32_t i = 0; i < num_threads; ++i) {
@@ -222,8 +224,9 @@ void bufferRecv::main_thread() {
     args.buf = buf;
     args.buffer_recv = this;
     args.unique_name = unique_name;
-    args.log_level = config.get_string_default(unique_name, "instance_log_level",
-                                               config.get_string(unique_name, "log_level"));
+    args.log_level = config.get_default<std::string>(
+                unique_name, "instance_log_level",
+                config.get<std::string>(unique_name, "log_level"));
 
     // Note that if the performance still isn't good enough, we could have more than
     // one base object and base loop threads.  In theory there shouldn't be much happening
@@ -281,7 +284,7 @@ connInstance::connInstance(const string& producer_name,
                            port(port),
                            read_timeout(read_timeout) {
 
-    frame_space = buffer_malloc(buf->aligned_frame_size);
+    frame_space = frame_malloc(buf->aligned_frame_size);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
@@ -292,7 +295,7 @@ connInstance::~connInstance() {
     INFO("Closing FD");
     close(fd);
     event_free(event_read);
-    buffer_free(frame_space);
+    frame_free(frame_space);
     free(metadata_space);
 }
 

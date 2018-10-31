@@ -7,16 +7,17 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
     hsaCommand("pulsarbf_float", "pulsar_beamformer_float.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_pol = config.get_int(unique_name, "num_pol");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _num_pol = config.get<int32_t>(unique_name, "num_pol");
 
     input_frame_len = _num_elements * _samples_per_data_set;
     output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol * 2 *  sizeof(float);
 
     phase_len = _num_elements*_num_pulsar*2*sizeof(float);
-    host_phase = (float *)hsa_host_malloc(phase_len);
+    host_phase = (float *)hsa_host_malloc(phase_len, device.get_gpu_id());
 
     int index = 0;
     for (int b=0; b < _num_pulsar; b++){

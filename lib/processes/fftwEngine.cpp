@@ -12,7 +12,8 @@ fftwEngine::fftwEngine(Config& config, const string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    spectrum_length = config.get_int_default(unique_name,"spectrum_length",1024);
+    spectrum_length = config.get_default<int>(
+                unique_name,"spectrum_length",1024);
 
     samples = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*spectrum_length);
     spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex)*spectrum_length);

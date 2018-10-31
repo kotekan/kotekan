@@ -24,18 +24,19 @@ hsaRfiVdif::hsaRfiVdif(Config& config,const string &unique_name,
     command_type = CommandType::KERNEL;
 
     //Grab values from config and calculates buffer size
-    _num_elements = config.get_int(unique_name, "num_elements"); //Data parameters
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements"); //Data parameters
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
 
-    _sk_step = config.get_int(unique_name, "sk_step"); //RFI parameters
-    rfi_sensitivity = config.get_int(unique_name, "rfi_sensitivity");
+    _sk_step = config.get<int32_t>(unique_name, "sk_step"); //RFI parameters
+    rfi_sensitivity = config.get<int32_t>(unique_name, "rfi_sensitivity");
 
     input_frame_len = (_num_elements*_num_local_freq  + 64) * _samples_per_data_set; //Buffer sizes
     output_len =(_num_elements*_num_local_freq * _samples_per_data_set/_sk_step)*sizeof(float);
     mean_len = _num_elements*_num_local_freq*sizeof(float);
 
-    Mean_Array = (float *)hsa_host_malloc(mean_len); //Allocates memory for Mean Array
+    Mean_Array = (float *)hsa_host_malloc(mean_len, device.get_gpu_id()); //Allocates memory for Mean Array
 
     for (uint32_t b = 0; b < mean_len/sizeof(float); b++){
         Mean_Array[b] = 0; ///Initialize

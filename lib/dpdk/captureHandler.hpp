@@ -70,10 +70,10 @@ inline captureHandler::captureHandler(Config &config, const std::string &unique_
                        bufferContainer &buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
-    out_buf = buffer_container.get_buffer(config.get_string(unique_name, "out_buf"));
+    out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());
 
-    packet_size = config.get_int(unique_name, "packet_size");
+    packet_size = config.get<uint32_t>(unique_name, "packet_size");
 
     if (packet_size > (uint32_t)out_buf->frame_size) {
         throw std::runtime_error("The packet size must be less than the frame size");

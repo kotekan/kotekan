@@ -37,12 +37,14 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
     }
 
-    log_profiling = config.get_bool_default(unique_name, "log_profiling", false);
+    log_profiling = config.get_default<bool>(
+                unique_name, "log_profiling", false);
 
     device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
 
-    string g_log_level = config.get_string(unique_name, "log_level");
-    string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
+    string g_log_level = config.get<std::string>(unique_name, "log_level");
+    string s_log_level = config.get_default<std::string>(
+                unique_name, "device_interface_log_level", g_log_level);
     device->set_log_level(s_log_level);
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
@@ -53,10 +55,10 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
 
 void hsaProcess::apply_config(uint64_t fpga_seq) {
     (void)fpga_seq;
-    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
-    gpu_id = config.get_int(unique_name, "gpu_id");
+    _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
+    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
 
-    frame_arrival_period = config.get_double_eval(unique_name, "frame_arrival_period");
+    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 }
 
 hsaProcess::~hsaProcess() {
@@ -155,19 +157,17 @@ void hsaProcess::main_thread()
         for (uint32_t i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
             signal = commands[i]->execute(gpu_frame_id, 0, signal);
-            //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);
 
         if (first_run) {
             results_thread_handle = std::thread(&hsaProcess::results_thread, std::ref(*this));
 
-            // Requires Linux, this could possibly be made more general someday.
-            // TODO Move to config
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (int j = 4; j < 12; j++)
-                CPU_SET(j, &cpuset);
+            for (int &i : config.get<std::vector<int>>(unique_name,
+                                                        "cpu_affinity"))
+            CPU_SET(i, &cpuset);
             pthread_setaffinity_np(results_thread_handle.native_handle(),
                                     sizeof(cpu_set_t), &cpuset);
             first_run = false;
@@ -208,10 +208,8 @@ void hsaProcess::results_thread() {
         if (log_profiling) {
             string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                if (commands[i]->get_command_type() == CommandType::KERNEL) {
-                    output += "kernel: " + commands[i]->get_name() +
-                              " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; ";
-                }
+                output += "kernel: " + commands[i]->get_name() +
+                            " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; ";
             }
             INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }

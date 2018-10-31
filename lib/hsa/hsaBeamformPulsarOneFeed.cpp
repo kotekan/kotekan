@@ -6,18 +6,19 @@ hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(Config& config, const string 
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand("pulsarbf", "pulsar_beamformer.hsaco", config, unique_name, host_buffers, device) {
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_pulsar = config.get_int(unique_name, "num_pulsar");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_pol = config.get_int(unique_name, "num_pol");
-    _one_feed_p0 = config.get_int(unique_name, "psr-test_one_feed_p0");
-    _one_feed_p1 = config.get_int(unique_name, "psr-test_one_feed_p1");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _num_pol = config.get<int32_t>(unique_name, "num_pol");
+    _one_feed_p0 = config.get<int32_t>(unique_name, "psr-test_one_feed_p0");
+    _one_feed_p1 = config.get<int32_t>(unique_name, "psr-test_one_feed_p1");
 
     input_frame_len = _num_elements * _samples_per_data_set;
     output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol *  sizeof(uint8_t);
 
     phase_len = _num_elements*_num_pulsar*2*sizeof(float);
-    host_phase = (float *)hsa_host_malloc(phase_len);
+    host_phase = (float *)hsa_host_malloc(phase_len, device.get_gpu_id());
 
     int index = 0;
     INFO("+++++ Pulsar beamforming with one feed (%d %d)", _one_feed_p0, _one_feed_p1);

@@ -7,15 +7,18 @@ REGISTER_HSA_COMMAND(hsaInputData);
 
 hsaInputData::hsaInputData( Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device){
+    hsaCommand("hsaInputData", "", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_IN;
 
     int header_size = 0;
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _enable_delay = config.get_bool_default(unique_name, "enable_delay", false);
-    _delay_max_fraction = config.get_float_default(unique_name, "delay_max_fraction", 0.5);
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _enable_delay = config.get_default<bool>(
+                unique_name, "enable_delay", false);
+    _delay_max_fraction = config.get_default<float>(
+                unique_name, "delay_max_fraction", 0.5);
     if(_num_elements <= 2) //TODO FIND BETTER WORK AROUND FOR DISTINGUISHING VDIF/CHIME INPUT LENGTH
                 header_size = 32;
     input_frame_len =  (_num_elements * (_num_local_freq + header_size)) * _samples_per_data_set;

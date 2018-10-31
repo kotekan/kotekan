@@ -10,12 +10,13 @@ airspyInput::airspyInput(Config& config, const string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
 
-    freq = config.get_float_default(unique_name,"freq",1420) * 1000000;    //MHz
-    sample_bw = config.get_float_default(unique_name,"sample_bw",2.5)*1000000; //BW in Hz
-    gain_lna = config.get_int_default(unique_name,"gain_lna",5); //MAX: 14
-    gain_if  = config.get_int_default(unique_name,"gain_if",5);  //MAX: 15
-    gain_mix = config.get_int_default(unique_name,"gain_mix",5); //MAX: 15
-    biast_power = config.get_bool_default(unique_name,"biast_power",false) ? 1 : 0;
+    freq = config.get_default<float>(unique_name,"freq",1420) * 1000000;   //MHz
+    sample_bw = config.get_default<float>(unique_name,"sample_bw",2.5)*1000000; //BW in Hz
+    gain_lna = config.get_default<int>(unique_name,"gain_lna",5); //MAX: 14
+    gain_if  = config.get_default<int>(unique_name,"gain_if",5);  //MAX: 15
+    gain_mix = config.get_default<int>(unique_name,"gain_mix",5); //MAX: 15
+    biast_power = config.get_default<bool>(unique_name,"biast_power",false)
+            ? 1 : 0;
 }
 
 airspyInput::~airspyInput() {

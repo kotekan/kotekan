@@ -20,26 +20,26 @@ fakeMultifreqGpuBuffer::fakeMultifreqGpuBuffer(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    cadence = config.get_float_default(unique_name, "cadence", 5.0);
+    cadence = config.get_default<float>(unique_name, "cadence", 5.0);
 
-    pre_accumulate = config.get_bool_default(unique_name, "pre_accumulate", true);
+    pre_accumulate = config.get_default<bool>(unique_name, "pre_accumulate", true);
 
     if(pre_accumulate) {
-        samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+        samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     }
-    block_size = config.get_int(unique_name, "block_size");
-    num_elements = config.get_int(unique_name, "num_elements");
+    block_size = config.get<int>(unique_name, "block_size");
+    num_elements = config.get<int>(unique_name, "num_elements");
 
     if (num_elements < block_size){
         if (block_size % num_elements)
             throw std::runtime_error("num_elements incompatible with block size");
     }
 
-    num_frames = config.get_int_default(unique_name, "num_frames", -1);
-    num_freqs = config.get_int(unique_name, "num_freqs");
-    stream_id = extract_stream_id(0x00ff);//config.get_int(unique_name,"stream_id"));
+    num_frames = config.get_default<int>(unique_name, "num_frames", -1);
+    num_freqs = config.get<int>(unique_name, "num_freqs");
+    stream_id = extract_stream_id(0x00ff);//config.get<int>(unique_name,"stream_id"));
 
-    wait = config.get_bool_default(unique_name, "wait", true);
+    wait = config.get_default<bool>(unique_name, "wait", true);
 
     // Fill out the map with the fill modes
     fill_map["block"] = &fakeMultifreqGpuBuffer::fill_mode_block;
@@ -48,7 +48,7 @@ fakeMultifreqGpuBuffer::fakeMultifreqGpuBuffer(Config& config,
     fill_map["gaussian"] = &fakeMultifreqGpuBuffer::fill_mode_gaussian;
 
     // Fetch the correct fill function
-    std::string mode = config.get_string(unique_name, "mode");
+    std::string mode = config.get<string>(unique_name, "mode");
     fill = fill_map[mode];
 
     int nb1 = num_elements / block_size;
@@ -161,7 +161,7 @@ void fakeMultifreqGpuBuffer::fill_mode_block(int32_t* data, int frame_number,
             for (int b = 0; b < block_size/num_elements; ++b){
                 for (int y = 0; y < num_elements; ++y){
                     for (int x = 0; x < num_elements; ++x){
-                        int ind = (x+b*num_elements) + 
+                        int ind = (x+b*num_elements) +
                                   (y+b*num_elements) * block_size +
                                   f/(block_size/num_elements) * block_size * block_size;
                         data[2 * ind + 0] = y;
@@ -201,7 +201,7 @@ void fakeMultifreqGpuBuffer::fill_mode_lostsamples(int32_t* data, int frame_numb
             for (int b = 0; b < block_size/num_elements; ++b){
                 for (int y = 0; y < num_elements; ++y){
                     for (int x = y; x < num_elements; ++x){
-                        int ind = (x+b*num_elements) + 
+                        int ind = (x+b*num_elements) +
                                   (y+b*num_elements) * block_size +
                                   f/(block_size/num_elements) * block_size * block_size;
                         // The visibilities are row + 1j * col, scaled by the total number
@@ -246,7 +246,7 @@ void fakeMultifreqGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_numbe
             for (int b = 0; b < block_size/num_elements; ++b){
                 for (int y = 0; y < num_elements; ++y){
                     for (int x = y; x < num_elements; ++x){
-                        int ind = (x+b*num_elements) + 
+                        int ind = (x+b*num_elements) +
                                   (y+b*num_elements) * block_size +
                                   f/(block_size/num_elements) * block_size * block_size;
                         // Every 4th sample the imaginary part is boosted by 4 * samples,
@@ -308,7 +308,7 @@ void fakeMultifreqGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number,
             for (int b = 0; b < block_size/num_elements; ++b){
                 for (int y = 0; y < num_elements; ++y){
                     for (int x = y; x < num_elements; ++x){
-                        int ind = (x+b*num_elements) + 
+                        int ind = (x+b*num_elements) +
                                   (y+b*num_elements) * block_size +
                                   f/(block_size/num_elements) * block_size * block_size;
                         if(x == y) {

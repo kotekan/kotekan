@@ -67,11 +67,13 @@ num_pol: 2
 #RFI stuff
 sk_step: 256
 rfi_combined: True
+rfi_sigma_cut: 5
+rfi_add_lostsamples: False
 
 #RFI Live-view Paramters
 waterfallX: 1024
 num_receive_threads: 4
-colorscale: 0.03
+colorscale: 0.028
 waterfall_request_delay: 60
 
 # Pool
@@ -85,52 +87,68 @@ network_buffers:
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
   network_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 0
   network_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 1
   network_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 2
   network_buffer_3:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 3
 
 gpu_n2_buffers:
   num_frames: buffer_depth
   frame_size: 4 * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
   metadata_pool: main_pool
   gpu_n2_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 0
   gpu_n2_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 1
   gpu_n2_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 2
   gpu_n2_output_buffer_3:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 3
 
 gpu_beamform_output_buffers:
   num_frames: buffer_depth
   frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
   metadata_pool: main_pool
   gpu_beamform_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 0
   gpu_beamform_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 1
   gpu_beamform_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 2
   gpu_beamform_output_buffer_3:
-    kotekan_buffer: standard
+    kotekan_buffer: hsa
+    gpu_id: 3
 
 pulsar_output_buffers:
     num_frames: buffer_depth
     frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     beamform_pulsar_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     beamform_pulsar_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     beamform_pulsar_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 # Metadata pool
 vis_pool:
@@ -180,26 +198,51 @@ gpu_rfi_output_buffers:
     frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
     metadata_pool: main_pool
     gpu_rfi_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_output_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_output_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_output_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
+
+gpu_rfi_mask_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / sk_step
+    metadata_pool: main_pool
+    gpu_rfi_mask_output_buffer_0:
+        kotekan_buffer: hsa
+        gpu_id: 0
+    gpu_rfi_mask_output_buffer_1:
+        kotekan_buffer: hsa
+        gpu_id: 1
+    gpu_rfi_mask_output_buffer_2:
+        kotekan_buffer: hsa
+        gpu_id: 2
+    gpu_rfi_mask_output_buffer_3:
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 gpu_rfi_bad_input_buffers:
     num_frames: buffer_depth
     frame_size: sizeof_float * num_elements * num_local_freq
     metadata_pool: main_pool
     gpu_rfi_bad_input_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 0
     gpu_rfi_bad_input_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 1
     gpu_rfi_bad_input_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 2
     gpu_rfi_bad_input_buffer_3:
-        kotekan_buffer: standard
+        kotekan_buffer: hsa
+        gpu_id: 3
 
 lost_samples_buffer:
     kotekan_buffer: standard
@@ -273,7 +316,7 @@ zero_samples:
 #            - lost_samples_buffer_3
 
 baseband:
-    max_dump_samples: 100000
+    max_dump_samples: 400000
     #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
     num_frames_buffer: 110
     base_dir: /mnt/frb-archiver/
@@ -320,8 +363,6 @@ gpu:
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
-  - name: hsaPresumKernel
-  - name: hsaCorrelatorKernel
   - name: hsaBeamformReorder
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
@@ -330,7 +371,11 @@ gpu:
   - name: hsaRfiTimeSum
   - name: hsaRfiBadInput
   - name: hsaRfiInputSum
+  #- name: hsaRfiZeroData
+  - name: hsaPresumKernel
+  - name: hsaCorrelatorKernel
   - name: hsaRfiBadInputOutput
+  - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
   - name: hsaBeamformPulsarOutput
   - name: hsaBeamformOutputData
@@ -342,6 +387,7 @@ gpu:
   buffer_depth: 4
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
+  log_profiling: false
   gpu_0:
     kotekan_process: hsaProcess
     gpu_id: 0
@@ -360,6 +406,7 @@ gpu:
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
   gpu_1:
     kotekan_process: hsaProcess
     gpu_id: 1
@@ -378,6 +425,7 @@ gpu:
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
   gpu_2:
     kotekan_process: hsaProcess
     gpu_id: 2
@@ -396,6 +444,7 @@ gpu:
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
   gpu_3:
     kotekan_process: hsaProcess
     gpu_id: 3
@@ -414,6 +463,7 @@ gpu:
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
 
 #### FRB GPU Post processing and Tx ####
 
@@ -756,7 +806,10 @@ pulsar:
       - 10.16.50.13
       - 10.15.50.14
       - 10.16.50.15
-#      - 10.15.50.16
+      - 10.15.50.16
+      - 10.16.50.17
+#      - 10.15.50.18
+#      - 10.16.50.19
 
 
 #### N2 GPU Post processing and Tx ####
@@ -813,7 +866,7 @@ eigcalc:
   num_diagonals_filled: 30
   cpu_affinity: [4, 10]
   exclude_inputs: [
-      84,  206,  319,  550,  638,  688,  742,  784,  971, 1020, 1023,
+      84,  142,  319,  550,  638,  688,  742,  784,  971, 1020, 1023,
     1058, 1166, 1225, 1285, 1380, 1521, 1738, 1794, 1982, 1984, 1987
   ]
   eig0:
@@ -884,21 +937,25 @@ rfi_broadcast:
   gpu_0:
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_0
+    rfi_mask: gpu_rfi_mask_output_buffer_0
     destination_port: 41215
     frames_per_packet: 1
   gpu_1:
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_1
+    rfi_mask: gpu_rfi_mask_output_buffer_1
     destination_port: 41216
     frames_per_packet: 1
   gpu_2:
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_2
+    rfi_mask: gpu_rfi_mask_output_buffer_2
     destination_port: 41217
     frames_per_packet: 1
   gpu_3:
     kotekan_process: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_3
+    rfi_mask: gpu_rfi_mask_output_buffer_3
     destination_port: 41218
     frames_per_packet: 1
 
