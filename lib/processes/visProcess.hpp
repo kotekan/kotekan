@@ -139,6 +139,7 @@ private:
  *                              of `num_gpu_frames`.
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
+ * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
@@ -164,8 +165,12 @@ private:
     Buffer* out_buf;
 
     // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
-    size_t samples_per_data_set, num_gpu_frames;
+    size_t num_elements;
+    size_t num_freq_in_frame;
+    size_t num_eigenvectors;
+    size_t block_size;
+    size_t samples_per_data_set;
+    size_t num_gpu_frames;
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
