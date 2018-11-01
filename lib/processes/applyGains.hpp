@@ -100,6 +100,9 @@ private:
 
     /// Number of updates received too late
     size_t num_late_updates;
+
+    /// Gain weights. If zero, no meaningfull gains were obtained for that input
+    std::vector<std::vector<float>> gain_weight;
 };
 
 

@@ -37,14 +37,19 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset('gain', (nfreq, nelem), dtype='c8')
-    gain = np.zeros((nfreq, nelem), dtype='c8')
+    # TODO: delete
+    #gain = np.zeros((nfreq, nelem), dtype='c8')
     gain = (np.arange(nfreq, dtype='f2')[:, None] 
-            * 1j*np.arange(nelem, dtype='f2')[None, :]
-            + 1. + 1j)
+            * 1j*np.arange(nelem, dtype='f2')[None, :])
+#            + 1. + 1j)
     dset[...] = gain * mult_factor
 
-    dset2 = f.create_dataset('weight', (nfreq,), dtype='f')
-    dset2[...] = np.arange(nfreq, dtype=float) * 0.5
+    dset2 = f.create_dataset('weight', (nfreq, nelem), dtype='f')
+    weight = np.ones((nfreq, nelem), dtype=float)
+    # Make some weights zero to test the behaviour of apply_gains
+    weight[:, 1] = 0.
+    weight[:, 3] = 0. 
+    dset2[...] = weight
 
     freq_ds = f.create_dataset('index_map/freq', (nfreq,), dtype='f')
     ipt_ds = f.create_dataset('index_map/input', (nelem,), dtype='i')
@@ -89,6 +94,15 @@ def load_gains(filepath, fr, ipt=None):
         return gains[fr, ipt]
 
 
+def load_gain_weight(filepath, fr, ipt=None):
+
+    gain_weight = h5py.File(filepath, 'r')['weight']
+    if ipt is None:
+        return gain_weight[fr]
+    else:
+        return gain_weight[fr, ipt]
+
+
 def combine_gains(tframe, tcombine, new_tmstp, old_tmstp, 
                   new_gains, old_gains):
     if tframe < old_tmstp:
@@ -131,9 +145,21 @@ def test_apply(tmpdir_factory):
         frqid = frame.metadata.freq_id
         old_gains = load_gains(old_filepath, frqid)
         new_gains = load_gains(new_filepath, frqid)
+        gain_weight = load_gain_weight(new_filepath, frqid)
         frame_tmstp = visutil.ts_to_double(frame.metadata.ctime)  
         gains = combine_gains(frame_tmstp, tcombine, new_tmstp, old_tmstp, 
                               new_gains, old_gains)
+
+        weight_factor = np.ones(n_el)
+        for ii in range(len(gain_weight)):
+            if gain_weight[ii] == 0.:
+                gains[ii] = 1.
+                weight_factor[ii] = 0.
+            elif abs(gains[ii]) < 1E-8:
+                weight_factor[ii] = 0.
+            else:
+                weight_factor[ii] = 1./abs(gains[ii])**2
+
         expvis = np.zeros(num_prod, dtype=frame.vis[:].dtype)
         for ii in range(num_prod):
             prod = visutil.icmap(ii, global_params['num_elements'])
@@ -141,12 +167,11 @@ def test_apply(tmpdir_factory):
             expvis[ii] = ((prod.input_a + 1j*prod.input_b)
                           * (gains[prod.input_a])
                           * np.conj((gains[prod.input_b])))
-        real_fracdiff = abs(frame.vis[:].real 
-                            - expvis.real)/abs(frame.vis[:].real+1E-10)
-        imag_fracdiff = abs(frame.vis[:].imag 
-                            - expvis.imag)/abs(frame.vis[:].imag+1E-10)
-        assert (real_fracdiff < 1E-5).all()
-        assert (imag_fracdiff < 1E-5).all()
+        assert (abs(frame.vis[:].real - expvis.real)
+                <= 1E-5*abs(frame.vis[:].real)).all()
+        assert (abs(frame.vis[:].imag - expvis.imag)
+                <= 1E-5*abs(frame.vis[:].imag)).all()
+
         assert (frame.eval == np.arange(
                 global_params['num_ev'])).all()
         evecs = (np.arange(global_params['num_ev'])[:, None]
@@ -156,14 +181,15 @@ def test_apply(tmpdir_factory):
         assert (frame.erms == 1.)
         # This relies on the fact that the initial value 
         # of the gains is 1 in fakevis.
-        greal_fracdiff = abs(frame.gain.real - gains.real)/abs(gains.real)
-        gimag_fracdiff = abs(frame.gain.imag - gains.imag)/abs(gains.imag)
-        assert (greal_fracdiff < 1E-5).all()
-        assert (gimag_fracdiff < 1E-5).all()
+        assert (abs(frame.gain.real - gains.real) 
+                <= 1E-5*abs(gains.real)).all()
+        assert (abs(frame.gain.imag - gains.imag) 
+                <= 1E-5*abs(gains.imag)).all()
+
         expweight = []
         for ii in range(n_el):
             for jj in range(ii, n_el):
-                expweight.append(1./abs(gains[ii]*gains[jj])**2)
+                expweight.append(1.*weight_factor[ii]*weight_factor[jj])
         expweight = np.array(expweight)
-        weight_fracdiff = abs(frame.weight - expweight)/(frame.weight)
-        assert (weight_fracdiff < 1E-5).all()
+        assert (abs(frame.weight - expweight)
+                <= 1E-5*abs(frame.weight)).all()

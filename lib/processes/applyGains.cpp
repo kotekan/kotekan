@@ -133,6 +133,9 @@ bool applyGains::receive_update(nlohmann::json &json) {
     gain_mtx.lock();
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
     gain_mtx.unlock();
+    // Read the gains weight dataset
+    HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
+    gain_weight_ds.read(gain_weight);
     INFO("Updated gains to %s.", gtag.c_str());
 
     return true;
@@ -143,6 +146,7 @@ void applyGains::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
     unsigned int freq;
+    double epsilon = 1.0e-8; // Limit to consider a gain to be zero
     double tpast;
     double frame_time;
     size_t num_late_frames = 0;
@@ -215,8 +219,17 @@ void applyGains::main_thread() {
         gain_mtx.unlock();
         // Compute weight factors and conjugate gains
         for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
+            if (gain_weight[freq][ii]==0.0) {
+                // If gain_weight is zero, make gains = 1 and weights = 0
+                gain[ii] = 1. + 0i;
+                weight_factor[ii] = 0.0;
+            } else if (abs(gain[ii])<epsilon) {
+                // If gain is zero (or very small) make the weight be zero
+                weight_factor[ii] = 0.0;
+            } else {
+                weight_factor[ii] = pow(abs(gain[ii]), -2.0);
+            }
             gain_conj[ii] = std::conj(gain[ii]);
-            weight_factor[ii] = pow(abs(gain[ii]), -2.0);
         }
 
         // Wait for the output buffer to be empty of data
