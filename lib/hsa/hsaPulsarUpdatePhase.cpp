@@ -179,7 +179,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
         update_gains=false;
         FILE *ptr_myfile;
         char filename[256];
-	for (uint b=0;b<num_pulsar;b++){
+	for (uint b=0;b<_num_pulsar;b++){
 	  snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir[b].c_str(),freq_idx);
 	  INFO("Loading gains from %s",filename);
 
@@ -192,7 +192,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
             }
 	  }
 	  else {
-            if (_num_elements != fread(&host_gain[(b*2048+i)*2],sizeof(float)*2,_num_elements,ptr_myfile)) {
+            if (_num_elements != fread(&host_gain[b*2048*2],sizeof(float)*2,_num_elements,ptr_myfile)) {
 	      ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
             }
             fclose(ptr_myfile);
