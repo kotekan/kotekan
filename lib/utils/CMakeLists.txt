@@ -18,6 +18,7 @@ set (KOTEKAN_UTIL_SOURCES
               visFileRing.cpp
               tx_utils.cpp
               datasetManager.cpp
+              pulsarTiming.cpp
        )
 
 if (${USE_HDF5})

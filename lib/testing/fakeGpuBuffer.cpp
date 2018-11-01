@@ -45,6 +45,18 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     // Fetch the correct fill function
     std::string mode = config.get<std::string>(unique_name, "mode");
     fill = fill_map[mode];
+
+    // Get additional config for pulsar
+    if (mode == "pulsar") {
+        // set up pulsar polyco
+        std::vector<float> coeff = config.get<std::vector<float>>(unique_name, "polyco");
+        dm = config.get<float>(unique_name, "dm");
+        double tmid = config.get<double>(unique_name, "tmid");  // in days since MJD
+        double phase_ref = config.get<double>(unique_name, "phase_ref");  // in number of rotations
+        rot_freq = config.get<double>(unique_name, "rot_freq");  // in Hz
+        pulse_width = config.get<float>(unique_name, "pulse_width");
+        polyco = new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+    }
 }
 
 fakeGpuBuffer::~fakeGpuBuffer() {
@@ -211,6 +223,26 @@ void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number,
             } else {
                 data[2 * bi + 1] = (int32_t)(f_cross * gaussian(gen));
                 data[2 * bi    ] = (int32_t)(f_cross * gaussian(gen));
+            }
+        }
+    }
+}
+
+void fakeGpuBuffer::fill_mode_pulsar(int32_t* data, int frame_number,
+                                    chimeMetadata* metadata) {
+
+    // Fill frame with gaussian noise as background
+    fill_mode_gaussian(data, frame_number, metadata);
+
+    // Figure out if we are in a pulse
+    double toa = polyco->next_toa(metadata->gps_time, freq_from_bin(freq));
+    double last_toa = toa - 1. / rot_freq;
+    // If so, add 10 to real part
+    if (toa < samples_per_data_set * 2.56e-6 || last_toa + pulse_width > 0) {
+        for(int i = 0; i < num_elements; i++) {
+            for(int j = i; j < num_elements; j++) {
+                uint32_t bi = prod_index(i, j, block_size, num_elements);
+                data[2 * bi + 1] += 10;
             }
         }
     }

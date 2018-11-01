@@ -9,6 +9,7 @@
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
+#include "pulsarTiming.hpp"
 
 
 /**
@@ -112,6 +113,9 @@ public:
      */
     void fill_mode_gaussian(int32_t* data, int frame_num,
                             chimeMetadata* metadata);
+
+    void fill_mode_pulsar(int32_t* data, int frame_num,
+                          chimeMetadata* metadata);
 private:
 
     Buffer* out_buf;
@@ -125,6 +129,11 @@ private:
     bool pre_accumulate;
     bool wait;
     int32_t num_frames;
+    std::vector<float> coeff;
+    float dm;
+    float pulse_width;  // in s
+    float rot_freq; // in Hz
+    Polyco * polyco;
 
     // Function pointer for fill modes
     typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int, chimeMetadata *);
