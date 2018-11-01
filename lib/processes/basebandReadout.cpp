@@ -205,7 +205,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
                 }
             }
 
-            dump_to_write = std::make_unique<dump_data_status>(data, dump_status);
+            dump_to_write = std::make_unique<basebandDumpData>(data);
             lock.unlock();
             ready_to_write.notify_one();
         }
@@ -224,22 +224,20 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             if (stop_thread) return;
         }
 
-        auto dump_tup = std::move(dump_to_write);
-        auto dump_status = std::get<1>(*dump_tup);
-        auto data = std::get<0>(*dump_tup);
+        auto data = std::move(dump_to_write);
 
         auto next_request = mgr.get_next_ready_request();
+        auto dump_status = std::get<0>(next_request);
         // Sanity check
-        if (std::get<0>(next_request)->request.event_id != data.event_id) {
-            uint64_t foo = std::get<0>(next_request)->request.event_id;
-            uint64_t bar = dump_status->request.event_id;
-            ERROR("Mismatched event ids: %ld - %ld", foo, bar);
+        if (dump_status->request.event_id != data->event_id) {
+            ERROR("Mismatched event ids: %ld - %ld",
+                  dump_status->request.event_id, data->event_id);
             throw std::runtime_error("Mismatched id - abort");
         }
         std::mutex* request_mtx = std::get<1>(next_request);
 
         try {
-            write_dump(data, dump_status, *request_mtx);
+            write_dump(*data, dump_status, *request_mtx);
         } catch (HighFive::FileException& e) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
             std::lock_guard<std::mutex> lock(*request_mtx);

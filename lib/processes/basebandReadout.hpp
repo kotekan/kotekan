@@ -148,10 +148,8 @@ private:
     /// baseband data array
     const std::unique_ptr<uint8_t[]> baseband_data;
 
-    using dump_data_status = std::tuple<basebandDumpData, basebandDumpStatus*>;
-
     // the next/current dump to write (reset to nullptr after done)
-    std::unique_ptr<dump_data_status> dump_to_write;
+    std::unique_ptr<basebandDumpData> dump_to_write;
     std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
 };
