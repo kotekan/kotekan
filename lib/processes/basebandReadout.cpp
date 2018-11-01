@@ -127,6 +127,7 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
+    ready_to_write.notify_all();
 
     if (lt) {
         lt->join();
@@ -144,7 +145,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
 
-        auto next_request = mgr.get_next_request();
+        auto next_request = mgr.get_next_waiting_request();
         basebandDumpStatus* dump_status = std::get<0>(next_request);
         std::mutex* request_mtx = std::get<1>(next_request);
 
@@ -157,7 +158,11 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
             INFO("Received baseband dump request for event %" PRIu64 ": %" PRIi64 " samples starting at count %" PRIi64 ". (next_frame: %d)",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
 
-            std::lock_guard<std::mutex> lock(dump_to_write_mtx);
+            std::unique_lock<std::mutex> lock(dump_to_write_mtx);
+            while (dump_to_write) {
+                ready_to_write.wait(lock);
+                if (stop_thread) return;
+            }
             INFO("Ready to copy samples into the baseband readout buffer");
 
             {
@@ -201,37 +206,48 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
             }
 
             dump_to_write = std::make_unique<dump_data_status>(data, dump_status);
+            lock.unlock();
+            ready_to_write.notify_one();
         }
     }
 }
 
 void basebandReadout::write_thread(basebandReadoutManager& mgr) {
     while (!stop_thread) {
-        std::lock_guard<std::mutex> lock(dump_to_write_mtx);
+        std::unique_lock<std::mutex> lock(dump_to_write_mtx);
 
         // This will reset `dump_to_write` to nullptr so that even if this
         // raises an exception, it will be empty until `listen_thread` copies
         // the next request's data
-        auto dump_tup = std::move(dump_to_write);
-        if (!dump_tup) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(0.1s);
-            continue;
+        while (!dump_to_write) {
+            ready_to_write.wait(lock);
+            if (stop_thread) return;
         }
 
+        auto dump_tup = std::move(dump_to_write);
         auto dump_status = std::get<1>(*dump_tup);
         auto data = std::get<0>(*dump_tup);
 
-        std::mutex& request_mtx = mgr.set_current(dump_status->request.event_id);
+        auto next_request = mgr.get_next_ready_request();
+        // Sanity check
+        if (std::get<0>(next_request)->request.event_id != data.event_id) {
+            uint64_t foo = std::get<0>(next_request)->request.event_id;
+            uint64_t bar = dump_status->request.event_id;
+            ERROR("Mismatched event ids: %ld - %ld", foo, bar);
+            throw std::runtime_error("Mismatched id - abort");
+        }
+        std::mutex* request_mtx = std::get<1>(next_request);
 
         try {
-            write_dump(data, dump_status, request_mtx);
+            write_dump(data, dump_status, *request_mtx);
         } catch (HighFive::FileException& e) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
-            std::lock_guard<std::mutex> lock(request_mtx);
+            std::lock_guard<std::mutex> lock(*request_mtx);
             dump_status->state = basebandDumpStatus::State::ERROR;
             dump_status->reason = e.what();
         }
+        lock.unlock();
+        ready_to_write.notify_one();
     }
 }
 

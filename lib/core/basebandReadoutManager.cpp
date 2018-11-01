@@ -12,7 +12,7 @@ void basebandReadoutManager::add(basebandRequest req) {
 }
 
 
-std::tuple<basebandDumpStatus*, std::mutex*> basebandReadoutManager::get_next_request() {
+std::tuple<basebandDumpStatus*, std::mutex*> basebandReadoutManager::get_next_waiting_request() {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
     // NB: the requests_mtx is released while the thread is waiting on
@@ -28,16 +28,18 @@ std::tuple<basebandDumpStatus*, std::mutex*> basebandReadoutManager::get_next_re
 }
 
 
-std::mutex& basebandReadoutManager::set_current(uint64_t event_id) {
+std::tuple<basebandDumpStatus*, std::mutex*> basebandReadoutManager::get_next_ready_request() {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
-    for (auto it = current; it != requests.end(); it++) {
-        if (it->request.event_id == event_id) {
-            current = it;
-            return current_mtx;
+    basebandDumpStatus* ev;
+    do {
+        if (current == waiting || current == tail) {
+            throw std::runtime_error("No ready request");
         }
-    }
-    throw std::runtime_error("Element not found");
+        ev = &(*++current);
+    } while (ev->state != basebandDumpStatus::State::INPROGRESS);
+
+    return std::make_tuple(ev, &current_mtx);
 }
 
 

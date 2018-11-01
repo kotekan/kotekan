@@ -11,6 +11,7 @@
 #include <mutex>
 #include <queue>
 #include <tuple>
+#include <condition_variable>
 
 #include "gsl-lite.hpp"
 
@@ -151,6 +152,7 @@ private:
 
     // the next/current dump to write (reset to nullptr after done)
     std::unique_ptr<dump_data_status> dump_to_write;
+    std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
 };
 
