@@ -65,6 +65,8 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
 
     state_uptr fstate_lower = std::make_unique<freqState>(output_freqs_lower);
     state_uptr fstate_higher = std::make_unique<freqState>(output_freqs_higher);
+
+    // TODO: add states synchronously
     state_id_t freq_state_id_lower =
             dm.add_state(std::move(fstate_lower)).first;
     state_id_t freq_state_id_higher =

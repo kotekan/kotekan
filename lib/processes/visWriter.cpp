@@ -160,7 +160,8 @@ void visWriter::main_thread() {
             return;
         }
 
-        // wait for the future from get_states before reading freq_id_map
+        // wait for the future from change_dataset_state before reading
+        // freq_id_map
         if (future_metadata.valid()) {
             try {
                 std::tie(num_vis, freq_id_map) = future_metadata.get();
@@ -243,10 +244,12 @@ void visWriter::main_thread() {
 }
 
 std::pair<size_t, std::map<uint32_t, uint32_t>>
-visWriter::get_states(dset_id_t ds) {
+visWriter::change_dataset_state(dset_id_t ds) {
 
     auto& dm = datasetManager::instance();
     std::map<uint32_t, uint32_t> fmap;
+
+    // TODO: get all 3 states synchronously
 
     // Get the frequency spec to determine the freq_ids expected at this Writer.
     auto fstate = dm.dataset_state<freqState>(ds);
@@ -282,7 +285,7 @@ bool visWriter::init_acq() {
         ds_id = dm.add_dataset(dataset(writer_dstate, 0, true), true);
 
     // get dataset states
-    future_metadata = std::async(get_states, ds_id);
+    future_metadata = std::async(change_dataset_state, ds_id);
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;

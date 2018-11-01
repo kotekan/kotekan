@@ -87,7 +87,7 @@ void baselineCompression::main_thread() {
     }
 }
 
-void baselineCompression::get_states(dset_id_t ds_id) {
+void baselineCompression::change_dataset_state(dset_id_t ds_id) {
     auto& dm = datasetManager::instance();
     state_id_t stack_state_id;
 
@@ -124,7 +124,7 @@ void baselineCompression::compress_thread(int thread_id) {
     auto input_frame = visFrameView(in_buf, input_frame_id);
     input_dset_id = input_frame.dataset_id;
     try {
-        get_states(input_dset_id);
+        change_dataset_state(input_dset_id);
     } catch (std::runtime_error& e) {
         retry_broker = true;
         WARN("visCompression: Failure in " \
@@ -149,7 +149,7 @@ void baselineCompression::compress_thread(int thread_id) {
         if (input_dset_id != input_frame.dataset_id || retry_broker) {
             input_dset_id = input_frame.dataset_id;
             try {
-                get_states(input_dset_id);
+                change_dataset_state(input_dset_id);
             } catch (std::runtime_error& e) {
                 WARN("visCompression: Dropping frame, failure in " \
                      "datasetManager: %s", e.what());

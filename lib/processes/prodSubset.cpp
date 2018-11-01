@@ -38,9 +38,9 @@ void prodSubset::apply_config(uint64_t fpga_seq) {
 
 }
 
-dset_id_t prodSubset::set_states(dset_id_t ds_id,
-                                 std::vector<prod_ctype>& prod_subset,
-                                 size_t subset_num_prod) {
+dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id,
+                                           std::vector<prod_ctype>& prod_subset,
+                                           size_t subset_num_prod) {
     auto& dm = datasetManager::instance();
 
     // create new product dataset state
@@ -88,7 +88,7 @@ void prodSubset::main_thread() {
             return;
         }
         input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
-        future_output_dset_id = std::async(set_states, input_dset_id,
+        future_output_dset_id = std::async(change_dataset_state, input_dset_id,
                                            std::ref(prod_subset),
                                            subset_num_prod);
     }
@@ -108,7 +108,7 @@ void prodSubset::main_thread() {
         if ((broker_retry || input_dset_id != input_frame.dataset_id)
                 && use_dataset_manager) {
             input_dset_id = input_frame.dataset_id;
-            future_output_dset_id = std::async(set_states, input_dset_id,
+            future_output_dset_id = std::async(change_dataset_state, input_dset_id,
                                                std::ref(prod_subset),
                                                subset_num_prod);
         }

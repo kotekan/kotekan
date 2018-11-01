@@ -297,7 +297,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
     for (int i = 0; i < N; i++) {
         t[i].join();
     }
-    usleep(3000000);
+    usleep(6000000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format("Only {} callback functions where " \

@@ -71,7 +71,7 @@ private:
     void compress_thread(int thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    void get_states(dset_id_t ds_id);
+    void change_dataset_state(dset_id_t ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;

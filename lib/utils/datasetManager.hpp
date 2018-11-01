@@ -615,7 +615,7 @@ public:
      *
      * @returns A string summarising the state table.
      **/
-    string summary() const;
+    std::string summary() const;
 
     /**
      * @brief Get a read-only vector of the states.
@@ -758,7 +758,7 @@ inline int datasetState::_register_state_type() {
     // Get the unique name for the type to generate the lookup key. This is
     // the same used by RTTI which is what we use to label the serialised
     // instances.
-    string key = typeid(T).name();
+    std::string key = typeid(T).name();
 
     DEBUG("Registering state type: %s", key.c_str());
 

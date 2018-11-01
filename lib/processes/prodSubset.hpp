@@ -80,9 +80,9 @@ private:
     /// keeps track of the input dataset ID
     /// and gets new output dataset ID from manager
     ///
-    static dset_id_t set_states(dset_id_t ds_id,
-                                std::vector<prod_ctype>& prod_subset,
-                                size_t subset_num_prod);
+    static dset_id_t change_dataset_state(dset_id_t ds_id,
+                                          std::vector<prod_ctype>& prod_subset,
+                                          size_t subset_num_prod);
 
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;

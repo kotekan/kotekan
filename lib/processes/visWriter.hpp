@@ -135,7 +135,7 @@ protected:
 private:
     /// Gets states from the dataset manager and returns some metadata
     static std::pair<size_t, std::map<uint32_t, uint32_t>>
-    get_states(dset_id_t ds);
+    change_dataset_state(dset_id_t ds);
 
     /// Number of products to write and freqency map
     std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>
