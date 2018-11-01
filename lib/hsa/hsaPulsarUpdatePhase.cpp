@@ -34,7 +34,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
 
-    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
+    _gain_dir = config.get<std::string>(unique_name, "pulsar_gain/gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_default<std::vector<float>>(
                 unique_name, "frb_missing_gains", dg);

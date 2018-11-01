@@ -19,7 +19,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
-    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
+    _gain_dir = config.get<std::string>(unique_name, "frb_gain/gain_dir");
 
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
     vector<float> dg = {0.0,0.0}; //re,im
