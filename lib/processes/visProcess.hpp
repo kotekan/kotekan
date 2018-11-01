@@ -174,6 +174,17 @@ private:
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
+
+    // Helper methods to make code clearer
+
+    // Set initial values of visBuffer
+    void initialise_output(Buffer* out_buf, int out_frame_id,
+                           int in_frame_id, int freq_ind);
+
+    // Fill in data sections of visBuffer
+    void finalise_output(Buffer* out_buf, int out_frame_id,
+                         cfloat* vis1, float* vis2, int freq_ind,
+                         uint32_t total_samples);
 };
 
 /**

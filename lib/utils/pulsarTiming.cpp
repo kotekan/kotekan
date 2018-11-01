@@ -9,7 +9,7 @@ double Polyco::mjd2phase(float t) {
 
     double dt = (t - tmid) * 1440;
     double phase = phase_ref + dt*60*rot_freq;
-    for (uint i = 0; i < coeff.size(); i++) {
+    for (size_t i = 0; i < coeff.size(); i++) {
         phase += coeff[i] * pow(dt, i);
     }
 

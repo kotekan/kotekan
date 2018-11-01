@@ -261,32 +261,12 @@ void visAccumulate::main_thread() {
 
             DEBUG("Total samples accumulate %i", total_samples);
 
-            // Unpack the main visibilities
-            float w1 = 1.0 / total_samples;
-
             // Loop over the frequencies in the frame and unpack the accumulates
             // into the output frame...
             for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
-                auto output_frame = visFrameView(out_buf, out_frame_id);
 
-                // Copy the visibilities into place
-                map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-                    [&](int32_t pi, int32_t bi, bool conj) {
-                        cfloat t = !conj ? vis1[bi] : std::conj(vis1[bi]);
-                        output_frame.vis[pi] = w1 * t;
-                    }
-                );
-
-                // Unpack and invert the weights
-                map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-                    [&](int32_t pi, int32_t bi, bool conj) {
-                        float t = vis2[bi];
-                        output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
-                    }
-                );
-
-                // Set the actual amount of time we accumulated for
-                output_frame.fpga_seq_total = total_samples;
+                finalise_output(out_buf, out_frame_id, vis1, vis2,
+                                freq_ind, total_samples);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
                 out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
@@ -308,30 +288,11 @@ void visAccumulate::main_thread() {
                 uint32_t frame_id = (out_frame_id + freq_ind) % out_buf->num_frames;
 
                 if (wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                         frame_id ) == nullptr) {
+                                         frame_id) == nullptr) {
                     break;
                 }
 
-                allocate_new_metadata_object(out_buf, frame_id);
-                auto output_frame = visFrameView(out_buf, frame_id,
-                    num_elements, num_eigenvectors);
-
-                // Copy over the metadata
-                // TODO: CHIME
-                output_frame.fill_chime_metadata(
-                    (const chimeMetadata *)in_buf->metadata[in_frame_id]->metadata);
-                // TODO: set frequency id in some sensible generic manner
-                output_frame.freq_id += freq_ind;
-
-                // Set the length of time this frame will cover
-                output_frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
-
-                // Fill other datasets with reasonable values
-                std::fill(output_frame.flags.begin(), output_frame.flags.end(), 1.0);
-                std::fill(output_frame.evec.begin(), output_frame.evec.end(), 0.0);
-                std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
-                output_frame.erms = 0;
-                std::fill(output_frame.gain.begin(), output_frame.gain.end(), 1.0);
+                initialise_output(out_buf, frame_id, in_frame_id, freq_ind);
             }
 
             // Zero out accumulation arrays
@@ -383,6 +344,65 @@ void visAccumulate::main_thread() {
     delete[] vis_even;
     delete[] vis1;
     delete[] vis2;
+}
+
+
+void visAccumulate::initialise_output(
+    Buffer* out_buf, int out_frame_id, int in_frame_id, int freq_ind
+)
+{
+
+    allocate_new_metadata_object(out_buf, out_frame_id);
+    auto frame = visFrameView(out_buf, out_frame_id, num_elements,
+                              num_eigenvectors);
+
+    // Copy over the metadata
+    // TODO: CHIME
+    frame.fill_chime_metadata(
+        (const chimeMetadata *)in_buf->metadata[in_frame_id]->metadata);
+
+    // TODO: set frequency id in some sensible generic manner
+    frame.freq_id += freq_ind;
+
+    // Set the length of time this frame will cover
+    frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
+
+    // Fill other datasets with reasonable values
+    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+    std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
+    std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
+    frame.erms = 0;
+    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
+}
+
+
+void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
+                                    cfloat* vis1, float* vis2, int freq_ind,
+                                    uint32_t total_samples)
+{
+    // Unpack the main visibilities
+    float w1 = 1.0 / total_samples;
+
+    auto output_frame = visFrameView(out_buf, out_frame_id);
+
+    // Copy the visibilities into place
+    map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
+        [&](int32_t pi, int32_t bi, bool conj) {
+            cfloat t = !conj ? vis1[bi] : std::conj(vis1[bi]);
+            output_frame.vis[pi] = w1 * t;
+        }
+    );
+
+    // Unpack and invert the weights
+    map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
+        [&](int32_t pi, int32_t bi, bool conj) {
+            float t = vis2[bi];
+            output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
+        }
+    );
+
+    // Set the actual amount of time we accumulated for
+    output_frame.fpga_seq_total = total_samples;
 }
 
 
