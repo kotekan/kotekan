@@ -34,7 +34,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
 
-    _gain_dir = config.get<std::string>(unique_name, "pulsar_gain/gain_dir");
+    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_default<std::vector<float>>(
                 unique_name, "frb_missing_gains", dg);
@@ -58,7 +58,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
 
     update_gains=true;
     first_pass=true;
-    gain_len = 2*_num_elements*sizeof(float);
+    gain_len = 2*_num_pulsar*_num_elements*sizeof(float);
     host_gain = (float *)hsa_host_malloc(gain_len, device.get_gpu_id());
 
     phase_frame_len = _num_elements*_num_pulsar*2*sizeof(float);
@@ -99,7 +99,7 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
 bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json &json) {
     update_gains=true;
     _gain_dir = json.at("pulsar_gain_dir");
-    INFO("[PSR] Updating gains from %s", _gain_dir.c_str());
+    INFO("[PSR] Updating gains from %s %s %s", _gain_dir[0].c_str(), _gain_dir[1].c_str(),_gain_dir[2].c_str());
     return true;
 }
 
@@ -147,8 +147,8 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
                 for (int p=0;p<2;p++){ //loop 2 pol
                     uint elem_id = p*1024+i*256+j;
                     //Not scrembled, assume reordering kernel has been run
-                    output[(b*_num_elements+elem_id)*2  ] = delay_real*gains[elem_id*2  ] - delay_imag*gains[elem_id*2+1];
-                    output[(b*_num_elements+elem_id)*2+1] = delay_real*gains[elem_id*2+1] + delay_imag*gains[elem_id*2  ];
+                    output[(b*_num_elements+elem_id)*2  ] = delay_real*gains[(b*_num_elements + elem_id*2)  ] - delay_imag*gains[(b*_num_elements + elem_id)*2+1];
+                    output[(b*_num_elements+elem_id)*2+1] = delay_real*gains[(b*_num_elements + elem_id*2)+1] + delay_imag*gains[(b*_num_elements + elem_id)*2  ];
                 }
             }
         }
@@ -179,22 +179,25 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpg
         update_gains=false;
         FILE *ptr_myfile;
         char filename[256];
-        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(),freq_idx);
-        INFO("Loading gains from %s",filename);
-        ptr_myfile=fopen(filename,"rb");
-        if (ptr_myfile == NULL) {
+	for (uint b=0;b<num_pulsar;b++){
+	  snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir[b].c_str(),freq_idx);
+	  INFO("Loading gains from %s",filename);
+
+	  ptr_myfile=fopen(filename,"rb");
+	  if (ptr_myfile == NULL) {
             ERROR("GPU Cannot open gain file %s", filename);
             for (int i=0;i<2048;i++){
-                host_gain[i*2  ] = default_gains[0];
-                host_gain[i*2+1] = default_gains[1];
+	      host_gain[(b*2048+i)*2  ] = default_gains[0];
+	      host_gain[(b*2048+i)*2+1] = default_gains[1];
             }
-        }
-        else {
-            if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
-                ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
+	  }
+	  else {
+            if (_num_elements != fread(&host_gain[(b*2048+i)*2],sizeof(float)*2,_num_elements,ptr_myfile)) {
+	      ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
             }
             fclose(ptr_myfile);
-        }
+	  }
+        } //end beam
     }
     if(update_phase) {
         //GPS time, need ch_master

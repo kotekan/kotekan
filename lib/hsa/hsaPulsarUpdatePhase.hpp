@@ -45,7 +45,7 @@
  * @conf   num_pulsar           Int (default 10). Number of pulsars
  * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * @conf   gain_dir             String - directory path where gain files are
+ * @conf   gain_dir             String aray - 10 directory path where gain files are for each 10 beams
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
  * @conf   source_ra            Float array - 10 initial RA (in deg) to form beams on.
  * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
@@ -95,7 +95,7 @@ private:
     /// 2048 elements x 2 for complex
     int32_t gain_len;
     /// Directory path where gain files are
-    string _gain_dir;
+    vector<string> _gain_dir;
     /// Default gain values if gain file is missing for this freq
     vector<float> default_gains;
     /// Array of gains, float size of 2048*2
