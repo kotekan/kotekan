@@ -69,8 +69,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>
                          (new_inputs, std::make_unique<freqState>(new_freqs)));
 
-    dset_id_t init_ds_id = dm.add_dataset(dataset(new_input_state.first,
-                                                  DSET_ID));
+    dm.add_dataset(dataset(new_input_state.first, DSET_ID));
 
     std::cout << dm.summary() << std::endl;
 
@@ -82,10 +81,6 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
 
-    for (auto s : dm.ancestors(init_ds_id))
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
-
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(700000);
 }

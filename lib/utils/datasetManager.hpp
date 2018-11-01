@@ -171,6 +171,13 @@ public:
     template<typename T>
     static inline int _register_state_type();
 
+    /**
+     * @brief Compare to another dataset state.
+     * @param s    State to compare with.
+     * @return True if states identical, False otherwise.
+     */
+    const bool equals(datasetState& s) const;
+
 private:
 
     /**
@@ -625,18 +632,6 @@ public:
     const std::map<dset_id_t, dataset> datasets() const;
 
     /**
-     * @brief Get the states applied to generate the given dataset.
-     *
-     * @note This will flatten out inner state into the list. They are given the
-     * same dataset ID as their parents.
-     *
-     * @returns A vector of the dataset ID and the state that was
-     *          applied to previous element in the vector to generate it.
-     **/
-    const std::vector<std::pair<dset_id_t, datasetState *>>
-    ancestors(dset_id_t dset) const;
-
-    /**
      * @brief Find the closest ancestor of a given type.
      *
      * If `use_ds_broker` is set and no ancestor of the given type is found,
@@ -655,6 +650,18 @@ public:
 private:
     /// Constructor
     datasetManager();
+
+    /**
+     * @brief Get the states applied to generate the given dataset.
+     *
+     * @note This will flatten out inner state into the list. They are given the
+     * same dataset ID as their parents.
+     *
+     * @returns A vector of the dataset ID and the state that was
+     *          applied to previous element in the vector to generate it.
+     **/
+    const std::vector<std::pair<dset_id_t, datasetState *>>
+    ancestors(dset_id_t dset) const;
 
     /**
      * @brief Calculate the hash of a datasetState to use as the state_id.
@@ -788,9 +795,6 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) const {
     // no ancestor found locally -> ask broker
     if (_use_broker) {
 
-        // lock for conditional variable
-        std::unique_lock<std::mutex> lck(_lock_rqst);
-
         try {
             request_ancestor(dset, typeid(T).name());
         } catch (std::runtime_error& e) {
@@ -806,6 +810,8 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) const {
         std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
         auto time_point = std::chrono::system_clock::now() + timeout;
 
+        // lock for conditional variable
+        std::unique_lock<std::mutex> lck(_lock_rqst);
         while(true) {
             if (!_cv_request_ancestor.wait_until(lck, time_point,
                                std::bind(get_closest_ancestor<T>, dset))) {
@@ -839,26 +845,44 @@ std::pair<state_id_t, const T*> datasetManager::add_state(
 
     state_id_t hash = hash_state(*state);
 
-    // insert the new state
-    // FIXME: check for and handle hash collicion
-    std::lock_guard<std::mutex> slock(_lock_states);
-    if (!_states.insert(
-            std::pair<state_id_t, std::unique_ptr<T>>(hash, move(state))).second)
-        INFO("datasetManager: a state with hash %zu is already registered " \
-             "locally.", hash);
+    // check if there is a hash collision
+    if (_states.find(hash) != _states.end()) {
+        auto find = _states.find(hash);
+        if (!state->equals(*(find->second))) {
+            // FIXME: hash collision. make the value a vector and store same
+            // hash entries? This would mean the state/dset has to be sent
+            // when registering.
+            ERROR("datasetManager: Hash collision!\n"
+                  "The following states have the same hash (%zu)." \
+                  "\n\n%s\n\n%s\n\n" \
+                  "datasetManager: Exiting...",
+                  hash, state->to_json().dump().c_str(),
+                  find->second->to_json().dump().c_str());
+            raise(SIGINT);
+        }
+    } else {
+        // insert the new state
+        std::lock_guard<std::mutex> slock(_lock_states);
+        if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>
+                                                  (hash, move(state))).second) {
+            DEBUG("datasetManager: a state with hash %zu is already " \
+                 "registered locally.", hash);
+        }
 
-    if (_use_broker && !ignore_broker) {
-        try {
-            register_state(hash);
-        } catch (std::runtime_error& e) {
-            prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++_conn_error_count);
-            std::string msg = fmt::format(
-                        "datasetManager: Failure registering state: {}\n" \
-                        "datasetManager: Make sure the broker is running."
-                        , e.what());
-            throw std::runtime_error(msg);
+        // tell the broker about it
+        if (_use_broker && !ignore_broker) {
+            try {
+                register_state(hash);
+            } catch (std::runtime_error& e) {
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                            ++_conn_error_count);
+                std::string msg = fmt::format(
+                            "datasetManager: Failure registering state: {}\n" \
+                            "datasetManager: Make sure the broker is running."
+                            , e.what());
+                throw std::runtime_error(msg);
+            }
         }
     }
 

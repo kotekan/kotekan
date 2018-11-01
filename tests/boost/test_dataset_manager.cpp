@@ -103,10 +103,6 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
     for (auto s : dm.datasets())
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
-
-    for (auto s : dm.ancestors(transformed_ds_id))
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
 }
 
 BOOST_AUTO_TEST_CASE( _serialization_input ) {

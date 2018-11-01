@@ -103,6 +103,11 @@ json datasetState::to_json() const {
     return j;
 }
 
+// TODO: compare without serialization
+const bool datasetState::equals(datasetState& s) const {
+    return to_json() == s.to_json();
+}
+
 std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     out << typeid(dt).name();
 
@@ -158,25 +163,33 @@ void datasetManager::apply_config(Config& config) {
 }
 
 dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
+
     dset_id_t new_dset_id = hash_dataset(ds);
 
-    std::lock_guard<std::mutex> lck_ds(_lock_dsets);
+    {
+        // insert the new entry
+        std::lock_guard<std::mutex> lck_ds(_lock_dsets);
 
-    // insert the new entry
-    if (!_datasets.insert(
-            std::pair<dset_id_t, dataset>(new_dset_id, ds)).second) {
-        // There is already a dataset with the same hash.
-        // Search for existing entry and return if it exists.
-        auto find = _datasets.find(new_dset_id);
-        if (!ds.equals(find->second)) {
-            // FIXME: hash collision. make the value a vector and store same
-            // hash entries? This would mean the state/dset has to be sent when
-            // registering.
-            ERROR("datasetManager: hash collision\ndatasetManager: Exiting...");
-            raise(SIGINT);
+        if (!_datasets.insert(
+                std::pair<dset_id_t, dataset>(new_dset_id, ds)).second) {
+            // There is already a dataset with the same hash.
+            // Search for existing entry and return if it exists.
+            auto find = _datasets.find(new_dset_id);
+            if (!ds.equals(find->second)) {
+                // FIXME: hash collision. make the value a vector and store same
+                // hash entries? This would mean the state/dset has to be sent
+                // when registering.
+                ERROR("datasetManager: Hash collision!\n"
+                      "The following datasets have the same hash (%zu)." \
+                      "\n\n%s\n\n%s\n\n" \
+                      "datasetManager: Exiting...",
+                      new_dset_id, ds.to_json().dump().c_str(),
+                      find->second.to_json().dump().c_str());
+                raise(SIGINT);
+            }
+            // this dataset was already added
+            return new_dset_id;
         }
-        // this dataset was already added
-        return new_dset_id;
     }
 
     if (_use_broker && !ignore_broker) {
@@ -414,33 +427,28 @@ void datasetManager::request_ancestor_callback(restReply reply) {
         return;
     }
 
-    // acquire at the same time the lock that protects the states as well as the
-    // one for cv_request_ancestors to avoid deadlocks
-    std::lock(_lock_rqst, _lock_states);
-    std::lock_guard<std::mutex> rqstlck(_lock_rqst, std::adopt_lock);
-    std::unique_lock<std::mutex> slck(_lock_states, std::adopt_lock);
-
     // register the received states
-    for (json::iterator s = js_reply.at("states").begin();
-            s != js_reply.at("states").end(); s++) {
-        state_id_t s_id;
-        sscanf(s.key().c_str(), "%zu", &s_id);
+    {
+        std::unique_lock<std::mutex> slck(_lock_states);
+        for (json::iterator s = js_reply.at("states").begin();
+                s != js_reply.at("states").end(); s++) {
+            state_id_t s_id;
+            sscanf(s.key().c_str(), "%zu", &s_id);
 
-        state_uptr state = datasetState::from_json(s.value());
+            state_uptr state = datasetState::from_json(s.value());
 
-        if (!_states.insert(std::pair<state_id_t, std::unique_ptr<datasetState>>
-                            (s_id, move(state))).second)
-            INFO("datasetManager::request_ancestors_callback: received a " \
-                 "state (with hash %zu) that is already registered " \
-                 "locally.", s_id);
+            // TODO: hash collisions should be checked for by the broker
+            if (!_states.insert(std::pair<state_id_t,
+                                std::unique_ptr<datasetState>>
+                                (s_id, move(state))).second)
+                INFO("datasetManager::request_ancestors_callback: received a " \
+                     "state (with hash %zu) that is already registered " \
+                     "locally.", s_id);
+        }
     }
-    // release the states lock and acquire the datasets lock
-    // WARN: this is only acceptable as long as no other thread will ever try to
-    // acquire both _lock_datasets and _lock_rqst
-    slck.unlock();
-    std::unique_lock<std::mutex> dslck(_lock_dsets);
 
     // register the received datasets
+    std::unique_lock<std::mutex> dslck(_lock_dsets);
     for (json::iterator ds = js_reply.at("datasets").begin();
          ds != js_reply.at("datasets").end(); ds++) {
 
@@ -459,6 +467,7 @@ void datasetManager::request_ancestor_callback(restReply reply) {
             }
 
             // insert the new dataset and check if it was a known before
+            // TODO: collisions should be checked for by the broker
             auto inserted = _datasets.insert(
                         std::pair<dset_id_t, dataset>(ds_id, new_dset));
             if (!inserted.second) {

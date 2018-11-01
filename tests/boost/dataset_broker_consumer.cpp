@@ -56,10 +56,6 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
 
-    for (auto s : dm.ancestors(DSET_ID))
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
-
     auto i = dm.dataset_state<inputState>(DSET_ID);
     check_equal(i->get_inputs(), inputs);
 
@@ -78,9 +74,6 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
 
-    for (auto s : dm.ancestors(DSET_ID))
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
     check_equal(p->get_prods(), prods);
 
     // wait a bit, to make sure we see errors in any late callbacks

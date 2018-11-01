@@ -181,7 +181,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dset_id_t init_ds_id3 = dm.add_dataset(dataset(input_state3.first,
+    dm.add_dataset(dataset(input_state3.first,
                                                    init_ds_id));
 
     std::cout << dm.summary() << std::endl;
@@ -193,10 +193,6 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
     for (auto s : dm.datasets())
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
-
-    for (auto s : dm.ancestors(init_ds_id3))
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
 
     usleep(500000);
 }
