@@ -214,12 +214,37 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
+    // Map gating functions
+    gating["pulsar"] = &visAccumulate::pulsar_gating;
+
+    apply_config(0);
 }
 
 visAccumulate::~visAccumulate() {
 }
 
 void visAccumulate::apply_config(uint64_t fpga_seq) {
+    // TODO: for now I'm assuming everything that is in the constructor
+    //       should not be updated dynamically
+
+    // Get gating specifications from config
+    if (config.exists(unique_name, "pulsar_gating")){
+
+        std::string psr_block = unique_name + "/pulsar_gating/";
+        gating_enabled["pulsar"] = config.get<bool>(psr_block, "enabled");
+
+        if (gating_enabled["pulsar"]) {
+            // set up pulsar polyco
+            std::vector<float> coeff = config.get<std::vector<float>>(psr_block, "polyco");
+            float dm = config.get<float>(psr_block, "dm");
+            double tmid = config.get<double>(psr_block, "tmid");  // in days since MJD
+            double phase_ref = config.get<double>(psr_block, "phase_ref");  // in number of rotations
+            rot_freq = config.get<double>(psr_block, "rot_freq");  // in Hz
+            pulse_width = config.get<float>(psr_block, "pulse_width");
+            polyco = new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+        }
+    }
+
 }
 
 void visAccumulate::main_thread() {
@@ -306,6 +331,14 @@ void visAccumulate::main_thread() {
         for(size_t i = 0; i < nprod_gpu; i++) {
             cfloat t = {(float)input[2*i+1], (float)input[2*i]};
             vis1[i] += t;
+        }
+
+        // TODO: this is a placeholder. Also need to update the init and final methods.
+        // Perform gating
+        for (auto gate : gating) {
+            if (!gating_enabled[gate.first])
+                continue;
+            (this->*(gate.second))(in_frame_id);
         }
 
         // We are calculating the weights by differencing even and odd samples.
@@ -403,6 +436,12 @@ void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
 
     // Set the actual amount of time we accumulated for
     output_frame.fpga_seq_total = total_samples;
+}
+
+
+void visAccumulate::pulsar_gating(int in_frame_id) {
+    // do gating things here
+
 }
 
 

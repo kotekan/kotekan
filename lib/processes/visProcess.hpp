@@ -15,6 +15,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
+#include "pulsarTiming.hpp"
 
 
 /**
@@ -172,6 +173,11 @@ private:
     size_t samples_per_data_set;
     size_t num_gpu_frames;
 
+    // Config parameters for pulsar gating
+    double rot_freq;  // in Hz
+    float pulse_width;  // in s
+    Polyco * polyco;
+
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
 
@@ -185,6 +191,15 @@ private:
     void finalise_output(Buffer* out_buf, int out_frame_id,
                          cfloat* vis1, float* vis2, int freq_ind,
                          uint32_t total_samples);
+
+    // Abstraction of gating accumulation
+    // TODO: does it need more that input_frame_id ?
+    typedef void(visAccumulate::*gating_func)(int);
+    // List of gates and whether they are enabled
+    std::map<std::string, gating_func> gating;
+    std::map<std::string, bool> gating_enabled;
+
+    void pulsar_gating(int in_frame_id);
 };
 
 /**
