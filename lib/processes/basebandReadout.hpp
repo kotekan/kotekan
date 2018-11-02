@@ -123,7 +123,7 @@ private:
                        basebandReadoutManager& readout_manager);
     void write_thread(basebandReadoutManager& readout_manager);
     void write_dump(basebandDumpData data,
-                    basebandDumpStatus* dump_status,
+                    basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);

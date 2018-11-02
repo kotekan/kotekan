@@ -146,13 +146,14 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
         // of L4 sending the trigger.
 
         auto next_request = mgr.get_next_waiting_request();
-        basebandDumpStatus* dump_status = std::get<0>(next_request);
-        std::mutex* request_mtx = std::get<1>(next_request);
 
-        if (dump_status) {
+        if (next_request) {
+            basebandDumpStatus& dump_status = std::get<0>(*next_request);
+            std::mutex& request_mtx = std::get<1>(*next_request);
+
             // This should be safe even without a lock, as there is nothing else
             // yet that can change the dump_status object
-            const basebandRequest request = dump_status->request;
+            const basebandRequest request = dump_status.request;
             //std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             const uint64_t event_id = request.event_id;
             INFO("Received baseband dump request for event %" PRIu64 ": %" PRIi64 " samples starting at count %" PRIi64 ". (next_frame: %d)",
@@ -166,8 +167,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
             INFO("Ready to copy samples into the baseband readout buffer");
 
             {
-                std::lock_guard<std::mutex> lock(*request_mtx);
-                dump_status->state = basebandDumpStatus::State::INPROGRESS;
+                std::lock_guard<std::mutex> lock(request_mtx);
+                dump_status.state = basebandDumpStatus::State::INPROGRESS;
                 // Note: the length of the dump still needs to be set with
                 // actual sizes. This is done in `get_data` as it verifies what
                 // is available in the current buffers.
@@ -187,14 +188,14 @@ void basebandReadout::listen_thread(const uint32_t freq_id,
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late).
             {
-                std::lock_guard<std::mutex> lock(*request_mtx);
-                dump_status->bytes_total = data.num_elements * data.data_length_fpga;
-                dump_status->bytes_remaining = dump_status->bytes_total;
+                std::lock_guard<std::mutex> lock(request_mtx);
+                dump_status.bytes_total = data.num_elements * data.data_length_fpga;
+                dump_status.bytes_remaining = dump_status.bytes_total;
                 if (data.data_length_fpga == 0) {
                     INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".",
                         event_id, freq_id);
-                    dump_status->state = basebandDumpStatus::State::ERROR;
-                    dump_status->reason = "No data captured.";
+                    dump_status.state = basebandDumpStatus::State::ERROR;
+                    dump_status.reason = "No data captured.";
                     continue;
                 } else {
                     INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
@@ -227,22 +228,22 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
         auto data = std::move(dump_to_write);
 
         auto next_request = mgr.get_next_ready_request();
-        auto dump_status = std::get<0>(next_request);
+        basebandDumpStatus& dump_status = std::get<0>(next_request);
         // Sanity check
-        if (dump_status->request.event_id != data->event_id) {
+        if (dump_status.request.event_id != data->event_id) {
             ERROR("Mismatched event ids: %ld - %ld",
-                  dump_status->request.event_id, data->event_id);
+                  dump_status.request.event_id, data->event_id);
             throw std::runtime_error("Mismatched id - abort");
         }
-        std::mutex* request_mtx = std::get<1>(next_request);
+        std::mutex& request_mtx = std::get<1>(next_request);
 
         try {
-            write_dump(*data, dump_status, *request_mtx);
+            write_dump(*data, dump_status, request_mtx);
         } catch (HighFive::FileException& e) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
-            std::lock_guard<std::mutex> lock(*request_mtx);
-            dump_status->state = basebandDumpStatus::State::ERROR;
-            dump_status->reason = e.what();
+            std::lock_guard<std::mutex> lock(request_mtx);
+            dump_status.state = basebandDumpStatus::State::ERROR;
+            dump_status.reason = e.what();
         }
         lock.unlock();
         ready_to_write.notify_one();
@@ -434,13 +435,13 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 }
 
 void basebandReadout::write_dump(basebandDumpData data,
-                                 basebandDumpStatus* dump_status,
+                                 basebandDumpStatus& dump_status,
                                  std::mutex& request_mtx) {
 
     // TODO Create parent directories.
     std::string filename = _base_dir +
-        dump_status->request.file_path + "/" +
-        dump_status->request.file_name;
+        dump_status.request.file_path + "/" +
+        dump_status.request.file_name;
     std::string lock_filename = create_lockfile(filename);
     INFO(("Writing baseband dump to " + filename).c_str());
 
@@ -557,7 +558,7 @@ void basebandReadout::write_dump(basebandDumpData data,
 
         {
             std::lock_guard<std::mutex> lock(request_mtx);
-            dump_status->bytes_remaining -= to_write * num_elements;
+            dump_status.bytes_remaining -= to_write * num_elements;
         }
         ii_samp += ntime_chunk;
         if (ii_samp >= data.data_length_fpga) break;
@@ -569,13 +570,13 @@ void basebandReadout::write_dump(basebandDumpData data,
 
     if (ii_samp > data.data_length_fpga) {
         std::lock_guard<std::mutex> lock(request_mtx);
-        dump_status->state = basebandDumpStatus::State::DONE;
+        dump_status.state = basebandDumpStatus::State::DONE;
         INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " complete.",
              data.event_id, data.freq_id);
     } else {
         std::lock_guard<std::mutex> lock(request_mtx);
-        dump_status->state = basebandDumpStatus::State::ERROR;
-        dump_status->reason = "Kotekan exit before write complete.";
+        dump_status.state = basebandDumpStatus::State::ERROR;
+        dump_status.reason = "Kotekan exit before write complete.";
         INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " incomplete.",
              data.event_id, data.freq_id);
     }

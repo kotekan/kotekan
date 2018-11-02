@@ -72,6 +72,8 @@ struct basebandDumpStatus {
 */
 class basebandReadoutManager {
 public:
+    using requestStatusMutex = std::pair<basebandDumpStatus&, std::mutex&>;
+
     /**
      * @brief Adds a new baseband dump request to the `requests` queue and
      * notifiers threads waiting on `has_request`
@@ -89,16 +91,14 @@ public:
      * found, it is returned to the caller, and `waiting` is moved to the next
      * element in the queue.
      *
-     * @return a tuple of:
-     *    (1) a pointer to the `basebandDumpStatus` object if there is a request
-     *        available or nullptr if there are no new requests in `requests`;
-     *        and
+     * @return if there is a request available, a `unique_ptr` to the pair of:
+     *    (1) a reference to the `basebandDumpStatus` object; and
      *
-     *    (2) a pointer to the mutex that should be acquired while the (mutable)
-     *        elements of the request object are being accessed (only valid if
-     *        the returned object pointer is non-null).
+     *    (2) a reference to the mutex that should be acquired while the (mutable)
+     *        elements of the request object are being accessed.
+     * otherwise, a nullptr
      */
-    std::tuple<basebandDumpStatus*, std::mutex*> get_next_waiting_request();
+    std::unique_ptr<basebandReadoutManager::requestStatusMutex> get_next_waiting_request();
 
     /**
      * @brief Tries to get the next dump request whose data is ready for writing
@@ -118,15 +118,14 @@ public:
      * only purpose is so the internal code that iterates over the request queue
      * knows when to acquire the `current_mtx` mutex to read the an element.
      *
-     * @return a tuple of:
-     *    (1) a pointer to the `basebandDumpStatus` object if there is a ready
-     *        request available; and
+     * @return a pair of:
+     *    (1) a reference to the `basebandDumpStatus` object; and
      *
-     *    (2) a pointer to the mutex that should be acquired while the (mutable)
+     *    (2) a reference to the mutex that should be acquired while the (mutable)
      *        elements of the request object are being accessed.
      *
      */
-    std::tuple<basebandDumpStatus*, std::mutex*> get_next_ready_request();
+    basebandReadoutManager::requestStatusMutex get_next_ready_request();
 
     /// Returns a unique pointer to the copy of the event status for `event_id`,
     /// or nullptr if not known
