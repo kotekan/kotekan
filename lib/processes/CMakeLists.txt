@@ -30,6 +30,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               countCheck.cpp
               visProcess.cpp
+              visAccumulate.cpp
               visCompression.cpp
               timeDownsample.cpp
               frbPostProcess.cpp
