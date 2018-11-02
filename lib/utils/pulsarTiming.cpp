@@ -5,7 +5,7 @@
 Polyco::Polyco(double t, float d, double p, double f0, std::vector<float> c):
         tmid(t), dm(d), phase_ref(p), rot_freq(f0), coeff(c) {}
 
-double Polyco::mjd2phase(float t) {
+double Polyco::mjd2phase(double t) {
 
     double dt = (t - tmid) * 1440;
     double phase = phase_ref + dt*60*rot_freq;
@@ -19,7 +19,7 @@ double Polyco::mjd2phase(float t) {
 double Polyco::unix2phase(timespec t) {
 
     // number of days between UNIX epoch and MJD epoch is 40587
-    double t_mjd = ((double) t.tv_sec/ 86400.) + ((double) t.tv_nsec/ 86400e9) + 40587;
+    double t_mjd = ((double) t.tv_sec/ 86400.) + ((double) t.tv_nsec/ 86400 / 1e9) + 40587;
 
     return mjd2phase(t_mjd);
 }

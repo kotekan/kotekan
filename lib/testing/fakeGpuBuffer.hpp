@@ -134,6 +134,7 @@ private:
     float pulse_width;  // in s
     float rot_freq; // in Hz
     Polyco * polyco;
+    bool gaussian_bgnd;
 
     // Function pointer for fill modes
     typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int, chimeMetadata *);
