@@ -43,6 +43,14 @@
  * @conf  num_frames            Exit after num_frames have been produced. If
  *                              less than zero, no limit is applied. Default
  *                              is `-1`.
+ * @conf  polyco                Polynomial coeffecients for pulsar mode. Use
+ *                              Tempo convention.
+ * @conf  dm                    Dispersion measure of pulsar (cm^-3 pc).
+ * @conf  tmid                  Reference time for polyco in MJD (days).
+ * @conf  phase_ref             Reference phase for polyco (number of rotations).
+ * @conf  rot_freq              Frequency of rotation of the pulsar (Hz).
+ * @conf  pulse_width           Width of the pulse (s).
+ * @conf  gaussian_bgnd         Fill background with gaussian noise (bool).
  *
  * @warning The `stream_id_t` in the metadata is likely to be invalid as it is
  *          generated only such that it is decoded back to the input frequency
@@ -106,7 +114,7 @@ public:
      * @brief Fill with a pattern with Gaussian noise with radiometer variance.
      *
      * The underlying inputs are uncorrelated with variance of 1.
-     * 
+     *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
@@ -114,6 +122,16 @@ public:
     void fill_mode_gaussian(int32_t* data, int frame_num,
                             chimeMetadata* metadata);
 
+    /**
+     * @brief Fill with pulsar pulses.
+     *
+     * The phase of the pulses will be calculated from the polyco
+     * provided in the config. Gaussian noise can be added as a background.
+     *
+     * @param data      The output frame data to fill.
+     * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
+     */
     void fill_mode_pulsar(int32_t* data, int frame_num,
                           chimeMetadata* metadata);
 private:
