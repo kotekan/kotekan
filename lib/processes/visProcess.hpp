@@ -330,8 +330,6 @@ private:
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<input_ctype> _inputs;
     std::vector<prod_ctype> _prods;
-    uint32_t _num_stack;
-    std::vector<rstack_ctype> _rstack_map;
 
     // Buffers to read/write
     Buffer* in_buf;

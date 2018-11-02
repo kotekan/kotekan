@@ -10,6 +10,7 @@
 #include "fmt.hpp"
 #include "visUtil.hpp"
 #include "visRawReader.hpp"
+#include "version.h"
 
 REGISTER_KOTEKAN_PROCESS(visRawReader);
 
@@ -70,13 +71,33 @@ visRawReader::visRawReader(Config &config,
     // Extract the attributes and index maps
     _metadata = _t["attributes"];
     _times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
-    _freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
+    auto freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
     _inputs = _t["index_map"]["input"].get<std::vector<input_ctype>>();
     _prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
     _ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
-    if (_t["index_map"].find("stack") != _t["index_map"].end()) {
-        _stack = _t["index_map"]["stack"].get<std::vector<stack_ctype>>();
+    if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
+        _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
+        _rstack = _t.at("reverse_map").at("stack"
+                                          ).get<std::vector<rstack_ctype>>();
+        _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
+
+    for (auto f : freqs) {
+        // TODO: add freq IDs to raw file format instead of restoring them here
+        uint32_t freq_id = 1024.0 / 800.0 * (800.0 - f.centre);
+        DEBUG("restored freq_id for f_centre=%.2f : %d", f.centre, freq_id);
+        _freqs.push_back({freq_id, f});
+    }
+
+    // check git version tag
+    // TODO: enforce that they match if build type == "release"?
+    if (_metadata.at("git_version_tag").get<std::string>()
+                != std::string(get_git_commit_hash()))
+        INFO("Git version tags don't match: dataset in file %s has tag %s, " \
+             "while the local git version tag is %s",
+             filename.c_str(),
+             _metadata.at("git_version_tag").get<std::string>().c_str(),
+             get_git_commit_hash());
 
     // Extract the structure
     file_frame_size = _t["structure"]["frame_size"].get<size_t>();
@@ -126,6 +147,13 @@ visRawReader::visRawReader(Config &config,
         throw std::runtime_error(fmt::format(
                     "Failed to map file {} to memory: {}.", filename + ".data",
                     strerror(errno)));
+
+    // tell the dataset manager and get a dataset ID for the data coming from
+    // this file
+    _use_dataset_manager = config.get_default<bool>(
+                unique_name, "use_dataset_manager", false);
+    if (_use_dataset_manager)
+        change_dataset_state();
 }
 
 visRawReader::~visRawReader() {
@@ -139,6 +167,38 @@ visRawReader::~visRawReader() {
 
 void visRawReader::apply_config(uint64_t fpga_seq) {
 
+}
+
+void visRawReader::change_dataset_state() {
+    datasetManager& dm = datasetManager::instance();
+
+    // Add the states: metadata, time, prod, freq, input, eigenvalue and stack.
+    state_uptr sstate = nullptr;
+    if (_stack.empty())
+        sstate = std::make_unique<stackState>(); // empty stackState
+    else
+        sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
+    state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
+    state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
+    state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
+    state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
+    state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
+
+    try {
+        state_id_t mstate_id = dm.add_state(std::make_unique<metadataState>(
+                                             _metadata.at("weight_type"),
+                                             _metadata.at("instrument_name"),
+                                             _metadata.at("git_version_tag"),
+                                             std::move(tstate))).first;
+
+        // register it as root dataset
+        _dataset_id = dm.add_dataset(dataset(mstate_id, 0, true));
+    } catch (std::runtime_error& e) {
+        // Crash if anything goes wrong. This process is processing data from a
+        // file, so should be restarted after fixing the problem.
+        ERROR("Failure in datasetManager: %s\nExiting...");
+        raise(SIGINT);
+    }
 }
 
 void visRawReader::read_ahead(int ind) {
@@ -187,7 +247,8 @@ void visRawReader::main_thread() {
     }
 
     while (!stop_thread && ind < nframe) {
-        // Wait for the buffer to be filled with data
+
+        // Wait for an empty frame in the output buffer
         if((frame = wait_for_empty_frame(out_buf, unique_name.c_str(),
                                          frame_id)) == nullptr) {
             break;
@@ -203,6 +264,11 @@ void visRawReader::main_thread() {
 
         // Allocate the metadata space
         allocate_new_metadata_object(out_buf, frame_id);
+
+        // Set the dataset ID
+        if (_use_dataset_manager)
+            ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
+                = _dataset_id;
 
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
@@ -223,18 +289,17 @@ void visRawReader::main_thread() {
                 num_elements = _inputs.size();
             // Fill data with zeros
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto frame = visFrameView(out_buf, frame_id, _inputs.size(),
+            auto visFrame = visFrameView(out_buf, frame_id, _inputs.size(),
                     num_vis, _ev.size());
-            std::memset(frame.vis.data(), 0, sizeof(cfloat) * frame.num_prod);
-            std::memset(frame.weight.data(), 0, sizeof(float) * frame.num_prod);
-            std::memset(frame.eval.data(), 0, sizeof(float) * frame.num_ev);
-            std::memset(frame.evec.data(), 0, sizeof(cfloat) * frame.num_ev
-                    * frame.num_elements);
-            std::memset(frame.gain.data(), 0, sizeof(cfloat) * frame.num_elements);
-            std::memset(frame.flags.data(), 0, sizeof(float) * frame.num_elements);
-			frame.freq_id = 0;
-			frame.dataset_id = 0;
-			frame.erms = 0;
+            std::memset(visFrame.vis.data(), 0, sizeof(cfloat) * visFrame.num_prod);
+            std::memset(visFrame.weight.data(), 0, sizeof(float) * visFrame.num_prod);
+            std::memset(visFrame.eval.data(), 0, sizeof(float) * visFrame.num_ev);
+            std::memset(visFrame.evec.data(), 0, sizeof(cfloat) * visFrame.num_ev
+                    * visFrame.num_elements);
+            std::memset(visFrame.gain.data(), 0, sizeof(cfloat) * visFrame.num_elements);
+            std::memset(visFrame.flags.data(), 0, sizeof(float) * visFrame.num_elements);
+            visFrame.freq_id = 0;
+            visFrame.erms = 0;
 			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
         }
 

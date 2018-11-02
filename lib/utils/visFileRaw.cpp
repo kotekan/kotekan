@@ -35,7 +35,7 @@ void visFileRaw::create_file(
     auto pstate = dm.dataset_state<prodState>(dataset);
     auto fstate = dm.dataset_state<freqState>(dataset);
     auto sstate = dm.dataset_state<stackState>(dataset);
-    if (!istate || !pstate || !fstate) {
+    if (!istate || !pstate || !fstate || !sstate) {
         ERROR("Required datasetStates not found for dataset_id=%i", dataset);
         throw std::runtime_error("Could not create file.");
     }
@@ -55,6 +55,7 @@ void visFileRaw::create_file(
     if (sstate->is_stacked()) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
+        file_metadata["structure"]["num_stack"] = sstate->get_num_stack();
     }
 
 

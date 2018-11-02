@@ -30,8 +30,14 @@ using json = nlohmann::json;
  *         @buffer_metadata visMetadata
  *
  * @conf   chunk_size			Array of [int, int, int]. Chunk size of the data (freq, prod, time).
- * @conf   infile				String. Path to the data files to read (e.g. "/path/to/0000_000", without .data/meta).
  * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
+ * @conf   use_dataset_manager  Bool. If set to `true`, the metadata will be
+ *                              fetched from the datasetManager, otherwise
+ *                              infile has to be set and the metadata will be
+ *                              read from there.
+ * @conf   infile				String. Path to the data files to read (e.g.
+ *                              "/path/to/0000_000", without .data/meta).
+ *                              Only needed if use_dataset_manager is `False`.
  *
  * @par Metrics
  * @metric kotekan_vistranspose_data_transposed_bytes
@@ -50,6 +56,11 @@ public:
 
     void apply_config(uint64_t fpga_seq) override;
 private:
+    /// Wait for the first frames dataset ID, request dataset states from the
+    /// datasetManager and prepare all metadata that is not already set in the
+    /// constructor.
+    void gather_metadata();
+
     // Buffers
     Buffer * in_buf;
 
@@ -60,7 +71,9 @@ private:
     //size of frequency dimension of chunk
     size_t chunk_f;
 
+    // Config values
     std::string filename;
+    bool _use_dataset_manager;
 
     // Datasets to be stored until ready to write
     std::vector<time_ctype> time;

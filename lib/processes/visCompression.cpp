@@ -91,6 +91,7 @@ void baselineCompression::change_dataset_state(dset_id_t ds_id) {
     auto& dm = datasetManager::instance();
     state_id_t stack_state_id;
 
+    // TODO: get both states synchronoulsy?
     auto input_state_ptr = dm.dataset_state<inputState>(ds_id);
     prod_state_ptr = dm.dataset_state<prodState>(ds_id);
 

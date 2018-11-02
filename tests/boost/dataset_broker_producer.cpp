@@ -67,7 +67,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
 
-    usleep(1000000);
+    usleep(2000000);
 }
 
 

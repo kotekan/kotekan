@@ -22,3 +22,12 @@ Management of Dataset States
 
 .. doxygenclass:: stackState
     :members:
+
+.. doxygenclass:: timeState
+    :members:
+
+.. doxygenclass:: metadataState
+    :members:
+
+.. doxygenclass:: eigenvalueState
+    :members:

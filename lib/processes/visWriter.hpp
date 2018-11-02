@@ -145,6 +145,12 @@ private:
     movingAverage write_time;
 
     uint32_t dropped_frame_count = 0;
+
+    /// Frequency IDs that we are expecting
+    std::map<uint32_t, uint32_t> _freq_id_map;
+
+    /// number of products
+    size_t _num_vis;
 };
 
 /**

@@ -113,12 +113,6 @@ void visWriter::main_thread() {
 
     unsigned int frame_id = 0;
 
-    // Frequency IDs that we are expecting
-    std::map<uint32_t, uint32_t> freq_id_map;
-
-    // number of products
-    size_t num_vis;
-
     // Look over the current buffers for information to setup the acquisition
     if (!init_acq())
         return;
@@ -160,42 +154,18 @@ void visWriter::main_thread() {
             return;
         }
 
-        // wait for the future from change_dataset_state before reading
-        // freq_id_map
-        if (future_metadata.valid()) {
-            try {
-                std::tie(num_vis, freq_id_map) = future_metadata.get();
-            } catch (std::runtime_error& e) {
-                WARN("visWriter: Dropping frame, failure in datasetManager: %s",
-                     e.what());
-                dropped_frame_count++;
-                prometheusMetrics::instance().add_process_metric(
-                    "kotekan_viswriter_dropped_frame_total",
-                    unique_name, dropped_frame_count
-                );
-
-                // Mark the buffer and move on
-                mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-
-                // Advance the current frame ids
-                frame_id = (frame_id + 1) % in_buf->num_frames;
-
-                continue;
-            }
-        }
-
         // Check if the frequency we are receiving is on the list of frequencies
         // we are processing
-        if (freq_id_map.count(frame.freq_id) == 0) {
+        if (_freq_id_map.count(frame.freq_id) == 0) {
             WARN("Frequency id=%i not enabled for visWriter, discarding frame",
                  frame.freq_id);
 
         // Check that the number of visibilities matches what we expect
-        } else if (frame.num_prod != num_vis) {
+        } else if (frame.num_prod != _num_vis) {
             string msg = fmt::format(
                 "Number of products in frame doesn't match state or file " \
                         "({} != {}).",
-                frame.num_prod, num_vis
+                frame.num_prod, _num_vis
             );
             ERROR(msg.c_str());
             raise(SIGINT);
@@ -205,7 +175,7 @@ void visWriter::main_thread() {
 
             DEBUG("Writing frequency id=%i", frame.freq_id);
 
-            uint32_t freq_ind = freq_id_map[frame.freq_id];
+            uint32_t freq_ind = _freq_id_map[frame.freq_id];
 
             // Add all the new information to the file.
             double start = current_time();
@@ -285,7 +255,18 @@ bool visWriter::init_acq() {
         ds_id = dm.add_dataset(dataset(writer_dstate, 0, true), true);
 
     // get dataset states
-    future_metadata = std::async(change_dataset_state, ds_id);
+    try {
+        std::tie(_num_vis, _freq_id_map) = change_dataset_state(ds_id);
+    } catch (std::runtime_error& e) {
+        ERROR("Failure in datasetManager: %s", e.what());
+        ERROR("Cancelling write to file.");
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_viswriter_dropped_frame_total",
+            unique_name, 1
+        );
+
+        return false;
+    }
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;
