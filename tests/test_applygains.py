@@ -37,11 +37,8 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset('gain', (nfreq, nelem), dtype='c8')
-    # TODO: delete
-    #gain = np.zeros((nfreq, nelem), dtype='c8')
     gain = (np.arange(nfreq, dtype='f2')[:, None] 
             * 1j*np.arange(nelem, dtype='f2')[None, :])
-#            + 1. + 1j)
     dset[...] = gain * mult_factor
 
     dset2 = f.create_dataset('weight', (nfreq, nelem), dtype='f')
@@ -155,7 +152,7 @@ def test_apply(tmpdir_factory):
             if gain_weight[ii] == 0.:
                 gains[ii] = 1.
                 weight_factor[ii] = 0.
-            elif abs(gains[ii]) < 1E-8:
+            elif abs(gains[ii]) == 0.:
                 weight_factor[ii] = 0.
             else:
                 weight_factor[ii] = 1./abs(gains[ii])**2

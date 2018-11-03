@@ -146,7 +146,6 @@ void applyGains::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
     unsigned int freq;
-    double epsilon = 1.0e-8; // Limit to consider a gain to be zero
     double tpast;
     double frame_time;
     size_t num_late_frames = 0;
@@ -223,8 +222,8 @@ void applyGains::main_thread() {
                 // If gain_weight is zero, make gains = 1 and weights = 0
                 gain[ii] = 1. + 0i;
                 weight_factor[ii] = 0.0;
-            } else if (abs(gain[ii])<epsilon) {
-                // If gain is zero (or very small) make the weight be zero
+            } else if (abs(gain[ii])==0.0) {
+                // If gain is zero make the weight be zero
                 weight_factor[ii] = 0.0;
             } else {
                 weight_factor[ii] = pow(abs(gain[ii]), -2.0);
