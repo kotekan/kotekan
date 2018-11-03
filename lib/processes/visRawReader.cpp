@@ -84,7 +84,7 @@ visRawReader::visRawReader(Config &config,
 
     for (auto f : freqs) {
         // TODO: add freq IDs to raw file format instead of restoring them here
-        uint32_t freq_id = 1024.0 / 800.0 * (800.0 - f.centre);
+        uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
         DEBUG("restored freq_id for f_centre=%.2f : %d", f.centre, freq_id);
         _freqs.push_back({freq_id, f});
     }
@@ -265,11 +265,6 @@ void visRawReader::main_thread() {
         // Allocate the metadata space
         allocate_new_metadata_object(out_buf, frame_id);
 
-        // Set the dataset ID
-        if (_use_dataset_manager)
-            ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
-                = _dataset_id;
-
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
             // Copy the metadata from the file
@@ -302,6 +297,11 @@ void visRawReader::main_thread() {
             visFrame.erms = 0;
 			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
         }
+
+        // Set the dataset ID
+        if (_use_dataset_manager)
+            ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
+                = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again
         if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size,
