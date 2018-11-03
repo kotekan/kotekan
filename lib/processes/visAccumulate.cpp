@@ -300,6 +300,8 @@ bool pulsarSpec::update_spec(nlohmann::json &json) {
         return false;
     }
     polyco = * new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+
+    return true;
 }
 
 
