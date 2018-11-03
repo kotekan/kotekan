@@ -14,6 +14,8 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <mutex>
+
 
 using namespace std::placeholders;
 
@@ -319,4 +321,24 @@ std::function<float(timespec, float)> pulsarSpec::get_gating_func() {
             return 0.;
         }
     };
+}
+
+
+bool gateInternalState::reset() {
+
+    // Reset the internal counters
+    weighted_samples = 0;
+    // ... zero out the accumulation array
+
+    // Acquire the lock so we don't get confused by any changes made via the
+    // REST callback
+    std::lock_guard<std::mutex> lock(gate_mtx);
+
+    if (!spec.enabled) {
+        weightfunc = nullptr;
+        return false;
+    }
+
+    weightfunc = spec.weight_function();
+    return true;
 }
