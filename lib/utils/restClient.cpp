@@ -26,7 +26,7 @@ restClient::restClient() : _main_thread() {
     // restClient::instance() was just called the first time.
     // wait a bit to make sure the event_base is initialized in the
     // event_thread before someone makes a request.
-    usleep(5000);
+    usleep(10000);
 }
 
 restClient::~restClient() {
