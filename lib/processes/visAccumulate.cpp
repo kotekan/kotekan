@@ -303,7 +303,7 @@ bool pulsarSpec::update_spec(nlohmann::json &json) {
 }
 
 
-std::function<float(timespec, float)> pulsarSpec::get_gating_func() {
+std::function<float(timespec, float)> pulsarSpec::weight_function() {
 
     // capture the variables needed to calculate timing
     return [

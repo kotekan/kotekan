@@ -23,7 +23,7 @@ public:
     gateSpec(double gpu_frame_width);
 
     virtual bool update_spec(nlohmann::json &json);
-    virtual std::function<float(timespec, float)> get_gating_func();
+    virtual std::function<float(timespec, float)> weight_function();
     std::string name;
     bool enabled;
 protected:
@@ -36,7 +36,7 @@ class pulsarSpec : public gateSpec {
 public:
     pulsarSpec(double gpu_frame_width) : gateSpec(gpu_frame_width) {};
     bool update_spec(nlohmann::json &json) override;
-    std::function<float(timespec, float)> get_gating_func() override;
+    std::function<float(timespec, float)> weight_function() override;
 private:
     // Config parameters for pulsar gating
     float dm;
@@ -45,7 +45,6 @@ private:
     double rot_freq;  // in Hz
     float pulse_width;  // in s
     Polyco polyco;
-};
 
     friend visAccumulate;
     friend gateInternalState;
