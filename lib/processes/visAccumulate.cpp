@@ -13,6 +13,8 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <mutex>
+
 
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
@@ -284,4 +286,24 @@ void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
 void visAccumulate::pulsar_gating(int in_frame_id) {
     // do gating things here
 
+}
+
+
+bool gateInternalState::reset() {
+
+    // Reset the internal counters
+    weighted_samples = 0;
+    // ... zero out the accumulation array
+
+    // Acquire the lock so we don't get confused by any changes made via the
+    // REST callback
+    std::lock_guard<std::mutex> lock(gate_mtx);
+
+    if (!spec.enabled) {
+        weightfunc = nullptr;
+        return false;
+    }
+
+    weightfunc = spec.weight_function();
+    return true;
 }

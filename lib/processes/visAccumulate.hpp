@@ -19,20 +19,52 @@
 
 
 class gateSpec {
+private:
     std::string name;
     bool enabled;
-};
-
-
-class gateInternalState {
-private:
-    Buffer* buf;
-    int frame_id;
-    gateSpec spec;
-    std::function<float(timespec, float)> weightfunc;
 
     friend visAccumulate;
-}
+    friend gateInternalState;
+};
+
+/**
+ * @class gateInternalState
+ * @brief Hold the internal state of a gated accumulation.
+ **/
+class gateInternalState {
+private:
+
+    // This is all used internally in visAccumulate so needs to be able to access
+    friend visAccumulate;
+
+    /// The buffer we are outputting too
+    Buffer* buf;
+
+    // Current frame ID of the buffer we are using
+    int frame_id;
+
+    /// Specification of how we are gating
+    gateSpec spec;
+
+    /// The weighted number of total samples accumulated. Must be reset every
+    /// integration period.
+    float weighted_samples;
+
+    /// Function for applying the weighting. While this can essentially be
+    /// derived from the gateSpec we need to cache it so the gating can be
+    /// updated externally within an accumulation.
+    std::function<float(timespec, float)> weightfunc;
+
+    /// Mutex to control update of gateSpec
+    std::mutex gate_mtx;
+
+    /**
+     * @brief Reset the state when we restart an integration.
+     *
+     * @returns Return if this accumulation was enabled.
+     **/
+    bool reset();
+};
 
 
 /**
