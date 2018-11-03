@@ -6,6 +6,7 @@
 #include "prometheusMetrics.hpp"
 #include "fmt.hpp"
 #include "datasetManager.hpp"
+#include "configUpdater.hpp"
 
 #include <time.h>
 #include <iomanip>
@@ -13,6 +14,8 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+
+using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
@@ -56,37 +59,30 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
-    // Map gating functions
-    gating["pulsar"] = &visAccumulate::pulsar_gating;
+    // Register gating update callbacks
+    std::map<std::string, std::function<bool(nlohmann::json &)>> callbacks;
 
-    apply_config(0);
-}
+    nlohmann::json gating_modes = config.get_value(unique_name, "gating");
 
-visAccumulate::~visAccumulate() {
-}
-
-void visAccumulate::apply_config(uint64_t fpga_seq) {
-    // TODO: for now I'm assuming everything that is in the constructor
-    //       should not be updated dynamically
-
-    // Get gating specifications from config
-    if (config.exists(unique_name, "pulsar_gating")){
-
-        std::string psr_block = unique_name + "/pulsar_gating/";
-        gating_enabled["pulsar"] = config.get<bool>(psr_block, "enabled");
-
-        if (gating_enabled["pulsar"]) {
-            // set up pulsar polyco
-            std::vector<float> coeff = config.get<std::vector<float>>(psr_block, "polyco");
-            float dm = config.get<float>(psr_block, "dm");
-            double tmid = config.get<double>(psr_block, "tmid");  // in days since MJD
-            double phase_ref = config.get<double>(psr_block, "phase_ref");  // in number of rotations
-            rot_freq = config.get<double>(psr_block, "rot_freq");  // in Hz
-            pulse_width = config.get<float>(psr_block, "pulse_width");
-            polyco = new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+    for (nlohmann::json::iterator it = gating_modes.begin(); it < gating_modes.end(); ++it) {
+        // Get gating mode and initialize the correct spec
+        std::string mode = it.value().at("mode").get<std::string>();
+        std::string key = it.key();
+        if (mode == "pulsar") {
+            gating_specs[key] = new pulsarSpec(samples_per_data_set * 2.56e-6);
+        } else {
+            throw std::runtime_error("Could not find gating mode " + mode);
         }
+        callbacks[key] = std::bind(&pulsarSpec::update_spec, gating_specs[key], _1);
     }
 
+    configUpdater::instance().subscribe(this, callbacks);
+
+}
+
+visAccumulate::~visAccumulate() {}
+
+void visAccumulate::apply_config(uint64_t fpga_seq) {
 }
 
 void visAccumulate::main_thread() {
@@ -173,14 +169,6 @@ void visAccumulate::main_thread() {
         for(size_t i = 0; i < nprod_gpu; i++) {
             cfloat t = {(float)input[2*i+1], (float)input[2*i]};
             vis1[i] += t;
-        }
-
-        // TODO: this is a placeholder. Also need to update the init and final methods.
-        // Perform gating
-        for (auto gate : gating) {
-            if (!gating_enabled[gate.first])
-                continue;
-            (this->*(gate.second))(in_frame_id);
         }
 
         // We are calculating the weights by differencing even and odd samples.
@@ -281,7 +269,54 @@ void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
 }
 
 
-void visAccumulate::pulsar_gating(int in_frame_id) {
-    // do gating things here
+gateSpec::gateSpec(double width) : gpu_frame_width(width) {}
 
+
+bool pulsarSpec::update_spec(nlohmann::json &json) {
+
+    try {
+        enabled = json.at("enabled").get<bool>();
+    } catch (std::exception& e) {
+        WARN("Failure reading 'enabled' from update: %s", e.what());
+        return false;
+    }
+
+    if (!enabled)
+        return true;
+
+    std::vector<float> coeff;
+    try {
+        // Get gating specifications from config
+        coeff = json.at("coeff").get<std::vector<float>>();
+        dm = json.at("dm").get<float>();
+        tmid = json.at("tmid").get<double>();
+        phase_ref = json.at("phase_ref").get<double>();
+        rot_freq = json.at("rot_freq").get<double>();
+        pulse_width = json.at("pulse_width").get<float>();
+    } catch (std::exception& e) {
+        WARN("Failure reading pulsar parameters from update: %s", e.what());
+        return false;
+    }
+    polyco = * new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+}
+
+
+std::function<float(timespec, float)> pulsarSpec::get_gating_func() {
+
+    // capture the variables needed to calculate timing
+    return [
+        p = polyco, f0 = rot_freq, fw = gpu_frame_width,
+        pw = pulse_width
+    ](timespec t, float freq) mutable {
+        // Calculate nearest pulse times of arrival
+        double toa = p.next_toa(t, freq);
+        double last_toa = toa - 1. / f0;
+
+        // Weights are on/off for now
+        if (toa < fw || last_toa + pw > 0) {
+            return 1.;
+        } else {
+            return 0.;
+        }
+    };
 }

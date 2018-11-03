@@ -27,6 +27,8 @@ public:
      **/
     Polyco(double tmid, float dm, double phase_ref, double rot_freq, std::vector<float> coeff);
 
+    Polyco();
+
     /**
      * @brief Calculate pulsar phase from time in MJD.
      * @param t    Time in MJD (days).

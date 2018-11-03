@@ -5,6 +5,8 @@
 Polyco::Polyco(double t, float d, double p, double f0, std::vector<float> c):
         tmid(t), dm(d), phase_ref(p), rot_freq(f0), coeff(c) {}
 
+Polyco::Polyco() {}
+
 double Polyco::mjd2phase(double t) {
 
     double dt = (t - tmid) * 1440;

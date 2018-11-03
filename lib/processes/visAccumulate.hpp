@@ -19,8 +19,32 @@
 
 
 class gateSpec {
+public:
+    gateSpec(double gpu_frame_width);
+
+    virtual bool update_spec(nlohmann::json &json);
+    virtual std::function<float(timespec, float)> get_gating_func();
     std::string name;
     bool enabled;
+protected:
+    // Length of a gpu frame in s
+    double gpu_frame_width;
+};
+
+
+class pulsarSpec : public gateSpec {
+public:
+    pulsarSpec(double gpu_frame_width) : gateSpec(gpu_frame_width) {};
+    bool update_spec(nlohmann::json &json) override;
+    std::function<float(timespec, float)> get_gating_func() override;
+private:
+    // Config parameters for pulsar gating
+    float dm;
+    double tmid;  // in days since MJD
+    double phase_ref;  // in number of rotations
+    double rot_freq;  // in Hz
+    float pulse_width;  // in s
+    Polyco polyco;
 };
 
 
@@ -32,7 +56,7 @@ private:
     std::function<float(timespec, float)> weightfunc;
 
     friend visAccumulate;
-}
+};
 
 
 /**
@@ -93,11 +117,6 @@ private:
     size_t samples_per_data_set;
     size_t num_gpu_frames;
 
-    // Config parameters for pulsar gating
-    double rot_freq;  // in Hz
-    float pulse_width;  // in s
-    Polyco * polyco;
-
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
 
@@ -112,14 +131,8 @@ private:
                          cfloat* vis1, float* vis2, int freq_ind,
                          uint32_t total_samples);
 
-    // Abstraction of gating accumulation
-    // TODO: does it need more that input_frame_id ?
-    typedef void(visAccumulate::*gating_func)(int);
-    // List of gates and whether they are enabled
-    std::map<std::string, gating_func> gating;
-    std::map<std::string, bool> gating_enabled;
-
-    void pulsar_gating(int in_frame_id);
+    // List of gating specifications
+    std::map<std::string, gateSpec*> gating_specs;
 };
 
 #endif
