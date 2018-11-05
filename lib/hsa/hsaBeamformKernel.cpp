@@ -139,7 +139,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref) {
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
@@ -240,7 +240,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     } args;
     memset(&args, 0, sizeof(args));
 
-    args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    args.input_buffer = device.get_gpu_memory("input_reordered", input_frame_len);
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);

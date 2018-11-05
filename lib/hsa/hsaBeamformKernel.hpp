@@ -47,8 +47,8 @@
  *              update config             ew_spacing[ew_id]
  * 
  * @par GPU Memory
- * @gpu_mem  input              Input data of size input_frame_len
- *     @gpu_mem_type            staging
+ * @gpu_mem  input_reordered    Input data of size input_frame_len
+ *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c uchar
  *     @gpu_mem_metadata        chimeMetadata
  * @gpu_mem  beamform_output    Output data of size output_frame_len
@@ -118,7 +118,7 @@ private:
      * @param freq_now    freq of this gpu
      * @param freq_ref    reference freq, which determines the N-S extent of the beams
      */
-    void calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref);
+    void calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref);
 
     /**
      * @brief Calculate phase delays for the E-W beams
@@ -178,7 +178,7 @@ private:
     float * _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam 
-    float freq_ref;
+    double freq_ref;
 
     ///Flag to control gains to be only loaded on request.
     bool update_gains;
