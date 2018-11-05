@@ -33,6 +33,7 @@ extern "C" {
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -323,6 +324,25 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
  *          a call to @c mark_frame_empty() with that consumer and frame_id
  */
 uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int frame_id);
+
+
+/**
+ * @brief Wait for a full frame on the given buffer up to timeout.
+ * 
+ * This function will timeout after `wait` seconds.
+ * 
+ * @param[in] buf Buffer to wait on.
+ * @param[in] name Name of the process.
+ * @param[in] ID Frame ID to wait at.
+ * @param[in] timeout Exit after this we exceed this *absolute* time.
+ * 
+ * @return Return status:
+ *   - `0`: Success! We have a new frame.
+ *   - `1`: Failure! We timed out waiting.
+ *   - `-1`: Failure! We received the thread exit signal. 
+ **/
+int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
+                                const int ID, const struct timespec timeout);
 
 /**
  * @brief Checks if the requested buffer is empty.

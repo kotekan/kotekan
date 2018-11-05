@@ -23,7 +23,7 @@
 #include "json.hpp"
 
 #include "Config.hpp"
-
+#include "buffer.h"
 
 using json = nlohmann::json;
 
