@@ -43,44 +43,45 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
 
     restServer *server = (restServer *)(cb_data);
 
-    std::lock_guard<std::mutex> lock(server->callback_map_lock);
-
     string url = string(evhttp_request_get_uri(request));
 
     DEBUG2("restServer: Got request with url %s", url.c_str());
 
-    map<string, string> &aliases = server->get_aliases();
-    if (aliases.find(url) != aliases.end()) {
-        url = aliases[url];
-    }
-
-    if (request->type == EVHTTP_REQ_GET) {
-        if (!server->get_callbacks.count(url)) {
-            DEBUG("restServer: GET Endpoint %s called, but not found", url.c_str());
-            evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
-            return;
+    {
+        std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+        map<string, string> &aliases = server->get_aliases();
+        if (aliases.find(url) != aliases.end()) {
+            url = aliases[url];
         }
-        connectionInstance conn(request);
-        server->get_callbacks[url](conn);
-        return;
-    }
 
-    if (request->type == EVHTTP_REQ_POST) {
-        if (!server->json_callbacks.count(url)) {
-            DEBUG("restServer: Endpoint %s called, but not found", url.c_str());
-            evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+        if (request->type == EVHTTP_REQ_GET) {
+            if (!server->get_callbacks.count(url)) {
+                DEBUG("restServer: GET Endpoint %s called, but not found", url.c_str());
+                evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+                return;
+            }
+            connectionInstance conn(request);
+            server->get_callbacks[url](conn);
             return;
         }
 
-        // We currently assume that POST requests come with a JSON message
-        json json_request;
-        if (server->handle_json(request, json_request) != 0) {
+        if (request->type == EVHTTP_REQ_POST) {
+            if (!server->json_callbacks.count(url)) {
+                DEBUG("restServer: Endpoint %s called, but not found", url.c_str());
+                evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+                return;
+            }
+
+            // We currently assume that POST requests come with a JSON message
+            json json_request;
+            if (server->handle_json(request, json_request) != 0) {
+                return;
+            }
+
+            connectionInstance conn(request);
+            server->json_callbacks[url](conn, json_request);
             return;
         }
-
-        connectionInstance conn(request);
-        server->json_callbacks[url](conn, json_request);
-        return;
     }
 
     DEBUG("restServer: Call back with method != POST|GET called!");
@@ -88,34 +89,41 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
 }
 
 void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
-    if (get_callbacks.count(endpoint)) {
-        WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
+        if (get_callbacks.count(endpoint)) {
+            WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+        }
+        get_callbacks[endpoint] = callback;
     }
     INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
-    get_callbacks[endpoint] = callback;
 }
 
 void restServer::register_post_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
-    if (json_callbacks.count(endpoint)) {
-        WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
+        if (json_callbacks.count(endpoint)) {
+            WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+        }
+        json_callbacks[endpoint] = callback;
     }
     INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
-    json_callbacks[endpoint] = callback;
 }
 
 void restServer::remove_get_callback(string endpoint) {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
+
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     auto it = get_callbacks.find(endpoint);
     if (it != get_callbacks.end()) {
         get_callbacks.erase(it);
@@ -123,10 +131,11 @@ void restServer::remove_get_callback(string endpoint) {
 }
 
 void restServer::remove_json_callback(string endpoint) {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
+
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     auto it = json_callbacks.find(endpoint);
     if (it != json_callbacks.end()) {
         json_callbacks.erase(it);
@@ -134,7 +143,6 @@ void restServer::remove_json_callback(string endpoint) {
 }
 
 void restServer::add_alias(string alias, string target) {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (alias.substr(0, 1) != "/") {
         alias = "/" + alias;
     }
@@ -142,21 +150,21 @@ void restServer::add_alias(string alias, string target) {
         target = "/" + target;
     }
 
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     if (json_callbacks.find(alias) != json_callbacks.end() ||
         get_callbacks.find(alias) != get_callbacks.end()) {
         WARN("restServer: The endpoint %s already exists, cannot add an alias with that name");
         return;
     }
-
     aliases[alias] = target;
 }
 
 void restServer::remove_alias(string alias) {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (alias.substr(0, 1) != "/") {
         alias = "/" + alias;
     }
 
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     auto it = aliases.find(alias);
     if (it != aliases.end()) {
         aliases.erase(it);
@@ -174,7 +182,7 @@ void restServer::add_aliases_from_config(Config &config) {
 }
 
 void restServer::remove_all_aliases() {
-    std::lock_guard<std::mutex> lock(callback_map_lock);
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     aliases.clear();
 }
 

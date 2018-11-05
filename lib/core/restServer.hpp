@@ -11,6 +11,7 @@
 #include <functional>
 #include <map>
 #include <atomic>
+#include <shared_mutex>
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -295,7 +296,7 @@ private:
     std::map<std::string, std::string> aliases;
 
     /// Mutex to lock changes to the maps while a request is in progress
-    std::mutex callback_map_lock;
+    std::shared_timed_mutex callback_map_lock;
 
     /// The libevent base
 	struct event_base *event_base = nullptr;
