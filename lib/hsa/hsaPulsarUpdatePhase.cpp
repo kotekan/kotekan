@@ -147,8 +147,8 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
                 for (int p=0;p<2;p++){ //loop 2 pol
                     uint elem_id = p*1024+i*256+j;
                     //Not scrembled, assume reordering kernel has been run
-                    output[(b*_num_elements+elem_id)*2  ] = delay_real*gains[(b*_num_elements + elem_id*2)  ] - delay_imag*gains[(b*_num_elements + elem_id)*2+1];
-                    output[(b*_num_elements+elem_id)*2+1] = delay_real*gains[(b*_num_elements + elem_id*2)+1] + delay_imag*gains[(b*_num_elements + elem_id)*2  ];
+                    output[(b*_num_elements+elem_id)*2  ] = delay_real*gains[(b*_num_elements + elem_id)*2  ] - delay_imag*gains[(b*_num_elements + elem_id)*2+1];
+                    output[(b*_num_elements+elem_id)*2+1] = delay_real*gains[(b*_num_elements + elem_id)*2+1] + delay_imag*gains[(b*_num_elements + elem_id)*2  ];
                 }
             }
         }
