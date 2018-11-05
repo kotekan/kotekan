@@ -17,6 +17,7 @@
 #include <fstream>
 #include <time.h>
 #include <regex>
+#include <signal.h>
 #include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);

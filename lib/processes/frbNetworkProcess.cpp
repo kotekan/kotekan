@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <signal.h>
 #include <functional>
 #include <string>
 
@@ -11,8 +12,8 @@
 #include <unistd.h>
 #include <chrono>
 #include <fstream>
-#include<arpa/inet.h>
-#include<sys/socket.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <cmath>
 
