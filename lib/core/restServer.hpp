@@ -294,6 +294,9 @@ private:
     /// Alias map
     std::map<std::string, std::string> aliases;
 
+    /// Mutex to lock changes to the maps while a request is in progress
+    std::mutex callback_map_lock;
+
     /// The libevent base
 	struct event_base *event_base = nullptr;
 

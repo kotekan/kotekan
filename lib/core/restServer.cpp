@@ -43,9 +43,11 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
 
     restServer *server = (restServer *)(cb_data);
 
+    std::lock_guard<std::mutex> lock(server->callback_map_lock);
+
     string url = string(evhttp_request_get_uri(request));
 
-    DEBUG2("Got request with url %s", url.c_str());
+    DEBUG2("restServer: Got request with url %s", url.c_str());
 
     map<string, string> &aliases = server->get_aliases();
     if (aliases.find(url) != aliases.end()) {
@@ -54,7 +56,7 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
 
     if (request->type == EVHTTP_REQ_GET) {
         if (!server->get_callbacks.count(url)) {
-            DEBUG("GET Endpoint %s called, but not found", url.c_str());
+            DEBUG("restServer: GET Endpoint %s called, but not found", url.c_str());
             evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
             return;
         }
@@ -65,7 +67,7 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
 
     if (request->type == EVHTTP_REQ_POST) {
         if (!server->json_callbacks.count(url)) {
-            DEBUG("Endpoint %s called, but not found", url.c_str());
+            DEBUG("restServer: Endpoint %s called, but not found", url.c_str());
             evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
             return;
         }
@@ -81,33 +83,36 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
         return;
     }
 
-    DEBUG("Call back with method != POST|GET called!");
+    DEBUG("restServer: Call back with method != POST|GET called!");
     evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), "BAD_REQUEST");
 }
 
 void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
     if (get_callbacks.count(endpoint)) {
-        WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
+        WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
     }
-    INFO("Adding REST endpoint: %s", endpoint.c_str());
+    INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
     get_callbacks[endpoint] = callback;
 }
 
 void restServer::register_post_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
     if (json_callbacks.count(endpoint)) {
-        WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
+        WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
     }
-    INFO("Adding REST endpoint: %s", endpoint.c_str());
+    INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
     json_callbacks[endpoint] = callback;
 }
 
 void restServer::remove_get_callback(string endpoint) {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
@@ -118,6 +123,7 @@ void restServer::remove_get_callback(string endpoint) {
 }
 
 void restServer::remove_json_callback(string endpoint) {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
@@ -128,6 +134,7 @@ void restServer::remove_json_callback(string endpoint) {
 }
 
 void restServer::add_alias(string alias, string target) {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (alias.substr(0, 1) != "/") {
         alias = "/" + alias;
     }
@@ -137,7 +144,7 @@ void restServer::add_alias(string alias, string target) {
 
     if (json_callbacks.find(alias) != json_callbacks.end() ||
         get_callbacks.find(alias) != get_callbacks.end()) {
-        WARN("The endpoint %s already exists, cannot add an alias with that name");
+        WARN("restServer: The endpoint %s already exists, cannot add an alias with that name");
         return;
     }
 
@@ -145,6 +152,7 @@ void restServer::add_alias(string alias, string target) {
 }
 
 void restServer::remove_alias(string alias) {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     if (alias.substr(0, 1) != "/") {
         alias = "/" + alias;
     }
@@ -159,13 +167,14 @@ void restServer::add_aliases_from_config(Config &config) {
     if (!config.exists("/rest_server", "aliases"))
         return;
     json config_aliases = config.get_value("/rest_server", "aliases");
-    INFO("%s", config_aliases.dump().c_str());
+    INFO("restServer: config aliases: %s", config_aliases.dump().c_str());
     for (json::iterator it = config_aliases.begin(); it != config_aliases.end(); ++it) {
         add_alias(it.key(), it.value());
     }
 }
 
 void restServer::remove_all_aliases() {
+    std::lock_guard<std::mutex> lock(callback_map_lock);
     aliases.clear();
 }
 
@@ -217,15 +226,15 @@ int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
 
     struct evbuffer * ev_buf = evhttp_request_get_input_buffer(request);
     if(ev_buf == nullptr) {
-        ERROR("Cannot get the libevent buffer for the request");
+        ERROR("restServer: Cannot get the libevent buffer for the request");
         return -1;
     }
 
     string message = get_http_message(request);
 
     if (message.empty()) {
-        ERROR("Request is empty, returning error");
-        string error_message = "Error Message: Message was empty expected JSON string";
+        ERROR("restServer: Request is empty, returning error");
+        string error_message = "Error Message: Message was empty, expected JSON string";
         evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), message.c_str());
         return -1;
     }
@@ -234,7 +243,7 @@ int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
         json_parse = json::parse(message);
     } catch (std::exception ex) {
         string error_message = string("Error Message: JSON failed to parse, error: ") + string(ex.what());
-        ERROR("Failed to pase JSON from request, the error is '%s', and the HTTP message was: %s", ex.what(), message.c_str());
+        ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP message was: %s", ex.what(), message.c_str());
         evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), error_message.c_str());
         return -1;
     }
@@ -277,14 +286,14 @@ void restServer::http_server_thread() {
 
     // Allow for using extra threads (not currently needed)
     if (evthread_use_pthreads()) {
-        ERROR("Cannot use pthreads with libevent!");
+        ERROR("restServer: Cannot use pthreads with libevent!");
         return;
     }
 
     // Create the base event for handling requests
 	event_base = event_base_new();
     if (event_base == nullptr) {
-        ERROR("Failed to create libevent base");
+        ERROR("restServer: Failed to create libevent base");
         // Use exit() not raise() since this happens early in startup before
         // the signal handlers are all in place.
         exit(1);
@@ -294,7 +303,7 @@ void restServer::http_server_thread() {
     // Create the server
 	ev_server = evhttp_new (event_base);
     if (ev_server == nullptr) {
-        ERROR("Failed to create libevent base");
+        ERROR("restServer: Failed to create libevent base");
         exit(1);
         return;
     }
@@ -307,7 +316,7 @@ void restServer::http_server_thread() {
 
     // Bind to the IP and port
     if (evhttp_bind_socket(ev_server, bind_address.c_str(), port) != 0) {
-        ERROR("Failed to bind to %s:%d", bind_address.c_str(), port);
+        ERROR("restServer: Failed to bind to %s:%d", bind_address.c_str(), port);
         exit(1);
         return;
     }
