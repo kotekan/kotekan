@@ -1,4 +1,4 @@
-//curl localhost:12048/pulsar_gain -X POST -H 'Content-Type: appication/json' -d '{"pulsar_gain_dir":"the_new_path"}'
+//curl localhost:12048/pulsar_gain -X POST -H 'Content-Type: application/json' -d '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
 
 #include <string>
 #include <math.h>
@@ -34,7 +34,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
 
-    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/gain_dir");
+    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
     vector<float> dg = {0.0,0.0}; //re,im
     default_gains = config.get_default<std::vector<float>>(
                 unique_name, "frb_missing_gains", dg);
@@ -98,8 +98,8 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
 
 bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json &json) {
     update_gains=true;
-    _gain_dir = json.at("pulsar_gain_dir");
-    INFO("[PSR] Updating gains from %s %s %s", _gain_dir[0].c_str(), _gain_dir[1].c_str(),_gain_dir[2].c_str());
+    _gain_dir = json.at("pulsar_gain_dir").get<std::vector<string>>();
+    INFO("[PSR] Updating gains from %s %s %s %s %s %s %s %s %s %s", _gain_dir[0].c_str(), _gain_dir[1].c_str(),_gain_dir[2].c_str(),_gain_dir[3].c_str(), _gain_dir[4].c_str(), _gain_dir[5].c_str(), _gain_dir[6].c_str(), _gain_dir[7].c_str(), _gain_dir[8].c_str(), _gain_dir[9].c_str());
     return true;
 }
 
