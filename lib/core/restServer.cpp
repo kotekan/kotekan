@@ -200,7 +200,7 @@ string restServer::get_http_message(struct evhttp_request * request) {
 
     // Allocate space for the chunks.
     vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
-     n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
+    n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {
         size_t len = vec_out[i].iov_len;
         if (written + len > datalen)
