@@ -34,14 +34,14 @@ public:
      * @param t    Time in MJD (days).
      * @returns    Phase in number of rotations since reference.
      **/
-    double mjd2phase(double t);
+    double mjd2phase(double t) const;
 
     /**
      * @brief Calculate pulsar phase from UNIX time.
      * @param t    timespec.
      * @returns    Phase in number of rotations since reference.
      **/
-    double unix2phase(timespec t);
+    double unix2phase(timespec t) const;
 
     /**
      * @brief Calculate next pulse time of arrival.
@@ -49,7 +49,7 @@ public:
      * @param freq   The frequency (MHz) to use for dispersion delay.
      * @returns      Time after t in seconds.
      **/
-    double next_toa(timespec t, float freq);
+    double next_toa(timespec t, float freq) const;
 
 private:
     double tmid;
@@ -66,6 +66,9 @@ private:
  * @param nsec  Number of nsec to add (can be negative).
  * @returns     Modified timespec.
  **/
-timespec add_nsec(timespec t, long nsec);
+inline timespec add_nsec(const timespec & t, const long nsec) {
+    return {t.tv_sec + (t.tv_nsec + nsec) / 1000000000,
+            (t.tv_nsec + nsec) % 1000000000};
+}
 
 #endif

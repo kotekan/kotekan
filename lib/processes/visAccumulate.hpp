@@ -29,7 +29,7 @@ public:
     virtual ~gateSpec();
 
     virtual bool update_spec(nlohmann::json &json);
-    virtual std::function<float(timespec, float)> weight_function();
+    virtual std::function<float(timespec, timespec, float)> weight_function();
     std::string name;
     bool enabled;
 protected:
@@ -42,7 +42,7 @@ class pulsarSpec : public gateSpec {
 public:
     pulsarSpec(double gpu_frame_width) : gateSpec(gpu_frame_width) {};
     bool update_spec(nlohmann::json &json) override;
-    std::function<float(timespec, float)> weight_function() override;
+    std::function<float(timespec, timespec, float)> weight_function() override;
 private:
     // Config parameters for pulsar gating
     float dm;
@@ -170,7 +170,7 @@ struct visAccumulate::internalState {
     /// Function for applying the weighting. While this can essentially be
     /// derived from the gateSpec we need to cache it so the gating can be
     /// updated externally within an accumulation.
-    std::function<float(timespec, float)> weightfunc;
+    std::function<float(timespec, timespec, float)> weightfunc;
 
     /// Mutex to control update of gateSpec
     std::mutex state_mtx;
