@@ -22,10 +22,14 @@ using namespace std::placeholders;
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
 
-visAccumulate::visAccumulate(Config& config,
-                       const string& unique_name,
-                       bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)) {
+visAccumulate::visAccumulate(Config& config, const string& unique_name,
+                             bufferContainer &buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&visAccumulate::main_thread, this))
+{
+
+    // Fetch and apply config
+    apply_config(0);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -33,6 +37,31 @@ visAccumulate::visAccumulate(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
+    // Register gating update callbacks
+    std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
+
+    nlohmann::json gating_modes = config.get_value(unique_name, "gating");
+
+    for (auto& it : gating_modes.items()) {
+        // Get gating mode and initialize the correct spec
+        std::string mode = it.value().at("mode").get<std::string>();
+        std::string key = it.key();
+        if (mode == "pulsar") {
+            gating_specs[key] = new pulsarSpec(samples_per_data_set * 2.56e-6);
+        } else {
+            throw std::runtime_error("Could not find gating mode " + mode);
+        }
+        callbacks[key] = std::bind(&gateSpec::update_spec, gating_specs[key], _1);
+    }
+
+    configUpdater::instance().subscribe(this, callbacks);
+
+}
+
+visAccumulate::~visAccumulate() {}
+
+void visAccumulate::apply_config(uint64_t fpga_seq)
+{
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
@@ -60,37 +89,15 @@ visAccumulate::visAccumulate(Config& config,
         num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
-
-    // Register gating update callbacks
-    std::map<std::string, std::function<bool(nlohmann::json &)>> callbacks;
-
-    nlohmann::json gating_modes = config.get_value(unique_name, "gating");
-
-    for (nlohmann::json::iterator it = gating_modes.begin(); it < gating_modes.end(); ++it) {
-        // Get gating mode and initialize the correct spec
-        std::string mode = it.value().at("mode").get<std::string>();
-        std::string key = it.key();
-        if (mode == "pulsar") {
-            gating_specs[key] = new pulsarSpec(samples_per_data_set * 2.56e-6);
-        } else {
-            throw std::runtime_error("Could not find gating mode " + mode);
-        }
-        callbacks[key] = std::bind(&pulsarSpec::update_spec, gating_specs[key], _1);
-    }
-
-    configUpdater::instance().subscribe(this, callbacks);
-
-}
-
-visAccumulate::~visAccumulate() {}
-
-void visAccumulate::apply_config(uint64_t fpga_seq) {
 }
 
 void visAccumulate::main_thread() {
 
     int in_frame_id = 0;
     int out_frame_id = 0;
+
+    // Hold the gated datasets that are enabled;
+    std::vector<internalState*> enabled_gated_datasets;
 
     uint32_t last_frame_count = 0;
     uint32_t frames_in_this_cycle = 0;
@@ -158,6 +165,14 @@ void visAccumulate::main_thread() {
                 }
 
                 initialise_output(out_buf, frame_id, in_frame_id, freq_ind);
+            }
+
+            // Reset gated streams and find which ones are enabled for this period
+            enabled_gated_datasets.clear();
+            for (auto& state : gated_datasets) {
+                if (reset_state(state)) {
+                    enabled_gated_datasets.push_back(&state);
+                }
             }
 
             // Zero out accumulation arrays
@@ -274,7 +289,13 @@ void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
 gateSpec::gateSpec(double width) : gpu_frame_width(width) {}
 
 
-bool pulsarSpec::update_spec(nlohmann::json &json) {
+gateSpec::~gateSpec()
+{
+
+}
+
+
+bool pulsarSpec::update_spec(nlohmann::json& json) {
 
     try {
         enabled = json.at("enabled").get<bool>();
@@ -299,7 +320,9 @@ bool pulsarSpec::update_spec(nlohmann::json &json) {
         WARN("Failure reading pulsar parameters from update: %s", e.what());
         return false;
     }
-    polyco = * new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+    polyco = Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+
+    return true;
 }
 
 
@@ -324,21 +347,21 @@ std::function<float(timespec, float)> pulsarSpec::weight_function() {
 }
 
 
-bool gateInternalState::reset() {
+bool visAccumulate::reset_state(visAccumulate::internalState& state) {
 
     // Reset the internal counters
-    weighted_samples = 0;
+    state.sample_weight_total = 0;
     // ... zero out the accumulation array
 
     // Acquire the lock so we don't get confused by any changes made via the
     // REST callback
-    std::lock_guard<std::mutex> lock(gate_mtx);
+    std::lock_guard<std::mutex> lock(state.state_mtx);
 
-    if (!spec.enabled) {
-        weightfunc = nullptr;
+    if (!state.spec->enabled) {
+        state.weightfunc = nullptr;
         return false;
     }
 
-    weightfunc = spec.weight_function();
+    state.weightfunc = state.spec->weight_function();
     return true;
 }

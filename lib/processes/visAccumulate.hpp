@@ -12,15 +12,21 @@
 #include <functional>
 #include <time.h>
 
+#include "json.hpp"
+
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
 #include "pulsarTiming.hpp"
 
 
+
+class visAccumulate;
+
 class gateSpec {
 public:
     gateSpec(double gpu_frame_width);
+    virtual ~gateSpec();
 
     virtual bool update_spec(nlohmann::json &json);
     virtual std::function<float(timespec, float)> weight_function();
@@ -47,46 +53,6 @@ private:
     Polyco polyco;
 
     friend visAccumulate;
-    friend gateInternalState;
-};
-
-/**
- * @class gateInternalState
- * @brief Hold the internal state of a gated accumulation.
- **/
-class gateInternalState {
-private:
-
-    // This is all used internally in visAccumulate so needs to be able to access
-    friend visAccumulate;
-
-    /// The buffer we are outputting too
-    Buffer* buf;
-
-    // Current frame ID of the buffer we are using
-    int frame_id;
-
-    /// Specification of how we are gating
-    gateSpec spec;
-
-    /// The weighted number of total samples accumulated. Must be reset every
-    /// integration period.
-    float weighted_samples;
-
-    /// Function for applying the weighting. While this can essentially be
-    /// derived from the gateSpec we need to cache it so the gating can be
-    /// updated externally within an accumulation.
-    std::function<float(timespec, float)> weightfunc;
-
-    /// Mutex to control update of gateSpec
-    std::mutex gate_mtx;
-
-    /**
-     * @brief Reset the state when we restart an integration.
-     *
-     * @returns Return if this accumulation was enabled.
-     **/
-    bool reset();
 };
 
 
@@ -138,7 +104,7 @@ private:
 
     // Buffers to read/write
     Buffer* in_buf;
-    Buffer* out_buf;
+    Buffer* out_buf;  // Output for the main vis dataset only
 
     // Parameters saved from the config files
     size_t num_elements;
@@ -164,6 +130,50 @@ private:
 
     // List of gating specifications
     std::map<std::string, gateSpec*> gating_specs;
+
+    // Struct to store the internal state of an accumulation
+    // Full declaration is below...
+    struct internalState;
+
+    /**
+     * @brief Reset the state when we restart an integration.
+     *
+     * @returns Return if this accumulation was enabled.
+     **/
+    bool reset_state(internalState& state);
+
+
+    // Hold the state for any gated data
+    std::vector<internalState> gated_datasets;
+};
+
+
+/**
+ * @class visAccumulate::internalState
+ * @brief Hold the internal state of a gated accumulation.
+ **/
+struct visAccumulate::internalState {
+
+    /// The buffer we are outputting too
+    Buffer* buf;
+
+    // Current frame ID of the buffer we are using
+    int frame_id;
+
+    /// Specification of how we are gating
+    std::unique_ptr<gateSpec> spec;
+
+    /// The weighted number of total samples accumulated. Must be reset every
+    /// integration period.
+    float sample_weight_total;
+
+    /// Function for applying the weighting. While this can essentially be
+    /// derived from the gateSpec we need to cache it so the gating can be
+    /// updated externally within an accumulation.
+    std::function<float(timespec, float)> weightfunc;
+
+    /// Mutex to control update of gateSpec
+    std::mutex state_mtx;
 };
 
 #endif
