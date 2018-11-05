@@ -12,7 +12,7 @@ void basebandReadoutManager::add(basebandRequest req) {
 }
 
 
-std::tuple<basebandDumpStatus*, std::mutex*> basebandReadoutManager::get_next_request() {
+std::unique_ptr<basebandReadoutManager::requestStatusMutex> basebandReadoutManager::get_next_waiting_request() {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
     // NB: the requests_mtx is released while the thread is waiting on
@@ -21,23 +21,24 @@ std::tuple<basebandDumpStatus*, std::mutex*> basebandReadoutManager::get_next_re
     has_request.wait_for(lock, 0.1s);
 
     if (waiting == tail) {
-        return std::make_tuple(nullptr, nullptr);
+        return nullptr;
     }
-    basebandDumpStatus* ev = &(*++waiting);
-    return std::make_tuple(ev, &waiting_mtx);
+    basebandDumpStatus& ev = *++waiting;
+    return std::make_unique<basebandReadoutManager::requestStatusMutex>(ev, waiting_mtx);
 }
 
 
-std::mutex& basebandReadoutManager::set_current(uint64_t event_id) {
+basebandReadoutManager::requestStatusMutex basebandReadoutManager::get_next_ready_request() {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
-    for (auto it = current; it != requests.end(); it++) {
-        if (it->request.event_id == event_id) {
-            current = it;
-            return current_mtx;
+    while (current != waiting && current != tail) {
+        basebandDumpStatus& ev = *++current;
+        if (ev.state == basebandDumpStatus::State::INPROGRESS) {
+            return { ev, current_mtx };
         }
     }
-    throw std::runtime_error("Element not found");
+
+    throw std::runtime_error("No ready request");
 }
 
 
