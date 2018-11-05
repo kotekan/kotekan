@@ -195,6 +195,7 @@ visAccumulate::visAccumulate(Config& config,
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
+    minimum_fraction = config.get_default<double>(unique_name, "minimum_fraction", 0.01);
 
     // Get the indices for reordering
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
@@ -261,12 +262,29 @@ void visAccumulate::main_thread() {
         // initially set to UINT_MAX to ensure this doesn't happen immediately.
         bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
         if (init && wrapped) {
+
             auto output_frame = visFrameView(out_buf, out_frame_id);
 
+            // Set the actual amount of time we accumulated for
+            output_frame.fpga_seq_total = total_samples;
             DEBUG("Total samples accumulate %i", total_samples);
 
+            // Reset the cycle
+            init = false;
+            frames_in_this_cycle = 0;
+            total_samples = 0;
+
+            // Check if we have exceeded the minimum number of required samples,
+            // if not immediately skip without releasing the frame
+            size_t min_length = minimum_fraction * output_frame.fpga_seq_length;
+            if (output_frame.fpga_seq_total < min_length) {
+                DEBUG("Too few samples in frame %i (minimum %i)",
+                      output_frame.fpga_seq_total, min_length);
+                continue;
+            }
+
             // Unpack the main visibilities
-            float w1 = 1.0 / total_samples;
+            float w1 = 1.0 / output_frame.fpga_seq_total;
 
             map_vis_triangle(input_remap, block_size, num_elements,
                 [&](int32_t pi, int32_t bi, bool conj) {
@@ -284,14 +302,8 @@ void visAccumulate::main_thread() {
                 }
             );
 
-            // Set the actual amount of time we accumulated for
-            output_frame.fpga_seq_total = total_samples;
-
             mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
-            init = false;
-            frames_in_this_cycle = 0;
-            total_samples = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
