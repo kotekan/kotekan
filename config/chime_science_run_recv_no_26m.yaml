@@ -194,7 +194,7 @@ stacking:
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
-  exclude_inputs: [142, 1166, 1225, 1521]
+  exclude_inputs: [46, 142, 688, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034]
   num_threads: 2
   cpu_affinity: [2, 3]
 
@@ -214,7 +214,7 @@ cal_subset:
 
 timing_subset_params: &timing_subset_params
   prod_subset_type: only_inputs
-  input_list: [142, 1166]
+  input_list: [46, 142, 688, 960, 1058, 1166, 1314, 1543, 2032, 2034]
 
 timing_subset:
   kotekan_process: prodSubset
