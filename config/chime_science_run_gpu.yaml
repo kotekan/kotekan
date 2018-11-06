@@ -68,7 +68,7 @@ num_pulsar: 10
 num_pol: 2
 pulsar_gain:
   kotekan_update_endpoint: json
-  pulsar_gain_dir: /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
+  pulsar_gain_dir: [/mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/, /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/]
 
 #RFI stuff
 sk_step: 256
