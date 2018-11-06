@@ -42,10 +42,9 @@
  *     @gpu_mem_metadata        none
  *
  * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   num_pulsar           Int (default 10). Number of pulsars
+ * @conf   num_beams            Int (default 10). Number of pulsars
  * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * @conf   gain_dir             String aray - 10 directory path where gain files are for each 10 beams
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
  * @conf   source_ra            Float array - 10 initial RA (in deg) to form beams on.
  * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
@@ -104,7 +103,7 @@ private:
     /// Number of elements, should be 2048
     uint32_t _num_elements;
     /// Number of pulsar beams, should be 10
-    int16_t _num_pulsar;
+    int16_t _num_beams;
 
     /// Metadata buffer ID
     int32_t metadata_buffer_id;
