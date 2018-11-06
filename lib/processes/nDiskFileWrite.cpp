@@ -152,7 +152,7 @@ void nDiskFileWrite::main_thread() {
 void nDiskFileWrite::file_write_thread(int disk_id) {
 
     int fd;
-    int file_num = disk_id;
+    uint64_t file_num = disk_id;
     int frame_id = disk_id;
     uint8_t * frame = NULL;
 
@@ -172,7 +172,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%07d.vdif",
+        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010lld.vdif",
                 disk_base.c_str(),
                 disk_set.c_str(),
                 disk_id,
@@ -214,6 +214,6 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
         frame_id = ( frame_id + num_disks ) % buf->num_frames;
         //Increase number, but prevent running out of file names
-        file_num = (file_num + num_disks) % 10000000;
+        file_num += num_disks;
     }
 }
