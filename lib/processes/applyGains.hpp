@@ -2,6 +2,7 @@
 #define APPLY_GAINS_HPP
 
 #include <unistd.h>
+#include <shared_mutex>
 #include "fpga_header_functions.h"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -94,7 +95,8 @@ private:
     Buffer * in_buf;
 
     /// Mutex to protect access to gains
-    std::vector<std::shared_ptr<std::mutex>> gain_mtx;
+    // N.B. `shared_mutex` is only available in C++17
+    std::shared_timed_mutex gain_mtx;
 
     /// Timestamp of the current frame
     timespec ts_frame = {0,0};

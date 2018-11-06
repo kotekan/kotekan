@@ -29,8 +29,6 @@ applyGains::applyGains(Config& config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&applyGains::main_thread, this)) {
 
-    apply_config(0);
-
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -38,6 +36,8 @@ applyGains::applyGains(Config& config,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
+
+    apply_config(0);
 
     // FIFO for gains and weights updates
     gains_fifo = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
@@ -77,12 +77,6 @@ void applyGains::apply_config(uint64_t fpga_seq) {
         throw std::invalid_argument("applyGains: apply_config: both "
                                     "the size of the input and output buffer"
                                     "have to be multiples of num_threads.");
-
-    // Construct mutexes
-    gain_mtx.reserve(num_threads);
-    for (uint i = 0; i < num_threads; i++){
-        gain_mtx[i] = std::make_shared<std::mutex>();
-    }
 
 }
 
@@ -151,15 +145,11 @@ bool applyGains::receive_update(nlohmann::json &json) {
     // Read the gains weight dataset
     HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
     gain_weight_ds.read(weight_read);
-    // Lock mutex for every thread while we update FIFO
-    for (auto mtx : gain_mtx) {
-        mtx->lock();
-    }
+    // Lock mutex exclusively while we update FIFO
+    gain_mtx.lock();
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
     weights_fifo.insert(double_to_ts(new_ts), std::move(weight_read));
-    for (auto mtx : gain_mtx) {
-        mtx->unlock();
-    }
+    gain_mtx.unlock();
     INFO("Updated gains to %s.", gtag.c_str());
 
     return true;
@@ -231,8 +221,8 @@ void applyGains::apply_thread(int thread_id) {
         // TODO: we don't combine weights. Should we?
         std::pair< timespec, const std::vector<std::vector<float>>* > weightpair;
 
-        // Request lock for reading from FIFO
-        gain_mtx[thread_id]->lock();
+        // Request shared lock for reading from FIFO
+        gain_mtx.lock_shared();
         gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
         weightpair = weights_fifo.get_update(double_to_ts(frame_time));
         if (gainpair_new.second == NULL || weightpair.second == NULL) {
@@ -271,7 +261,7 @@ void applyGains::apply_thread(int thread_id) {
         // Copy weights
         weight_factor = (*weightpair.second)[freq];
         // Release lock
-        gain_mtx[thread_id]->unlock();
+        gain_mtx.unlock();
         // Compute weight factors and conjugate gains
         for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
             if (weight_factor[ii]==0.0) {
