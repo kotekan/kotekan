@@ -27,9 +27,9 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   readahead_blocks		Int. Number of blocks to advise OS to read ahead of current read.
- * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time). If not specified will read file contiguously.
- * @conf   infile				String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
+ * @conf   readahead_blocks	    Int. Number of blocks to advise OS to read ahead of current read.
+ * @conf   chunk_size           Array of [int, int, int]. Read chunk size (freq, prod, time). If not specified will read file contiguously.
+ * @conf   infile               String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
  * @conf   use_dataset_manager  Bool. This will register dataset states with the
  *                              datasetManager and write a dataset ID into the
  *                              frame if set to true.

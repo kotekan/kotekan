@@ -29,13 +29,13 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer.
  *         @buffer_metadata visMetadata
  *
- * @conf   chunk_size			Array of [int, int, int]. Chunk size of the data (freq, prod, time).
- * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
+ * @conf   chunk_size           Array of [int, int, int]. Chunk size of the data (freq, prod, time).
+ * @conf   outfile              String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
  * @conf   use_dataset_manager  Bool. If set to `true`, the metadata will be
  *                              fetched from the datasetManager, otherwise
  *                              infile has to be set and the metadata will be
  *                              read from there.
- * @conf   infile				String. Path to the data files to read (e.g.
+ * @conf   infile               String. Path to the data files to read (e.g.
  *                              "/path/to/0000_000", without .data/meta).
  *                              Only needed if use_dataset_manager is `False`.
  *
