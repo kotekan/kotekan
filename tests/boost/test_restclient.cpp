@@ -21,6 +21,7 @@ struct TestContext {
         error = false;
         cb_called_count = 0;
         restServer::instance().register_post_callback(endpoint, fun);
+        usleep(500000);
     }
 
     static void rq_callback(restReply reply) {
@@ -288,7 +289,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
                           std::placeholders::_1,
                           std::placeholders::_2),
                       "/test_restclient_pong");
-#define N 10
+#define N 100
     std::thread t[N];
     for (int i = 0; i < N; i++) {
         t[i] = std::thread(check);
@@ -296,7 +297,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
     for (int i = 0; i < N; i++) {
         t[i].join();
     }
-    usleep(50000000);
+    usleep(5000000);
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format("Only {} callback functions where " \
