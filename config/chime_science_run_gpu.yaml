@@ -77,7 +77,7 @@ waterfall_request_delay: 60
 
 rfi_masking:
   toggle:
-    kotekan_update_endpoint: "rfi_masking_toggle"
+    kotekan_update_endpoint: "json"
     rfi_zeroing: True
 
 

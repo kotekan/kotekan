@@ -54,6 +54,11 @@ public:
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 private:
+
+    ///The current netowrk buffer frame id
+    int32_t network_buffer_id;
+    /// The network buffer object (i.e. the host input data buffer)
+    Buffer * network_buf;
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
     uint32_t input_frame_len;
     /// Length of the RFI mask

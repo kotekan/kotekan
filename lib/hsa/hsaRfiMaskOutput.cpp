@@ -1,5 +1,5 @@
 #include "hsaRfiMaskOutput.hpp"
-#include "configUpdater.hpp"
+#include "chimeMetadata.h"
 
 REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
@@ -21,25 +21,7 @@ hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
     _rfi_mask_output_buf_id = 0;
     _rfi_mask_output_buf_precondition_id = 0;
     _rfi_mask_output_buf_execute_id = 0;
-    using namespace std::placeholders;
-    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_rfi_zeroing"),
-                               std::bind(&hsaRfiMaskOutput::update_rfi_add_lostsamples_flag, this, _1));
-
 }
-
-
-bool hsaRfiMaskOutput::update_rfi_add_lostsamples_flag(nlohmann::json &json) {
-
-    try {
-        _rfi_add_lostsamples = json["rfi_zeroing"];
-    } catch (std::exception& e) {
-        WARN("Failed to set RFI lost samples flag %s", e.what());
-        return false;
-    }
-    INFO("Changing RFI lost sample flag to %d",_rfi_add_lostsamples);
-    return true;
-}
-
 
 hsaRfiMaskOutput::~hsaRfiMaskOutput() {
 }
@@ -73,7 +55,8 @@ hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, const uint64_t& fpga_se
 void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
-    if(_rfi_add_lostsamples){
+    if(get_rfi_zeroed(_network_buf,_network_buf_id)){
+        INFO("Adding")
         uint8_t * frame_mask = _rfi_mask_output_buf->frames[_rfi_mask_output_buf_id];
         uint32_t total_lost = 0;
         //Copy RFI mask to array

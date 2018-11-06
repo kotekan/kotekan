@@ -24,7 +24,8 @@ hsaRfiZeroData::hsaRfiZeroData(Config& config,const string &unique_name,
     using namespace std::placeholders;
     configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_rfi_zeroing"),
                                          std::bind(&hsaRfiZeroData::update_rfi_zero_flag, this, _1));
-
+    network_buf = host_buffers.get_buffer("network_buf");
+    network_buffer_id = 0;
 }
 
 hsaRfiZeroData::~hsaRfiZeroData() {
@@ -33,7 +34,7 @@ hsaRfiZeroData::~hsaRfiZeroData() {
 bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json &json) {
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     try {
-        _rfi_zeroing = json["rfi_zeroing"];
+        _rfi_zeroing = json.at("rfi_zeroing");
     } catch (std::exception& e) {
         WARN("Failed to set RFI zeroing flag %s", e.what());
         return false;
@@ -76,6 +77,8 @@ hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, const uint64_t& fpga_seq,
 
     //Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
+    set_rfi_zeroed(network_buf,network_buffer_id, (uint32_t)_rfi_zeroing);
+    network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
     //return signal
     return signals[gpu_frame_id];
 }
