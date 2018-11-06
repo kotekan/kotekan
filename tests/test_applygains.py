@@ -17,14 +17,15 @@ global_params = {
     'cadence': 1.0,
     'mode': 'fill_ij',
     'freq_ids': [250],
-    'buffer_depth': 5,
+    'buffer_depth': 8,
     'updatable_config': "/gains",
     'gains': {'kotekan_update_endpoint': "json",
               'start_time': old_tmstp,
               'tag': old_tag
     },
     'wait': True,
-    'combine_gains_time': 10.
+    'combine_gains_time': 10.,
+    'num_threads': 4,
 }
 
 
