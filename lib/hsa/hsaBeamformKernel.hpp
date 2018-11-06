@@ -69,7 +69,6 @@
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   num_local_freq       Int (default 1). Number of local freq.
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
- * @conf   gain_dir             String - directory path where gain files are
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
  * @conf   northmost_beam       Float - Setting the extent in NS of the FFT formed beams. 

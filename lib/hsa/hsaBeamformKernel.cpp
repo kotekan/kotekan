@@ -19,7 +19,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
-    _gain_dir = config.get<std::string>(unique_name, "frb_gain/frb_gain_dir");
 
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
     vector<float> dg = {0.0,0.0}; //re,im
@@ -87,7 +86,12 @@ hsaBeamformKernel::~hsaBeamformKernel() {
 bool hsaBeamformKernel::update_gains_callback(nlohmann::json &json) {
     //we're not fussy about exactly when the gains update, so no need for a lock here
     update_gains=true;
-    _gain_dir = json.at("frb_gain_dir");
+    try {
+        _gain_dir = json.at("frb_gain_dir");
+    } catch (std::exception& e) {
+        WARN("[FRB] Fail to read gain_dir %s", e.what());
+        return false;
+    }
     INFO("[FRB] updated gain with %s", _gain_dir.c_str());
     return true;
 }
@@ -198,6 +202,8 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         else {
             if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
                 ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
+		raise(SIGINT);
+		return;
             }
             fclose(ptr_myfile);
             for (uint32_t i=0; i<2048; i++){
