@@ -37,6 +37,16 @@ cpu_affinity: [2,3,8,9]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]
+use_dataset_manager: True
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_port: 12050
+  ds_broker_host: "10.5.0.25" # carillon
+  register_state_path: "/register-state"
+  register_dataset_path: "/register-dataset"
+  request_ancestor_path: "/request-ancestor"
+  send_state_path: "/send-state"
 
 # Constants
 sizeof_float: 4
