@@ -39,8 +39,9 @@ applyGains::applyGains(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    // FIFO for gains updates
+    // FIFO for gains and weights updates
     gains_fifo = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
+    weights_fifo = updateQueue<std::vector<std::vector<float>>>(num_kept_updates);
 
     // subscribe to gain timestamp updates
     configUpdater::instance().subscribe(this,
@@ -89,6 +90,7 @@ bool applyGains::receive_update(nlohmann::json &json) {
     std::string gains_path;
     std::string gtag;
     std::vector<std::vector<cfloat>> gain_read;
+    std::vector<std::vector<cfloat>> weight_read;
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
         if (!json.at("start_time").is_number())
@@ -140,16 +142,18 @@ bool applyGains::receive_update(nlohmann::json &json) {
     // Read the dataset and alocates it to the most recent entry of the gain vector
     HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
     gains_ds.read(gain_read);
-    for (auto mtx : gains_mtx) {
+    // Read the gains weight dataset
+    HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
+    gain_weight_ds.read(weight_read);
+    // Lock mutex for every thread while we update FIFO
+    for (auto mtx : gain_mtx) {
         mtx.lock();
     }
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
-    for (auto mtx : gains_mtx) {
+    weights_fifo.insert(double_to_ts(new_ts), std::move(weight_read));
+    for (auto mtx : gain_mtx) {
         mtx.unlock();
     }
-    // Read the gains weight dataset
-    HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
-    gain_weight_ds.read(gain_weight);
     INFO("Updated gains to %s.", gtag.c_str());
 
     return true;
@@ -218,13 +222,18 @@ void applyGains::apply_thread(int thread_id) {
 
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_new;
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_old;
+        // TODO: we don't combine weights. Should we?
+        std::pair< timespec, const std::vector<std::vector<float>>* > weightpair;
 
-        gain_mtx[thread_id].lock();
+        // Request lock for reading from FIFO
+        gain_mtx[thread_id]->lock();
         gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
-        if (gainpair_new.second == NULL) {
+        weightpair = weights_fifo.get_update(double_to_ts(frame_time));
+        if (gainpair_new.second == NULL || weightpair.second == NULL) {
             WARN("No gains available.\nKilling kotekan");
             std::raise(SIGINT);
         }
+        // TODO: by construction, gain and weight FIFO should be lined up. Is it safe to assume this?
         tpast = frame_time - ts_to_double(gainpair_new.first);
 
         // Determine if we need to combine gains:
@@ -253,13 +262,15 @@ void applyGains::apply_thread(int thread_id) {
                 num_late_frames++;
             }
         }
-        gain_mtx[thread_id].unlock();
+        // Copy weights
+        weight_factor = (*weightpair.second)[freq];
+        // Release lock
+        gain_mtx[thread_id]->unlock();
         // Compute weight factors and conjugate gains
         for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
-            if (gain_weight[freq][ii]==0.0) {
+            if (weight_factor[ii]==0.0) {
                 // If gain_weight is zero, make gains = 1 and weights = 0
                 gain[ii] = 1. + 0i;
-                weight_factor[ii] = 0.0;
             } else if (abs(gain[ii])==0.0) {
                 // If gain is zero make the weight be zero
                 weight_factor[ii] = 0.0;

@@ -86,6 +86,7 @@ private:
 
     /// The gains and when to start applying them in a FIFO (len set by config)
     updateQueue<std::vector<std::vector<cfloat>>> gains_fifo;
+    updateQueue<std::vector<std::vector<float>>> weights_fifo;
 
     /// Output buffer with gains applied
     Buffer * out_buf;
@@ -93,7 +94,7 @@ private:
     Buffer * in_buf;
 
     /// Mutex to protect access to gains
-    std::vector<std::mutex> gain_mtx;
+    std::vector<std::unique_ptr<std::mutex>> gain_mtx;
 
     /// Timestamp of the current frame
     timespec ts_frame = {0,0};
@@ -103,9 +104,6 @@ private:
 
     /// Number of frames received too late, every thread must be able to increment
     std::atomic<size_t> num_late_frames;
-
-    /// Gain weights. If zero, no meaningfull gains were obtained for that input
-    std::vector<std::vector<float>> gain_weight;
 
 	/// Entrancepoint for n threads. Each thread takes frames with a
 	/// different frame_id from the buffer and compresses them.
