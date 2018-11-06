@@ -9,6 +9,9 @@
 REGISTER_KOTEKAN_PROCESS(freqSplit);
 REGISTER_KOTEKAN_PROCESS(freqSubset);
 
+// Frequency to split at (everything lower than that goes to one buffer,
+// the rest to the other. TODO: make a config value
+#define SPLIT_FREQ 512
 
 freqSplit::freqSplit(Config& config,
                      const string& unique_name,

@@ -36,10 +36,6 @@
  */
 class freqSplit : public KotekanProcess {
 
-// Frequency to split at (everything lower than that goes to one buffer,
-// the rest to the other. TODO: make a config value
-#define SPLIT_FREQ 512
-
 public:
 
     // Default constructor
