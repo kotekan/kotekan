@@ -203,7 +203,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
             if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
                 ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
                 raise(SIGINT);
-                return;
+                return precede_signal;
             }
             fclose(ptr_myfile);
             for (uint32_t i=0; i<2048; i++){

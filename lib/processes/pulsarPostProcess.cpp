@@ -99,7 +99,7 @@ void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
     _samples_per_data_set = config.get<uint32_t>(unique_name,
                                                  "samples_per_data_set");
-    _num_pulsar = config.get<uint32_t>(unique_name, "num_pulsar");
+    _num_pulsar = config.get<uint32_t>(unique_name, "num_beams");
     _num_pol = config.get<uint32_t>(unique_name, "num_pol");
     _timesamples_per_pulsar_packet = config.get<uint32_t>(
                 unique_name, "timesamples_per_pulsar_packet");
