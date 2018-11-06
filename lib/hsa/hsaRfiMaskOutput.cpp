@@ -56,7 +56,6 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     if(get_rfi_zeroed(_network_buf,_network_buf_id)){
-        INFO("Adding")
         uint8_t * frame_mask = _rfi_mask_output_buf->frames[_rfi_mask_output_buf_id];
         uint32_t total_lost = 0;
         //Copy RFI mask to array
