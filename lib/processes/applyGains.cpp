@@ -78,6 +78,12 @@ void applyGains::apply_config(uint64_t fpga_seq) {
                                     "the size of the input and output buffer"
                                     "have to be multiples of num_threads.");
 
+    // Construct mutexes
+    gain_mtx.reserve(num_threads);
+    for (uint i = 0; i < num_threads; i++){
+        gain_mtx[i] = std::make_shared<std::mutex>();
+    }
+
 }
 
 bool applyGains::fexists(const std::string& filename) {
@@ -90,7 +96,7 @@ bool applyGains::receive_update(nlohmann::json &json) {
     std::string gains_path;
     std::string gtag;
     std::vector<std::vector<cfloat>> gain_read;
-    std::vector<std::vector<cfloat>> weight_read;
+    std::vector<std::vector<float>> weight_read;
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
         if (!json.at("start_time").is_number())
@@ -147,12 +153,12 @@ bool applyGains::receive_update(nlohmann::json &json) {
     gain_weight_ds.read(weight_read);
     // Lock mutex for every thread while we update FIFO
     for (auto mtx : gain_mtx) {
-        mtx.lock();
+        mtx->lock();
     }
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
     weights_fifo.insert(double_to_ts(new_ts), std::move(weight_read));
     for (auto mtx : gain_mtx) {
-        mtx.unlock();
+        mtx->unlock();
     }
     INFO("Updated gains to %s.", gtag.c_str());
 
@@ -336,7 +342,7 @@ void applyGains::apply_thread(int thread_id) {
         // Report number of frames received late
         prometheusMetrics::instance().add_process_metric(
             "kotekan_applygains_late_frame_count",
-            unique_name, num_late_frames);
+            unique_name, num_late_frames.load());
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

@@ -94,7 +94,7 @@ private:
     Buffer * in_buf;
 
     /// Mutex to protect access to gains
-    std::vector<std::unique_ptr<std::mutex>> gain_mtx;
+    std::vector<std::shared_ptr<std::mutex>> gain_mtx;
 
     /// Timestamp of the current frame
     timespec ts_frame = {0,0};
