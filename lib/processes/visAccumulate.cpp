@@ -21,6 +21,9 @@ using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
+REGISTER_GATESPEC(pulsarSpec);
+REGISTER_GATESPEC(uniformSpec);
+
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,
                              bufferContainer &buffer_container) :
@@ -42,6 +45,12 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
     nlohmann::json gating_modes = config.get_value(unique_name, "gating");
 
+    // Create the state for the main visibility accumulation
+    gated_datasets.emplace_back(
+        out_buf, gateSpec::create("uniformSpec", "vis"), num_prod_gpu
+    );
+
+/*
     for (auto& it : gating_modes.items()) {
         // Get gating mode and initialize the correct spec
         std::string mode = it.value().at("mode").get<std::string>();
@@ -55,6 +64,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     }
 
     configUpdater::instance().subscribe(this, callbacks);
+    */
 
 }
 
@@ -89,27 +99,24 @@ void visAccumulate::apply_config(uint64_t fpga_seq)
         num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
+
+    size_t nb = num_elements / block_size;
+    num_prod_gpu = num_freq_in_frame * nb * (nb + 1) * block_size * block_size / 2;
 }
 
 void visAccumulate::main_thread() {
 
-    int in_frame_id = 0;
-    int out_frame_id = 0;
+    frameID in_frame_id(in_buf);
 
     // Hold the gated datasets that are enabled;
-    std::vector<internalState*> enabled_gated_datasets;
+    std::vector<std::reference_wrapper<internalState>> enabled_gated_datasets;
 
     uint32_t last_frame_count = 0;
     uint32_t frames_in_this_cycle = 0;
     uint32_t total_samples = 0;
 
-    size_t nb = num_elements / block_size;
-    size_t nprod_gpu = num_freq_in_frame * nb * (nb + 1) * block_size * block_size / 2;
-
     // Temporary arrays for storing intermediates
-    int32_t* vis_even = new int32_t[2 * nprod_gpu];
-    cfloat* vis1 = new cfloat[nprod_gpu];
-    float* vis2 = new float[nprod_gpu];
+    int32_t* vis_even = new int32_t[2 * num_prod_gpu];
 
     // Have we initialised a frame for writing yet
     bool init = false;
@@ -122,7 +129,7 @@ void visAccumulate::main_thread() {
         if(in_frame == nullptr) break;
 
         int32_t* input = (int32_t *)in_frame;
-        uint frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
+        uint32_t frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
@@ -133,15 +140,15 @@ void visAccumulate::main_thread() {
 
             DEBUG("Total samples accumulate %i", total_samples);
 
-            // Loop over the frequencies in the frame and unpack the accumulates
-            // into the output frame...
-            for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+            for (internalState& dset : enabled_gated_datasets) {
+                // Loop over the frequencies in the frame and unpack the accumulates
+                // into the output frame...
+                for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
-                finalise_output(out_buf, out_frame_id, vis1, vis2,
-                                freq_ind, total_samples);
+                    finalise_output(dset, freq_ind, total_samples);
 
-                mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-                out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
+                    mark_frame_full(dset.buf, unique_name.c_str(), dset.frame_id++);
+                }
             }
 
             init = false;
@@ -153,45 +160,55 @@ void visAccumulate::main_thread() {
         // copy over any metadata.
         if (frame_count % num_gpu_frames == 0) {
 
-            // Iterate over the set of output frames we will be using and
-            // initialise them...
-            for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+            // For each dataset and frequency, claim an empty frame and initialise it...
+            for (internalState& dset : enabled_gated_datasets) {
 
-                uint32_t frame_id = (out_frame_id + freq_ind) % out_buf->num_frames;
+                // Copy the frame ID so we don't change the actual state
+                frameID frame_id = dset.frame_id;
 
-                if (wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                         frame_id) == nullptr) {
-                    break;
+                for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+
+                    if (wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                             frame_id) == nullptr) {
+                        break;
+                    }
+                    frame_id++;
+
+                    initialise_output(dset, in_frame_id, freq_ind);
                 }
-
-                initialise_output(out_buf, frame_id, in_frame_id, freq_ind);
             }
 
             // Reset gated streams and find which ones are enabled for this period
             enabled_gated_datasets.clear();
             for (auto& state : gated_datasets) {
                 if (reset_state(state)) {
-                    enabled_gated_datasets.push_back(&state);
+                    enabled_gated_datasets.push_back(state);
                 }
             }
-
-            // Zero out accumulation arrays
-            std::fill(vis1, vis1 + nprod_gpu, 0);
-            std::fill(vis2, vis2 + nprod_gpu, 0);
 
             init = true;
         }
 
-        // Perform primary accumulation
-        for(size_t i = 0; i < nprod_gpu; i++) {
-            cfloat t = {(float)input[2*i+1], (float)input[2*i]};
-            vis1[i] += t;
+        // Accumulate the weighted data into each dataset. At the moment this
+        // doesn't really work if there are multiple frequencies in the same buffer..
+        for (internalState& dset : enabled_gated_datasets) {
+
+            float w = dset.calculate_weight(ts, te, f);
+
+            // Don't bother to accumulate if weight is zero
+            if (w == 0) break;
+
+            // Perform primary accumulation
+            for (size_t i = 0; i < num_prod_gpu; i++) {
+                cfloat t = {(float)input[2*i+1], (float)input[2*i]};
+                dset.vis1[i] += t;
+            }
         }
 
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
         if(frame_count % 2 == 0) {
-            std::memcpy(vis_even, input, 8 * nprod_gpu);
+            std::memcpy(vis_even, input, 8 * num_prod_gpu);
         }
         // ... every odd sample we accumulate the squared differences into the weight dataset
         // NOTE: this incrementally calculates the variance, but eventually
@@ -199,11 +216,12 @@ void visAccumulate::main_thread() {
         // TODO: we might need to account for packet loss in here too, but it
         // would require some awkward rescalings
         else {
-            for(size_t i = 0; i < nprod_gpu; i++) {
+            internalState& d0 = enabled_gated_datasets[0];  // Save into the main vis dataset
+            for(size_t i = 0; i < num_prod_gpu; i++) {
                 // NOTE: avoid using the slow std::complex routines in here
                 float di = input[2 * i    ] - vis_even[2 * i    ];
                 float dr = input[2 * i + 1] - vis_even[2 * i + 1];
-                vis2[i] += (dr * dr + di * di);
+                d0.vis2[i] += (dr * dr + di * di);
             }
         }
 
@@ -214,27 +232,24 @@ void visAccumulate::main_thread() {
         // squared sum of the weights is equal to 1.
 
         // Move the input buffer on one step
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
-        in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
         last_frame_count = frame_count;
         frames_in_this_cycle++;
     }
 
     // Cleanup
     delete[] vis_even;
-    delete[] vis1;
-    delete[] vis2;
 }
 
 
 void visAccumulate::initialise_output(
-    Buffer* out_buf, int out_frame_id, int in_frame_id, int freq_ind
+    visAccumulate::internalState& state, int in_frame_id, int freq_ind
 )
 {
 
-    allocate_new_metadata_object(out_buf, out_frame_id);
-    auto frame = visFrameView(out_buf, out_frame_id, num_elements,
-                              num_eigenvectors);
+    allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
+    auto frame = visFrameView(state.buf, state.frame_id + freq_ind,
+                              num_elements, num_eigenvectors);
 
     // Copy over the metadata
     // TODO: CHIME
@@ -256,19 +271,18 @@ void visAccumulate::initialise_output(
 }
 
 
-void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
-                                    cfloat* vis1, float* vis2, int freq_ind,
-                                    uint32_t total_samples)
+void visAccumulate::finalise_output(visAccumulate::internalState& state,
+                                    int freq_ind, uint32_t total_samples)
 {
     // Unpack the main visibilities
     float w1 = 1.0 / total_samples;
 
-    auto output_frame = visFrameView(out_buf, out_frame_id);
+    auto output_frame = visFrameView(state.buf, state.frame_id + freq_ind);
 
     // Copy the visibilities into place
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
-            cfloat t = !conj ? vis1[bi] : std::conj(vis1[bi]);
+            cfloat t = !conj ? state.vis1[bi] : std::conj(vis1[bi]);
             output_frame.vis[pi] = w1 * t;
         }
     );
@@ -276,7 +290,7 @@ void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
     // Unpack and invert the weights
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
-            float t = vis2[bi];
+            float t = state.vis2[bi];
             output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
         }
     );
@@ -286,7 +300,56 @@ void visAccumulate::finalise_output(Buffer* out_buf, int out_frame_id,
 }
 
 
-gateSpec::gateSpec(double width) : gpu_frame_width(width) {}
+bool visAccumulate::reset_state(visAccumulate::internalState& state) {
+
+    // Reset the internal counters
+    state.sample_weight_total = 0;
+    // ... zero out the accumulation array
+
+    // Acquire the lock so we don't get confused by any changes made via the
+    // REST callback
+    std::lock_guard<std::mutex> lock(state.state_mtx);
+
+    if (!state.spec->enabled()) {
+        state.calculate_weight = nullptr;
+        return false;
+    }
+
+    // Save out the weight function in case an update arrives mid integration
+    state.calculate_weight = state.spec->weight_function();
+
+    // Zero out accumulation arrays
+    std::fill(state.vis1.begin(), state.vis1.end(), 0.0);
+    std::fill(state.vis2.begin(), state.vis2.end(), 0.0);
+
+    return true;
+}
+
+
+visAccumulate::internalState::internalState(
+    Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod
+) :
+    buf(out_buf),
+    frame_id(buf),
+    spec(std::move(gate_spec)),
+    vis1(nprod),
+    vis2(nprod)
+{
+
+}
+
+
+gateSpec::gateSpec(const std::string& name) : _name(name)
+{
+
+}
+
+
+std::unique_ptr<gateSpec> gateSpec::create(const std::string& type,
+                                           const std::string& name)
+{
+    return FACTORY(gateSpec)::create_unique(type, name);
+}
 
 
 gateSpec::~gateSpec()
@@ -298,13 +361,13 @@ gateSpec::~gateSpec()
 bool pulsarSpec::update_spec(nlohmann::json& json) {
 
     try {
-        enabled = json.at("enabled").get<bool>();
+        _enabled = json.at("enabled").get<bool>();
     } catch (std::exception& e) {
         WARN("Failure reading 'enabled' from update: %s", e.what());
         return false;
     }
 
-    if (!enabled)
+    if (!_enabled)
         return true;
 
     std::vector<float> coeff;
@@ -326,15 +389,15 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
 }
 
 
-std::function<float(timespec, float)> pulsarSpec::weight_function() {
+std::function<float(timespec, timespec, float)> pulsarSpec::weight_function() const {
 
     // capture the variables needed to calculate timing
     return [
         p = polyco, f0 = rot_freq, fw = gpu_frame_width,
         pw = pulse_width
-    ](timespec t, float freq) mutable {
+    ](timespec ts, timespec te, float freq) mutable {
         // Calculate nearest pulse times of arrival
-        double toa = p.next_toa(t, freq);
+        double toa = p.next_toa(ts, freq);
         double last_toa = toa - 1. / f0;
 
         // Weights are on/off for now
@@ -347,21 +410,19 @@ std::function<float(timespec, float)> pulsarSpec::weight_function() {
 }
 
 
-bool visAccumulate::reset_state(visAccumulate::internalState& state) {
+uniformSpec::uniformSpec(const std::string& name) : gateSpec(name)
+{
+    _enabled = true;
+}
 
-    // Reset the internal counters
-    state.sample_weight_total = 0;
-    // ... zero out the accumulation array
 
-    // Acquire the lock so we don't get confused by any changes made via the
-    // REST callback
-    std::lock_guard<std::mutex> lock(state.state_mtx);
+bool uniformSpec::update_spec(nlohmann::json &json)
+{
 
-    if (!state.spec->enabled) {
-        state.weightfunc = nullptr;
-        return false;
-    }
+}
 
-    state.weightfunc = state.spec->weight_function();
-    return true;
+
+std::function<float(timespec, timespec, float)> uniformSpec::weight_function() const
+{
+    return [](timespec ts, timespec te, float freq) -> float { return 1.0; };
 }

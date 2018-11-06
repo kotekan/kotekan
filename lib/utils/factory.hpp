@@ -1,0 +1,204 @@
+/**
+ * @file
+ *
+ * This contains a static class and helper macros for implementing an Abstract
+ * Factory. The purpose is to allow derived classes to be registered and then created
+ * by name and returned as pointers to the base class.
+ *
+ * To use it you need to use the `CREATE_FACTORY(baseclass, <constructor
+ * signature>)` macro and then for any derived class you simply use the macro
+ * `REGISTER_TYPE_WITH_FACTORY(baseclass, derivedclass)`.
+ * 
+ * Example:
+ * ```
+ * #include <iostream>
+ * #include <string>
+ * #include "factory.hpp"
+ *
+ * class A {
+ * public:
+ *     A(int x, std::string b) {};
+ * };
+ *
+ * CREATE_FACTORY(A, int, std::string);
+ *
+ * class B : public A {
+ * public:
+ *     B(int, x, std::string y) {
+ *         std::cout << x << " " << y << std::endl;
+ *     }
+ * };
+ *
+ * REGISTER_TYPE_WITH_FACTORY(A, B);
+ *
+ * int main(int argc, char** argv) {
+ *     auto t = FACTORY(A)::create_unique("B", 4, "hello");
+ *     // Should print:
+ *     // 4 hello
+ * }
+ * ```
+ **/
+#ifndef _FACTORY_HPP
+#define _FACTORY_HPP
+
+#include <iostream>
+#include <map>
+#include <string>
+#include <memory>
+#include <functional>
+
+
+/**
+ * @brief Create a Factory for the specified type.
+ *
+ * This templated class acts as an abstract factory for the base type. You
+ * *must* give the signature of the constructor that you wish to use as a
+ * template argument. This class is purely static, you shouldn't try and
+ * create instances of it.
+ *
+ * Template arguments:
+ * @param T       Type for factory.
+ * @param Args... Argument types for the constructor.
+ **/
+template<typename T, typename... Args>
+class Factory {
+public:
+
+    /**
+     * Create a new instance of the type. 
+     *
+     * @param type    Label of type to create.
+     * @param args... Arguments for constructor.
+     *
+     * @returns Bare pointer to new object.
+     **/
+    static T* create_bare(std::string type, Args&&... args)
+    {
+        auto& r = type_registry();
+        if (r.find(type) == r.end()) {
+            throw std::runtime_error("Could not find subtype name within Factory");
+        }
+        std::cout << "Creating " << type << " as " << typelabel << std::endl;  // Change to DEBUG
+        return r[type](std::forward<Args>(args)...);
+    }
+
+    /**
+     * Create a new instance of the type. 
+     *
+     * @param type    Label of type to create.
+     * @param args... Arguments for constructor.
+     *
+     * @returns Unique pointer to new object.
+     **/
+    static std::unique_ptr<T> create_unique(std::string type, Args&&... args)
+    {
+        return std::unique_ptr<T>(create_bare(type, std::forward<Args>(args)...));
+    }
+
+    /**
+     * Create a new instance of the type. 
+     *
+     * @param type    Label of type to create.
+     * @param args... Arguments for constructor.
+     *
+     * @returns Shared pointer to new object.
+     **/
+    static std::shared_ptr<T> create_shared(std::string type, Args&&... args)
+    {
+        return std::shared_ptr<T>(create_bare(type, std::forward<Args>(args)...));
+    }
+
+    /**
+     * Create a new instance of the type. 
+     *
+     * @param U    Subtype to register.
+     * @param type Label of type to register.
+     **/
+    template<typename U>
+    static int register_type(std::string type) {
+        auto& r = type_registry();
+        std::cout << "Registering " << typelabel << " type: " << type << std::endl;  // Change to DEBUG
+        r[type] = [](Args&&... args) -> T* {
+            return new U(std::forward<Args>(args)...);
+        };
+        return 0;
+    }
+    static std::string typelabel;
+
+private:
+
+    // Return a reference to the type registry.
+    static auto& type_registry() 
+    {
+        static std::map<std::string, std::function<T*(Args...)>> _register;
+        return _register;
+    }
+
+};
+
+// Internal use macros
+#define _FACTORY_NAME(type, ...) FACTORY(type) 
+#define _TYPE_LABEL(type, ...) # type
+
+// Public macros
+/** 
+ * Get the factory for the given base class.
+ *
+ * @param type The type the factory will create.
+ *
+ * @returns The name of the factory class.
+ **/
+#define FACTORY(type) _factory_alias ## type
+
+/**
+ * Create the Factory for the base type.
+ *
+ * @param class   Base class for factory.
+ * @param args... Types of arguments for constructor to use.
+ *
+ * @note This will create an alias for the specialized factory class.
+ **/
+#define CREATE_FACTORY(...) \
+    using _FACTORY_NAME(__VA_ARGS__) = Factory<__VA_ARGS__>; \
+    template<> std::string _FACTORY_NAME(__VA_ARGS__)::typelabel = \
+        _TYPE_LABEL(__VA_ARGS__);
+
+/**
+ * Register a subtype in the factory.
+ *
+ * @param type    Base class for factory.
+ * @param subtype Sub class to register in factory.
+ *
+ * @note As a side effect This will assign zero to a static variable.
+ *       The name is munged to avoid clashes.
+ **/
+#define REGISTER_TYPE_WITH_FACTORY(type, subtype) \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, #subtype)
+
+/**
+ * Register a subtype in the factory with a custom name.
+ *
+ * @param type    Base class for factory.
+ * @param subtype Sub class to register in factory.
+ * @param name    Name to use for subtype.
+ *
+ * @note As a side effect This will assign zero to a static variable.
+ *       The name is munged to avoid clashes.
+ **/
+#define REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, name) \
+    auto _register ## type ## subtype = \
+         FACTORY(type)::register_type<subtype>(name);
+
+/**
+ * Register a subtype in the factory using its RTTI name.
+ *
+ * @param type    Base class for factory.
+ * @param subtype Sub class to register in factory.
+ *
+ * @note As a side effect This will assign zero to a static variable.
+ *       The name is munged to avoid clashes.
+ **/
+#define REGISTER_RTTI_TYPE_WITH_FACTORY(type, subtype) \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, typeid(subtype).name())
+
+#endif

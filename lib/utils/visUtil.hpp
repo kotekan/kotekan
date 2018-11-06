@@ -23,6 +23,7 @@
 #include "json.hpp"
 
 #include "Config.hpp"
+#include "buffer.h"
 
 
 using json = nlohmann::json;
@@ -466,6 +467,110 @@ inline std::vector<U> func_map(const std::vector<T>& vec,
     }
     return ret;
 }
+
+
+/**
+ * @brief A class for modular arithmetic. Used for holding ring buffer indices.
+ *
+ * This implements comparison and arithmetic operators for modular arithmetic.
+ *
+ * @note The binary arithmetic operators only work adding/subtracting normal numbers
+ *       to a modular number. They are also *asymmetric*.
+ **/
+template<typename T>
+class modulo {
+
+public:
+
+    // Use an unsigned type for the base
+    using Tu = typename std::make_unsigned<T>::type;
+
+    /**
+     * @brief Create a new modular number.
+     **/
+    modulo(Tu n) : _n(n) {};
+
+    // Default constructor
+    modulo() : modulo(0) {};
+
+    /// Assignment of a number into the modular number.
+    modulo<T>& operator=(const T& i) { _i = i; return *this; }
+
+    // Increment and decrement
+    modulo<T>& operator++() { _i++; return *this; }
+    modulo<T>& operator--() { _i--; return *this; }
+    modulo<T> operator++(int) { modulo<T> t(*this); operator++(); return t; }
+    modulo<T> operator--(int) { modulo<T> t(*this); operator--(); return t; }
+
+    modulo<T>& operator+=(const T& rhs) { _i += rhs; return *this; }
+    modulo<T>& operator-=(const T& rhs) { _i -= rhs; return *this; }
+
+    // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
+    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) { lhs += rhs; return lhs; }
+    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) { lhs -= rhs; return lhs; }
+
+    // Comparisons are always false if the bases don't match
+    friend bool operator==(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() == rhs.norm());
+    }
+    friend bool operator!=(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() != rhs.norm());
+    }
+    friend bool operator<(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() < rhs.norm());
+    }
+    friend bool operator>(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() > rhs.norm());
+    }
+    friend bool operator<=(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() <= rhs.norm());
+    }
+    friend bool operator>=(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() >= rhs.norm());
+    }
+
+    /**
+     * @brief Return the normalised modular number.
+     *
+     * @returns The modular number.
+     **/
+    T norm() const { return _i % _n; }
+
+    /// Conversion back to type T
+    operator T() const { return norm(); }
+
+private:
+
+    // Internally we don't actually keep bother mod'ing the number when
+    // we do arithmetic, only at output time.
+    T _i = 0;
+
+    // The modular base.
+    Tu _n;
+};
+
+/// Stream output for modular types
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const modulo<T>& m)
+{
+  return (os << m.norm());
+}
+
+
+/**
+ * @brief Class to hold buffer indices.
+ **/
+class frameID : public modulo<int> {
+public:
+
+    /**
+     * @brief Create a frameID for a given buffer.
+     *
+     * @param Buffer to use.
+     * @returns frameID instance.
+     **/
+    frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}
+};
 
 
 #endif

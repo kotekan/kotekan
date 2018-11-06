@@ -10,10 +10,12 @@
 #include <cstdint>
 #include <fstream>
 #include <functional>
+#include <memory>
 #include <time.h>
 
 #include "json.hpp"
 
+#include "factory.hpp"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
@@ -23,26 +25,81 @@
 
 class visAccumulate;
 
+/**
+ * @brief Base class for specifying a gated data accumulation.
+ *
+ **/
 class gateSpec {
 public:
-    gateSpec(double gpu_frame_width);
-    virtual ~gateSpec();
 
-    virtual bool update_spec(nlohmann::json &json);
-    virtual std::function<float(timespec, float)> weight_function();
-    std::string name;
-    bool enabled;
+    /**
+     * @brief Create a new gateSpec
+     *
+     * @param  name  Name of the gated dataset.
+     **/
+    gateSpec(const std::string& name);
+    virtual ~gateSpec() = 0;
+
+    /**
+     * @brief Create a subtype by name.
+     *
+     * @param type Name of gateSpec subtype.
+     * @param name Name of the gated dataset.
+     *
+     * @returns A pointer to the gateSpec instance.
+     **/
+    static std::unique_ptr<gateSpec> create(const std::string& type,
+                                            const::std::string& name);
+
+
+    /**
+     * @brief A callback to update the gating specification.
+     **/
+    virtual bool update_spec(nlohmann::json &json) = 0;
+
+    /**
+     * @brief Get a function/closure to calculate the weights for a subsample.
+     *
+     * @note This must return a closure that captures by value such that its
+     *       lifetime can be longer than the gateSpec object that generated it.
+     *
+     * @returns A function to calculate the weights.
+     **/
+    virtual std::function<float(timespec, timespec, float)> weight_function() const = 0;
+
+    /**
+     * @brief Is this enabled at the moment?
+     **/
+    const bool& enabled() const { return _enabled; }
+
+    /**
+     * @brief Get the name of the gated dataset.
+     **/
+    const std::string& name() const { return _name; }
+
 protected:
-    // Length of a gpu frame in s
-    double gpu_frame_width;
+
+    // Name of the gated dataset in the config
+    const std::string _name;
+
+    // Is the dataset enabled?
+    bool _enabled = false;
 };
+
+// Create a factory for gateSpecs
+CREATE_FACTORY(gateSpec, const std::string&);
+#define REGISTER_GATESPEC(specType) REGISTER_TYPE_WITH_FACTORY(gateSpec, specType)
+
 
 
 class pulsarSpec : public gateSpec {
+
 public:
-    pulsarSpec(double gpu_frame_width) : gateSpec(gpu_frame_width) {};
+    pulsarSpec(const std::string& name) : gateSpec(name) {};
+
     bool update_spec(nlohmann::json &json) override;
-    std::function<float(timespec, float)> weight_function() override;
+    std::function<float(timespec, timespec, float)> weight_function() const override;
+
 private:
     // Config parameters for pulsar gating
     float dm;
@@ -51,8 +108,20 @@ private:
     double rot_freq;  // in Hz
     float pulse_width;  // in s
     Polyco polyco;
+};
 
-    friend visAccumulate;
+
+/**
+ * @brief Uniformly weight all data.
+ *
+ * @note This is used to implement the nominal visibility dataset. It does not
+ *       actually gate.
+ **/
+class uniformSpec : public gateSpec {
+public:
+    uniformSpec(const std::string& name);
+    bool update_spec(nlohmann::json &json) override;
+    std::function<float(timespec, timespec, float)> weight_function() const override;
 };
 
 
@@ -102,6 +171,54 @@ public:
 
 private:
 
+    // NOTE: Annoyingly this can't be forward declared, and defined fully externally
+    // as the std::deque needs the complete type
+    /**
+     * @class internalState
+     * @brief Hold the internal state of a gated accumulation.
+     **/
+    struct internalState {
+
+        /**
+         * @brief Initialise the required fields.
+         *
+         * Everything else will be set by the reset_state call during
+         * initialisation.
+         *
+         * @param out_buf   Buffer we will output into.
+         * @param gate_spec Specification of how any gating is done.
+         **/
+        internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod);
+
+        /// The buffer we are outputting too
+        Buffer* buf;
+
+        // Current frame ID of the buffer we are using
+        frameID frame_id;
+
+        /// Specification of how we are gating
+        //gateSpec* spec;
+        std::unique_ptr<gateSpec> spec;
+
+        /// The weighted number of total samples accumulated. Must be reset every
+        /// integration period.
+        float sample_weight_total;
+
+        /// Function for applying the weighting. While this can essentially be
+        /// derived from the gateSpec we need to cache it so the gating can be
+        /// updated externally within an accumulation.
+        std::function<float(timespec, timespec, float)> calculate_weight;
+
+        /// Mutex to control update of gateSpec
+        std::mutex state_mtx;
+
+        /// Accumulation vectors
+        std::vector<cfloat> vis1;
+        std::vector<float> vis2;
+
+        friend visAccumulate;
+    };
+
     // Buffers to read/write
     Buffer* in_buf;
     Buffer* out_buf;  // Output for the main vis dataset only
@@ -114,26 +231,24 @@ private:
     size_t samples_per_data_set;
     size_t num_gpu_frames;
 
+    // Derived from config
+    size_t num_prod_gpu;
+
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
 
     // Helper methods to make code clearer
 
     // Set initial values of visBuffer
-    void initialise_output(Buffer* out_buf, int out_frame_id,
+    void initialise_output(internalState& state,
                            int in_frame_id, int freq_ind);
 
     // Fill in data sections of visBuffer
-    void finalise_output(Buffer* out_buf, int out_frame_id,
-                         cfloat* vis1, float* vis2, int freq_ind,
+    void finalise_output(internalState& state, int freq_ind,
                          uint32_t total_samples);
 
     // List of gating specifications
     std::map<std::string, gateSpec*> gating_specs;
-
-    // Struct to store the internal state of an accumulation
-    // Full declaration is below...
-    struct internalState;
 
     /**
      * @brief Reset the state when we restart an integration.
@@ -144,36 +259,9 @@ private:
 
 
     // Hold the state for any gated data
-    std::vector<internalState> gated_datasets;
+    std::deque<internalState> gated_datasets;
 };
 
 
-/**
- * @class visAccumulate::internalState
- * @brief Hold the internal state of a gated accumulation.
- **/
-struct visAccumulate::internalState {
-
-    /// The buffer we are outputting too
-    Buffer* buf;
-
-    // Current frame ID of the buffer we are using
-    int frame_id;
-
-    /// Specification of how we are gating
-    std::unique_ptr<gateSpec> spec;
-
-    /// The weighted number of total samples accumulated. Must be reset every
-    /// integration period.
-    float sample_weight_total;
-
-    /// Function for applying the weighting. While this can essentially be
-    /// derived from the gateSpec we need to cache it so the gating can be
-    /// updated externally within an accumulation.
-    std::function<float(timespec, float)> weightfunc;
-
-    /// Mutex to control update of gateSpec
-    std::mutex state_mtx;
-};
 
 #endif
