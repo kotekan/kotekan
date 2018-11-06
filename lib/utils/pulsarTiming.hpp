@@ -60,6 +60,13 @@ private:
 
 };
 
+
+template<typename T>
+inline T modulo_pos(T a, T b) {
+    return (b + (a%b)) % b;
+}
+
+
 /**
  * @brief Add an offset to a timespec.
  * @param t     timespec to modify.
@@ -67,8 +74,9 @@ private:
  * @returns     Modified timespec.
  **/
 inline timespec add_nsec(const timespec & t, const long nsec) {
-    return {t.tv_sec + (t.tv_nsec + nsec) / 1000000000,
-            (t.tv_nsec + nsec) % 1000000000};
+    long nsec_sum = t.tv_sec + nsec;
+    return {t.tv_sec + nsec_sum / 1000000000 - (nsec_sum < 0),
+            modulo_pos(nsec_sum, (long) 1000000000)};
 }
 
 #endif
