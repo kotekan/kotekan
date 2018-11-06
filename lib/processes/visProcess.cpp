@@ -6,6 +6,7 @@
 #include "prometheusMetrics.hpp"
 #include "fmt.hpp"
 #include "datasetManager.hpp"
+#include "version.h"
 
 #include <time.h>
 #include <iomanip>
@@ -13,6 +14,7 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <memory>
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -193,7 +195,8 @@ visAccumulate::visAccumulate(Config& config,
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
 
     // Get the indices for reordering
-    input_remap = std::get<0>(parse_reorder_default(config, unique_name));
+    auto input_reorder = parse_reorder_default(config, unique_name);
+    input_remap = std::get<0>(input_reorder);
 
     float int_time = config.get_default<float>(unique_name, "integration_time", -1.0);
 
@@ -213,10 +216,95 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
+
+    // Get everything we need for registering dataset states
+
+    // --> get metadata
+    _instrument_name = config.get_default<std::string>(
+                unique_name, "instrument_name", "chime");
+
+    std::vector<uint32_t> freq_ids;
+
+    // Get the frequency IDs that are on this stream, check the config or just
+    // assume all CHIME channels
+    if (config.exists(unique_name, "freq_ids")) {
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    }
+    else {
+        freq_ids.resize(1024);
+        std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
+    }
+
+    // Create the frequency specification
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
+                   [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                   });
+
+    // The input specification from the config
+    _inputs = std::get<1>(input_reorder);
+
+    size_t num_elements = _inputs.size();
+
+    // Create the product specification
+    _prods.reserve(num_elements);
+    for(uint16_t i = 0; i < num_elements; i++) {
+        for(uint16_t j = i; j < num_elements; j++) {
+            _prods.push_back({i, j});
+        }
+    }
+
+    // get dataset ID for out frames
+    uint32_t err_count = 0;
+    while (true) {
+        try {
+            _ds_id_out = change_dataset_state();
+        } catch (std::runtime_error& e) {
+            WARN("Failure in datasetManager: %s",
+                 e.what());
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_viswriter_dropped_frame_total",
+                unique_name, ++err_count);
+            // wait a second
+            usleep(1000000);
+            WARN("Retrying...");
+
+            continue;
+        }
+        break;
+    }
 }
 
 visAccumulate::~visAccumulate() {
 }
+
+dset_id_t visAccumulate::change_dataset_state() {
+
+    // weight calculation is hardcoded, so is the weight type name
+    const std::string weight_type = "inverse_var";
+    const std::string git_tag = get_git_commit_hash();
+
+    // create all the states
+    state_uptr freq_state = std::make_unique<freqState>(_freqs);
+    state_uptr input_state = std::make_unique<inputState>(
+        _inputs, std::move(freq_state));
+    state_uptr prod_state = std::make_unique<prodState>(
+        _prods, std::move(input_state));
+    //empty stackState
+    state_uptr stack_state =
+            std::make_unique<stackState>(std::move(prod_state));
+    state_uptr mstate = std::make_unique<metadataState>(weight_type,
+                                                        _instrument_name,
+                                                        git_tag,
+                                                        std::move(stack_state));
+
+    // register them with the datasetManager
+    datasetManager& dm = datasetManager::instance();
+    state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+    //register root dataset
+    return dm.add_dataset(dataset(mstate_id, 0, true));
+}
+
 
 void visAccumulate::apply_config(uint64_t fpga_seq) {
 }
@@ -314,6 +402,8 @@ void visAccumulate::main_thread() {
             std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
             output_frame.erms = 0;
             std::fill(output_frame.gain.begin(), output_frame.gain.end(), 1.0);
+
+            output_frame.dataset_id = _ds_id_out;
 
             // Zero out accumulation arrays
             std::fill(vis1, vis1 + nprod_gpu, 0);
@@ -765,8 +855,7 @@ void registerInitialDatasetState::main_thread() {
     auto s = dm.add_state(std::move(stack_state));
     state_id_t initial_state = s.first;
 
-    // Get the new dataset ID, this uses the current root ID and then decrements
-    // it for any other instance of this process.
+    // Get the new dataset ID by registering the root dataset.
     dset_id_t output_dataset = dm.add_dataset(dataset(initial_state, 0, true));
 
     while (!stop_thread) {

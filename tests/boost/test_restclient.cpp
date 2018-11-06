@@ -288,7 +288,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
                           std::placeholders::_1,
                           std::placeholders::_2),
                       "/test_restclient_pong");
-#define N 100
+#define N 10
     std::thread t[N];
     for (int i = 0; i < N; i++) {
         t[i] = std::thread(check);

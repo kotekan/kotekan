@@ -24,7 +24,7 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
     __enable_syslog = 0;
 
     json json_config;
-    json_config["use_ds_broker"] = true;
+    json_config["use_dataset_broker"] = true;
     json_config["ds_broker_port"] = 12050;
     json_config["ds_broker_host"] = "127.0.0.1";
     json_config["register_state_path"] = "/register-state";

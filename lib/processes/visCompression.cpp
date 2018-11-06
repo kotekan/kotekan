@@ -93,7 +93,15 @@ void baselineCompression::change_dataset_state(dset_id_t ds_id) {
 
     // TODO: get both states synchronoulsy?
     auto input_state_ptr = dm.dataset_state<inputState>(ds_id);
+    if (input_state_ptr == nullptr)
+        throw std::runtime_error("Could not find inputState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
     prod_state_ptr = dm.dataset_state<prodState>(ds_id);
+    if (prod_state_ptr == nullptr)
+        throw std::runtime_error("Could not find prodState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
 
     auto sspec = calculate_stack(input_state_ptr->get_inputs(),
                                  prod_state_ptr->get_prods());

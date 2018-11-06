@@ -12,8 +12,12 @@ datasetState::_registered_types()
 
 state_uptr datasetState::_create(std::string name, json & data,
                                  state_uptr inner) {
-
-    return _registered_types()[name](data, std::move(inner));
+    try {
+        return _registered_types()[name](data, std::move(inner));
+    } catch (std::bad_function_call& e) {
+        WARN("datasetManager: no state of type %s is registered.", name.c_str());
+        return nullptr;
+    }
 }
 
 state_uptr datasetState::from_json(json & data) {

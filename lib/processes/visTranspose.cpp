@@ -146,8 +146,9 @@ void visTranspose::gather_metadata() {
             // Also crash here, if a state is missing, there is something wrong.
             // Problem should be fixed and restarted.
             ERROR("Could not find all dataset states.");
-            ERROR("stack %d, meta %d, time %d, prod %d, freq %d, input %d, ev %d", sstate, mstate, tstate, pstate,
-                    fstate, istate, evstate);
+            ERROR("One of those is a nullptr: stack %d, meta %d, time %d, " \
+                  "prod %d, freq %d, input %d, ev %d",
+                  sstate, mstate, tstate, pstate, fstate, istate, evstate);
             ERROR("Exiting...");
             raise(SIGINT);
         }

@@ -88,7 +88,8 @@ datasetManager::datasetManager() {
 }
 
 void datasetManager::apply_config(Config& config) {
-    _use_broker = config.get_default<bool>(UNIQUE_NAME, "use_ds_broker", false);
+    _use_broker = config.get_default<bool>(
+                UNIQUE_NAME, "use_dataset_broker", false);
     if (_use_broker) {
         _ds_broker_port = config.get<uint32_t>(UNIQUE_NAME, "ds_broker_port");
         _ds_broker_host = config.get<std::string>(
@@ -123,7 +124,7 @@ dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
             // Search for existing entry and return if it exists.
             auto find = _datasets.find(new_dset_id);
             if (!ds.equals(find->second)) {
-                // FIXME: hash collision. make the value a vector and store same
+                // TODO: hash collision. make the value a vector and store same
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
                 ERROR("datasetManager: Hash collision!\n"
@@ -383,6 +384,8 @@ void datasetManager::request_ancestor_callback(restReply reply) {
             sscanf(s.key().c_str(), "%zu", &s_id);
 
             state_uptr state = datasetState::from_json(s.value());
+            if (state == nullptr)
+                continue;
 
             // TODO: hash collisions should be checked for by the broker
             if (!_states.insert(std::pair<state_id_t,
@@ -530,3 +533,6 @@ REGISTER_DATASET_STATE(freqState);
 REGISTER_DATASET_STATE(inputState);
 REGISTER_DATASET_STATE(prodState);
 REGISTER_DATASET_STATE(stackState);
+REGISTER_DATASET_STATE(eigenvalueState);
+REGISTER_DATASET_STATE(timeState);
+REGISTER_DATASET_STATE(metadataState);

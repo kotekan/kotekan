@@ -18,6 +18,7 @@
 #include <time.h>
 #include <regex>
 #include "fmt.hpp"
+#include "version.h"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 REGISTER_KOTEKAN_PROCESS(visCalWriter);
@@ -40,11 +41,6 @@ visWriter::visWriter(Config& config,
     file_type = config.get_default<std::string>(
                 unique_name, "file_type", "hdf5fast");
 
-    // If specified, get the weights type to write to attributes
-    // TODO: add this to the datasetManager framework
-    weights_type = config.get_default<std::string>(
-                unique_name, "weights_type", "unknown");
-
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
 
@@ -52,12 +48,20 @@ visWriter::visWriter(Config& config,
     bool write_ev = config.get_default<bool>(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get<size_t>(unique_name, "num_ev") : 0;
 
+    // TODO: get this from the datasetManager and put data type somewhere else
+    instrument_name = config.get_default<std::string>(
+                unique_name, "instrument_name", "chime");
+
     use_dataset_manager = config.get_default<bool>(
                 unique_name, "use_dataset_manager", false);
 
     // If we are not using the dataset manager directly, create fake entries
     // from the config information supplied to the class
     if (!use_dataset_manager) {
+
+        // If specified, get the weights type to write to attributes
+        weights_type = config.get_default<std::string>(
+                    unique_name, "weights_type", "unknown");
 
         // Get the input labels and the products we are writing from the config
         auto ispec = std::get<1>(parse_reorder_default(config, unique_name));
@@ -77,7 +81,10 @@ visWriter::visWriter(Config& config,
         auto& dm = datasetManager::instance();
 
         // Construct a nested description of the initial state
-        state_uptr freq_state = std::make_unique<freqState>(fspec);
+        state_uptr mstate = std::make_unique<metadataState>(
+                    weights_type, instrument_name, get_git_commit_hash());
+        state_uptr freq_state = std::make_unique<freqState>(fspec,
+                                                            std::move(mstate));
         state_uptr input_state = std::make_unique<inputState>(
             ispec, std::move(freq_state));
         state_uptr prod_state = std::make_unique<prodState>(
@@ -90,10 +97,6 @@ visWriter::visWriter(Config& config,
         auto s = dm.add_state(std::move(stack_state), true);
         writer_dstate = s.first;
     }
-
-    // TODO: long term this should come from some dynamic source (dM?)
-    instrument_name = config.get_default<std::string>(
-                unique_name, "instrument_name", "chime");
 
     // Set the instrument name from the hostname if in node mode
     node_mode = config.get_default<bool>(unique_name, "node_mode", false);
@@ -213,28 +216,52 @@ void visWriter::main_thread() {
     }
 }
 
-std::pair<size_t, std::map<uint32_t, uint32_t>>
-visWriter::change_dataset_state(dset_id_t ds) {
+void visWriter::change_dataset_state() {
 
     auto& dm = datasetManager::instance();
-    std::map<uint32_t, uint32_t> fmap;
 
     // TODO: get all 3 states synchronously
 
     // Get the frequency spec to determine the freq_ids expected at this Writer.
-    auto fstate = dm.dataset_state<freqState>(ds);
+    auto fstate = dm.dataset_state<freqState>(ds_id);
+    if (fstate == nullptr)
+        throw std::runtime_error("Could not find freqState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
-        fmap[f.first] = ind++;
+        _freq_id_map[f.first] = ind++;
 
     // Get the product spec and (if available) the stackState to determine the
     // number of vis entries we are expecting
-    auto pstate = dm.dataset_state<prodState>(ds);
-    auto sstate = dm.dataset_state<stackState>(ds);
+    auto pstate = dm.dataset_state<prodState>(ds_id);
+    auto sstate = dm.dataset_state<stackState>(ds_id);
+    auto mstate = dm.dataset_state<metadataState>(ds_id);
+    if (pstate == nullptr || sstate == nullptr || mstate == nullptr)
+        throw std::runtime_error("Could not find all dataset states for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".\n" \
+                                 "One of them is a nullptr (0): prod "
+                                 + std::to_string(pstate != nullptr)
+                                 + ", stack "
+                                 + std::to_string(sstate != nullptr)
+                                 + ", metadata "
+                                 + std::to_string(mstate != nullptr));
 
-    return {sstate->is_stacked() ?
-            sstate->get_num_stack() : pstate->get_prods().size(),
-            fmap};
+    weights_type = mstate->get_weight_type();
+
+    // compare git commit hashes
+    // TODO: enforce and crash here if build type is Release?
+    if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
+        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
+             "the local git version tag is %s", ds_id,
+             mstate->get_git_version_tag().c_str(),
+             get_git_commit_hash());
+    }
+
+    _num_vis = sstate->is_stacked() ?
+            sstate->get_num_stack() : pstate->get_prods().size();
 }
 
 bool visWriter::init_acq() {
@@ -256,7 +283,7 @@ bool visWriter::init_acq() {
 
     // get dataset states
     try {
-        std::tie(_num_vis, _freq_id_map) = change_dataset_state(ds_id);
+        change_dataset_state();
     } catch (std::runtime_error& e) {
         ERROR("Failure in datasetManager: %s", e.what());
         ERROR("Cancelling write to file.");
@@ -286,7 +313,7 @@ bool visWriter::init_acq() {
     metadata["archive_version"] = "NT_3.1.0";
     metadata["instrument_name"] = instrument_name;
     metadata["notes"] = "";   // TODO: connect up notes
-    metadata["git_version_tag"] = "not set";
+    metadata["git_version_tag"] = get_git_commit_hash();
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
 

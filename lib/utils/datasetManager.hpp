@@ -135,24 +135,24 @@ private:
  * Using it allows the synchronization of datasets and states between multiple
  * kotekan instances.
  *
- * @conf use_ds_broker Bool. If true, states and datasets will be
+ * @conf use_dataset_broker Bool. If true, states and datasets will be
  *                          registered with
  *                          the dataset broker. If an ancestor can not be found
  *                          locally, `closest_ancestor_of_type` will ask the
  *                          broker.
  * @conf ds_broker_port   Int. The port of the dataset broker
- *                          (if `use_ds_broker` is `True`).
+ *                          (if `use_dataset_broker` is `True`).
  * @conf ds_broker_host   String. Address to the dataset broker
  *                          (if 'use_ds_broke` is `True`. Prefer numerical
  *                          address, because the DNS lookup is blocking).
  * @conf _path register_state     String. Path to the `register-state`
- *                                  endpoint (if `use_ds_broker` is `True`).
+ *                                  endpoint (if `use_dataset_broker` is `True`).
  * @conf _path send_state         String. Path to the `send-state` endpoint
- *                                  (if `use_ds_broker` is `True`).
+ *                                  (if `use_dataset_broker` is `True`).
  * @conf _path register_dataset   String. Path to the `register-dataset`
- *                                  endpoint (if `use_ds_broker` is `True`).
+ *                                  endpoint (if `use_dataset_broker` is `True`).
  * @conf _path request_ancestors  String. Path to the `request_ancestors`
- *                                  endpoint (if `use_ds_broker` is `True`).
+ *                                  endpoint (if `use_dataset_broker` is `True`).
  *
  *
  * @par metrics
@@ -184,8 +184,8 @@ public:
     /**
      * @brief Register a new dataset.
      *
-     * If `use_ds_broker` is set, this function will ask the dataset broker to
-     * assign an ID to the new dataset.
+     * If `use_dataset_broker` is set, this function will ask the dataset broker
+     * to assign an ID to the new dataset.
      *
      * @param ds The dataset to be added.
      * @param ignore_broker If true, the dataset is not sent to the broker.
@@ -196,8 +196,8 @@ public:
     /**
      * @brief Register a state with the manager.
      *
-     * If `use_ds_broker` is set, this function will also register the new state
-     * with the broker.
+     * If `use_dataset_broker` is set, this function will also register the new
+     * state with the broker.
      *
      * The third argument of this function is to
      * prevent compilation of this function with `T` not having the base class
@@ -239,7 +239,7 @@ public:
     /**
      * @brief Find the closest ancestor of a given type.
      *
-     * If `use_ds_broker` is set and no ancestor of the given type is found,
+     * If `use_dataset_broker` is set and no ancestor of the given type is found,
      * this will ask the broker for a complete list of ancestors for the given
      * dataset. In that case, this function is blocking, until the broker
      * answeres. If you want to do something else, while waiting for the return
@@ -377,10 +377,8 @@ inline int datasetState::_register_state_type() {
 
 /* TODO:
  * atm this receives a list from the broker of all it is missing to know the
- * ancestor itself. Instead, receive only the requested ancexstor state and
- * cache it in a hash map. The callback function then receives a string
- * describing the type and has to find the type_index to use as a key for the
- * hash map and it has to dynamically cast to that type. */
+ * ancestor itself. Instead, receive only the requested ancestor state and
+ * keep the dataset IDs synched everywhere at all time. */
 template<typename T>
 inline const T* datasetManager::dataset_state(dset_id_t dset) const {
     if (!_use_broker) {

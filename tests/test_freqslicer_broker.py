@@ -28,7 +28,7 @@ params = {
 }
 
 params['dataset_manager'] = {
-    'use_ds_broker': True,
+    'use_dataset_broker': True,
     'ds_broker_port': 12050,
     'ds_broker_host': "127.0.0.1",
     'register_state_path': "/register-state",

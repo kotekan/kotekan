@@ -44,15 +44,15 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
 
     // create new frequency dataset state
-    const freqState* input_freq_ptr =
+    const freqState* freq_state_ptr =
             dm.dataset_state<freqState>(input_dset_id);
-    if (input_freq_ptr == nullptr)
+    if (freq_state_ptr == nullptr)
         throw std::runtime_error("freqSplit: Could not find freqState " \
                                  "ancestor of dataset "
                                  + std::to_string(input_dset_id));
 
     const std::vector<std::pair<uint32_t, freq_ctype>>& input_freqs =
-            input_freq_ptr->get_freqs();
+            freq_state_ptr->get_freqs();
     std::vector<std::pair<uint32_t, freq_ctype>> output_freqs_lower,
             output_freqs_higher;
 
@@ -213,9 +213,9 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     auto& dm = datasetManager::instance();
 
     // create new frequency dataset state
-    const freqState* input_freq_ptr =
+    const freqState* freq_state_ptr =
             dm.dataset_state<freqState>(input_dset_id);
-    if (input_freq_ptr == nullptr)
+    if (freq_state_ptr == nullptr)
         throw std::runtime_error("freqSubset: Could not find freqState " \
                                  "ancestor of dataset "
                                  + std::to_string(input_dset_id));
@@ -223,7 +223,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     // put the input_freqs in a map and then pick the ones that are in the
     // subset list out of the map again into the output_freqs
     const std::vector<std::pair<uint32_t, freq_ctype>>&
-            vec_input_freqs(input_freq_ptr->get_freqs());
+            vec_input_freqs(freq_state_ptr->get_freqs());
     std::map<uint32_t, freq_ctype> input_freqs;
 
     for (auto const& i : vec_input_freqs) {

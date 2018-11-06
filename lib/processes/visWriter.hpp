@@ -133,9 +133,8 @@ protected:
     std::mutex write_mutex;
 
 private:
-    /// Gets states from the dataset manager and returns some metadata
-    static std::pair<size_t, std::map<uint32_t, uint32_t>>
-    change_dataset_state(dset_id_t ds);
+    /// Gets states from the dataset manager and saves some metadata
+    void change_dataset_state();
 
     /// Number of products to write and freqency map
     std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>

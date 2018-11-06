@@ -15,6 +15,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 
 /**
@@ -120,13 +121,17 @@ private:
  *
  * This process will accumulate the GPU output and calculate the within sample
  * variance for weights.
+ * It tags the stream with a properly allocated dataset_id if
+ * `use_dataset_manager` is `true` and adds
+ * associated datasetStates to the datasetManager. It adds an empty stackState
+ * to the dataset (as in not stacked).
  *
  * @par Buffers
  * @buffer in_buf
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
- * @buffer out_buf
- *         @buffer_format visBuffer
+ * @buffer out_buf The accumulated and tagged data.
+ *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
@@ -145,6 +150,9 @@ private:
  *                              Only the first element of each sub-array is used and it is the the index of
  *                              the input to move into this new location. The remaining elements of the
  *                              subarray are for correctly labelling the input in ``visWriter``.
+ * @conf  instrument_name       String. Name of the instrument. Default "chime".
+ * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
+ *                              Default 0..1023.
  *
  * @author Richard Shaw
  */
@@ -158,6 +166,10 @@ public:
     void main_thread() override;
 
 private:
+    /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
+    /// prodState, inputState and freqState according to config and an empty
+    /// stackState
+    dset_id_t change_dataset_state();
 
     // Buffers to read/write
     Buffer* in_buf;
@@ -169,6 +181,15 @@ private:
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
+
+    // dataset ID written to output frames
+    dset_id_t _ds_id_out;
+
+    // data saved to register dataset states
+    std::string _instrument_name;
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<input_ctype> _inputs;
+    std::vector<prod_ctype> _prods;
 };
 
 /**
@@ -308,6 +329,9 @@ private:
  * @buffer out_buf The tagged data.
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
+ *
+ * @conf freq_ids   Vector of UInt32. Frequency IDs on the stream.
+ *                  Default 0..1023.
  *
  * @author Richard Shaw
  */

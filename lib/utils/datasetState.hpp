@@ -46,7 +46,7 @@ public:
      * inner states.
      *
      * @param j Full JSON serialisation.
-     * @returns The created datasetState.
+     * @returns The created datasetState or a nullptr in a failure case.
      **/
     static state_uptr from_json(json& j);
 

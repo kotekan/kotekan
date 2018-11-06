@@ -44,14 +44,14 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id,
     auto& dm = datasetManager::instance();
 
     // create new product dataset state
-    const prodState* input_prod_ptr =
+    const prodState* prod_state_ptr =
             dm.dataset_state<prodState>(ds_id);
-    if (input_prod_ptr == nullptr)
+    if (prod_state_ptr == nullptr)
         throw std::runtime_error("prodSubset: Could not find prodState for " \
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
 
-    const vector<prod_ctype>& input_prods = input_prod_ptr->get_prods();
+    const vector<prod_ctype>& input_prods = prod_state_ptr->get_prods();
     vector<prod_ctype> output_prods;
     std::copy(input_prods.cbegin(), input_prods.cend(),
               std::back_inserter(output_prods));

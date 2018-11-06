@@ -8,6 +8,7 @@
 #include <functional>
 #include "datasetManager.hpp"
 #include "fmt.hpp"
+#include "version.h"
 
 
 using namespace std::placeholders;
@@ -139,13 +140,16 @@ void fakeVis::main_thread() {
         if (_fixed_dset_id) {
             ds_id = _dset_id;
         } else {
+            auto mstate = std::make_unique<metadataState>("not set", "fakeVis",
+                                                          get_git_commit_hash());
+
             std::vector<std::pair<uint32_t, freq_ctype>> fspec;
             std::transform(
                 std::begin(freq), std::end(freq), std::back_inserter(fspec),
                 [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
                     return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                 });
-            auto fstate = std::make_unique<freqState>(fspec);
+            auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
 
             std::vector<input_ctype> ispec;
             for (uint32_t i = 0; i < num_elements; i++)
