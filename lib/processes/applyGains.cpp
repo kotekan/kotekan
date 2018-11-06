@@ -67,6 +67,16 @@ void applyGains::apply_config(uint64_t fpga_seq) {
     // Get the path to gains directory
     gains_dir = config.get<std::string>(unique_name, "gains_dir");
 
+    num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
+    if (num_threads == 0)
+        throw std::invalid_argument("applyGains: apply_config: "
+                                    "num_threads has to be at least 1.");
+    if (in_buf->num_frames % num_threads != 0 ||
+        out_buf->num_frames % num_threads != 0)
+        throw std::invalid_argument("applyGains: apply_config: both "
+                                    "the size of the input and output buffer"
+                                    "have to be multiples of num_threads.");
+
 }
 
 bool applyGains::fexists(const std::string& filename) {
@@ -130,9 +140,13 @@ bool applyGains::receive_update(nlohmann::json &json) {
     // Read the dataset and alocates it to the most recent entry of the gain vector
     HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
     gains_ds.read(gain_read);
-    gain_mtx.lock();
+    for (auto mtx : gains_mtx) {
+        mtx.lock();
+    }
     gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
-    gain_mtx.unlock();
+    for (auto mtx : gains_mtx) {
+        mtx.unlock();
+    }
     // Read the gains weight dataset
     HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
     gain_weight_ds.read(gain_weight);
@@ -141,16 +155,40 @@ bool applyGains::receive_update(nlohmann::json &json) {
     return true;
 }
 
-void applyGains::main_thread() {
+void applyGains::main_thread(){
 
-    unsigned int output_frame_id = 0;
-    unsigned int input_frame_id = 0;
+    num_late_frames = 0;
+    num_late_updates = 0;
+
+    // Create the threads
+    thread_handles.resize(num_threads);
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        thread_handles[i] = std::thread(&applyGains::apply_thread, this, i);
+
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        INFO("Setting thread affinity");
+        for (auto &i : config.get<std::vector<int>>(unique_name,
+                                                    "cpu_affinity"))
+            CPU_SET(i, &cpuset);
+
+        pthread_setaffinity_np(thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);
+    }
+
+    // Join the threads
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        thread_handles[i].join();
+    }
+
+}
+
+void applyGains::apply_thread(int thread_id) {
+
+    unsigned int output_frame_id = thread_id;
+    unsigned int input_frame_id = thread_id;
     unsigned int freq;
     double tpast;
     double frame_time;
-    size_t num_late_frames = 0;
-
-    num_late_updates = 0;
 
     while (!stop_thread) {
 
@@ -181,7 +219,7 @@ void applyGains::main_thread() {
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_new;
         std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_old;
 
-        gain_mtx.lock();
+        gain_mtx[thread_id].lock();
         gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
         if (gainpair_new.second == NULL) {
             WARN("No gains available.\nKilling kotekan");
@@ -209,13 +247,13 @@ void applyGains::main_thread() {
         } else {
             gain = (*gainpair_new.second)[freq];
             if (tpast < 0) {
-                WARN("No gains update is as old as the currently processed " \
+                WARN("(Thread %d) No gains update is as old as the currently processed " \
                      "frame. Using oldest gains available."\
-                     "Time difference is: %f seconds.", tpast);
+                     "Time difference is: %f seconds.", thread_id, tpast);
                 num_late_frames++;
             }
         }
-        gain_mtx.unlock();
+        gain_mtx[thread_id].unlock();
         // Compute weight factors and conjugate gains
         for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
             if (gain_weight[freq][ii]==0.0) {
@@ -293,7 +331,7 @@ void applyGains::main_thread() {
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
         // Advance the current frame ids
-        input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-        output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
+        input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
+        output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
     }
 }

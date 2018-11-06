@@ -93,7 +93,7 @@ private:
     Buffer * in_buf;
 
     /// Mutex to protect access to gains
-    std::mutex gain_mtx;
+    std::vector<std::mutex> gain_mtx;
 
     /// Timestamp of the current frame
     timespec ts_frame = {0,0};
@@ -101,8 +101,22 @@ private:
     /// Number of updates received too late
     size_t num_late_updates;
 
+    /// Number of frames received too late, every thread must be able to increment
+    std::atomic<size_t> num_late_frames;
+
     /// Gain weights. If zero, no meaningfull gains were obtained for that input
     std::vector<std::vector<float>> gain_weight;
+
+	/// Entrancepoint for n threads. Each thread takes frames with a
+	/// different frame_id from the buffer and compresses them.
+    void apply_thread(int thread_id);
+
+    ///Vector to hold the thread handles
+    std::vector<std::thread> thread_handles;
+
+    /// Number of parallel threads accessing the same buffers (default 1)
+    uint32_t num_threads;
+
 };
 
 
