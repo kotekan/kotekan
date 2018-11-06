@@ -46,6 +46,10 @@ public:
                             bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiZeroData();
+
+    /// Function to hadle updatable config rest server calls
+    bool update_rfi_zero_flag(nlohmann::json &json);
+
     /// Executes rfi_chime_zero.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -62,6 +66,10 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
+    /// Boolean to toggle RFI zeroing
+    bool _rfi_zeroing;
+    /// Rest server callback mutex
+    std::mutex rest_callback_mutex;
 };
 
 #endif

@@ -37,6 +37,8 @@ public:
     virtual ~hsaRfiMaskOutput();
     /// Wait for output buffer to be empty, keep track of _rfi_mask_output_buf_precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
+    /// Function to handle updatble config rest server calls for rfi zeroing toggle
+    bool update_rfi_add_lostsamples_flag(nlohmann::json &json);
     /// Async copy output form gpu to host
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) override;
     /// Marks output full when done and passes metadata

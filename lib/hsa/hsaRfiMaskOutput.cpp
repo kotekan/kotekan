@@ -1,4 +1,5 @@
 #include "hsaRfiMaskOutput.hpp"
+#include "configUpdater.hpp"
 
 REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
@@ -15,13 +16,30 @@ hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     //Rfi paramters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _rfi_add_lostsamples = config.get<bool>(unique_name, "rfi_add_lostsamples");
     //Initialize ID's
     _network_buf_id = 0;
     _rfi_mask_output_buf_id = 0;
     _rfi_mask_output_buf_precondition_id = 0;
     _rfi_mask_output_buf_execute_id = 0;
+    using namespace std::placeholders;
+    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_rfi_zeroing"),
+                               std::bind(&hsaRfiMaskOutput::update_rfi_add_lostsamples_flag, this, _1));
+
 }
+
+
+bool hsaRfiMaskOutput::update_rfi_add_lostsamples_flag(nlohmann::json &json) {
+
+    try {
+        _rfi_add_lostsamples = json["rfi_zeroing"];
+    } catch (std::exception& e) {
+        WARN("Failed to set RFI lost samples flag %s", e.what());
+        return false;
+    }
+    INFO("Changing RFI lost sample flag to %d",_rfi_add_lostsamples);
+    return true;
+}
+
 
 hsaRfiMaskOutput::~hsaRfiMaskOutput() {
 }
