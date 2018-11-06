@@ -213,7 +213,6 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = ( frame_id + num_disks ) % buf->num_frames;
-        //Increase number, but prevent running out of file names
         file_num += num_disks;
     }
 }
