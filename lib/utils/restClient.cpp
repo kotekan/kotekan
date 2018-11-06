@@ -143,6 +143,9 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
         return;
     }
 
+    // Reserve space to avoid causing mallocs when appending data.
+    str_data.reserve(datalen);
+
     // peek into the input buffer
     // (treating it as char's and putting it into a string)
     struct evbuffer_iovec* vec_out;
