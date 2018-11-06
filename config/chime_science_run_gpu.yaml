@@ -64,7 +64,7 @@ frb_gain:
 #Pulsar stuff
 feed_sep_NS : 0.3048
 feed_sep_EW : 22.0
-num_pulsar: 10
+num_beams: 10
 num_pol: 2
 pulsar_gain:
   kotekan_update_endpoint: json
@@ -141,7 +141,7 @@ gpu_beamform_output_buffers:
 
 pulsar_output_buffers:
     num_frames: buffer_depth
-    frame_size: _samples_per_data_set * _num_pulsar * _num_pol * sizeof_float *2
+    frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
         kotekan_buffer: hsa
@@ -479,14 +479,14 @@ gpu:
 
 frb:
   factor_upchan_out: 16
-  num_beams: 4
+  num_beams_per_frb_packet: 4
   timesamples_per_frb_packet: 16
   frb_output_buffer:
     num_frames: buffer_depth
-    frame_size: 8 * 256 * (num_beams * num_gpus * factor_upchan_out * timesamples_per_frb_packet
-                           + 24 + sizeof_short * num_beams + sizeof_short * num_gpus
-                                + sizeof_float * num_beams * num_gpus
-                                + sizeof_float * num_beams * num_gpus)
+    frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus * factor_upchan_out * timesamples_per_frb_packet
+                           + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
+                                + sizeof_float * num_beams_per_frb_packet * num_gpus
+                                + sizeof_float * num_beams_per_frb_packet * num_gpus)
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
