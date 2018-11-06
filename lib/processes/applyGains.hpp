@@ -38,6 +38,7 @@
  * @conf   tcombine         Double. Time (in seconds) over which to combine old
  * and new gains to prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
+ * @conf   num_threads      Int.    Number of threads to run. Default is 1.
  *
  * @par Metrics
  * @metric kotekan_applygains_late_update_count The number of updates received
@@ -108,7 +109,7 @@ private:
     std::atomic<size_t> num_late_frames;
 
 	/// Entrancepoint for n threads. Each thread takes frames with a
-	/// different frame_id from the buffer and compresses them.
+	/// different frame_id from the buffer and applies gains.
     void apply_thread(int thread_id);
 
     ///Vector to hold the thread handles
