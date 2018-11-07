@@ -84,13 +84,18 @@ pulsar_gain:
 sk_step: 256
 rfi_combined: True
 rfi_sigma_cut: 5
-rfi_add_lostsamples: True
 
 #RFI Live-view Paramters
 waterfallX: 1024
 num_receive_threads: 4
 colorscale: 0.028
 waterfall_request_delay: 60
+
+rfi_masking:
+  toggle:
+    kotekan_update_endpoint: "json"
+    rfi_zeroing: True
+
 
 # Pool
 main_pool:
@@ -419,6 +424,7 @@ gpu:
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
+    updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_0
     out_buffers:
@@ -439,6 +445,7 @@ gpu:
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
+    updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_1
     out_buffers:
@@ -459,6 +466,7 @@ gpu:
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
+    updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_2
     out_buffers:
@@ -479,6 +487,7 @@ gpu:
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
+    updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_3
     out_buffers:
