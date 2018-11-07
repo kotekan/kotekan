@@ -8,7 +8,7 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
     _samples_per_data_set = config.get<int32_t>(
                 unique_name, "samples_per_data_set");
     _num_pol = config.get<int32_t>(unique_name, "num_pol");
