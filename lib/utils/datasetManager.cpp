@@ -8,21 +8,6 @@
 #include "fmt.hpp"
 #include "restClient.hpp"
 
-// static stuff
-std::map<state_id_t, state_uptr> datasetManager::_states;
-std::map<dset_id_t, dataset> datasetManager::_datasets;
-std::mutex datasetManager::_lock_states;
-std::mutex datasetManager::_lock_dsets;
-std::mutex datasetManager::_lock_rqst;
-std::mutex datasetManager::_lock_reg;
-std::condition_variable datasetManager::_cv_request_ancestor;
-std::string datasetManager::_path_register_state;
-std::string datasetManager::_path_send_state;
-std::string datasetManager::_path_register_dataset;
-std::string datasetManager::_path_request_ancestor;
-std::string datasetManager::_ds_broker_host;
-unsigned short datasetManager::_ds_broker_port;
-std::atomic<uint32_t> datasetManager::_conn_error_count;
 
 dataset::dataset(json& js) {
     _state = js["state"];
@@ -164,13 +149,13 @@ dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
 // technically doesn't guarantee order of items in an object, but in
 // practice nlohmann::json ensures they are alphabetical by default. It
 // might also be a little slow as it requires full serialisation.
-const state_id_t datasetManager::hash_state(datasetState& state) {
+const state_id_t datasetManager::hash_state(datasetState& state) const {
     static std::hash<std::string> hash_function;
 
     return hash_function(state.to_json().dump());
 }
 
-const state_id_t datasetManager::hash_dataset(dataset& ds) {
+const state_id_t datasetManager::hash_dataset(dataset& ds) const {
     static std::hash<std::string> hash_function;
 
     return hash_function(ds.to_json().dump());
@@ -181,7 +166,8 @@ void datasetManager::register_state(state_id_t state) {
     js_post["hash"] = state;
 
     std::function<void(restReply)> callback(
-                datasetManager::register_state_callback);
+                std::bind(&datasetManager::register_state_callback,
+                          this, std::placeholders::_1));
     if (restClient::instance().make_request(
             _path_register_state,
             callback,
@@ -226,7 +212,8 @@ void datasetManager::register_state_callback(restReply reply) {
                 _lock_states.unlock();
 
                 std::function<void(restReply)> callback(
-                            datasetManager::send_state_callback);
+                            std::bind(&datasetManager::send_state_callback,
+                                      this, std::placeholders::_1));
                 if (restClient::instance().make_request(
                         _path_send_state,
                         callback,
@@ -288,7 +275,8 @@ void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
     js_post["hash"] = hash;
 
     std::function<void(restReply)> callback(
-                datasetManager::register_dataset_callback);
+                std::bind(&datasetManager::register_dataset_callback,
+                          this, std::placeholders::_1));
     if (restClient::instance().make_request(
             _path_register_dataset,
             callback,
@@ -333,7 +321,8 @@ void datasetManager::request_ancestor(dset_id_t dset_id, const char* type) {
     js_post["type"] = type;
 
     std::function<void(restReply)> callback(
-                datasetManager::request_ancestor_callback);
+                std::bind(&datasetManager::request_ancestor_callback,
+                          this, std::placeholders::_1));
     if (restClient::instance().make_request(
             _path_request_ancestor,
             callback,
@@ -398,41 +387,43 @@ void datasetManager::request_ancestor_callback(restReply reply) {
     }
 
     // register the received datasets
-    std::unique_lock<std::mutex> dslck(_lock_dsets);
-    for (json::iterator ds = js_reply.at("datasets").begin();
-         ds != js_reply.at("datasets").end(); ds++) {
+    {
+        std::unique_lock<std::mutex> dslck(_lock_dsets);
+        for (json::iterator ds = js_reply.at("datasets").begin();
+             ds != js_reply.at("datasets").end(); ds++) {
 
-        try {
-            dset_id_t ds_id;
-            sscanf(ds.key().c_str(), "%zu", &ds_id);
-            dataset new_dset = dataset(ds.value());
+            try {
+                dset_id_t ds_id;
+                sscanf(ds.key().c_str(), "%zu", &ds_id);
+                dataset new_dset = dataset(ds.value());
 
-            if (ds_id != hash_dataset(new_dset)) {
+                if (ds_id != hash_dataset(new_dset)) {
+                    WARN("datasetManager: failure parsing reply received from"\
+                         " broker after requesting ancestors: the dataset (%s) has " \
+                         "the hash %zu, but %zu was received from the broker. " \
+                         "Ignoring this dataset...",
+                          ds.value().dump().c_str(), ds_id, hash_dataset(new_dset));
+                    continue;
+                }
+
+                // insert the new dataset and check if it was a known before
+                // TODO: collisions should be checked for by the broker
+                auto inserted = _datasets.insert(
+                            std::pair<dset_id_t, dataset>(ds_id, new_dset));
+                if (!inserted.second) {
+                    DEBUG("datasetManager::request_ancestors_callback: received " \
+                          "dataset that is already known locally: %zu : %s.",
+                          ds_id, ds.value().dump().c_str());
+                }
+            } catch (std::exception& e) {
                 WARN("datasetManager: failure parsing reply received from"\
-                     " broker after requesting ancestors: the dataset (%s) has " \
-                     "the hash %zu, but %zu was received from the broker. " \
-                     "Ignoring this dataset...",
-                      ds.value().dump().c_str(), ds_id, hash_dataset(new_dset));
-                continue;
+                      " broker after requesting ancestors: the following " \
+                      " exception was thrown when parsing dataset %s with ID %s:" \
+                      " %s", ds.key().c_str(), ds.value().dump().c_str(), e.what());
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                            ++_conn_error_count);
             }
-
-            // insert the new dataset and check if it was a known before
-            // TODO: collisions should be checked for by the broker
-            auto inserted = _datasets.insert(
-                        std::pair<dset_id_t, dataset>(ds_id, new_dset));
-            if (!inserted.second) {
-                DEBUG("datasetManager::request_ancestors_callback: received " \
-                      "dataset that is already known locally: %zu : %s.",
-                      ds_id, ds.value().dump().c_str());
-            }
-        } catch (std::exception& e) {
-            WARN("datasetManager: failure parsing reply received from"\
-                  " broker after requesting ancestors: the following " \
-                  " exception was thrown when parsing dataset %s with ID %s:" \
-                  " %s", ds.key().c_str(), ds.value().dump().c_str(), e.what());
-            prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++_conn_error_count);
         }
     }
 
@@ -440,7 +431,7 @@ void datasetManager::request_ancestor_callback(restReply reply) {
     _cv_request_ancestor.notify_all();
 }
 
-std::string datasetManager::summary() const {
+std::string datasetManager::summary() {
     int id = 0;
     std::string out;
 
@@ -466,8 +457,7 @@ std::string datasetManager::summary() const {
     return out;
 }
 
-const std::map<state_id_t, const datasetState *> datasetManager::states() const
-{
+const std::map<state_id_t, const datasetState *> datasetManager::states() {
 
     std::map<state_id_t, const datasetState *> cdt;
 
@@ -480,13 +470,13 @@ const std::map<state_id_t, const datasetState *> datasetManager::states() const
 }
 
 const std::map<dset_id_t, dataset>
-datasetManager::datasets() const {
+datasetManager::datasets() {
     std::lock_guard<std::mutex> lock(_lock_dsets);
     return _datasets;
 }
 
 const std::vector<std::pair<dset_id_t, datasetState *>>
-datasetManager::ancestors(dset_id_t dset) const {
+datasetManager::ancestors(dset_id_t dset) {
 
     std::vector<std::pair<dset_id_t, datasetState *>> a_list;
 

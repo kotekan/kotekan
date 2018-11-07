@@ -220,21 +220,21 @@ public:
      *
      * @returns A string summarising the state table.
      **/
-    std::string summary() const;
+    std::string summary();
 
     /**
      * @brief Get a read-only vector of the states.
      *
      * @returns The set of states.
      **/
-    const map<state_id_t, const datasetState *> states() const;
+    const map<state_id_t, const datasetState *> states();
 
     /**
      * @brief Get a read-only vector of the datasets.
      *
      * @returns The set of datasets.
      **/
-    const std::map<dset_id_t, dataset> datasets() const;
+    const std::map<dset_id_t, dataset> datasets();
 
     /**
      * @brief Find the closest ancestor of a given type.
@@ -249,8 +249,7 @@ public:
      * Returns a `nullptr` if not found in ancestors or in a
      * failure case.
      **/
-    template<typename T>
-    inline const T* dataset_state(dset_id_t) const;
+    template<typename T> inline const T* dataset_state(dset_id_t);
 
 private:
     /// Constructor
@@ -266,7 +265,7 @@ private:
      *          applied to previous element in the vector to generate it.
      **/
     const std::vector<std::pair<dset_id_t, datasetState *>>
-    ancestors(dset_id_t dset) const;
+    ancestors(dset_id_t dset);
 
     /**
      * @brief Calculate the hash of a datasetState to use as the state_id.
@@ -278,7 +277,7 @@ private:
      * @note This deliberately isn't a method of datasetState itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    static const state_id_t hash_state(datasetState& state);
+    const state_id_t hash_state(datasetState& state) const;
 
     /**
      * @brief Calculate the hash of a dataset to use as the dset_id.
@@ -290,66 +289,66 @@ private:
      * @note This deliberately isn't a method of dataset itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    static const dset_id_t hash_dataset(dataset& ds);
+    const dset_id_t hash_dataset(dataset& ds) const;
 
     /// register the given state with the dataset broker
-    static void register_state(state_id_t state);
+    void register_state(state_id_t state);
 
     /// register the given dataset with the dataset broker
-    static void register_dataset(const dset_id_t hash, const dataset ds);
+    void register_dataset(const dset_id_t hash, const dataset ds);
 
     /// callback function for register_state()
-    static void register_state_callback(restReply reply);
+    void register_state_callback(restReply reply);
 
     /// callback function for sending a state to the dataset broker
     /// from register_state_callback()
-    static void send_state_callback(restReply reply);
+    void send_state_callback(restReply reply);
 
     /// callback function for register_dataset()
-    static void register_dataset_callback(restReply reply);
+    void register_dataset_callback(restReply reply);
 
     /// request closest ancestor of type
-    static void request_ancestor(dset_id_t dset_id, const char *type);
+    void request_ancestor(dset_id_t dset_id, const char *type);
 
     /// callback function for request_ancestor()
-    static void request_ancestor_callback(restReply reply);
+    void request_ancestor_callback(restReply reply);
 
     template<typename T>
-    static inline const T* get_closest_ancestor(dset_id_t dset);
+    inline const T* get_closest_ancestor(dset_id_t dset);
 
     /// Store the list of all the registered states.
-    static std::map<state_id_t, state_uptr> _states;
+    std::map<state_id_t, state_uptr> _states;
 
     /// Store a list of the datasets registered and what states
     /// and input datasets they correspond to
-    static std::map<dset_id_t, dataset> _datasets;
+    std::map<dset_id_t, dataset> _datasets;
 
     /// Lock for changing or using the states map.
-    static std::mutex _lock_states;
+    std::mutex _lock_states;
 
     /// Lock for changing or using the datasets.
-    static std::mutex _lock_dsets;
+    std::mutex _lock_dsets;
 
     /// Lock for the ancestors request cv.
-    static std::mutex _lock_rqst;
+    std::mutex _lock_rqst;
 
     /// Lock for the register dataset cv.
-    static std::mutex _lock_reg;
+    std::mutex _lock_reg;
 
     /// conditional variable for requesting ancestors
-    static std::condition_variable _cv_request_ancestor;
+    std::condition_variable _cv_request_ancestor;
 
     /// counter for connection and parsing errors
-    static std::atomic<uint32_t> _conn_error_count;
+    std::atomic<uint32_t> _conn_error_count;
 
     // config params
     bool _use_broker = false;
-    static std::string _path_register_state;
-    static std::string _path_send_state;
-    static std::string _path_register_dataset;
-    static std::string _path_request_ancestor;
-    static std::string _ds_broker_host;
-    static unsigned short _ds_broker_port;
+    std::string _path_register_state;
+    std::string _path_send_state;
+    std::string _path_register_dataset;
+    std::string _path_request_ancestor;
+    std::string _ds_broker_host;
+    unsigned short _ds_broker_port;
 };
 
 
@@ -380,7 +379,7 @@ inline int datasetState::_register_state_type() {
  * ancestor itself. Instead, receive only the requested ancestor state and
  * keep the dataset IDs synched everywhere at all time. */
 template<typename T>
-inline const T* datasetManager::dataset_state(dset_id_t dset) const {
+inline const T* datasetManager::dataset_state(dset_id_t dset) {
     if (!_use_broker) {
         // check if we know that dataset at all
         {
@@ -416,8 +415,10 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) const {
         // lock for conditional variable
         std::unique_lock<std::mutex> lck(_lock_rqst);
         while(true) {
-            if (!_cv_request_ancestor.wait_until(lck, time_point,
-                               std::bind(get_closest_ancestor<T>, dset))) {
+            if (!_cv_request_ancestor.wait_until(
+                    lck, time_point,
+                    std::bind(&datasetManager::get_closest_ancestor<T>,
+                              this, dset))) {
 
                 std::string msg = fmt::format(
                             "datasetManager: Timeout while requesting " \
@@ -529,6 +530,8 @@ datasetManager::get_closest_ancestor(dset_id_t dset) {
         dset = _datasets.at(dset).base_dset();
     }
 
+    DEBUG2("datasetManager: no ancestor of type %s and of dataset with ID %zu "\
+           "found.", typeid(T).name(), dset);
     // not found
     return nullptr;
 }

@@ -226,22 +226,6 @@ bool restClient::make_request(std::string path,
         return false;
     }
 
-    //Test if callback function is of correct type (doesn't compile on MacOS)
-#ifndef MAC_OSX
-    if (request_done_cb.target_type() != typeid(void(*)(restReply)) &&
-        request_done_cb.target_type() != typeid(
-            std::_Bind<void (*(std::_Placeholder<1>))
-            (std::pair<bool, std::string&>)>)) {
-        std::string type(request_done_cb.target_type().name());
-        int status;
-        ERROR("restClient: external callback function is not of type " \
-              "void(*)(restReply), but %s.",
-              abi::__cxa_demangle(type.c_str(), 0, 0, &status));
-        evhttp_connection_free(evcon);
-        return false;
-    }
-#endif
-
     // keep the external callback function object on the heap, so it is allowed
     // to run out of scope on the calling side
     // also pass the connection to the callback, so it can be freed there
