@@ -40,8 +40,7 @@ applyGains::applyGains(Config& config,
     apply_config(0);
 
     // FIFO for gains and weights updates
-    gains_fifo = updateQueue<std::vector<std::vector<cfloat>>>(num_kept_updates);
-    weights_fifo = updateQueue<std::vector<std::vector<float>>>(num_kept_updates);
+    gains_fifo = updateQueue<gainUpdate>(num_kept_updates);
 
     // subscribe to gain timestamp updates
     configUpdater::instance().subscribe(this,
@@ -145,10 +144,23 @@ bool applyGains::receive_update(nlohmann::json &json) {
     // Read the gains weight dataset
     HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
     gain_weight_ds.read(weight_read);
+    // Check dimensions are consistent
+    if (weight_read.size() != gain_read.size()) {
+        WARN("Gain and weight frequency axes are different lengths. ",
+             "Skipping update.");
+        return false;
+    }
+    for (uint i = 0; i < gain_read.size(); i++){
+        if (weight_read[i].size() != gain_read[i].size()) {
+            WARN("Gain and weight time axes are different lengths. ",
+                 "Skipping update.");
+            return false;
+        }
+    }
+    gainUpdate gain_update = {gain_read, weight_read};
     // Lock mutex exclusively while we update FIFO
     gain_mtx.lock();
-    gains_fifo.insert(double_to_ts(new_ts), std::move(gain_read));
-    weights_fifo.insert(double_to_ts(new_ts), std::move(weight_read));
+    gains_fifo.insert(double_to_ts(new_ts), std::move(gain_update));
     gain_mtx.unlock();
     INFO("Updated gains to %s.", gtag.c_str());
 
@@ -216,20 +228,16 @@ void applyGains::apply_thread(int thread_id) {
         std::vector<float> weight_factor(input_frame.num_elements);
 
 
-        std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_new;
-        std::pair< timespec, const std::vector<std::vector<cfloat>>* > gainpair_old;
-        // TODO: we don't combine weights. Should we?
-        std::pair< timespec, const std::vector<std::vector<float>>* > weightpair;
+        std::pair< timespec, const gainUpdate* > gainpair_new;
+        std::pair< timespec, const gainUpdate* > gainpair_old;
 
         // Request shared lock for reading from FIFO
         gain_mtx.lock_shared();
         gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
-        weightpair = weights_fifo.get_update(double_to_ts(frame_time));
-        if (gainpair_new.second == NULL || weightpair.second == NULL) {
+        if (gainpair_new.second == NULL) {
             WARN("No gains available.\nKilling kotekan");
             std::raise(SIGINT);
         }
-        // TODO: by construction, gain and weight FIFO should be lined up. Is it safe to assume this?
         tpast = frame_time - ts_to_double(gainpair_new.first);
 
         // Determine if we need to combine gains:
@@ -241,25 +249,31 @@ void applyGains::apply_thread(int thread_id) {
                 !(gainpair_new.first==gainpair_old.first);
         }
 
-        // Combine gains if needed:
-        if (combine_gains) {
-            float coef_new = tpast/tcombine;
-            float coef_old = 1 - coef_new;
-            for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
-                gain[ii] = coef_new * (*gainpair_new.second)[freq][ii] \
-                         + coef_old * (*gainpair_old.second)[freq][ii];
+        try {
+            // Combine gains if needed:
+            if (combine_gains) {
+                float coef_new = tpast/tcombine;
+                float coef_old = 1 - coef_new;
+                for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
+                    gain[ii] = coef_new * gainpair_new.second->gain.at(freq)[ii] \
+                             + coef_old * gainpair_old.second->gain.at(freq)[ii];
+                }
+            } else {
+                gain = gainpair_new.second->gain.at(freq);
+                if (tpast < 0) {
+                    WARN("(Thread %d) No gains update is as old as the currently processed " \
+                         "frame. Using oldest gains available."\
+                         "Time difference is: %f seconds.", thread_id, tpast);
+                    num_late_frames++;
+                }
             }
-        } else {
-            gain = (*gainpair_new.second)[freq];
-            if (tpast < 0) {
-                WARN("(Thread %d) No gains update is as old as the currently processed " \
-                     "frame. Using oldest gains available."\
-                     "Time difference is: %f seconds.", thread_id, tpast);
-                num_late_frames++;
-            }
+            // Copy weights TODO: should we combine weights somehow?
+            weight_factor = gainpair_new.second->weight.at(freq);
+        } catch (std::out_of_range& e) {
+            WARN("Freq ID %d is out of range in gain array: %s", freq, e.what());
+            gain_mtx.unlock();
+            continue;
         }
-        // Copy weights
-        weight_factor = (*weightpair.second)[freq];
         // Release lock
         gain_mtx.unlock();
         // Compute weight factors and conjugate gains
@@ -267,7 +281,7 @@ void applyGains::apply_thread(int thread_id) {
             if (weight_factor[ii]==0.0) {
                 // If gain_weight is zero, make gains = 1 and weights = 0
                 gain[ii] = 1. + 0i;
-            } else if (abs(gain[ii])==0.0) {
+            } else if (gain[ii] == (cfloat) {0.0, 0.0}) {
                 // If gain is zero make the weight be zero
                 weight_factor[ii] = 0.0;
             } else {
@@ -327,7 +341,7 @@ void applyGains::apply_thread(int thread_id) {
         // Report number of updates received too late
         prometheusMetrics::instance().add_process_metric(
             "kotekan_applygains_late_update_count",
-            unique_name, num_late_updates);
+            unique_name, num_late_updates.load());
 
         // Report number of frames received late
         prometheusMetrics::instance().add_process_metric(

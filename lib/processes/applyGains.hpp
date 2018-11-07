@@ -13,7 +13,6 @@
 #include "updateQueue.hpp"
 
 
-
 /**
  * @class applyGains
  * @brief Receives gains and apply them to the output buffer.
@@ -57,6 +56,11 @@ class applyGains : public KotekanProcess {
 
 public:
 
+    struct gainUpdate {
+        std::vector<std::vector<cfloat>> gain;
+        std::vector<std::vector<float>> weight;
+    };
+
     /// Default constructor
     applyGains(Config &config,
               const string& unique_name,
@@ -87,8 +91,7 @@ private:
     double tcombine;
 
     /// The gains and when to start applying them in a FIFO (len set by config)
-    updateQueue<std::vector<std::vector<cfloat>>> gains_fifo;
-    updateQueue<std::vector<std::vector<float>>> weights_fifo;
+    updateQueue<gainUpdate> gains_fifo;
 
     /// Output buffer with gains applied
     Buffer * out_buf;
@@ -103,7 +106,7 @@ private:
     timespec ts_frame = {0,0};
 
     /// Number of updates received too late
-    size_t num_late_updates;
+    std::atomic<size_t> num_late_updates;
 
     /// Number of frames received too late, every thread must be able to increment
     std::atomic<size_t> num_late_frames;
