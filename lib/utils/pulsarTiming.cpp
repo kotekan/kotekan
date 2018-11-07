@@ -1,6 +1,7 @@
+#include <math.h>
 
 #include "pulsarTiming.hpp"
-#include <math.h>
+#include "visUtil.hpp"
 
 Polyco::Polyco(double t, float d, double p, double f0, std::vector<float> c):
         tmid(t), dm(d), phase_ref(p), rot_freq(f0), coeff(c) {}

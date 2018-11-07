@@ -15,14 +15,15 @@
 #include <algorithm>
 #include <stdexcept>
 #include <mutex>
+#include <csignal>
 
 
 using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
-REGISTER_GATESPEC(pulsarSpec);
-REGISTER_GATESPEC(uniformSpec);
+REGISTER_GATESPEC(pulsarSpec, "pulsar");
+REGISTER_GATESPEC(uniformSpec, "uniform");
 
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,
@@ -40,31 +41,61 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
+    // Create the state for the main visibility accumulation
+    gated_datasets.emplace_back(
+        out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
+    );
+
+
+    // Get and validate any gating config
+    nlohmann::json gating_conf = config.get_default<nlohmann::json>(
+        unique_name, "gating", {});
+    if (!gating_conf.empty() && !gating_conf.is_object()) {
+        ERROR("Gating config must be a dictionary: %s",
+              gating_conf.dump().c_str());
+        std::raise(SIGINT);
+    }
+
     // Register gating update callbacks
     std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
 
-    nlohmann::json gating_modes = config.get_value(unique_name, "gating");
+    for (auto& it : gating_conf.items()) {
 
-    // Create the state for the main visibility accumulation
-    gated_datasets.emplace_back(
-        out_buf, gateSpec::create("uniformSpec", "vis"), num_prod_gpu
-    );
+        // Get the name of the gated dataset
+        std::string name = it.key();
 
-/*
-    for (auto& it : gating_modes.items()) {
-        // Get gating mode and initialize the correct spec
-        std::string mode = it.value().at("mode").get<std::string>();
-        std::string key = it.key();
-        if (mode == "pulsar") {
-            gating_specs[key] = new pulsarSpec(samples_per_data_set * 2.56e-6);
-        } else {
-            throw std::runtime_error("Could not find gating mode " + mode);
+        // Validate and fetch the gating mode
+        try {
+            if (!it.value().at("mode").is_string()) {
+                throw std::invalid_argument(
+                    "Config for gated dataset " + name +
+                    " did not have a valid mode argument: " + it.value().dump()
+                );
+            }
+        } catch (std::exception& e) {
+            ERROR("Failure reading 'mode' from config: %s", e.what());
+            std::raise(SIGINT);
         }
-        callbacks[key] = std::bind(&gateSpec::update_spec, gating_specs[key], _1);
+        std::string mode = it.value().at("mode");
+
+        if (!FACTORY(gateSpec)::exists(mode)) {
+            ERROR("Requested gating mode %s for dataset %s is not a known.",
+                  name.c_str(), mode.c_str());
+            std::raise(SIGINT);
+        }
+
+        INFO("Creating gated dataset %s of type %s",
+             name.c_str(), mode.c_str());
+
+        // Create the gated dataset and register the update callback
+        gated_datasets.emplace_back(
+            out_buf, gateSpec::create(mode, name), num_prod_gpu
+        );
+        callbacks[name] = std::bind(&gateSpec::update_spec,
+                                    gated_datasets.back().spec.get(), _1);
     }
 
     configUpdater::instance().subscribe(this, callbacks);
-    */
 
 }
 
@@ -88,6 +119,7 @@ void visAccumulate::apply_config(uint64_t fpga_seq)
     // we need to integrate for.
     if(int_time >= 0.0) {
         // TODO: don't hard code the sample time length
+        // TODO: CHIME specific
         float frame_length = samples_per_data_set * 2.56e-6;
 
         // Calculate nearest *even* number of frames
@@ -103,6 +135,7 @@ void visAccumulate::apply_config(uint64_t fpga_seq)
     size_t nb = num_elements / block_size;
     num_prod_gpu = num_freq_in_frame * nb * (nb + 1) * block_size * block_size / 2;
 }
+
 
 void visAccumulate::main_thread() {
 
@@ -160,6 +193,14 @@ void visAccumulate::main_thread() {
         // copy over any metadata.
         if (frame_count % num_gpu_frames == 0) {
 
+            // Reset gated streams and find which ones are enabled for this period
+            enabled_gated_datasets.clear();
+            for (auto& state : gated_datasets) {
+                if (reset_state(state)) {
+                    enabled_gated_datasets.push_back(state);
+                }
+            }
+
             // For each dataset and frequency, claim an empty frame and initialise it...
             for (internalState& dset : enabled_gated_datasets) {
 
@@ -178,22 +219,25 @@ void visAccumulate::main_thread() {
                 }
             }
 
-            // Reset gated streams and find which ones are enabled for this period
-            enabled_gated_datasets.clear();
-            for (auto& state : gated_datasets) {
-                if (reset_state(state)) {
-                    enabled_gated_datasets.push_back(state);
-                }
-            }
-
             init = true;
         }
+
+        // If we've got to here and we've not initialised we need to skip this frame.
+        if (!init) continue;
+
+        // TODO: CHIME specific
+        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
+        internalState& state = enabled_gated_datasets[0];
+        auto frame = visFrameView(state.buf, state.frame_id,
+                                  num_elements, num_eigenvectors);
+        float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
         // Accumulate the weighted data into each dataset. At the moment this
         // doesn't really work if there are multiple frequencies in the same buffer..
         for (internalState& dset : enabled_gated_datasets) {
 
-            float w = dset.calculate_weight(ts, te, f);
+            float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
             // Don't bother to accumulate if weight is zero
             if (w == 0) break;
@@ -282,7 +326,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     // Copy the visibilities into place
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
-            cfloat t = !conj ? state.vis1[bi] : std::conj(vis1[bi]);
+            cfloat t = !conj ? state.vis1[bi] : std::conj(state.vis1[bi]);
             output_frame.vis[pi] = w1 * t;
         }
     );
@@ -367,15 +411,18 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         return false;
     }
 
-    if (!_enabled)
+    if (!enabled()) {
+        INFO("Disabling gated dataset %s", name().c_str());
         return true;
+    }
 
     std::vector<float> coeff;
     try {
         // Get gating specifications from config
+        pulsar_name = json.at("pulsar_name").get<std::string>();
         coeff = json.at("coeff").get<std::vector<float>>();
         dm = json.at("dm").get<float>();
-        tmid = json.at("tmid").get<double>();
+        tmid = json.at("t_ref").get<double>();
         phase_ref = json.at("phase_ref").get<double>();
         rot_freq = json.at("rot_freq").get<double>();
         pulse_width = json.at("pulse_width").get<float>();
@@ -384,6 +431,8 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         return false;
     }
     polyco = Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+    INFO("Dataset %s now gating on pulsar %s",
+         name().c_str(), pulsar_name.c_str());
 
     return true;
 }
@@ -393,15 +442,14 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function() co
 
     // capture the variables needed to calculate timing
     return [
-        p = polyco, f0 = rot_freq, fw = gpu_frame_width,
-        pw = pulse_width
+        p = polyco, f0 = rot_freq, pw = pulse_width
     ](timespec t_s, timespec t_e, float freq) {
         // Calculate nearest pulse times of arrival
         double toa = p.next_toa(t_s, freq);
         double last_toa = toa - 1. / f0;
 
         // width of frame
-        double fw = ts_to_double(t_e) - ts_to_double(t_s);
+        double fw = ts_to_double(t_e - t_s);
 
         // Weights are on/off for now
         if (toa < fw || last_toa + pw > 0) {
@@ -421,7 +469,7 @@ uniformSpec::uniformSpec(const std::string& name) : gateSpec(name)
 
 bool uniformSpec::update_spec(nlohmann::json &json)
 {
-
+    return true;
 }
 
 

@@ -216,6 +216,32 @@ inline timespec double_to_ts(double dtime) {
     return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e9)};
 }
 
+/**
+ * @brief Division and positive modulus of two integers.
+ *
+ * @param  a  Dividend.
+ * @param  n  Divisor.
+ *
+ * @return    Pair of (a / n, a mod n) with a/n defined to round down.
+ **/
+template<typename T>
+inline std::pair<T, T> divmod_pos(T a, T n) {
+    T d = a / n; // Compiler can usually optimise these into a single instruction
+    T m = a % n;
+
+    return {d - (a < 0), (m + n) % n};
+}
+
+/**
+ * @brief Add an offset to a timespec.
+ * @param t     timespec to modify.
+ * @param nsec  Number of nsec to add (can be negative).
+ * @return      Modified timespec.
+ **/
+inline timespec add_nsec(const timespec& t, const long nsec) {
+    auto dm = divmod_pos(t.tv_nsec + nsec, 1000000000L);
+    return {t.tv_sec + dm.first, dm.second};
+}
 
 /**
  * @brief Subtraction of two timespec structs.
@@ -225,12 +251,22 @@ inline timespec double_to_ts(double dtime) {
  **/
 inline timespec operator-(const timespec & a, const timespec & b)
 {
-    if(a.tv_nsec < b.tv_nsec)
-        return {a.tv_sec - b.tv_sec - 1, 1000000000 + a.tv_nsec - b.tv_nsec};
-    else
-        return {a.tv_sec - b.tv_sec, a.tv_nsec - b.tv_nsec};
+    auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, 1000000000L);
+    return {a.tv_sec - b.tv_sec + dm.first, dm.second};
 }
 
+/**
+ * @brief Addition of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a + b as timespec.
+ **/
+inline timespec operator+(const timespec & a, const timespec & b)
+{
+    // Use std::div instead of divmod_pos to save the extra instructions.
+    auto ns_div = std::div(a.tv_nsec + b.tv_nsec, 1000000000L);
+    return {a.tv_sec + b.tv_sec + ns_div.quot, ns_div.rem};
+}
 
 /**
  * @brief Comparison of two timespec structs.
