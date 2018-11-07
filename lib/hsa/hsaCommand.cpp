@@ -25,7 +25,7 @@ hsaCommand::hsaCommand(
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
-    signals = (hsa_signal_t *)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t), device.get_gpu_id());
+    signals = (hsa_signal_t *)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t));
     assert(signals != nullptr);
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
@@ -34,7 +34,7 @@ hsaCommand::hsaCommand(
     }
 
     // Not everyone needs this, maybe move out of constructor
-    kernel_args = (void **)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*), device.get_gpu_id());
+    kernel_args = (void **)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*));
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.
@@ -212,15 +212,14 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     // Should never hit this condition, but lets be safe.
     // See the HSA docs for details.
     while (packet_id - hsa_queue_load_read_index_relaxed(device.get_queue())
-            >= device.get_queue()->size) {
-            WARN("GPU[%d] Queue full!!, queue_size: %d ", device.get_gpu_id(), device.get_queue()->size);
-            };
+            >= device.get_queue()->size);
 
     // Get the packet address
     hsa_kernel_dispatch_packet_t* packet =
             (hsa_kernel_dispatch_packet_t*) device.get_queue()->base_address
             + (packet_id % device.get_queue()->size);
 
+//    packet->header = HSA_PACKET_TYPE_INVALID;
     packet_store_release((uint32_t*)packet, header(HSA_PACKET_TYPE_INVALID), 0);
     // Zero the packet (see HSA docs)
     memset(((uint8_t*) packet) + 4, 0, sizeof(hsa_kernel_dispatch_packet_t) - 4);
@@ -245,6 +244,8 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     packet->kernarg_address = (void*) kernel_args[gpu_frame_id];
 
     // Create the completion signal for this kernel run.
+//    assert(hsa_signal_load_relaxed(signals[gpu_frame_id])==0 && "frame signal not complete.");
+//    hsa_signal_store_relaxed(signals[gpu_frame_id], 1);
     while (0 < hsa_signal_cas_screlease(signals[gpu_frame_id], 0, 1));
     packet->completion_signal = signals[gpu_frame_id];
 

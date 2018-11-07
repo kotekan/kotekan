@@ -7,9 +7,10 @@ hsaBarrier::hsaBarrier(Config& config,
                        const string &unique_name, 
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
-    hsaCommand("hsaBarrier", "", config, unique_name, host_buffers, device) {
+    hsaCommand("", "", config, unique_name, host_buffers, device) {
     command_type = CommandType::BARRIER;
 }
+
 
 hsaBarrier::~hsaBarrier() {
 

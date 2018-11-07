@@ -157,17 +157,19 @@ void hsaProcess::main_thread()
         for (uint32_t i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
             signal = commands[i]->execute(gpu_frame_id, 0, signal);
+            //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);
 
         if (first_run) {
             results_thread_handle = std::thread(&hsaProcess::results_thread, std::ref(*this));
 
+            // Requires Linux, this could possibly be made more general someday.
+            // TODO Move to config
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (int &i : config.get<std::vector<int>>(unique_name,
-                                                        "cpu_affinity"))
-            CPU_SET(i, &cpuset);
+            for (int j = 4; j < 12; j++)
+                CPU_SET(j, &cpuset);
             pthread_setaffinity_np(results_thread_handle.native_handle(),
                                     sizeof(cpu_set_t), &cpuset);
             first_run = false;
@@ -208,8 +210,10 @@ void hsaProcess::results_thread() {
         if (log_profiling) {
             string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output += "kernel: " + commands[i]->get_name() +
-                            " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; ";
+                if (commands[i]->get_command_type() == CommandType::KERNEL) {
+                    output += "kernel: " + commands[i]->get_name() +
+                              " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; ";
+                }
             }
             INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }
