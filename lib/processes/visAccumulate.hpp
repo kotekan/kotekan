@@ -262,6 +262,4 @@ private:
     std::deque<internalState> gated_datasets;
 };
 
-
-
 #endif

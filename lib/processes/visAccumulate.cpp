@@ -395,10 +395,13 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function() co
     return [
         p = polyco, f0 = rot_freq, fw = gpu_frame_width,
         pw = pulse_width
-    ](timespec ts, timespec te, float freq) mutable {
+    ](timespec t_s, timespec t_e, float freq) {
         // Calculate nearest pulse times of arrival
-        double toa = p.next_toa(ts, freq);
+        double toa = p.next_toa(t_s, freq);
         double last_toa = toa - 1. / f0;
+
+        // width of frame
+        double fw = ts_to_double(t_e) - ts_to_double(t_s);
 
         // Weights are on/off for now
         if (toa < fw || last_toa + pw > 0) {
