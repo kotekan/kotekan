@@ -91,7 +91,7 @@ cpu_output_buffers:
 
 cpu_affinity: [2,3,8,9]
 
-#gen_data:
+gen_data:
   type: random
   value: 153
   test_data_gen_0:
