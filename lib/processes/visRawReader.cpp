@@ -84,6 +84,7 @@ visRawReader::visRawReader(Config &config,
 
     for (auto f : freqs) {
         // TODO: add freq IDs to raw file format instead of restoring them here
+        // TODO: CHIME specific.
         uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
         DEBUG("restored freq_id for f_centre=%.2f : %d", f.centre, freq_id);
         _freqs.push_back({freq_id, f});
