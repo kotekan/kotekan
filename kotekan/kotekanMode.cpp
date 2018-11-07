@@ -73,8 +73,13 @@ void kotekanMode::initalize_processes() {
     // Update REST server
     restServer::instance().set_server_affinity(config);
 
-    // Apply config to datasetManager
-    datasetManager::instance().apply_config(config);
+    // Apply config to datasetManager only if used somewhere in config
+    for (json j : config.get_value("use_dataset_manager")) {
+        if (j.is_boolean()) {
+            if (j.get<bool>())
+                datasetManager::instance().apply_config(config);
+        }
+    }
 }
 
 void kotekanMode::join() {
