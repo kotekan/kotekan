@@ -1,6 +1,8 @@
 #include "hsaBeamformKernel.hpp"
 #include "configUpdater.hpp"
 
+#include <signal.h>
+
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // Request gain file re-parse with e.g.

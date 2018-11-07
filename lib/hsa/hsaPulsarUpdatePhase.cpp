@@ -3,6 +3,7 @@
 #include <string>
 #include <math.h>
 #include <time.h>
+#include <signal.h>
 #include "hsaBase.h"
 #include "buffer.h"
 #include "bufferContainer.hpp"

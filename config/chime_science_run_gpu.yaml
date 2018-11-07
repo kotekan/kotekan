@@ -84,7 +84,7 @@ pulsar_gain:
 sk_step: 256
 rfi_combined: True
 rfi_sigma_cut: 5
-rfi_add_lostsamples: False
+rfi_add_lostsamples: True
 
 #RFI Live-view Paramters
 waterfallX: 1024
@@ -374,22 +374,26 @@ monitor_2:
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
   commands:
+  # Copy in queue
   - name: hsaInputData
   - name: hsaPresumZero
   - name: hsaOutputDataZero
   - name: hsaPulsarUpdatePhase
+  # Barrier between copy in and kernels
   - name: hsaBarrier
-  - name: hsaPresumKernel
-  - name: hsaCorrelatorKernel
-  - name: hsaRfiTimeSum
-  - name: hsaRfiBadInput
-  - name: hsaRfiInputSum
-  #- name: hsaRfiZeroData
+  # Kernel queue
   - name: hsaBeamformReorder
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
   - name: hsaBeamformPulsar
+  - name: hsaRfiTimeSum
+  - name: hsaRfiBadInput
+  - name: hsaRfiInputSum
+  - name: hsaRfiZeroData
+  - name: hsaPresumKernel
+  - name: hsaCorrelatorKernel
+  #Copy out queue
   - name: hsaRfiBadInputOutput
   - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
