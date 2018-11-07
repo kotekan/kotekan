@@ -158,10 +158,11 @@ bool applyGains::receive_update(nlohmann::json &json) {
         }
     }
     gainUpdate gain_update = {gain_read, weight_read};
-    // Lock mutex exclusively while we update FIFO
-    gain_mtx.lock();
-    gains_fifo.insert(double_to_ts(new_ts), std::move(gain_update));
-    gain_mtx.unlock();
+    {
+        // Lock mutex exclusively while we update FIFO
+        std::lock_guard<std::shared_timed_mutex> lock(gain_mtx);
+        gains_fifo.insert(double_to_ts(new_ts), std::move(gain_update));
+    }
     INFO("Updated gains to %s.", gtag.c_str());
 
     return true;
@@ -231,63 +232,67 @@ void applyGains::apply_thread(int thread_id) {
         std::pair< timespec, const gainUpdate* > gainpair_new;
         std::pair< timespec, const gainUpdate* > gainpair_old;
 
-        // Request shared lock for reading from FIFO
-        gain_mtx.lock_shared();
-        gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
-        if (gainpair_new.second == NULL) {
-            WARN("No gains available.\nKilling kotekan");
-            std::raise(SIGINT);
-        }
-        tpast = frame_time - ts_to_double(gainpair_new.first);
+        {
+            // Request shared lock for reading from FIFO
+            std::shared_lock<std::shared_timed_mutex> lock(gain_mtx);
+            gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
+            if (gainpair_new.second == NULL) {
+                WARN("No gains available.\nKilling kotekan");
+                std::raise(SIGINT);
+            }
+            tpast = frame_time - ts_to_double(gainpair_new.first);
 
-        // Determine if we need to combine gains:
-        bool combine_gains = (tpast>=0) && (tpast<tcombine);
-        if (combine_gains) {
-            gainpair_old = gains_fifo.get_update(double_to_ts(frame_time - tcombine));
-            // If we are not using the very first set of gains, do gains interpolation:
-            combine_gains = combine_gains && \
-                !(gainpair_new.first==gainpair_old.first);
-        }
-
-        try {
-            // Combine gains if needed:
+            // Determine if we need to combine gains:
+            bool combine_gains = (tpast>=0) && (tpast<tcombine);
             if (combine_gains) {
-                float coef_new = tpast/tcombine;
-                float coef_old = 1 - coef_new;
-                for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
-                    gain[ii] = coef_new * gainpair_new.second->gain.at(freq)[ii] \
-                             + coef_old * gainpair_old.second->gain.at(freq)[ii];
-                }
-            } else {
-                gain = gainpair_new.second->gain.at(freq);
-                if (tpast < 0) {
-                    WARN("(Thread %d) No gains update is as old as the currently processed " \
-                         "frame. Using oldest gains available."\
-                         "Time difference is: %f seconds.", thread_id, tpast);
-                    num_late_frames++;
-                }
+                gainpair_old = gains_fifo.get_update(double_to_ts(frame_time - tcombine));
+                // If we are not using the very first set of gains, do gains interpolation:
+                combine_gains = combine_gains && \
+                    !(gainpair_new.first==gainpair_old.first);
             }
-            // Copy weights TODO: should we combine weights somehow?
-            weight_factor = gainpair_new.second->weight.at(freq);
-        } catch (std::out_of_range& e) {
-            WARN("Freq ID %d is out of range in gain array: %s", freq, e.what());
-            gain_mtx.unlock();
-            continue;
+
+            try {
+                // Combine gains if needed:
+                if (combine_gains) {
+                    float coef_new = tpast/tcombine;
+                    float coef_old = 1 - coef_new;
+                    for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
+                        gain[ii] = coef_new * gainpair_new.second->gain.at(freq)[ii] \
+                                 + coef_old * gainpair_old.second->gain.at(freq)[ii];
+                    }
+                } else {
+                    gain = gainpair_new.second->gain.at(freq);
+                    if (tpast < 0) {
+                        WARN("(Thread %d) No gains update is as old as the currently processed " \
+                             "frame. Using oldest gains available."\
+                             "Time difference is: %f seconds.", thread_id, tpast);
+                        num_late_frames++;
+                    }
+                }
+                // Copy weights TODO: should we combine weights somehow?
+                weight_factor = gainpair_new.second->weight.at(freq);
+            } catch (std::out_of_range& e) {
+                WARN("Freq ID %d is out of range in gain array: %s", freq, e.what());
+                continue;
+            }
         }
-        // Release lock
-        gain_mtx.unlock();
-        // Compute weight factors and conjugate gains
-        for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
-            if (weight_factor[ii]==0.0) {
-                // If gain_weight is zero, make gains = 1 and weights = 0
-                gain[ii] = 1. + 0i;
-            } else if (gain[ii] == (cfloat) {0.0, 0.0}) {
-                // If gain is zero make the weight be zero
-                weight_factor[ii] = 0.0;
-            } else {
-                weight_factor[ii] = pow(abs(gain[ii]), -2.0);
+        try {
+            // Compute weight factors and conjugate gains
+            for (uint32_t ii=0; ii<input_frame.num_elements; ii++) {
+                if (weight_factor.at(ii)==0.0) {
+                    // If gain_weight is zero, make gains = 1 and weights = 0
+                    gain.at(ii) = 1. + 0i;
+                } else if (gain.at(ii) == (cfloat) {0.0, 0.0}) {
+                    // If gain is zero make the weight be zero
+                    weight_factor.at(ii) = 0.0;
+                } else {
+                    weight_factor.at(ii) = pow(abs(gain.at(ii)), -2.0);
+                }
+                gain_conj.at(ii) = std::conj(gain.at(ii));
             }
-            gain_conj[ii] = std::conj(gain[ii]);
+        } catch (std::out_of_range& e) {
+            WARN("Input out of range in gain array: %s", e.what());
+            continue;
         }
 
         // Wait for the output buffer to be empty of data
