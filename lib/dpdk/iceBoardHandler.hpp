@@ -13,6 +13,8 @@
 #include "json.hpp"
 #include <mutex>
 
+#include <mutex>
+
 /**
  * @brief Abstract class which contains things which are common to processing
  *        packets from the McGill ICE FPGA boards.
@@ -222,13 +224,6 @@ protected:
     }
 
     /**
-     * @brief Builds and returns a json object with all the port info
-     *
-     * @return The json object containing port info
-     */
-    json get_json_port_info();
-
-    /**
      * @brief Function to ensure all handlers align to the same FPGA seq number
      *
      * This function must be called at least once with
@@ -268,7 +263,7 @@ protected:
         // This case deals with each addational handler checking if it has the same
         // first seq number.
         if (seq_num != alignment_first_seq) {
-            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %d" PRIu64 "",
+            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %" PRIu64 "",
                   port, seq_num, alignment_first_seq);
             return false;
         }
@@ -277,6 +272,13 @@ protected:
         DEBUG("Port %d: Got alignemnt value of %" PRIu64 "", port, seq_num);
         return true;
     }
+
+    /**
+     * @brief Builds and returns a json object with all the port info
+     *
+     * @return The json object containing port info
+     */
+    json get_json_port_info();
 
     /// The FPAG seq number of the current packet being processed
     uint64_t cur_seq = 0;
@@ -334,6 +336,7 @@ inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &uniqu
     num_local_freq = config.get_default<int32_t>(
                 unique_name, "num_local_freq", 1);
     alignment = config.get<uint64_t>(unique_name, "alignment");
+
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
 }
 

@@ -31,7 +31,7 @@ endif()
 foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
 	get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
-    target_link_libraries(${testName} kotekan_libs libinclude dl m pthread)
+    target_link_libraries(${testName} kotekan_libs dl m pthread)
 
     if(${USE_HDF5})
         include_directories(${HDF5_INCLUDE_DIRS})
@@ -55,7 +55,8 @@ set(BROKER_BOOST_TEST_SOURCES
 foreach(testSrc ${BROKER_BOOST_TEST_SOURCES})
 	get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
-    target_link_libraries(${testName} kotekan_libs libinclude dl m pthread)
+    target_link_libraries(${testName} kotekan_libs dl m pthread)
+    #target_link_libraries(${testName} libinclude)
 
     # those binaries will be in a seperate folder and are run by
     # test_dataset_broker.py

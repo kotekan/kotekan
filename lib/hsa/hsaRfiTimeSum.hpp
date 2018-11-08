@@ -30,22 +30,10 @@
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c uint8_t
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  output             Output data of size output_frame_len
+ * @gpu_mem  timesum            Output data of size output_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  InputMask          A mask of faulty inputs of size mask_len
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Array of @c uint8_t
- *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  sk_step            The time ingration length (samples)
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
- * @gpu_mem  num_elements       The total number of elements
- *     @gpu_mem_type            static
- *     @gpu_mem_format          Constant @c uint32_t
- *     @gpu_mem_metadata        none
  *
  * @conf   num_elements         Int. Number of elements.
  * @conf   num_local_freq       Int. Number of local freq.
@@ -64,8 +52,6 @@ public:
                             bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
-    /// Rest Server callback function
-    void rest_callback(connectionInstance& conn, json& json_request);
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
@@ -86,10 +72,6 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
-    /// Rest Server callback mutex
-    std::mutex rest_callback_mutex;
-    /// String to hold endpoint name
-    string endpoint;
 };
 
 #endif

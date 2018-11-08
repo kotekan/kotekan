@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <stdexcept>
 #include <memory>
+#include <thread>
+#include <chrono>
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -73,13 +75,18 @@ void visTransform::main_thread() {
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
-            INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
+            // Calculate the timeout
+            auto timeout = double_to_ts(current_time() + 0.1);
 
-            // Wait for the buffer to be filled with data
-            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
-                                            frame_id)) == nullptr) {
-                break;
-            }
+            // Find the next available buffer
+            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(),
+                                                     frame_id, timeout);
+            if(status == 1) continue;  // Timed out, try next buffer
+            if(status == -1) break;  // Got shutdown signal
+
+            INFO("Got full buffer %s with frame_id=%i", buf->buffer_name, frame_id);
+
+            frame = buf->frames[frame_id];
 
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),
@@ -115,7 +122,6 @@ void visTransform::main_thread() {
             // Advance the current frame ids
             std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-            buf_ind++;
         }
 
     }
@@ -193,6 +199,7 @@ visAccumulate::visAccumulate(Config& config,
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
+    minimum_fraction = config.get_default<double>(unique_name, "minimum_fraction", 0.01);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -266,7 +273,7 @@ visAccumulate::visAccumulate(Config& config,
                 "kotekan_viswriter_dropped_frame_total",
                 unique_name, ++err_count);
             // wait a second
-            usleep(1000000);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             WARN("Retrying...");
 
             continue;
@@ -345,12 +352,29 @@ void visAccumulate::main_thread() {
         // initially set to UINT_MAX to ensure this doesn't happen immediately.
         bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
         if (init && wrapped) {
+
             auto output_frame = visFrameView(out_buf, out_frame_id);
 
+            // Set the actual amount of time we accumulated for
+            output_frame.fpga_seq_total = total_samples;
             DEBUG("Total samples accumulate %i", total_samples);
 
+            // Reset the cycle
+            init = false;
+            frames_in_this_cycle = 0;
+            total_samples = 0;
+
+            // Check if we have exceeded the minimum number of required samples,
+            // if not immediately skip without releasing the frame
+            size_t min_length = minimum_fraction * output_frame.fpga_seq_length;
+            if (output_frame.fpga_seq_total < min_length) {
+                DEBUG("Too few samples in frame %i (minimum %i)",
+                      output_frame.fpga_seq_total, min_length);
+                continue;
+            }
+
             // Unpack the main visibilities
-            float w1 = 1.0 / total_samples;
+            float w1 = 1.0 / output_frame.fpga_seq_total;
 
             map_vis_triangle(input_remap, block_size, num_elements,
                 [&](int32_t pi, int32_t bi, bool conj) {
@@ -368,14 +392,8 @@ void visAccumulate::main_thread() {
                 }
             );
 
-            // Set the actual amount of time we accumulated for
-            output_frame.fpga_seq_total = total_samples;
-
             mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
-            init = false;
-            frames_in_this_cycle = 0;
-            total_samples = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -505,11 +523,14 @@ void visMerge::main_thread() {
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
-            // Wait for the buffer to be filled with data
-            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
-                                            frame_id)) == nullptr) {
-                break;
-            }
+            // Calculate the timeout
+            auto timeout = double_to_ts(current_time() + 0.1);
+
+            // Find the next available buffer
+            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(),
+                                                     frame_id, timeout);
+            if(status == 1) continue;  // Timed out, try next buffer
+            if(status == -1) break;  // Got shutdown signal
 
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),

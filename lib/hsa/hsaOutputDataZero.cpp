@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
 hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("","", config, unique_name, host_buffers, device) {
+    hsaCommand("hsaOutputDataZero","", config, unique_name, host_buffers, device) {
     command_type = CommandType::COPY_IN;
 
     int block_size = config.get<int>(unique_name, "block_size");
@@ -13,7 +13,7 @@ hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
                     (num_elements / block_size + 1) / 2.;
     output_len = _num_blocks * block_size * block_size * 2 * sizeof(int32_t);
 
-    output_zeros = hsa_host_malloc(output_len);
+    output_zeros = hsa_host_malloc(output_len, device.get_gpu_id());
     INFO("hsaOutputDataZero gpu[%d], Creating the output zero buffer: %p, len: %d",
             device.get_gpu_id(), output_zeros, output_len);
 

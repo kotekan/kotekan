@@ -144,6 +144,10 @@ private:
  *                              of `num_gpu_frames`.
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
+ * @conf  minimum_fraction      Float. The minimum number of samples a frame needs to
+ *                              be generated. Frames with less than this will be
+ *                              skipped and not added into the buffer. Specified as a
+ *                              fraction of the total number of expected samples (default=1%).
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
@@ -178,6 +182,7 @@ private:
     // Parameters saved from the config files
     size_t num_elements, num_eigenvectors, block_size;
     size_t samples_per_data_set, num_gpu_frames;
+    double minimum_fraction;
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;

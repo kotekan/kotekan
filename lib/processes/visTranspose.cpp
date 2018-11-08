@@ -3,6 +3,7 @@
 #include <fstream>
 #include <csignal>
 #include <stdexcept>
+#include <unistd.h>
 
 #include "errors.h"
 #include "visBuffer.hpp"

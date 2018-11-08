@@ -112,7 +112,11 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     fprintf(info_file, "first_packet_gps_tv_sec=%ld\n",ts.tv_sec);
     fprintf(info_file, "first_packet_gps_tv_nsec=%09ld\n",ts.tv_nsec);
     fprintf(info_file, "first_packet_ntp_tv_sec=%ld\n",tv.tv_sec);
+#ifndef MAC_OSX
     fprintf(info_file, "first_packet_ntp_tv_usec=%06ld\n",tv.tv_usec);
+#else
+    fprintf(info_file, "first_packet_ntp_tv_usec=%06d\n",tv.tv_usec);
+#endif
     fprintf(info_file, "num_elements=%d\n", _num_elements);
     fprintf(info_file, "num_total_freq=%d\n", _num_freq);
     fprintf(info_file, "num_local_freq=%d\n", _num_local_freq);

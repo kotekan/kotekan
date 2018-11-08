@@ -1,5 +1,6 @@
 #include "restClient.hpp"
 #include "errors.h"
+#include "signal.h"
 
 #include <evhttp.h>
 #include <event2/event.h>
@@ -7,6 +8,8 @@
 #include <event2/dns.h>
 #include <event2/thread.h>
 #include <cxxabi.h>
+#include <thread>
+#include <chrono>
 
 
 restClient &restClient::instance() {
@@ -26,7 +29,9 @@ restClient::restClient() : _main_thread() {
     // restClient::instance() was just called the first time.
     // wait a bit to make sure the event_base is initialized in the
     // event_thread before someone makes a request.
-    usleep(50000);
+    // TODO: use a condition variable or sth to really just wait as long as
+    // necessary?
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 restClient::~restClient() {

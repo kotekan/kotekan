@@ -14,6 +14,7 @@
 #include "restClient.hpp"
 #include "prometheusMetrics.hpp"
 #include "datasetState.hpp"
+#include "signal.h"
 
 #define UNIQUE_NAME "/dataset_manager"
 #define TIMEOUT_BROKER_SEC 10

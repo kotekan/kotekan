@@ -36,7 +36,7 @@ void clRfiInputSum::apply_config(const uint64_t& fpga_seq) {
     gpu_command::apply_config(fpga_seq);
     //RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _num_bad_inputs = config.config.get<std::vector<uint32_t>>(
+    _num_bad_inputs = config.get<std::vector<uint32_t>>(
                 unique_name, "bad_inputs").size();
     _use_local_sum = config.get_default<bool>(unique_name, "local_sum", true);
     DEBUG("Number of bad inputs computed: %d",_num_bad_inputs);

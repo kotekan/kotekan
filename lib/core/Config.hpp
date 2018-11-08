@@ -13,6 +13,7 @@
 #include <exception>
 #include <cxxabi.h>
 #include <type_traits>
+#include <complex>
 
 #include "json.hpp"
 #include "errors.h"
@@ -439,5 +440,38 @@ Type Config::configEval<Type>::factor() {
     }
     return ret;
 }
+
+// Tell the compiler that all those are instantiated in Config.cpp,
+// so that they are not built inline everywhere they are used
+// (would add >60MB to the binary).
+extern template float Config::get(const string& base_path,
+                                  const string& name);
+extern template double Config::get(const string& base_path, const string& name);
+extern template uint32_t Config::get(const string& base_path,
+                                     const string& name);
+extern template uint64_t Config::get(const string& base_path,
+                                     const string& name);
+extern template int32_t Config::get(const string& base_path,
+                                    const string& name);
+extern template int16_t Config::get(const string& base_path,
+                                    const string& name);
+extern template uint16_t Config::get(const string& base_path,
+                                     const string& name);
+extern template bool Config::get(const string& base_path,
+                                 const string& name);
+extern template std::string Config::get(const string& base_path,
+                                        const string& name);
+extern template std::vector<int32_t> Config::get(const string& base_path,
+                                                 const string& name);
+extern template std::vector<uint32_t> Config::get(const string& base_path,
+                                                  const string& name);
+extern template std::vector<float> Config::get(const string& base_path,
+                                               const string& name);
+extern template std::vector<std::string> Config::get(const string& base_path,
+                                                     const string& name);
+extern template std::vector<nlohmann::json> Config::get(const string& base_path,
+                                                        const string& name);
+extern template std::vector<std::complex<float>> Config::get(
+        const string& base_path, const string& name);
 
 #endif /* CONFIG_HPP */
