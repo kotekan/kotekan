@@ -31,7 +31,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
 
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
-    _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float), device.get_gpu_id());
+    _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float));
     for (int i=0;i<4;i++){
         _ew_spacing_c[i] = _ew_spacing[i];
     }
@@ -41,13 +41,13 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
 
 
     map_len = 256 * sizeof(int);
-    host_map = (uint32_t *)hsa_host_malloc(map_len, device.get_gpu_id());
+    host_map = (uint32_t *)hsa_host_malloc(map_len);
 
     coeff_len = 32*sizeof(float);
-    host_coeff = (float *)hsa_host_malloc(coeff_len, device.get_gpu_id());
+    host_coeff = (float *)hsa_host_malloc(coeff_len);
 
     gain_len = 2*2048*sizeof(float);
-    host_gain = (float *)hsa_host_malloc(gain_len, device.get_gpu_id());
+    host_gain = (float *)hsa_host_malloc(gain_len);
 
     //Figure out which frequency, is there a better way that doesn't involve reading in the whole thing? Check later
     metadata_buf = host_buffers.get_buffer("network_buf");

@@ -5,7 +5,7 @@ REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
 hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("hsaRfiMaskOutput","", config, unique_name, host_buffers, device){
+    hsaCommand("","", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_OUT;
     //Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
