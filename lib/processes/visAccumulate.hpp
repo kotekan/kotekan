@@ -250,6 +250,10 @@ private:
 
     // Helper methods to make code clearer
 
+    // Combine the gated dataset with the vis dataset to subtract out the bias
+    // and have a scaled variance estimate.
+    void combine_gated(internalState& gate, internalState& vis);
+
     // Set initial values of visBuffer
     void initialise_output(internalState& state,
                            int in_frame_id, int freq_ind);

@@ -87,9 +87,27 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         INFO("Creating gated dataset %s of type %s",
              name.c_str(), mode.c_str());
 
+        // Validate and fetch the output buffer name
+        try {
+            if (!it.value().at("mode").is_string()) {
+                throw std::invalid_argument(
+                    "Config for gated dataset " + name +
+                    " did not have a valid buf argument: " + it.value().dump()
+                );
+            }
+        } catch (std::exception& e) {
+            ERROR("Failure reading 'buf' from config: %s", e.what());
+            std::raise(SIGINT);
+        }
+        std::string buffer_name = it.value().at("buf");
+
+        // Fetch and register the buffer
+        auto buf = buffer_container.get_buffer(buffer_name);
+        register_producer(buf, unique_name.c_str());
+
         // Create the gated dataset and register the update callback
         gated_datasets.emplace_back(
-            out_buf, gateSpec::create(mode, name), num_prod_gpu
+            buf, gateSpec::create(mode, name), num_prod_gpu
         );
         callbacks[name] = std::bind(&gateSpec::update_spec,
                                     gated_datasets.back().spec.get(), _1);
@@ -173,6 +191,13 @@ void visAccumulate::main_thread() {
 
             DEBUG("Total samples accumulate %i", total_samples);
 
+            // Iterate over *only* the gated datasets (remember that element
+            // zero is the vis), and remove the bias and copy in the variance
+            for (int i = 1; i < enabled_gated_datasets.size(); i++) {
+                combine_gated(enabled_gated_datasets[i],
+                              enabled_gated_datasets[0]);
+            }
+
             for (internalState& dset : enabled_gated_datasets) {
                 // Loop over the frequencies in the frame and unpack the accumulates
                 // into the output frame...
@@ -233,6 +258,9 @@ void visAccumulate::main_thread() {
                                   num_elements, num_eigenvectors);
         float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
+        long samples_in_frame = samples_per_data_set -
+            get_lost_timesamples(in_buf, in_frame_id);
+
         // Accumulate the weighted data into each dataset. At the moment this
         // doesn't really work if there are multiple frequencies in the same buffer..
         for (internalState& dset : enabled_gated_datasets) {
@@ -242,11 +270,18 @@ void visAccumulate::main_thread() {
             // Don't bother to accumulate if weight is zero
             if (w == 0) break;
 
-            // Perform primary accumulation
+            // TODO: implement generalised non uniform weighting, I'm primarily
+            // not doing this because I don't want to burn cycles doing the
+            // multiplications
+            // Perform primary accumulation (assume that the weight is one)
             for (size_t i = 0; i < num_prod_gpu; i++) {
                 cfloat t = {(float)input[2*i+1], (float)input[2*i]};
                 dset.vis1[i] += t;
             }
+
+            // Accumulate the weights
+            dset.sample_weight_total += samples_in_frame;
+
         }
 
         // We are calculating the weights by differencing even and odd samples.
@@ -315,11 +350,35 @@ void visAccumulate::initialise_output(
 }
 
 
+void visAccumulate::combine_gated(visAccumulate::internalState& gate,
+                                  visAccumulate::internalState& vis)
+{
+    // NOTE: getting all of these scaling right is a pain. At the moment they
+    // assume that within an `on` period the weights applied are one.
+
+    // Subtract out the bias from the gated data
+    float scl = gate.sample_weight_total / vis.sample_weight_total;
+    for (int i = 0; i < num_prod_gpu; i++) {
+        gate.vis1[i] -= scl * vis.vis1[i];
+    }
+
+    // TODO: very strong assumption that the weights are one (when on) baked in
+    // here.
+    gate.sample_weight_total = vis.sample_weight_total -
+        gate.sample_weight_total;
+
+    // Copy in the proto weight data
+    for (int i = 0; i < num_prod_gpu; i++) {
+        gate.vis2[i] = scl * (1.0 - scl) * vis.vis2[i];
+    }
+}
+
+
 void visAccumulate::finalise_output(visAccumulate::internalState& state,
                                     int freq_ind, uint32_t total_samples)
 {
     // Unpack the main visibilities
-    float w1 = 1.0 / total_samples;
+    float w1 = 1.0 / state.sample_weight_total;
 
     auto output_frame = visFrameView(state.buf, state.frame_id + freq_ind);
 
