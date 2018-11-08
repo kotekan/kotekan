@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaInputLostSamples);
 
 hsaInputLostSamples::hsaInputLostSamples( Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("hsaInputLostSamples", "", config, unique_name, host_buffers, device){
+    hsaCommand("", "", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_IN;
 
     _samples_per_data_set = config.get<uint32_t>(

@@ -33,6 +33,7 @@ extern "C" {
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -188,9 +189,6 @@ struct Buffer {
     /// The pool of info objects
     struct metadataPool * metadata_pool;
 
-    /// Set to one if the memory type is HSA based.
-    int is_hsa_memory;
-
     /// The name of the buffer for use in debug messages.
     char * buffer_name;
 };
@@ -210,24 +208,6 @@ struct Buffer {
  */
 struct Buffer * create_buffer(int num_frames, int frame_size,
                   struct metadataPool * pool, const char * buffer_name);
-
-/**
- * @brief Creates a buffer object with HSA style memory.
- *
- * Used to create a buffer object, normally invoked by the buffer factory
- * as a part of the pipeline generation from the config file, not intended
- * to be called directly.
- *
- * @param[in] num_frames The number of frames to create in the buffer ring.
- * @param[in] frame_size The length of each frame in bytes.
- * @param[in] pool The metadataPool, which may be shared between more than one buffer.
- * @param[in] buffer_name The unique name of this buffer.
- * @param[in] gpu_id The GPU which is allowed to access frames of this buffer (zero based).
- * @returns A buffer object.
- */
-struct Buffer * create_hsa_buffer(int num_frames, int frame_size,
-                  struct metadataPool * pool, const char * buffer_name,
-                  int32_t gpu_id);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -324,6 +304,25 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
  */
 uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, const int frame_id);
 
+
+/**
+ * @brief Wait for a full frame on the given buffer up to timeout.
+ * 
+ * This function will timeout after `wait` seconds.
+ * 
+ * @param[in] buf Buffer to wait on.
+ * @param[in] name Name of the process.
+ * @param[in] ID Frame ID to wait at.
+ * @param[in] timeout Exit after this we exceed this *absolute* time.
+ * 
+ * @return Return status:
+ *   - `0`: Success! We have a new frame.
+ *   - `1`: Failure! We timed out waiting.
+ *   - `-1`: Failure! We received the thread exit signal. 
+ **/
+int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
+                                const int ID, const struct timespec timeout);
+
 /**
  * @brief Checks if the requested buffer is empty.
  *
@@ -416,30 +415,14 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
  * @param len The size of the frame to allocate in bytes.
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t * frame_malloc(ssize_t len);
+uint8_t * buffer_malloc(ssize_t len);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
  *
  * @param frame_pointer The pointer to the memory to free.
  */
-void frame_free(uint8_t * frame_pointer);
-
-/**
- * @brief Allocates a frame for use with HSA GPUs.
- *
- * @param len The size of the frame to allocate in bytes.
- * @param gpu_id The ID of the GPU which will be allowed access to this memory.
- * @return A pointer to the new memory, or @c NULL if allocation failed.
- */
-uint8_t * frame_hsa_malloc(ssize_t len, uint32_t gpu_id);
-
-/**
- * @brief Deallocate a frame of memory with the required free method.
- *
- * @param frame_pointer The pointer to the memory to free.
- */
-void frame_hsa_free(uint8_t * frame_pointer);
+void buffer_free(uint8_t * frame_pointer);
 
 /**
  * @brief Gets the raw metadata block for the given frame

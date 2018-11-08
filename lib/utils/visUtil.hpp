@@ -25,7 +25,6 @@
 #include "Config.hpp"
 #include "buffer.h"
 
-
 using json = nlohmann::json;
 
 /// Define an alias for the single precision complex type

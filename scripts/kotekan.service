@@ -5,6 +5,7 @@ After=syslog.target network.target
 [Service]
 Type=simple
 Restart=always
+Environment="HSA_ENABLE_SDMA=1"
 WorkingDirectory=/var/lib/kotekan
 TimeoutStopSec=60
 KillSignal=SIGINT

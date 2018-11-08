@@ -70,13 +70,18 @@ void visTransform::main_thread() {
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
-            INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
+            // Calculate the timeout
+            auto timeout = double_to_ts(current_time() + 0.1);
 
-            // Wait for the buffer to be filled with data
-            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
-                                            frame_id)) == nullptr) {
-                break;
-            }
+            // Find the next available buffer
+            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(),
+                                                     frame_id, timeout);
+            if(status == 1) continue;  // Timed out, try next buffer
+            if(status == -1) break;  // Got shutdown signal
+
+            INFO("Got full buffer %s with frame_id=%i", buf->buffer_name, frame_id);
+
+            frame = buf->frames[frame_id];
 
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),
@@ -112,7 +117,6 @@ void visTransform::main_thread() {
             // Advance the current frame ids
             std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-            buf_ind++;
         }
 
     }
@@ -222,11 +226,14 @@ void visMerge::main_thread() {
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
-            // Wait for the buffer to be filled with data
-            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
-                                            frame_id)) == nullptr) {
-                break;
-            }
+            // Calculate the timeout
+            auto timeout = double_to_ts(current_time() + 0.1);
+
+            // Find the next available buffer
+            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(),
+                                                     frame_id, timeout);
+            if(status == 1) continue;  // Timed out, try next buffer
+            if(status == -1) break;  // Got shutdown signal
 
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),

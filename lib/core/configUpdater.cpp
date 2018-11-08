@@ -5,6 +5,7 @@
 
 #include "fmt.hpp"
 #include <iostream>
+#include <signal.h>
 
 configUpdater& configUpdater::instance()
 {

@@ -99,7 +99,7 @@ void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
     _samples_per_data_set = config.get<uint32_t>(unique_name,
                                                  "samples_per_data_set");
-    _num_pulsar = config.get<uint32_t>(unique_name, "num_pulsar");
+    _num_pulsar = config.get<uint32_t>(unique_name, "num_beams");
     _num_pol = config.get<uint32_t>(unique_name, "num_pol");
     _timesamples_per_pulsar_packet = config.get<uint32_t>(
                 unique_name, "timesamples_per_pulsar_packet");
@@ -244,7 +244,7 @@ void pulsarPostProcess::main_thread() {
                     float * in_buf_data = (float *)in_frame[thread_id];
                     for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
                         for (uint32_t p=0;p<_num_pol; ++p) {
-                            uint32_t out_index;
+                            uint32_t out_index=0;
                             if (_timesamples_per_pulsar_packet == 3125) {
                                 //freq->beam->packets->[time-pol]
                                 out_index = (thread_id*_num_pulsar+psr) *_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size 

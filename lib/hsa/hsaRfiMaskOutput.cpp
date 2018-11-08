@@ -1,10 +1,11 @@
 #include "hsaRfiMaskOutput.hpp"
+#include "chimeMetadata.h"
 
 REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
 hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("hsaRfiMaskOutput","", config, unique_name, host_buffers, device){
+    hsaCommand("","", config, unique_name, host_buffers, device){
     command_type = CommandType::COPY_OUT;
     //Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
@@ -15,7 +16,6 @@ hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     //Rfi paramters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _rfi_add_lostsamples = config.get<bool>(unique_name, "rfi_add_lostsamples");
     //Initialize ID's
     _network_buf_id = 0;
     _rfi_mask_output_buf_id = 0;
@@ -55,7 +55,7 @@ hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, const uint64_t& fpga_se
 void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
-    if(_rfi_add_lostsamples){
+    if(get_rfi_zeroed(_network_buf,_network_buf_id)){
         uint8_t * frame_mask = _rfi_mask_output_buf->frames[_rfi_mask_output_buf_id];
         uint32_t total_lost = 0;
         //Copy RFI mask to array

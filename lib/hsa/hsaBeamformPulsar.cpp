@@ -8,7 +8,7 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
     _samples_per_data_set = config.get<int32_t>(
                 unique_name, "samples_per_data_set");
     _num_pol = config.get<int32_t>(unique_name, "num_pol");
@@ -17,7 +17,7 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
     output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol * 2 *  sizeof(float);
 
     phase_len = _num_elements*_num_pulsar*2*sizeof(float);
-    host_phase = (float *)hsa_host_malloc(phase_len, device.get_gpu_id());
+    host_phase = (float *)hsa_host_malloc(phase_len);
 
     int index = 0;
     for (int b=0; b < _num_pulsar; b++){
@@ -40,7 +40,7 @@ hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, const uint64_t& fpga_s
         void *output_buffer;
     } args;
     memset(&args, 0, sizeof(args));
-    args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    args.input_buffer = device.get_gpu_memory("input_reordered", input_frame_len);
     args.phase_buffer = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, phase_len);
     args.output_buffer = device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_frame_len);
 

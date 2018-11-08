@@ -1,9 +1,12 @@
 #include "hsaBeamformKernel.hpp"
+#include "configUpdater.hpp"
+
+#include <signal.h>
 
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_gains/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"gain_dir":"/etc/kotekan/gains/"}'
+// curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
 // Update NS beam
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
 // Update EW beam
@@ -18,7 +21,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
-    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
 
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
     vector<float> dg = {0.0,0.0}; //re,im
@@ -29,7 +31,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
 
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
-    _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float), device.get_gpu_id());
+    _ew_spacing_c = (float *)hsa_host_malloc(4*sizeof(float));
     for (int i=0;i<4;i++){
         _ew_spacing_c[i] = _ew_spacing[i];
     }
@@ -39,13 +41,13 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
 
 
     map_len = 256 * sizeof(int);
-    host_map = (uint32_t *)hsa_host_malloc(map_len, device.get_gpu_id());
+    host_map = (uint32_t *)hsa_host_malloc(map_len);
 
     coeff_len = 32*sizeof(float);
-    host_coeff = (float *)hsa_host_malloc(coeff_len, device.get_gpu_id());
+    host_coeff = (float *)hsa_host_malloc(coeff_len);
 
     gain_len = 2*2048*sizeof(float);
-    host_gain = (float *)hsa_host_malloc(gain_len, device.get_gpu_id());
+    host_gain = (float *)hsa_host_malloc(gain_len);
 
     //Figure out which frequency, is there a better way that doesn't involve reading in the whole thing? Check later
     metadata_buf = host_buffers.get_buffer("network_buf");
@@ -61,19 +63,18 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
 
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint_gains = unique_name + "/frb/update_gains/" + std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(endpoint_gains,
-            std::bind(&hsaBeamformKernel::update_gains_callback, this, _1, _2));
     endpoint_NS_beam = unique_name + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_NS_beam,
             std::bind(&hsaBeamformKernel::update_NS_beam_callback, this, _1, _2));
     endpoint_EW_beam = unique_name + "/frb/update_EW_beam/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_EW_beam,
             std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
+    //listen for gain updates
+    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain_frb"),
+                                        std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
-    restServer::instance().remove_json_callback(endpoint_gains);
     restServer::instance().remove_json_callback(endpoint_NS_beam);
     restServer::instance().remove_json_callback(endpoint_EW_beam);
     hsa_host_free(host_map);
@@ -84,21 +85,17 @@ hsaBeamformKernel::~hsaBeamformKernel() {
 }
 
 
-void hsaBeamformKernel::update_gains_callback(connectionInstance& conn, json& json_request) {
+bool hsaBeamformKernel::update_gains_callback(nlohmann::json &json) {
     //we're not fussy about exactly when the gains update, so no need for a lock here
-    try {
-        _gain_dir = json_request["gain_dir"];
-    } catch (...) {
-        conn.send_error("Couldn't parse new gain_dir parameter.", HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    //nothing will happen until this gets changed.
     update_gains=true;
-    INFO("Updating gains from %s", _gain_dir.c_str());
-    config.update_value(unique_name, "gain_dir", _gain_dir);
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    try {
+        _gain_dir = json.at("frb_gain_dir");
+    } catch (std::exception& e) {
+        WARN("[FRB] Fail to read gain_dir %s", e.what());
+        return false;
+    }
     INFO("[FRB] updated gain with %s", _gain_dir.c_str());
-
+    return true;
 }
 
 void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& json_request) {
@@ -139,7 +136,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref) {
+void hsaBeamformKernel::calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref) {
     float t, delta_t, beam_ref;
     int cl_index;
     float D2R = PI/180.;
@@ -207,6 +204,8 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
         else {
             if (_num_elements != fread(host_gain,sizeof(float)*2,_num_elements,ptr_myfile)) {
                 ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...", filename);
+                raise(SIGINT);
+                return precede_signal;
             }
             fclose(ptr_myfile);
             for (uint32_t i=0; i<2048; i++){
@@ -240,7 +239,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_s
     } args;
     memset(&args, 0, sizeof(args));
 
-    args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    args.input_buffer = device.get_gpu_memory("input_reordered", input_frame_len);
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);

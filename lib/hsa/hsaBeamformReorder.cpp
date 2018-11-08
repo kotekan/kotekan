@@ -18,7 +18,7 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
 
     // Create a C style array for backwards compatibility.
     map_len = 512 * sizeof(int);
-    _reorder_map_c = (int *)hsa_host_malloc(map_len, device.get_gpu_id());
+    _reorder_map_c = (int *)hsa_host_malloc(map_len);
     for (uint i=0;i<512;++i){
         _reorder_map_c[i] = _reorder_map[i];
     }
@@ -39,7 +39,7 @@ hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.map_buffer = device.get_gpu_memory("reorder_map", map_len);
-    args.output_buffer = device.get_gpu_memory_array("input", gpu_frame_id, output_frame_len);
+    args.output_buffer = device.get_gpu_memory("input_reordered", output_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

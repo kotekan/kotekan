@@ -30,13 +30,11 @@
  * beams. The ordering of the output data is time-pol-beamEW-beamNS, where beamNS
  * is the fastest varying.
  *
+ * The gain path is registered as a subscriber to an updatable config block.
+ *
  * @requires_kernel    unpack_shift_beamform_flip.hasco
  *
  * @par REST Endpoints
- * @endpoint    /frb/update_gains/<gpu_id> ``POST`` Trigger re-load of gain
- *              at specific path for calibration purpose.
- *              requires json values      "gain_dir"
- *              update config             "gain_dir"
  * @endpoint    /frb/update_NS_beam/<gpu id> ``POST`` Trigger re-set of 
  *              FFT beam spacing in N-S
  *              requires json values      northmost_beam
@@ -47,8 +45,8 @@
  *              update config             ew_spacing[ew_id]
  * 
  * @par GPU Memory
- * @gpu_mem  input              Input data of size input_frame_len
- *     @gpu_mem_type            staging
+ * @gpu_mem  input_reordered    Input data of size input_frame_len
+ *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c uchar
  *     @gpu_mem_metadata        chimeMetadata
  * @gpu_mem  beamform_output    Output data of size output_frame_len
@@ -71,7 +69,6 @@
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   num_local_freq       Int (default 1). Number of local freq.
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
- * @conf   gain_dir             String - directory path where gain files are
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
  * @conf   northmost_beam       Float - Setting the extent in NS of the FFT formed beams. 
@@ -103,7 +100,7 @@ public:
                          hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates
-    void update_gains_callback(connectionInstance& conn, json& json_request);
+    bool update_gains_callback(nlohmann::json &json);
     /// Endpoint for setting N-S beam extent
     void update_NS_beam_callback(connectionInstance& conn, json& json_request);
     /// Endpoint for setting E-W beam sky angle
@@ -118,7 +115,7 @@ private:
      * @param freq_now    freq of this gpu
      * @param freq_ref    reference freq, which determines the N-S extent of the beams
      */
-    void calculate_cl_index(uint32_t *host_map, float freq_now, float freq_ref);
+    void calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref);
 
     /**
      * @brief Calculate phase delays for the E-W beams
@@ -178,7 +175,7 @@ private:
     float * _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam 
-    float freq_ref;
+    double freq_ref;
 
     ///Flag to control gains to be only loaded on request.
     bool update_gains;
@@ -189,8 +186,6 @@ private:
     ///Flag to update EW beam
     bool update_EW_beam;
 
-    /// The endpoint name for the gain update call
-    std::string endpoint_gains;
     /// Endpoint for updating NS beams
     std::string endpoint_NS_beam;
     /// Endpoint for updating EW beams

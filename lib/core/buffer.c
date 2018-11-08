@@ -48,7 +48,8 @@ void private_reset_producers(struct Buffer * buf, const int ID);
 // Resets the list of consumers for the given ID
 void private_reset_consumers(struct Buffer * buf, const int ID);
 
-struct Buffer* private_create_buffer_common(int num_frames, int len,
+
+struct Buffer* create_buffer(int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name)
 {
 
@@ -64,7 +65,6 @@ struct Buffer* private_create_buffer_common(int num_frames, int len,
     CHECK_ERROR( pthread_cond_init(&buf->empty_cond, NULL) );
 
     buf->shutdown_signal = 0;
-    buf->is_hsa_memory = 0;
 
     // Copy the buffer buffer name.
     buf->buffer_name = strdup(buffer_name);
@@ -139,43 +139,9 @@ struct Buffer* private_create_buffer_common(int num_frames, int len,
 
     buf->last_arrival_time = 0;
 
-    return buf;
-}
-
-
-struct Buffer * create_buffer(int num_frames, int frame_size,
-                  struct metadataPool * pool, const char * buffer_name) {
-
-    struct Buffer * buf = private_create_buffer_common(num_frames,
-                                                       frame_size,
-                                                       pool,
-                                                       buffer_name);
-    if (buf == NULL) return NULL;
-
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = frame_malloc(buf->aligned_frame_size);
-        if (buf->frames[i] == NULL)
-            return NULL;
-    }
-
-    return buf;
-}
-
-struct Buffer * create_hsa_buffer(int num_frames, int frame_size,
-                  struct metadataPool * pool, const char * buffer_name,
-                  int32_t gpu_id) {
-
-    struct Buffer * buf = private_create_buffer_common(num_frames,
-                                                       frame_size,
-                                                       pool,
-                                                       buffer_name);
-    if (buf == NULL) return NULL;
-    buf->is_hsa_memory = 1;
-
-    // Create the frames.
-    for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = frame_hsa_malloc(buf->aligned_frame_size, gpu_id);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size);
         if (buf->frames[i] == NULL)
             return NULL;
     }
@@ -186,11 +152,7 @@ struct Buffer * create_hsa_buffer(int num_frames, int frame_size,
 void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_frames; ++i) {
-        if (buf->is_hsa_memory == 1) {
-            frame_hsa_free(buf->frames[i]);
-        } else {
-            frame_free(buf->frames[i]);
-        }
+        buffer_free(buf->frames[i]);
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -542,6 +504,33 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int I
     return buf->frames[ID];
 }
 
+int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
+                                const int ID, const struct timespec timeout)
+{
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    int consumer_id = private_get_consumer_id(buf, name);
+    int err = 0;
+
+    // This loop exists when is_full == 1 (i.e. a full buffer) AND
+    // when this producer hasn't already marked this buffer as
+    while ( (buf->is_full[ID] == 0 ||
+            buf->consumers_done[ID][consumer_id] == 1) && 
+            buf->shutdown_signal == 0 && err == 0) {
+        err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
+    }
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+
+    if (buf->shutdown_signal == 1)
+        return -1;
+    
+    if (err == ETIMEDOUT)
+        return 1;
+
+    return 0;
+}
+
 int get_num_full_frames(struct Buffer* buf)
 {
     int numFull = 0;
@@ -693,10 +682,18 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
 }
 
-uint8_t * frame_malloc(ssize_t len) {
+uint8_t * buffer_malloc(ssize_t len) {
 
     uint8_t * frame = NULL;
 
+#ifdef WITH_HSA
+    // Is this memory aligned?
+    frame = hsa_host_malloc(len);
+    if (frame == NULL) {
+        return NULL;
+    }
+
+#else
     // Create a page alligned block of memory for the buffer
     int err = 0;
     err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
@@ -714,44 +711,20 @@ uint8_t * frame_malloc(ssize_t len) {
         free(frame);
         return NULL;
     }
-
-    // Zero the new frame
-    memset(frame, 0x0, len);
-
-    return frame;
-}
-
-uint8_t * frame_hsa_malloc(ssize_t len, uint32_t gpu_id) {
-#ifdef WITH_HSA
-    uint8_t * frame = NULL;
-
-    // Is this memory aligned?
-    frame = hsa_host_malloc(len, gpu_id);
-    if (frame == NULL) {
-        return NULL;
-    }
-
-    // Zero the new frame
-    memset(frame, 0x0, len);
-
-    return frame;
-#else
-    ERROR("HSA not enabled, cannot alloc frame");
-    return NULL;
 #endif
+
+    // Zero the new frame
+    memset(frame, 0x0, len);
+
+    return frame;
 }
 
-void frame_free(uint8_t * frame_pointer) {
+void buffer_free(uint8_t * frame_pointer) {
+#ifdef WITH_HSA
+    hsa_host_free(frame_pointer);
+#else
     free(frame_pointer);
-}
-
-void frame_hsa_free(uint8_t * frame_pointer) {
-    #ifdef WITH_HSA
-        hsa_host_free(frame_pointer);
-    #else
-        ERROR("HSA not enabled, cannot free frame");
-        exit(-1);
-    #endif
+#endif
 }
 
 // Do not call if there is no metadata
