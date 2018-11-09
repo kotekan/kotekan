@@ -144,6 +144,7 @@ void fakeVis::main_thread() {
                                                           get_git_commit_hash());
 
             std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+            // TODO: CHIME specific
             std::transform(
                 std::begin(freq), std::end(freq), std::back_inserter(fspec),
                 [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
