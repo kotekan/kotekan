@@ -170,6 +170,10 @@ public:
     /**
      * @brief Finds all values with key "name". Searches the whole config tree.
      *
+     * @note This should only be used by internal (core framework) systems.
+     * Usage by normal processes risks unexpected side effects in the config
+     * scoping logic.
+     *
      * @param name  The name of the property i.e. num_frequencies
      *
      * @return      The values found or an empty list if nothing was found.
