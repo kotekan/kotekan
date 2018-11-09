@@ -23,6 +23,7 @@
 
 
 /**
+ * @class gateSpec
  * @brief Base class for specifying a gated data accumulation.
  *
  **/
