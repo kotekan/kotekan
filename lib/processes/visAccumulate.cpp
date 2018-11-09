@@ -86,7 +86,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
         // Validate and fetch the output buffer name
         try {
-            if (!it.value().at("mode").is_string()) {
+            if (!it.value().at("buf").is_string()) {
                 throw std::invalid_argument(
                     "Config for gated dataset " + name +
                     " did not have a valid buf argument: " + it.value().dump()
