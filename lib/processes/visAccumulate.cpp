@@ -435,4 +435,3 @@ visAccumulate::internalState::internalState(
 {
 
 }
-
