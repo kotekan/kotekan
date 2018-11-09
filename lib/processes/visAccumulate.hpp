@@ -208,7 +208,6 @@ private:
         frameID frame_id;
 
         /// Specification of how we are gating
-        //gateSpec* spec;
         std::unique_ptr<gateSpec> spec;
 
         /// The weighted number of total samples accumulated. Must be reset every
