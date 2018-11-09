@@ -390,18 +390,8 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     // no ancestor found locally -> ask broker
     if (_use_broker) {
+        request_ancestor(dset, typeid(T).name());
 
-        try {
-            request_ancestor(dset, typeid(T).name());
-        } catch (std::runtime_error& e) {
-            prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++_conn_error_count);
-            std::string msg = fmt::format(
-                        "datasetManager: Failure requesting ancestors, make " \
-                        "sure the broker is running: {}", e.what());
-            throw std::runtime_error(msg);
-        }
         // set timeout to hear back from callback function
         std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
         auto time_point = std::chrono::system_clock::now() + timeout;
@@ -468,20 +458,8 @@ std::pair<state_id_t, const T*> datasetManager::add_state(
         }
 
         // tell the broker about it
-        if (_use_broker && !ignore_broker) {
-            try {
-                register_state(hash);
-            } catch (std::runtime_error& e) {
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                            ++_conn_error_count);
-                std::string msg = fmt::format(
-                            "datasetManager: Failure registering state: {}\n" \
-                            "datasetManager: Make sure the broker is running."
-                            , e.what());
-                throw std::runtime_error(msg);
-            }
-        }
+        if (_use_broker && !ignore_broker)
+            register_state(hash);
     }
 
     return std::pair<state_id_t, const T*>(hash,

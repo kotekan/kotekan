@@ -116,21 +116,8 @@ dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
         }
     }
 
-    if (_use_broker && !ignore_broker) {
-        try {
-            register_dataset(new_dset_id, ds);
-        } catch (std::runtime_error& e) {
-            prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++_conn_error_count);
-            std::string msg = fmt::format(
-                        "datasetManager: Failure registering new dataset " \
-                        "(dataset state {} applied to dataset {}}): {}\n" \
-                        "datasetManager: Make sure the broker is running.",
-                        ds.state(), ds.base_dset(), e.what());
-            throw std::runtime_error(msg);
-        }
-    }
+    if (_use_broker && !ignore_broker)
+        register_dataset(new_dset_id, ds);
 
     return new_dset_id;
 }
@@ -162,10 +149,15 @@ void datasetManager::register_state(state_id_t state) {
     if (restClient::instance().make_request(
             PATH_REGISTER_STATE,
             callback,
-            js_post, _ds_broker_host, _ds_broker_port) == false)
-        throw std::runtime_error("datasetManager: failed registering dataset " \
-                                 "state " + std::to_string(state)
-                                 + " with broker.");
+            js_post, _ds_broker_host, _ds_broker_port) == false) {
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        std::string msg = fmt::format(
+                    "datasetManager: Failure registering state {}\n" \
+                    "datasetManager: Make sure the broker is running.", state);
+        throw std::runtime_error(msg);
+    }
 }
 
 void datasetManager::register_state_callback(restReply reply) {
@@ -271,12 +263,17 @@ void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
     if (restClient::instance().make_request(
             PATH_REGISTER_DATASET,
             callback,
-            js_post, _ds_broker_host, _ds_broker_port) == false)
-        throw std::runtime_error("datasetManager: failed registering dataset " \
-                                 "with hash " + std::to_string(hash) + " ("
-                                 + std::to_string(dset.state()) + ","
-                                 + std::to_string(dset.base_dset())
-                                 + ") with broker.");
+            js_post, _ds_broker_host, _ds_broker_port) == false) {
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        std::string msg = fmt::format(
+                    "datasetManager: Failure registering new dataset with " \
+                    "hash {} (dataset state {} applied to dataset {}}).\n" \
+                    "datasetManager: Make sure the broker is running.",
+                    hash, dset.state(), dset.base_dset());
+        throw std::runtime_error(msg);
+    }
 }
 
 void datasetManager::register_dataset_callback(restReply reply) {
@@ -317,11 +314,16 @@ void datasetManager::request_ancestor(dset_id_t dset_id, const char* type) {
     if (restClient::instance().make_request(
             PATH_REQUEST_ANCESTOR,
             callback,
-            js_post, _ds_broker_host, _ds_broker_port) == false)
+            js_post, _ds_broker_host, _ds_broker_port) == false) {
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
         throw std::runtime_error("datasetManager: failed requesting ancestor" \
                                  " of type " + std::string(type)
                                  + " of dataset " + std::to_string(dset_id)
-                                 + " with broker.");
+                                 + " from broker.");
+    }
+
     DEBUG("datasetManager: requesting ancestor of type %s of dataset %zu",
           type, dset_id);
 }

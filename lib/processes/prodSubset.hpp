@@ -82,7 +82,8 @@ private:
     ///
     static dset_id_t change_dataset_state(dset_id_t ds_id,
                                           std::vector<prod_ctype>& prod_subset,
-                                          size_t subset_num_prod);
+                                          std::vector<size_t>& prod_ind,
+                                          size_t& subset_num_prod);
 
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
