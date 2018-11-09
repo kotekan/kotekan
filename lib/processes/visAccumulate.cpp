@@ -164,7 +164,7 @@ void visAccumulate::main_thread() {
     uint32_t total_samples = 0;
 
     // Temporary arrays for storing intermediates
-    int32_t* vis_even = new int32_t[2 * num_prod_gpu];
+    std::vector<int32_t> vis_even(2 * num_prod_gpu);
 
     // Have we initialised a frame for writing yet
     bool init = false;
@@ -181,8 +181,7 @@ void visAccumulate::main_thread() {
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
-        // accumulates and do any final manipulations. `last_frame_count` is
-        // initially set to UINT_MAX to ensure this doesn't happen immediately.
+        // accumulates and do any final manipulations.
         bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
         if (init && wrapped) {
 
@@ -191,8 +190,8 @@ void visAccumulate::main_thread() {
             // Iterate over *only* the gated datasets (remember that element
             // zero is the vis), and remove the bias and copy in the variance
             for (int i = 1; i < enabled_gated_datasets.size(); i++) {
-                combine_gated(enabled_gated_datasets[i],
-                              enabled_gated_datasets[0]);
+                combine_gated(enabled_gated_datasets.at(i),
+                              enabled_gated_datasets.at(0));
             }
 
             for (internalState& dset : enabled_gated_datasets) {
@@ -247,6 +246,8 @@ void visAccumulate::main_thread() {
         // If we've got to here and we've not initialised we need to skip this frame.
         if (!init) continue;
 
+        // Now the main accumulation work starts...
+
         // TODO: CHIME specific
         timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
         timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
@@ -284,7 +285,7 @@ void visAccumulate::main_thread() {
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
         if(frame_count % 2 == 0) {
-            std::memcpy(vis_even, input, 8 * num_prod_gpu);
+            std::memcpy(vis_even.data(), input, 8 * num_prod_gpu);
         }
         // ... every odd sample we accumulate the squared differences into the weight dataset
         // NOTE: this incrementally calculates the variance, but eventually
@@ -292,7 +293,7 @@ void visAccumulate::main_thread() {
         // TODO: we might need to account for packet loss in here too, but it
         // would require some awkward rescalings
         else {
-            internalState& d0 = enabled_gated_datasets[0];  // Save into the main vis dataset
+            internalState& d0 = enabled_gated_datasets.at(0);  // Save into the main vis dataset
             for(size_t i = 0; i < num_prod_gpu; i++) {
                 // NOTE: avoid using the slow std::complex routines in here
                 float di = input[2 * i    ] - vis_even[2 * i    ];
@@ -312,9 +313,6 @@ void visAccumulate::main_thread() {
         last_frame_count = frame_count;
         frames_in_this_cycle++;
     }
-
-    // Cleanup
-    delete[] vis_even;
 }
 
 

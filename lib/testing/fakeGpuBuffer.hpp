@@ -40,17 +40,18 @@
  *                              methods below.
  * @conf  wait                  Bool. Sleep to try and output data at roughly
  *                              the correct cadence.
- * @conf  num_frames            Exit after num_frames have been produced. If
+ * @conf  num_frames            Int. Exit after num_frames have been produced. If
  *                              less than zero, no limit is applied. Default
  *                              is `-1`.
- * @conf  polyco                Polynomial coeffecients for pulsar mode. Use
+ * @conf  polyco                List of floats. Polynomial coeffecients for pulsar mode. Use
  *                              Tempo convention.
- * @conf  dm                    Dispersion measure of pulsar (cm^-3 pc).
- * @conf  tmid                  Reference time for polyco in MJD (days).
- * @conf  phase_ref             Reference phase for polyco (number of rotations).
- * @conf  rot_freq              Frequency of rotation of the pulsar (Hz).
- * @conf  pulse_width           Width of the pulse (s).
- * @conf  gaussian_bgnd         Fill background with gaussian noise (bool).
+ * @conf  dm                    Float. Dispersion measure of pulsar (cm^-3 pc).
+ * @conf  tmid                  Float. Reference time for polyco in MJD (days).
+ * @conf  phase_ref             Float. Reference phase for polyco (number of
+ *                              rotations).
+ * @conf  rot_freq              Float. Rotation frequency of the pulsar (Hz).
+ * @conf  pulse_width           Float. Width of the pulse (s).
+ * @conf  gaussian_bgnd         Bool. Fill background with gaussian noise.
  *
  * @warning The `stream_id_t` in the metadata is likely to be invalid as it is
  *          generated only such that it is decoded back to the input frequency
@@ -99,7 +100,7 @@ public:
      *
      * Fill each element with its full correlation index (real = row; column =
      * imag), with real and imaginary parts being shifted every 4th frame.
-     * 
+     *
      * Overall this mode should average to (row + column * J) and the
      * inverse variance should be num_gpu_frames / 8.
      *

@@ -41,20 +41,20 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
     std::vector<float> coeff;
     try {
         // Get gating specifications from config
-        pulsar_name = json.at("pulsar_name").get<std::string>();
+        _pulsar_name = json.at("pulsar_name").get<std::string>();
         coeff = json.at("coeff").get<std::vector<float>>();
-        dm = json.at("dm").get<float>();
-        tmid = json.at("t_ref").get<double>();
-        phase_ref = json.at("phase_ref").get<double>();
-        rot_freq = json.at("rot_freq").get<double>();
-        pulse_width = json.at("pulse_width").get<float>();
+        _dm = json.at("dm").get<float>();
+        _tmid = json.at("t_ref").get<double>();
+        _phase_ref = json.at("phase_ref").get<double>();
+        _rot_freq = json.at("rot_freq").get<double>();
+        _pulse_width = json.at("pulse_width").get<float>();
     } catch (std::exception& e) {
         WARN("Failure reading pulsar parameters from update: %s", e.what());
         return false;
     }
-    polyco = Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+    _polyco = Polyco(_tmid, _dm, _phase_ref, _rot_freq, coeff);
     INFO("Dataset %s now gating on pulsar %s",
-         name().c_str(), pulsar_name.c_str());
+         name().c_str(), _pulsar_name.c_str());
 
     return true;
 }
@@ -64,7 +64,7 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function() co
 
     // capture the variables needed to calculate timing
     return [
-        p = polyco, f0 = rot_freq, pw = pulse_width
+        p = _polyco, f0 = _rot_freq, pw = _pulse_width
     ](timespec t_s, timespec t_e, float freq) {
         // Calculate nearest pulse times of arrival
         double toa = p.next_toa(t_s, freq);

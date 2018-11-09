@@ -22,6 +22,12 @@
 /**
  * @brief Base class for specifying a gated data accumulation.
  *
+ * Subclasses of need to implement weight_function to return a function which
+ * given the start and end times of a frame of its frame, as well as it's
+ * frequency, produces a weight with which it should be accumulated.
+ *
+ * @author Richard Shaw, Tristan Pinsonneault-Marotte
+ *
  **/
 class gateSpec {
 public:
@@ -37,10 +43,10 @@ public:
     /**
      * @brief Create a subtype by name.
      *
-     * @param type Name of gateSpec subtype.
-     * @param name Name of the gated dataset.
+     * @param  type  Name of gateSpec subtype.
+     * @param  name  Name of the gated dataset.
      *
-     * @returns A pointer to the gateSpec instance.
+     * @returns      A pointer to the gateSpec instance.
      **/
     static std::unique_ptr<gateSpec> create(const std::string& type,
                                             const::std::string& name);
@@ -48,6 +54,10 @@ public:
 
     /**
      * @brief A callback to update the gating specification.
+     *
+     * @param  json  A json object with the updated config.
+     *
+     * @return       Did the config apply successfully.
      **/
     virtual bool update_spec(nlohmann::json &json) = 0;
 
@@ -57,17 +67,21 @@ public:
      * @note This must return a closure that captures by value such that its
      *       lifetime can be longer than the gateSpec object that generated it.
      *
-     * @returns A function to calculate the weights.
+     * @return  A function to calculate the weights.
      **/
     virtual std::function<float(timespec, timespec, float)> weight_function() const = 0;
 
     /**
      * @brief Is this enabled at the moment?
+     *
+     * @return True if gating for this spec is enabled.
      **/
     const bool& enabled() const { return _enabled; }
 
     /**
      * @brief Get the name of the gated dataset.
+     *
+     * @return Name of the gated dataset.
      **/
     const std::string& name() const { return _name; }
 
@@ -102,20 +116,31 @@ CREATE_FACTORY(gateSpec, const std::string&);
 class pulsarSpec : public gateSpec {
 
 public:
+
+    /**
+     * @brief Create a pulsar spec.
+     **/
     pulsarSpec(const std::string& name) : gateSpec(name) {};
 
+    /**
+     * @brief Update the gating from a json message.
+     **/
     bool update_spec(nlohmann::json &json) override;
+
+    /**
+     * @brief Return a closure te calculate the weigths.
+     **/
     std::function<float(timespec, timespec, float)> weight_function() const override;
 
 private:
     // Config parameters for pulsar gating
-    std::string pulsar_name;
-    float dm;           // in pc / cm^3
-    double tmid;        // in days since MJD
-    double phase_ref;   // in number of rotations
-    double rot_freq;    // in Hz
-    float pulse_width;  // in s
-    Polyco polyco;
+    std::string _pulsar_name;
+    float _dm;           // in pc / cm^3
+    double _tmid;        // in days since MJD
+    double _phase_ref;   // in number of rotations
+    double _rot_freq;    // in Hz
+    float _pulse_width;  // in s
+    Polyco _polyco;
 };
 
 
@@ -127,8 +152,20 @@ private:
  **/
 class uniformSpec : public gateSpec {
 public:
+
+    /**
+     * @brief Create a uniform weighted dataset.
+     **/
     uniformSpec(const std::string& name);
+
+    /**
+     * @brief Update from json config. Has no effect.
+     **/
     bool update_spec(nlohmann::json &json) override;
+
+    /**
+     * @brief Return the weight calculation function.
+     **/
     std::function<float(timespec, timespec, float)> weight_function() const override;
 };
 

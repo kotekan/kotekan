@@ -242,13 +242,14 @@ void fakeGpuBuffer::fill_mode_pulsar(int32_t* data, int frame_number,
         std::fill(data, data + num_elements * (num_elements+1), 0);
     }
 
-    //DEBUG("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
+    DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
+
     // Figure out if we are in a pulse
     double toa = polyco->next_toa(metadata->gps_time, freq_from_bin(freq));
-    double phase = polyco->unix2phase(metadata->gps_time);
-    //DEBUG("phase %f", phase);
     double last_toa = toa - 1. / rot_freq;
-    //DEBUG("TOA: %f, last TOA: %f", toa, last_toa);
+    DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
+
+    // TODO: CHIME specific
     // If so, add 10 to real part
     if (toa < samples_per_data_set * 2.56e-6 || last_toa + pulse_width > 0) {
         //DEBUG("Found pulse!");
