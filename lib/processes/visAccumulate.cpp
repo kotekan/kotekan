@@ -486,7 +486,7 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         rot_freq = json.at("rot_freq").get<double>();
         pulse_width = json.at("pulse_width").get<float>();
     } catch (std::exception& e) {
-        WARN("Failure reading pulsar parameters from update: %s", e.what());
+        WARN("pulsarSpec: Failure reading pulsar parameters from update: %s\n%s", json.dump().c_str(), e.what());
         return false;
     }
     polyco = Polyco(tmid, dm, phase_ref, rot_freq, coeff);
