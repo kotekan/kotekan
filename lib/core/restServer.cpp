@@ -48,7 +48,11 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
     DEBUG2("restServer: Got request with url %s", url.c_str());
 
     {
-        std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+	// TODO This function should be locked against changes to the callback
+	// maps form other threads.  However there are a number of callbacks (start, stop, etc)
+	// which add or remove callbacks from the maps. So a more fine-grained
+	// locking system is needed here.  
+        //std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
         map<string, string> &aliases = server->get_aliases();
         if (aliases.find(url) != aliases.end()) {
             url = aliases[url];

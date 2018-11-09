@@ -284,7 +284,7 @@ connInstance::connInstance(const string& producer_name,
                            port(port),
                            read_timeout(read_timeout) {
 
-    frame_space = frame_malloc(buf->aligned_frame_size);
+    frame_space = buffer_malloc(buf->aligned_frame_size);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
@@ -295,7 +295,7 @@ connInstance::~connInstance() {
     INFO("Closing FD");
     close(fd);
     event_free(event_read);
-    frame_free(frame_space);
+    buffer_free(frame_space);
     free(metadata_space);
 }
 

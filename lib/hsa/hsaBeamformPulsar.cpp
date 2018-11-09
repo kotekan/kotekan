@@ -17,7 +17,7 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
     output_frame_len =  _samples_per_data_set * _num_pulsar * _num_pol * 2 *  sizeof(float);
 
     phase_len = _num_elements*_num_pulsar*2*sizeof(float);
-    host_phase = (float *)hsa_host_malloc(phase_len, device.get_gpu_id());
+    host_phase = (float *)hsa_host_malloc(phase_len);
 
     int index = 0;
     for (int b=0; b < _num_pulsar; b++){
