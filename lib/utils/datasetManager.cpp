@@ -76,22 +76,13 @@ void datasetManager::apply_config(Config& config) {
     _use_broker = config.get_default<bool>(
                 UNIQUE_NAME, "use_dataset_broker", false);
     if (_use_broker) {
-        _ds_broker_port = config.get<uint32_t>(UNIQUE_NAME, "ds_broker_port");
-        _ds_broker_host = config.get<std::string>(
-                    UNIQUE_NAME, "ds_broker_host");
-        _path_register_state = config.get<std::string>(
-                    UNIQUE_NAME, "register_state_path");
-        _path_send_state = config.get<std::string>(
-                    UNIQUE_NAME, "send_state_path");
-        _path_register_dataset = config.get<std::string>(
-                    UNIQUE_NAME, "register_dataset_path");
-        _path_request_ancestor = config.get<std::string>(
-                    UNIQUE_NAME, "request_ancestor_path");
+        _ds_broker_port = config.get_default<uint32_t>(
+                    UNIQUE_NAME, "ds_broker_port", 12050);
+        _ds_broker_host = config.get_default<std::string>(
+                    UNIQUE_NAME, "ds_broker_host", "127.0.0.1");
 
-        DEBUG("datasetManager: expecting broker at %s:%d, endpoints: %s, %s, " \
-              "%s, %s", _ds_broker_host.c_str(), _ds_broker_port,
-              _path_register_state.c_str(), _path_send_state.c_str(),
-              _path_register_dataset.c_str(), _path_request_ancestor.c_str());
+        DEBUG("datasetManager: expecting broker at %s:%d.",
+              _ds_broker_host.c_str(), _ds_broker_port);
     }
 }
 
@@ -169,7 +160,7 @@ void datasetManager::register_state(state_id_t state) {
                 std::bind(&datasetManager::register_state_callback,
                           this, std::placeholders::_1));
     if (restClient::instance().make_request(
-            _path_register_state,
+            PATH_REGISTER_STATE,
             callback,
             js_post, _ds_broker_host, _ds_broker_port) == false)
         throw std::runtime_error("datasetManager: failed registering dataset " \
@@ -215,7 +206,7 @@ void datasetManager::register_state_callback(restReply reply) {
                             std::bind(&datasetManager::send_state_callback,
                                       this, std::placeholders::_1));
                 if (restClient::instance().make_request(
-                        _path_send_state,
+                        PATH_SEND_STATE,
                         callback,
                         js_post, _ds_broker_host, _ds_broker_port) == false)
                     throw std::runtime_error("datasetManager: failed sending " \
@@ -278,7 +269,7 @@ void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
                 std::bind(&datasetManager::register_dataset_callback,
                           this, std::placeholders::_1));
     if (restClient::instance().make_request(
-            _path_register_dataset,
+            PATH_REGISTER_DATASET,
             callback,
             js_post, _ds_broker_host, _ds_broker_port) == false)
         throw std::runtime_error("datasetManager: failed registering dataset " \
@@ -324,7 +315,7 @@ void datasetManager::request_ancestor(dset_id_t dset_id, const char* type) {
                 std::bind(&datasetManager::request_ancestor_callback,
                           this, std::placeholders::_1));
     if (restClient::instance().make_request(
-            _path_request_ancestor,
+            PATH_REQUEST_ANCESTOR,
             callback,
             js_post, _ds_broker_host, _ds_broker_port) == false)
         throw std::runtime_error("datasetManager: failed requesting ancestor" \

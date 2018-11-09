@@ -19,6 +19,12 @@
 #define UNIQUE_NAME "/dataset_manager"
 #define TIMEOUT_BROKER_SEC 10
 
+// names of broker endpoints
+#define PATH_REGISTER_STATE "register-state"
+#define PATH_SEND_STATE "send-state"
+#define PATH_REGISTER_DATASET "register-dataset"
+#define PATH_REQUEST_ANCESTOR "request-ancestor"
+
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
 // (64bit so we shouldn't have collisions)
@@ -137,24 +143,15 @@ private:
  * kotekan instances.
  *
  * @conf use_dataset_broker Bool. If true, states and datasets will be
- *                          registered with
- *                          the dataset broker. If an ancestor can not be found
- *                          locally, `closest_ancestor_of_type` will ask the
- *                          broker.
- * @conf ds_broker_port   Int. The port of the dataset broker
- *                          (if `use_dataset_broker` is `True`).
- * @conf ds_broker_host   String. Address to the dataset broker
- *                          (if 'use_ds_broke` is `True`. Prefer numerical
- *                          address, because the DNS lookup is blocking).
- * @conf _path register_state     String. Path to the `register-state`
- *                                  endpoint (if `use_dataset_broker` is `True`).
- * @conf _path send_state         String. Path to the `send-state` endpoint
- *                                  (if `use_dataset_broker` is `True`).
- * @conf _path register_dataset   String. Path to the `register-dataset`
- *                                  endpoint (if `use_dataset_broker` is `True`).
- * @conf _path request_ancestors  String. Path to the `request_ancestors`
- *                                  endpoint (if `use_dataset_broker` is `True`).
- *
+ *                          registered with the dataset broker. If an ancestor
+ *                          can not be found locally, `closest_ancestor_of_type`
+ *                          will ask the broker.
+ * @conf ds_broker_port     Int. The port of the dataset broker (if
+ *                          `use_dataset_broker` is `True`). Default 12050.
+ * @conf ds_broker_host     String. Address to the dataset broker (if
+ *                          'use_ds_broke` is `True`. Prefer numerical address,
+ *                          because the DNS lookup is blocking). Default
+ *                          "127.0.0.1".
  *
  * @par metrics
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
@@ -344,10 +341,6 @@ private:
 
     // config params
     bool _use_broker = false;
-    std::string _path_register_state;
-    std::string _path_send_state;
-    std::string _path_register_dataset;
-    std::string _path_request_ancestor;
     std::string _ds_broker_host;
     unsigned short _ds_broker_port;
 };
