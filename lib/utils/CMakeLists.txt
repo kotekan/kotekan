@@ -5,6 +5,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 set (KOTEKAN_UTIL_SOURCES
               fpga_header_functions.c
+              gateSpec.cpp
               gpsTime.c
               nt_memcpy.c
               nt_memset.c

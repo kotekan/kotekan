@@ -46,6 +46,10 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <cxxabi.h>
+
+#include "errors.h"
+#include "fmt.hpp"
 
 
 /**
@@ -78,7 +82,7 @@ public:
         if (r.find(type) == r.end()) {
             throw std::runtime_error("Could not find subtype name within Factory");
         }
-        std::cout << "Creating " << type << " as " << typelabel << std::endl;  // Change to DEBUG
+        DEBUG(fmt::format("FACTORY({}): Creating {} instance.", typelabel(), type).c_str());
         return r[type](std::forward<Args>(args)...);
     }
 
@@ -118,13 +122,12 @@ public:
     static int register_type(const std::string& type)
     {
         auto& r = type_registry();
-        std::cout << "Registering " << typelabel << " type: " << type << std::endl;  // Change to DEBUG
+        DEBUG(fmt::format("FACTORY({}): Registering {}.", typelabel(), type).c_str());
         r[type] = [](Args&&... args) -> T* {
             return new U(std::forward<Args>(args)...);
         };
         return 0;
     }
-    static std::string typelabel;
 
     /**
      * Check that the type has been registered.
@@ -147,6 +150,24 @@ private:
         return _register;
     }
 
+    // Get the name of the type by demangling
+    static std::string typelabel()
+    {
+        int status;
+        char * name = abi::__cxa_demangle(typeid(T).name(), nullptr, 0, &status);
+        std::string typelabel;
+
+        if(status == 0) {
+            typelabel = name;
+        }
+        else {
+            typelabel = typeid(T).name();
+        }
+
+        std::free(name);
+        return typelabel;
+    }
+
 };
 
 // Internal use macros
@@ -166,18 +187,20 @@ private:
 /**
  * Create the Factory for the base type.
  *
+ * Should be called in the header where the baseclass is defined.
+ *
  * @param class   Base class for factory.
  * @param args... Types of arguments for constructor to use.
  *
  * @note This will create an alias for the specialized factory class.
  **/
 #define CREATE_FACTORY(...) \
-    using _FACTORY_NAME(__VA_ARGS__) = Factory<__VA_ARGS__>; \
-    template<> std::string _FACTORY_NAME(__VA_ARGS__)::typelabel = \
-        _TYPE_LABEL(__VA_ARGS__);
+    using _FACTORY_NAME(__VA_ARGS__) = Factory<__VA_ARGS__>;
 
 /**
  * Register a subtype in the factory with a custom name.
+ *
+ * Should be called in the .cpp file of the subclass.
  *
  * @param type    Base class for factory.
  * @param subtype Sub class to register in factory.
@@ -193,6 +216,8 @@ private:
 /**
  * Register a subtype in the factory.
  *
+ * Should be called in the .cpp file of the subclass.
+ *
  * @param type    Base class for factory.
  * @param subtype Sub class to register in factory.
  *
@@ -204,6 +229,8 @@ private:
 
 /**
  * Register a subtype in the factory using its RTTI name.
+ *
+ * Should be called in the .cpp file of the subclass.
  *
  * @param type    Base class for factory.
  * @param subtype Sub class to register in factory.
