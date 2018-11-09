@@ -234,6 +234,7 @@ visAccumulate::visAccumulate(Config& config,
 
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
+    // TODO: CHIME specific
     if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     }
