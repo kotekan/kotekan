@@ -76,8 +76,10 @@ void kotekanMode::initalize_processes() {
     // Apply config to datasetManager only if used somewhere in config
     for (json j : config.get_value("use_dataset_manager")) {
         if (j.is_boolean()) {
-            if (j.get<bool>())
+            if (j.get<bool>()) {
                 datasetManager::instance().apply_config(config);
+                break;
+            }
         }
     }
 }
