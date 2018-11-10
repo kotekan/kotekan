@@ -53,6 +53,13 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         std::raise(SIGINT);
     }
 
+    if(!gating_conf.empty() && num_freq_in_frame > 1) {
+        ERROR("Cannot use gating with multifrequency GPU buffers"
+              "[num_freq_in_frame=%i; gating config=%s].",
+              num_freq_in_frame, gating_conf.dump().c_str());
+        std::raise(SIGINT);
+    }
+
     // Register gating update callbacks
     std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
 
