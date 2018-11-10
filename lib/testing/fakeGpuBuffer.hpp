@@ -43,14 +43,14 @@
  * @conf  num_frames            Int. Exit after num_frames have been produced. If
  *                              less than zero, no limit is applied. Default
  *                              is `-1`.
- * @conf  polyco                List of floats. Polynomial coeffecients for pulsar mode. Use
- *                              Tempo convention.
  * @conf  dm                    Float. Dispersion measure of pulsar (cm^-3 pc).
- * @conf  tmid                  Float. Reference time for polyco in MJD (days).
+ * @conf  t_ref                 Float. Reference time for polyco in MJD (days).
  * @conf  phase_ref             Float. Reference phase for polyco (number of
  *                              rotations).
  * @conf  rot_freq              Float. Rotation frequency of the pulsar (Hz).
  * @conf  pulse_width           Float. Width of the pulse (s).
+ * @conf  coeff                 List of floats. Polynomial coeffecients for
+ *                              pulsar mode. Use Tempo convention.
  * @conf  gaussian_bgnd         Bool. Fill background with gaussian noise.
  *
  * @warning The `stream_id_t` in the metadata is likely to be invalid as it is

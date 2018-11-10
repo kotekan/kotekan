@@ -51,9 +51,9 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     // Get additional config for pulsar
     if (mode == "pulsar") {
         // set up pulsar polyco
-        std::vector<float> coeff = config.get<std::vector<float>>(unique_name, "polyco");
+        std::vector<float> coeff = config.get<std::vector<float>>(unique_name, "coeff");
         dm = config.get<float>(unique_name, "dm");
-        double tmid = config.get<double>(unique_name, "tmid");  // in days since MJD
+        double tmid = config.get<double>(unique_name, "t_ref");  // in days since MJD
         double phase_ref = config.get<double>(unique_name, "phase_ref");  // in number of rotations
         rot_freq = config.get<double>(unique_name, "rot_freq");  // in Hz
         pulse_width = config.get<float>(unique_name, "pulse_width");
