@@ -47,6 +47,8 @@ using json = nlohmann::json;
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
  */
@@ -107,6 +109,9 @@ private:
     dset_id_t output_dset_id;
     const prodState* prod_state_ptr;
     const stackState* stack_state_ptr;
+
+    // Number of errors when dealing with datasetManager
+    std::atomic<uint32_t> err_count;
 };
 
 

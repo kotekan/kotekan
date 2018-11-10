@@ -34,6 +34,8 @@ baselineCompression::baselineCompression(Config &config,
     stack_type_defs["diagonal"] = stack_diagonal;
     stack_type_defs["chime_in_cyl"] = stack_chime_in_cyl;
 
+    err_count = 0;
+
     apply_config(0);
 }
 
@@ -138,6 +140,9 @@ void baselineCompression::compress_thread(int thread_id) {
         retry_broker = true;
         WARN("visCompression: Failure in " \
              "datasetManager, retrying: %s", e.what());
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_dataset_manager_dropped_frame_count",
+            unique_name, ++err_count);
     }
 
     while (!stop_thread) {
@@ -162,6 +167,9 @@ void baselineCompression::compress_thread(int thread_id) {
             } catch (std::runtime_error& e) {
                 WARN("visCompression: Dropping frame, failure in " \
                      "datasetManager: %s", e.what());
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_dataset_manager_dropped_frame_count",
+                    unique_name, ++err_count);
 
                 // Mark the buffers and move on
                 mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

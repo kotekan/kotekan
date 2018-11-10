@@ -272,7 +272,7 @@ visAccumulate::visAccumulate(Config& config,
             WARN("Failure in datasetManager: %s",
                  e.what());
             prometheusMetrics::instance().add_process_metric(
-                "kotekan_viswriter_dropped_frame_total",
+                "kotekan_dataset_manager_dropped_frame_count",
                 unique_name, ++err_count);
             // wait a second
             std::this_thread::sleep_for(std::chrono::seconds(1));

@@ -87,6 +87,9 @@ void freqSplit::main_thread() {
     unsigned int freq;
     unsigned int buf_ind;
 
+    // number of errors when dealing with the dataset manager
+    uint32_t err_count = 0;
+
     dset_id_t input_dset_id;
     std::array<dset_id_t, 2> output_dset_id = {0, 0};
 
@@ -156,6 +159,9 @@ void freqSplit::main_thread() {
                 } catch (std::exception& e) {
                    WARN("freqSplit: Dropping frame, failure in " \
                         "datasetManager: %s", e.what());
+                   prometheusMetrics::instance().add_process_metric(
+                       "kotekan_dataset_manager_dropped_frame_count",
+                       unique_name, ++err_count);
 
                     // Mark the input buffer and move on
                     mark_frame_empty(in_buf, unique_name.c_str(),
@@ -253,6 +259,9 @@ void freqSubset::main_thread() {
     dset_id_t output_dset_id = 0;
     dset_id_t input_dset_id;
 
+    // number of errors when dealing with dataset manager
+    uint32_t err_count = 0;
+
     // flag indicating if the communication with the ds broker should be retried
     bool broker_retry = false;
 
@@ -317,6 +326,9 @@ void freqSubset::main_thread() {
                        WARN("freqSubset: Dropping frame, failure in " \
                             "datasetManager: %s",
                             e.what());
+                       prometheusMetrics::instance().add_process_metric(
+                           "kotekan_dataset_manager_dropped_frame_count",
+                           unique_name, ++err_count);
 
                         // Mark the input buffer and move on
                         mark_frame_empty(in_buf, unique_name.c_str(),

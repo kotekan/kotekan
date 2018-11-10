@@ -101,6 +101,9 @@ void prodSubset::main_thread() {
     dset_id_t input_dset_id;
     dset_id_t output_dset_id = 0;
 
+    // number of errors when dealing with dataset manager
+    uint32_t err_count = 0;
+
     if (use_dataset_manager) {
         // Wait for the input buffer to be filled with data
         // in order to get dataset ID
@@ -155,6 +158,9 @@ void prodSubset::main_thread() {
                     WARN("prodSubset: Dropping frame, failure in " \
                          "datasetManager: %s",
                          e.what());
+                    prometheusMetrics::instance().add_process_metric(
+                        "kotekan_dataset_manager_dropped_frame_count",
+                        unique_name, ++err_count);
 
                     // Mark the input buffer and move on
                     mark_frame_empty(in_buf, unique_name.c_str(),

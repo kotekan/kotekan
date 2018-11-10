@@ -119,7 +119,7 @@ private:
  * E.g.
  * ```
  * std::pair<dset_id, const inputState*> input_state =
- *          dm.closest_ancestor_of_type<inputState>(ds_id_from_frame);
+ *          dm.dataset_state<inputState>(ds_id_from_frame);
  * const std::vector<input_ctype>& inputs = input_state.second->get_inputs();
  * ```
  * to receive information about the inputs the datsets in the frames contain.
@@ -144,7 +144,7 @@ private:
  *
  * @conf use_dataset_broker Bool. If true, states and datasets will be
  *                          registered with the dataset broker. If an ancestor
- *                          can not be found locally, `closest_ancestor_of_type`
+ *                          can not be found locally, `dataset_state`
  *                          will ask the broker.
  * @conf ds_broker_port     Int. The port of the dataset broker (if
  *                          `use_dataset_broker` is `True`). Default 12050.

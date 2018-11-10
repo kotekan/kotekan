@@ -56,6 +56,9 @@
  * @conf  input_list        vector of int. The list of inputs to include.
  * @conf  use_dataset_manager Bool (default: false) Use the dataset manager.
  *
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *        The number of frames dropped while attempting to write.
+ *
  * @warning This will only work correctly if the full correlation triangle is
  * passed in as input.
  * 

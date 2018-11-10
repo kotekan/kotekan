@@ -66,7 +66,7 @@
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
+ * @metric kotekan_dataset_manager_dropped_frame_count
  *         The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
@@ -206,7 +206,7 @@ private:
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
+ * @metric kotekan_dataset_manager_dropped_frame_count
  *         The number of frames dropped while attempting to write.
  *
  * @author Tristan Pinsonneault-Marotte

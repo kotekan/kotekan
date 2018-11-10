@@ -31,6 +31,9 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *         The number of frames dropped while attempting to write.
+ *
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
  */
@@ -82,6 +85,9 @@ private:
  *
  * @conf  subset_list       Vector of Int. The list of frequencies that go
  *                          in the subset.
+ *
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *         The number of frames dropped while attempting to write.
  *
  * @author Mateus Fandino
  */

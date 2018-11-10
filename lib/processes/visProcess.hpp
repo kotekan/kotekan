@@ -158,6 +158,9 @@ private:
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
  *
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *                      The number of frames dropped while attempting to write.
+ *
  * @author Richard Shaw
  */
 class visAccumulate : public KotekanProcess {

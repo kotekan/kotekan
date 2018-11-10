@@ -192,10 +192,9 @@ void visWriter::main_thread() {
 
             // Increase metric count if we dropped a frame at write time
             if(error) {
-                dropped_frame_count++;
                 prometheusMetrics::instance().add_process_metric(
-                    "kotekan_viswriter_dropped_frame_total",
-                    unique_name, dropped_frame_count
+                    "kotekan_dataset_manager_dropped_frame_count",
+                    unique_name, ++dropped_frame_count
                 );
             }
 
@@ -289,7 +288,7 @@ bool visWriter::init_acq() {
         ERROR("Failure in datasetManager: %s", e.what());
         ERROR("Cancelling write to file.");
         prometheusMetrics::instance().add_process_metric(
-            "kotekan_viswriter_dropped_frame_total",
+            "kotekan_dataset_manager_dropped_frame_count",
             unique_name, 1
         );
 
