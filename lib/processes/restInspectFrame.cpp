@@ -8,10 +8,10 @@ restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
                    std::bind(&restInspectFrame::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    in_buf_config_name = config.get_string(unique_name, "in_buf");
+    in_buf_config_name = config.get<std::string>(unique_name, "in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    len = config.get_int_default(unique_name, "len", 0);
+    len = config.get_default<int32_t>(unique_name, "len", 0);
 
     registered = false;
     endpoint = "/inspect_frame/" + in_buf_config_name;

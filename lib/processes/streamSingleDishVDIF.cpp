@@ -31,9 +31,9 @@ streamSingleDishVDIF::~streamSingleDishVDIF() {
 }
 
 void streamSingleDishVDIF::apply_config(uint64_t fpga_seq) {
-    num_freq = config.get_int(unique_name,"num_freq");
-    dest_port = config.get_int(unique_name,"dest_port");
-    dest_ip = config.get_string(unique_name,"dest_ip");
+    num_freq = config.get<int>(unique_name,"num_freq");
+    dest_port = config.get<uint32_t>(unique_name,"dest_port");
+    dest_ip = config.get<std::string>(unique_name,"dest_ip");
 }
 
 void streamSingleDishVDIF::main_thread() {

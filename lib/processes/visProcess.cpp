@@ -18,7 +18,7 @@ REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 REGISTER_KOTEKAN_PROCESS(visMerge);
-REGISTER_KOTEKAN_PROCESS(visCheckTestPattern);
+REGISTER_KOTEKAN_PROCESS(visTestPattern);
 REGISTER_KOTEKAN_PROCESS(registerInitialDatasetState);
 
 visTransform::visTransform(Config& config,
@@ -28,13 +28,13 @@ visTransform::visTransform(Config& config,
                    std::bind(&visTransform::main_thread, this)) {
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "in_bufs");
+        config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -71,13 +71,18 @@ void visTransform::main_thread() {
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
-            INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
+            // Calculate the timeout
+            auto timeout = double_to_ts(current_time() + 0.1);
 
-            // Wait for the buffer to be filled with data
-            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
-                                            frame_id)) == nullptr) {
-                break;
-            }
+            // Find the next available buffer
+            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(),
+                                                     frame_id, timeout);
+            if(status == 1) continue;  // Timed out, try next buffer
+            if(status == -1) break;  // Got shutdown signal
+
+            INFO("Got full buffer %s with frame_id=%i", buf->buffer_name, frame_id);
+
+            frame = buf->frames[frame_id];
 
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),
@@ -113,7 +118,6 @@ void visTransform::main_thread() {
             // Advance the current frame ids
             std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-            buf_ind++;
         }
 
     }
@@ -187,15 +191,16 @@ visAccumulate::visAccumulate(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // Fetch any simple configuration
-    num_elements = config.get_int(unique_name, "num_elements");
-    block_size = config.get_int(unique_name, "block_size");
-    num_eigenvectors =  config.get_int(unique_name, "num_ev");
-    samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    block_size = config.get<size_t>(unique_name, "block_size");
+    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
+    samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
+    minimum_fraction = config.get_default<double>(unique_name, "minimum_fraction", 0.01);
 
     // Get the indices for reordering
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
 
-    float int_time = config.get_float_default(unique_name, "integration_time", -1.0);
+    float int_time = config.get_default<float>(unique_name, "integration_time", -1.0);
 
     // If the integration time was set then calculate the number of GPU frames
     // we need to integrate for.
@@ -209,7 +214,7 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)",
              num_gpu_frames, frame_length * num_gpu_frames, int_time);
     } else {
-        num_gpu_frames = config.get_int(unique_name, "num_gpu_frames");
+        num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
@@ -257,12 +262,29 @@ void visAccumulate::main_thread() {
         // initially set to UINT_MAX to ensure this doesn't happen immediately.
         bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
         if (init && wrapped) {
+
             auto output_frame = visFrameView(out_buf, out_frame_id);
 
+            // Set the actual amount of time we accumulated for
+            output_frame.fpga_seq_total = total_samples;
             DEBUG("Total samples accumulate %i", total_samples);
 
+            // Reset the cycle
+            init = false;
+            frames_in_this_cycle = 0;
+            total_samples = 0;
+
+            // Check if we have exceeded the minimum number of required samples,
+            // if not immediately skip without releasing the frame
+            size_t min_length = minimum_fraction * output_frame.fpga_seq_length;
+            if (output_frame.fpga_seq_total < min_length) {
+                DEBUG("Too few samples in frame %i (minimum %i)",
+                      output_frame.fpga_seq_total, min_length);
+                continue;
+            }
+
             // Unpack the main visibilities
-            float w1 = 1.0 / total_samples;
+            float w1 = 1.0 / output_frame.fpga_seq_total;
 
             map_vis_triangle(input_remap, block_size, num_elements,
                 [&](int32_t pi, int32_t bi, bool conj) {
@@ -280,14 +302,8 @@ void visAccumulate::main_thread() {
                 }
             );
 
-            // Set the actual amount of time we accumulated for
-            output_frame.fpga_seq_total = total_samples;
-
             mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
             out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
-            init = false;
-            frames_in_this_cycle = 0;
-            total_samples = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -379,7 +395,7 @@ visMerge::visMerge(Config& config,
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> input_buffer_names =
-        config.get_string_array(unique_name, "in_bufs");
+        config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
     // Fetch the input buffers, register them, and store them in our buffer vector
     for(auto name : input_buffer_names) {
@@ -415,11 +431,14 @@ void visMerge::main_thread() {
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
-            // Wait for the buffer to be filled with data
-            if((frame = wait_for_full_frame(buf, unique_name.c_str(),
-                                            frame_id)) == nullptr) {
-                break;
-            }
+            // Calculate the timeout
+            auto timeout = double_to_ts(current_time() + 0.1);
+
+            // Find the next available buffer
+            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(),
+                                                     frame_id, timeout);
+            if(status == 1) continue;  // Timed out, try next buffer
+            if(status == -1) break;  // Got shutdown signal
 
             // Wait for the buffer to be filled with data
             if(wait_for_empty_frame(out_buf, unique_name.c_str(),
@@ -454,11 +473,11 @@ void visMerge::main_thread() {
 }
 
 
-visCheckTestPattern::visCheckTestPattern(Config& config,
+visTestPattern::visTestPattern(Config& config,
                    const string& unique_name,
                    bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visCheckTestPattern::main_thread, this)) {
+                   std::bind(&visTestPattern::main_thread, this)) {
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
@@ -467,12 +486,56 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     // get config
-    tolerance = config.get_float_default(unique_name, "tolerance", 1e-6);
-    report_freq = config.get_uint64_default(unique_name, "report_freq", 1000);
-    expected_val = {config.get_float_default(unique_name, "expected_val_real", 1.),
-                    config.get_float_default(unique_name, "expected_val_imag", 0.)};
+    mode = config.get<std::string>(unique_name, "mode");
 
-    outfile_name = config.get_string(unique_name, "out_file");
+    INFO("visCheckTestPattern: mode = %s", mode.c_str());
+    if (mode == "test_pattern_simple") {
+        exp_val = config.get_default<cfloat>(unique_name,
+                                             "default_val", {1.,0});
+    } else if (mode == "test_pattern_freq") {
+        num_freq = config.get<size_t>(unique_name,"num_freq");
+
+        cfloat default_val = config.get_default<cfloat>(unique_name,
+                                                 "default_val", {128., 0.});
+        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(
+                       unique_name, "frequencies");
+        std::vector<cfloat> bin_values = config.get<std::vector<cfloat>>(
+                       unique_name, "freq_values");
+        if (bins.size() != bin_values.size()) {
+            throw std::invalid_argument("fakeVis: lengths of frequencies ("
+                                        + std::to_string(bins.size())
+                                        + ") and freq_value ("
+                                        + std::to_string(bin_values.size())
+                                        + ") arrays have to be equal.");
+        }
+        if (bins.size() > num_freq) {
+            throw std::invalid_argument(
+                        "fakeVis: length of frequencies array ("
+                        + std::to_string(bins.size()) + ") can not be larger " \
+                        "than num_freq (" + std::to_string(num_freq)
+                        + ").");
+        }
+
+        exp_val_freq = std::vector<cfloat>(num_freq);
+        for (size_t i = 0; i < num_freq; i++) {
+            size_t j;
+            for (j = 0; j < bins.size(); j++) {
+                if (bins.at(j) == i)
+                    break;
+            }
+            if (j == bins.size())
+                exp_val_freq[i] = default_val;
+            else
+                exp_val_freq[i] = bin_values.at(j);
+        }
+    } else
+        throw std::invalid_argument("visCheckTestpattern: unknown mode: " +
+                                    mode);
+
+    tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
+    report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
+
+    outfile_name = config.get<std::string>(unique_name, "out_file");
 
     if (tolerance < 0)
         throw std::invalid_argument("visCheckTestPattern: tolerance has to be" \
@@ -487,11 +550,11 @@ visCheckTestPattern::visCheckTestPattern(Config& config,
         << std::endl;
 }
 
-void visCheckTestPattern::apply_config(uint64_t fpga_seq) {
+void visTestPattern::apply_config(uint64_t fpga_seq) {
 
 }
 
-void visCheckTestPattern::main_thread() {
+void visTestPattern::main_thread() {
 
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
@@ -536,12 +599,20 @@ void visCheckTestPattern::main_thread() {
         min_err = 0.0;
         max_err = 0.0;
 
+        cfloat expected;
+
+        if (mode == "test_pattern_simple")
+            expected = exp_val;
+        else if (mode == "test_pattern_freq") {
+            expected = exp_val_freq.at(frame.freq_id);
+        }
+
 	    // Iterate over covariance matrix
 	    for (size_t i = 0; i < frame.num_prod; i++) {
 
             // Calculate the error^2 and compared this to the tolerance as it's
             // much faster than taking the square root where we don't need to.
-            float r2 = fast_norm(frame.vis[i] - expected_val);
+            float r2 = fast_norm(frame.vis[i] - expected);
 
             // check for bad values
             if (r2 > t2) {
@@ -583,6 +654,7 @@ void visCheckTestPattern::main_thread() {
             DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
                     time.tv_nsec);
             DEBUG("freq id: %d", freq_id);
+            DEBUG("expected: (%f,%f)", expected.real(), expected.imag());
 
             // gather data for report after many frames
             num_bad_tot += num_bad;
@@ -663,7 +735,7 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
     if (config.exists(unique_name, "freq_ids")) {
-        freq_ids = config.get_array<uint32_t>(unique_name, "freq_ids");
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     }
     else {
         freq_ids.resize(1024);

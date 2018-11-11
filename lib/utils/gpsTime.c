@@ -24,3 +24,7 @@ struct timespec compute_gps_time(uint64_t fpga_seq_num) {
 
     return ts;
 }
+
+uint64_t compute_fpga_seq(struct timespec ts) {
+    return (ts.tv_sec * 1E9 + ts.tv_nsec - frame0_time) / FPGA_PERIOD_NS;
+}

@@ -17,6 +17,7 @@
 #include <fstream>
 #include <time.h>
 #include <regex>
+#include <signal.h>
 #include "fmt.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
@@ -29,7 +30,7 @@ visWriter::visWriter(Config& config,
                    std::bind(&visWriter::main_thread, this)) {
 
     // Fetch any simple configuration
-    root_path = config.get_string_default(unique_name, "root_path", ".");
+    root_path = config.get_default<std::string>(unique_name, "root_path", ".");
 
     // Get the list of buffers that this process shoud connect to
     in_buf = get_buffer("in_buf");
@@ -37,21 +38,23 @@ visWriter::visWriter(Config& config,
 
     // Get the type of the file we are writing
     // TODO: we may want to validate here rather than at creation time
-    file_type = config.get_string_default(unique_name, "file_type", "hdf5fast");
+    file_type = config.get_default<std::string>(
+                unique_name, "file_type", "hdf5fast");
 
     // If specified, get the weights type to write to attributes
     // TODO: add this to the datasetManager framework
-    weights_type = config.get_string_default(unique_name, "weights_type", "unknown");
+    weights_type = config.get_default<std::string>(
+                unique_name, "weights_type", "unknown");
 
-    file_length = config.get_int_default(unique_name, "file_length", 1024);
-    window = config.get_int_default(unique_name, "window", 20);
+    file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
+    window = config.get_default<size_t>(unique_name, "window", 20);
 
     // Write the eigen values out? Communicated to visFile by num_ev > 0
-    bool write_ev = config.get_bool_default(unique_name, "write_ev", false);
-    num_ev = write_ev ? config.get_int(unique_name, "num_ev") : 0;
+    bool write_ev = config.get_default<bool>(unique_name, "write_ev", false);
+    num_ev = write_ev ? config.get<size_t>(unique_name, "num_ev") : 0;
 
-    use_dataset_manager = config.get_bool_default(
-        unique_name, "use_dataset_manager", false);
+    use_dataset_manager = config.get_default<bool>(
+                unique_name, "use_dataset_manager", false);
 
     // If we are not using the dataset manager directly, create fake entries
     // from the config information supplied to the class
@@ -62,7 +65,8 @@ visWriter::visWriter(Config& config,
         auto pspec = std::get<1>(parse_prod_subset(config, unique_name));
 
         // Get the frequency IDs we are going to write
-        auto freq_id_list = config.get_array<uint32_t>(unique_name, "freq_ids");
+        auto freq_id_list = config.get<std::vector<uint32_t>>(
+                    unique_name, "freq_ids");
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         std::transform(freq_id_list.begin(), freq_id_list.end(),
                        std::back_inserter(fspec),
@@ -86,10 +90,11 @@ visWriter::visWriter(Config& config,
     }
 
     // TODO: long term this should come from some dynamic source (dM?)
-    instrument_name = config.get_string_default(unique_name, "instrument_name", "chime");
+    instrument_name = config.get_default<std::string>(
+                unique_name, "instrument_name", "chime");
 
     // Set the instrument name from the hostname if in node mode
-    node_mode = config.get_bool_default(unique_name, "node_mode", false);
+    node_mode = config.get_default<bool>(unique_name, "node_mode", false);
     if(node_mode) {
         std::string t(256, '\0');
         gethostname(&t[0], 256);
@@ -297,14 +302,15 @@ visCalWriter::visCalWriter(Config &config,
 
     // Get file name to write to
     // TODO: strip file extensions?
-    std::string fname_base = config.get_string_default(unique_name, "file_base", "cal");
-    acq_name = config.get_string_default(unique_name, "dir_name", "cal");
+    std::string fname_base = config.get_default<std::string>(
+                unique_name, "file_base", "cal");
+    acq_name = config.get_default<std::string>(unique_name, "dir_name", "cal");
     // Initially start with this buffer configuration
     fname_live = fname_base + "_A";
     fname_frozen = fname_base + "_B";
 
     // Use a very short window by default
-    window = config.get_int_default(unique_name, "window", 10);
+    window = config.get_default<size_t>(unique_name, "window", 10);
 
     // Force use of VisFileRing
     file_type = "ring";

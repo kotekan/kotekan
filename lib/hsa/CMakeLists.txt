@@ -25,7 +25,9 @@ add_library ( kotekan_hsa
               hsaRfiTimeSum.cpp
               hsaRfiInputSum.cpp
               hsaRfiBadInput.cpp
+              hsaRfiZeroData.cpp
               hsaRfiBadInputOutput.cpp
+              hsaRfiMaskOutput.cpp
               hsaRfiOutput.cpp
 
 # CHIME N2 Kernels & copy-out:

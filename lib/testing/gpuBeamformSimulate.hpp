@@ -1,11 +1,31 @@
+/**
+ * @file
+ * @brief FRB beamformer CPU verification
+ */
+
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 
+/**
+ * @class gpuBeamformSimulate
+ * @brief CPU verification for FRB beamformer
+ *
+ * This is CPU only pipeline to verify the FRB beamformer.
+ * This CPU pipeline does the equivalent of:
+ *   - hsaBeamformReorder
+ *   - name: hsaBeamformKernel
+ *   - name: hsaBeamformTranspose
+ *   - name: hsaBeamformUpchan
+ *   
+ * @author Cherry Ng
+**/
+
 class gpuBeamformSimulate : public KotekanProcess {
 public:
+    ///Constructor
     gpuBeamformSimulate(Config& config,
         const string& unique_name,
         bufferContainer &buffer_container);
@@ -13,39 +33,79 @@ public:
     void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
+    ///Initializes internal variables from config, allocates reorder_map, gain, get metadata buffer
     struct Buffer *input_buf;
     struct Buffer *output_buf;
 
-    // Config options
+     /// Number of elements, should be 2048
     int32_t _num_elements;
+    /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     int32_t _samples_per_data_set;
+
+     /// Upchannelize factor, should be 128
     int32_t _factor_upchan;
+    /// Downsampling factor for the time axis, set to 3
     int32_t _downsample_time;
+    /// Downsampling factor for the freq axis, set to 8
     int32_t _downsample_freq;
+    /// Array of reordering index
     vector<int32_t> _reorder_map;
+    /// The desired extent (e.g. 90, 60, 45) of the Northmost beam in degree
+    float _northmost_beam;
+    /// The reference freq for calcating beam spacing, a function of the input _northmost_beam
+    double Freq_ref;
+    /// The sky angle of the 4 EW beams in degree
+    vector<float> _ew_spacing;
+    float * _ew_spacing_c;
+    /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
+  
+    /// Directory path where gain files are
     string _gain_dir;
 
+    /// Array of phase delays for E-W brute force beamform, float of size 32
     float * coff;
+    /// Array of gains, float size of 2048*2
     float * cpu_gain;
 
-    // Unpacked data
+    /// Buffer for accessing metadata
+    Buffer * metadata_buf;
+    /// Metadata buffer ID
+    int32_t metadata_buffer_id;
+    /// Freq bin index, where the 0th is at 800MHz
+    int32_t freq_now;
+    /// Freq in MHz
+    float freq_MHz;
+  
+    /// Unpacked data
     double * input_unpacked;
+    /// Unpacked data padded
     double * input_unpacked_padded;
+     /// Clamped to 256 n-s beams
     double * clamping_output;
+    /// Output from NS-EW beamform (pre-upchannelization)
     double * cpu_beamform_output;
+    /// Transpose beamform_output from time-pol-beams to pol-beam-time
     double * transposed_output;
+    /// Intermediate array to hold the 128 times for upchannelize
     double * tmp128;
+    /// Intermediate array to hold the 512 values for FFT bf
     int * tmp512;
+    /// Array of reordering index in C style for backwards compatibility.
     int * reorder_map_c;
+    /// Output data
     float * cpu_final_output;
 
-
+    /// Input length, should be nsamp x n_elem x 2
     int input_len;
+    /// input_len x 2 because we pad by 2
     int input_len_padded;
+    /// transpose length: (nsamp+32) x n_elem x 2 
     int transposed_len;
+    /// output length: n_elem*(nsamp/ds_t/ds_f/2)
     int output_len;
 
+     /// Scaling factor to be applied on the gains, currently set to 1.0 and somewhat deprecated?
     float scaling;
 
     void reorder(unsigned char *data, int *map);

@@ -11,6 +11,7 @@
 #include <mutex>
 #include <queue>
 #include <tuple>
+#include <condition_variable>
 
 #include "gsl-lite.hpp"
 
@@ -22,7 +23,7 @@
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
 #include "gpsTime.h"
-#include "basebandRequestManager.hpp"
+#include "basebandReadoutManager.hpp"
 #include "visUtil.hpp"
 
 
@@ -33,46 +34,38 @@
  * @struct basebandDumpData
  * @brief A container for baseband data and metadata.
  *
- * @note The use of a shared pointer to point to an array means that this class
- *       is copyable without copying the underlying data buffer. However the
- *       memory for the underlying buffer is managed and is deleted when the
- *       last copy of the container goes out of scope.
+ * @note This class does not own the underlying data buffer, but provides a view
+ *       (i.e., a `gsl::span`) to it. Users are responsible for managing the
+ *       memory storage.
  *
  * @author Kiyoshi Masui
  */
-class basebandDumpData {
-    public:
+struct basebandDumpData {
+    /// Default constructor used to indicate error
     basebandDumpData();
-    // Initializes the container with all parameters, and allocates memory for
-    // data but does not fill in the data.
+    /// Initialize the container with all parameters but does not fill in the data.
     basebandDumpData(
             uint64_t event_id_,
             uint32_t freq_id_,
             uint32_t num_elements_,
             int64_t data_start_fpga_,
             int64_t data_length_fpga_,
-            timespec data_start_ctime_
+            timespec data_start_ctime_,
+            uint8_t * data_ref
             );
-    ~basebandDumpData();
 
-    // Metadata.
+    //@{
+    /// Metadata.
     const uint64_t event_id;
     const uint32_t freq_id;
     const uint32_t num_elements;
     const int64_t data_start_fpga;
     const int64_t data_length_fpga;
     const timespec data_start_ctime;
-private:
-    // Keeps track of references to the underlying data array.
-    const std::shared_ptr<uint8_t> data_ref;
-public:
-    // For data access. Array has length `num_elements * data_length_fpga`.
+    //@}
+    /// Data access. Array has length `num_elements * data_length_fpga`.
     const gsl::span<uint8_t> data;
-
 };
-
-
-typedef std::tuple<basebandDumpData, std::shared_ptr<basebandDumpStatus>> dump_data_status;
 
 
 /**
@@ -123,21 +116,15 @@ private:
     struct Buffer * buf;
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
+
     std::mutex manager_lock;
-    std::queue<dump_data_status> write_q;
-    /// exclusive access to `write_q`
-    std::mutex q_lock;
-    /// wait for the notification that the `write_q` is not empty
-    std::condition_variable q_not_empty;
-    /// wait for the notification that the `write_q` is not full
-    std::condition_variable q_not_full;
 
     void listen_thread(const uint32_t freq_id,
-                       std::shared_ptr<std::mutex> status_lock);
-    void write_thread(std::shared_ptr<std::mutex> status_lock);
+                       basebandReadoutManager& readout_manager);
+    void write_thread(basebandReadoutManager& readout_manager);
     void write_dump(basebandDumpData data,
-                    std::shared_ptr<basebandDumpStatus> dump_status,
-                    std::mutex* status_lock);
+                    basebandDumpStatus& dump_status,
+                    std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
@@ -157,6 +144,14 @@ private:
             int64_t trigger_start_fpga,
             int64_t trigger_length_fpga
             );
+
+    /// baseband data array
+    const std::unique_ptr<uint8_t[]> baseband_data;
+
+    // the next/current dump to write (reset to nullptr after done)
+    std::unique_ptr<basebandDumpData> dump_to_write;
+    std::condition_variable ready_to_write;
+    std::mutex dump_to_write_mtx;
 };
 
 #endif

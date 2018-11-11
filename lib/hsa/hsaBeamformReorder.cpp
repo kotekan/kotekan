@@ -7,10 +7,11 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
     hsaCommand("reorder", "reorder.hsaco", config, unique_name, host_buffers, device) {
     command_type = CommandType::KERNEL;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _reorder_map = config.get_int_array(unique_name, "reorder_map");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
+    _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
 
     input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;
     output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set ;
@@ -38,7 +39,7 @@ hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.map_buffer = device.get_gpu_memory("reorder_map", map_len);
-    args.output_buffer = device.get_gpu_memory_array("input", gpu_frame_id, output_frame_len);
+    args.output_buffer = device.get_gpu_memory("input_reordered", output_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

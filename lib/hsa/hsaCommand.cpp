@@ -18,10 +18,10 @@ hsaCommand::hsaCommand(
         host_buffers(host_buffers_),
         device(device_)
 {
-    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
+    _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
-    string s_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
@@ -39,9 +39,12 @@ hsaCommand::hsaCommand(
 
     // Load the kernel if there is one.
     if (default_kernel_file_name != "") {
-        kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
-                           config.get_string_default(unique_name,"kernel",default_kernel_file_name);
-        kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
+        kernel_file_name = config.get_default<std::string>(unique_name,
+                                                           "kernel_path" , ".")
+                + "/" + config.get_default<std::string>(
+                    unique_name, "kernel", default_kernel_file_name);
+        kernel_command = config.get_default<std::string>(
+                    unique_name, "command", default_kernel_command);
         // Should this be moved to the base class?
         allocate_kernel_arg_memory(MAX_ARGS_LEN);
         kernel_object = load_hsaco_file(kernel_file_name, kernel_command);

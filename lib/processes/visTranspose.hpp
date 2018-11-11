@@ -82,6 +82,9 @@ private:
     bool f_edge = false;
     void increment_chunk();
 
+    // keep track of the non-zero flags found so far
+    std::vector<bool> found_flags;
+
     /// The list of frequencies and inputs that get written into the index maps
     /// of the HDF5 files
     std::vector<time_ctype> times;

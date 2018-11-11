@@ -63,17 +63,21 @@ void frbPostProcess::write_header(unsigned char * dest){
 
 void frbPostProcess::apply_config(uint64_t fpga_seq) {
 
-    _num_gpus = config.get_int(unique_name, "num_gpus");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _downsample_time = config.get_int(unique_name, "downsample_time");
-    _factor_upchan = config.get_int(unique_name, "factor_upchan");
-    _factor_upchan_out = config.get_int(unique_name, "factor_upchan_out"); 
-    _nbeams = config.get_int(unique_name, "num_beams");
-    _timesamples_per_frb_packet = config.get_int(unique_name, "timesamples_per_frb_packet");
+    _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
+    _samples_per_data_set = config.get<int32_t>(
+                unique_name, "samples_per_data_set");
+    _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
+    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
+    _factor_upchan_out = config.get<int32_t>(unique_name, "factor_upchan_out");
+    _nbeams = config.get<int32_t>(unique_name, "num_beams_per_frb_packet");
+    _timesamples_per_frb_packet = config.get<int32_t>(
+                unique_name, "timesamples_per_frb_packet");
 
     vector<int32_t>bd;
-    _incoherent_beams = config.get_int_array_default(unique_name,"incoherent_beams",bd);
-    _incoherent_truncation = config.get_float_default(unique_name, "incoherent_truncation",1e10);
+    _incoherent_beams = config.get_default<std::vector<int32_t>>(
+                unique_name, "incoherent_beams", bd);
+    _incoherent_truncation = config.get_default<float>(
+                unique_name, "incoherent_truncation", 1e10);
 
     num_L1_streams = 1024/_nbeams;
     num_samples = _samples_per_data_set / _downsample_time / _factor_upchan;
@@ -154,8 +158,8 @@ void frbPostProcess::main_thread() {
                 for (int b=0; b<_nbeams;b++){ //loop 4 beams / stream
                     int beam_id = stream*_nbeams + b;
                     //frb_header_beam_ids[b] = beam_id;
-		    //Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
-		    frb_header_beam_ids[b] = (beam_id)%256 + (int((beam_id)/256)*1000);
+                    //Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
+                    frb_header_beam_ids[b] = (beam_id)%256 + (int((beam_id)/256)*1000);
                     for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
                         float* in_data = ((float *)in_frame[thread_id]) + 
                                           (stream * _nbeams + b) * num_samples * _factor_upchan_out;

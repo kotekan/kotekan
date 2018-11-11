@@ -26,15 +26,15 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
     register_producer(out_buf, unique_name.c_str());
 
     //PER BUFFER
-    freqs = config.get_int(unique_name, "num_freq");
-    elems = config.get_int(unique_name,"num_elements");
+    freqs = config.get<int>(unique_name, "num_freq");
+    elems = config.get<int>(unique_name,"num_elements");
 
-    port = config.get_int(unique_name,"port");
-    server_ip = config.get_string(unique_name,"ip");
-    protocol = config.get_string(unique_name,"protocol");
+    port = config.get<uint32_t>(unique_name,"port");
+    server_ip = config.get<std::string>(unique_name,"ip");
+    protocol = config.get<std::string>(unique_name,"protocol");
 
-    times = config.get_int(unique_name, "samples_per_data_set") /
-            config.get_int(unique_name, "power_integration_length");
+    times = config.get<int>(unique_name, "samples_per_data_set") /
+            config.get<int>(unique_name, "power_integration_length");
 
 }
 

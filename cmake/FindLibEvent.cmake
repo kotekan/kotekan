@@ -7,25 +7,25 @@
 #  Event_INCLUDE_DIRS - the Event include directories
 #  Event_LIBRARIES - link these to use Event
 #
-
- if (EVENT_INCLUDE_DIR AND EVENT_LIBRARY)
+if (EVENT_INCLUDE_DIR AND EVENT_LIBRARY)
   # Already in cache, be silent
   set(EVENT_FIND_QUIETLY TRUE)
 endif (EVENT_INCLUDE_DIR AND EVENT_LIBRARY)
- find_path(EVENT_INCLUDE_DIR event.h
-  PATHS /usr/include
-  PATH_SUFFIXES event
+find_path(EVENT_INCLUDE_DIR event.h
+  PATHS /usr/include /usr/local/include
+  PATH_SUFFIXES event2
 )
- find_library(EVENT_LIBRARY
+find_library(EVENT_LIBRARY
   NAMES event
   PATHS /usr/lib /usr/local/lib
 )
- set(EVENT_LIBRARIES ${EVENT_LIBRARY} )
- add_definitions(-DLIBNET_LIL_ENDIAN)
- include(FindPackageHandleStandardArgs)
+get_filename_component(EVENT_LIBRARY_DIR ${EVENT_LIBRARY} DIRECTORY)
+set(EVENT_LIBRARIES ${EVENT_LIBRARY} )
+add_definitions(-DLIBNET_LIL_ENDIAN)
+include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(EVENT
   DEFAULT_MSG
   EVENT_INCLUDE_DIR
   EVENT_LIBRARIES
 )
- mark_as_advanced(EVENT_INCLUDE_DIR EVENT_LIBRARY) 
+mark_as_advanced(EVENT_INCLUDE_DIR EVENT_LIBRARY) 

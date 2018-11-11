@@ -30,7 +30,7 @@ using std::string;
 #include "Config.hpp"
 #include "util.h"
 #include "errors.h"
-#include "vdif_functions.h" 
+#include "vdif_functions.h"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 
@@ -64,12 +64,12 @@ void pulsarSimProcess::parse_host_name()
         exit(0);
     } 
 
-    if(my_host_name[1] == 'n') 
+    if(my_host_name[1] == 'n')
     {
         nos =0;
         my_node_id = 0;
     }
-    else if(my_host_name[1] == 's') 
+    else if(my_host_name[1] == 's')
     {
         nos =100;
         my_node_id    = 128;
@@ -115,7 +115,7 @@ void pulsarSimProcess::parse_host_name()
 
     }
 
-    for(int i=0;i<number_of_subnets;i++) 
+    for(int i=0;i<number_of_subnets;i++)
     {
         temp_ip[i]<<"10."<<i+15<<"."<<nos+rack<<".1"<<node;
         my_ip_address[i] = temp_ip[i].str();
@@ -139,7 +139,7 @@ void pulsarSimProcess::fill_headers(unsigned char * out_buf,
         vdif_header->eud3 = (fpga_now & ((0xFFFFFFFFl)>> 0));
         vdif_header->seconds = time_now->tv_sec;
         vdif_header->data_frame =    (time_now->tv_usec/1.e6) / (samples_in_frame*2.56e-6);
-        
+
         for (int f=0;f<_num_gpus;++f) { //4 freq
             vdif_header->thread_id = freq_ids[f];
             for (int psr=0;psr<_num_pulsar; ++psr) { //10 streams
@@ -160,12 +160,14 @@ void pulsarSimProcess::fill_headers(unsigned char * out_buf,
 }
 
 void pulsarSimProcess::apply_config(uint64_t fpga_seq) {
-        _num_gpus = config.get_int(unique_name, "num_gpus");
-        _nfreq_coarse = config.get_int(unique_name, "num_gpus"); //4
-        _num_pulsar = config.get_int(unique_name, "num_pulsar");
-        _num_pol = config.get_int(unique_name, "num_pol");
-        _udp_packet_size = config.get_int(unique_name, "udp_pulsar_packet_size");
-        _udp_header_size = config.get_int(unique_name, "udp_pulsar_header_size");
+        _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
+        _nfreq_coarse = config.get<int32_t>(unique_name, "num_gpus"); //4
+        _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+        _num_pol = config.get<int32_t>(unique_name, "num_pol");
+        _udp_packet_size = config.get<int32_t>(unique_name,
+                                               "udp_pulsar_packet_size");
+        _udp_header_size = config.get<int32_t>(unique_name,
+                                               "udp_pulsar_header_size");
 }
 
 void pulsarSimProcess::main_thread() {
@@ -175,22 +177,22 @@ void pulsarSimProcess::main_thread() {
     parse_host_name();
     uint16_t freq_ids[_num_gpus] ;
 
-    struct timeval time_now;
+    struct timeval time_now = (struct timeval){0};
 
     struct VDIFHeader vdif_header;
     vdif_header.seconds = 0;    //UD
     vdif_header.legacy = 0;
     vdif_header.invalid = 0;
     vdif_header.data_frame = 0 ;    //UD
-    vdif_header.ref_epoch = 36; // First half of 2018. 
+    vdif_header.ref_epoch = 36; // First half of 2018.
     vdif_header.unused = 0;
     vdif_header.frame_len = 5000;
-    vdif_header.log_num_chan = 0; //Check ln4=2 or ln1=0 ? 
+    vdif_header.log_num_chan = 0; //Check ln4=2 or ln1=0 ?
     vdif_header.vdif_version = 1;
     char si[2]={'C','H'};
     vdif_header.station_id =  (si[0]<<8) + si[1]; //Need to fomrally ask the Vdif community
     vdif_header.thread_id = 0; //UD     freq
-    vdif_header.bits_depth = 8 ; //4+4 
+    vdif_header.bits_depth = 8 ; //4+4
     vdif_header.data_type = 1; // Complex
     vdif_header.edv = 0;
     vdif_header.eud1 = 0;    //UD: beam number [0 to 9]
@@ -205,7 +207,7 @@ void pulsarSimProcess::main_thread() {
     uint8_t * out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == NULL) return;
 
-    for(int i=0;i<_num_gpus;i++) freq_ids[i] = my_node_id; 
+    for(int i=0;i<_num_gpus;i++) freq_ids[i] = my_node_id;
 
     while(!stop_thread) {
         // Get an input buffer, This call is blocking!

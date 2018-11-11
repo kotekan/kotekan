@@ -8,7 +8,6 @@
 #define FAKE_VIS
 
 #include <unistd.h>
-#include <random>
 #include <string>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -40,18 +39,18 @@
  *                          frames.
  * @conf  mode              String. How to fill the visibility array. See
  *                          fakeVis::fill_mode_X routines for documentation.
- * @conf  vis_mean_real     When used with mode="gaussian", the real part of
- *                          the mean of the distribution.
- * @conf  vis_mean_imag     When used with mode="gaussian", the imaginary part
- *                          of the mean of the distribution.
- * @conf  vis_std           When used with mode="gaussian", the std dev of the
- *                          distribution.
  * @conf  wait              Bool. Sleep to try and output data at roughly
  *                          the correct cadence.
  * @conf  num_frames        Exit after num_frames have been produced. If
  *                          less than zero, no limit is applied. Default is `-1`.
  * @conf  zero_weight       Bool. Set all weights to zero, if this is True.
  *                          Default is False.
+ * @conf  default_val       Cfloat. The default test pattern value for modes
+ *                          'test_pattern_simple' and 'test_pattern_freq'.
+ * @conf  frequencies       Array of UInt32. Definition of frequency IDs for
+ *                          mode 'test_pattern_freq'.
+ * @conf  freq_values       Array of CFloat. Values for the frequency IDs in
+ *                          mode 'test_pattern_freq'.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -106,18 +105,6 @@ public:
     void fill_mode_phase_ij(visFrameView& frame);
 
     /**
-     * @brief Fill with Gaussian numbers.
-     *
-     * Fill real and imaginary parts with normally distributed random numbers.
-     * Specify mean and standard deviation with additional parameters. Will use
-     * the same distribution to set the weights. Note that the seed for the
-     * generator is not random.
-     *
-     * @param frame Frame to fill.
-     **/
-    void fill_mode_gaussian(visFrameView& frame);
-
-    /**
      * @brief Fill with a pattern to test CHIME redundant stacking.
      *
      * Fill real and imaginary parts with normally distributed random numbers.
@@ -129,9 +116,30 @@ public:
      **/
     void fill_mode_chime(visFrameView& frame);
 
+    /**
+     * @brief Fill with a simple test pattern, where all visibilities have
+     * the value of 'default_val'.
+     *
+     * @param frame Frame to fill.
+     */
+    void fill_mode_test_pattern_simple(visFrameView& frame);
+
+    /**
+     * @brief Fill with a frequency dependend test pattern, where the
+     * frequencies defined in the config value 'frequencies' have the values
+     * defined in 'freq_values'. All other visibility values have the value
+     * defined in 'default_val'.
+     *
+     * @param frame Frame to fill.
+     */
+    void fill_mode_test_pattern_freq(visFrameView& frame);
+
 private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors, block_size;
+
+    /// Config parameters for freq test pattern
+    std::vector<cfloat> test_pattern_value;
 
     /// Output buffer
     Buffer * out_buf;
@@ -144,13 +152,6 @@ private:
 
     // Visibility filling mode
     std::string mode;
-
-    // for gaussian modes
-    // config values
-    cfloat vis_mean;
-    float vis_std;
-    // random number generation
-    std::default_random_engine gen;
 
     // Test mode that sets all weights to zero
     bool zero_weight;
