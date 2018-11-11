@@ -6,11 +6,11 @@ clOutputData::clOutputData(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("", "", config, unique_name, host_buffers, device)
 {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _block_size = config.get_int(unique_name, "block_size");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _num_blocks = config.get_int(unique_name,"num_blocks");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _block_size = config.get<int>(unique_name, "block_size");
+    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
+    _num_blocks = config.get<int>(unique_name,"num_blocks");
 
     network_buffer = host_buffers.get_buffer("network_buf");
     output_buffer = host_buffers.get_buffer("output_buf");

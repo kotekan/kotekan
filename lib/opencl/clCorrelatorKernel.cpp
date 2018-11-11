@@ -9,12 +9,12 @@ clCorrelatorKernel::clCorrelatorKernel(Config& config, const string &unique_name
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("corr","pairwise_correlator.cl", config, unique_name, host_buffers, device)
 {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _block_size = config.get_int(unique_name, "block_size");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _num_blocks = config.get_int(unique_name,"num_blocks");
-    _samples_per_data_set = config.get_int(unique_name,"samples_per_data_set");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _block_size = config.get<int>(unique_name, "block_size");
+    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
+    _num_blocks = config.get<int>(unique_name,"num_blocks");
+    _samples_per_data_set = config.get<int>(unique_name,"samples_per_data_set");
 
     defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
 

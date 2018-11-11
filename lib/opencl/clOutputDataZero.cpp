@@ -6,11 +6,11 @@ clOutputDataZero::clOutputDataZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("", "", config, unique_name, host_buffers, device)
 {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _block_size = config.get_int(unique_name, "block_size");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _num_blocks = config.get_int(unique_name,"num_blocks");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _block_size = config.get<int>(unique_name, "block_size");
+    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
+    _num_blocks = config.get<int>(unique_name,"num_blocks");
 
     output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
     output_zeros = malloc(output_len);

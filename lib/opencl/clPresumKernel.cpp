@@ -7,13 +7,13 @@ clPresumKernel::clPresumKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("offsetAccumulateElements","offset_accumulator.cl", config, unique_name, host_buffers, device)
 {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _block_size = config.get_int(unique_name, "block_size");
-    _num_blocks = config.get_int(unique_name, "num_blocks");
-    _buffer_depth = config.get_int(unique_name, "buffer_depth");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
+    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
+    _block_size = config.get<int>(unique_name, "block_size");
+    _num_blocks = config.get<int>(unique_name, "num_blocks");
+    _buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     command_type = clCommandType::KERNEL;
 }

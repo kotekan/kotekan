@@ -11,10 +11,10 @@ clBeamformKernel::clBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("gpu_beamforming","beamform_tree_scale.cl", config, unique_name, host_buffers, device)
 {
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     network_buf = host_buffers.get_buffer("network_buf");
 
 }
@@ -27,8 +27,8 @@ clBeamformKernel::~clBeamformKernel()
 void clBeamformKernel::apply_config(const uint64_t& fpga_seq) {
     clCommand::apply_config(fpga_seq);
 
-    _element_mask = config.get_int_array(unique_name, "element_mask");
-    _product_remap = config.get_int_array(unique_name, "product_remap");
+    _element_mask = config.get<std::vector<int>>(unique_name, "element_mask");
+    _product_remap = config.get<std::vector<int>>(unique_name, "product_remap");
     int remap_size = _product_remap.size();
 
     if (remap_size != _num_elements) {
@@ -40,7 +40,7 @@ void clBeamformKernel::apply_config(const uint64_t& fpga_seq) {
     for(int i = 0; i < remap_size; ++i) {
         _inverse_product_remap[_product_remap[i]] = i;
     }
-    _scale_factor = config.get_int(unique_name, "scale_factor");
+    _scale_factor = config.get<int>(unique_name, "scale_factor");
 }
 
 void clBeamformKernel::build()

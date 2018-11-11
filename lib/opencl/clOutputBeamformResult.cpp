@@ -6,9 +6,9 @@ clOutputBeamformResult::clOutputBeamformResult(Config& config, const string &uni
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand("", "", config, unique_name, host_buffers, device)
 {
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _num_data_sets = config.get_int(unique_name, "num_data_sets");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
+    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     network_buffer = host_buffers.get_buffer("network_buf");
     output_buffer = host_buffers.get_buffer("beam_out_buf");
     output_buffer_execute_id = 0;

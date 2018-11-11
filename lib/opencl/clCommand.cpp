@@ -20,21 +20,21 @@ clCommand::clCommand(
         host_buffers(host_buffers_),
         device(device_)
 {
-    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
+    _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
-    string s_log_level = config.get_string(unique_name, "log_level");
+    string s_log_level = config.get<string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
     // Load the kernel if there is one.
     if (default_kernel_file_name != "") {
-        kernel_file_name = config.get_string_default(unique_name,"kernel_path",".") + "/" +
-                           config.get_string_default(unique_name,"kernel",default_kernel_file_name);
-        kernel_command = config.get_string_default(unique_name,"command",default_kernel_command);
+        kernel_file_name = config.get_default<string>(unique_name,"kernel_path",".") + "/" +
+                           config.get_default<string>(unique_name,"kernel",default_kernel_file_name);
+        kernel_command = config.get_default<string>(unique_name,"command",default_kernel_command);
     }
 
-    _buffer_depth = config.get_int(unique_name, "buffer_depth");
+    _buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     post_event = (cl_event*)malloc(_gpu_buffer_depth * sizeof(cl_event));
     CHECK_MEM(post_event);

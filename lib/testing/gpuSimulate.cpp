@@ -8,12 +8,12 @@ gpuSimulate::gpuSimulate(Config& config,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&gpuSimulate::main_thread, this)) {
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
-    _num_blocks = config.get_int(unique_name, "num_blocks");
-    _block_size = config.get_int(unique_name, "block_size");
-    _data_format = config.get_string_default(unique_name,"data_format","4+4b");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
+    _num_blocks = config.get<int>(unique_name, "num_blocks");
+    _block_size = config.get<int>(unique_name, "block_size");
+    _data_format = config.get_default<string>(unique_name,"data_format","4+4b");
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());

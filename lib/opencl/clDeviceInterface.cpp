@@ -164,7 +164,7 @@ clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_b
     context = clCreateContext( NULL, 1, &device_id, NULL, NULL, &err);
     CHECK_CL_ERROR(err);
 
-    num_local_freq = config.get_int("", "num_local_freq");
+    num_local_freq = config.get<int>("", "num_local_freq");
 }
 
 clDeviceInterface::~clDeviceInterface()

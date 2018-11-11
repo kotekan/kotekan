@@ -19,8 +19,8 @@ clProcess::clProcess(Config& config_,
         bufferContainer &buffer_container):
     KotekanProcess(config_, unique_name, buffer_container, std::bind(&clProcess::main_thread, this))
 {
-    _gpu_buffer_depth = config.get_int(unique_name, "buffer_depth");
-    gpu_id = config.get_int(unique_name, "gpu_id");
+    _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
+    gpu_id = config.get<int>(unique_name, "gpu_id");
 
     final_signals.resize(_gpu_buffer_depth);
 
@@ -44,8 +44,8 @@ clProcess::clProcess(Config& config_,
 
     device = new clDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
 
-    string g_log_level = config.get_string(unique_name, "log_level");
-    string s_log_level = config.get_string_default(unique_name, "device_interface_log_level", g_log_level);
+    string g_log_level = config.get<string>(unique_name, "log_level");
+    string s_log_level = config.get_default<string>(unique_name, "device_interface_log_level", g_log_level);
     device->set_log_level(s_log_level);
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
     device->prepareCommandQueue(true); //yes profiling

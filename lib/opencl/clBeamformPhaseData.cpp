@@ -17,9 +17,9 @@ clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_na
 {
     command_type = clCommandType::NOT_SET;
 
-    _num_elements = config.get_int(unique_name, "num_elements");
-    _num_local_freq = config.get_int(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get_int(unique_name, "samples_per_data_set");
+    _num_elements = config.get<int>(unique_name, "num_elements");
+    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     network_buf = host_buffers.get_buffer("network_buf");
 }
 

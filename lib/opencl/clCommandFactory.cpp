@@ -24,7 +24,7 @@ clCommandFactory::clCommandFactory(Config& config_,
         INFO("Registered OpenCL Command: %s",command.first.c_str());
     }
 
-    vector<json> commands = config.get_json_array(unique_name, "commands");
+    vector<json> commands = config.get<std::vector<json>>(unique_name, "commands");
 
     for (uint32_t i = 0; i < commands.size(); i++){
         auto cmd = create(commands[i]["name"], config, unique_name, host_buffers, device);
