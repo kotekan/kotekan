@@ -35,6 +35,7 @@
  **/
 class fakeGpuPattern {
 public:
+
     /**
      * @brief Create a class that makes a fakeGpu test mode.
      *
@@ -85,6 +86,7 @@ CREATE_FACTORY(fakeGpuPattern, Config&, const std::string&);
  **/
 class blockGpuPattern : public fakeGpuPattern {
 public:
+
     /// @sa fakeGpuPattern::fakeGpuPattern
     blockGpuPattern(Config& config, const std::string& path);
 
@@ -179,4 +181,22 @@ private:
     Polyco _polyco;
 };
 
+
+/**
+ * @brief Fill with a pattern useful for debugging the packing.
+ *
+ * Fill each element with its freq_id (real value) and product index
+ * (imaginary). Each of these is multiplied by samples_per_data_set such that
+ * they can be tested *after* accumulation.
+ **/
+class multiFreqGpuPattern : public fakeGpuPattern {
+public:
+
+    /// @sa fakeGpuPattern::fakeGpuPattern
+    multiFreqGpuPattern(Config& config, const std::string& path);
+
+    /// @sa fakeGpuPattern::fill
+    void fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
+              const int frame_num, const int freq_id) override;
+};
 #endif  // FAKE_GPU_PATTERN

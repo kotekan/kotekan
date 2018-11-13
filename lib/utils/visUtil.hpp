@@ -553,12 +553,16 @@ public:
     modulo<T> operator++(int) { modulo<T> t(*this); operator++(); return t; }
     modulo<T> operator--(int) { modulo<T> t(*this); operator--(); return t; }
 
-    modulo<T>& operator+=(const T& rhs) { _i += rhs; return *this; }
-    modulo<T>& operator-=(const T& rhs) { _i -= rhs; return *this; }
+    template<typename U>
+    modulo<T>& operator+=(const U& rhs) { _i += rhs; return *this; }
+    template<typename U>
+    modulo<T>& operator-=(const U& rhs) { _i -= rhs; return *this; }
 
     // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
-    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) { lhs += rhs; return lhs; }
-    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) { lhs -= rhs; return lhs; }
+    template<typename U>
+    friend modulo<T> operator+(modulo<T> lhs, const U& rhs) { lhs += rhs; return lhs; }
+    template<typename U>
+    friend modulo<T> operator-(modulo<T> lhs, const U& rhs) { lhs -= rhs; return lhs; }
 
     // Comparisons are always false if the bases don't match
     friend bool operator==(const modulo<T>& lhs, const modulo<T>& rhs) {

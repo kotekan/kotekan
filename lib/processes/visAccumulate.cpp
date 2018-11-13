@@ -208,8 +208,11 @@ void visAccumulate::main_thread() {
 
                     finalise_output(dset, freq_ind, total_samples);
 
-                    mark_frame_full(dset.buf, unique_name.c_str(), dset.frame_id++);
+                    mark_frame_full(dset.buf, unique_name.c_str(), dset.frame_id + freq_ind);
                 }
+                // Need to delay the increment here as finalise_output used
+                // dset.frame_id + freq_ind internally
+                dset.frame_id += num_freq_in_frame;
             }
 
             init = false;

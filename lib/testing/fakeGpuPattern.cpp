@@ -9,6 +9,7 @@ REGISTER_FAKE_GPU_PATTERN(lostSamplesGpuPattern, "lostsamples");
 REGISTER_FAKE_GPU_PATTERN(accumulateGpuPattern, "accumulate");
 REGISTER_FAKE_GPU_PATTERN(gaussianGpuPattern, "gaussian");
 REGISTER_FAKE_GPU_PATTERN(pulsarGpuPattern, "pulsar");
+REGISTER_FAKE_GPU_PATTERN(multiFreqGpuPattern, "multifreq");
 
 
 fakeGpuPattern::fakeGpuPattern(Config& config, const std::string& path)
@@ -180,6 +181,29 @@ void pulsarGpuPattern::fill(gsl::span<int32_t>& data,
                 uint32_t bi = prod_index(i, j, _block_size, _num_elements);
                 data[2 * bi + 1] += 10 * _samples_per_data_set;
             }
+        }
+    }
+}
+
+
+multiFreqGpuPattern::multiFreqGpuPattern(Config& config,
+                                         const std::string& path) :
+    fakeGpuPattern(config, path)
+{
+
+}
+
+void multiFreqGpuPattern::fill(gsl::span<int32_t>& data,
+    chimeMetadata* metadata, int frame_number, int freq_id)
+{
+    // Label the real with the freq_id and the imag with the product id.
+    uint32_t prod_id = 0;
+    for(int i = 0; i < _num_elements; i++) {
+        for(int j = i; j < _num_elements; j++) {
+            uint32_t bi = prod_index(i, j, _block_size, _num_elements);
+            data[2 * bi    ] = prod_id * _samples_per_data_set;  // Imag
+            data[2 * bi + 1] = freq_id * _samples_per_data_set;  // Real
+            prod_id++;
         }
     }
 }

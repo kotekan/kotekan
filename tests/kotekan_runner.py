@@ -184,7 +184,8 @@ class FakeGPUBuffer(InputBuffer):
                 'metadata_pool': 'main_pool',
                 'num_frames': 'buffer_depth',
                 'sizeof_int': 4,
-                'frame_size': ('sizeof_int * num_local_freq * ((num_elements *'
+                'frame_size': ('num_freq_in_frame * '
+                               'sizeof_int * num_local_freq * ((num_elements *'
                                ' num_elements) + (num_elements * block_size))')
             }
         }
@@ -540,6 +541,7 @@ num_data_sets: 1
 samples_per_data_set: 32768
 buffer_depth: 4
 num_gpu_frames: 64
+num_freq_in_frame: 1
 block_size: 2
 cpu_affinity: []
 
