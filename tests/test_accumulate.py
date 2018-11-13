@@ -33,7 +33,7 @@ time_params.update({"integration_time": 5.0})
 pulsar_params = gaussian_params.copy()
 pulsar_params.update(
     {
-        "mode": "pulsar",
+        "pattern": "pulsar",
         "gaussian_bgnd": False,
         "wait": True,
         "samples_per_data_set": 4000,  # ~10. ms frames
@@ -62,7 +62,7 @@ def accumulate_data(tmpdir_factory):
         "visAccumulate",
         {"num_ev": 4},
         runner.FakeGPUBuffer(
-            mode="accumulate",
+            pattern="accumulate",
             freq=accumulate_params["freq"],
             num_frames=accumulate_params["total_frames"],
         ),
@@ -86,7 +86,7 @@ def gaussian_data(tmpdir_factory):
         "visAccumulate",
         {"num_ev": 4},
         runner.FakeGPUBuffer(
-            mode="gaussian",
+            pattern="gaussian",
             freq=gaussian_params["freq"],
             num_frames=gaussian_params["total_frames"],
         ),
@@ -110,7 +110,7 @@ def lostsamples_data(tmpdir_factory):
         "visAccumulate",
         {"num_ev": 4},
         runner.FakeGPUBuffer(
-            mode="lostsamples",
+            pattern="lostsamples",
             freq=accumulate_params["freq"],
             num_frames=accumulate_params["total_frames"],
         ),
@@ -134,7 +134,7 @@ def time_data(tmpdir_factory):
         "visAccumulate",
         {"num_ev": 4},
         runner.FakeGPUBuffer(
-            mode="accumulate",
+            pattern="accumulate",
             freq=time_params["freq"],
             num_frames=time_params["total_frames"],
         ),

@@ -272,7 +272,7 @@ class FakeGPUBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "fakeGpuBuffer",
+            "kotekan_stage": "FakeGpu",
             "out_buf": self.name,
             "freq": 0,
             "pre_accumulate": True,
