@@ -35,6 +35,7 @@
  **/
 class FakeGpuPattern {
 public:
+
     /**
      * @brief Create a class that makes a fakeGpu test mode.
      *
@@ -84,6 +85,7 @@ CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
  **/
 class BlockGpuPattern : public FakeGpuPattern {
 public:
+
     /// @sa fakeGpuPattern::fakeGpuPattern
     BlockGpuPattern(kotekan::Config& config, const std::string& path);
 
@@ -211,4 +213,22 @@ private:
     Polyco _polyco;
 };
 
-#endif // FAKE_GPU_PATTERN
+
+/**
+ * @brief Fill with a pattern useful for debugging the packing.
+ *
+ * Fill each element with its freq_id (real value) and product index
+ * (imaginary). Each of these is multiplied by samples_per_data_set such that
+ * they can be tested *after* accumulation.
+ **/
+class MultiFreqGpuPattern : public FakeGpuPattern {
+public:
+
+    /// @sa fakeGpuPattern::fakeGpuPattern
+    MultiFreqGpuPattern(kotekan::Config& config, const std::string& path);
+
+    /// @sa fakeGpuPattern::fill
+    void fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
+              const int frame_num, const int freq_id) override;
+};
+#endif  // FAKE_GPU_PATTERN

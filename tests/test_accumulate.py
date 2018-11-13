@@ -13,7 +13,7 @@ from kotekan import runner
 
 accumulate_params = {
     "num_elements": 4,
-    "num_ev": 4,
+    "num_ev": 0,
     "samples_per_data_set": 32768,
     "int_frames": 64,
     "num_gpu_frames": 64,
@@ -61,7 +61,7 @@ def accumulate_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
             pattern="accumulate",
             freq=accumulate_params["freq"],
@@ -85,7 +85,7 @@ def gaussian_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
             pattern="gaussian",
             freq=gaussian_params["freq"],
@@ -109,7 +109,7 @@ def lostsamples_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
             pattern="lostsamples",
             freq=accumulate_params["freq"],
@@ -133,7 +133,7 @@ def lostweights_data(tmpdir_factory, request):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
             pattern="lostweights",
             freq=accumulate_params["freq"],
@@ -157,7 +157,7 @@ def time_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
             pattern="accumulate",
             freq=time_params["freq"],

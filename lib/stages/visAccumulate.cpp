@@ -585,17 +585,3 @@ visAccumulate::internalState::internalState(Buffer* out_buf, std::unique_ptr<gat
     changed(true),
     vis1(2 * nprod),
     vis2(nprod) {}
-
-
-/*
-visMetadata& visAccumulate::internalState::metadata(size_t freq_ind)
-{
-    return *(visMetadata*)get_metadata(buf, frame_id + freq_ind);
-}
-
-
-visFrameView visAccumulate::internalState::view(size_t freq_ind)
-{
-    return visFrameView(buf, frame_id + freq_ind);
-}
-*/

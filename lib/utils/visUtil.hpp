@@ -646,11 +646,16 @@ public:
         return t;
     }
 
-    modulo<T>& operator+=(const T& rhs) {
+    template<typename V,
+             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    modulo<T>& operator+=(const V& rhs) {
         _i += rhs;
         return *this;
     }
-    modulo<T>& operator-=(const T& rhs) {
+
+    template<typename V,
+             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    modulo<T>& operator-=(const V& rhs) {
         _i -= rhs;
         return *this;
     }
@@ -663,7 +668,6 @@ public:
         t += rhs;
         return t;
     }
-
     template<typename V,
              typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     friend modulo<T> operator-(modulo<T> lhs, const V& rhs) {

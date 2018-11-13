@@ -109,9 +109,13 @@ void FakeGpu::main_thread() {
         set_gps_time(out_buf, frame_id, ts);
 
         // Fill the buffer with the specified mode
-        gsl::span<int32_t> data(output, output + 2 * nprod_gpu);
-        chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id]->metadata;
-        pattern->fill(data, metadata, frame_count, freq);
+        chimeMetadata* metadata =
+            (chimeMetadata *)out_buf->metadata[frame_id]->metadata;
+        for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+            gsl::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
+                                    output + 2 * (freq_ind + 1) * nprod_gpu);
+            pattern->fill(data, metadata, frame_count, freq + freq_ind);
+        }
 
         // Mark full and move onto next frame...
         mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
