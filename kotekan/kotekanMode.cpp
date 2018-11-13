@@ -66,13 +66,6 @@ void kotekanMode::initalize_processes() {
     buffers = buffer_factory.build_buffers();
     buffer_container.set_buffer_map(buffers);
 
-    // Create Processes
-    processFactory process_factory(config, buffer_container);
-    processes = process_factory.build_processes();
-
-    // Update REST server
-    restServer::instance().set_server_affinity(config);
-
     // Apply config to datasetManager only if used somewhere in config
     for (json j : config.get_value("use_dataset_manager")) {
         if (j.is_boolean()) {
@@ -82,6 +75,13 @@ void kotekanMode::initalize_processes() {
             }
         }
     }
+
+    // Create Processes
+    processFactory process_factory(config, buffer_container);
+    processes = process_factory.build_processes();
+
+    // Update REST server
+    restServer::instance().set_server_affinity(config);
 }
 
 void kotekanMode::join() {
