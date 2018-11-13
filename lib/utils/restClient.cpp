@@ -8,8 +8,7 @@
 #include <event2/dns.h>
 #include <event2/thread.h>
 #include <cxxabi.h>
-#include <thread>
-#include <chrono>
+#include <condition_variable>
 
 
 restClient &restClient::instance() {
@@ -20,6 +19,7 @@ restClient &restClient::instance() {
 restClient::restClient() : _main_thread() {
 
     _stop_thread = false;
+    _event_thread_started = false;
     _main_thread = std::thread(&restClient::event_thread, this);
 
 #ifndef MAC_OSX
@@ -27,11 +27,10 @@ restClient::restClient() : _main_thread() {
 #endif
 
     // restClient::instance() was just called the first time.
-    // wait a bit to make sure the event_base is initialized in the
+    // wait until the event_base is initialized in the
     // event_thread before someone makes a request.
-    // TODO: use a condition variable or sth to really just wait as long as
-    // necessary?
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::unique_lock<std::mutex> lck_start(_mtx_start);
+    _cv_start.wait(lck_start, [this](){return _event_thread_started;});
 }
 
 restClient::~restClient() {
@@ -78,6 +77,12 @@ void restClient::event_thread() {
     interval.tv_sec = 0;
     interval.tv_usec = 500000;
     event_add(timer_event, &interval);
+
+    {
+        std::unique_lock<std::mutex> lck_start(_mtx_start);
+        _event_thread_started = true;
+    }
+    _cv_start.notify_one();
 
     // run event loop
     DEBUG("restClient: starting event loop");

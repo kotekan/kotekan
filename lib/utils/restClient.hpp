@@ -11,6 +11,7 @@
 #include <event.h>
 #include <thread>
 #include <atomic>
+#include <condition_variable>
 
 using restReply = std::pair<bool, std::string&>;
 
@@ -97,6 +98,11 @@ private:
 
     /// dns base
     struct evdns_base* _dns;
+
+    /// Condition variable to signal that event thread has started
+    std::condition_variable _cv_start;
+    bool _event_thread_started;
+    std::mutex _mtx_start;
 };
 
 #endif // RESTCLIENT_HPP
