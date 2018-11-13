@@ -300,6 +300,22 @@ inline double current_time() {
     return ts_to_double(ts);
 }
 
+/**
+ * @brief Calculate the size of GPU packed data.
+ *
+ * @note This is the length of a *single* frequency.
+ *
+ * @param  N      The number of elements.
+ * @param  block  The size of a block.
+ * @return        The size of the packd GPU data.
+ **/
+inline constexpr uint32_t gpu_N2_size(uint32_t N, uint32_t block)
+{
+    const auto num_blocks1 = ((N - 1) / block) + 1;  // Blocks per side
+    const auto num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
+    return (num_blocks2 * block * block); // Total size
+}
+
 
 /**
  * @brief Copy the visibility triangle into a contiguous array.

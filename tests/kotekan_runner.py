@@ -190,7 +190,7 @@ class FakeGPUBuffer(InputBuffer):
         }
 
         process_config = {
-            'kotekan_process': 'fakeGpuBuffer',
+            'kotekan_process': 'fakeGpu',
             'out_buf': self.name,
             'freq': 0,
             'pre_accumulate': True,

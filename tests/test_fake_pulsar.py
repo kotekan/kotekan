@@ -10,11 +10,11 @@ pulsar_params = {
     'samples_per_data_set': 4000,  # 10 ms frames
     'num_frames': 4,  # One extra sample to ensure we actually get 256
     'block_size': 2,
-    'mode': 'pulsar',
+    'pattern': 'pulsar',
     'freq': 777,
-    'polyco': [0., 0.],
+    'coeff': [0., 0.],
     'dm': 0.,
-    'tmid': 58000.,
+    't_ref': 58000.,
     'phase_ref': 0.,
     'rot_freq': 0.03e3,  # one period spans 3 frames
     'pulse_width': 1e-3,
