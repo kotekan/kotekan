@@ -240,6 +240,7 @@ void baselineCompression::compress_thread(int thread_id) {
         // Update prometheus metrics
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
             output_frame.freq_id, output_frame.dataset_id);
+        normt = (normt == 0.) ? 1. : normt;
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_residuals",
             unique_name, vart / normt, labels);
