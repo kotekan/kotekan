@@ -193,8 +193,9 @@ void visWriter::main_thread() {
             // Increase metric count if we dropped a frame at write time
             if(error) {
                 prometheusMetrics::instance().add_process_metric(
-                    "kotekan_viswriter_dropped_frame_total",
-                    unique_name, ++dropped_frame_count
+                            "kotekan_viswriter_dropped_frame_total",
+                            unique_name, ++dropped_frame_count,
+                            "freq_id=\"" + std::to_string(frame.freq_id) + "\""
                 );
             }
 
