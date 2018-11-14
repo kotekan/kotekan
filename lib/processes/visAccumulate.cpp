@@ -251,69 +251,67 @@ void visAccumulate::main_thread() {
         }
 
         // If we've got to here and we've not initialised we need to skip this frame.
-        if (!init) continue;
+        if (init) {
 
-        // Now the main accumulation work starts...
+            // Now the main accumulation work starts...
 
-        // TODO: CHIME specific
-        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
-        internalState& state = enabled_gated_datasets[0];
-        auto frame = visFrameView(state.buf, state.frame_id,
-                                  num_elements, num_eigenvectors);
-        float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
+            // TODO: CHIME specific
+            timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+            timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
+            internalState& state = enabled_gated_datasets[0];
+            auto frame = visFrameView(state.buf, state.frame_id,
+                                      num_elements, num_eigenvectors);
+            float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
-        long samples_in_frame = samples_per_data_set -
-            get_lost_timesamples(in_buf, in_frame_id);
+            long samples_in_frame = samples_per_data_set -
+                get_lost_timesamples(in_buf, in_frame_id);
 
-        // Accumulate the weighted data into each dataset. At the moment this
-        // doesn't really work if there are multiple frequencies in the same buffer..
-        for (internalState& dset : enabled_gated_datasets) {
+            // Accumulate the weighted data into each dataset. At the moment this
+            // doesn't really work if there are multiple frequencies in the same buffer..
+            for (internalState& dset : enabled_gated_datasets) {
 
-            float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
+                float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
-            // Don't bother to accumulate if weight is zero
-            if (w == 0) break;
+                // Don't bother to accumulate if weight is zero
+                if (w == 0) break;
 
-            // TODO: implement generalised non uniform weighting, I'm primarily
-            // not doing this because I don't want to burn cycles doing the
-            // multiplications
-            // Perform primary accumulation (assume that the weight is one)
-            for (size_t i = 0; i < num_prod_gpu; i++) {
-                cfloat t = {(float)input[2*i+1], (float)input[2*i]};
-                dset.vis1[i] += t;
+                // TODO: implement generalised non uniform weighting, I'm primarily
+                // not doing this because I don't want to burn cycles doing the
+                // multiplications
+                // Perform primary accumulation (assume that the weight is one)
+                for (size_t i = 0; i < num_prod_gpu; i++) {
+                    cfloat t = {(float)input[2*i+1], (float)input[2*i]};
+                    dset.vis1[i] += t;
+                }
+
+                // Accumulate the weights
+                dset.sample_weight_total += samples_in_frame;
+
             }
 
-            // Accumulate the weights
-            dset.sample_weight_total += samples_in_frame;
-
-        }
-
-        // We are calculating the weights by differencing even and odd samples.
-        // Every even sample we save the set of visibilities...
-        if(frame_count % 2 == 0) {
-            std::memcpy(vis_even.data(), input, 8 * num_prod_gpu);
-        }
-        // ... every odd sample we accumulate the squared differences into the weight dataset
-        // NOTE: this incrementally calculates the variance, but eventually
-        // output_frame.weight will hold the *inverse* variance
-        // TODO: we might need to account for packet loss in here too, but it
-        // would require some awkward rescalings
-        else {
-            internalState& d0 = enabled_gated_datasets.at(0);  // Save into the main vis dataset
-            for(size_t i = 0; i < num_prod_gpu; i++) {
-                // NOTE: avoid using the slow std::complex routines in here
-                float di = input[2 * i    ] - vis_even[2 * i    ];
-                float dr = input[2 * i + 1] - vis_even[2 * i + 1];
-                d0.vis2[i] += (dr * dr + di * di);
+            // We are calculating the weights by differencing even and odd samples.
+            // Every even sample we save the set of visibilities...
+            if(frame_count % 2 == 0) {
+                std::memcpy(vis_even.data(), input, 8 * num_prod_gpu);
             }
-        }
+            // ... every odd sample we accumulate the squared differences into the weight dataset
+            // NOTE: this incrementally calculates the variance, but eventually
+            // output_frame.weight will hold the *inverse* variance
+            // TODO: we might need to account for packet loss in here too, but it
+            // would require some awkward rescalings
+            else {
+                internalState& d0 = enabled_gated_datasets.at(0);  // Save into the main vis dataset
+                for(size_t i = 0; i < num_prod_gpu; i++) {
+                    // NOTE: avoid using the slow std::complex routines in here
+                    float di = input[2 * i    ] - vis_even[2 * i    ];
+                    float dr = input[2 * i + 1] - vis_even[2 * i + 1];
+                    d0.vis2[i] += (dr * dr + di * di);
+                }
+            }
 
-        // Accumulate the total number of samples, accounting for lost ones
-        total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
-
-        // TODO: gating should go in here. Gates much be created such that the
-        // squared sum of the weights is equal to 1.
+            // Accumulate the total number of samples, accounting for lost ones
+            total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
+	}
 
         // Move the input buffer on one step
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
