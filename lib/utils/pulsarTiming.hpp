@@ -10,7 +10,7 @@
  * @class Polyco
  * @brief Calculate pulsar timing given polynomial expansion of phase.
  *
- * Based on code from Tara and Carol's summer project.
+ * Based on work by Tara Akhoundsadegh, Carol Ng and Kiyo Masui.
  *
  * @author Tristan Pinsonneault-Marotte
  **/

@@ -127,10 +127,14 @@ void visAccumulate::apply_config(uint64_t fpga_seq)
 {
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
-    num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
+    num_freq_in_frame = config.get_default<size_t>(
+        unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
-    samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
+    samples_per_data_set = config.get<size_t>(
+        unique_name, "samples_per_data_set");
+    low_sample_fraction = config.get_default<float>(
+        unique_name, "low_sample_fraction", 0.01);
 
     // Get the indices for reordering
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
@@ -170,6 +174,11 @@ void visAccumulate::main_thread() {
     uint32_t frames_in_this_cycle = 0;
     uint32_t total_samples = 0;
 
+    // We will skip data that has fewer than this number of samples in it.
+    uint32_t low_sample_cut = low_sample_fraction *
+        num_gpu_frames * samples_per_data_set;
+    size_t skipped_frame_total = 0;
+
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
 
@@ -205,6 +214,24 @@ void visAccumulate::main_thread() {
                 // Loop over the frequencies in the frame and unpack the accumulates
                 // into the output frame...
                 for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+
+                    // Skip the frame if we too much had been flagged out.
+                    if (total_samples < low_sample_cut) {
+
+                        if (freq_ind == 0)
+                            skipped_frame_total++;
+
+                        // Update prometheus metrics
+                        auto frame = visFrameView(dset.buf, dset.frame_id);
+                        std::string labels = fmt::format(
+                            "freq_id=\"{}\"", frame.freq_id
+                        );
+                        prometheusMetrics::instance().add_process_metric(
+                            "kotekan_visaccumulate_skipped_frame_total",
+                            unique_name, skipped_frame_total, labels
+                        );
+                        continue;
+                    }
 
                     finalise_output(dset, freq_ind, total_samples);
 
@@ -321,9 +348,8 @@ void visAccumulate::main_thread() {
 }
 
 
-void visAccumulate::initialise_output(
-    visAccumulate::internalState& state, int in_frame_id, int freq_ind
-)
+void visAccumulate::initialise_output(visAccumulate::internalState& state,
+                                      int in_frame_id, int freq_ind)
 {
 
     allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
@@ -377,8 +403,10 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 void visAccumulate::finalise_output(visAccumulate::internalState& state,
                                     int freq_ind, uint32_t total_samples)
 {
-    // Unpack the main visibilities
-    float w1 = 1.0 / state.sample_weight_total;
+    // Determine the weighting factors (if weight is zero we should just
+    // multiply the visibilities by zero so as not to generate Infs)
+    float w = state.sample_weight_total;
+    float iw = (w != 0.0) ? (1.0 / w) : 0.0;
 
     auto output_frame = visFrameView(state.buf, state.frame_id + freq_ind);
 
@@ -386,7 +414,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
             cfloat t = !conj ? state.vis1[bi] : std::conj(state.vis1[bi]);
-            output_frame.vis[pi] = w1 * t;
+            output_frame.vis[pi] = iw * t;
         }
     );
 
@@ -394,7 +422,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
             float t = state.vis2[bi];
-            output_frame.weight[pi] = 1.0 / (w1 * w1 * t);
+            output_frame.weight[pi] = w * w / t;
         }
     );
 
@@ -430,8 +458,7 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state) {
 
 
 visAccumulate::internalState::internalState(
-    Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod
-) :
+    Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod) :
     buf(out_buf),
     frame_id(buf),
     spec(std::move(gate_spec)),
