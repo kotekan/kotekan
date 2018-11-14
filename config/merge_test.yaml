@@ -1,0 +1,166 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+
+buffer_depth: 8
+samples_per_data_set: 49152
+num_elements: 16
+num_local_freq: 128
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+gpu_input_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+    gpu_input_buffer_0:
+        kotekan_buffer: standard
+    gpu_input_buffer_1:
+        kotekan_buffer: standard
+    gpu_input_buffer_2:
+        kotekan_buffer: standard
+    gpu_input_buffer_3:
+        kotekan_buffer: standard
+    gpu_input_buffer_4:
+        kotekan_buffer: standard
+    gpu_input_buffer_5:
+        kotekan_buffer: standard
+    gpu_input_buffer_6:
+        kotekan_buffer: standard
+    gpu_input_buffer_7:
+        kotekan_buffer: standard
+
+
+lost_samples_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+    lost_samples_buffer_0:
+        kotekan_buffer: standard
+    lost_samples_buffer_1:
+        kotekan_buffer: standard
+    lost_samples_buffer_2:
+        kotekan_buffer: standard
+    lost_samples_buffer_3:
+        kotekan_buffer: standard
+    lost_samples_buffer_4:
+        kotekan_buffer: standard
+    lost_samples_buffer_5:
+        kotekan_buffer: standard
+    lost_samples_buffer_6:
+        kotekan_buffer: standard
+    lost_samples_buffer_7:
+        kotekan_buffer: standard
+
+merged_network_buf:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * 8
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+
+cpu_affinity: [4,5,10,11]
+dpdk:
+    kotekan_process: dpdkCore
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [0,1,2,3,6,7,8,9]
+    master_lcore_cpu: 2
+    fpga_packet_size: 4680
+    alignment: samples_per_data_set
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3.
+    lcore_port_map:
+        - [0]
+        - [1]
+        - [2]
+        - [3]
+        - [4]
+        - [5]
+        - [6]
+        - [7]
+    # One handler must be given per port on the system.
+    handlers:
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_0
+          lost_samples_buf: lost_samples_buffer_0
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_1
+          lost_samples_buf: lost_samples_buffer_1
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_2
+          lost_samples_buf: lost_samples_buffer_2
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_3
+          lost_samples_buf: lost_samples_buffer_3
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_4
+          lost_samples_buf: lost_samples_buffer_4
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_5
+          lost_samples_buf: lost_samples_buffer_5
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_6
+          lost_samples_buf: lost_samples_buffer_6
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_7
+          lost_samples_buf: lost_samples_buffer_7
+
+zero_samples:
+    zero_0:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_0
+        lost_samples_buf: lost_samples_buffer_0
+    zero_1:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_1
+        lost_samples_buf: lost_samples_buffer_1
+    zero_2:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_2
+        lost_samples_buf: lost_samples_buffer_2
+    zero_3:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_3
+        lost_samples_buf: lost_samples_buffer_3
+    zero_4:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_4
+        lost_samples_buf: lost_samples_buffer_4
+    zero_5:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_5
+        lost_samples_buf: lost_samples_buffer_5
+    zero_6:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_6
+        lost_samples_buf: lost_samples_buffer_6
+    zero_7:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_7
+        lost_samples_buf: lost_samples_buffer_7
+
+merge:
+  kotekan_process: mergeBuffer
+  in_bufs:
+    - gpu_input_buffer_0
+    - gpu_input_buffer_1
+    - gpu_input_buffer_2
+    - gpu_input_buffer_3
+    - gpu_input_buffer_4
+    - gpu_input_buffer_5
+    - gpu_input_buffer_6
+    - gpu_input_buffer_7
+  out_buf: merged_network_buf
+
+metadata:
+    kotekan_process: chimeMetadataDump
+    in_buf: merged_network_buf
+
