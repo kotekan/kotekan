@@ -285,6 +285,7 @@ void applyGains::apply_thread(int thread_id) {
                 } else if (gain.at(ii) == (cfloat) {0.0, 0.0}) {
                     // If gain is zero make the weight be zero
                     weight_factor.at(ii) = 0.0;
+                    gain.at(ii) = {1., 0.};
                 } else {
                     weight_factor.at(ii) = pow(abs(gain.at(ii)), -2.0);
                 }
