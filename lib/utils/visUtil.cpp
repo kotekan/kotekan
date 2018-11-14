@@ -267,3 +267,12 @@ double movingAverage::average() {
     }
     return current_value;
 }
+
+std::vector<std::string> regex_split(const std::string input, const std::string reg) {
+    vector<std::string> split_array;
+    std::regex split_regex(reg);
+    std::copy(std::sregex_token_iterator(input.begin(), input.end(), split_regex, -1),
+              std::sregex_token_iterator(),
+              std::back_inserter(split_array));
+    return split_array;
+}
