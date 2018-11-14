@@ -225,10 +225,17 @@ BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
     __log_level = 4;
     datasetManager& dm = datasetManager::instance();
 
+    // inputStates
     std::vector<input_ctype> inputs = {input_ctype(24, "4"),
                                        input_ctype(11, "19")};
     std::pair<state_id_t, const inputState*> input_state =
             dm.add_state(std::make_unique<inputState>(inputs));
     BOOST_CHECK_EQUAL(input_state.second->to_json().dump(),
                       std::make_unique<inputState>(inputs)->to_json().dump());
+
+    // empty stackStates
+    std::pair<state_id_t, const stackState*> sstate =
+            dm.add_state(std::make_unique<stackState>());
+    BOOST_CHECK_EQUAL(sstate.second->to_json().dump(),
+                      std::make_unique<stackState>()->to_json().dump());
 }

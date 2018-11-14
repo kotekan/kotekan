@@ -412,9 +412,14 @@ public:
         datasetState(move(inner))
     {
         try {
-            _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
-            _num_stack = data["num_stack"].get<uint32_t>();
             _stacked = data["stacked"].get<bool>();
+            if (_stacked) {
+                _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
+                _num_stack = data["num_stack"].get<uint32_t>();
+            } else {
+                _rstack_map = {};
+                _num_stack = 0;
+            }
         } catch (std::exception& e) {
              throw std::runtime_error("stackState: Failure parsing json data: "
                                       + std::string(e.what()));
@@ -432,7 +437,7 @@ public:
         datasetState(std::move(inner)),
         _num_stack(num_stack),
         _rstack_map(rstack_map),
-        _stacked(true) { }
+        _stacked(true) {}
 
 
     /**
@@ -442,7 +447,10 @@ public:
      */
     stackState(state_uptr inner=nullptr) :
         datasetState(std::move(inner)),
-        _stacked(false) {}
+        _stacked(false) {
+        _rstack_map = {};
+        _num_stack = 0;
+    }
 
 
     /**
@@ -453,8 +461,7 @@ public:
      *
      * @return The stack map.
      */
-    const std::vector<rstack_ctype>& get_rstack_map() const
-    {
+    const std::vector<rstack_ctype>& get_rstack_map() const {
         return _rstack_map;
     }
 
@@ -463,8 +470,7 @@ public:
      *
      * @return The number of stacks.
      */
-    const uint32_t get_num_stack() const
-    {
+    const uint32_t get_num_stack() const {
         return _num_stack;
     }
 
@@ -473,8 +479,7 @@ public:
      *
      * @return True for stacked data, otherwise False.
      */
-    const bool is_stacked() const
-    {
+    const bool is_stacked() const {
         return _stacked;
     }
 
@@ -487,14 +492,18 @@ public:
      **/
     std::vector<stack_ctype> get_stack_map() const
     {
-        return invert_stack(_num_stack, _rstack_map);
+        if (_stacked)
+            return invert_stack(_num_stack, _rstack_map);
+        return {};
     }
 
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
-        return {{"rstack", _rstack_map }, {"num_stack", _num_stack},
-                {"stacked", _stacked}};
+        if (_stacked)
+            return {{"rstack", _rstack_map }, {"num_stack", _num_stack},
+                    {"stacked", _stacked}};
+        return {{"stacked", _stacked}};
     }
 
 private:
