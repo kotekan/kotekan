@@ -150,8 +150,8 @@ BOOST_AUTO_TEST_CASE( _serialization_prod ) {
     datasetManager& dm = datasetManager::instance();
 
     // serialize and deserialize
-    std::vector<prod_ctype> prods = {{1, 1},
-                                     {2, 2},
+    std::vector<prod_ctype> prods = {{2, 2},
+                                     {1, 1},
                                      {3, 3}};
     std::pair<state_id_t, const prodState*> state =
             dm.add_state(std::make_unique<prodState>(prods));
@@ -219,4 +219,16 @@ BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
 
     BOOST_CHECK_EQUAL(not_found, // == nullptr
                       static_cast<decltype(not_found)>(nullptr));
+}
+
+BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
+    __log_level = 4;
+    datasetManager& dm = datasetManager::instance();
+
+    std::vector<input_ctype> inputs = {input_ctype(24, "4"),
+                                       input_ctype(11, "19")};
+    std::pair<state_id_t, const inputState*> input_state =
+            dm.add_state(std::make_unique<inputState>(inputs));
+    BOOST_CHECK_EQUAL(input_state.second->to_json().dump(),
+                      std::make_unique<inputState>(inputs)->to_json().dump());
 }

@@ -256,7 +256,7 @@ visAccumulate::visAccumulate(Config& config,
     size_t num_elements = _inputs.size();
 
     // Create the product specification
-    _prods.reserve(num_elements);
+    _prods.reserve(num_elements * (num_elements+1) / 2);
     for(uint16_t i = 0; i < num_elements; i++) {
         for(uint16_t j = i; j < num_elements; j++) {
             _prods.push_back({i, j});
