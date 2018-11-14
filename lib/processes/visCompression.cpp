@@ -214,6 +214,8 @@ void baselineCompression::compress_thread(int thread_id) {
 
             // Calculate the mean and accumulate weight and place in the frame
             float norm = stack_norm[stack_ind];
+            if (norm == 0.)
+                continue;
             output_frame.vis[stack_ind] /= norm;
             output_frame.weight[stack_ind] = norm * norm /
                 output_frame.weight[stack_ind];
