@@ -39,8 +39,6 @@ vis_buffer:
   num_frames: buffer_depth
   visbuf_10s_all:
     kotekan_buffer: vis
-  visbuf_10s_dm:
-    kotekan_buffer: vis
   visbuf_10s_gain:
     kotekan_buffer: vis
   visbuf_10s_flags:
@@ -97,7 +95,7 @@ buffer_recv:
 
 apply_flags:
   kotekan_process: receiveFlags
-  in_buf: visbuf_10s_dm
+  in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
 
