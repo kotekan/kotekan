@@ -29,7 +29,7 @@ use_dataset_manager: True
 
 dataset_manager:
   use_dataset_broker: True
-  ds_broker_host: "10.5.0.25" # carillon
+  ds_broker_host: "10.1.50.11" # recv1
 
 vis_pool:
   kotekan_metadata_pool: visMetadata
