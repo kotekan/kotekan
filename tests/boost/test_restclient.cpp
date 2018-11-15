@@ -184,6 +184,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::function<void(restReply)> fun = TestContext::rq_callback;
     ret = restClient::instance().make_request("test_restclient", fun,
@@ -239,9 +240,10 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
     /* Test receiveing a text reply */
 
     TestContext::init(std::bind(&TestContext::callback_text, this,
-                          std::placeholders::_1,
-                          std::placeholders::_2),
-                      "/test_restclient_json");
+                                std::placeholders::_1,
+                                std::placeholders::_2),
+                                "/test_restclient_json");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     std::function<void(restReply)> fun_test = TestContext::rq_callback_thisisatest;
     ret = restClient::instance().make_request("test_restclient_json", fun_test,
@@ -280,9 +282,9 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
     /* Test N threads */
 
     TestContext::init(std::bind(&TestContext::pong, this,
-                          std::placeholders::_1,
-                          std::placeholders::_2),
-                      "/test_restclient_pong");
+                                std::placeholders::_1,
+                                std::placeholders::_2),
+                                "/test_restclient_pong");
 #define N 100
     std::thread t[N];
     for (int i = 0; i < N; i++) {
@@ -291,7 +293,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
     for (int i = 0; i < N; i++) {
         t[i].join();
     }
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     BOOST_CHECK_MESSAGE(error == false,
                         "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format("Only {} callback functions where " \
