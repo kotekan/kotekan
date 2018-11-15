@@ -1,6 +1,11 @@
 #include "prodSubset.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
+
+#include <signal.h>
+#include <algorithm>
+
 
 REGISTER_KOTEKAN_PROCESS(prodSubset);
 
@@ -13,6 +18,8 @@ prodSubset::prodSubset(Config &config,
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
+    use_dataset_manager = config.get_default<bool>(
+                unique_name, "use_dataset_manager", false);
 
     // Get buffers
     in_buf = get_buffer("in_buf");
@@ -22,7 +29,9 @@ prodSubset::prodSubset(Config &config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    prod_ind = std::get<0>(parse_prod_subset(config, unique_name));
+    auto subset_list = parse_prod_subset(config, unique_name);
+    prod_ind = std::get<0>(subset_list);
+    prod_subset = std::get<1>(subset_list);
 
     subset_num_prod = prod_ind.size();
 }
@@ -31,10 +40,83 @@ void prodSubset::apply_config(uint64_t fpga_seq) {
 
 }
 
+dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id,
+                                           std::vector<prod_ctype>& prod_subset,
+                                           std::vector<size_t>& prod_ind,
+                                           size_t& subset_num_prod)
+{
+    auto& dm = datasetManager::instance();
+
+    // create new product dataset state
+    const prodState* prod_state_ptr =
+            dm.dataset_state<prodState>(ds_id);
+    if (prod_state_ptr == nullptr)
+        throw std::runtime_error("prodSubset: Could not find prodState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+
+    // get a copy of input prods
+    const std::vector<prod_ctype>& input_prods = prod_state_ptr->get_prods();
+    std::vector<prod_ctype> input_prods_copy;
+    std::copy(input_prods.begin(), input_prods.end(),
+              std::back_inserter(input_prods_copy));
+
+    // Compare function to help sort input_ctypes.
+    auto compare_prods = [] (const prod_ctype& a, const prod_ctype& b) {
+                   return (a.input_a < b.input_a) ||
+                           (a.input_a == b.input_a && a.input_b < b.input_b);};
+
+    // sort them for binary search
+    std::sort(input_prods_copy.begin(), input_prods_copy.end(), compare_prods);
+
+    // check if prod_subset is a subset of the prodState
+    for (size_t i = 0; i < prod_subset.size(); i++) {
+        // so we can use binary search
+        if (!std::binary_search(input_prods_copy.begin(), input_prods_copy.end(),
+                                prod_subset.at(i), compare_prods)) {
+            std::cout << "prodSubset: Product ID " << prod_ind.at(i) << " is" <<
+                         "configured to be in the subset, but is missing in " <<
+                         "dataset " << ds_id << " . Deleting it from subset." <<
+                         std::endl;
+            prod_subset.erase(prod_subset.cbegin() + i);
+            prod_ind.erase(prod_ind.cbegin() + i);
+        }
+    }
+
+    // in case we deleted sth, save new size
+    subset_num_prod = prod_subset.size();
+
+    state_uptr pstate = std::make_unique<prodState>(prod_subset);
+    state_id_t prod_state_id = dm.add_state(std::move(pstate)).first;
+    return dm.add_dataset(dataset(prod_state_id, ds_id));
+}
+
 void prodSubset::main_thread() {
 
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
+
+    bool broker_retry = false;
+
+    dset_id_t input_dset_id;
+    dset_id_t output_dset_id = 0;
+
+    // number of errors when dealing with dataset manager
+    uint32_t err_count = 0;
+
+    if (use_dataset_manager) {
+        // Wait for the input buffer to be filled with data
+        // in order to get dataset ID
+        if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                               input_frame_id) == nullptr) {
+            return;
+        }
+        input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
+        future_output_dset_id = std::async(change_dataset_state, input_dset_id,
+                                           std::ref(prod_subset),
+                                           std::ref(prod_ind),
+                                           std::ref(subset_num_prod));
+    }
 
     while (!stop_thread) {
 
@@ -44,17 +126,55 @@ void prodSubset::main_thread() {
             break;
         }
 
+        // Get a view of the current frame
+        auto input_frame = visFrameView(in_buf, input_frame_id);
+
+        // check if the input dataset has changed
+        if ((broker_retry || input_dset_id != input_frame.dataset_id)
+                && use_dataset_manager) {
+            input_dset_id = input_frame.dataset_id;
+            future_output_dset_id = std::async(change_dataset_state, input_dset_id,
+                                               std::ref(prod_subset),
+                                               std::ref(prod_ind),
+                                               std::ref(subset_num_prod));
+        }
+
         // Wait for the output buffer frame to be free
         if(wait_for_empty_frame(out_buf, unique_name.c_str(),
                                 output_frame_id) == nullptr) {
             break;
         }
 
-        // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
-
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
+
+        // Ask the datasetManager for a dataset id
+        // This also sets the info about products in the output
+        if (use_dataset_manager) {
+            if (future_output_dset_id.valid()) {
+                try {
+                    output_dset_id = future_output_dset_id.get();
+                } catch (std::runtime_error& e) {
+                    WARN("prodSubset: Dropping frame, failure in " \
+                         "datasetManager: %s",
+                         e.what());
+                    prometheusMetrics::instance().add_process_metric(
+                        "kotekan_dataset_manager_dropped_frame_count",
+                        unique_name, ++err_count);
+
+                    // Mark the input buffer and move on
+                    mark_frame_empty(in_buf, unique_name.c_str(),
+                                      input_frame_id);
+                    // Advance the current input frame id
+                    input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
+
+                    broker_retry = true;
+                    continue;
+                }
+                broker_retry = false;
+            }
+        }
+
         // Create view to output frame
         auto output_frame = visFrameView(out_buf, output_frame_id,
                                      num_elements, subset_num_prod,
@@ -70,6 +190,9 @@ void prodSubset::main_thread() {
         output_frame.copy_nonvis_buffer(input_frame);
         // Copy metadata
         output_frame.copy_nonconst_metadata(input_frame);
+
+        // set the dataset ID in the outgoing frame
+        output_frame.dataset_id = output_dset_id;
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

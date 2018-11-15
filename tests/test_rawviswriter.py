@@ -86,8 +86,8 @@ def test_metadata(written_data):
         ftime = np.array([t['fpga_count'] for t in vr.metadata['index_map']['time']])
         ctime = np.array([t['ctime'] for t in vr.metadata['index_map']['time']])
         freq = np.array([f['centre'] for f in vr.metadata['index_map']['freq']])
-        input_a = np.array([p['input_a'] for p in vr.metadata['index_map']['prod']])
-        input_b = np.array([p['input_b'] for p in vr.metadata['index_map']['prod']])
+        input_a = np.array([p[0] for p in vr.metadata['index_map']['prod']])
+        input_b = np.array([p[1] for p in vr.metadata['index_map']['prod']])
     
         # Check the number of samples has been written correctly
         assert vr.metadata['structure']['ntime'] == nt

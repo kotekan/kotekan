@@ -97,7 +97,7 @@ void visFileArchive::setup_file(const std::string& name,
     // Check chunk size
 	// Check chunk size
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("visRawReader: config: Chunk size " \
+        throw std::invalid_argument("visFileArchive: config: Chunk size " \
             "needs to be greater or equal to (1,1,1) (is ("
             + std::to_string(chunk[0]) + ","
             + std::to_string(chunk[1]) + ","

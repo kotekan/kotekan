@@ -18,6 +18,8 @@ set (KOTEKAN_UTIL_SOURCES
               visFileRing.cpp
               tx_utils.cpp
               datasetManager.cpp
+              datasetState.cpp
+              restClient.cpp
        )
 
 if (${USE_HDF5})
