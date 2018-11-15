@@ -51,6 +51,13 @@
  *                              Only the first element of each sub-array is used and it is the the index of
  *                              the input to move into this new location. The remaining elements of the
  *                              subarray are for correctly labelling the input in ``visWriter``.
+ * @conf  low_sample_fraction   If a frames has less than this fraction of the
+ *                              data expected, skip it. This is set to 1% by default.
+ *
+ * @par Metrics
+ * @metric  kotekan_vis_accumulate_skipped_frame_total
+ *      The number of frames skipped entirely because they were under the
+ *      low_sample_fraction.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
