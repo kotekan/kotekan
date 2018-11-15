@@ -6,6 +6,7 @@
 #include "prometheusMetrics.hpp"
 #include "fmt.hpp"
 #include "datasetManager.hpp"
+#include "version.h"
 
 #include <time.h>
 #include <iomanip>
@@ -13,6 +14,9 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <memory>
+#include <thread>
+#include <chrono>
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -198,7 +202,8 @@ visAccumulate::visAccumulate(Config& config,
     minimum_fraction = config.get_default<double>(unique_name, "minimum_fraction", 0.01);
 
     // Get the indices for reordering
-    input_remap = std::get<0>(parse_reorder_default(config, unique_name));
+    auto input_reorder = parse_reorder_default(config, unique_name);
+    input_remap = std::get<0>(input_reorder);
 
     float int_time = config.get_default<float>(unique_name, "integration_time", -1.0);
 
@@ -218,10 +223,97 @@ visAccumulate::visAccumulate(Config& config,
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
     }
 
+
+    // Get everything we need for registering dataset states
+
+    // --> get metadata
+    _instrument_name = config.get_default<std::string>(
+                unique_name, "instrument_name", "chime");
+
+    std::vector<uint32_t> freq_ids;
+
+    // Get the frequency IDs that are on this stream, check the config or just
+    // assume all CHIME channels
+    // TODO: CHIME specific
+    if (config.exists(unique_name, "freq_ids")) {
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    }
+    else {
+        freq_ids.resize(1024);
+        std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
+    }
+
+    // Create the frequency specification
+    // TODO: CHIME specific
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
+                   [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                   });
+
+    // The input specification from the config
+    _inputs = std::get<1>(input_reorder);
+
+    size_t num_elements = _inputs.size();
+
+    // Create the product specification
+    _prods.reserve(num_elements * (num_elements+1) / 2);
+    for(uint16_t i = 0; i < num_elements; i++) {
+        for(uint16_t j = i; j < num_elements; j++) {
+            _prods.push_back({i, j});
+        }
+    }
+
+    // get dataset ID for out frames
+    uint32_t err_count = 0;
+    while (true) {
+        try {
+            _ds_id_out = change_dataset_state();
+        } catch (std::runtime_error& e) {
+            WARN("Failure in datasetManager: %s",
+                 e.what());
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_dataset_manager_dropped_frame_count",
+                unique_name, ++err_count);
+            // wait a second
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            WARN("Retrying...");
+
+            continue;
+        }
+        break;
+    }
 }
 
 visAccumulate::~visAccumulate() {
 }
+
+dset_id_t visAccumulate::change_dataset_state() {
+
+    // weight calculation is hardcoded, so is the weight type name
+    const std::string weight_type = "inverse_var";
+    const std::string git_tag = get_git_commit_hash();
+
+    // create all the states
+    state_uptr freq_state = std::make_unique<freqState>(_freqs);
+    state_uptr input_state = std::make_unique<inputState>(
+        _inputs, std::move(freq_state));
+    state_uptr prod_state = std::make_unique<prodState>(
+        _prods, std::move(input_state));
+    //empty stackState
+    state_uptr stack_state =
+            std::make_unique<stackState>(std::move(prod_state));
+    state_uptr mstate = std::make_unique<metadataState>(weight_type,
+                                                        _instrument_name,
+                                                        git_tag,
+                                                        std::move(stack_state));
+
+    // register them with the datasetManager
+    datasetManager& dm = datasetManager::instance();
+    state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+    //register root dataset
+    return dm.add_dataset(dataset(mstate_id, 0, true));
+}
+
 
 void visAccumulate::apply_config(uint64_t fpga_seq) {
 }
@@ -330,6 +422,8 @@ void visAccumulate::main_thread() {
             std::fill(output_frame.eval.begin(), output_frame.eval.end(), 0.0);
             output_frame.erms = 0;
             std::fill(output_frame.gain.begin(), output_frame.gain.end(), 1.0);
+
+            output_frame.dataset_id = _ds_id_out;
 
             // Zero out accumulation arrays
             std::fill(vis1, vis1 + nprod_gpu, 0);
@@ -760,16 +854,10 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
             _prods.push_back({i, j});
         }
     }
-
 }
 
 
 void registerInitialDatasetState::main_thread() {
-
-    // In case we have multiple processes all registering different datasets we
-    // need to make sure that they all get distinct roots, use this for
-    // co-ordination.
-    static std::atomic<int> root_dataset_id(-1);
 
     uint32_t frame_id_in = 0;
     uint32_t frame_id_out = 0;
@@ -782,14 +870,16 @@ void registerInitialDatasetState::main_thread() {
         _inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
         _prods, std::move(input_state));
+    //empty stackState
+    state_uptr stack_state =
+            std::make_unique<stackState>(std::move(prod_state));
 
     // Register the initial state with the manager
-    auto s = dm.add_state(std::move(prod_state));
-    state_id initial_state = s.first;
+    auto s = dm.add_state(std::move(stack_state));
+    state_id_t initial_state = s.first;
 
-    // Get the new dataset ID, this uses the current root ID and then decrements
-    // it for any other instance of this process.
-    dset_id output_dataset = dm.add_dataset(initial_state, root_dataset_id--);
+    // Get the new dataset ID by registering the root dataset.
+    dset_id_t output_dataset = dm.add_dataset(dataset(initial_state, 0, true));
 
     while (!stop_thread) {
         // Wait for an input frame

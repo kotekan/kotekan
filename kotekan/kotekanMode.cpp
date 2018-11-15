@@ -6,6 +6,7 @@
 #include "restServer.hpp"
 #include "configUpdater.hpp"
 #include "json.hpp"
+#include "datasetManager.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
     restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
@@ -64,6 +65,16 @@ void kotekanMode::initalize_processes() {
     bufferFactory buffer_factory(config, metadata_pools);
     buffers = buffer_factory.build_buffers();
     buffer_container.set_buffer_map(buffers);
+
+    // Apply config to datasetManager only if used somewhere in config
+    for (json j : config.get_value("use_dataset_manager")) {
+        if (j.is_boolean()) {
+            if (j.get<bool>()) {
+                datasetManager::instance().apply_config(config);
+                break;
+            }
+        }
+    }
 
     // Create Processes
     processFactory process_factory(config, buffer_container);

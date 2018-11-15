@@ -7,11 +7,13 @@
 #define PROD_SUB
 
 #include <unistd.h>
+#include <future>
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 /**
  * @class prodSubset
@@ -52,6 +54,10 @@
  * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to
  *                               include in subset (in units of the shortest NS baseline)
  * @conf  input_list        vector of int. The list of inputs to include.
+ * @conf  use_dataset_manager Bool (default: false) Use the dataset manager.
+ *
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *        The number of frames dropped while attempting to write.
  *
  * @warning This will only work correctly if the full correlation triangle is
  * passed in as input.
@@ -74,8 +80,17 @@ public:
     void main_thread();
 
 private:
+    /// keeps track of the input dataset ID
+    /// and gets new output dataset ID from manager
+    ///
+    static dset_id_t change_dataset_state(dset_id_t ds_id,
+                                          std::vector<prod_ctype>& prod_subset,
+                                          std::vector<size_t>& prod_ind,
+                                          size_t& subset_num_prod);
+
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
+    bool use_dataset_manager;
 
     /// Number of products in subset
     size_t subset_num_prod;
@@ -89,6 +104,11 @@ private:
     /// Vector of indices for subset of products
     std::vector<size_t> prod_ind;
 
+    /// Vector of subset of products
+    std::vector<prod_ctype> prod_subset;
+
+    // dataset IDs
+    std::future<dset_id_t> future_output_dset_id;
 };
 
 

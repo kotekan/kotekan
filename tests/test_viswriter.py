@@ -128,6 +128,9 @@ def test_metadata(written_data):
         # Check the number of samples has been written correctly
         assert fh.attrs['num_time'] == nt
 
+        # Check that number of stacks is not there (unstacked data)
+        assert 'num_stack' not in fh.attrs
+
         # Check the times
         ctime = fh['index_map/time']['ctime'][:nt]
         assert np.allclose(np.diff(ctime), writer_params['cadence'])

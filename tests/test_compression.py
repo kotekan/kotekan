@@ -93,7 +93,6 @@ def test_metadata(diagonal_data):
     nprod = np.array([frame.metadata.num_prod for frame in diagonal_data])
 
     assert (freq_ids.reshape((-1, 2)) == np.array([[0, 250]])).all()
-    assert (dset_ids == 1).all()
     assert ((fpga_seqs.reshape((-1, 2)) / 800e6) ==
             (np.arange(diag_global_params['total_frames']))[:, np.newaxis]).all()
     assert (nprod == diag_global_params['num_elements']).all()
