@@ -201,9 +201,11 @@ else()
 endif()
 
 # Add fcx-limited-range to speed up complex arithmetic if we are using GCC
+# Add atomic operations library which is sometimes needed for GCC
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
 endif()
 
 if (${USE_OPENCL})

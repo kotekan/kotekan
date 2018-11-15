@@ -21,6 +21,9 @@ enum class HTTP_RESPONSE {
     INTERNAL_ERROR = 500
 };
 
+#define PORT_REST_SERVER 12048
+
+
 /**
  * @brief Contains details of a request (POST or GET), and provides
  *        functions for replying to the request.
@@ -305,7 +308,7 @@ private:
     struct evhttp *ev_server = nullptr;
 
     /// The port to use, for now this is constant 12048
-    u_short port = 12048;
+    u_short port = PORT_REST_SERVER;
 
     /// Bind address
     std::string bind_address = "0.0.0.0";

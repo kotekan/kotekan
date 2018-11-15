@@ -8,7 +8,7 @@ REGISTER_VIS_FILE("ring", visFileRing);
 void visFileRing::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t num_ev, size_t max_time)
 {
     // Set open flags to allow overwriting
     oflags = O_CREAT | O_WRONLY;

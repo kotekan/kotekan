@@ -154,16 +154,31 @@ public:
 
     /**
      * @brief Finds the value with key "name" starts looking at the
-              "base_pointer" location, and then works backwards up the config
-              tree.
-     * @param base_pointer Contains a JSON pointer which points to the
-                           process's location in the config tree. i.e.
-                           /vdif_cap/disk_write
-     * @param name         The name of the property i.e. num_frequencies
+     * "base_pointer" location, and then works backwards up the config tree.
      *
-     * @return The requested config.
+     * @throws  std::runtime_error  If the value was not found.
+     *
+     * @param base_pointer  Contains a JSON pointer which points to the
+     *                      process's location in the config tree. i.e.
+     *                      /vdif_cap/disk_write
+     * @param name          The name of the property i.e. num_frequencies
+     *
+     * @return              The value that was found.
      **/
     json get_value(const string &base_pointer, const string &name);
+
+    /**
+     * @brief Finds all values with key "name". Searches the whole config tree.
+     *
+     * @note This should only be used by internal (core framework) systems.
+     * Usage by normal processes risks unexpected side effects in the config
+     * scoping logic.
+     *
+     * @param name  The name of the property i.e. num_frequencies
+     *
+     * @return      The values found or an empty list if nothing was found.
+     **/
+    std::vector<json> get_value(const string& name) const;
 
     /**
      * @brief Updates a config value at an existing config option
@@ -216,6 +231,16 @@ private:
 
     /// Internal json object
     json _json;
+
+    /**
+     * @brief Finds all values with key "name". Searches the given json.
+     *
+     * @param j         The json to look in.
+     * @param name      The name of the property i.e. num_frequencies
+     * @param results   Vector found values are added to.
+     **/
+    void get_value_recursive(const json& j, const std::string& name,
+                        std::vector<json>& results) const;
 
     /**
      * @brief Helper class, gets an arithmetic expression from the config.

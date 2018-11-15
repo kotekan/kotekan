@@ -20,6 +20,8 @@ set (KOTEKAN_UTIL_SOURCES
               tx_utils.cpp
               datasetManager.cpp
               pulsarTiming.cpp
+              datasetState.cpp
+              restClient.cpp
        )
 
 if (${USE_HDF5})

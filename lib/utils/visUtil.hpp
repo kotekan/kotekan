@@ -110,6 +110,11 @@ struct rstack_ctype {
 /// Comparison operator for stacks
 bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs);
 
+/// Comparison operator for products
+inline bool operator==(const prod_ctype& lhs, const prod_ctype& rhs)
+{
+    return (lhs.input_a == rhs.input_a) && (lhs.input_b == rhs.input_b);
+}
 
 // Conversions of the index types to json
 void to_json(json& j, const freq_ctype& f);

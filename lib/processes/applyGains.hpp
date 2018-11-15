@@ -103,7 +103,7 @@ private:
     std::shared_timed_mutex gain_mtx;
 
     /// Timestamp of the current frame
-    timespec ts_frame = {0,0};
+    std::atomic<timespec> ts_frame{{0,0}};
 
     /// Number of updates received too late
     std::atomic<size_t> num_late_updates;
