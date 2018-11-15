@@ -7,7 +7,7 @@ add_definitions(/D__STDC_FORMAT_MACROS)
 
 # This quiets a noisy cmake warning on newer versions,
 # triggered by some of our CMake/FindXYZ.cmake scripts.
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0") 
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
     cmake_policy(SET CMP0075 NEW)
 endif ()
 
@@ -175,9 +175,6 @@ if(${USE_OMP})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-# Atomic operations
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
-
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
@@ -202,9 +199,11 @@ else()
 endif()
 
 # Add fcx-limited-range to speed up complex arithmetic if we are using GCC
+# Add atomic operations library which is sometimes needed for GCC
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
 endif()
 
 if (${USE_OPENCL})
