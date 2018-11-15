@@ -213,7 +213,7 @@ vis_buffers:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
-  visbuf_5s_psr0:
+  visbuf_5s_psr0_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
