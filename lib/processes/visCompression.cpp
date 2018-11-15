@@ -214,7 +214,11 @@ void baselineCompression::compress_thread(int thread_id) {
 
             // Calculate the mean and accumulate weight and place in the frame
             float norm = stack_norm[stack_ind];
-            output_frame.vis[stack_ind] /= norm;
+
+            // Invert norm if set, otherwise use zero to set data to zero.
+            float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
+
+            output_frame.vis[stack_ind] *= inorm;
             output_frame.weight[stack_ind] = norm * norm /
                 output_frame.weight[stack_ind];
 
@@ -224,7 +228,6 @@ void baselineCompression::compress_thread(int thread_id) {
             normt += norm;
         }
 
-
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
@@ -233,14 +236,16 @@ void baselineCompression::compress_thread(int thread_id) {
         output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
         input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
 
-        double elapsed = current_time() - start_time;
+        // Calculate residuals (return zero if no data for this freq)
+        float residual = (normt != 0.0) ? (vart / normt) : 0.0;
 
         // Update prometheus metrics
+        double elapsed = current_time() - start_time;
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
             output_frame.freq_id, output_frame.dataset_id);
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_residuals",
-            unique_name, vart / normt, labels);
+            unique_name, residual, labels);
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_time_seconds",
             unique_name, elapsed);
