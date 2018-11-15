@@ -154,6 +154,7 @@ def test_apply(tmpdir_factory):
                 gains[ii] = 1.
                 weight_factor[ii] = 0.
             elif abs(gains[ii]) == 0.:
+                gains[ii] = 1.
                 weight_factor[ii] = 0.
             else:
                 weight_factor[ii] = 1./abs(gains[ii])**2

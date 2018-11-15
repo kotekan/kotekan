@@ -105,10 +105,10 @@ bool applyGains::receive_update(nlohmann::json &json) {
         WARN("Failure reading 'start_time' from update: %s", e.what());
         return false;
     }
-    if (ts_frame > double_to_ts(new_ts)) {
+    if (ts_frame.load() > double_to_ts(new_ts)) {
             WARN("applyGains: Received update with a timestamp that is older " \
                  "than the current frame (The difference is %f s).",
-                 ts_to_double(ts_frame) - new_ts);
+                 ts_to_double(ts_frame.load()) - new_ts);
             num_late_updates++;
     }
 
@@ -216,7 +216,7 @@ void applyGains::apply_thread(int thread_id) {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // get the frames timestamp
-        ts_frame = std::get<1>(input_frame.time);
+        ts_frame.store(std::get<1>(input_frame.time));
 
         // frequency index of this frame
         freq = input_frame.freq_id;
@@ -285,6 +285,7 @@ void applyGains::apply_thread(int thread_id) {
                 } else if (gain.at(ii) == (cfloat) {0.0, 0.0}) {
                     // If gain is zero make the weight be zero
                     weight_factor.at(ii) = 0.0;
+                    gain.at(ii) = {1., 0.};
                 } else {
                     weight_factor.at(ii) = pow(abs(gain.at(ii)), -2.0);
                 }
