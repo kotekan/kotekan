@@ -12,9 +12,9 @@ pulsar_params = {
     'block_size': 2,
     'mode': 'pulsar',
     'freq': 777,
-    'polyco': [0., 0.],
+    'coeff': [0., 0.],
     'dm': 0.,
-    'tmid': 58000.,
+    't_ref': 58000.,
     'phase_ref': 0.,
     'rot_freq': 0.03e3,  # one period spans 3 frames
     'pulse_width': 1e-3,
