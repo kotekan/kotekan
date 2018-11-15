@@ -76,7 +76,7 @@ struct TestContext {
             error = true;
             ERROR("test_restclient: rq_callback_json: json value" \
                   "'test' should be 'failed', but was '%s'.",
-                  js["test"]);
+                  js["test"].dump().c_str());
         }
     }
 
