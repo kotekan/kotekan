@@ -62,7 +62,7 @@ vis_buffer:
     num_prod: 2048
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
-    num_prod: 55
+    num_prod: 66
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
@@ -134,7 +134,7 @@ stacking:
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
-  exclude_inputs: [46, 142, 688, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034]
+  exclude_inputs: [46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034]
   num_threads: 2
   cpu_affinity: [2, 3]
 
@@ -154,7 +154,7 @@ timing_subset:
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_timing
   prod_subset_type: only_inputs
-  input_list: [46, 142, 688, 960, 1058, 1166, 1314, 1543, 2032, 2034]
+  input_list: [46, 142, 688, 944, 960, 1058, 1166, 1314, 1543, 2032, 2034]
 
 # Generate the monitoring freq full N^2 stream
 mfreq_subset:
