@@ -51,6 +51,7 @@ void eigenVis::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int num_elements;
     bool initialized = false;
+    size_t lapack_failure_total = 0;
 
     // Memory for LAPACK interface.
     std::vector<cfloat> vis_square;
@@ -147,7 +148,18 @@ void eigenVis::main_thread() {
         DEBUG("LAPACK exit status: %d", info);
         if (info) {
             ERROR("LAPACK failed with exit code %d", info);
-            break;
+            lapack_failure_total++;
+
+            // Output prometheus metric about LAPACK failures
+            std::string labels = fmt::format(
+                "freq_id=\"{}\",dataset_id=\"{}\"",
+                freq_id, input_frame.dataset_id
+            );
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_eigenvis_lapack_failure_total",
+                unique_name, lapack_failure_total, labels
+            );
+            continue;
         }
 
         // Update the stored eigenvectors for the next iteration.

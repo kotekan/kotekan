@@ -8,6 +8,7 @@
 #define VIS_WRITER_HPP
 
 #include <cstdint>
+#include <future>
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -59,12 +60,13 @@
  *                          write into a file.
  * @conf   window           Int (default 20). Number of samples to keep active
  *                          for writing at any time.
+ * @conf   use_dataset_manager Bool (default:false). Use the dataset manager.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
+ * @metric kotekan_dataset_manager_dropped_frame_count
  *         The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
@@ -112,11 +114,11 @@ protected:
     Buffer * in_buf;
 
     /// Dataset ID of current stream
-    dset_id dataset;
+    dset_id_t ds_id;
 
     /// State ID for the internal datasetState used if the datasetManager is not
     /// being used externally
-    state_id writer_dstate;
+    state_id_t writer_dstate;
 
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
@@ -127,19 +129,28 @@ protected:
     // Number of eigenvectors to write out
     size_t num_ev;
 
-    /// Number of products to write
-    size_t num_vis;
+    /// Mutex for updating file_bundle (used in for visCalWriter)
+    std::mutex write_mutex;
 
-    /// Frequency IDs that we are expecting
-    std::map<uint32_t, uint32_t> freq_id_map;
+private:
+    /// Gets states from the dataset manager and saves some metadata
+    void change_dataset_state();
+
+    /// Number of products to write and freqency map
+    std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>
+    future_metadata;
 
     /// Keep track of the average write time
     movingAverage write_time;
 
-    uint32_t dropped_frame_count = 0;
+    /// Counts per freq ID and per dset ID
+    std::map<std::pair<dset_id_t, uint32_t>, uint64_t> dropped_frame_count;
 
-    /// Mutex for updating file_bundle (used in for visCalWriter)
-    std::mutex write_mutex;
+    /// Frequency IDs that we are expecting
+    std::map<uint32_t, uint32_t> _freq_id_map;
+
+    /// number of products
+    size_t _num_vis;
 };
 
 /**
@@ -196,7 +207,7 @@ protected:
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
+ * @metric kotekan_dataset_manager_dropped_frame_count
  *         The number of frames dropped while attempting to write.
  *
  * @author Tristan Pinsonneault-Marotte

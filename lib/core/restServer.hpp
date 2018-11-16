@@ -303,7 +303,7 @@ private:
     std::shared_timed_mutex callback_map_lock;
 
     /// The libevent base
-	struct event_base *event_base = nullptr;
+    struct event_base *event_base = nullptr;
 
     /// The libevent HTTP server object
     struct evhttp *ev_server = nullptr;
