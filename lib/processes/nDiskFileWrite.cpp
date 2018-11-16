@@ -150,7 +150,7 @@ void nDiskFileWrite::main_thread() {
 void nDiskFileWrite::file_write_thread(int disk_id) {
 
     int fd;
-    uint64_t file_num = disk_id;
+    size_t file_num = disk_id;
     int frame_id = disk_id;
     uint8_t * frame = NULL;
 
