@@ -192,11 +192,18 @@ void visWriter::main_thread() {
 
             // Increase metric count if we dropped a frame at write time
             if(error) {
+                auto key = std::make_pair(frame.dataset_id, frame.freq_id);
+                // Relies on the fact that insertion zero intialises
+                dropped_frame_count[key] += 1;
+                std::string labels = fmt::format("freq_id=\"{}\"," \
+                                                 "dataset_id=\"{}\"",
+                                                 frame.freq_id,
+                                                 frame.dataset_id);
                 prometheusMetrics::instance().add_process_metric(
                             "kotekan_viswriter_dropped_frame_total",
-                            unique_name, ++dropped_frame_count,
-                            "freq_id=\"" + std::to_string(frame.freq_id) + "\""
-                );
+                            unique_name,
+                            dropped_frame_count.at(key),
+                            labels);
             }
 
             // Update average write time in prometheus
