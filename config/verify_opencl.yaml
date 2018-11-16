@@ -83,7 +83,7 @@ gpu:
   log_level: debug2
   commands:
   - name: clInputData
- # - name: clPresumZero
+#  - name: clPresumZero
   - name: clOutputDataZero
 #  - name: clPresumKernel
 #  - name: clPreseedKernel

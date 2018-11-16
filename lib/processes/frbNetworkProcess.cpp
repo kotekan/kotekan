@@ -316,7 +316,6 @@ void frbNetworkProcess::main_thread()
         frame_id = ( frame_id + 1 ) % in_buf->num_frames;
         count++;
     }
-
     return;
 }
 

@@ -7,7 +7,7 @@ headers = {'Content-type': 'application/json'}
 
 r = []
 json_data = []
-n_gpus = 1
+n_gpus = 4
 
 for gpu_id in range(0,n_gpus):
     r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id)))
@@ -35,10 +35,10 @@ for gpu_id in range(0,n_gpus):
     copy_outs[gpu_id].append(["Total:", '%.6f' % json_data[gpu_id]["copy_out_total_time"], '%.4f' % (json_data[gpu_id]["copy_out_utilization"]*100) + "%"])
 
 for gpu_id in range(0,n_gpus):
-    print "| -------- GPU[" + str(gpu_id) + "] Kernel timing --------"
-    print tabulate(kernels[gpu_id], headers=["Kernel name", "time", "utilization"], tablefmt='orgtbl')
-    print "| -------- Host->GPU DMA timing --------"
-    print tabulate(copy_ins[gpu_id], headers=["Copy in name", "time", "utilization"], tablefmt='orgtbl')
-    print "| -------- GPU->Host DMA timing --------"
-    print tabulate(copy_outs[gpu_id], headers=["Copy out (GPU->host)", "time", "utilization"], tablefmt='orgtbl')
-    print ""
+    print("| -------- GPU[" + str(gpu_id) + "] Kernel timing --------")
+    print(tabulate(kernels[gpu_id], headers=["Kernel name", "time", "utilization"], tablefmt='orgtbl'))
+    print("| -------- Host->GPU DMA timing --------")
+    print(tabulate(copy_ins[gpu_id], headers=["Copy in name", "time", "utilization"], tablefmt='orgtbl'))
+    print("| -------- GPU->Host DMA timing --------")
+    print(tabulate(copy_outs[gpu_id], headers=["Copy out (GPU->host)", "time", "utilization"], tablefmt='orgtbl'))
+    print("")

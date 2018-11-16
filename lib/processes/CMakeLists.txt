@@ -24,6 +24,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               accumulate.cpp
               bufferStatus.cpp
               bufferSend.cpp
+              bufferRecv.cpp
               simpleAutocorr.cpp
               freqSlicer.cpp
               prodSubset.cpp
@@ -51,9 +52,6 @@ if (${USE_AIRSPY})
 endif ()
 if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
-endif ()
-if (${USE_EVENT})
-    set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} bufferRecv.cpp)
 endif ()
 
 # HDF5 stuff

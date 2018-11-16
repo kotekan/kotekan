@@ -103,8 +103,6 @@ if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
   add_definitions(-DWITH_OPENCL)
-  # Required for some CentOS gcc version
-  add_definitions(-D__STDC_FORMAT_MACROS)
   set(GPU_MODULES ${GPU_MODULES} "OpenCL")
 endif ()
 MESSAGE("GPU Modules Included: " ${GPU_MODULES})
@@ -161,9 +159,6 @@ endif()
 find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
-# Required for some SSE/AVX intrinsics
-add_definitions(-D__STDC_LIMIT_MACROS)
 
 # Note that -lrt here is needed on some versions of CentOS
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
