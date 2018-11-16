@@ -15,6 +15,7 @@
 #include "util.h"
 #include "visUtil.hpp"
 #include "visBuffer.hpp"
+#include "datasetManager.hpp"
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.
@@ -51,6 +52,11 @@
  *                          mode 'test_pattern_freq'.
  * @conf  freq_values       Array of CFloat. Values for the frequency IDs in
  *                          mode 'test_pattern_freq'.
+ * @conf  use_dataset_manager   Bool. If this is `True`, the dataset manager
+ *                              is used (default False).
+ * @conf  dataset_id        Int. Use a fixed dataset ID. If not set,
+ *                          `use_dataset_manager` is `True`, the dataset
+ *                          manager will create the dataset ID.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -170,6 +176,10 @@ private:
 
     /// Fill non vis components. A helper for the fill_mode functions.
     void fill_non_vis(visFrameView& frame);
+
+    // Use a fixed (configured) dataset ID in the output frames
+    bool _fixed_dset_id;
+    dset_id_t _dset_id;
 };
 
 

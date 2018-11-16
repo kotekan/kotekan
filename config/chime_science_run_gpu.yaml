@@ -37,6 +37,11 @@ cpu_affinity: [2,3,8,9]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]
+use_dataset_manager: True
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: "10.1.50.11" # recv1
 
 # Constants
 sizeof_float: 4
@@ -192,8 +197,23 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_merge:
     kotekan_buffer: vis
+  # Buffers for gated
+  visbuf_psr0_5s_0:
+    kotekan_buffer: vis
+  visbuf_psr0_5s_1:
+    kotekan_buffer: vis
+  visbuf_psr0_5s_2:
+    kotekan_buffer: vis
+  visbuf_psr0_5s_3:
+    kotekan_buffer: vis
+  visbuf_psr0_5s_merge:
+    kotekan_buffer: vis
   # Increase the buffer depth for the pre-send buffers
   visbuf_5s_26m:
+    kotekan_buffer: vis
+    num_prod: 4096
+    num_frames: 10 * buffer_depth
+  visbuf_5s_psr0_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
@@ -818,26 +838,79 @@ pulsar:
 
 #### N2 GPU Post processing and Tx ####
 
+ # Updateable config for gating
+ updatable_config:
+   gating:
+     psr0_config:
+       kotekan_update_endpoint: "json"
+       enabled: false
+       # B0329 (2018/11/14)
+       pulsar_name: "B0329"
+       pulse_width: 0.0314
+       dm: 26.7641
+       rot_freq: 1.39954153872
+       t_ref: 58437.4583333332
+       phase_ref: 1446745468.8439252
+       coeff: [
+                3.428779943504219e-10,
+                0.0011253963075329334,
+                -1.1565642124857199e-07,
+                1.1347089844281842e-10,
+                1.1882399863116445e-13,
+                -1.0867680647236115e-16,
+                -7.594309559679319e-20,
+                5.042548967792808e-23,
+                2.745973613190195e-26,
+                -2.279050323988331e-29,
+                -1.1771713330451292e-32,
+                3.948826407949732e-35
+              ]
+
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   acc0:
     kotekan_process: visAccumulate
     in_buf: gpu_n2_output_buffer_0
     out_buf: visbuf_5s_0
+    gating:
+      psr0:
+        mode: pulsar
+        buf: visbuf_psr0_5s_0
+    updatable_config:
+      psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_process: visAccumulate
     in_buf: gpu_n2_output_buffer_1
     out_buf: visbuf_5s_1
+    gating:
+      psr0:
+        mode: pulsar
+        buf: visbuf_psr0_5s_1
+    updatable_config:
+      psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_process: visAccumulate
     in_buf: gpu_n2_output_buffer_2
     out_buf: visbuf_5s_2
+    gating:
+      psr0:
+        mode: pulsar
+        buf: visbuf_psr0_5s_2
+    updatable_config:
+      psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_process: visAccumulate
     in_buf: gpu_n2_output_buffer_3
     out_buf: visbuf_5s_3
+    gating:
+      psr0:
+        mode: pulsar
+        buf: visbuf_psr0_5s_3
+    updatable_config:
+      psr0: "/updatable_config/gating/psr0_config"
 
 ## Perform all extra time integration and calculate eigenvalues
+
 vis_merge_5s:
   kotekan_process: visMerge
   in_bufs:
@@ -846,6 +919,15 @@ vis_merge_5s:
     - visbuf_5s_2
     - visbuf_5s_3
   out_buf: visbuf_5s_merge
+
+vis_merge_gated_psr0:
+  kotekan_process: visMerge
+  in_bufs:
+    - visbuf_psr0_5s_0
+    - visbuf_psr0_5s_1
+    - visbuf_psr0_5s_2
+    - visbuf_psr0_5s_3
+  out_buf: visbuf_psr0_5s_merge
 
 vis_int_10s:
   num_samples: 2
@@ -916,6 +998,14 @@ vis_debug:
   prod_subset_type: have_inputs
   input_list: [1225, 1521]  # 26m channels
 
+# Generate the 26m gated stream
+26m_psr0_subset:
+  kotekan_process: prodSubset
+  in_buf: visbuf_psr0_5s_merge
+  out_buf: visbuf_psr0_5s_26m
+  prod_subset_type: have_inputs
+  input_list: [1225, 1521]  # 26m channels
+
 ## End subsetting
 
 # Transmit all the data to the receiver node
@@ -929,6 +1019,10 @@ buffer_send:
     kotekan_process: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
+  26m_psr0:
+    kotekan_process: bufferSend
+    buf: visbuf_psr0_5s_26m
+    server_port: 11026
 
 buffer_status:
   kotekan_process: bufferStatus

@@ -255,7 +255,7 @@ class VisWriterBuffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir, file_type, freq_ids, in_buf=None):
+    def __init__(self, output_dir, file_type, freq_ids, in_buf=None, extra_config=None):
 
         self.name = 'viswriter_buf%i' % self._buf_ind
         process_name = 'write%i' % self._buf_ind
@@ -284,8 +284,9 @@ class VisWriterBuffer(OutputBuffer):
             'root_path': output_dir,
             'write_ev': True,
             'node_mode': False,
-            'freq_ids': freq_ids
+            'freq_ids': freq_ids,
         }
+        process_config.update(extra_config);
 
         self.process_block = {process_name: process_config}
 
