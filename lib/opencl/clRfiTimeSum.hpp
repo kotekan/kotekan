@@ -64,9 +64,7 @@ public:
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
     //Rest Server Callback
     void rest_callback(connectionInstance& conn, json& json_request);
-protected:
-    //Applies config parameters
-    void apply_config(const uint64_t& fpga_seq) override;
+
 private:
     //RFI parameters
     /// The kurtosis step (How many timesteps per kurtosis estimate)

@@ -11,13 +11,9 @@ output_beamform_incoh_result::~output_beamform_incoh_result()
 
 }
 
-void output_beamform_incoh_result::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
-}
-
 void output_beamform_incoh_result::build(device_interface &param_Device)
 {
-    apply_config(0);
+    gpu_command::apply_config();
     gpu_command::build(param_Device);
 }
 

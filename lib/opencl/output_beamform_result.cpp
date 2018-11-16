@@ -9,9 +9,7 @@ output_beamform_result::~output_beamform_result()
 {
 }
 
-void output_beamform_result::build(class device_interface &param_Device)
-{
-    apply_config(0);
+void output_beamform_result::build(class device_interface &param_Device) {
     gpu_command::build(param_Device);
 }
 

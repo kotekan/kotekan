@@ -12,9 +12,8 @@ public:
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent) override;
     virtual void cleanMe(int param_BufferID) override;
     virtual void freeMe() override;
-protected:
-    void apply_config(const uint64_t& fpga_seq) override;
 
+protected:
     cl_event * data_staged_event;
 };
 

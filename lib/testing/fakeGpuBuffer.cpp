@@ -50,9 +50,6 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
 fakeGpuBuffer::~fakeGpuBuffer() {
 }
 
-void fakeGpuBuffer::apply_config(uint64_t fpga_seq) {
-}
-
 void fakeGpuBuffer::main_thread() {
 
     int frame_count = 0, frame_id = 0;
@@ -134,6 +131,9 @@ void fakeGpuBuffer::main_thread() {
 
 void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number,
                                     chimeMetadata* metadata) {
+    // Parameters not used in this fill mode, suppress warning.
+    (void)frame_number;
+    (void)metadata;
 
     int nb1 = num_elements / block_size;
     int num_blocks = nb1 * (nb1 + 1) / 2;
@@ -173,6 +173,8 @@ void fakeGpuBuffer::fill_mode_lostsamples(int32_t* data, int frame_number,
 
 void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number,
                                          chimeMetadata* metadata) {
+    // Parameter not used in this fill mode, suppress warning.
+    (void)metadata;
 
     for(int i = 0; i < num_elements; i++) {
         for(int j = i; j < num_elements; j++) {
@@ -193,6 +195,9 @@ void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number,
 
 void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number,
                                        chimeMetadata* metadata) {
+    // Parameters not used in this fill mode, suppress warning.
+    (void)frame_number;
+    (void)metadata;
 
     std::random_device rd{};
     std::mt19937 gen{rd()};

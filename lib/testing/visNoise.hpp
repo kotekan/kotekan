@@ -34,8 +34,6 @@ public:
     // Main loop for the process
     void main_thread() override;
 
-    void apply_config(uint64_t fpga_seq) override;
-
 private:
 
     // random number generation

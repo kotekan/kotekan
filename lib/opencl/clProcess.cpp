@@ -51,10 +51,6 @@ clProcess::clProcess(Config& config_,
 
 }
 
-void clProcess::apply_config(uint64_t fpga_seq) {
-    _use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
-}
-
 clProcess::~clProcess() {
     delete factory;
     delete device;
@@ -62,7 +58,8 @@ clProcess::~clProcess() {
 
 void clProcess::main_thread()
 {
-    apply_config(0);
+    // Apply config.
+    _use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
 
     gpu_command * currentCommand;
     cl_event sequenceEvent;

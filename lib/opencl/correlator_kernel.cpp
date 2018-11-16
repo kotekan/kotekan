@@ -17,13 +17,9 @@ correlator_kernel::~correlator_kernel()
     clReleaseMemObject(id_y_map);
 }
 
-void correlator_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
-}
-
 void correlator_kernel::build(class device_interface& param_Device)
 {
-    apply_config(0);
+    gpu_command::apply_config();
     gpu_command::build(param_Device);
 
     cl_int err;

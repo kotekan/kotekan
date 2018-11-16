@@ -72,8 +72,6 @@ protected:
      * @param beamform_time The currently set beamform time determined in the execute method.
     **/
     void get_delays(float * phases, time_t beamform_time);
-    /// Calls apply_config in the base class, passing fpga_seq, and populates all the config file references into the protected scope variables of the class.
-    void apply_config(const uint64_t& fpga_seq) override;
 
     // phase data
     /// The phase bank array storing two arrays of phases that are alternatively enqueued based on the fraction remaining 

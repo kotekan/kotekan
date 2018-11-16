@@ -15,15 +15,15 @@ dataset::dataset(json& js) {
     _is_root = js["is_root"];
 }
 
-const bool dataset::is_root() const {
+bool dataset::is_root() const {
     return _is_root;
 }
 
-const state_id_t dataset::state() const {
+state_id_t dataset::state() const {
     return _state;
 }
 
-const dset_id_t dataset::base_dset() const {
+dset_id_t dataset::base_dset() const {
     return _base_dset;
 }
 
@@ -35,7 +35,7 @@ json dataset::to_json() const {
     return j;
 }
 
-const bool dataset::equals(dataset& ds) const {
+bool dataset::equals(dataset& ds) const {
     return _state == ds.state() && _base_dset == ds.base_dset()
             && _is_root == ds.is_root();
 }
@@ -127,13 +127,13 @@ dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
 // technically doesn't guarantee order of items in an object, but in
 // practice nlohmann::json ensures they are alphabetical by default. It
 // might also be a little slow as it requires full serialisation.
-const state_id_t datasetManager::hash_state(datasetState& state) const {
+state_id_t datasetManager::hash_state(datasetState& state) const {
     static std::hash<std::string> hash_function;
 
     return hash_function(state.to_json().dump());
 }
 
-const state_id_t datasetManager::hash_dataset(dataset& ds) const {
+state_id_t datasetManager::hash_dataset(dataset& ds) const {
     static std::hash<std::string> hash_function;
 
     return hash_function(ds.to_json().dump());

@@ -11,7 +11,6 @@ public:
                         bufferContainer &buffer_container);
     ~computeDualpolPower();
     void main_thread();
-    void apply_config(uint64_t fpga_seq);
 
 private:
     inline void fastSqSumVdif(unsigned char *data, uint *temp_buf, uint *output);

@@ -56,9 +56,6 @@ public:
   /// Destructor , cleaning local allocations
   virtual ~pulsarNetworkProcess();
   
-  /// Applies the config parameters
-  void apply_config(uint64_t fpga_seq) override;
-  
   /// main thread
   void main_thread() override;
 private:

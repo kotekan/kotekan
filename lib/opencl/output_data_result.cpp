@@ -9,9 +9,7 @@ output_data_result::~output_data_result()
 {
 }
 
-void output_data_result::build(device_interface &param_Device)
-{
-    apply_config(0);
+void output_data_result::build(device_interface &param_Device) {
     gpu_command::build(param_Device);
 }
 

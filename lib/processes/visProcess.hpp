@@ -56,8 +56,6 @@ public:
                 const string& unique_name,
                 bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     // Main loop for the process
     void main_thread();
 
@@ -99,8 +97,6 @@ public:
     visDebug(Config &config,
              const string& unique_name,
              bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq);
 
     void main_thread();
 
@@ -169,7 +165,6 @@ public:
                   const string& unique_name,
                   bufferContainer &buffer_container);
     ~visAccumulate();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 
 private:
@@ -225,8 +220,6 @@ public:
     visMerge(Config &config,
              const string& unique_name,
              bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq);
 
     // Main loop for the process
     void main_thread();
@@ -296,8 +289,6 @@ public:
              const string& unique_name,
              bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     void main_thread();
 
 private:
@@ -351,8 +342,6 @@ public:
     registerInitialDatasetState(Config &config,
                                 const string& unique_name,
                                 bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq) override;
 
     // Main loop for the process
     void main_thread() override;

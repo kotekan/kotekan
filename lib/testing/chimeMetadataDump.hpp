@@ -38,9 +38,6 @@ public:
     ///Destructor.
     ~chimeMetadataDump();
 
-    /// Re-parse config, not yet implemented.
-    void apply_config(uint64_t fpga_seq) override;
-
     /// Primary loop, which waits on input frames, prints the metadata.
     void main_thread() override;
 private:

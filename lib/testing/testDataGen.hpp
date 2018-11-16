@@ -46,7 +46,6 @@ public:
     testDataGen(Config& config, const string& unique_name,
                 bufferContainer &buffer_container);
     ~testDataGen();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     void rest_callback(connectionInstance& conn, nlohmann::json& request);

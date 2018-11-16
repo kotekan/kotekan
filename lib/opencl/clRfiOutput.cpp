@@ -11,8 +11,6 @@ clRfiOutput::~clRfiOutput()
 
 void clRfiOutput::build(device_interface &param_Device)
 {
-    //Apply config parameters
-    apply_config(0);
     //General GPU command build
     gpu_command::build(param_Device);
 }

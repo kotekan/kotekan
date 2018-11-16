@@ -15,7 +15,10 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         KotekanProcess(config, unique_name, buffer_container,
                      std::bind(&hsaProcess::main_thread, this)) {
 
-    apply_config(0);
+    // Get config values.
+    _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
+    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
+    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 
     final_signals.resize(_gpu_buffer_depth);
 
@@ -51,14 +54,6 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     factory = new hsaCommandFactory(config, unique_name, local_buffer_container, *device);
 
     endpoint = "/gpu_profile/" + std::to_string(gpu_id);
-}
-
-void hsaProcess::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-    _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
-    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
-
-    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 }
 
 hsaProcess::~hsaProcess() {

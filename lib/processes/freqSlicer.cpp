@@ -38,10 +38,6 @@ freqSplit::freqSplit(Config& config,
                 unique_name, "use_dataset_manager", false);
 }
 
-void freqSplit::apply_config(uint64_t fpga_seq) {
-
-}
-
 std::array<dset_id_t, 2>
 freqSplit::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
@@ -211,10 +207,6 @@ freqSubset::freqSubset(Config& config,
 
     _use_dataset_manager = config.get_default(
                 unique_name, "use_dataset_manager", false);
-}
-
-void freqSubset::apply_config(uint64_t fpga_seq) {
-
 }
 
 dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,

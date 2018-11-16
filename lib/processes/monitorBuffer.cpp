@@ -20,12 +20,7 @@ PROCESS_CONSTRUCTOR(monitorBuffer) {
 monitorBuffer::~monitorBuffer() {
 }
 
-void monitorBuffer::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void monitorBuffer::main_thread() {
-    apply_config(0);
 
     // Wait for, and drop full buffers
     while (!stop_thread) {

@@ -16,7 +16,6 @@ public:
                   bufferContainer &buffer_container);
     virtual ~beamformingPostProcess();
     void main_thread();
-    virtual void apply_config(uint64_t fpga_seq);
 
 private:
     void fill_headers(unsigned char * out_buf,

@@ -32,8 +32,6 @@ public:
 
     void results_thread();
 
-    virtual void apply_config(uint64_t fpga_seq);
-
     void profile_callback(connectionInstance& conn);
 
 private:

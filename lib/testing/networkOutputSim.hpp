@@ -17,8 +17,6 @@ public:
     virtual ~networkOutputSim();
     void main_thread();
 
-    virtual void apply_config(uint64_t fpga_seq);
-
 private:
     struct Buffer * buf;
     int num_links_in_group;

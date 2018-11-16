@@ -28,10 +28,6 @@ countCheck::countCheck(Config& config,
 
 }
 
-void countCheck::apply_config(uint64_t fpga_seq) {
-
-}
-
 void countCheck::main_thread() {
 
     unsigned int input_frame_id = 0;

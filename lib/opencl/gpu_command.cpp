@@ -36,8 +36,7 @@ char* gpu_command::get_name()
     return name;
 }
 
-void gpu_command::apply_config(const uint64_t& fpga_seq) {
-    (void)fpga_seq;
+void gpu_command::apply_config() {
     _num_adjusted_elements = config.get<int32_t>(
                 unique_name, "num_adjusted_elements");
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

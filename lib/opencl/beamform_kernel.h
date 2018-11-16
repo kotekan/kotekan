@@ -16,8 +16,6 @@ public:
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent) override;
 protected:
 
-    void apply_config(const uint64_t& fpga_seq) override;
-
     cl_mem device_mask;
 
     vector<int32_t> _element_mask;

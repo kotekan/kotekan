@@ -36,12 +36,7 @@ baselineCompression::baselineCompression(Config &config,
 
     err_count = 0;
 
-    apply_config(0);
-}
-
-
-void baselineCompression::apply_config(uint64_t fpga_seq) {
-
+    // Apply config.
     std::string stack_type = config.get<std::string>(unique_name, "stack_type");
     if(stack_type_defs.count(stack_type) == 0) {
         ERROR("unknown stack type %s", stack_type.c_str());
@@ -57,11 +52,11 @@ void baselineCompression::apply_config(uint64_t fpga_seq) {
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
-        throw std::invalid_argument("baselineCompression: apply_config: "
+        throw std::invalid_argument("baselineCompression: "
                                     "num_threads has to be at least 1.");
     if (in_buf->num_frames % num_threads != 0 ||
         out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("baselineCompression: apply_config: both "
+        throw std::invalid_argument("baselineCompression: both "
                                     "the size of the input and output buffer"
                                     "have to be multiples of num_threads.");
 }

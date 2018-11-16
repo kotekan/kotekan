@@ -29,22 +29,19 @@ void clRfiTimeSum::rest_callback(connectionInstance& conn, json& json_request) {
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
-void clRfiTimeSum::apply_config(const uint64_t& fpga_seq) {
+void clRfiTimeSum::build(device_interface &param_Device)
+{
+    //Lock callback mutex during build
+    std::lock_guard<std::mutex> lock(rest_callback_mutex);
+
     //Apply general config
-    gpu_command::apply_config(fpga_seq);
+    gpu_command::apply_config();
     //RFI config parameters
     _sk_step  = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _bad_inputs = config.get<std::vector<int32_t>>(unique_name, "bad_inputs");
     //Compute maske length
     mask_len = sizeof(uint8_t)*_num_elements;
-}
 
-void clRfiTimeSum::build(device_interface &param_Device)
-{
-    //Lock callback mutex during build
-    std::lock_guard<std::mutex> lock(rest_callback_mutex);
-    //Apply config paramters
-    apply_config(0);
     //Register Rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();

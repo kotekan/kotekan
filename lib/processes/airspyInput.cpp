@@ -27,10 +27,6 @@ airspyInput::~airspyInput() {
     airspy_exit();
 }
 
-void airspyInput::apply_config(uint64_t fpga_seq) {
-
-}
-
 void airspyInput::main_thread() {
     frame_id = 0;
     frame_loc = 0;

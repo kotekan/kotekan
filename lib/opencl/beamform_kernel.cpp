@@ -17,9 +17,9 @@ beamform_kernel::~beamform_kernel()
     clReleaseMemObject(device_mask);
 }
 
-void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
-
+void beamform_kernel::build(class device_interface& param_Device)
+{
+    // Apply config.
     _element_mask = config.get<std::vector<int32_t>>(
                 unique_name, "element_mask");
     _product_remap = config.get<std::vector<int32_t>>(
@@ -36,11 +36,6 @@ void beamform_kernel::apply_config(const uint64_t& fpga_seq) {
         _inverse_product_remap[_product_remap[i]] = i;
     }
     _scale_factor = config.get<uint32_t>(unique_name, "scale_factor");
-}
-
-void beamform_kernel::build(class device_interface& param_Device)
-{
-    apply_config(0);
 
     gpu_command::build(param_Device);
 

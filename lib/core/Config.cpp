@@ -41,9 +41,6 @@ template std::vector<std::complex<float>> Config::get(const string& base_path,
 Config::Config() {
 }
 
-Config::Config(const Config& orig) {
-}
-
 Config::~Config() {
     _json.clear();
 }

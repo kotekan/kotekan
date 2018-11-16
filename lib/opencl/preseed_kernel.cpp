@@ -14,7 +14,6 @@ preseed_kernel::~preseed_kernel()
 
 void preseed_kernel::build(class device_interface &param_Device)
 {
-    apply_config(0);
     gpu_command::build(param_Device);
 
     cl_int err;

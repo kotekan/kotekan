@@ -12,8 +12,6 @@ public:
     ~offset_kernel();
     virtual void build(device_interface &param_Device) override;
     virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
-protected:
-    void apply_config(const uint64_t& fpga_seq) override;
 };
 
 #endif // KERNELOFFSET_H

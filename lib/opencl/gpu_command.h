@@ -91,7 +91,7 @@ public:
      * base class such as checking that the buffer_ID is positive and is less than the number of frames in the buffer. 
      * @param param_bufferID        The bufferID associated with the GPU commands.
      * 
-     * @param fpga_seq              Passed to apply_config.    
+     * @param fpga_seq              Not passed to apply_config. What is it for?
      * 
      * @param param_Device          The instance of the current device the process is executing on.
      * 
@@ -105,7 +105,7 @@ public:
     /// Releases the memory of GPU resource allocation, events, and compiled GPU kernel.
     virtual void freeMe();
     /// Reads all the relevant config values out of the config file references into the protected scope variables of the class.
-    virtual void apply_config(const uint64_t &fpga_seq);
+    virtual void apply_config();
 protected:
     /// Compiled instance of the kernel that will execute on the GPU once enqueued.
     cl_kernel kernel;

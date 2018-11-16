@@ -17,9 +17,6 @@ constDataCheck::constDataCheck(Config& config,
 constDataCheck::~constDataCheck() {
 }
 
-void constDataCheck::apply_config(uint64_t fpga_seq) {
-}
-
 void constDataCheck::main_thread() {
 
     int frame_id = 0;

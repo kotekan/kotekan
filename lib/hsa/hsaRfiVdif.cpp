@@ -5,11 +5,10 @@ By: Jacob Taylor
 Date: August 2017
 File Purpose: Handles the kotekan GPU process for RFI removal in VDIF data.
 Details:
-	-Constructor: Applies config and sets up the Mean array
-	-apply_config: Gets values from config file and calculates buffer sizes
-	-execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
+    -Constructor: Applies config and sets up the Mean array
+    -execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
 Notes:
-	This process was designed to run on VDIF data.
+    This process was designed to run on VDIF data.
 
 **********************************************************************************/
 

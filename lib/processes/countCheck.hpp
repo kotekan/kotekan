@@ -42,8 +42,6 @@ public:
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     // Main loop for the process
     void main_thread();
 

@@ -31,7 +31,20 @@ pulsarPostProcess::pulsarPostProcess(Config& config_,
         KotekanProcess(config_, unique_name, buffer_container,
         std::bind(&pulsarPostProcess::main_thread, this)){
 
-    apply_config(0);
+    // Apply config.
+    _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
+    _samples_per_data_set = config.get<uint32_t>(unique_name,
+                                                 "samples_per_data_set");
+    _num_pulsar = config.get<uint32_t>(unique_name, "num_beams");
+    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
+    _timesamples_per_pulsar_packet = config.get<uint32_t>(
+                unique_name, "timesamples_per_pulsar_packet");
+    _udp_pulsar_packet_size = config.get<uint32_t>(unique_name,
+                                                   "udp_pulsar_packet_size");
+    _num_packet_per_stream = config.get<uint32_t>(unique_name,
+                                                  "num_packet_per_stream");
+    _num_stream = config.get<uint32_t>(unique_name, "num_stream");
+
     assert (_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
@@ -93,21 +106,6 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
             time_now->tv_nsec = time_now->tv_nsec % 1000000000;
         }
     } //end packet
-}
-
-void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
-    _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
-    _samples_per_data_set = config.get<uint32_t>(unique_name,
-                                                 "samples_per_data_set");
-    _num_pulsar = config.get<uint32_t>(unique_name, "num_beams");
-    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
-    _timesamples_per_pulsar_packet = config.get<uint32_t>(
-                unique_name, "timesamples_per_pulsar_packet");
-    _udp_pulsar_packet_size = config.get<uint32_t>(unique_name,
-                                                   "udp_pulsar_packet_size");
-    _num_packet_per_stream = config.get<uint32_t>(unique_name,
-                                                  "num_packet_per_stream");
-    _num_stream = config.get<uint32_t>(unique_name, "num_stream");
 }
 
 void pulsarPostProcess::main_thread() {

@@ -35,7 +35,7 @@ using std::vector;
 class Config {
 public:
     Config();
-    Config(const Config& orig);
+
     virtual ~Config();
 
     /**

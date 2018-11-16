@@ -18,8 +18,6 @@ eigenVis::eigenVis(Config& config,
                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
-    apply_config(0);
-
     input_buffer = get_buffer("in_buf");
     register_consumer(input_buffer, unique_name.c_str());
     output_buffer = get_buffer("out_buf");
@@ -40,9 +38,6 @@ eigenVis::eigenVis(Config& config,
 }
 
 eigenVis::~eigenVis() {
-}
-
-void eigenVis::apply_config(uint64_t fpga_seq) {
 }
 
 void eigenVis::main_thread() {

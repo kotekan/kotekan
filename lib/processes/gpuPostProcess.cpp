@@ -28,7 +28,6 @@ gpuPostProcess::gpuPostProcess(Config& config_,
         bufferContainer &buffer_container) :
         KotekanProcess(config_, unique_name, buffer_container,
                        std::bind(&gpuPostProcess::main_thread, this)) {
-    apply_config(0);
 
     out_buf = get_buffer("chrx_out_buf");
     gate_buf = get_buffer("gate_out_buf");
@@ -49,7 +48,10 @@ gpuPostProcess::~gpuPostProcess() {
     free(in_buf);
 }
 
-void gpuPostProcess::apply_config(uint64_t fpga_seq) {
+// TODO, this needs a re-factor to reduce complexity.
+void gpuPostProcess::main_thread() {
+
+    // Apply config.
     _num_elem = config.get<int32_t>(unique_name, "num_elements");
     _num_total_freq = config.get<int32_t>(unique_name, "num_total_freq");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
@@ -76,12 +78,6 @@ void gpuPostProcess::apply_config(uint64_t fpga_seq) {
     for (uint32_t i = 0; i < _product_remap.size(); ++i) {
         _product_remap_c[i] = _product_remap[i];
     }
-}
-
-// TODO, this needs a re-factor to reduce complexity.
-void gpuPostProcess::main_thread() {
-
-    apply_config(0);
 
     int out_buffer_ID = 0;
     int frame_number = 0;
