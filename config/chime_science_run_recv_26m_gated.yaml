@@ -134,7 +134,12 @@ stacking:
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
-  exclude_inputs: [46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034]
+  exclude_inputs: [
+    46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034,
+    221, 222, 384, 385, 386, 387, 424, 425, 426, 427, 552, 553, 644, 645,    # Cable swaps feeds (and following lines)
+    646, 647, 650, 651, 672, 673, 674, 675, 682, 683, 906, 907, 1134, 1135,
+    1910, 1911, 1950, 1951
+  ]
   num_threads: 2
   cpu_affinity: [2, 3]
 
