@@ -129,7 +129,7 @@ public:
     /**
      * @brief Checks if a value exists at the given location "base_path" + "name"
      *
-     * @param base_path JSON pointer string were the value should be serched for.
+     * @param base_path JSON pointer string were the value should be searched for.
      * @param name The name of the value (the key)
      * @return true if the key exists in the path, and false otherwise.
      */
@@ -208,7 +208,7 @@ public:
      *
      * The HASH is based on the json string dump with no spaces or newlines
      *
-     * Only avaibile if OpenSSL was installed on a system,
+     * Only available if OpenSSL was installed on a system,
      * so wrap any uses in @c #ifdef WITH_SSL
      *
      * @return The MD5sum as 32 char hex std::string
@@ -218,7 +218,7 @@ public:
 
     /**
      * @brief Returns the full json data structure (for internal framework use)
-     * @warn This shouldn't be called outside of the core freamwork
+     * @warn This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
     json &get_full_config_json();

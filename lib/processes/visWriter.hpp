@@ -141,7 +141,8 @@ private:
     /// Keep track of the average write time
     movingAverage write_time;
 
-    uint32_t dropped_frame_count = 0;
+    /// Counts per freq ID and per dset ID
+    std::map<std::pair<dset_id_t, uint32_t>, uint64_t> dropped_frame_count;
 
     /// Frequency IDs that we are expecting
     std::map<uint32_t, uint32_t> _freq_id_map;

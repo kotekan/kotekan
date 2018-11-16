@@ -108,7 +108,7 @@ void KotekanProcess::join() {
             ERROR("*** EXIT_FAILURE *** The process %s failed to exit (join thread timeout) after %d seconds.",
                   unique_name.c_str(), join_timeout);
             ERROR("If the process needs more time to exit, please set the config value `join_timeout` for that korekan_process");
-            std::exit(EXIT_FAILURE);
+            std::abort();
         }
     }
 }

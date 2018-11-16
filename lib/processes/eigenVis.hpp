@@ -14,7 +14,7 @@
  * @class eigenVis
  * @brief Perform eigen factorization of the visibilities
  *
- * This task performs the factorization of the visibility matrix into 
+ * This task performs the factorization of the visibility matrix into
  * ``num_ev`` eigenvectors and eigenvalues and stores them in reserve space
  * in the ``visBuffer``. They are stored in descending order of the eigenvalue.
  *
@@ -46,6 +46,9 @@
  *         ~10 samples.
  * @metric kotekan_eigenvis_eigenvalue
  *         The value of each eigenvalue calculated, or the RMS.
+ * @metric kotekan_eigenvis_lapack_failure_total
+ *         The number of frames skipped due to LAPACK failing (because of bad input data
+ *         or other reasons).
  *
  * @author Kiyoshi Masui
  */

@@ -30,6 +30,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               prodSubset.cpp
               countCheck.cpp
               visProcess.cpp
+              visAccumulate.cpp
               visCompression.cpp
               timeDownsample.cpp
               frbPostProcess.cpp
@@ -97,5 +98,10 @@ if (${USE_LAPACK})
   include_directories (${OpenBLAS_INCLUDE_DIRS} ${LAPACK_INCLUDE_DIRS})
   target_link_libraries ( kotekan_processes  ${OpenBLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 endif ()
+
+# Add atomic for building against GCC
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    target_link_libraries ( kotekan_processes -latomic )
+endif()
 
 target_link_libraries( kotekan_processes kotekan_utils kotekan_core )

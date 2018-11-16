@@ -9,6 +9,7 @@
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "KotekanProcess.hpp"
+#include "pulsarTiming.hpp"
 
 
 /**
@@ -39,9 +40,18 @@
  *                              methods below.
  * @conf  wait                  Bool. Sleep to try and output data at roughly
  *                              the correct cadence.
- * @conf  num_frames            Exit after num_frames have been produced. If
+ * @conf  num_frames            Int. Exit after num_frames have been produced. If
  *                              less than zero, no limit is applied. Default
  *                              is `-1`.
+ * @conf  dm                    Float. Dispersion measure of pulsar (cm^-3 pc).
+ * @conf  t_ref                 Float. Reference time for polyco in MJD (days).
+ * @conf  phase_ref             Float. Reference phase for polyco (number of
+ *                              rotations).
+ * @conf  rot_freq              Float. Rotation frequency of the pulsar (Hz).
+ * @conf  pulse_width           Float. Width of the pulse (s).
+ * @conf  coeff                 List of floats. Polynomial coeffecients for
+ *                              pulsar mode. Use Tempo convention.
+ * @conf  gaussian_bgnd         Bool. Fill background with gaussian noise.
  *
  * @warning The `stream_id_t` in the metadata is likely to be invalid as it is
  *          generated only such that it is decoded back to the input frequency
@@ -89,7 +99,7 @@ public:
      *
      * Fill each element with its full correlation index (real = row; column =
      * imag), with real and imaginary parts being shifted every 4th frame.
-     * 
+     *
      * Overall this mode should average to (row + column * J) and the
      * inverse variance should be num_gpu_frames / 8.
      *
@@ -104,13 +114,26 @@ public:
      * @brief Fill with a pattern with Gaussian noise with radiometer variance.
      *
      * The underlying inputs are uncorrelated with variance of 1.
-     * 
+     *
      * @param data      The output frame data to fill.
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
     void fill_mode_gaussian(int32_t* data, int frame_num,
                             chimeMetadata* metadata);
+
+    /**
+     * @brief Fill with pulsar pulses.
+     *
+     * The phase of the pulses will be calculated from the polyco
+     * provided in the config. Gaussian noise can be added as a background.
+     *
+     * @param data      The output frame data to fill.
+     * @param frame_num Number of the frame to fill.
+     * @param metadata  Metadata of the frame.
+     */
+    void fill_mode_pulsar(int32_t* data, int frame_num,
+                          chimeMetadata* metadata);
 private:
 
     Buffer* out_buf;
@@ -124,6 +147,12 @@ private:
     bool pre_accumulate;
     bool wait;
     int32_t num_frames;
+    std::vector<float> coeff;
+    float dm;
+    float pulse_width;  // in s
+    float rot_freq; // in Hz
+    Polyco * polyco;
+    bool gaussian_bgnd;
 
     // Function pointer for fill modes
     typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int, chimeMetadata *);
