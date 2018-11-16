@@ -84,40 +84,18 @@ void copy_vis_triangle(
     size_t block, size_t N, gsl::span<cfloat> output
 ) {
 
-    size_t pi = 0;
-    uint32_t bi;
-    uint32_t ii, jj;
-    float i_sign;
-    bool no_flip;
+    auto copyfunc  = [&](int32_t pi, int32_t bi, bool conj) {
+        int i_sign = conj ? -1 : 1;
+        output[pi] = {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
+    };
 
-    if(*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
-        throw std::invalid_argument("Input map asks for elements out of range.");
-    }
-
-    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
-        for(auto j = i; j != inputmap.end(); j++) {
-
-            // Account for the case when the reordering means we should be
-            // indexing into the lower triangle, by flipping into the upper
-            // triangle and conjugating.
-            no_flip = *i <= *j;
-            ii = no_flip ? *i : *j;
-            jj = no_flip ? *j : *i;
-            i_sign = no_flip ? 1.0 : -1.0;
-
-            bi = prod_index(ii, jj, block, N);
-
-            // IMPORTANT: for some reason the buffers are packed as imaginary
-            // *then* real so we need to account for that here.
-            output[pi] = {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
-            pi++;
-        }
-    }
+    map_vis_triangle(inputmap, block, N, 0, copyfunc);
 }
 
 // Apply a function over the visibility triangle
 void map_vis_triangle(const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
+    size_t block, size_t N, uint32_t freq,
+    std::function<void(int32_t, int32_t, bool)> f
 ) {
 
     size_t pi = 0;
@@ -129,8 +107,12 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap,
         throw std::invalid_argument("Input map asks for elements out of range.");
     }
 
-    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
-        for(auto j = i; j != inputmap.end(); j++) {
+    uint32_t num_blocks1 = ((N - 1) / block) + 1;  // Blocks per side
+    uint32_t num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
+    uint32_t offset = freq * num_blocks2 * block * block; // Offset due to freq
+
+    for (auto i = inputmap.begin(); i != inputmap.end(); i++) {
+        for (auto j = i; j != inputmap.end(); j++) {
 
             // Account for the case when the reordering means we should be
             // indexing into the lower triangle, by flipping into the upper
@@ -139,7 +121,7 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap,
             ii = no_flip ? *i : *j;
             jj = no_flip ? *j : *i;
 
-            bi = prod_index(ii, jj, block, N);
+            bi = offset + prod_index(ii, jj, block, N);
 
             f(pi, bi, !no_flip);
 

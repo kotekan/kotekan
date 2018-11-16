@@ -1,13 +1,13 @@
 ##########################################
 #
-# chime_science_run_recv.yaml
+# chime_science_run_recv_26m.yaml
 #
 # CHIME receiver node configuration used in the mid-November 2018 run.
-# This configuration turns off saving of the 26m datasets.
+# This configuration includes saving of the 26m datasets (no gating).
 #
-# For the N2 data it includes, 10 second calibration data,
-# full triangles for 10 frequencies at 10 seconds, and stacked
-# data over all frequencies.
+# For the N2 data it includes 5 second 26m baselines,
+# 10 second calibration data, full triangles for 10 frequencies
+# at 10 seconds, and stacked data over all frequencies.
 #
 # Author: Richard Shaw
 #
@@ -203,10 +203,10 @@ archive_writers:
     in_buf: visbuf_10s_stack
     instrument_name: chimestack
 
-#  26m:
-#    kotekan_process: visWriter
-#    in_buf: visbuf_5s_26m
-#    instrument_name: chime26m
+  26m:
+    kotekan_process: visWriter
+    in_buf: visbuf_5s_26m
+    instrument_name: chime26m
 
 #  26m_gated:
 #    kotekan_process: visWriter

@@ -17,7 +17,6 @@
 #include "visUtil.hpp"
 #include "datasetManager.hpp"
 
-
 /**
  * @class visTransform
  * @brief Merge a set of GPU buffers into a single visBuffer stream.
@@ -114,91 +113,6 @@ private:
     std::map<fd_pair, uint64_t> frame_counts;
 };
 
-
-/**
- * @class visAccumulate
- * @brief Accumulate the high rate GPU output into integrated visBuffers.
- *
- * This process will accumulate the GPU output and calculate the within sample
- * variance for weights.
- * It tags the stream with a properly allocated dataset_id if
- * `use_dataset_manager` is `true` and adds
- * associated datasetStates to the datasetManager. It adds an empty stackState
- * to the dataset (as in not stacked).
- *
- * @par Buffers
- * @buffer in_buf
- *         @buffer_format GPU packed upper triangle
- *         @buffer_metadata chimeMetadata
- * @buffer out_buf The accumulated and tagged data.
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
- *
- * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
- *                              been integrated for.
- * @conf  num_gpu_frames        Int. The number of GPU frames to accumulate over.
- * @conf  integration_time      Float. Requested integration time in seconds.
- *                              This can be used as an alterative to
- *                              `num_gpu_frames` (which it overrides).
- *                              Internally it picks the nearest acceptable value
- *                              of `num_gpu_frames`.
- * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
- *                              correlator data.
- * @conf  minimum_fraction      Float. The minimum number of samples a frame needs to
- *                              be generated. Frames with less than this will be
- *                              skipped and not added into the buffer. Specified as a
- *                              fraction of the total number of expected samples (default=1%).
- * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                Int. The number of eigenvectors to be stored
- * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the index of
- *                              the input to move into this new location. The remaining elements of the
- *                              subarray are for correctly labelling the input in ``visWriter``.
- * @conf  instrument_name       String. Name of the instrument. Default "chime".
- * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
- *                              Default 0..1023.
- *
- * @metric kotekan_dataset_manager_dropped_frame_count
- *                      The number of frames dropped while attempting to write.
- *
- * @author Richard Shaw
- */
-class visAccumulate : public KotekanProcess {
-public:
-    visAccumulate(Config& config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
-    ~visAccumulate();
-    void apply_config(uint64_t fpga_seq) override;
-    void main_thread() override;
-
-private:
-    /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
-    /// prodState, inputState and freqState according to config and an empty
-    /// stackState
-    dset_id_t change_dataset_state();
-
-    // Buffers to read/write
-    Buffer* in_buf;
-    Buffer* out_buf;
-
-    // Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
-    size_t samples_per_data_set, num_gpu_frames;
-    double minimum_fraction;
-
-    // The mapping from buffer element order to output file element ordering
-    std::vector<uint32_t> input_remap;
-
-    // dataset ID written to output frames
-    dset_id_t _ds_id_out;
-
-    // data saved to register dataset states
-    std::string _instrument_name;
-    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
-    std::vector<input_ctype> _inputs;
-    std::vector<prod_ctype> _prods;
-};
 
 /**
  * @class visMerge

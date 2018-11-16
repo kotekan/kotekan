@@ -1,12 +1,14 @@
 ##########################################
 #
-# chime_science_run_recv_no_26m.yaml
+# chime_science_run_recv_26m_gated.yaml
 #
-# CHIME receiver node configuration used in the August 2018 run.
-# This configuration turns off saving of the 26m datasets.
+# CHIME receiver node configuration used in the mid-November 2018 run.
+# This configuration includes saving of the 26m datasets
+# (with gating enabled).
 #
-# For the N2 data it includes 10 second calibration data, full triangles
-# for 10 frequencies at 10 seconds, and stacked data over all frequencies.
+# For the N2 data it includes 5 second 26m baselines,
+# 10 second calibration data, full triangles for 10 frequencies
+# at 10 seconds, and stacked data over all frequencies.
 #
 # Author: Richard Shaw
 #
@@ -88,10 +90,14 @@ buffer_recv:
     listen_port: 11024
     cpu_affinity: [0, 8]
     num_threads: 2
-  26m:
+#  26m:
+#    kotekan_process: bufferRecv
+#    buf: visbuf_5s_26m
+#    listen_port: 11025
+  26m_gated:
     kotekan_process: bufferRecv
     buf: visbuf_5s_26m
-    listen_port: 11025
+    listen_port: 11026
 
 apply_flags:
   kotekan_process: receiveFlags
@@ -182,6 +188,7 @@ buffer_writers:
     dir_name: timing
 
 archive_writers:
+
   file_length: 512
   file_type: raw
   write_ev: False
@@ -200,9 +207,12 @@ archive_writers:
 #  26m:
 #    kotekan_process: visWriter
 #    in_buf: visbuf_5s_26m
-#    prod_subset_type: have_inputs
-#    input_list: [1225, 1521]
 #    instrument_name: chime26m
+
+  26m_gated:
+    kotekan_process: visWriter
+    in_buf: visbuf_5s_26m
+    instrument_name: chime26mgated
 
   cal:
     kotekan_process: visWriter
@@ -215,6 +225,7 @@ archive_writers:
     kotekan_process: visWriter
     in_buf: visbuf_10s_timing
     instrument_name: chimetiming
+
 
 # Transmit part of the stack to the recv1 for testing
 #buffer_send:
