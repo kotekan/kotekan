@@ -196,7 +196,7 @@ archive_writers:
 
   file_length: 512
   file_type: raw
-  write_ev: False
+  write_ev: True
   root_path: /data/untransposed/
 
   n2_mf:
@@ -223,13 +223,13 @@ archive_writers:
     kotekan_process: visWriter
     in_buf: visbuf_10s_cal
     instrument_name: chimecal
-    write_ev: True
     file_length: 256
 
   timing:
     kotekan_process: visWriter
     in_buf: visbuf_10s_timing
     instrument_name: chimetiming
+    write_ev: False
 
 
 # Transmit part of the stack to the recv1 for testing
