@@ -10,7 +10,6 @@
 #include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
 #include "hsaDeviceInterface.hpp"
-#include "hsaCommandFactory.hpp"
 #include "hsaCommand.hpp"
 #include "signalContainer.hpp"
 #include "bufferContainer.hpp"
@@ -40,7 +39,7 @@ private:
 
     vector<signalContainer> final_signals;
 
-    hsaCommandFactory * factory;
+//    hsaCommandFactory * factory;
     hsaDeviceInterface * device;
 
     std::thread results_thread_handle;
@@ -60,7 +59,7 @@ private:
     std::string endpoint;
 
 
-    vector<clCommand *> commands;
+    vector<hsaCommand *> commands;
 };
 
 #endif

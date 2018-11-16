@@ -8,9 +8,9 @@ hsaCommand::hsaCommand(
         Config& config_,
         const string &unique_name_,
         bufferContainer &host_buffers_,
-        hsaDeviceInterface& device_),
+        hsaDeviceInterface& device_,
         const string &default_kernel_command,
-        const string &default_kernel_file_name :
+        const string &default_kernel_file_name) :
         kernel_command(default_kernel_command),
         kernel_file_name(default_kernel_file_name),
         config(config_),

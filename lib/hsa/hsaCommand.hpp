@@ -9,7 +9,7 @@
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
 #include "hsaBase.h"
-#include "hsaCommandFactory.hpp"
+#include "factory.hpp"
 
 #include <stdio.h>
 #include <string>
@@ -139,8 +139,8 @@ protected:
 // Create a factory for hsaCommands
 CREATE_FACTORY(hsaCommand, //const string &, const string &,
                 Config &, const string &,
-                bufferContainer &, clDeviceInterface &);
-#define REGISTER_HSA_COMMAND(hsaCommand) REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
+                bufferContainer &, hsaDeviceInterface &);
+#define REGISTER_HSA_COMMAND(newCommand) REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
 
 
 #endif // GPU_COMMAND_H

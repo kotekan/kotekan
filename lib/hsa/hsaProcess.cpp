@@ -48,8 +48,9 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     device->set_log_level(s_log_level);
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
+    vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     for (uint32_t i = 0; i < cmds.size(); i++){
-        auto cmd = FACTORY(clCommand)::create_bare(cmds[i]["name"], config, unique_name, local_buffer_container, *device);
+        auto cmd = FACTORY(hsaCommand)::create_bare(cmds[i]["name"], config, unique_name, local_buffer_container, *device);
         commands.push_back(cmd);
     }
 
@@ -67,7 +68,7 @@ void hsaProcess::apply_config(uint64_t fpga_seq) {
 hsaProcess::~hsaProcess() {
     restServer::instance().remove_get_callback(endpoint);
 
-    for (auto command : list_commands) {
+    for (auto command : commands) {
         delete command;
     }
     delete device;
@@ -78,8 +79,6 @@ void hsaProcess::profile_callback(connectionInstance& conn) {
     DEBUG("Profile call made.");
 
     json reply;
-    // Move to this class?
-    vector<hsaCommand *> &commands = factory->get_commands();
 
     reply["copy_in"] = json::array();
     reply["kernel"] = json::array();
@@ -127,8 +126,6 @@ void hsaProcess::profile_callback(connectionInstance& conn) {
 
 void hsaProcess::main_thread()
 {
-    vector<hsaCommand *> &commands = factory->get_commands();
-
 //    using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
     rest_server.register_get_callback(endpoint,
@@ -190,9 +187,6 @@ void hsaProcess::main_thread()
 }
 
 void hsaProcess::results_thread() {
-
-    vector<hsaCommand *> &commands = factory->get_commands();
-
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
