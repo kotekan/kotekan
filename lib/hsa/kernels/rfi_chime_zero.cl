@@ -11,7 +11,8 @@ __kernel void
 rfi_chime_zero(
      __global uint *input,
      __global uchar *mask,
-     const uint sk_step
+     const uint sk_step,
+     uint rfi_zero_flag
 )
 {
     //Get work id's
@@ -22,7 +23,7 @@ rfi_chime_zero(
     //Compute current address in data
     uint address_input = gx + gy*gx_size*sk_step;
     //If we need to zero some data
-    if(mask[gy] == 1){
+    if(mask[gy] == 1 && rfi_zero_flag == 1){
         //Zero all of the data for sk_step timesteps
         for(int i = 0; i < sk_step; i++){
             input[address_input + i*gx_size] = 0x88888888;

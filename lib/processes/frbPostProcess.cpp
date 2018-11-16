@@ -69,7 +69,7 @@ void frbPostProcess::apply_config(uint64_t fpga_seq) {
     _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
     _factor_upchan_out = config.get<int32_t>(unique_name, "factor_upchan_out");
-    _nbeams = config.get<int32_t>(unique_name, "num_beams");
+    _nbeams = config.get<int32_t>(unique_name, "num_beams_per_frb_packet");
     _timesamples_per_frb_packet = config.get<int32_t>(
                 unique_name, "timesamples_per_frb_packet");
 
@@ -158,8 +158,8 @@ void frbPostProcess::main_thread() {
                 for (int b=0; b<_nbeams;b++){ //loop 4 beams / stream
                     int beam_id = stream*_nbeams + b;
                     //frb_header_beam_ids[b] = beam_id;
-		    //Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
-		    frb_header_beam_ids[b] = (beam_id)%256 + (int((beam_id)/256)*1000);
+                    //Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
+                    frb_header_beam_ids[b] = (beam_id)%256 + (int((beam_id)/256)*1000);
                     for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { //loop 4 GPUs (input)
                         float* in_data = ((float *)in_frame[thread_id]) + 
                                           (stream * _nbeams + b) * num_samples * _factor_upchan_out;

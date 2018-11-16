@@ -87,9 +87,6 @@ private:
   /// number of packets to each L1 nodes
   int packets_per_stream;
 
-  /// node id derived from the hostname 
-  int my_node_id;
-
   /// host name from the gethosename()
   char *my_host_name;
 

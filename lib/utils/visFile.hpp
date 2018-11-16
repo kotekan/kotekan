@@ -110,7 +110,7 @@ protected:
     virtual void create_file(
         const std::string& name,
         const std::map<std::string, std::string>& metadata,
-        dset_id dataset, size_t num_ev, size_t max_time) = 0;
+        dset_id_t dataset, size_t num_ev, size_t max_time) = 0;
 
     // Private constructor to discourage creation of subclasses outside of the
     // create routine

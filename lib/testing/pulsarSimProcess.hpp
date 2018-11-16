@@ -65,11 +65,8 @@ private:
 
     struct Buffer *pulsar_buf;
 
-    /// number of GPUs same as number of frequencies per node. c
+    /// number of GPUs same as number of frequencies per node.
     int32_t _num_gpus;
-
-    /// number of samples in each dataset
-    int32_t _samples_per_data_set;
 
     /// same as _num_gpus different variable is used just for convience.
     int32_t _nfreq_coarse;
@@ -80,17 +77,11 @@ private:
     /// number of polarizations. default: 2
     int32_t _num_pol;
 
-    /// time samples per packet. dafault: 3125
-    int32_t _timesamples_per_pulsar_packet;
-
     /// packet size default: 6288
     int32_t _udp_packet_size;
 
     /// header size of the VDIF packet. default 32
     int32_t _udp_header_size;
-
-    /// intended to use the cpu time in the header information. Presently not implemented  
-    struct timeval time_now;
 
     /// node id derived from the hostname 
     int my_node_id;

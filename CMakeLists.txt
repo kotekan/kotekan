@@ -5,6 +5,12 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 # This is required early on for some versions of GCC, do not remove.
 add_definitions(/D__STDC_FORMAT_MACROS)
 
+# This quiets a noisy cmake warning on newer versions,
+# triggered by some of our CMake/FindXYZ.cmake scripts.
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
+    cmake_policy(SET CMP0075 NEW)
+endif ()
+
 #optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
@@ -17,6 +23,8 @@ option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
+option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
+option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
 option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
@@ -96,7 +104,6 @@ if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
   include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
-  #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lOpenCL ")
   add_definitions(-DWITH_OPENCL)
   set(GPU_MODULES ${GPU_MODULES} "OpenCL")
 endif ()
@@ -170,7 +177,7 @@ if(${USE_OMP})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
@@ -208,6 +215,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
+
+
+# Improve debugging by turning off all optimisations.
+if (${SUPERDEBUG})
+    MESSAGE("Superdebugging enabled!!")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer ")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
+endif()
+
+# Turn on sanitizers for finding memory issues.
+if (${SANITIZE})
+    MESSAGE("Sanitization enabled!!")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address")
+endif()
+
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)

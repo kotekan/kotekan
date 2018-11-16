@@ -19,7 +19,7 @@ add_executable(kotekan ${SOURCE_EXE})
 
 target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
-target_link_libraries( kotekan libinclude )
+#target_link_libraries( kotekan libinclude )
 
 if (${USE_OPENCL})
     add_custom_target(kernel_opencl_copy
