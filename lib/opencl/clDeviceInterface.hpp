@@ -33,7 +33,6 @@ using std::map;
 #include "buffer.h"
 #include "kotekanLogging.hpp"
 
-
 #ifdef WITH_OPENCL
 
 #ifdef __APPLE__
@@ -45,11 +44,11 @@ using std::map;
 
 char* oclGetOpenCLErrorCodeStr(cl_int input);
 
-#define CHECK_CL_ERROR( err )                                      \
+#define CHECK_CL_ERROR( err )                                       \
     if ( err ) {                                                    \
-        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s",               \
+        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s", \
                 __FILE__, __LINE__, oclGetOpenCLErrorCodeStr(err)); \
-        exit( err );                                                \
+        std::abort();                                               \
     }
 //WITH_OPENCL
 #endif

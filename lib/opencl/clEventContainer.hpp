@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <signal.h>
 
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"

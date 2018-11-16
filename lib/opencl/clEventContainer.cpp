@@ -50,6 +50,7 @@ int clEventContainer::wait_for_signal() {
     // Then wait on the actual signal
     if (clWaitForEvents(1,&signal) != CL_SUCCESS) {
         ERROR("***** ERROR **** Unexpected event value **** ERROR **** ");
+        raise(SIGINT);
     }
 
     return 1;

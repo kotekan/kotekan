@@ -25,6 +25,7 @@
 #include "assert.h"
 #include "buffer.h"
 #include <string>
+#include <signal.h>
 
 
 enum class clCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};

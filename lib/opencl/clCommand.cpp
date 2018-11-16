@@ -1,7 +1,5 @@
 #include "clCommand.hpp"
-#include <string.h>
 #include <iostream>
-#include <string>
 
 using std::string;
 using std::to_string;
@@ -77,7 +75,7 @@ void clCommand::build()
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == NULL){
             ERROR("error loading file: %s", kernel_file_name.c_str());
-            exit(errno);
+            raise(SIGINT);
         }
         fseek(fp, 0, SEEK_END);
         program_size = ftell(fp);
@@ -142,7 +140,7 @@ void clCommand::finalize_frame(int gpu_frame_id) {
         CHECK_CL_ERROR(clReleaseEvent(post_event[gpu_frame_id]));
         post_event[gpu_frame_id] = NULL;
     }
-    else INFO("*** WTF? Null event!");
+    else ERROR("*** WTF? Null event!");
 
 }
 
