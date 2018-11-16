@@ -14,7 +14,6 @@ add_library ( kotekan_opencl
               clDeviceInterface.cpp
               clEventContainer.cpp
               clCommand.cpp
-              clCommandFactory.cpp
               clProcess.cpp
 
 # Copy-in & general-purpose:

@@ -7,12 +7,12 @@ using std::string;
 using std::to_string;
 
 clCommand::clCommand(
-        const string &default_kernel_command,
-        const string &default_kernel_file_name,
         Config& config_,
         const string &unique_name_,
         bufferContainer &host_buffers_,
-        clDeviceInterface& device_) :
+        clDeviceInterface& device_,
+        const string &default_kernel_command,
+        const string &default_kernel_file_name) :
         kernel_command(default_kernel_command),
         kernel_file_name(default_kernel_file_name),
         config(config_),

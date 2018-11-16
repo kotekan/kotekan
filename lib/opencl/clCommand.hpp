@@ -19,7 +19,7 @@
 #include "errors.h"
 #include <stdio.h>
 #include "clDeviceInterface.hpp"
-#include "clCommandFactory.hpp"
+#include "factory.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
 #include "assert.h"
@@ -72,9 +72,11 @@ public:
      *                      In this method, it returns the current context of the device when
      *                      allocating resources for the kernel.
     **/
-    clCommand(const string &default_kernel_command, const string &default_kernel_file_name,
-                Config &config, const string &unique_name,
-                bufferContainer &host_buffers, clDeviceInterface &device);
+    clCommand(Config &config, const string &unique_name,
+              bufferContainer &host_buffers, clDeviceInterface &device,
+              const string &default_kernel_command="",
+              const string &default_kernel_file_name=""
+              );
     /// Destructor that frees memory for the kernel and name.
     virtual ~clCommand();
     /// gettor that returns the preceeding event in an event chain.
@@ -150,6 +152,12 @@ protected:
     double last_gpu_execution_time = 0;
     clCommandType command_type = clCommandType::NOT_SET;
 };
+
+// Create a factory for gateSpecs
+CREATE_FACTORY(clCommand, //const string &, const string &,
+                Config &, const string &,
+                bufferContainer &, clDeviceInterface &);
+#define REGISTER_CL_COMMAND(newCommand) REGISTER_NAMED_TYPE_WITH_FACTORY(clCommand, newCommand, #newCommand)
 
 #endif // CL_COMMAND_H
 

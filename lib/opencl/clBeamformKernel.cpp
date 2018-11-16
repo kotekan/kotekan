@@ -9,7 +9,7 @@ REGISTER_CL_COMMAND(clBeamformKernel);
 
 clBeamformKernel::clBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("gpu_beamforming","beamform_tree_scale.cl", config, unique_name, host_buffers, device)
+    clCommand(config, unique_name, host_buffers, device, "gpu_beamforming","beamform_tree_scale.cl")
 {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");

@@ -5,7 +5,7 @@ REGISTER_CL_COMMAND(clPresumKernel);
 
 clPresumKernel::clPresumKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("offsetAccumulateElements","offset_accumulator.cl", config, unique_name, host_buffers, device)
+    clCommand(config, unique_name, host_buffers, device, "offsetAccumulateElements","offset_accumulator.cl")
 {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

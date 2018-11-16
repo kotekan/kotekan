@@ -1,5 +1,4 @@
 #include "clProcess.hpp"
-#include "clCommand.hpp"
 #include "unistd.h"
 #include "vdif_functions.h"
 #include "fpga_header_functions.h"
@@ -50,7 +49,14 @@ clProcess::clProcess(Config& config_,
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
     device->prepareCommandQueue(true); //yes profiling
 
-    factory = new clCommandFactory(config, unique_name, local_buffer_container, *device);
+    vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
+
+    for (uint32_t i = 0; i < cmds.size(); i++){
+        auto cmd = FACTORY(clCommand)::create_bare(cmds[i]["name"], config, unique_name, local_buffer_container, *device);
+        cmd->build();
+        commands.push_back(cmd);
+    }
+
     INFO("Starting...");
 }
 
@@ -59,7 +65,9 @@ void clProcess::apply_config(uint64_t fpga_seq) {
 
 clProcess::~clProcess() {
     restServer::instance().remove_get_callback("/gpu_profile/"+ std::to_string(gpu_id));
-    delete factory;
+    for (auto &command : commands)
+        delete command;
+//    delete factory;
     delete device;
 }
 
@@ -71,7 +79,7 @@ void clProcess::profile_callback(connectionInstance& conn) {
 
     json reply;
     // Move to this class?
-    vector<clCommand *> &commands = factory->get_commands();
+//    vector<clCommand *> &commands = factory->get_commands();
 
     reply["copy_in"] = json::array();
     reply["kernel"] = json::array();
@@ -123,7 +131,7 @@ void clProcess::main_thread()
     rest_server.register_get_callback("/gpu_profile/"+ std::to_string(gpu_id),
             std::bind(&clProcess::profile_callback, this, std::placeholders::_1));
 
-    vector<clCommand *> &commands = factory->get_commands();
+//    vector<clCommand *> &commands = factory->get_commands();
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
@@ -170,7 +178,7 @@ void clProcess::main_thread()
 
 
 void clProcess::results_thread() {
-    vector<clCommand *> &commands = factory->get_commands();
+//    vector<clCommand *> &commands = factory->get_commands();
 
     // Start with the first GPU frame;
     int gpu_frame_id = 0;

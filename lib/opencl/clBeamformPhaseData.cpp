@@ -13,7 +13,7 @@ REGISTER_CL_COMMAND(clBeamformPhaseData);
 
 clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("","", config, unique_name, host_buffers, device)
+    clCommand(config, unique_name, host_buffers, device, "","")
 {
     command_type = clCommandType::NOT_SET;
 

@@ -22,9 +22,9 @@
 #include "fpga_header_functions.h"
 #include "clDeviceInterface.hpp"
 #include "clEventContainer.hpp"
-#include "clCommandFactory.hpp"
 #include "KotekanProcess.hpp"
 #include "restServer.hpp"
+#include "clCommand.hpp"
 #include "json.hpp"
 
 class clProcess : public KotekanProcess {
@@ -53,8 +53,9 @@ protected:
     // Config variables
     bool _use_beamforming;
 
-    clCommandFactory * factory;
     clDeviceInterface * device;
+
+    vector<clCommand *> commands;
 
 };
 

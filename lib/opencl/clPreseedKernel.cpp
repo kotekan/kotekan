@@ -4,7 +4,7 @@ REGISTER_CL_COMMAND(clPreseedKernel);
 
 clPreseedKernel::clPreseedKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("preseed","preseed_multifreq.cl", config, unique_name, host_buffers, device)
+    clCommand(config, unique_name, host_buffers, device, "preseed","preseed_multifreq.cl")
 {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

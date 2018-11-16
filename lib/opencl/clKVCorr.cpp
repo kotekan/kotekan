@@ -9,7 +9,7 @@ REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand("corr","kv_corr.cl", config, unique_name, host_buffers, device)
+    clCommand(config, unique_name, host_buffers, device, "corr","kv_corr.cl")
 {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
