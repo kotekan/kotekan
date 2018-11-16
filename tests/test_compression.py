@@ -36,6 +36,21 @@ chime_process_params = {
     'stack_type': 'chime_in_cyl'
 }
 
+
+def float_allclose(a, b):
+    """Compare two float (arrays).
+
+    This comparison uses a tolerance related to the precision of the datatypes
+    to account for rounding errors in arithmetic.
+    """
+
+    res_a = np.finfo(np.array(a).dtype).resolution
+    res_b = np.finfo(np.array(b).dtype).resolution
+
+    tol = max(res_a, res_b)
+    return np.allclose(a, b, rtol=tol, atol=0)
+
+
 @pytest.fixture(scope="module")
 def diagonal_data(tmpdir_factory):
 
@@ -111,7 +126,7 @@ def test_chime(chime_data):
         assert frame.vis.shape[0] == nvis_chime
 
         # Check that the entries in XX and XY are the same
-        assert (frame.vis[:np1] == frame.vis[np1:(2 * np1)]).all()
+        assert float_allclose(frame.vis[:np1], frame.vis[np1:(2 * np1)])
 
         v1 = frame.vis[:np1]
         w1 = frame.weight[:np1]
@@ -127,8 +142,8 @@ def test_chime(chime_data):
                 # A list of the feed separations in the NS dir
                 d = np.arange(lb, 256)
 
-                assert (v1[:nv] == (cj - ci + 1.0j * d)).all()
-                assert (w1[:nv] == (256 - np.abs(d))).all()
+                assert float_allclose(v1[:nv], (cj - ci + 1.0j * d))
+                assert float_allclose(w1[:nv], (256.0 - np.abs(d)))
 
                 v1 = v1[nv:]
                 w1 = w1[nv:]
