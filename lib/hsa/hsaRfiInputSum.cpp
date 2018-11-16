@@ -10,7 +10,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     //Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
-    hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum", "rfi_chime_inputsum.hsaco") {
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     //Data Parameters

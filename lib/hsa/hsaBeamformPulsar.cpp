@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
 hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("pulsarbf_float", "pulsar_beamformer_float.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float", "pulsar_beamformer_float.hsaco") {
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

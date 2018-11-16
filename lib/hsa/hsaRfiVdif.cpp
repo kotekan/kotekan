@@ -20,7 +20,7 @@ REGISTER_HSA_COMMAND(hsaRfiVdif);
 hsaRfiVdif::hsaRfiVdif(Config& config,const string &unique_name,
                         bufferContainer& host_buffers,
                         hsaDeviceInterface& device) :
-    hsaCommand("rfi_vdif", "rfi_vdif.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif", "rfi_vdif.hsaco") {
     command_type = CommandType::KERNEL;
 
     //Grab values from config and calculates buffer size

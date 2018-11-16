@@ -48,7 +48,10 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     device->set_log_level(s_log_level);
     device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
-    factory = new hsaCommandFactory(config, unique_name, local_buffer_container, *device);
+    for (uint32_t i = 0; i < cmds.size(); i++){
+        auto cmd = FACTORY(clCommand)::create_bare(cmds[i]["name"], config, unique_name, local_buffer_container, *device);
+        commands.push_back(cmd);
+    }
 
     endpoint = "/gpu_profile/" + std::to_string(gpu_id);
 }
@@ -64,7 +67,9 @@ void hsaProcess::apply_config(uint64_t fpga_seq) {
 hsaProcess::~hsaProcess() {
     restServer::instance().remove_get_callback(endpoint);
 
-    delete factory;
+    for (auto command : list_commands) {
+        delete command;
+    }
     delete device;
 }
 

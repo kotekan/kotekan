@@ -11,7 +11,6 @@ add_library ( kotekan_hsa
               signalContainer.cpp
               hsaBase.c
               hsaCommand.cpp
-              hsaCommandFactory.cpp
               hsaDeviceInterface.cpp
               hsaProcess.cpp
 

@@ -5,7 +5,7 @@ REGISTER_HSA_COMMAND(hsaPresumKernel);
 hsaPresumKernel::hsaPresumKernel(
                             Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("CHIME_presum","presum.hsaco", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "CHIME_presum","presum.hsaco"){
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsarOneFeed);
 
 hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("pulsarbf", "pulsar_beamformer.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf", "pulsar_beamformer.hsaco") {
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");

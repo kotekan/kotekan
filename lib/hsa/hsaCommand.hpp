@@ -54,9 +54,10 @@ class hsaCommand: public kotekanLogging
 {
 public:
     // Kernel file name is optional.
-    hsaCommand(const string &default_kernel_command, const string &default_kernel_file_name,
-                Config &config, const string &unique_name,
-                bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaCommand(Config &config, const string &unique_name,
+               bufferContainer &host_buffers, hsaDeviceInterface &device,
+               const string &default_kernel_command="",
+               const string &default_kernel_file_name="");
     virtual ~hsaCommand();
     string &get_name();
 
@@ -134,6 +135,12 @@ protected:
     void packet_store_release(uint32_t* packet, uint16_t header, uint16_t rest);
     uint16_t header(hsa_packet_type_t type);
 };
+
+// Create a factory for hsaCommands
+CREATE_FACTORY(hsaCommand, //const string &, const string &,
+                Config &, const string &,
+                bufferContainer &, clDeviceInterface &);
+#define REGISTER_HSA_COMMAND(hsaCommand) REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
 
 
 #endif // GPU_COMMAND_H

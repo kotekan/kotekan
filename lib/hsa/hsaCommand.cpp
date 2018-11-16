@@ -5,12 +5,12 @@ using std::string;
 #define MAX_ARGS_LEN 64
 
 hsaCommand::hsaCommand(
-        const string &default_kernel_command,
-        const string &default_kernel_file_name,
         Config& config_,
         const string &unique_name_,
         bufferContainer &host_buffers_,
-        hsaDeviceInterface& device_) :
+        hsaDeviceInterface& device_),
+        const string &default_kernel_command,
+        const string &default_kernel_file_name :
         kernel_command(default_kernel_command),
         kernel_file_name(default_kernel_file_name),
         config(config_),

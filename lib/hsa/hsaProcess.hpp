@@ -58,6 +58,9 @@ private:
     double frame_arrival_period;
 
     std::string endpoint;
+
+
+    vector<clCommand *> commands;
 };
 
 #endif

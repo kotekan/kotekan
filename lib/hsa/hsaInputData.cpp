@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaInputData);
 
 hsaInputData::hsaInputData( Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "", ""){
     command_type = CommandType::COPY_IN;
 
     int header_size = 0;
