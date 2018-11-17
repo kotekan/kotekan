@@ -2,12 +2,17 @@ import requests
 from tabulate import tabulate
 import json
 import os
+import argparse
+
+parser = argparse.ArgumentParser(description='Query Kotekan GPU timings and display the results')
+parser.add_argument('-n', help='Number of GPUs', dest='n_gpu', type=int, default=4)
+args = parser.parse_args()
 
 headers = {'Content-type': 'application/json'}
 
 r = []
 json_data = []
-n_gpus = 4
+n_gpus = args.n_gpu
 
 for gpu_id in range(0,n_gpus):
     r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id)))

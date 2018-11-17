@@ -29,8 +29,8 @@ clCommand::clCommand(
     if (default_kernel_file_name != "") {
         kernel_file_name = config.get_default<string>(unique_name,"kernel_path",".") + "/" +
                            config.get_default<string>(unique_name,"kernel",default_kernel_file_name);
-        kernel_command = config.get_default<string>(unique_name,"command",default_kernel_command);
     }
+    kernel_command = config.get_default<string>(unique_name,"command",default_kernel_command);
 
     _buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
@@ -41,7 +41,7 @@ clCommand::clCommand(
 
 clCommand::~clCommand()
 {
-    if (kernel_command != ""){
+    if (kernel_file_name != ""){
         CHECK_CL_ERROR( clReleaseKernel(kernel) );
         DEBUG("kernel Freed");
         CHECK_CL_ERROR( clReleaseProgram(program) );
@@ -70,7 +70,7 @@ void clCommand::build()
     char *program_buffer;
     cl_int err;
 
-    if (kernel_command != ""){
+    if (kernel_file_name != ""){
         DEBUG2("Building! %s",kernel_command.c_str())
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == NULL){

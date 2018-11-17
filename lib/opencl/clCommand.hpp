@@ -154,7 +154,7 @@ protected:
     clCommandType command_type = clCommandType::NOT_SET;
 };
 
-// Create a factory for gateSpecs
+// Create a factory for clCommands
 CREATE_FACTORY(clCommand, //const string &, const string &,
                 Config &, const string &,
                 bufferContainer &, clDeviceInterface &);

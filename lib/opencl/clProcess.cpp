@@ -200,10 +200,16 @@ void clProcess::results_thread() {
 
         bool log_profiling = true;
         if (log_profiling) {
-            string output = "";
+            int max_name_len = 0;
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output += "kernel: " + commands[i]->get_name() +
-                          " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; \n";
+                int m = commands[i]->get_name().length();
+                max_name_len = m>max_name_len? m : max_name_len;
+            }
+            string output = "\n";
+            for (uint32_t i = 0; i < commands.size(); ++i) {
+                output += "   name: " + commands[i]->get_name();
+                for (uint32_t j=0; j< (1+max_name_len-commands[i]->get_name().length()); j++) output +=" ";
+                output += " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; \n";
             }
             INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }

@@ -72,8 +72,8 @@ gen_data:
   kotekan_process: testDataGen
   network_out_buf: gpu_input_buffer
 
-data_format: dot4b
-#data_format: "4+4b"
+#data_format: dot4b
+data_format: "4+4b"
 #full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
 gpu:
@@ -83,9 +83,9 @@ gpu:
   log_level: debug2
   commands:
   - name: clInputData
-#  - name: clPresumZero
+  - name: clPresumZero
   - name: clOutputDataZero
-#  - name: clPresumKernel
+  - name: clPresumKernel
 #  - name: clPreseedKernel
 #  - name: clCorrelatorKernel
   - name: clKVCorr
@@ -111,7 +111,7 @@ gpu:
 
 check_data:
   imag: [0]
-  real: [4816896] #98 * samples_per_dataset
+  real: [98304] #[4816896] #98 * samples_per_dataset
   const_data_check:
     kotekan_process: constDataCheck
     in_buf: gpu_output_buffer

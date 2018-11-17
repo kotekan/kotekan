@@ -73,7 +73,7 @@ void clKVCorr::build()
         int accum_length;
         // Correlation kernel global and local work space sizes.
         if (small_array) {
-            accum_length = 4096*4;
+            accum_length = 4096;
             int num_accum = _samples_per_data_set / accum_length;
             gws[0] = _num_elements/4 * _num_local_freq;
             gws[1] = _num_elements/4 * num_accum;

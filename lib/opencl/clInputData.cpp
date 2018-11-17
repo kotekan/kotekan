@@ -4,7 +4,7 @@ REGISTER_CL_COMMAND(clInputData);
 
 clInputData::clInputData(Config& config, const string &unique_name,
                          bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "")
+    clCommand(config, unique_name, host_buffers, device, "clInputData", "")
 {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -45,6 +45,21 @@ cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_eve
                                                 gpu_frame_id, input_frame_len);
     void * host_memory_frame = (void *)network_buf->frames[network_buffer_id];
 
+    //convince the driver the input memory is pinned
+    //for unclear reasons, it doesn't work if you do this ahead of time in the constructor
+    cl_int err;
+    cl_event map_event;
+    cl_mem host_clmem_frame = clCreateBuffer(device.get_context(),
+                                  CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, input_frame_len, 
+                                  (void *)network_buf->frames[network_buffer_id], &err);
+    CHECK_CL_ERROR(err);
+    clEnqueueMapBuffer(device.getQueue(0), host_clmem_frame, CL_FALSE,
+                                           CL_MAP_READ, 0, input_frame_len,
+                                           (pre_event==NULL)?0:1,
+                                           (pre_event==NULL)?NULL:&pre_event,
+                                           &map_event, &err);
+    CHECK_CL_ERROR(err);
+
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),
                                             gpu_memory_frame,
@@ -52,8 +67,7 @@ cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_eve
                                             0, //offset
                                             input_frame_len,
                                             host_memory_frame,
-                                            (pre_event==NULL)?0:1,
-                                            (pre_event==NULL)?NULL:&pre_event,
+                                            1,&map_event,
                                             &post_event[gpu_frame_id]) );
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
