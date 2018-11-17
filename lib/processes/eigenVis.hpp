@@ -29,7 +29,7 @@
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                Int. The number of eigenvectors to be calculated as
+ * @conf  num_ev                UInt. The number of eigenvectors to be calculated as
  *                              an approximation to the visibilities.
  * @conf  num_diagonals_filled  Int, default 0. Number of diagonals to fill with
  *                              the previous time step's solution prior to
@@ -64,7 +64,7 @@ private:
     struct Buffer *input_buffer;
     struct Buffer *output_buffer;
 
-    int32_t num_eigenvectors;
+    uint32_t num_eigenvectors;
     int32_t num_diagonals_filled;
     /// List of input indeces to zero prior to decomposition.
     std::vector<int32_t> exclude_inputs;

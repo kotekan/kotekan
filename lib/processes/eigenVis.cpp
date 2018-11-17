@@ -22,7 +22,7 @@ eigenVis::eigenVis(Config& config,
     register_consumer(input_buffer, unique_name.c_str());
     output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
-    num_eigenvectors =  config.get<int32_t>(unique_name, "num_ev");
+    num_eigenvectors =  config.get<uint32_t>(unique_name, "num_ev");
     num_diagonals_filled =  config.get_default<int32_t>(unique_name,
                                                    "num_diagonals_filled", 0);
     // Read a list from the config, but permit it to be absent (implying empty).
@@ -53,7 +53,8 @@ void eigenVis::main_thread() {
     std::vector<cfloat> evecs;
     std::vector<float> evals;
 
-    int info, ev_found, nside, nev;
+    int info, ev_found;
+    int64_t nside, nev;
 
     // Storage space for the last eigenvector calculated (scaled by sqrt
     // the eigenvalue) for each freq_id.
@@ -107,7 +108,7 @@ void eigenVis::main_thread() {
         for (int i = 0; i < num_elements; i++) {
             for (int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
                 cfloat value = 0;
-                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     value += (std::conj(last_evs[freq_id][ev_ind * num_elements + i])
                               * last_evs[freq_id][ev_ind * num_elements + j]);
                 }
@@ -131,8 +132,8 @@ void eigenVis::main_thread() {
             }
         }
 
-        nside = (int) num_elements;
-        nev = (int) num_eigenvectors;
+        nside = (int64_t) num_elements;
+        nev = (int64_t) num_eigenvectors;
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
                               (lapack_complex_float *) vis_square.data(), nside,
                               0.0, 0.0, nside - nev + 1, nside, 0.0,
@@ -158,7 +159,7 @@ void eigenVis::main_thread() {
         }
 
         // Update the stored eigenvectors for the next iteration.
-        for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+        for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
             for (int i = 0; i < num_elements; i++) {
                 last_evs[freq_id][ev_ind * num_elements + i] =
                     std::sqrt(evals[ev_ind]) * evecs[ev_ind * num_elements + i];
@@ -179,7 +180,7 @@ void eigenVis::main_thread() {
             for(auto j = jstart; j != ipts.end(); j++) {
                 prod_ind = cmap(*i,*j,num_elements);
                 cfloat residual = input_frame.vis[prod_ind];
-                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     residual -= (last_evs[freq_id][ev_ind * num_elements + *i]
                                  * std::conj(last_evs[freq_id][ev_ind * num_elements + *j]));
                 }
@@ -195,7 +196,7 @@ void eigenVis::main_thread() {
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
-        for (int i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t i = 0; i < num_eigenvectors; i++) {
             str_evals += " " + std::to_string(evals[i]);
         }
         INFO("Found eigenvalues:%s, with RMS residuals: %e, in %3.1f s.",
@@ -209,7 +210,7 @@ void eigenVis::main_thread() {
         );
 
         // Output eigenvalues to prometheus
-        for(int i = 0; i < num_eigenvectors; i++) {
+        for(uint32_t i = 0; i < num_eigenvectors; i++) {
             std::string labels = fmt::format(
                 "eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
                 i, freq_id, input_frame.dataset_id
@@ -239,7 +240,7 @@ void eigenVis::main_thread() {
         auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
 
         // Copy in eigenvectors and eigenvalues.
-        for(int i = 0; i < num_eigenvectors; i++) {
+        for(uint32_t i = 0; i < num_eigenvectors; i++) {
             int indr = num_eigenvectors - 1 - i;
             output_frame.eval[i] = evals[indr];
 
