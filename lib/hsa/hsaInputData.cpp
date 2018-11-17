@@ -48,8 +48,9 @@ hsaInputData::~hsaInputData() {
 
 int hsaInputData::wait_on_precondition(int gpu_frame_id)
 {
-    // Wait for there to be data in the input (network) buffer.
+    (void)gpu_frame_id;
 
+    // Wait for there to be data in the input (network) buffer.
     uint8_t * frame = wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
     if (frame == NULL) return -1;
     //INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,

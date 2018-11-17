@@ -21,6 +21,7 @@ hsaBeamformOutputData::~hsaBeamformOutputData() {
 }
 
 int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL) return -1;

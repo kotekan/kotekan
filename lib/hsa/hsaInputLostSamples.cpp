@@ -23,8 +23,9 @@ hsaInputLostSamples::hsaInputLostSamples( Config& config, const string &unique_n
 hsaInputLostSamples::~hsaInputLostSamples() {
 }
 
-int hsaInputLostSamples::wait_on_precondition(int gpu_frame_id)
-{
+int hsaInputLostSamples::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
+
     // Wait for there to be data in the input buffer.
     uint8_t * frame = wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buffer_precondition_id);
     if (frame == NULL) return -1;
