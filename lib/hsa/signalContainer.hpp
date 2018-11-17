@@ -13,6 +13,7 @@ class signalContainer {
 
 public:
     signalContainer();
+    signalContainer( const signalContainer &obj);
     ~signalContainer();
 
     // Clear the variables to default state

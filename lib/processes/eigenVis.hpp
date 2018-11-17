@@ -36,7 +36,7 @@
  *                              factorization. For example, setting to 1 will replace
  *                              the main diagonal only. Filled with zero on the first
  *                              time step.
- * @conf  exclude_inputs        List of Ints, optional. Inputs to exclude (rows and
+ * @conf  exclude_inputs        List of UInts, optional. Inputs to exclude (rows and
  *                              columns to set to zero) in visibilities prior to
  *                              factorization.
  *
@@ -65,9 +65,9 @@ private:
     struct Buffer *output_buffer;
 
     uint32_t num_eigenvectors;
-    int32_t num_diagonals_filled;
+    uint32_t num_diagonals_filled;
     /// List of input indeces to zero prior to decomposition.
-    std::vector<int32_t> exclude_inputs;
+    std::vector<uint32_t> exclude_inputs;
 
     /// Keep track of the average write time
     movingAverage calc_time;
