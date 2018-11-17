@@ -159,7 +159,7 @@ timing_subset:
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_timing
   prod_subset_type: only_inputs
-  input_list: [46, 142, 688, 960, 1058, 1166, 1314, 1543, 2032, 2034]
+  input_list: [46, 142, 688, 944, 960, 1058, 1166, 1314, 1543, 2032, 2034]
 
 # Generate the monitoring freq full N^2 stream
 mfreq_subset:
