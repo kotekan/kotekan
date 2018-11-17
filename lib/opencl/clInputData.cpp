@@ -46,7 +46,7 @@ cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_eve
     void * host_memory_frame = (void *)network_buf->frames[network_buffer_id];
 
     //convince the driver the input memory is pinned
-    //for unclear reasons, it doesn't work if you do this ahead of time in the constructor
+    //because of frame-swapping processes (eg mergeBuffer) can't do this ahead of time in the constructor
     cl_int err;
     cl_event map_event;
     cl_mem host_clmem_frame = clCreateBuffer(device.get_context(),
