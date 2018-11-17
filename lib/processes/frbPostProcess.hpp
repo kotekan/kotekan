@@ -12,6 +12,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include <emmintrin.h>
+#include <immintrin.h>
 
 using std::vector;
 

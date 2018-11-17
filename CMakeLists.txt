@@ -162,9 +162,6 @@ find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-# Required for some SSE/AVX intrinsics
-add_definitions(-D__STDC_LIMIT_MACROS)
-
 # Note that -lrt here is needed on some versions of CentOS
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )

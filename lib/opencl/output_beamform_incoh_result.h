@@ -1,10 +1,10 @@
 #ifndef OUTPUT_BEAMFORM_INCOH_RESULT_H
 #define OUTPUT_BEAMFORM_INCOH_RESULT_H
 
-#include "gpu_command.h"
+#include "clCommand.hpp"
 #include "callbackdata.h"
 
-class output_beamform_incoh_result: public gpu_command
+class output_beamform_incoh_result: public clCommand
 {
 public:
     output_beamform_incoh_result(const char* param_name, Config &config, const string &unique_name);
