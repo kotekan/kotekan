@@ -57,6 +57,8 @@ clProcess::clProcess(Config& config_,
         commands.push_back(cmd);
     }
 
+    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
+
     INFO("Starting...");
 }
 
@@ -74,8 +76,6 @@ clProcess::~clProcess() {
 
 void clProcess::profile_callback(connectionInstance& conn) {
     DEBUG(" *** *** *** Profile call made.");
-
-    double frame_arrival_period=0.5;
 
     json reply;
     // Move to this class?
@@ -211,7 +211,7 @@ void clProcess::results_thread() {
                 for (uint32_t j=0; j< (1+max_name_len-commands[i]->get_name().length()); j++) output +=" ";
                 output += " time: " + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; \n";
             }
-            INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
+            DEBUG("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }
 
         final_signals[gpu_frame_id].reset();

@@ -49,6 +49,7 @@ protected:
     std::thread mem_reconcil_thread_handle;
 
     uint32_t gpu_id;
+    double frame_arrival_period;
 
     // Config variables
     bool _use_beamforming;
