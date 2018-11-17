@@ -50,7 +50,7 @@ cl_event beamform_phase_data::execute(int param_bufferID,
                                       class device_interface &param_Device,
                                       cl_event param_PrecedeEvent) {
 
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     time_t local_beamform_time;
     uint64_t current_seq;

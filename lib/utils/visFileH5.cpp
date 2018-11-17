@@ -385,6 +385,10 @@ bool visFileH5Fast::write_raw(off_t dset_base, int ind, size_t n,
 void visFileH5Fast::flush_raw_async(off_t dset_base, int ind, size_t n) {
 #ifdef __linux__
     sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#else
+    (void)dset_base;
+    (void)ind;
+    (void)n;
 #endif
 }
 
@@ -395,6 +399,10 @@ void visFileH5Fast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED);
+#else
+    (void)dset_base;
+    (void)ind;
+    (void)n;
 #endif
 }
 
