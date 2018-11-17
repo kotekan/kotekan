@@ -13,9 +13,9 @@ void output_beamform_result::build(class device_interface &param_Device) {
     gpu_command::build(param_Device);
 }
 
-cl_event output_beamform_result::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event output_beamform_result::execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     CHECK_CL_ERROR( clEnqueueReadBuffer(param_Device.getQueue(2),
                                         param_Device.get_device_beamform_output_buffer(param_bufferID),

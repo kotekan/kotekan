@@ -19,9 +19,9 @@ void input_data_stage::build(device_interface &param_Device)
     CHECK_MEM(data_staged_event);
 }
 
-cl_event input_data_stage::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event input_data_stage::execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),

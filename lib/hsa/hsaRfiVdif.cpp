@@ -50,7 +50,11 @@ hsaRfiVdif::~hsaRfiVdif() {
     // TODO Free device memory allocations.
 }
 
-hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id,
+                                 hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
 
     struct __attribute__ ((aligned(16))) args_t { //Kernel Arguments
 	void *input;

@@ -160,8 +160,8 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
 }
 
-hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
-                                            hsa_signal_t precede_signal) {
+hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id,
+                                           hsa_signal_t precede_signal) {
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);

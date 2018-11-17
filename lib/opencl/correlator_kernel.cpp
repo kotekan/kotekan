@@ -74,9 +74,9 @@ void correlator_kernel::build(class device_interface& param_Device)
     lws[2] = 1;
 }
 
-cl_event correlator_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event correlator_kernel::execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
     setKernelArg(1, param_Device.getOutputBuffer(param_bufferID));

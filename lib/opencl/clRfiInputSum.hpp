@@ -57,7 +57,7 @@ public:
     //Builds the program/kernel
     virtual void build(device_interface &param_Device) override;
     //Executes the kernel
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent) override;
     //Rest Server Callback
     void rest_callback(connectionInstance& conn, json& json_request);
 

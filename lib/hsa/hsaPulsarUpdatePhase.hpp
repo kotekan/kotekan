@@ -75,7 +75,7 @@ public:
     void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gain, float *output);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id);

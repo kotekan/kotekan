@@ -91,13 +91,11 @@ public:
      * base class such as checking that the buffer_ID is positive and is less than the number of frames in the buffer. 
      * @param param_bufferID        The bufferID associated with the GPU commands.
      * 
-     * @param fpga_seq              Not passed to apply_config. What is it for?
-     * 
      * @param param_Device          The instance of the current device the process is executing on.
      * 
      * @param param_PrecedeEvent    The preceeding event in a sequence of chained event sequence of commands.
     **/
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent);
+    virtual cl_event execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent);
     /** Releases the memory of the event chain arrays per buffer_id
      * @param param_bufferID    The bufferID to release all the memory references for.
     **/

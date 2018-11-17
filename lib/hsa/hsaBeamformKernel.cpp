@@ -172,7 +172,7 @@ void hsaBeamformKernel::calculate_ew_phase(float freq_now, float *host_coeff, fl
 }
 
 
-hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     if (first_pass) {
         first_pass = false;
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);

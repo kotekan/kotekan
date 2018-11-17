@@ -89,10 +89,10 @@ void clRfiInputSum::build(device_interface &param_Device)
     lws[1] = 1;
     lws[2] = 1;
 }
-cl_event clRfiInputSum::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event clRfiInputSum::execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
     //General GPU command execute
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
     //Lock rest server mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Set input/output buffer argumnets

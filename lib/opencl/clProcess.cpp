@@ -158,7 +158,8 @@ void clProcess::main_thread()
         usleep(gpu_id*10000);
         for (uint32_t i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
-            sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
+            sequenceEvent = currentCommand->execute(frame_id, *device,
+                                                    sequenceEvent);
             cb_data[frame_id]->listCommands[i] = currentCommand;
             tt.time_opencl_multi_kernel(sequenceEvent, currentCommand->get_name());
         }

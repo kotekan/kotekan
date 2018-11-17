@@ -13,7 +13,9 @@ public:
     beamform_incoherent_kernel(const char* param_gpuKernel, const char* param_name, Config& param_Config, const string &unique_name);
     ~beamform_incoherent_kernel();
     virtual void build(device_interface& param_Device) override;
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID,
+                             device_interface &param_Device,
+                             cl_event param_PrecedeEvent) override;
 
 protected:
     cl_mem device_mask;

@@ -78,9 +78,12 @@ void beamform_incoherent_kernel::build(class device_interface& param_Device)
     lws[2] = 1;
 }
 
-cl_event beamform_incoherent_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent)
-{
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+cl_event beamform_incoherent_kernel::execute(
+        int param_bufferID,
+        class device_interface& param_Device,
+        cl_event param_PrecedeEvent) {
+
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     // TODO Make this a config file option
     // 390625 == 1 second.

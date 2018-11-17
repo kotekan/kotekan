@@ -52,9 +52,11 @@ public:
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
     virtual void build(class device_interface &param_Device) override;
     /// Enqueues a new array of phases on the gpu. Phases are updated every "phase period" (1 second) by referencing
-    /// a "phase bank" array that stores two arrays of phases and enqueues either based on the fpga sequence number
-    /// of the current buffer and buffer_ID. (Sequence number for CHIME is 2.56us).
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    /// a "phase bank" array that stores two arrays of phases and enqueues
+    /// either based on the buffer_ID. (Sequence number for CHIME is 2.56us).
+    virtual cl_event execute(int param_bufferID,
+                             class device_interface &param_Device,
+                             cl_event param_PrecedeEvent) override;
     /// Call base class cleanMe.
     virtual void cleanMe(int param_BufferID) override;
     /// Call base class freeMe.

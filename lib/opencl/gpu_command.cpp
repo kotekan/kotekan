@@ -91,8 +91,11 @@ void gpu_command::build(class device_interface &param_Device)
     }
 }
 
-cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event gpu_command::execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
+    // Unused parameter, suppress warning
+    (void)param_PrecedeEvent;
+
     assert(param_bufferID<param_Device.getInBuf()->num_frames);
     assert(param_bufferID>=0);
 
