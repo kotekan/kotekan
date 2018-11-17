@@ -120,6 +120,23 @@ bool Config::exists(const string& base_path, const string& name) {
     return true;
 }
 
+std::vector<json> Config::get_value(const std::string& name) const {
+    std::vector<json> results;
+    get_value_recursive(_json, name, results);
+    return results;
+}
+
+void Config::get_value_recursive(const json& j, const std::string& name,
+                            std::vector<json>& results) const {
+    for(auto it = j.begin(); it != j.end(); ++it)
+    {
+        if (it.key() == name)
+            results.push_back(it.value());
+        if (it->is_object())
+            get_value_recursive(*it, name, results);
+    }
+}
+
 void Config::dump_config() {
     INFO("Config: %s", _json.dump().c_str());
 }

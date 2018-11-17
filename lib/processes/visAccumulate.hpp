@@ -18,6 +18,7 @@
 #include "KotekanProcess.hpp"
 #include "gateSpec.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 /**
  * @class visAccumulate
@@ -26,12 +27,17 @@
  * This process will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
+ * It tags the stream with a properly allocated dataset_id if
+ * `use_dataset_manager` is `true` and adds associated datasetStates to the
+ * datasetManager. It adds an empty stackState to the dataset (as in not
+ * stacked).
+ *
  * @par Buffers
  * @buffer in_buf
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
- * @buffer out_buf
- *         @buffer_format visBuffer
+ * @buffer out_buf The accumulated and tagged data.
+ *         @buffer_format visBuffer structured.
  *         @buffer_metadata visMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
@@ -51,6 +57,18 @@
  *                              Only the first element of each sub-array is used and it is the the index of
  *                              the input to move into this new location. The remaining elements of the
  *                              subarray are for correctly labelling the input in ``visWriter``.
+ * @conf  low_sample_fraction   If a frames has less than this fraction of the
+ *                              data expected, skip it. This is set to 1% by default.
+ * @conf  instrument_name       String. Name of the instrument. Default "chime".
+ * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
+ *                              Default 0..1023.
+ *
+ * @par Metrics
+ * @metric  kotekan_vis_accumulate_skipped_frame_total
+ *      The number of frames skipped entirely because they were under the
+ *      low_sample_fraction.
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
@@ -123,6 +141,7 @@ private:
     size_t block_size;
     size_t samples_per_data_set;
     size_t num_gpu_frames;
+    float low_sample_fraction;
 
     // Derived from config
     size_t num_prod_gpu;
@@ -154,9 +173,23 @@ private:
      **/
     bool reset_state(internalState& state);
 
-
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;
+
+    // dataset ID written to output frames
+    dset_id_t _ds_id_out;
+
+
+    /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
+    /// prodState, inputState and freqState according to config and an empty
+    /// stackState
+    dset_id_t change_dataset_state();
+
+    // data saved to register dataset states
+    std::string _instrument_name;
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<input_ctype> _inputs;
+    std::vector<prod_ctype> _prods;
 };
 
 #endif

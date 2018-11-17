@@ -137,7 +137,6 @@ def test_metadata(accumulate_data):
 
     for frame in accumulate_data:
         assert frame.metadata.freq_id == accumulate_params['freq']
-        assert frame.metadata.dataset_id == 0
 
 
 def test_time(accumulate_data):

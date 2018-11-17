@@ -111,6 +111,10 @@ Cmake build options
     Location of the openssl libs and includes.
 * ``-DBOOST_TESTS=ON``
     Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
+* ``-DSUPERDEBUG=ON``
+    Add extra debugging info and turn off all optimisation to improve coverage.
+* ``-DSANITIZE=ON``
+    Turn on extra Clang sanitizers (currently the address sanitizer) for finding issues.
 
 Examples
 ---------

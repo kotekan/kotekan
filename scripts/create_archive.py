@@ -1,4 +1,10 @@
-#!/usr/bin/env python
+"""Functions for transposing datasets of archive files.
+
+The final step of creating the data archive files is to transpose the time axis
+such that it is the fastest varying. This module performs this transpose.
+
+"""
+
 import click
 import os
 import sys
@@ -6,50 +12,44 @@ import subprocess
 import tempfile
 import yaml
 
-# (freq, prod, time)
-DEFAULT_CHUNK = (16,16,16)
+# Maximum increase in noise (variance) from numerical truncation,
+# with factor of 3 from uniform distribution of errors.
 ERR_SQ_LIM = 3e-3
 DATA_FIXED_PREC = 1e-4
 WEIGHT_FIXED_PREC = 1e-3
 
-@click.command()
-@click.option("--log-level", default='info', help="default: info")
-@click.option("--chunk", nargs=3, type=int, default=DEFAULT_CHUNK,
-              help="[freq prod time] chunk. default: 16 16 16")
-@click.option("--buffer-depth", type=int, default=None, help="Specify buffer depth.")
-@click.option("--system-kotekan", type=bool, default=False,
-              help="Use the kotekan executable in the system path.")
-@click.argument("infile")
-@click.argument("outfile")
-def create_archive(infile, outfile, log_level, chunk, buffer_depth, system_kotekan):
+
+def create_archive(infile, outfile, chunk, log_level='info',
+                   buffer_depth=None, kotekan_dir=None, num_prod=None):
     """ Transform kotekan receiver raw output file into transposed and bitshuffle
         compressed archive file.
     """
 
     if buffer_depth is None:
-        buffer_depth = chunk[0] * chunk[2]
+        buffer_depth = chunk[0] * chunk[2] * 2
 
     # Base config
     # TODO: Should num_element be fixed?
-    config = { 'log_level': log_level, 'num_elements': 2048, "num_local_freq": 1, "cpu_affinity": [] }
+    config = { 'log_level': log_level, 'num_elements': 2048, 'num_ev': 4,
+               "num_local_freq": 1, "cpu_affinity": [] }
 
     # Buffers
     config.update( {
         'read_buffer': {
-            'kotekan_buffer': 'standard',
+            'kotekan_buffer': 'vis',
             'metadata_pool': 'vis_pool',
             'num_frames': str(buffer_depth),
-            'sizeof_int': 4,
-            'frame_size': '2 * sizeof_int * num_local_freq * num_elements * num_elements'
         },
         'trunc_buffer': {
-            'kotekan_buffer': 'standard',
+            'kotekan_buffer': 'vis',
             'metadata_pool': 'vis_pool',
             'num_frames': str(buffer_depth),
-            'sizeof_int': 4,
-            'frame_size': '2 * sizeof_int * num_local_freq * num_elements * num_elements'
         }
     })
+
+    if num_prod is not None:
+        config['read_buffer'].update({'num_prod': num_prod})
+        config['trunc_buffer'].update({'num_prod': num_prod})
 
     # Metadata pool
     config.update({
@@ -96,22 +96,32 @@ def create_archive(infile, outfile, log_level, chunk, buffer_depth, system_kotek
         }
     )
 
-    # emulate KotekanRunner
-    if system_kotekan:
+    # select kotekan executable
+    if kotekan_dir:
+        kotekan_cmd = "./kotekan"
+    else:
         kotekan_dir = "./"
         kotekan_cmd = "kotekan"
-    else:
-        kotekan_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
-                                                    "..", "build", "kotekan"))
-        kotekan_cmd = "./kotekan"
 
     with tempfile.NamedTemporaryFile() as fh:
         yaml.dump(config, fh)
         fh.flush()
         print config
-        subprocess.check_call([kotekan_cmd, "-c", fh.name],
-                              cwd=kotekan_dir)
+        if kotekan_cmd == "./kotekan":
+            subprocess.check_call([kotekan_cmd, "-c", fh.name],
+                                  cwd=kotekan_dir)
+        else:
+            subprocess.check_call([kotekan_cmd, "-d", fh.name],
+                                  cwd=kotekan_dir)
 
 
-if __name__ == '__main__':
-    create_archive()
+class MalformedData(Exception):
+    """Raised when datasets have the wrong shape."""
+
+
+class EmptyFile(Exception):
+  """Raised when the file is empty."""
+
+
+class CannotOpenFile(Exception):
+    "Raised when unable to open a file."""

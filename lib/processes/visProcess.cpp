@@ -6,6 +6,7 @@
 #include "prometheusMetrics.hpp"
 #include "fmt.hpp"
 #include "datasetManager.hpp"
+#include "version.h"
 
 #include <time.h>
 #include <iomanip>
@@ -13,6 +14,9 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <memory>
+#include <thread>
+#include <chrono>
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 REGISTER_KOTEKAN_PROCESS(visDebug);
@@ -555,16 +559,10 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
             _prods.push_back({i, j});
         }
     }
-
 }
 
 
 void registerInitialDatasetState::main_thread() {
-
-    // In case we have multiple processes all registering different datasets we
-    // need to make sure that they all get distinct roots, use this for
-    // co-ordination.
-    static std::atomic<int> root_dataset_id(-1);
 
     uint32_t frame_id_in = 0;
     uint32_t frame_id_out = 0;
@@ -577,14 +575,16 @@ void registerInitialDatasetState::main_thread() {
         _inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
         _prods, std::move(input_state));
+    //empty stackState
+    state_uptr stack_state =
+            std::make_unique<stackState>(std::move(prod_state));
 
     // Register the initial state with the manager
-    auto s = dm.add_state(std::move(prod_state));
-    state_id initial_state = s.first;
+    auto s = dm.add_state(std::move(stack_state));
+    state_id_t initial_state = s.first;
 
-    // Get the new dataset ID, this uses the current root ID and then decrements
-    // it for any other instance of this process.
-    dset_id output_dataset = dm.add_dataset(initial_state, root_dataset_id--);
+    // Get the new dataset ID by registering the root dataset.
+    dset_id_t output_dataset = dm.add_dataset(dataset(initial_state, 0, true));
 
     while (!stop_thread) {
         // Wait for an input frame
