@@ -46,8 +46,10 @@ void beamform_phase_data::build(class device_interface &param_Device)
     start_beamform_time = time(NULL); // Current time.
 }
 
-cl_event beamform_phase_data::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
-{
+cl_event beamform_phase_data::execute(int param_bufferID,
+                                      class device_interface &param_Device,
+                                      cl_event param_PrecedeEvent) {
+
     gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
 
     time_t local_beamform_time;

@@ -9,7 +9,7 @@ public:
     input_data_stage(const char* param_name, Config &config, const string &unique_name);
     ~input_data_stage();
     virtual void build(class device_interface &param_Device) override;
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID, class device_interface& param_Device, cl_event param_PrecedeEvent) override;
     virtual void cleanMe(int param_BufferID) override;
     virtual void freeMe() override;
 

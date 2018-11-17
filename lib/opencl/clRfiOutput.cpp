@@ -15,10 +15,10 @@ void clRfiOutput::build(device_interface &param_Device)
     gpu_command::build(param_Device);
 }
 
-cl_event clRfiOutput::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event clRfiOutput::execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
     //General GPU ommand execute
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
     // Read the results of the RFI kernels to buffer
     CHECK_CL_ERROR( clEnqueueReadBuffer(param_Device.getQueue(0),
                                             param_Device.getRfiOutputBuffer(param_bufferID),

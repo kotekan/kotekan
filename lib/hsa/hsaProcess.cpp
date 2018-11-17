@@ -151,7 +151,7 @@ void hsaProcess::main_thread()
 
         for (uint32_t i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
-            signal = commands[i]->execute(gpu_frame_id, 0, signal);
+            signal = commands[i]->execute(gpu_frame_id, signal);
             //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);

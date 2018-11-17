@@ -21,7 +21,7 @@ public:
                     bufferContainer &buffer_container,
                     std::function<void(const KotekanProcess&)> main_thread_ref);
     virtual ~KotekanProcess();
-    void start();
+    virtual void start();
     virtual void main_thread();
 
     std::string get_unique_name() const;

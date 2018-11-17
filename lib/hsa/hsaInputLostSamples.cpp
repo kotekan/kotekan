@@ -32,8 +32,8 @@ int hsaInputLostSamples::wait_on_precondition(int gpu_frame_id)
     return 0;
 }
 
-hsa_signal_t hsaInputLostSamples::execute(int gpu_frame_id, const uint64_t& fpga_seq,
-                                   hsa_signal_t precede_signal) {
+hsa_signal_t hsaInputLostSamples::execute(int gpu_frame_id,
+                                          hsa_signal_t precede_signal) {
     // Get the gpu and cpu memory pointers.
     void * gpu_memory_frame = device.get_gpu_memory_array("lost_samples",
                                                 gpu_frame_id, input_frame_len);

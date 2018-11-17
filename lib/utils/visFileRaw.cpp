@@ -104,6 +104,7 @@ void visFileRaw::create_file(
 #ifdef FALLOC_FL_KEEP_SIZE
     fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
 #else
+    (void)max_time; // suppress warning
     WARN("fallocate not supported on this system!");
 #endif
 #endif

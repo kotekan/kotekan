@@ -22,7 +22,12 @@ hsaBeamformUpchan::hsaBeamformUpchan(Config& config,const string &unique_name,
 hsaBeamformUpchan::~hsaBeamformUpchan() {
 }
 
-hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id,
+                                        hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *output_buffer;

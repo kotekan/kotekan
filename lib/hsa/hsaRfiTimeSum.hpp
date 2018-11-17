@@ -53,7 +53,7 @@ public:
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 private:
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
