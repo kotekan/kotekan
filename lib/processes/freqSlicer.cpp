@@ -71,8 +71,8 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
     state_id_t freq_state_id_higher =
             dm.add_state(std::move(fstate_higher)).first;
 
-    return {dm.add_dataset(dataset(freq_state_id_lower, input_dset_id)),
-                dm.add_dataset(dataset(freq_state_id_higher, input_dset_id))};
+    return {{dm.add_dataset(dataset(freq_state_id_lower, input_dset_id)),
+                dm.add_dataset(dataset(freq_state_id_higher, input_dset_id))}};
 }
 
 void freqSplit::main_thread() {
@@ -87,7 +87,7 @@ void freqSplit::main_thread() {
     uint32_t err_count = 0;
 
     dset_id_t input_dset_id;
-    std::array<dset_id_t, 2> output_dset_id = {0, 0};
+    std::array<dset_id_t, 2> output_dset_id = {{0, 0}};
 
     // flag indicating if the communication with the ds broker should be retried
     bool broker_retry = false;

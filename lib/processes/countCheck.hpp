@@ -47,7 +47,7 @@ public:
 
 private:
     // Store the unix time at start of correlation:
-    uint64_t start_time;
+    int64_t start_time;
     Buffer * in_buf;
     // Tolerance for start time variability
     int start_time_tolerance;
