@@ -110,6 +110,7 @@ bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json &json) {
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
 {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == NULL) return -1;
     metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
