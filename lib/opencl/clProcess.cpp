@@ -150,7 +150,7 @@ void clProcess::main_thread()
             }
         }
 
-        INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id].wait_for_free_slot();
         signal = NULL;
@@ -160,7 +160,7 @@ void clProcess::main_thread()
             //usleep(10);
         }
         final_signals[gpu_frame_id].set_signal(signal);
-        INFO("Commands executed.");
+        //INFO("Commands executed.");
 
         if (first_run) {
             results_thread_handle = std::thread(&clProcess::results_thread, std::ref(*this));

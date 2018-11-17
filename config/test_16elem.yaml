@@ -194,30 +194,45 @@ gpu:
     out_buffers:
       output_buf: gpu_output_buffer
 
-#gpu:
-#  kernel_path: "../lib/hsa/kernels/"
-#  gain_dir: "../../kotekan/"
-#  commands:
-#  - name: hsaInputData
-##  - name: hsaPresumZero
-##  - name: hsaOutputDataZero
-#  - name: hsaBarrier
-##  - name: hsaPresumKernel
-##  - name: hsaCorrelatorKernel
-#  - name: hsaOutputData
-#  num_gpus: 1
-##  block_size: 32
-#  buffer_depth: 2
-#  n_intg: 24576
-#  frame_arrival_period: samples_per_data_set / 390625
-#  kotekan_process: hsaProcess
-#  gpu_id: 0
-#  in_buffers:
-#    network_buf: merged_network_buf
-#  out_buffers:
-#    output_buf: gpu_output_buffer
-
 #metadata:
 #    kotekan_process: chimeMetadataDump
 #    in_buf: gpu_output_buffer
+
+# Metadata pool
+vis_pool:
+  kotekan_metadata_pool: visMetadata
+  num_metadata_objects: 200 * buffer_depth
+
+# N2 global options
+num_ev: 0
+
+# Buffers
+vis_buffers:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
+  visbuf_5s:
+    kotekan_buffer: vis
+
+vis_accumulate:
+  integration_time: 0.5  # Integrate to roughly 5s cadence
+  kotekan_process: visAccumulate
+  in_buf: gpu_output_buffer
+  out_buf: visbuf_5s
+
+vis_writer:
+  kotekan_process: visWriter
+  in_buf: visbuf_5s
+  node_mode: true
+  file_type: raw
+#  root_path: /tmp
+  instrument_name: test16el
+  freq_ids: []
+#  weights_type: inverse_var
+  file_length: 2
+  window: 2
+
+
+
+
+
 

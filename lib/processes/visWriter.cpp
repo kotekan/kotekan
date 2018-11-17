@@ -160,7 +160,7 @@ void visWriter::main_thread() {
 
         // Check if the frequency we are receiving is on the list of frequencies
         // we are processing
-        if (_freq_id_map.count(frame.freq_id) == 0) {
+        if (!node_mode && (_freq_id_map.count(frame.freq_id) == 0)) {
             WARN("Frequency id=%i not enabled for visWriter, discarding frame",
                  frame.freq_id);
 

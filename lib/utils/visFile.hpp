@@ -311,7 +311,7 @@ inline visFileBundle::visFileBundle(
         auto metadata_acq = metadata;
         metadata_acq["acquisition_name"] = acq_name;
 
-        std::string abspath = root_path + '/' + acq_name + '/' + file_name;
+        std::string abspath= root_path + '/' + acq_name.c_str() + '/' + file_name;
         return visFile::create(type, abspath, metadata_acq, args...);
     };
 }
