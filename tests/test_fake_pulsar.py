@@ -10,7 +10,7 @@ pulsar_params = {
     'samples_per_data_set': 4000,  # 10 ms frames
     'num_frames': 4,  # One extra sample to ensure we actually get 256
     'block_size': 2,
-    'pattern': 'pulsar',
+    'mode': 'pulsar',
     'freq': 777,
     'coeff': [0., 0.],
     'dm': 0.,
