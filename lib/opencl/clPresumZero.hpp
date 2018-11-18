@@ -2,6 +2,7 @@
 #define CL_PRESUM_ZERO_H
 
 #include "clCommand.hpp"
+#include <sys/mman.h>
 
 class clPresumZero: public clCommand
 {

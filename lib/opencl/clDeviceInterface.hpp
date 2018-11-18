@@ -2,7 +2,6 @@
 #define CL_DEVICE_INTERFACE_H
 
 #include <map>
-#include <sys/mman.h>
 #include <vector>
 #ifdef __APPLE__
     #include <OpenCL/cl_platform.h>
@@ -12,15 +11,11 @@
     #include <CL/cl.h>
     #include <CL/cl_ext.h>
 #endif
+#include "Config.hpp"
+#include "buffer.h"
+#include "kotekanLogging.hpp"
+#include "clUtils.hpp"
 
-using std::vector;
-using std::string;
-using std::map;
-
-//check pagesize:
-//getconf PAGESIZE
-// result: 4096
-#define PAGESIZE_MEM 4096
 
 // This adjusts the number of queues used by the OpenCL runtime
 // One queue is for data transfers to the GPU, one is for kernels,
@@ -28,37 +23,14 @@ using std::map;
 // Unless you really know what you are doing, don't change this.
 #define NUM_QUEUES 3
 
-#include "fpga_header_functions.h"
-#include "Config.hpp"
-#include "buffer.h"
-#include "kotekanLogging.hpp"
-
-#ifdef WITH_OPENCL
-
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include <CL/cl.h>
-    #include <CL/cl_ext.h>
-#endif
-
-char* oclGetOpenCLErrorCodeStr(cl_int input);
-#define CHECK_CL_ERROR( err )                                       \
-    if ( err ) {                                                    \
-        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s", \
-                __FILE__, __LINE__, oclGetOpenCLErrorCodeStr(err)); \
-        std::abort();                                               \
-    }
-//WITH_OPENCL
-#endif
-
 // Store named set of gpu pointer(s) with uniform size
 struct clMemoryBlock {
     vector<cl_mem> gpu_pointers;
     uint32_t len;
 
     // Need to be able to release the cl pointers
-    ~clMemoryBlock();
+    ~clMemoryBlock() 
+        { for (auto &gpu_pointer : gpu_pointers) clReleaseMemObject(gpu_pointer); };
 };
 
 class clDeviceInterface: public kotekanLogging
@@ -66,15 +38,9 @@ class clDeviceInterface: public kotekanLogging
 public:
     clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
     ~clDeviceInterface();
-    cl_mem get_device_freq_map(int32_t encoded_stream_id);
 
-    cl_command_queue getQueue(int param_Dim);
-    int getAlignedAccumulateLen() const;
     void prepareCommandQueue(bool enable_profiling);
-
-    void release_events_for_buffer(int param_BufferID);
-//    void deallocateResources();
-    size_t get_opencl_resolution();
+    cl_command_queue getQueue(int param_Dim);
     cl_context &get_context();
     cl_device_id get_id();
 
@@ -95,7 +61,7 @@ public:
     cl_mem get_gpu_memory(const string &name, const uint32_t len);
 
 
- protected:
+protected:
 
     // Extra data
     Config &config;
@@ -107,17 +73,11 @@ public:
     cl_context context;
     cl_command_queue queue[NUM_QUEUES];
 
-    // <streamID, freq_map>
-    std::map<int32_t, cl_mem> device_freq_map;
-
     // Config variables
     uint32_t gpu_buffer_depth;
 
 private:
-    int num_local_freq;
-    map<string, clMemoryBlock> gpu_memory;
-
-
+    std::map<string, clMemoryBlock> gpu_memory;
 };
 
 #endif // CL_DEVICE_INTERFACE_H

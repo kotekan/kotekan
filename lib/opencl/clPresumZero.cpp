@@ -20,6 +20,7 @@ clPresumZero::clPresumZero(Config& config, const string &unique_name,
     }
 
     // Ask that all pages be kept in memory
+    // TODO: DO WITH STANDARD BUFFERS?
     err = mlock((void *) presum_zeros, presum_len);
     if ( err == -1 ) {
         ERROR("Error locking memory - check ulimit -a to check memlock limits");

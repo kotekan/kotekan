@@ -2,6 +2,7 @@
 #define CL_OUTPUT_DATA_ZERO_H
 
 #include "clCommand.hpp"
+#include <sys/mman.h>
 
 class clOutputDataZero: public clCommand
 {

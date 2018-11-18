@@ -30,6 +30,10 @@ private:
     int32_t _samples_per_data_set;
     Buffer * network_buf;
 
+    // <streamID, freq_map>
+    cl_mem get_freq_map(int32_t encoded_stream_id);
+    std::map<int32_t, cl_mem> device_freq_map;
+
 };
 
 #endif //CL_BEAMFORM_KERNEL_H

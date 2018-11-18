@@ -6,11 +6,6 @@
 
 #define SDK_SUCCESS 0
 
-//check pagesize:
-//getconf PAGESIZE
-// result: 4096
-#define PAGESIZE_MEM 4096
-
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
 #else

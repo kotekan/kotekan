@@ -55,8 +55,6 @@ void clBeamformKernel::build()
     kernel = clCreateKernel( program, kernel_command.c_str(), &err );
     CHECK_CL_ERROR(err);
 
-////##OCCURS IN SETUP_OPEN_CL
-
     unsigned char mask[_num_elements];
 
     for (int i = 0; i < _num_elements; ++i) {
@@ -114,7 +112,6 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
     uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
 
     cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-
     cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * 2;
@@ -122,7 +119,7 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
 
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);
-    setKernelArg(2, device.get_device_freq_map(streamID));
+    setKernelArg(2, get_freq_map(streamID));
     setKernelArg(3, phase_memory);
 
     CHECK_CL_ERROR( clEnqueueNDRangeKernel(device.getQueue(1),
@@ -137,3 +134,29 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
 
     return post_event[gpu_frame_id];
 }
+
+
+cl_mem clBeamformKernel::get_freq_map(int32_t encoded_stream_id)
+{
+    //CONVERT TO USE STANDARD MEM ALLOC!
+    std::map<int32_t, cl_mem>::iterator it = device_freq_map.find(encoded_stream_id);
+
+    if(it == device_freq_map.end())
+    {
+        // Create the freq map for the first time.
+        cl_int err;
+        stream_id_t stream_id = extract_stream_id(encoded_stream_id);
+        float freq[_num_local_freq];
+
+        for (int j = 0; j < _num_local_freq; ++j) {
+            freq[j] = freq_from_bin(bin_number(&stream_id, j))/1000.0;
+        }
+
+        device_freq_map[encoded_stream_id] = clCreateBuffer(device.get_context(),
+                                            CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                            _num_local_freq * sizeof(float), freq, &err);
+        CHECK_CL_ERROR(err);
+    }
+    return device_freq_map[encoded_stream_id];
+}
+
