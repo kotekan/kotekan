@@ -28,7 +28,7 @@ clPresumZero::clPresumZero(Config& config, const string &unique_name,
     }
     memset(presum_zeros, 0, presum_len );
 
-    command_type = clCommandType::COPY_IN;
+    command_type = gpuCommandType::COPY_IN;
 }
 
 clPresumZero::~clPresumZero()

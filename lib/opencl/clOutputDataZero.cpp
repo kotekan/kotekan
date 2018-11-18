@@ -16,7 +16,7 @@ clOutputDataZero::clOutputDataZero(Config& config, const string &unique_name,
     output_zeros = malloc(output_len);
     memset(output_zeros, 0, output_len);
 
-    command_type = clCommandType::COPY_IN;
+    command_type = gpuCommandType::COPY_IN;
 }
 
 clOutputDataZero::~clOutputDataZero()

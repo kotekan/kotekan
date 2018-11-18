@@ -18,7 +18,7 @@ clCorrelatorKernel::clCorrelatorKernel(Config& config, const string &unique_name
 
     defineOutputDataMap(); //id_x_map and id_y_map depend on this call.
 
-    command_type = clCommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
 }
 
 clCorrelatorKernel::~clCorrelatorKernel()

@@ -14,7 +14,6 @@ public:
     virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
 protected:
     void defineOutputDataMap();
-    cl_mem device_block_lock;
     cl_int *zeros;
 
     //Host Buffers

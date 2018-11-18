@@ -15,7 +15,7 @@ clPresumKernel::clPresumKernel(Config& config, const string &unique_name,
     _num_blocks = config.get<int>(unique_name, "num_blocks");
     _buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
-    command_type = clCommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
 }
 
 clPresumKernel::~clPresumKernel()

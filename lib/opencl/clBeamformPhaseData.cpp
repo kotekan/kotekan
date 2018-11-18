@@ -15,7 +15,7 @@ clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_na
                             bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "","")
 {
-    command_type = clCommandType::NOT_SET;
+    command_type = gpuCommandType::NOT_SET;
 
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

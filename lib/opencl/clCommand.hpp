@@ -4,7 +4,6 @@
  *  - clCommand
  */ 
 
-
 #ifndef CL_COMMAND_H
 #define CL_COMMAND_H
 
@@ -26,9 +25,9 @@
 #include "buffer.h"
 #include <string>
 #include <signal.h>
+#include "gpuCommand.hpp"
 
 
-enum class clCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
 /**
  * @class clCommand
  * @brief Base class for defining openCL commands to execute on GPUs
@@ -64,7 +63,7 @@ enum class clCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
  *
  */
 
-class clCommand: public kotekanLogging
+class clCommand: public gpuCommand
 {
 public:
     /** Kernel file name is optional.
@@ -112,7 +111,7 @@ public:
     virtual void finalize_frame(int gpu_frame_id);
 
     double get_last_gpu_execution_time();
-    clCommandType get_command_type();
+//    clCommandType get_command_type();
 protected:
     /// Compiled instance of the kernel that will execute on the GPU once enqueued.
     cl_kernel kernel;
@@ -145,7 +144,7 @@ protected:
 
     // Profiling time for the last signal
     double last_gpu_execution_time = 0;
-    clCommandType command_type = clCommandType::NOT_SET;
+//    clCommandType command_type = clCommandType::NOT_SET;
 };
 
 // Create a factory for clCommands

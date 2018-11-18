@@ -20,7 +20,7 @@ clOutputData::clOutputData(Config& config, const string &unique_name,
     output_buffer_id = 0;
     network_buffer_id = 0;
 
-    command_type = clCommandType::COPY_OUT;
+    command_type = gpuCommandType::COPY_OUT;
 }
 
 clOutputData::~clOutputData()

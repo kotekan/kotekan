@@ -17,7 +17,7 @@ class gpuDeviceInterface: public kotekanLogging
 {
 public:
     gpuDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
-    ~gpuDeviceInterface();
+    virtual ~gpuDeviceInterface();
 
     // Get one of the gpu memory pointers with the given name and size = len at the given index
     // The size of the set is equal to gpu_buffer_depth, so index < gpu_buffer_depth

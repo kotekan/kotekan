@@ -13,7 +13,7 @@ class gpuEventContainer {
 public:
     gpuEventContainer();
     gpuEventContainer( const gpuEventContainer &obj);
-    ~gpuEventContainer();
+    virtual ~gpuEventContainer();
 
     // Clear the variables to default state
     void reset();
@@ -36,7 +36,7 @@ public:
     // want to exit while there are packets in the GPU queues.
     void stop();
 
-    virtual void set(void *sig) = 0;//std::experimental::any const sig) = 0;
+    virtual void set(void *sig) = 0;
     virtual void unset() = 0;
     virtual void wait() = 0;
 

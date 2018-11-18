@@ -11,6 +11,7 @@ clCommand::clCommand(
         clDeviceInterface& device_,
         const string &default_kernel_command,
         const string &default_kernel_file_name) :
+        gpuCommand(config_,unique_name_,host_buffers_,device_),
         kernel_command(default_kernel_command),
         kernel_file_name(default_kernel_file_name),
         config(config_),
@@ -130,10 +131,6 @@ void clCommand::finalize_frame(int gpu_frame_id) {
             last_gpu_execution_time = ((double)(stop_time - start_time)) * 1e-9;
         }
 
-//        cl_uint ref;
-//        clGetEventInfo(post_event[gpu_frame_id], CL_EVENT_REFERENCE_COUNT, sizeof(cl_uint), &ref, NULL);
-//        INFO("Event Ref Ct: %i", ref);
-
         CHECK_CL_ERROR(clReleaseEvent(post_event[gpu_frame_id]));
         post_event[gpu_frame_id] = NULL;
     }
@@ -146,7 +143,4 @@ double clCommand::get_last_gpu_execution_time() {
     return last_gpu_execution_time;
 }
 
-clCommandType clCommand::get_command_type() {
-    return command_type;
-}
 
