@@ -42,7 +42,6 @@ void airspyInput::main_thread() {
 }
 
 int airspyInput::airspy_callback(airspy_transfer_t* transfer){
-    DEBUG("Airspy Callback");
     airspyInput* proc = static_cast<airspyInput*>(transfer->ctx);
     proc->airspy_producer(transfer);
     return 0;
