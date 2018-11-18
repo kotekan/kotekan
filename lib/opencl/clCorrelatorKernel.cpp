@@ -30,13 +30,8 @@ clCorrelatorKernel::~clCorrelatorKernel()
     clReleaseMemObject(id_y_map);
 }
 
-void clCorrelatorKernel::apply_config(const uint64_t& fpga_seq) {
-    clCommand::apply_config(fpga_seq);
-}
-
 void clCorrelatorKernel::build()
 {
-    apply_config(0);
     clCommand::build();
 
     cl_int err;

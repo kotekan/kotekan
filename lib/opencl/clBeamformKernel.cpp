@@ -17,16 +17,6 @@ clBeamformKernel::clBeamformKernel(Config& config, const string &unique_name,
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     network_buf = host_buffers.get_buffer("network_buf");
 
-}
-
-clBeamformKernel::~clBeamformKernel()
-{
-    clReleaseMemObject(device_mask);
-}
-
-void clBeamformKernel::apply_config(const uint64_t& fpga_seq) {
-    clCommand::apply_config(fpga_seq);
-
     _element_mask = config.get<std::vector<int>>(unique_name, "element_mask");
     _product_remap = config.get<std::vector<int>>(unique_name, "product_remap");
     int remap_size = _product_remap.size();
@@ -41,6 +31,11 @@ void clBeamformKernel::apply_config(const uint64_t& fpga_seq) {
         _inverse_product_remap[_product_remap[i]] = i;
     }
     _scale_factor = config.get<int>(unique_name, "scale_factor");
+}
+
+clBeamformKernel::~clBeamformKernel()
+{
+    clReleaseMemObject(device_mask);
 }
 
 void clBeamformKernel::build()

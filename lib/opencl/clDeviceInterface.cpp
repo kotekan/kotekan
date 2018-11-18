@@ -5,10 +5,6 @@
 #include "math.h"
 #include <errno.h>
 
-
-
-#ifdef WITH_OPENCL
-
 //from amd firepro demo:
 char* oclGetOpenCLErrorCodeStr(cl_int input)
 {
@@ -135,12 +131,9 @@ char* oclGetOpenCLErrorCodeStr(cl_int input)
             return (char*) "CL_INVALID_DEVICE_PARTITION_COUNT";
         default:
             return (char*) "unknown error code";
-  }
-
+    }
     return (char*) "unknown error code";
 }
-
-#endif
 
 
 clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :

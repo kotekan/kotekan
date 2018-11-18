@@ -13,7 +13,6 @@ public:
     virtual void build() override;
     virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
 protected:
-    void apply_config(const uint64_t& fpga_seq) override;
     void defineOutputDataMap();
     cl_mem device_block_lock;
     cl_int *zeros;

@@ -34,7 +34,6 @@ public:
         bufferContainer &buffer_container);
     virtual ~clProcess();
     void main_thread() override;
-    virtual void apply_config(uint64_t fpga_seq) override;
     void mem_reconcil_thread();
     void CL_CALLBACK results_thread();
     void profile_callback(connectionInstance& conn);

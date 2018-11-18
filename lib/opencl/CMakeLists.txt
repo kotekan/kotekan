@@ -6,6 +6,7 @@ include_directories(${OPENCL_INCLUDE_DIRS})
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
@@ -44,6 +45,4 @@ add_custom_target(kernel_copy
         "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
         "kernels/")
 
-#target_link_libraries( kotekan_opencl kotekan_libs )
-
-add_dependencies( kotekan_opencl kernel_copy )
+add_dependencies( kotekan_opencl kernel_copy kotekan_gpu )

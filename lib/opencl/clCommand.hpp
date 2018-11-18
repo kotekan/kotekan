@@ -80,10 +80,6 @@ public:
               );
     /// Destructor that frees memory for the kernel and name.
     virtual ~clCommand();
-    /// gettor that returns the preceeding event in an event chain.
-    cl_event getPreceedEvent();
-    /// gettor that returns the next event in an event chain.
-    cl_event getPostEvent();
     /// gettor that returns the name given to this clCommand object.
     string &get_name();
     /** The build function creates the event to return as the post event in an event chaining sequence.
@@ -114,8 +110,6 @@ public:
      * @param gpu_frame_id    The bufferID to release all the memory references for.
     **/
     virtual void finalize_frame(int gpu_frame_id);
-    /// Reads all the relevant config values out of the config file references into the protected scope variables of the class.
-    virtual void apply_config(const uint64_t &fpga_seq);
 
     double get_last_gpu_execution_time();
     clCommandType get_command_type();
@@ -154,7 +148,7 @@ protected:
     clCommandType command_type = clCommandType::NOT_SET;
 };
 
-// Create a factory for gateSpecs
+// Create a factory for clCommands
 CREATE_FACTORY(clCommand, //const string &, const string &,
                 Config &, const string &,
                 bufferContainer &, clDeviceInterface &);

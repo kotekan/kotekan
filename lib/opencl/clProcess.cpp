@@ -60,9 +60,6 @@ clProcess::clProcess(Config& config_,
     INFO("Starting...");
 }
 
-void clProcess::apply_config(uint64_t fpga_seq) {
-}
-
 clProcess::~clProcess() {
     restServer::instance().remove_get_callback("/gpu_profile/"+ std::to_string(gpu_id));
     for (auto &command : commands)

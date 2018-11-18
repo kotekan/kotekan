@@ -13,7 +13,6 @@ public:
     virtual void build() override;
     cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
 protected:
-    void apply_config(const uint64_t& fpga_seq) override;
 
 private:
     // Common configuration values (which do not change in a run)

@@ -21,17 +21,6 @@ clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_na
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     network_buf = host_buffers.get_buffer("network_buf");
-}
-
-clBeamformPhaseData::~clBeamformPhaseData()
-{
-    free(phases[0]);
-    free(phases[1]);
-    free(phases);
-}
-
-void clBeamformPhaseData::apply_config(const uint64_t& fpga_seq) {
-    clCommand::apply_config(fpga_seq);
 
     beamforming_do_not_track = config.get_default<bool>(unique_name, "do_not_track",false);
     inst_lat = config.get<double>(unique_name, "instrument_lat");
@@ -43,9 +32,15 @@ void clBeamformPhaseData::apply_config(const uint64_t& fpga_seq) {
                 unique_name, "element_positions");
 }
 
+clBeamformPhaseData::~clBeamformPhaseData()
+{
+    free(phases[0]);
+    free(phases[1]);
+    free(phases);
+}
+
 void clBeamformPhaseData::build()
 {
-    apply_config(0);
     clCommand::build();
 
     last_bankID = -1;

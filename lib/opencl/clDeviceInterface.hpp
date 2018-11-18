@@ -43,7 +43,6 @@ using std::map;
 #endif
 
 char* oclGetOpenCLErrorCodeStr(cl_int input);
-
 #define CHECK_CL_ERROR( err )                                       \
     if ( err ) {                                                    \
         internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s", \
@@ -58,14 +57,10 @@ struct clMemoryBlock {
     vector<cl_mem> gpu_pointers;
     uint32_t len;
 
-    // Need to be able to release the hsa pointers
+    // Need to be able to release the cl pointers
     ~clMemoryBlock();
 };
 
-struct StreamINFO {
-    stream_id_t stream_id;
-    // Add time tracking of some kind.
-};
 class clDeviceInterface: public kotekanLogging
 {
 public:
@@ -101,41 +96,19 @@ public:
 
 
  protected:
-    // Buffer objects
-    struct Buffer * in_buf;
-    struct Buffer * out_buf;
-    struct Buffer * rfi_buf;
-    struct Buffer * beamforming_out_buf;
-    //struct Buffer * beamforming_out_incoh_buf;
+
     // Extra data
     Config &config;
-    struct StreamINFO * stream_info;
 
-    int accumulate_len;
-    int aligned_accumulate_len;
-    int gpu_id; // Internal GPU ID.
-    int num_blocks;
+    int gpu_id;
 
     cl_platform_id platform_id;
     cl_device_id device_id;
     cl_context context;
     cl_command_queue queue[NUM_QUEUES];
 
-    // Device Buffers
-    cl_mem * device_input_buffer;
-    cl_mem * device_accumulate_buffer;
-    cl_mem * device_output_buffer;
-    cl_mem * device_beamform_output_buffer;
-    //cl_mem * device_beamform_output_incoh_buffer;
-    vector<cl_mem> device_rfi_count_buffer;
-
     // <streamID, freq_map>
     std::map<int32_t, cl_mem> device_freq_map;
-    cl_mem * device_phases;
-    // Buffer of zeros to zero the accumulate buffer on the device.
-    cl_int * accumulate_zeros;
-
-    int output_len;
 
     // Config variables
     uint32_t gpu_buffer_depth;

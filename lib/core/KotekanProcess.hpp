@@ -24,7 +24,7 @@ public:
     virtual void start();
     virtual void main_thread();
 
-    virtual void apply_config(uint64_t fpga_seq) = 0;
+    virtual void apply_config(uint64_t fpga_seq) {};//= 0;
 
     std::string get_unique_name() const;
 

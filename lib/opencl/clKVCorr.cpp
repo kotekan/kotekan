@@ -55,13 +55,8 @@ clKVCorr::~clKVCorr()
     clReleaseMemObject(id_y_map);
 }
 
-void clKVCorr::apply_config(const uint64_t& fpga_seq) {
-    clCommand::apply_config(fpga_seq);
-}
-
 void clKVCorr::build()
 {
-    apply_config(0);
     clCommand::build();
 
     cl_int err;

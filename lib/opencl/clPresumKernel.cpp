@@ -22,11 +22,6 @@ clPresumKernel::~clPresumKernel()
 {
 }
 
-void clPresumKernel::apply_config(const uint64_t& fpga_seq) {
-    clCommand::apply_config(fpga_seq);
-}
-
-
 void clPresumKernel::build()
 {
     clCommand::build();

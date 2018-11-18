@@ -60,9 +60,6 @@ string &clCommand::get_name() {
     return kernel_command;
 }
 
-void clCommand::apply_config(const uint64_t& fpga_seq) {
-}
-
 void clCommand::build()
 {
     size_t program_size;
