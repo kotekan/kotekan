@@ -11,7 +11,6 @@ public:
     ~clInputData();
     int wait_on_precondition(int gpu_frame_id) override;
     cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
-    void finalize_frame(int frame_id) override;
 
 protected:
     cl_event * data_staged_event;
