@@ -36,7 +36,7 @@ public:
 
 private:
 
-    vector<signalContainer> final_signals;
+    std::vector<std::shared_ptr<signalContainer>> final_signals;
 
     hsaCommandFactory * factory;
     hsaDeviceInterface * device;
