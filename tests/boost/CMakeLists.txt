@@ -20,6 +20,7 @@ set(KOTEKAN_BOOST_TEST_SOURCES
     test_restclient.cpp
     test_chime_stacking.cpp
     test_config.cpp
+    test_visutils.cpp
 )
 
 # list test source files that need HDF5 here:

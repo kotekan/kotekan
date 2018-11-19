@@ -21,6 +21,7 @@
 
 #include "gsl-lite.hpp"
 #include "json.hpp"
+#include "fmt.hpp"
 
 #include "Config.hpp"
 #include "buffer.h"
@@ -248,18 +249,6 @@ inline timespec add_nsec(const timespec& t, const long nsec) {
 }
 
 /**
- * @brief Subtraction of two timespec structs.
- * @param  a  Time as timespec.
- * @param  b  Time as timespec.
- * @return    a - b as timespec.
- **/
-inline timespec operator-(const timespec & a, const timespec & b)
-{
-    auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, 1000000000L);
-    return {a.tv_sec - b.tv_sec + dm.first, dm.second};
-}
-
-/**
  * @brief Addition of two timespec structs.
  * @param  a  Time as timespec.
  * @param  b  Time as timespec.
@@ -294,6 +283,25 @@ inline bool operator>(const timespec & a,const timespec & b) {
             (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec));
 }
 
+/**
+ * @brief Subtraction of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a - b as timespec.
+ *
+ * @throws  std::runtime_error  If the result would be negative.
+ **/
+inline timespec subtract(const timespec & a, const timespec & b)
+{
+    auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, 1000000000L);
+    if (b > a) {
+        std::string msg = fmt::format("Result of timespec substraction would be "
+                                      "negative ({}.{} - {}.{}).", a.tv_sec,
+                                      a.tv_nsec, b.tv_sec, b.tv_nsec);
+        throw std::runtime_error(msg);
+    }
+    return {a.tv_sec - b.tv_sec + dm.first, dm.second};
+}
 
 /**
  * @brief Get the current UNIX time as a double.

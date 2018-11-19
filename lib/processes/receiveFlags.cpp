@@ -104,7 +104,7 @@ void receiveFlags::main_thread() {
     size_t num_late_frames = 0;
 
     num_late_updates = 0;
-    timespec ts_late = {0,0};
+    double ts_late = 0;
 
     std::pair<timespec, const std::vector<float>*> update;
 
@@ -135,15 +135,18 @@ void receiveFlags::main_thread() {
                   "not in memory. updateQueue is empty",
                   frame_id_in, ts_to_double(ts_frame));
         }
-        ts_late = update.first - ts_frame;
-        if (ts_late.tv_sec > 0 && ts_late.tv_nsec > 0) {
+        ts_late = ts_to_double(ts_frame) - ts_to_double(update.first);
+        if (ts_late < 0)
+        {
             // This frame is too old,we don't have flags for it
             // --> Use the last update we have
-            WARN("receiveFlags: Flags for frame %d with timestamp %f are" \
-                  "not in memory. Applying oldest flags found. (%d)" \
-                 " Concider increasing num_kept_updates.", frame_id_in,
-                 ts_to_double(ts_frame), ts_to_double(update.first));
             num_late_frames++;
+            WARN("receiveFlags: Flags for frame %d with timestamp %f are" \
+                  "not in memory. Applying oldest flags found (%f)." \
+                 " Concider increasing num_kept_updates. Time difference: %f."
+                 "Total number of late frames: %d.", frame_id_in,
+                 ts_to_double(ts_frame), ts_to_double(update.first), ts_late,
+                 num_late_frames);
         }
         // actually copy the new flags and apply them from now
         std::copy(update.second->begin(), update.second->end(),
@@ -153,7 +156,7 @@ void receiveFlags::main_thread() {
         // Report how old the flags being applied to the current data are.
         prometheusMetrics::instance().add_process_metric(
             "kotekan_receiveflags_update_age_seconds",
-            unique_name, -ts_to_double(ts_late));
+            unique_name, ts_late);
 
         // Report number of frames received late
         prometheusMetrics::instance().add_process_metric(
