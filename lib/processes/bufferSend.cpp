@@ -42,10 +42,6 @@ bufferSend::bufferSend(Config& config,
 bufferSend::~bufferSend() {
 }
 
-void bufferSend::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void bufferSend::main_thread() {
 
     int frame_id = 0;

@@ -25,15 +25,12 @@ streamSingleDishVDIF::streamSingleDishVDIF(Config& config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    apply_config(0);
-}
-streamSingleDishVDIF::~streamSingleDishVDIF() {
-}
-
-void streamSingleDishVDIF::apply_config(uint64_t fpga_seq) {
+    // Apply config.
     num_freq = config.get<int>(unique_name,"num_freq");
     dest_port = config.get<uint32_t>(unique_name,"dest_port");
     dest_ip = config.get<std::string>(unique_name,"dest_ip");
+}
+streamSingleDishVDIF::~streamSingleDishVDIF() {
 }
 
 void streamSingleDishVDIF::main_thread() {

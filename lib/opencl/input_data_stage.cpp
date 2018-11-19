@@ -11,21 +11,17 @@ input_data_stage::~input_data_stage()
 
 }
 
-void input_data_stage::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
-}
-
 void input_data_stage::build(device_interface &param_Device)
 {
-    apply_config(0);
+    gpu_command::apply_config();
     gpu_command::build(param_Device);
     data_staged_event = (cl_event *)malloc(param_Device.getInBuf()->num_frames * sizeof(cl_event));
     CHECK_MEM(data_staged_event);
 }
 
-cl_event input_data_stage::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event input_data_stage::execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     // Data transfer to GPU
     CHECK_CL_ERROR( clEnqueueWriteBuffer(param_Device.getQueue(0),

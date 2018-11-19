@@ -12,16 +12,13 @@ recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const string& unique_name
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    apply_config(0);
-}
-
-recvSingleDishVDIF::~recvSingleDishVDIF() {
-}
-
-void recvSingleDishVDIF::apply_config(uint64_t fpga_seq) {
+    // Apply config.
     num_freq = config.get<int>(unique_name,"num_freq");
     orig_port = config.get<uint32_t>(unique_name,"orig_port");
     orig_ip = config.get<std::string>(unique_name,"orig_ip");
+}
+
+recvSingleDishVDIF::~recvSingleDishVDIF() {
 }
 
 void recvSingleDishVDIF::main_thread() {

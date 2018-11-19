@@ -18,7 +18,12 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config,
         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
 
-    apply_config(0);
+    // Apply config.
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _num_pol = config.get<int32_t>(unique_name, "num_pol");
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());
@@ -51,15 +56,7 @@ gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
 
 }
 
-void gpuBeamformPulsarSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(unique_name,
-                                                "samples_per_data_set");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
-    _num_pol = config.get<int32_t>(unique_name, "num_pol");
-}
-
-void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double *input_unpacked, double *phase, unsigned char *cpu_output, int _samples_per_data_set, int _num_elements, int _num_pulsar, int _num_pol)
+void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double *input_unpacked, double *phase, unsigned char *cpu_output, int _samples_per_data_set, int _num_pulsar, int _num_pol)
 {
   float sum_re, sum_im;
   for (int t=0;t<_samples_per_data_set;t++){
@@ -111,7 +108,7 @@ void gpuBeamformPulsarSimulate::main_thread() {
         }
 
 	// Beamform 10 pulsars.
-        cpu_beamform_pulsar(input_unpacked, phase, cpu_output, _samples_per_data_set, _num_elements, _num_pulsar, _num_pol);
+        cpu_beamform_pulsar(input_unpacked, phase, cpu_output, _samples_per_data_set, _num_pulsar, _num_pol);
 
         for (int i = 0; i < output_buf->frame_size; i++) {
 	  output[i] = (unsigned char)cpu_output[i];

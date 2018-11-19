@@ -82,7 +82,6 @@ public:
                   bufferContainer &buffer_container);
     ~bufferRecv();
     void main_thread();
-    virtual void apply_config(uint64_t fpga_seq);
 
     /**
      * @brief Returns a buffer ID of the next empty buffer, this must be filled

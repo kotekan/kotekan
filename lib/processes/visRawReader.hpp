@@ -51,8 +51,6 @@ public:
 
     ~visRawReader();
 
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop over buffer frames
     void main_thread();
 

@@ -8,6 +8,9 @@
 #include "hsa/hsa_ext_amd.h"
 
 void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
+    // Unused parameter, suppress warning.
+    (void)data;
+
     const char* message;
     hsa_status_string(status, &message);
     INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);

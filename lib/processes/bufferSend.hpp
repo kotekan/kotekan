@@ -80,8 +80,6 @@ public:
     /// Main loop for sending data
     void main_thread();
 
-    /// Deprecated
-    virtual void apply_config(uint64_t fpga_seq);
 private:
     /// The input buffer to send frames from.
     struct Buffer *buf;

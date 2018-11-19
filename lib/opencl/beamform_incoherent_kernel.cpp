@@ -13,19 +13,17 @@ beamform_incoherent_kernel::~beamform_incoherent_kernel()
     clReleaseMemObject(device_mask);
 }
 
-void beamform_incoherent_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
+void beamform_incoherent_kernel::build(class device_interface& param_Device)
+{
+    // Apply config.
+    gpu_command::apply_config();
 
     _element_mask = config.get<std::vector<int32_t>>(
                 "/beamforming", "element_mask");
     _inverse_product_remap = config.get<std::vector<int32_t>>(
                 "/processing", "inverse_product_remap");
     _scale_factor = config.get<float>("/beamforming", "scale_factor");
-}
 
-void beamform_incoherent_kernel::build(class device_interface& param_Device)
-{
-    apply_config(0);
     gpu_command::build(param_Device);
 
     cl_int err;
@@ -80,9 +78,12 @@ void beamform_incoherent_kernel::build(class device_interface& param_Device)
     lws[2] = 1;
 }
 
-cl_event beamform_incoherent_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface& param_Device, cl_event param_PrecedeEvent)
-{
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+cl_event beamform_incoherent_kernel::execute(
+        int param_bufferID,
+        class device_interface& param_Device,
+        cl_event param_PrecedeEvent) {
+
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     // TODO Make this a config file option
     // 390625 == 1 second.

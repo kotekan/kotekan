@@ -46,8 +46,6 @@ public:
     ~rfiAVXVDIF();
     //Gets frames, creates thread to perform SK estimates, marks frame empty
     void main_thread();
-    //Applies config parameters
-    void apply_config(uint64_t fpga_seq);
 
 private:
     //Performs integration and computes spectral kurtosis estimates

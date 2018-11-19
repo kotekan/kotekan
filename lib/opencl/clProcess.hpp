@@ -31,7 +31,6 @@ class clProcess : public KotekanProcess {
             bufferContainer &buffer_container);
         virtual ~clProcess();
         void main_thread() override;
-        virtual void apply_config(uint64_t fpga_seq) override;
         void mem_reconcil_thread();
     
     protected:

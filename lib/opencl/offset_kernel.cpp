@@ -10,14 +10,9 @@ offset_kernel::~offset_kernel()
 {
 }
 
-void offset_kernel::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
-}
-
-
 void offset_kernel::build(device_interface &param_Device)
 {
-    apply_config(0);
+    gpu_command::apply_config();
     gpu_command::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
@@ -41,9 +36,9 @@ void offset_kernel::build(device_interface &param_Device)
     lws[2] = 1;
 }
 
-cl_event offset_kernel::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event offset_kernel::execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     setKernelArg(0, param_Device.getInputBuffer(param_bufferID));
     setKernelArg(1, param_Device.getAccumulateBuffer(param_bufferID));

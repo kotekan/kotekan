@@ -130,9 +130,6 @@ public:
     /// Destructor. Flushes file contents to disk.
     ~eigenWriter();
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Primary loop
     void main_thread();
 

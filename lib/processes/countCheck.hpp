@@ -42,14 +42,12 @@ public:
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     // Main loop for the process
     void main_thread();
 
 private:
     // Store the unix time at start of correlation:
-    uint64_t start_time;
+    int64_t start_time;
     Buffer * in_buf;
     // Tolerance for start time variability
     int start_time_tolerance;

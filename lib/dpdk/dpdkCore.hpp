@@ -164,7 +164,6 @@ public:
     ~dpdkCore();
 
     void main_thread();
-    void apply_config(uint64_t fpga_seq) {};
 
 private:
 

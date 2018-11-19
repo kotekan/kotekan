@@ -33,10 +33,6 @@ visTruncate::visTruncate(Config &config, const string& unique_name,
                 + std::to_string(vis_prec) + ").");
 }
 
-void visTruncate::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void visTruncate::main_thread() {
 
     unsigned int frame_id = 0;

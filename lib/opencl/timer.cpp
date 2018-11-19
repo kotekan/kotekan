@@ -50,7 +50,10 @@ void timer::stop(string interval_name){
     stop_time = clock();
 
     //Avoid overwriting 5000th stop_time value repeatedly.
-    if (time_list[interval_name][i]->stop_time < 0){
+    // Cast -1 to clock_t to suppress warning (clock_t is
+    // not unsigned on some macOS installations).
+    // TODO: will this still work correctly on macOS?
+    if (time_list[interval_name][i]->stop_time == ((clock_t)-1)){
         time_list[interval_name][i]->stop_time = stop_time;
         time_list[interval_name][i]->interval = (float)(stop_time - time_list[interval_name][i]->start_time)/(float)(CLOCKS_PER_SEC / 1000);
     }
@@ -264,6 +267,10 @@ void timer::time_opencl_multi_kernel(cl_event profile_event, string interval_nam
 //}
 
 void CL_CALLBACK profileCallback(cl_event ev, cl_int event_status, void * data){
+
+    // Unused parameter, suppress warning.
+    (void)event_status;
+
     struct time_interval * cur_profile = (struct time_interval * )data;
     cl_int err;
     cl_ulong ev_start_time=(cl_ulong)0;

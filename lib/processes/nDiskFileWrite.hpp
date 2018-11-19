@@ -74,16 +74,13 @@ using std::string;
  */
 class nDiskFileWrite : public KotekanProcess {
 public:
-    ///Constructor, calls apply_config to intialize parameters
+    ///Constructor
     nDiskFileWrite(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_containter);
 
     ///Destructor, currently does nothing
     virtual ~nDiskFileWrite();
-
-    ///Applies the config parameters
-    void apply_config(uint64_t fpga_seq) override;
 
     ///Creates n safe instances of the file_read_thread thread
     void main_thread() override;

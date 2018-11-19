@@ -51,9 +51,6 @@ public:
     /// Destructor, cleans up local allocs.
     ~testDataGenQuad();
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq) override;
-
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
 

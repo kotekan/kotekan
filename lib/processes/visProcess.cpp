@@ -54,10 +54,6 @@ visTransform::visTransform(Config& config,
     input_remap = std::get<0>(parse_reorder_default(config, unique_name));
 }
 
-void visTransform::apply_config(uint64_t fpga_seq) {
-
-}
-
 void visTransform::main_thread() {
 
     uint8_t * frame = nullptr;
@@ -70,7 +66,6 @@ void visTransform::main_thread() {
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and transform into
         // visBuffer style data
-        unsigned int buf_ind = 0;
         for(auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
@@ -137,10 +132,6 @@ visDebug::visDebug(Config& config,
     // Setup the input vector
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-}
-
-void visDebug::apply_config(uint64_t fpga_seq) {
-
 }
 
 void visDebug::main_thread() {
@@ -211,13 +202,8 @@ visMerge::visMerge(Config& config,
 
 }
 
-void visMerge::apply_config(uint64_t fpga_seq) {
-
-}
-
 void visMerge::main_thread() {
 
-    uint8_t * frame = nullptr;
     struct Buffer* buf;
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
@@ -347,10 +333,6 @@ visTestPattern::visTestPattern(Config& config,
     }
     outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err"
         << std::endl;
-}
-
-void visTestPattern::apply_config(uint64_t fpga_seq) {
-
 }
 
 void visTestPattern::main_thread() {
@@ -519,16 +501,6 @@ registerInitialDatasetState::registerInitialDatasetState(Config& config,
                    std::bind(&registerInitialDatasetState::main_thread, this))
 {
     // Fetch any needed config.
-    apply_config(0);
-    // Setup the buffers
-    in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
-    out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
-}
-
-void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
-{
     std::vector<uint32_t> freq_ids;
 
     // Get the frequency IDs that are on this stream, check the config or just
@@ -559,6 +531,12 @@ void registerInitialDatasetState::apply_config(uint64_t fpga_seq)
             _prods.push_back({i, j});
         }
     }
+
+    // Setup the buffers
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
 }
 
 

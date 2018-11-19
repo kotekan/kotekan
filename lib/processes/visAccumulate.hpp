@@ -78,7 +78,6 @@ public:
                   const string& unique_name,
                   bufferContainer &buffer_container);
     ~visAccumulate();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 
 private:

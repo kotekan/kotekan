@@ -8,9 +8,6 @@ signalContainer::signalContainer() {
     stopping = false;
 }
 
-signalContainer::signalContainer(const signalContainer& obj) {
-}
-
 signalContainer::~signalContainer() {
 }
 

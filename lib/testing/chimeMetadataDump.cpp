@@ -20,9 +20,6 @@ chimeMetadataDump::chimeMetadataDump(Config& config,
 chimeMetadataDump::~chimeMetadataDump() {
 }
 
-void chimeMetadataDump::apply_config(uint64_t fpga_seq) {
-}
-
 void chimeMetadataDump::main_thread() {
 
     int frame_id = 0;

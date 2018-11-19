@@ -14,7 +14,6 @@ public:
                bufferContainer &buffer_container);
     virtual ~chrxUplink();
     void main_thread();
-    virtual void apply_config(uint64_t fpga_seq);
 
 private:
     struct Buffer *vis_buf;
