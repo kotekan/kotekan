@@ -73,7 +73,7 @@ public:
             bufferContainer &buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Default fill pattern.
@@ -204,7 +204,7 @@ public:
                bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Buffers

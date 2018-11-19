@@ -62,7 +62,7 @@ public:
     //Deconstructor, cleans up / does nothing
     virtual ~rfiBadInputFinder();
     //Primary loop, reads buffer and sends out UDP stream
-    void main_thread();
+    void main_thread() override;
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
 

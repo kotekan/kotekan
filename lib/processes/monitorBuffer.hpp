@@ -41,7 +41,7 @@ public:
     virtual ~monitorBuffer();
 
     /// Watches the list of buffers for timeouts
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Internal list of buffers to check

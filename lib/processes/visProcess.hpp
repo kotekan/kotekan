@@ -56,7 +56,7 @@ public:
                 bufferContainer &buffer_container);
 
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
 
@@ -97,7 +97,7 @@ public:
              const string& unique_name,
              bufferContainer &buffer_container);
 
-    void main_thread();
+    void main_thread() override;
 
 private:
     Buffer * in_buf;
@@ -137,7 +137,7 @@ public:
              bufferContainer &buffer_container);
 
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
 
@@ -204,7 +204,7 @@ public:
              const string& unique_name,
              bufferContainer &buffer_container);
 
-    void main_thread();
+    void main_thread() override;
 
 private:
     Buffer * in_buf;

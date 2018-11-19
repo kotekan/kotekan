@@ -74,7 +74,7 @@ public:
                    bufferContainer &buffer_container);
 
     /// Primary loop: sorts products and passes them on to output buffer.
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// keeps track of the input dataset ID
