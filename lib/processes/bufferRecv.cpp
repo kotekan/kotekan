@@ -405,6 +405,7 @@ void connInstance::internal_read_callback()
                 state = connState::frame;
                 bytes_read = 0;
             }
+            break;
         case connState::frame:
             n = read(fd, (void*)(frame_space + bytes_read),
                      buf_frame_header.frame_size - bytes_read);
