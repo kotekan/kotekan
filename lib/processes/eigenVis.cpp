@@ -132,8 +132,8 @@ void eigenVis::main_thread() {
             }
         }
 
-        nside = (int64_t) num_elements;
-        nev = (int64_t) num_eigenvectors;
+        nside = (int32_t) num_elements;
+        nev = (int32_t) num_eigenvectors;
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
                               (lapack_complex_float *) vis_square.data(), nside,
                               0.0, 0.0, nside - nev + 1, nside, 0.0,
