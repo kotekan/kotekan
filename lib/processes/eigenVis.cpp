@@ -106,7 +106,7 @@ void eigenVis::main_thread() {
         // of the visibilities.
         int prod_ind = 0;
         for (uint32_t i = 0; i < num_elements; i++) {
-            for (uint64_t j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
+            for (uint32_t j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
                 cfloat value = 0;
                 for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     value += (std::conj(last_evs[freq_id][ev_ind * num_elements + i])
@@ -115,7 +115,7 @@ void eigenVis::main_thread() {
                 vis_square[i * num_elements + j] = value;
                 prod_ind++;
             }
-            for (uint64_t j = i + num_diagonals_filled; j < num_elements; j++) {
+            for (uint32_t j = i + num_diagonals_filled; j < num_elements; j++) {
                 // Conjugate because Fortran interprets as lower triangle.
                 vis_square[i * num_elements + j] = std::conj(input_frame.vis[prod_ind]);
                 prod_ind++;
