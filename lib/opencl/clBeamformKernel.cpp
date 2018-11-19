@@ -98,7 +98,7 @@ void clBeamformKernel::build()
 
 cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     // TODO Make this a config file option
     // 390625 == 1 second.
@@ -130,9 +130,9 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, c
                                     lws,
                                     1,
                                     &pre_event,
-                                    &post_event[gpu_frame_id]));
+                                    &post_events[gpu_frame_id]));
 
-    return post_event[gpu_frame_id];
+    return post_events[gpu_frame_id];
 }
 
 

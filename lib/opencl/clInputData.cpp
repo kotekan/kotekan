@@ -37,9 +37,7 @@ int clInputData::wait_on_precondition(int gpu_frame_id)
 
 cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    DEBUG2("CLINPUTDATA::EXECUTE");
-
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("input",
                                                 gpu_frame_id, input_frame_len);
@@ -54,8 +52,8 @@ cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_eve
                                             host_memory_frame,
                                             (pre_event==NULL)?0:1,
                                             (pre_event==NULL)?NULL:&pre_event,
-                                            &post_event[gpu_frame_id]) );
+                                            &post_events[gpu_frame_id]) );
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
-    return post_event[gpu_frame_id];
+    return post_events[gpu_frame_id];
 }

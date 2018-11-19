@@ -54,7 +54,7 @@ void clBeamformPhaseData::build()
 
 cl_event clBeamformPhaseData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     time_t local_beamform_time;
     uint64_t current_seq;
@@ -92,10 +92,10 @@ cl_event clBeamformPhaseData::execute(int gpu_frame_id, const uint64_t& fpga_seq
                                         (cl_float *)phases[bankID],
                                         1,
                                         &pre_event,
-                                        &post_event[gpu_frame_id]));
+                                        &post_events[gpu_frame_id]));
 
         last_bankID = bankID;
-        return post_event[gpu_frame_id];
+        return post_events[gpu_frame_id];
     }
     return pre_event;
 }

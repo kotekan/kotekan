@@ -74,9 +74,7 @@ void clPreseedKernel::build()
 
 cl_event clPreseedKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    DEBUG2("CLPRESEEDKERNEL::EXECUTE");
-
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
@@ -95,9 +93,9 @@ cl_event clPreseedKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl
                                             lws,
                                             1,
                                             &pre_event,
-                                            &post_event[gpu_frame_id]));
+                                            &post_events[gpu_frame_id]));
 
-    return post_event[gpu_frame_id];
+    return post_events[gpu_frame_id];
 }
 void clPreseedKernel::defineOutputDataMap()
 {

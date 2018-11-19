@@ -35,7 +35,7 @@ int clOutputBeamformResult::wait_on_precondition(int gpu_frame_id)
 
 cl_event clOutputBeamformResult::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * 2;
     cl_mem output_memory_frame = device.get_gpu_memory_array("beamform_output_buf",gpu_frame_id, output_len);
@@ -50,10 +50,10 @@ cl_event clOutputBeamformResult::execute(int gpu_frame_id, const uint64_t& fpga_
                                         host_output_frame,
                                         1,
                                         &pre_event,
-                                        &post_event[gpu_frame_id]) );
+                                        &post_events[gpu_frame_id]) );
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
-    return post_event[gpu_frame_id];
+    return post_events[gpu_frame_id];
 }
 
 

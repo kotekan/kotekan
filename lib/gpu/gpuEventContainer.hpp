@@ -19,7 +19,8 @@ public:
     void reset();
 
     // Set the signal and notify anyone waiting on them.
-    void set_signal(void *sig);//std::experimental::any const sig);
+    void set_signal(void *sig);
+    void *get_signal(void);
 
     // Wait for the signal to become ready to sleep on then
     // wait for the hsa signal itself to reach zero
@@ -37,6 +38,7 @@ public:
     void stop();
 
     virtual void set(void *sig) = 0;
+    virtual void *get() = 0;
     virtual void unset() = 0;
     virtual void wait() = 0;
 

@@ -18,18 +18,19 @@ public:
         bufferContainer &buffer_container);
     virtual ~gpuProcess();
     void main_thread() override;
-    void results_thread();
     void profile_callback(connectionInstance& conn);
 protected:
     virtual gpuCommand *create_command(json cmd) = 0;
     virtual gpuEventContainer *create_signal() = 0;
+    virtual void queue_commands(int gpu_frame_id) = 0;
+    void results_thread();
     void init(void);
 
     vector<gpuEventContainer*> final_signals;
     bufferContainer local_buffer_container;
 
     std::thread results_thread_handle;
-    gpuDeviceInterface * device;
+    gpuDeviceInterface * dev;
     std::vector<gpuCommand *> commands;
 
     // Config variables

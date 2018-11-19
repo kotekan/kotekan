@@ -23,7 +23,12 @@ void gpuEventContainer::reset() {
     cond_var.notify_all();
 }
 
-void gpuEventContainer::set_signal(void *sig){//std::experimental::any const sig) {
+void *gpuEventContainer::get_signal(void){
+    std::lock_guard<std::mutex> lock(mux);
+    return get();
+}
+
+void gpuEventContainer::set_signal(void *sig){
     {
         std::lock_guard<std::mutex> lock(mux);
         set(sig);

@@ -32,7 +32,6 @@ void clPresumKernel::build()
     string cl_options = "";
     cl_options += " -D ACTUAL_NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D ACTUAL_NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
-
     CHECK_CL_ERROR(clBuildProgram( program, 1, &dev_id, cl_options.c_str(), NULL, NULL ));
 
     kernel = clCreateKernel( program, kernel_command.c_str(), &err );
@@ -50,9 +49,7 @@ void clPresumKernel::build()
 
 cl_event clPresumKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    DEBUG2("CLPRESUMKERNEL::EXECUTE");
-
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);
     uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
@@ -71,8 +68,8 @@ cl_event clPresumKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_
                                             lws,
                                             1,
                                             &pre_event,
-                                            &post_event[gpu_frame_id]));
+                                            &post_events[gpu_frame_id]));
 
-    return post_event[gpu_frame_id];
+    return post_events[gpu_frame_id];
 }
 

@@ -44,7 +44,7 @@ gpuProcess::~gpuProcess() {
     for (auto &event: final_signals)
         delete event;
 
-    delete device;
+    delete dev;
 }
 
 void gpuProcess::init() {
@@ -54,8 +54,8 @@ void gpuProcess::init() {
 
     string g_log_level = config.get<string>(unique_name, "log_level");
     string s_log_level = config.get_default<string>(unique_name, "device_interface_log_level", g_log_level);
-    device->set_log_level(s_log_level);
-    device->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
+    dev->set_log_level(s_log_level);
+    dev->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     for (auto cmd : cmds){
@@ -64,14 +64,11 @@ void gpuProcess::init() {
 }
 
 void gpuProcess::profile_callback(connectionInstance& conn) {
-    /*
     DEBUG(" *** *** *** Profile call made.");
 
     double frame_arrival_period=0.5;
 
     json reply;
-    // Move to this class?
-//    vector<clCommand *> &commands = factory->get_commands();
 
     reply["copy_in"] = json::array();
     reply["kernel"] = json::array();
@@ -81,26 +78,26 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     double total_copy_out_time = 0;
     double total_kernel_time = 0;
 
-    for (uint32_t i = 0; i < commands.size(); ++i) {
-        double time = commands[i]->get_last_gpu_execution_time();
+    for (auto &cmd : commands) {
+        double time = cmd->get_last_gpu_execution_time();
         double utilization = time/frame_arrival_period;
-        if (commands[i]->get_command_type() == clCommandType::KERNEL) {
-            reply["kernel"].push_back({{"name", commands[i]->get_name()},
+        if (cmd->get_command_type() == gpuCommandType::KERNEL) {
+            reply["kernel"].push_back({{"name", cmd->get_name()},
                                         {"time", time},
                                         {"utilization", utilization} });
-            total_kernel_time += commands[i]->get_last_gpu_execution_time();
-        } else if (commands[i]->get_command_type() == clCommandType::COPY_IN) {
+            total_kernel_time += cmd->get_last_gpu_execution_time();
+        } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
 
-            reply["copy_in"].push_back({{"name", commands[i]->get_name()},
+            reply["copy_in"].push_back({{"name", cmd->get_name()},
                                         {"time", time},
                                         {"utilization", utilization} });
-            total_copy_in_time += commands[i]->get_last_gpu_execution_time();
-        } else if (commands[i]->get_command_type() == clCommandType::COPY_OUT) {
+            total_copy_in_time += cmd->get_last_gpu_execution_time();
+        } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
 
-            reply["copy_out"].push_back({{"name", commands[i]->get_name()},
+            reply["copy_out"].push_back({{"name", cmd->get_name()},
                                         {"time", time},
                                         {"utilization", utilization} });
-            total_copy_out_time += commands[i]->get_last_gpu_execution_time();
+            total_copy_out_time += cmd->get_last_gpu_execution_time();
         } else {
             continue;
         }
@@ -114,24 +111,18 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     reply["copy_out_utilization"] = total_copy_out_time/frame_arrival_period;
 
     conn.send_json_reply(reply);
-    */
 }
 
 
 void gpuProcess::main_thread()
 {
-//    init();
-    /*
     restServer &rest_server = restServer::instance();
     rest_server.register_get_callback("/gpu_profile/"+ std::to_string(gpu_id),
             std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
-//    vector<clCommand *> &commands = factory->get_commands();
-
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
     bool first_run = true;
-    cl_event signal;
 
     while (!stop_thread) {
         // Wait for all the required preconditions
@@ -140,23 +131,15 @@ void gpuProcess::main_thread()
         //INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
         for (auto &command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0){
-                INFO("Received exit in OpenCL command precondition! (Command '%s')",command->get_name().c_str());
+                INFO("Received exit in GPU command precondition! (Command '%s')",command->get_name().c_str());
                 break;
             }
         }
 
         INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
-        final_signals[gpu_frame_id].wait_for_free_slot();
-        signal = NULL;
-        for (auto &command : commands) {
-            // Feed the last signal into the next operation
-            signal = command->execute(gpu_frame_id, 0, signal);
-            //usleep(10);
-        }
-        final_signals[gpu_frame_id].set_signal(signal);
-        INFO("Commands executed.");
-
+        final_signals[gpu_frame_id]->wait_for_free_slot();
+        queue_commands(gpu_frame_id);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
             first_run = false;
@@ -165,25 +148,21 @@ void gpuProcess::main_thread()
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
     for (auto &sig_container : final_signals) {
-        sig_container.stop();
+        sig_container->stop();
     }
-    INFO("Waiting for CL packet queues to finish up before freeing memory.");
+    INFO("Waiting for GPU packet queues to finish up before freeing memory.");
     results_thread_handle.join();
-    */
 }
 
 
 void gpuProcess::results_thread() {
-    /*
-//    vector<clCommand *> &commands = factory->get_commands();
-
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 
     while (true) {
         // Wait for a signal to be completed
         DEBUG2("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
-        if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
+        if (final_signals[gpu_frame_id]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
@@ -205,9 +184,8 @@ void gpuProcess::results_thread() {
             INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }
 
-        final_signals[gpu_frame_id].reset();
+        final_signals[gpu_frame_id]->reset();
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
-    */
 }

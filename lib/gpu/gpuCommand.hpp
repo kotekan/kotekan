@@ -10,7 +10,8 @@
 #include "Config.hpp"
 #include "errors.h"
 #include <stdio.h>
-#include "clDeviceInterface.hpp"
+#include "gpuDeviceInterface.hpp"
+#include "gpuEventContainer.hpp"
 #include "factory.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
@@ -79,18 +80,15 @@ public:
     // for example if this command requires a full buffer frame to copy
     // then it should block on that.  It should also block on having any
     // free output buffers that might be referenced by this command.
-    virtual int wait_on_precondition(int gpu_frame_id);
+    virtual int wait_on_precondition(int gpu_frame_id) {return 0;}
 
-    /** The execute command does very little in the base case. The child class must provide an implementation of the 
-     * logic under the signature of the method defined here. Basic functions to execute a gpu command are done in the
-     * base class such as checking that the buffer_ID is positive and is less than the number of frames in the buffer. 
+    /** Basic functions to execute a gpu command are done in the
+     * base class such as checking that the buffer_ID is positive and is
+     * less than the number of frames in the buffer. 
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
-     * 
-     * @param fpga_seq      Passed to apply_config.
-     * 
-     * @param pre_event     The preceeding event in a sequence of chained event sequence of commands.
     **/
-//    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event);
+    void pre_execute(int gpu_frame_id);
+
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.
     **/
@@ -99,30 +97,18 @@ public:
     double get_last_gpu_execution_time();
     gpuCommandType get_command_type();
 protected:
-    /// Compiled instance of the kernel that will execute on the GPU once enqueued.
-    cl_kernel kernel;
-    /// Allocates resources on the GPU for the kernel.
-    cl_program program;
 
-    // Kernel values.
-    /// global work space dimension
-    size_t gws[3]; // TODO Rename to something more meaningful - or comment.
-    /// local work space dimension
-    size_t lws[3];
-
-    // Kernel Events
-    /// The next event in an event chain when building an event chain of commands.
-//    cl_event *post_event;
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing them by this value.
     string kernel_command;
     /// File reference for the openCL file (.cl) where the kernel is written.
     string kernel_file_name;
     /// reference to the config file for the current run
     Config &config;
+
     /// Name to use with consumer and producer assignment for buffers defined in yaml files.
     string unique_name;
     bufferContainer host_buffers;
-    gpuDeviceInterface &device;
+    gpuDeviceInterface &dev;
 
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
     int32_t _buffer_depth;

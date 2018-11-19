@@ -15,15 +15,13 @@ public:
         const string& unique_name,
         bufferContainer &buffer_container);
     virtual ~clProcess();
-    void main_thread() override;
-    void results_thread();
-    void profile_callback(connectionInstance& conn);
+
 protected:
     gpuCommand *create_command(json cmd) override;
     gpuEventContainer *create_signal() override;
+    void queue_commands(int gpu_frame_id) override;
 
-//    vector<clEventContainer> final_signals;
-
+    clDeviceInterface *device;
     std::thread results_thread_handle;
 };
 

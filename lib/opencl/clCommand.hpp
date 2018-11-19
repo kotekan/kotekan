@@ -18,6 +18,7 @@
 #include "errors.h"
 #include <stdio.h>
 #include "clDeviceInterface.hpp"
+#include "clEventContainer.hpp"
 #include "factory.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
@@ -79,8 +80,7 @@ public:
               );
     /// Destructor that frees memory for the kernel and name.
     virtual ~clCommand();
-    /// gettor that returns the name given to this clCommand object.
-    string &get_name();
+
     /** The build function creates the event to return as the post event in an event chaining sequence.
      * If a kernel is part of the clCommand object definition the resources to run it are allocated on
      * the gpu here.
@@ -91,10 +91,11 @@ public:
     // for example if this command requires a full buffer frame to copy
     // then it should block on that.  It should also block on having any
     // free output buffers that might be referenced by this command.
-    virtual int wait_on_precondition(int gpu_frame_id);
+    virtual int wait_on_precondition(int gpu_frame_id) override {return 0;}
 
     /// This method appends arguements to the kernel execution statement that's run when the kernel is enqueued on the GPU.
     void setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer);
+
     /** The execute command does very little in the base case. The child class must provide an implementation of the 
      * logic under the signature of the method defined here. Basic functions to execute a gpu command are done in the
      * base class such as checking that the buffer_ID is positive and is less than the number of frames in the buffer. 
@@ -104,14 +105,12 @@ public:
      * 
      * @param pre_event     The preceeding event in a sequence of chained event sequence of commands.
     **/
-    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event);
+    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) = 0;
+
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.
     **/
-    virtual void finalize_frame(int gpu_frame_id);
-
-    double get_last_gpu_execution_time();
-//    clCommandType get_command_type();
+    virtual void finalize_frame(int gpu_frame_id) override;
 protected:
     /// Compiled instance of the kernel that will execute on the GPU once enqueued.
     cl_kernel kernel;
@@ -120,31 +119,12 @@ protected:
 
     // Kernel values.
     /// global work space dimension
-    size_t gws[3]; // TODO Rename to something more meaningful - or comment.
+    size_t gws[3];
     /// local work space dimension
     size_t lws[3];
+    cl_event *post_events; //tracked locally for cleanup
 
-    // Kernel Events
-    /// The next event in an event chain when building an event chain of commands.
-    cl_event *post_event;
-    /// A unique name used for the gpu command. Used in indexing commands in a list and referencing them by this value.
-    string kernel_command;
-    /// File reference for the openCL file (.cl) where the kernel is written.
-    string kernel_file_name;
-    /// reference to the config file for the current run
-    Config &config;
-    /// Name to use with consumer and producer assignment for buffers defined in yaml files.
-    string unique_name;
-    bufferContainer host_buffers;
     clDeviceInterface &device;
-
-    /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
-    int32_t _buffer_depth;
-    int32_t _gpu_buffer_depth;
-
-    // Profiling time for the last signal
-    double last_gpu_execution_time = 0;
-//    clCommandType command_type = clCommandType::NOT_SET;
 };
 
 // Create a factory for clCommands

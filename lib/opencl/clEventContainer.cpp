@@ -6,6 +6,10 @@ void clEventContainer::set(void *sig){
     signal = (cl_event)sig;
 }
 
+void *clEventContainer::get(){
+    return signal;
+}
+
 void clEventContainer::unset(){
     signal=NULL;
 }

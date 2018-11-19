@@ -89,7 +89,7 @@ void clCorrelatorKernel::build()
 
 cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);
@@ -108,9 +108,9 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq,
                                             lws,
                                             1,
                                             &pre_event,
-                                            &post_event[gpu_frame_id]));
+                                            &post_events[gpu_frame_id]));
 
-    return post_event[gpu_frame_id];
+    return post_events[gpu_frame_id];
 }
 
 void clCorrelatorKernel::defineOutputDataMap()

@@ -18,6 +18,7 @@ class clEventContainer final : public gpuEventContainer {
 
 public:
     void set(void *sig) override;
+    void *get() override;
     void unset() override;
     void wait() override;
 private:

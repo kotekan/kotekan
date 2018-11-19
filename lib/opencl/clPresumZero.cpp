@@ -38,9 +38,7 @@ clPresumZero::~clPresumZero()
 
 cl_event clPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    DEBUG2("CLPRESUMZERO::EXECUTE");
-
-    clCommand::execute(gpu_frame_id, 0, pre_event);
+    pre_execute(gpu_frame_id);
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
 
@@ -53,6 +51,6 @@ cl_event clPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_ev
                                             presum_zeros,
                                             1,
                                             &pre_event,
-                                            &post_event[gpu_frame_id]) );
-    return post_event[gpu_frame_id];
+                                            &post_events[gpu_frame_id]) );
+    return post_events[gpu_frame_id];
 }
