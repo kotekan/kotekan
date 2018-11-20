@@ -1,13 +1,32 @@
 #include "visTestPattern.hpp"
+#include "buffer.h"
+#include "errors.h"
+#include "processFactory.hpp"
 #include "visBuffer.hpp"
+#include "bufferContainer.hpp"
+
+#include "gsl-lite.hpp"
+
+#include <ext/alloc_traits.h>
+#include <math.h>
+#include <time.h>
+#include <atomic>
+#include <complex>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <functional>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
 
 
 REGISTER_KOTEKAN_PROCESS(visTestPattern);
 
 
 visTestPattern::visTestPattern(Config& config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container) :
+                               const std::string& unique_name,
+                               bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&visTestPattern::main_thread, this)) {
 

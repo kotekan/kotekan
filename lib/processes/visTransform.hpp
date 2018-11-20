@@ -6,7 +6,17 @@
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "bufferContainer.hpp"
+#include "buffer.h"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <utility>
+#include <vector>
+
 
 /**
  * @class visTransform

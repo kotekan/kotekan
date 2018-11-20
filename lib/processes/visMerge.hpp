@@ -6,7 +6,14 @@
 #ifndef VISMERGE_HPP
 #define VISMERGE_HPP
 
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "bufferContainer.hpp"
+#include "buffer.h"
+
+#include <string>
+#include <utility>
+#include <vector>
 
 
 /**
@@ -32,7 +39,7 @@ public:
 
     // Default constructor
     visMerge(Config &config,
-             const string& unique_name,
+             const std::string& unique_name,
              bufferContainer &buffer_container);
 
     // Main loop for the process

@@ -6,10 +6,16 @@
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
-#include <fstream>
-
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
+#include "bufferContainer.hpp"
+#include "buffer.h"
+
+#include <stddef.h>
+#include <fstream>
+#include <string>
+#include <vector>
 
 
 /**
@@ -66,7 +72,7 @@ class visTestPattern : public KotekanProcess {
 
 public:
     visTestPattern(Config &config,
-             const string& unique_name,
+             const std::string& unique_name,
              bufferContainer &buffer_container);
 
     void main_thread() override;

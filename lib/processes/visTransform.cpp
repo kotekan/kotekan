@@ -1,5 +1,22 @@
 #include "visTransform.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "errors.h"
+#include "metadata.h"
+#include "processFactory.hpp"
 #include "visBuffer.hpp"
+#include "visUtil.hpp"
+#include "chimeMetadata.h"
+
+#include "gsl-lite.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <exception>
+#include <functional>
+#include <regex>
+#include <tuple>
+
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 

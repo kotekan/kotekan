@@ -6,7 +6,15 @@
 #ifndef VISDEBUG_HPP
 #define VISDEBUG_HPP
 
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "bufferContainer.hpp"
+#include "buffer.h"
+
+#include <cstdint>
+#include <map>
+#include <string>
+#include <utility>
 
 
 /**
@@ -30,7 +38,7 @@ class visDebug : public KotekanProcess {
 
 public:
     visDebug(Config &config,
-             const string& unique_name,
+             const std::string& unique_name,
              bufferContainer &buffer_container);
 
     void main_thread() override;

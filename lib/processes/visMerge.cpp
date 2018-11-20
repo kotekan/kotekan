@@ -1,11 +1,23 @@
 #include "visMerge.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
 #include "visUtil.hpp"
+
+#include <stdint.h>
+#include <atomic>
+#include <cstring>
+#include <exception>
+#include <functional>
+#include <stdexcept>
+#include <tuple>
 
 REGISTER_KOTEKAN_PROCESS(visMerge);
 
 
 visMerge::visMerge(Config& config,
-                   const string& unique_name,
+                   const std::string& unique_name,
                    bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&visMerge::main_thread, this)) {

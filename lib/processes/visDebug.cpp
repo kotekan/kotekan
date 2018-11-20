@@ -1,8 +1,16 @@
 #include "visDebug.hpp"
-#include "visBuffer.hpp"
+#include "buffer.h"
+#include "errors.h"
+#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
+#include "bufferContainer.hpp"
 
 #include "fmt.hpp"
+
+#include <stdint.h>
+#include <atomic>
+#include <functional>
 
 REGISTER_KOTEKAN_PROCESS(visDebug);
 
