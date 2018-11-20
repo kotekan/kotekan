@@ -12,7 +12,7 @@ public:
                 struct Buffer &out_buf,
                 uint32_t gpu_id);
     virtual ~hccGPUThread();
-    void main_thread();
+    void main_thread() override;
 
 private:
     struct Buffer &in_buf;

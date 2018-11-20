@@ -45,7 +45,7 @@ public:
     //Destructor, do nothing
     ~rfiAVXVDIF();
     //Gets frames, creates thread to perform SK estimates, marks frame empty
-    void main_thread();
+    void main_thread() override;
 
 private:
     //Performs integration and computes spectral kurtosis estimates

@@ -19,7 +19,7 @@ public:
                     const string& unique_name,
                     bufferContainer &buffer_container);
     virtual ~gpuPostProcess();
-    void main_thread();
+    void main_thread() override;
 
     void vis_endpoint(connectionInstance &conn, json &json_request);
 private:

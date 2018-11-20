@@ -13,7 +13,7 @@ public:
                const string& unique_name,
                bufferContainer &buffer_container);
     virtual ~chrxUplink();
-    void main_thread();
+    void main_thread() override;
 
 private:
     struct Buffer *vis_buf;

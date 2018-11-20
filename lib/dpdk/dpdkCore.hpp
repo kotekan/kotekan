@@ -163,7 +163,7 @@ public:
              bufferContainer &buffer_container);
     ~dpdkCore();
 
-    void main_thread();
+    void main_thread() override;
 
 private:
 

@@ -54,7 +54,7 @@ public:
     virtual ~networkInputPowerStream();
 
     /// Primary loop, which waits on input frames, integrates, and dumps to output.
-    void main_thread();
+    void main_thread() override;
 
 private:
     ///Simple function to receive data of @c length bytes.

@@ -67,7 +67,7 @@ public:
               bufferContainer &buffer_container);
 
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
     /// Callback function to receive updates on timestamps from configUpdater
     bool receive_update(nlohmann::json &json);

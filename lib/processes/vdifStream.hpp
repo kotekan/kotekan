@@ -10,7 +10,7 @@ public:
     vdifStream(Config& config, const string& unique_name,
                bufferContainer &buffer_container);
     virtual ~vdifStream();
-    void main_thread();
+    void main_thread() override;
 
 private:
     struct Buffer *buf;

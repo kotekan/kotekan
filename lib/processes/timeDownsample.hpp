@@ -49,7 +49,7 @@ public:
                    bufferContainer &buffer_container);
 
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
 

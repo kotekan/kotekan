@@ -28,7 +28,7 @@ public:
               bufferContainer &buffer_container);
     virtual ~hsaProcess();
 
-    void main_thread();
+    void main_thread() override;
 
     void results_thread();
 

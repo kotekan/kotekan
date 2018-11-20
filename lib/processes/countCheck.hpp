@@ -43,7 +43,7 @@ public:
               bufferContainer &buffer_container);
 
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
     // Store the unix time at start of correlation:

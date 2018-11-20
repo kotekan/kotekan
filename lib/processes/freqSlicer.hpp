@@ -47,7 +47,7 @@ public:
               bufferContainer &buffer_container);
 
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// adds states and datasets and gets new output dataset IDs from manager
@@ -99,7 +99,7 @@ public:
                bufferContainer &buffer_container);
 
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// adds state and dataset and gets a new output dataset ID from manager
