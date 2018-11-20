@@ -29,6 +29,10 @@ protected:
     vector<gpuEventContainer*> final_signals;
     bufferContainer local_buffer_container;
 
+    bool log_profiling;
+    // The mean expected time between frames in seconds
+    double frame_arrival_period;
+
     std::thread results_thread_handle;
     gpuDeviceInterface * dev;
     std::vector<gpuCommand *> commands;

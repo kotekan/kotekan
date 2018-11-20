@@ -22,7 +22,6 @@ protected:
     void queue_commands(int gpu_frame_id) override;
 
     clDeviceInterface *device;
-    std::thread results_thread_handle;
 };
 
 #endif //CL_PROCESS_H

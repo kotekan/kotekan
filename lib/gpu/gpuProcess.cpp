@@ -13,9 +13,12 @@ gpuProcess::gpuProcess(Config& config_,
         bufferContainer &buffer_container):
     KotekanProcess(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this))
 {
+    log_profiling = config.get_default<bool>(unique_name, "log_profiling", false);
+
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
     gpu_id = config.get<int>(unique_name, "gpu_id");
 
+    frame_arrival_period = config.get_default<double>(unique_name, "frame_arrival_period",0.0);
 
     json in_bufs = config.get_value(unique_name, "in_buffers");
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
@@ -48,7 +51,7 @@ gpuProcess::~gpuProcess() {
 }
 
 void gpuProcess::init() {
-    for (int i=0; i<_gpu_buffer_depth; i++){
+    for (uint i=0; i<_gpu_buffer_depth; i++){
         final_signals.push_back(create_signal());
     }
 
@@ -65,8 +68,6 @@ void gpuProcess::init() {
 
 void gpuProcess::profile_callback(connectionInstance& conn) {
     DEBUG(" *** *** *** Profile call made.");
-
-    double frame_arrival_period=0.5;
 
     json reply;
 
@@ -142,6 +143,15 @@ void gpuProcess::main_thread()
         queue_commands(gpu_frame_id);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
+
+            // Requires Linux, this could possibly be made more general someday.
+            // TODO Move to config
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            for (int j = 4; j < 12; j++)
+                CPU_SET(j, &cpuset);
+            pthread_setaffinity_np(results_thread_handle.native_handle(),
+                                    sizeof(cpu_set_t), &cpuset);
             first_run = false;
         }
 
@@ -174,7 +184,6 @@ void gpuProcess::results_thread() {
         }
         DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
 
-        bool log_profiling = true;
         if (log_profiling) {
             string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
