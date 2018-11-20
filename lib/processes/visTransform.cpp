@@ -52,8 +52,8 @@ visTransform::visTransform(Config& config,
 
 void visTransform::main_thread() {
 
-    uint8_t * frame = nullptr;
-    struct Buffer* buf;
+    uint8_t* frame = nullptr;
+    Buffer* buf;
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
 

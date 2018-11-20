@@ -78,8 +78,8 @@ public:
     void main_thread() override;
 
 private:
-    Buffer * in_buf;
-    Buffer * out_buf;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
     // Config parameters
     float tolerance;
