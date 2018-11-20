@@ -7,7 +7,6 @@
 
 #include "gsl-lite.hpp"
 
-#include <ext/alloc_traits.h>
 #include <math.h>
 #include <time.h>
 #include <atomic>
