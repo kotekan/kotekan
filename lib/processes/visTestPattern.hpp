@@ -73,7 +73,7 @@ public:
 
 private:
     Buffer* in_buf;
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     // Config parameters
     float tolerance;
