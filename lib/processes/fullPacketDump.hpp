@@ -11,7 +11,7 @@ public:
     fullPacketDump(Config& config, const string& unique_name,
                    bufferContainer &buffer_container);
     virtual ~fullPacketDump();
-    void main_thread();
+    void main_thread() override;
 
     void packet_grab_callback(connectionInstance& conn, json& json_request);
 

@@ -15,7 +15,7 @@ public:
                   const string& unique_name,
                   bufferContainer &buffer_container);
     virtual ~beamformingPostProcess();
-    void main_thread();
+    void main_thread() override;
 
 private:
     void fill_headers(unsigned char * out_buf,

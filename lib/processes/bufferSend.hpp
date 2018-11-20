@@ -78,7 +78,7 @@ public:
     ~bufferSend();
 
     /// Main loop for sending data
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// The input buffer to send frames from.

@@ -52,7 +52,7 @@ public:
     virtual ~restInspectFrame();
 
     /// Gets the latest frame from @c in_buf and copies it to @c frame_copy
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Retruns the binary data in @c frame_copy to the REST client

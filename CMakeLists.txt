@@ -187,6 +187,14 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif ()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
+# Warning about missing override is called differently in clang and gcc
+# TODO: enable once we are using a release version of HighFive
+#if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Winconsistent-missing-override")
+#else()
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wsuggest-override")
+#endif()
+
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")

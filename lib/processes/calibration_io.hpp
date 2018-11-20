@@ -131,7 +131,7 @@ public:
     ~eigenWriter();
 
     /// Primary loop
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Number of eigenvectors that will be provided

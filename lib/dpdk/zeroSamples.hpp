@@ -49,7 +49,7 @@ public:
     ~zeroSamples();
 
     /// Main thead which zeros the data from the lost_samples_buf
-    void main_thread();
+    void main_thread() override;
 
 private:
 
