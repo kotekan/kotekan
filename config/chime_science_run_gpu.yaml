@@ -956,6 +956,7 @@ eigcalc:
      960,  971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380,
     1521, 1543, 1738, 1794, 1982, 1984, 1987, 2032, 2034
   ]
+  log_level: warn
   eig0:
     kotekan_process: eigenVis
     in_buf: visbuf_10s_0
@@ -1011,6 +1012,8 @@ vis_debug:
 # Transmit all the data to the receiver node
 buffer_send:
   server_ip: 10.1.50.12
+  reconnect_time: 20
+  log_level: warn
   n2:
     kotekan_process: bufferSend
     buf: visbuf_10s_merge
@@ -1026,7 +1029,7 @@ buffer_send:
 
 buffer_status:
   kotekan_process: bufferStatus
-  time_delay: 20000000
+  time_delay: 30000000
 
 
 rfi_broadcast:
