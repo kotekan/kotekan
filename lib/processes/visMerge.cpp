@@ -35,7 +35,7 @@ visMerge::visMerge(Config& config,
 
 void visMerge::main_thread() {
 
-    struct Buffer* buf;
+    Buffer* buf;
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
 
