@@ -11,7 +11,7 @@
 #include "bufferContainer.hpp"
 #include "hsaDeviceInterface.hpp"
 #include "hsaCommand.hpp"
-#include "signalContainer.hpp"
+#include "hsaEventContainer.hpp"
 #include "bufferContainer.hpp"
 #include "restServer.hpp"
 
@@ -35,10 +35,11 @@ public:
 
     void profile_callback(connectionInstance& conn);
 
+protected:
+    gpuEventContainer *create_signal();
+
 private:
-
-    vector<signalContainer> final_signals;
-
+    vector<gpuEventContainer*> final_signals;
 //    hsaCommandFactory * factory;
     hsaDeviceInterface * device;
 
