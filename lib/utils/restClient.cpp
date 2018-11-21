@@ -317,3 +317,43 @@ bool restClient::make_request(std::string path,
     }
     return true;
 }
+
+restReply restClient::make_request_blocking(std::string path,
+                                            const nlohmann::json& data,
+                                            const std::string& host,
+                                            const unsigned short port,
+                                            const int retries,
+                                            const int timeout) {
+    restReply reply = restReply(false, "");
+    bool reply_copied = false;
+
+    // Condition variable to signal that reply was copied
+    std::condition_variable cv_reply;
+    std::mutex mtx_reply;
+
+    // As a callback, pass a lambda that synchronizes copying the reply in here.
+    std::function<void(restReply)> callback([&](restReply reply_in){
+        std::lock_guard<std::mutex> lck_reply(mtx_reply);
+        reply = reply_in;
+        reply_copied = true;
+        cv_reply.notify_one();
+    });
+
+    std::unique_lock<std::mutex> lck_reply(mtx_reply);
+
+    if (!make_request(path, callback, data, host, port, retries, timeout)) {
+        WARN("restClient::rest_reply_blocking: Failed.");
+        return reply;
+    }
+
+    // wait for the callback to receive the reply
+    auto time_point = std::chrono::system_clock::now()
+            + std::chrono::seconds(timeout == -1 ? 50 : timeout);
+    while (!cv_reply.wait_until(lck_reply, time_point,
+                              [&](){return reply_copied;})) {
+            reply.second = "Timeout in make_request_blocking.";
+            return reply;
+    }
+
+    return reply;
+}

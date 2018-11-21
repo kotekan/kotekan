@@ -13,7 +13,7 @@
 #include <atomic>
 #include <condition_variable>
 
-using restReply = std::pair<bool, std::string&>;
+using restReply = std::pair<bool, std::string>;
 
 
 /**
@@ -62,6 +62,33 @@ public:
                       const unsigned short port = PORT_REST_SERVER,
                       const int retries = 0, const int timeout = -1);
 
+    /**
+     * @brief Send GET or POST with json data to an endpoint. Blocking.
+     *
+     * To send a GET message, pass an empty JSON object (`{}`) as the parameter
+     * `data`. To send a POST message, pass JSON data. This blocks until a reply
+     * is received or there was an error.
+     *
+     * @param path      Path to the endpoint
+     *                  (e.g. "/endpoint_name")
+     * @param data      JSON request (`{}` to send a GET request,
+     *                  default: `{}`).
+     * @param host      Host (default: "127.0.0.1", Prefer numerical, because
+     *                  the DNS lookup is blocking).
+     * @param port      Port (default: PORT_REST_SERVER).
+     * @param retries   Max. retries to send message (default: 0).
+     * @param timeout   Timeout in seconds. If -1 is passed, the default value
+     * (of 50 seconds) is set (default: -1).
+     *
+     * @return          restReply object.
+     */
+    restReply make_request_blocking(
+            std::string path,
+            const nlohmann::json& data = {},
+            const std::string& host = "127.0.0.1",
+            const unsigned short port = PORT_REST_SERVER,
+            const int retries = 0, const int timeout = -1);
+
 private:
     /// Private constuctor
     restClient();
@@ -79,7 +106,7 @@ private:
     /// Internal thread function which runs the event loop.
     void event_thread();
 
-    /// callback function for http request
+    /// callback function for http requests
     static void http_request_done(struct evhttp_request *req, void *arg);
 
     /// cleanup function that deletes evcon and the argument pair
