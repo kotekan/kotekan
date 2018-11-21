@@ -2,7 +2,13 @@
 Some source code is included from other projects directly in this repository.
 That code is in the directory `include/` and the licenses for that code
 can be found in `include/LICENSE`.  All other code is covered by the
-MIT License (full text below) unless otherwise mentioned in the source code.
+MIT License (full text below) unless otherwise noted in the source code.
+
+N.B. Releases before git tag `2018.11` contained external source code licensed
+under the: GNU General Public License (GPL) version 2, as published by the
+Free Software Foundation.  As such the MIT License below can only apply to
+code in this repository at or after the git tag `2018.11`, which removed
+the GPL code from the source tree.
 ===
 
 Copyright (c) 2018 Kotekan Developers
