@@ -42,13 +42,14 @@ else ()
 endif ()
 
 if (${USE_HSA})
-  find_package( HSA )
+  find_package( HSA REQUIRED )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
 
 if (${USE_OPENCL})
-  find_package( OpenCL )
+  set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
+  find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
 endif ()
 

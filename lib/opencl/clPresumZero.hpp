@@ -10,7 +10,7 @@ public:
     clPresumZero(Config &config, const string &unique_name,
                       bufferContainer &host_buffers, clDeviceInterface &device);
     ~clPresumZero();
-    cl_event execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent) override;
+    cl_event execute(int param_bufferID, cl_event param_PrecedeEvent) override;
 
 private:
     int32_t presum_len;

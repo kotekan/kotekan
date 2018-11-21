@@ -99,7 +99,7 @@ public:
      * 
      * @param pre_event     The preceeding event in a sequence of chained event sequence of commands.
     **/
-    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) = 0;
+    virtual cl_event execute(int gpu_frame_id, cl_event pre_event) = 0;
 
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.

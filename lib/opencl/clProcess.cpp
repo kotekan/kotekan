@@ -43,7 +43,7 @@ void clProcess::queue_commands(int gpu_frame_id)
     cl_event signal = NULL;
     for (auto &command : commands) {
         // Feed the last signal into the next operation
-        signal = ((clCommand*)command)->execute(gpu_frame_id, 0, signal);
+        signal = ((clCommand*)command)->execute(gpu_frame_id, signal);
     }
     final_signals[gpu_frame_id]->set_signal(signal);
     INFO("Commands executed.");

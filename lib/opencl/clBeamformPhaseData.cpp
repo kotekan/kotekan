@@ -45,9 +45,8 @@ void clBeamformPhaseData::build()
     start_beamform_time = time(NULL); // Current time.
 }
 
-cl_event clBeamformPhaseData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
+cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event)
 {
-    (void)fpga_seq;
     gpuCommand::pre_execute(gpu_frame_id);
 
     time_t local_beamform_time;

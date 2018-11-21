@@ -72,9 +72,8 @@ void clPreseedKernel::build()
     lws[2] = 1;
 }
 
-cl_event clPreseedKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
+cl_event clPreseedKernel::execute(int gpu_frame_id, cl_event pre_event)
 {
-    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof (int32_t);

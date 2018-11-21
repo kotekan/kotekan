@@ -11,7 +11,7 @@ public:
                       bufferContainer &host_buffers, clDeviceInterface &device);
     ~clOutputBeamformResult();
     int wait_on_precondition(int gpu_frame_id) override;
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID, cl_event param_PrecedeEvent) override;
     void finalize_frame(int frame_id) override;
 protected:
 

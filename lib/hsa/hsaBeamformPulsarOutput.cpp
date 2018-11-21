@@ -21,6 +21,7 @@ hsaBeamformPulsarOutput::~hsaBeamformPulsarOutput() {
 }
 
 int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL) return -1;
@@ -33,7 +34,6 @@ int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id,
                                               hsa_signal_t precede_signal) {
-
     void * gpu_output_ptr = device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_buffer->frame_size);
 
     void * host_output_ptr = (void *)output_buffer->frames[output_buffer_excute_id];

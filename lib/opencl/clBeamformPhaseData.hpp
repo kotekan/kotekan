@@ -52,7 +52,7 @@ public:
     /// Enqueues a new array of phases on the gpu. Phases are updated every "phase period" (1 second) by referencing
     /// a "phase bank" array that stores two arrays of phases and enqueues either based on the fpga sequence number
     /// of the current buffer and buffer_ID. (Sequence number for CHIME is 2.56us).
-    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
+    virtual cl_event execute(int gpu_frame_id, cl_event pre_event) override;
 protected:
     /** The get_delays method is called in execute to determine the current phase delays to store in the "phase bank"
      * bank array. The phases are calculated per feed to a source defined by ra and dec relative to the instrument's

@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8 )
 project( kotekan_opencl )
 
-include_directories(${OPENCL_INCLUDE_DIRS})
+include_directories(${OpenCL_INCLUDE_DIR})
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 

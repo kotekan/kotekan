@@ -11,7 +11,7 @@ public:
                     bufferContainer& host_buffers, clDeviceInterface& device);
     ~clCorrelatorKernel();
     virtual void build() override;
-    virtual cl_event execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
+    virtual cl_event execute(int gpu_frame_id, cl_event pre_event) override;
 protected:
     void defineOutputDataMap();
     cl_mem device_block_lock;

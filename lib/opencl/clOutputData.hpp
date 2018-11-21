@@ -10,7 +10,7 @@ public:
                       bufferContainer &host_buffers, clDeviceInterface &device);
     ~clOutputData();
     int wait_on_precondition(int gpu_frame_id) override;
-    virtual cl_event execute(int buf_frame_id, const uint64_t& fpga_seq, cl_event pre_event) override;
+    virtual cl_event execute(int buf_frame_id, cl_event pre_event) override;
     void finalize_frame(int frame_id) override;
 
 protected:

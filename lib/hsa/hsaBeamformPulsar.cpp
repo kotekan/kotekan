@@ -33,7 +33,6 @@ hsaBeamformPulsar::~hsaBeamformPulsar() {
 }
 
 hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
-
     // Unused parameter, suppress warning
     (void)precede_signal;
 
