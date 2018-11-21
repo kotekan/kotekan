@@ -98,6 +98,7 @@ void clBeamformKernel::build()
 
 cl_event clBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
+    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     // TODO Make this a config file option

@@ -44,7 +44,11 @@ bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json &json) {
 }
 
 
-hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+
+    // Unused variable, suppress warning.
+    (void)precede_signal;
+
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {

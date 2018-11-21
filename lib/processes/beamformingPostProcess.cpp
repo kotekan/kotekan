@@ -68,17 +68,14 @@ void beamformingPostProcess::fill_headers(unsigned char * out_buf,
     }
 }
 
-void beamformingPostProcess::apply_config(uint64_t fpga_seq) {
+void beamformingPostProcess::main_thread() {
+
+    // Apply config.
     _samples_per_data_set = config.get<uint32_t>(unique_name,
                                                  "samples_per_data_set");
     _num_data_sets = config.get<uint32_t>(unique_name, "num_data_sets");
     _link_map = config.get<std::vector<int32_t>>(unique_name, "link_map");
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
-}
-
-void beamformingPostProcess::main_thread() {
-
-    apply_config(0);
 
     int in_buffer_ID[_num_gpus];
     int in_buffer_ID_final[_num_gpus];

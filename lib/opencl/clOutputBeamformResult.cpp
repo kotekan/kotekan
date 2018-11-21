@@ -25,6 +25,7 @@ clOutputBeamformResult::~clOutputBeamformResult()
 
 int clOutputBeamformResult::wait_on_precondition(int gpu_frame_id)
 {
+    (void)gpu_frame_id;
     // Wait for there to be data in the input (output) buffer.
     uint8_t * frame = wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL) return -1;
@@ -35,6 +36,7 @@ int clOutputBeamformResult::wait_on_precondition(int gpu_frame_id)
 
 cl_event clOutputBeamformResult::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
+    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * 2;

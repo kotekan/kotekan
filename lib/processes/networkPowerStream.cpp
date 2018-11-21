@@ -68,9 +68,6 @@ networkPowerStream::networkPowerStream(Config& config,
 networkPowerStream::~networkPowerStream() {
 }
 
-void networkPowerStream::apply_config(uint64_t fpga_seq) {
-}
-
 void networkPowerStream::main_thread() {
     int frame_id = 0;
     uint8_t * frame = NULL;

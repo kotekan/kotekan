@@ -139,6 +139,7 @@ void clKVCorr::build()
 
 cl_event clKVCorr::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
+    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;

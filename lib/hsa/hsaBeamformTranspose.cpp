@@ -19,7 +19,12 @@ hsaBeamformTranspose::~hsaBeamformTranspose() {
 
 }
 
-hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id,
+                                           hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     struct __attribute__ ((aligned(16))) args_t {
         void *beamform_buffer;
         void *output_buffer;

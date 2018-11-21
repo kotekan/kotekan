@@ -35,8 +35,6 @@ restInspectFrame::~restInspectFrame() {
     free(frame_copy);
 }
 
-void restInspectFrame::apply_config(uint64_t fpga_seq) {}
-
 void restInspectFrame::rest_callback(connectionInstance &conn) {
     frame_copy_lock.lock();
     conn.send_binary_reply(frame_copy, len);

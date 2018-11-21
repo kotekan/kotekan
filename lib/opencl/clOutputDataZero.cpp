@@ -26,6 +26,7 @@ clOutputDataZero::~clOutputDataZero()
 
 cl_event clOutputDataZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
+    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("output",

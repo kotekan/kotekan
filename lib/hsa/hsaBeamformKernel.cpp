@@ -131,6 +131,7 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == NULL) return -1;
     metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
@@ -174,7 +175,7 @@ void hsaBeamformKernel::calculate_ew_phase(float freq_now, float *host_coeff, fl
 }
 
 
-hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     if (first_pass) {
         first_pass = false;
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);

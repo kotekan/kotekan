@@ -55,10 +55,8 @@ public:
                 const string& unique_name,
                 bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
 
@@ -99,9 +97,7 @@ public:
              const string& unique_name,
              bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
-    void main_thread();
+    void main_thread() override;
 
 private:
     Buffer * in_buf;
@@ -140,10 +136,8 @@ public:
              const string& unique_name,
              bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
 
@@ -210,9 +204,7 @@ public:
              const string& unique_name,
              bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
-    void main_thread();
+    void main_thread() override;
 
 private:
     Buffer * in_buf;
@@ -265,8 +257,6 @@ public:
     registerInitialDatasetState(Config &config,
                                 const string& unique_name,
                                 bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq) override;
 
     // Main loop for the process
     void main_thread() override;

@@ -66,10 +66,8 @@ public:
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
     /// Callback function to receive updates on timestamps from configUpdater
     bool receive_update(nlohmann::json &json);

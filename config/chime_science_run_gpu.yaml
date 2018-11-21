@@ -213,7 +213,7 @@ vis_buffers:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
-  visbuf_5s_psr0_26m:
+  visbuf_psr0_5s_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
@@ -838,33 +838,33 @@ pulsar:
 
 #### N2 GPU Post processing and Tx ####
 
- # Updateable config for gating
- updatable_config:
-   gating:
-     psr0_config:
-       kotekan_update_endpoint: "json"
-       enabled: false
-       # B0329 (2018/11/14)
-       pulsar_name: "B0329"
-       pulse_width: 0.0314
-       dm: 26.7641
-       rot_freq: 1.39954153872
-       t_ref: 58437.4583333332
-       phase_ref: 1446745468.8439252
-       coeff: [
-                3.428779943504219e-10,
-                0.0011253963075329334,
-                -1.1565642124857199e-07,
-                1.1347089844281842e-10,
-                1.1882399863116445e-13,
-                -1.0867680647236115e-16,
-                -7.594309559679319e-20,
-                5.042548967792808e-23,
-                2.745973613190195e-26,
-                -2.279050323988331e-29,
-                -1.1771713330451292e-32,
-                3.948826407949732e-35
-              ]
+# Updateable config for gating
+updatable_config:
+  gating:
+    psr0_config:
+      kotekan_update_endpoint: "json"
+      enabled: false
+      # B0329 (2018/11/14)
+      pulsar_name: "B0329"
+      pulse_width: 0.0314
+      dm: 26.7641
+      rot_freq: 1.39954153872
+      t_ref: 58437.4583333332
+      phase_ref: 1446745468.8439252
+      coeff: [
+               3.428779943504219e-10,
+               0.0011253963075329334,
+               -1.1565642124857199e-07,
+               1.1347089844281842e-10,
+               1.1882399863116445e-13,
+               -1.0867680647236115e-16,
+               -7.594309559679319e-20,
+               5.042548967792808e-23,
+               2.745973613190195e-26,
+               -2.279050323988331e-29,
+               -1.1771713330451292e-32,
+               3.948826407949732e-35
+             ]
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
@@ -952,9 +952,9 @@ eigcalc:
   num_diagonals_filled: 30
   cpu_affinity: [4, 10]
   exclude_inputs: [
-      46,   84,  142,  319,  550,  638,  688,  742,  784,  960,
-     971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380, 1521,
-    1543, 1738, 1794, 1982, 1984, 1987, 2032, 2034
+      46,   84,  142,  319,  550,  638,  688,  742,  784,  944,
+     960,  971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380,
+    1521, 1543, 1738, 1794, 1982, 1984, 1987, 2032, 2034
   ]
   eig0:
     kotekan_process: eigenVis

@@ -14,14 +14,7 @@ simVdifData::simVdifData(Config& config, const string& unique_name,
     register_producer(buf, unique_name.c_str());
 }
 
-simVdifData::~simVdifData() {
-
-}
-
-void simVdifData::apply_config(uint64_t fpga_seq) {
-
-}
-
+simVdifData::~simVdifData() {}
 
 double e_time(void)
 {

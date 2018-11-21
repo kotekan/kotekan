@@ -31,7 +31,8 @@ int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id,
+                                   hsa_signal_t precede_signal) {
     //Get GPU memory
     void * gpu_output_ptr = device.get_gpu_memory_array("rfi_output", gpu_frame_id, _rfi_output_buf->frame_size);
     //Copy GPU memory to host

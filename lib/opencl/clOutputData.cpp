@@ -29,6 +29,7 @@ clOutputData::~clOutputData()
 
 int clOutputData::wait_on_precondition(int gpu_frame_id)
 {
+    (void)gpu_frame_id;
     // Wait for there to be data in the input (output) buffer.
     uint8_t * frame = wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL) return -1;
@@ -42,6 +43,7 @@ int clOutputData::wait_on_precondition(int gpu_frame_id)
 
 cl_event clOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
+    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size*_block_size) * 2 * _num_data_sets  * sizeof(int32_t);

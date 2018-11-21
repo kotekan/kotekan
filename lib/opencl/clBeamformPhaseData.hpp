@@ -47,8 +47,6 @@ public:
     /// Constructor, no logic added.
     clBeamformPhaseData(Config& config, const string &unique_name,
                     bufferContainer& host_buffers, clDeviceInterface& device);
-    /// Destructor, cleans up memory allocations.
-    ~clBeamformPhaseData();
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
     virtual void build() override;
     /// Enqueues a new array of phases on the gpu. Phases are updated every "phase period" (1 second) by referencing

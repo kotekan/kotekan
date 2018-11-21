@@ -32,13 +32,6 @@ clBeamformPhaseData::clBeamformPhaseData(Config& config, const string &unique_na
                 unique_name, "element_positions");
 }
 
-clBeamformPhaseData::~clBeamformPhaseData()
-{
-    free(phases[0]);
-    free(phases[1]);
-    free(phases);
-}
-
 void clBeamformPhaseData::build()
 {
     clCommand::build();
@@ -54,7 +47,8 @@ void clBeamformPhaseData::build()
 
 cl_event clBeamformPhaseData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
-    pre_execute(gpu_frame_id);
+    (void)fpga_seq;
+    gpuCommand::pre_execute(gpu_frame_id);
 
     time_t local_beamform_time;
     uint64_t current_seq;

@@ -87,12 +87,6 @@ public:
     **/
     virtual void build();
 
-    // This function blocks on whatever resource is required by this command
-    // for example if this command requires a full buffer frame to copy
-    // then it should block on that.  It should also block on having any
-    // free output buffers that might be referenced by this command.
-    virtual int wait_on_precondition(int gpu_frame_id) override {return 0;}
-
     /// This method appends arguements to the kernel execution statement that's run when the kernel is enqueued on the GPU.
     void setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer);
 

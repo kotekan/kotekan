@@ -16,7 +16,7 @@ hsaBarrier::~hsaBarrier() {
 
 }
 
-hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBarrier::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Get the queue index
     uint64_t index = hsa_queue_add_write_index_scacquire(device.get_queue(), 1);

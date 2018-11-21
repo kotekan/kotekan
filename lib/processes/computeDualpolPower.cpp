@@ -65,11 +65,6 @@ computeDualpolPower::computeDualpolPower(Config &config, const string& unique_na
     integration_count = (uint*)malloc(num_elem*sizeof(uint));
 }
 
-
-void computeDualpolPower::apply_config(uint64_t fpga_seq) {
-}
-
-
 computeDualpolPower::~computeDualpolPower() {
     free(integration_count);
 }

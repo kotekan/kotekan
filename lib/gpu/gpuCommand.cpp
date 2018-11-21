@@ -41,7 +41,14 @@ gpuCommand::~gpuCommand()
 }
 
 void gpuCommand::finalize_frame(int gpu_frame_id) {
+    (void)gpu_frame_id;
 }
+
+int gpuCommand::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
+    return 0;
+}
+
 
 string &gpuCommand::get_name() {
     return kernel_command;

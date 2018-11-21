@@ -46,9 +46,6 @@ public:
     ///Main loop, just waits for network data and stuffs info a frame.
     void main_thread() override;
 
-    ///Config, not implemented in a way that can be re-set.
-    void apply_config(uint64_t fpga_seq) override;
-
 private:
     struct Buffer *out_buf;
 

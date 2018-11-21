@@ -50,4 +50,4 @@ private:
     bool stopping;
 };
 
-#endif //CL_EVENT_CONTAINER_H
+#endif //GPU_EVENT_CONTAINER_H

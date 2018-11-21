@@ -9,6 +9,7 @@ gpuEventContainer::gpuEventContainer() {
 }
 
 gpuEventContainer::gpuEventContainer(const gpuEventContainer& obj) {
+    (void)obj;
 }
 
 gpuEventContainer::~gpuEventContainer() {

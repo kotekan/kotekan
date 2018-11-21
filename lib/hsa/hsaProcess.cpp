@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <sys/time.h>
+#include <memory>
 
 REGISTER_KOTEKAN_PROCESS(hsaProcess);
 

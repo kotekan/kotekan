@@ -72,11 +72,8 @@ public:
             const string& unique_name,
             bufferContainer &buffer_container);
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Default fill pattern.
@@ -206,11 +203,8 @@ public:
                const string& unique_name,
                bufferContainer& buffer_container);
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Buffers

@@ -17,7 +17,8 @@ hsaPresumZero::~hsaPresumZero() {
     hsa_host_free(presum_zeros);
 }
 
-hsa_signal_t hsaPresumZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaPresumZero::execute(int gpu_frame_id,
+                                    hsa_signal_t precede_signal) {
 
     void * gpu_memory_frame = device.get_gpu_memory_array("presum",
                                                 gpu_frame_id, presum_len);

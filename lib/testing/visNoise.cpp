@@ -37,10 +37,6 @@ visNoise::visNoise(Config &config,
          _standard_deviation);
 }
 
-void visNoise::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void visNoise::main_thread() {
 
     uint32_t frame_id_in = 0;

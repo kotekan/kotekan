@@ -16,7 +16,6 @@ public:
         bufferContainer &buffer_container);
     virtual ~clProcess();
 
-protected:
     gpuCommand *create_command(json cmd) override;
     gpuEventContainer *create_signal() override;
     void queue_commands(int gpu_frame_id) override;

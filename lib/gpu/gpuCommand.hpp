@@ -80,7 +80,7 @@ public:
     // for example if this command requires a full buffer frame to copy
     // then it should block on that.  It should also block on having any
     // free output buffers that might be referenced by this command.
-    virtual int wait_on_precondition(int gpu_frame_id) {return 0;}
+    virtual int wait_on_precondition(int gpu_frame_id);
 
     /** Basic functions to execute a gpu command are done in the
      * base class such as checking that the buffer_ID is positive and is

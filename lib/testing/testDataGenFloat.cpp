@@ -24,13 +24,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
                 unique_name, "pathfinder_test_mode", false);
 }
 
-testDataGenFloat::~testDataGenFloat() {
-
-}
-
-void testDataGenFloat::apply_config(uint64_t fpga_seq) {
-
-}
+testDataGenFloat::~testDataGenFloat() {}
 
 void testDataGenFloat::main_thread() {
 

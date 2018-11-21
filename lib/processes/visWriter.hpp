@@ -77,9 +77,7 @@ public:
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
-    void main_thread();
+    void main_thread() override;
 
 
 protected:

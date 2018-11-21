@@ -25,6 +25,8 @@ clInputData::~clInputData()
 
 int clInputData::wait_on_precondition(int gpu_frame_id)
 {
+    (void)gpu_frame_id;
+
     // Wait for there to be data in the input (network) buffer.
     uint8_t * frame = wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
     if (frame == NULL) return -1;
@@ -37,6 +39,7 @@ int clInputData::wait_on_precondition(int gpu_frame_id)
 
 cl_event clInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, cl_event pre_event)
 {
+    (void)fpga_seq;
     pre_execute(gpu_frame_id);
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("input",

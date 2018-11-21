@@ -79,9 +79,6 @@ public:
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
 
-    /// Initializes internal variables from config
-    virtual void apply_config(uint64_t fpga_seq) override;
-
 private:
     void write_header(unsigned char * dest);
 

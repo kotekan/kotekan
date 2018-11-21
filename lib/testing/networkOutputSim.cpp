@@ -42,16 +42,13 @@ networkOutputSim::networkOutputSim(Config &config_,
 networkOutputSim::~networkOutputSim() {
 }
 
-void networkOutputSim::apply_config(uint64_t fpga_seq) {
+void networkOutputSim::main_thread() {
+
+    // Apply config.
     _samples_per_data_set = config.get<int32_t>(unique_name,
                                                 "samples_per_data_set");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _num_elem = config.get<int32_t>(unique_name, "num_elements");
-}
-
-void networkOutputSim::main_thread() {
-
-    apply_config(0);
 
     int frame_id = link_id;
     unsigned char * frame = NULL;

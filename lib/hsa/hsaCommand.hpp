@@ -64,7 +64,7 @@ public:
     virtual ~hsaCommand();
 
     // Adds either a copy or kernel to one of the hardware queues.
-    virtual hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    virtual hsa_signal_t execute(int gpu_frame_id,
                                     hsa_signal_t precede_signal) = 0;
 
     // Should clean any signals used by the command.
