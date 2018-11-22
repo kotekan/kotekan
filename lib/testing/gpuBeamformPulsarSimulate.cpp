@@ -85,6 +85,7 @@ void gpuBeamformPulsarSimulate::apply_config(uint64_t fpga_seq) {
 }
 
 void gpuBeamformPulsarSimulate::reorder(unsigned char *data, int *map){
+    int * tmp512;
     tmp512 = (int *) malloc(_num_elements*sizeof(int));
     for (int j=0;j<_samples_per_data_set;j++){
         for (int i=0; i<512; i++){

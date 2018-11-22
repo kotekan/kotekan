@@ -36,8 +36,6 @@ private:
     struct Buffer *input_buf;
     /// Input length
     int input_len;
-    ///An intermediate array for reorder data
-    int * tmp512;
     /// An intermediate array of unpacked data
     double * input_unpacked;
     /// Output in CPU
