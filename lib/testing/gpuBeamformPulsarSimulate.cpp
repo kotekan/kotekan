@@ -93,7 +93,7 @@ void gpuBeamformPulsarSimulate::reorder(unsigned char *data, int *map){
             tmp512[i*4+2] = data[j*_num_elements+(id*4+2)];
             tmp512[i*4+3] = data[j*_num_elements+(id*4+3)];
         }
-        for (int i=0; i<_num_elements; i++){
+        for (uint i=0; i<_num_elements; i++){
             data[j*_num_elements+i] = tmp512[i];
         }
     }
