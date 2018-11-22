@@ -13,7 +13,6 @@ public:
     rawFileRead(Config& config, const string& unique_name,
                 bufferContainer &buffer_container);
     virtual ~rawFileRead();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     struct Buffer *buf;

@@ -85,7 +85,7 @@ public:
      * @param s    State to compare with.
      * @return True if states identical, False otherwise.
      */
-    const bool equals(datasetState& s) const;
+    bool equals(datasetState& s) const;
 
 private:
 
@@ -466,20 +466,20 @@ public:
     }
 
     /**
-     * @brief Get the number of stacks (read only).
+     * @brief Get the number of stacks.
      *
      * @return The number of stacks.
      */
-    const uint32_t get_num_stack() const {
+    uint32_t get_num_stack() const {
         return _num_stack;
     }
 
     /**
-     * @brief Tells if the data is stacked (read only).
+     * @brief Tells if the data is stacked.
      *
      * @return True for stacked data, otherwise False.
      */
-    const bool is_stacked() const {
+    bool is_stacked() const {
         return _stacked;
     }
 

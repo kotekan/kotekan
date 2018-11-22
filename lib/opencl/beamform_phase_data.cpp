@@ -21,8 +21,10 @@ beamform_phase_data::~beamform_phase_data()
     free(phases);
 }
 
-void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
-    gpu_command::apply_config(fpga_seq);
+void beamform_phase_data::build(class device_interface &param_Device)
+{
+    // Apply config.
+    gpu_command::apply_config();
 
     beamforming_do_not_track = config.get<int>(unique_name, "do_not_track");
     inst_lat = config.get<double>(unique_name, "instrument_lat");
@@ -32,11 +34,7 @@ void beamform_phase_data::apply_config(const uint64_t& fpga_seq) {
     dec = config.get<double>(unique_name, "dec");
     feed_positions = config.get<std::vector<float>>(
                 unique_name, "element_positions");
-}
 
-void beamform_phase_data::build(class device_interface &param_Device)
-{
-    apply_config(0);
     gpu_command::build(param_Device);
 
     last_bankID = -1;
@@ -48,9 +46,11 @@ void beamform_phase_data::build(class device_interface &param_Device)
     start_beamform_time = time(NULL); // Current time.
 }
 
-cl_event beamform_phase_data::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
-{
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+cl_event beamform_phase_data::execute(int param_bufferID,
+                                      class device_interface &param_Device,
+                                      cl_event param_PrecedeEvent) {
+
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     time_t local_beamform_time;
     uint64_t current_seq;

@@ -104,8 +104,11 @@ void visFileRaw::create_file(
 #ifdef FALLOC_FL_KEEP_SIZE
     fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
 #else
+    (void)max_time; // Suppress warning
     WARN("fallocate not supported on this system!");
 #endif
+#else
+    (void)max_time; // Suppress warning
 #endif
 }
 
@@ -132,6 +135,8 @@ void visFileRaw::flush_raw_async(int ind) {
 #ifdef __linux__
     size_t n = nfreq * frame_size;
     sync_file_range(fd, ind * n, n, SYNC_FILE_RANGE_WRITE);
+#else
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -143,6 +148,8 @@ void visFileRaw::flush_raw_sync(int ind) {
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
+#else
+    (void)ind; // Suppress warning
 #endif
 }
 

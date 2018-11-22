@@ -10,7 +10,6 @@ public:
                 const string& unique_name,
                 bufferContainer &buffer_container);
     ~gpuSimulate();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     struct Buffer *input_buf;

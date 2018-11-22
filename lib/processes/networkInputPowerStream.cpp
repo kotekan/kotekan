@@ -41,9 +41,6 @@ networkInputPowerStream::networkInputPowerStream(Config& config,
 networkInputPowerStream::~networkInputPowerStream() {
 }
 
-void networkInputPowerStream::apply_config(uint64_t fpga_seq) {
-}
-
 void networkInputPowerStream::receive_packet(void *buffer, int length, int socket_fd){
     ssize_t rec = 0;
     while (rec < length) {

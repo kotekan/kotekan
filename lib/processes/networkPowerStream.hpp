@@ -58,9 +58,6 @@ public:
     /// Primary loop, which waits on input frames, integrates, and dumps to output.
     void main_thread() override;
 
-    /// Re-parse config, not yet implemented.
-    virtual void apply_config(uint64_t fpga_seq) override;
-
 private:
     ///Function to attempt to establish a TCP link with the receiver.
 	void tcpConnect();

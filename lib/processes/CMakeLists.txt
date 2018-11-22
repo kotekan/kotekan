@@ -29,7 +29,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               freqSlicer.cpp
               prodSubset.cpp
               countCheck.cpp
-              visProcess.cpp
               visAccumulate.cpp
               visCompression.cpp
               timeDownsample.cpp
@@ -47,6 +46,10 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiRecord.cpp
               rfiBadInputFinder.cpp
               receiveFlags.cpp
+              visTransform.cpp
+              visTestPattern.cpp
+              visDebug.cpp
+              visMerge.cpp
               )
 
 if (${USE_AIRSPY})

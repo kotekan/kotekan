@@ -32,7 +32,10 @@ chrxUplink::chrxUplink(Config &config,
 chrxUplink::~chrxUplink() {
 }
 
-void chrxUplink::apply_config(uint64_t fpga_seq) {
+// TODO make this more robust to network errors.
+void chrxUplink::main_thread() {
+
+    // Apply config.
     char hostname[1024];
     string s_port;
 
@@ -46,11 +49,6 @@ void chrxUplink::apply_config(uint64_t fpga_seq) {
 
     _collection_server_port = stoi(s_port);  //config.get<int32_t>(unique_name, "collection_server_port");
     _enable_gating = config.get<bool>(unique_name, "enable_gating");
-}
-
-// TODO make this more robust to network errors.
-void chrxUplink::main_thread() {
-    apply_config(0);
 
     int buffer_ID = 0;
     uint8_t * vis_frame = NULL;

@@ -73,11 +73,8 @@ public:
                    const string& unique_name,
                    bufferContainer &buffer_container);
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Primary loop: sorts products and passes them on to output buffer.
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// keeps track of the input dataset ID

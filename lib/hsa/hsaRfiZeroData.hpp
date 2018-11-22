@@ -51,7 +51,7 @@ public:
     bool update_rfi_zero_flag(nlohmann::json &json);
 
     /// Executes rfi_chime_zero.hsaco kernel. Allocates kernel variables.
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 private:
 

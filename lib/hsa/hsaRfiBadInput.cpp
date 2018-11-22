@@ -27,7 +27,12 @@ hsaRfiBadInput::~hsaRfiBadInput() {
     //Free allocated memory
 }
 
-hsa_signal_t hsaRfiBadInput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiBadInput::execute(int gpu_frame_id,
+                                     hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {
 	void *input;

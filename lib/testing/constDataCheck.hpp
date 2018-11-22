@@ -39,9 +39,6 @@ public:
     /// Destructor, cleans up local allocs.
     ~constDataCheck();
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq) override;
-
     /// Primary loop to wait for buffers, verify, lather, rinse and repeat.
     void main_thread() override;
 private:

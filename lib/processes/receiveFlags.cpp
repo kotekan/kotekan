@@ -22,7 +22,14 @@ receiveFlags::receiveFlags(Config &config, const string& unique_name,
          register_producer(buf_out, unique_name.c_str());
 
          //Apply kotekan config
-         apply_config(0);
+         int num = config.get<int>(unique_name, "num_elements");
+         if (num < 0)
+             throw std::invalid_argument("receiveFlags: config: invalid value for" \
+                                         " num_elements: "
+                                         + std::to_string(num));
+         num_elements = (size_t)num;
+         num_kept_updates = config.get_default<uint32_t>(
+                     unique_name, "num_kept_updates", 5);
 
          /// FIFO for flags updates
          flags = updateQueue<std::vector<float>>(num_kept_updates);
@@ -31,19 +38,6 @@ receiveFlags::receiveFlags(Config &config, const string& unique_name,
          // register as a subscriber with configUpdater
          configUpdater::instance().subscribe(this,
                             std::bind(&receiveFlags::flags_callback, this, _1));
-}
-
-void receiveFlags::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-    int num = config.get<int>(unique_name, "num_elements");
-    if (num < 0)
-        throw std::invalid_argument("receiveFlags: config: invalid value for" \
-                                    " num_elements: "
-                                    + std::to_string(num));
-    num_elements = (size_t)num;
-
-    num_kept_updates = config.get_default<uint32_t>(
-                unique_name, "num_kept_updates", 5);
 }
 
 bool receiveFlags::flags_callback(nlohmann::json &json) {

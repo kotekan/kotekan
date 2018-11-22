@@ -42,7 +42,8 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Async copy output form gpu to host
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id,
+                         hsa_signal_t precede_signal) override;
 
     /// Marks output full and network empty when done and passes metadata
     void finalize_frame(int frame_id) override;

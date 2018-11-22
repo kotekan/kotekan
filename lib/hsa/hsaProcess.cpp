@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <sys/time.h>
+#include <memory>
 
 REGISTER_KOTEKAN_PROCESS(hsaProcess);
 
@@ -15,9 +16,13 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
         KotekanProcess(config, unique_name, buffer_container,
                      std::bind(&hsaProcess::main_thread, this)) {
 
-    apply_config(0);
+    // Get config values.
+    _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
+    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
+    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 
     final_signals.resize(_gpu_buffer_depth);
+    std::fill(final_signals.begin(), final_signals.end(), std::make_shared<signalContainer>());
 
     json in_bufs = config.get_value(unique_name, "in_buffers");
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
@@ -51,14 +56,6 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     factory = new hsaCommandFactory(config, unique_name, local_buffer_container, *device);
 
     endpoint = "/gpu_profile/" + std::to_string(gpu_id);
-}
-
-void hsaProcess::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-    _gpu_buffer_depth = config.get<uint32_t>(unique_name, "buffer_depth");
-    gpu_id = config.get<uint32_t>(unique_name, "gpu_id");
-
-    frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 }
 
 hsaProcess::~hsaProcess() {
@@ -148,7 +145,7 @@ void hsaProcess::main_thread()
 
         //INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
-        final_signals[gpu_frame_id].wait_for_free_slot();
+        final_signals[gpu_frame_id]->wait_for_free_slot();
 
         hsa_signal_t signal;
         signal.handle = 0;
@@ -156,10 +153,10 @@ void hsaProcess::main_thread()
 
         for (uint32_t i = 0; i < commands.size(); i++) {
             // Feed the last signal into the next operation
-            signal = commands[i]->execute(gpu_frame_id, 0, signal);
+            signal = commands[i]->execute(gpu_frame_id, signal);
             //usleep(10);
         }
-        final_signals[gpu_frame_id].set_signal(signal);
+        final_signals[gpu_frame_id]->set_signal(signal);
 
         if (first_run) {
             results_thread_handle = std::thread(&hsaProcess::results_thread, std::ref(*this));
@@ -177,8 +174,8 @@ void hsaProcess::main_thread()
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
-    for (signalContainer &sig_container : final_signals) {
-        sig_container.stop();
+    for (auto &sig_container : final_signals) {
+        sig_container->stop();
     }
     INFO("Waiting for HSA packet queues to finish up before freeing memory.");
     results_thread_handle.join();
@@ -195,7 +192,7 @@ void hsaProcess::results_thread() {
 
         // Wait for a signal to be completed
         DEBUG2("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
-        if (final_signals[gpu_frame_id].wait_for_signal() == -1) {
+        if (final_signals[gpu_frame_id]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
@@ -218,7 +215,7 @@ void hsaProcess::results_thread() {
             INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
         }
 
-        final_signals[gpu_frame_id].reset();
+        final_signals[gpu_frame_id]->reset();
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }

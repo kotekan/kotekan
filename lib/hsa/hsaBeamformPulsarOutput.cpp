@@ -31,7 +31,8 @@ int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id,
+                                              hsa_signal_t precede_signal) {
 
     void * gpu_output_ptr = device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_buffer->frame_size);
 

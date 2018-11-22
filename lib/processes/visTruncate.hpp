@@ -41,7 +41,6 @@ public:
     /// Main loop over buffer frames
     void main_thread() override;
 
-    void apply_config(uint64_t fpga_seq) override;
 private:
     // Buffers
     Buffer * in_buf;

@@ -10,7 +10,6 @@ public:
         const string& unique_name,
         bufferContainer &buffer_container);
     ~gpuBeamformPulsarSimulate();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     struct Buffer *input_buf;
@@ -30,7 +29,7 @@ private:
     int input_len;
     int output_len;
  
-    void cpu_beamform_pulsar(double *input, double *phase, unsigned char *output, int nsamp, int nelem, int npsr, int npol);
+    void cpu_beamform_pulsar(double *input, double *phase, unsigned char *output, int nsamp, int npsr, int npol);
 
 };
 

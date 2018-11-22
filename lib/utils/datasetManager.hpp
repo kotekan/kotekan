@@ -67,19 +67,19 @@ public:
      * @return True if this is a root dataset (has no base dataset),
      * otherwise False.
      */
-    const bool is_root() const;
+    bool is_root() const;
 
     /**
      * @brief Access to the dataset state ID of this dataset.
      * @return The dataset state ID.
      */
-    const state_id_t state() const;
+    state_id_t state() const;
 
     /**
      * @brief Access to the ID of the base dataset.
      * @return The base dataset ID. Undefined if this is a root dataset.
      */
-    const dset_id_t base_dset() const;
+    dset_id_t base_dset() const;
 
     /**
      * @brief Generates a json serialization of this dataset.
@@ -92,7 +92,7 @@ public:
      * @param ds    Dataset to compare with.
      * @return True if datasets identical, False otherwise.
      */
-    const bool equals(dataset& ds) const;
+    bool equals(dataset& ds) const;
 
 private:
     /// Dataset state.
@@ -275,7 +275,7 @@ private:
      * @note This deliberately isn't a method of datasetState itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    const state_id_t hash_state(datasetState& state) const;
+    state_id_t hash_state(datasetState& state) const;
 
     /**
      * @brief Calculate the hash of a dataset to use as the dset_id.
@@ -287,7 +287,7 @@ private:
      * @note This deliberately isn't a method of dataset itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    const dset_id_t hash_dataset(dataset& ds) const;
+    dset_id_t hash_dataset(dataset& ds) const;
 
     /// register the given state with the dataset broker
     void register_state(state_id_t state);

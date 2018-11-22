@@ -115,10 +115,6 @@ fakeVis::fakeVis(Config &config,
     }
 }
 
-void fakeVis::apply_config(uint64_t fpga_seq) {
-
-}
-
 void fakeVis::main_thread() {
 
     unsigned int output_frame_id = 0, frame_count = 0;
@@ -426,9 +422,6 @@ replaceVis::replaceVis(Config& config,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-}
-
-void replaceVis::apply_config(uint64_t fpga_seq) {
 }
 
 void replaceVis::main_thread() {

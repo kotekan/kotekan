@@ -99,10 +99,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     }
 }
 
-void visTranspose::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void visTranspose::gather_metadata() {
     dset_id_t ds_id = 0;
 

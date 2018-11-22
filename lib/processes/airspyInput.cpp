@@ -27,10 +27,6 @@ airspyInput::~airspyInput() {
     airspy_exit();
 }
 
-void airspyInput::apply_config(uint64_t fpga_seq) {
-
-}
-
 void airspyInput::main_thread() {
     frame_id = 0;
     frame_loc = 0;
@@ -46,7 +42,6 @@ void airspyInput::main_thread() {
 }
 
 int airspyInput::airspy_callback(airspy_transfer_t* transfer){
-    DEBUG("Airspy Callback");
     airspyInput* proc = static_cast<airspyInput*>(transfer->ctx);
     proc->airspy_producer(transfer);
     return 0;

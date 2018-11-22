@@ -22,14 +22,7 @@ rfiVDIF::rfiVDIF(Config& config, const string& unique_name,
     //Register process as consumer and producer
     register_consumer(buf_in, unique_name.c_str());
     register_producer(buf_out,  unique_name.c_str());
-    //Apply kotekan config
-    apply_config(0);
-}
 
-rfiVDIF::~rfiVDIF() {
-}
-
-void rfiVDIF::apply_config(uint64_t fpga_seq) {
     //General data paramters
     _num_elements = config.get<uint32_t>(unique_name,"num_elements");
     _num_local_freq = config.get<uint32_t>(unique_name,"num_local_freq");
@@ -37,6 +30,9 @@ void rfiVDIF::apply_config(uint64_t fpga_seq) {
     //Rfi parameters
     _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined",true);
     _sk_step = config.get_default<uint32_t>(unique_name,"sk_step", 256);
+}
+
+rfiVDIF::~rfiVDIF() {
 }
 
 void rfiVDIF::main_thread() {

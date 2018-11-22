@@ -54,7 +54,6 @@ public:
     /// Main loop over buffer frames
     void main_thread() override;
 
-    void apply_config(uint64_t fpga_seq) override;
 private:
     /// Wait for the first frames dataset ID, request dataset states from the
     /// datasetManager and prepare all metadata that is not already set in the

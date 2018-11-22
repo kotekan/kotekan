@@ -55,18 +55,17 @@
  */
 class rfiBadInputFinder : public KotekanProcess {
 public:
-    //Constructor, intializes config variables via apply_config
+    //Constructor
     rfiBadInputFinder(Config& config,
                        const string& unique_name,
                        bufferContainer& buffer_container);
     //Deconstructor, cleans up / does nothing
     virtual ~rfiBadInputFinder();
     //Primary loop, reads buffer and sends out UDP stream
-    void main_thread();
+    void main_thread() override;
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
-    //Intializes config variables
-    virtual void apply_config(uint64_t fpga_seq);
+
 private:
     ///Private functions
     //Functon to compute median of an array

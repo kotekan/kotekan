@@ -294,6 +294,11 @@ void restServer::endpoint_list_callback(connectionInstance &conn) {
 }
 
 void restServer::timer(evutil_socket_t fd, short event, void *arg) {
+
+    // Unused parameters, required by libevent. Suppress warning.
+    (void)fd;
+    (void)event;
+
     restServer * rest_server = (restServer *)arg;
     if (rest_server->stop_thread) {
         event_base_loopbreak(rest_server->event_base);

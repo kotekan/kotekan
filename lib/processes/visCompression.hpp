@@ -61,8 +61,6 @@ public:
                         const string& unique_name,
                         bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq) override;
-
     // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;
 

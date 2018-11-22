@@ -79,7 +79,7 @@ class kotekanProcessMakerTemplate : public kotekanProcessMaker
             processFactoryRegistry::kotekan_register_process(key, this);
         }
         virtual KotekanProcess *create(Config &config, const string &unique_name,
-                    bufferContainer &host_buffers) const
+                    bufferContainer &host_buffers) const override
         {
             return new T(config, unique_name, host_buffers);
         }

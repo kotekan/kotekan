@@ -24,14 +24,11 @@ bufferStatus::bufferStatus(Config& config, const string& unique_name,
 bufferStatus::~bufferStatus() {
 }
 
-void bufferStatus::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
+void bufferStatus::main_thread() {
+
+    // Apply config.
     time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
     print_status = config.get_default<bool>(unique_name, "print_status", true);
-}
-
-void bufferStatus::main_thread() {
-    apply_config(0);
 
     prometheusMetrics &metrics = prometheusMetrics::instance();
 
