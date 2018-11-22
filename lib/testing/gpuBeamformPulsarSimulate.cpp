@@ -200,7 +200,7 @@ void gpuBeamformPulsarSimulate::main_thread() {
             ptr_myfile=fopen(filename,"rb");
             if (ptr_myfile == NULL){
                 ERROR("CPU verification code: Cannot open gain file %s", filename);
-                for (int i=0;i<_num_elements;i++){
+                for (uint i=0;i<_num_elements;i++){
                     cpu_gain[(b*_num_elements+i)*2]   = default_gains[0] ;
                     cpu_gain[(b*_num_elements+i)*2+1] = default_gains[1] ;
                 }
