@@ -33,12 +33,8 @@ visNoise::visNoise(Config &config,
         INFO("visNoise: random seed used for init of noise generation.");
     }
 
-    INFO("visNoise: producing gaussian noise with standard deviation %d.",
+    INFO("visNoise: producing gaussian noise with standard deviation %f.",
          _standard_deviation);
-}
-
-void visNoise::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
 }
 
 void visNoise::main_thread() {

@@ -42,11 +42,12 @@ bufferRecv::bufferRecv(Config& config,
 bufferRecv::~bufferRecv() {
 }
 
-void bufferRecv::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void bufferRecv::read_callback(evutil_socket_t fd, short what, void *arg) {
+
+    // Unused parameters required by libevent, suppress warnings.
+    (void)fd;
+    (void)what;
+
     // Add job to work queue.
     connInstance * instance = (connInstance *) arg;
     std::lock_guard<mutex> lock(instance->buffer_recv->work_queue_lock);
@@ -92,8 +93,14 @@ void bufferRecv::increment_droped_frame_count() {
     );
 }
 
-void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void *arg)
+void bufferRecv::internal_accept_connection(evutil_socket_t listener,
+                                            short event, void *arg)
 {
+
+    // Unused parameters required by libevent, suppress warnings.
+    (void)listener;
+    (void)event;
+
     DEBUG("Accept connection");
     struct acceptArgs * accept_args = (struct acceptArgs *)arg;
     struct event_base *base = accept_args->base;
@@ -157,6 +164,11 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
 }
 
 void bufferRecv::timer(evutil_socket_t fd, short event, void *arg) {
+
+    // Unused parameters required by libevent, suppress warnings.
+    (void)fd;
+    (void)event;
+
     bufferRecv * buff_recv = (bufferRecv *)arg;
     if (buff_recv->stop_thread) {
         event_base_loopbreak(buff_recv->base);
@@ -178,7 +190,7 @@ void bufferRecv::main_thread() {
 
     base = event_base_new();
     if (!base) {
-        ERROR("Failed to crate libevent base");
+        ERROR("Failed to create libevent base");
         raise(SIGINT);
         return;
     }
@@ -284,7 +296,7 @@ connInstance::connInstance(const string& producer_name,
                            port(port),
                            read_timeout(read_timeout) {
 
-    frame_space = frame_malloc(buf->aligned_frame_size);
+    frame_space = buffer_malloc(buf->aligned_frame_size);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t *)malloc(buf->metadata_pool->metadata_object_size);
@@ -295,7 +307,7 @@ connInstance::~connInstance() {
     INFO("Closing FD");
     close(fd);
     event_free(event_read);
-    frame_free(frame_space);
+    buffer_free(frame_space);
     free(metadata_space);
 }
 
@@ -393,6 +405,7 @@ void connInstance::internal_read_callback()
                 state = connState::frame;
                 bytes_read = 0;
             }
+            break;
         case connState::frame:
             n = read(fd, (void*)(frame_space + bytes_read),
                      buf_frame_header.frame_size - bytes_read);

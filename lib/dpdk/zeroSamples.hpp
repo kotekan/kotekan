@@ -49,10 +49,7 @@ public:
     ~zeroSamples();
 
     /// Main thead which zeros the data from the lost_samples_buf
-    void main_thread();
-
-    /// To be removed later
-    void apply_config(uint64_t fpga_seq) {};
+    void main_thread() override;
 
 private:
 

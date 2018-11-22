@@ -1,5 +1,6 @@
 #include "hsaDeviceInterface.hpp"
 #include "errors.h"
+#include "math.h"
 #include <errno.h>
 
 #include "hsa/hsa.h"
@@ -7,6 +8,9 @@
 #include "hsa/hsa_ext_amd.h"
 
 void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
+    // Unused parameter, suppress warning.
+    (void)data;
+
     const char* message;
     hsa_status_string(status, &message);
     INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);
@@ -84,7 +88,13 @@ hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, in
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
+//    hsa_signal_store_release(copy_signal, 1);
     while (0 < hsa_signal_cas_release(copy_signal, 0, 1));
+
+    hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, src);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
+    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, dst);
+    //assert(hsa_status == HSA_STATUS_SUCCESS);
 
     if (num_precede_signals > 0) {
         hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
@@ -113,7 +123,13 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
+//    hsa_signal_store_release(copy_signal, 1);
     while (0 < hsa_signal_cas_release(copy_signal, 0, 1));
+
+    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
+    //assert(hsa_status == HSA_STATUS_SUCCESS);
+    hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, dst);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
 
     if (num_precede_signals > 0) {
         hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,
@@ -142,6 +158,11 @@ void hsaDeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int length)
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
+    hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, src);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
+    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, dst);
+    //assert(hsa_status == HSA_STATUS_SUCCESS);
+
     hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
                                            src, cpu_agent,
                                            length, 0, NULL, sig);
@@ -160,6 +181,11 @@ void hsaDeviceInterface::sync_copy_gpu_to_host(void *dst, void *src, int length)
     DEBUG("Sync gpu[%d]->host copy %p -> %p, len: %d", gpu_id, src, dst, length);
 
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
+    assert(hsa_status == HSA_STATUS_SUCCESS);
+
+    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
+    //assert(hsa_status == HSA_STATUS_SUCCESS);
+    hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, dst);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
     hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,

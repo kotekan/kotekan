@@ -7,6 +7,7 @@ import os
 import msgpack
 
 import kotekan_runner
+from test_compression import float_allclose
 
 writer_params = {
     'num_elements': 4,
@@ -300,7 +301,7 @@ def test_transpose_stack(transpose_stack):
             a_weight = f['flags/vis_weight'][ff,:,t]
 
             # Check that the entries in XX and XY are the same
-            assert (a_vis[:np1] == a_vis[np1:(2 * np1)]).all()
+            assert float_allclose(a_vis[:np1], a_vis[np1:(2 * np1)])
 
             v1 = a_vis[:np1]
             w1 = a_weight[:np1]
@@ -316,8 +317,8 @@ def test_transpose_stack(transpose_stack):
                     # A list of the feed separations in the NS dir
                     d = np.arange(lb, 256)
 
-                    assert (v1[:nv] == (cj - ci + 1.0j * d)).all()
-                    assert (w1[:nv] == (256 - np.abs(d))).all()
+                    assert float_allclose(v1[:nv], (cj - ci + 1.0j * d))
+                    assert float_allclose(w1[:nv], (256.0 - np.abs(d)))
 
                     v1 = v1[nv:]
                     w1 = w1[nv:]

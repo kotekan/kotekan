@@ -60,7 +60,7 @@ struct basebandDumpData {
     const uint32_t freq_id;
     const uint32_t num_elements;
     const int64_t data_start_fpga;
-    const int64_t data_length_fpga;
+    const uint64_t data_length_fpga;
     const timespec data_start_ctime;
     //@}
     /// Data access. Array has length `num_elements * data_length_fpga`.
@@ -101,7 +101,6 @@ public:
     basebandReadout(Config& config, const string& unique_name,
                     bufferContainer &buffer_container);
     virtual ~basebandReadout();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     // settings from the config file

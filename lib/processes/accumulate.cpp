@@ -10,8 +10,6 @@ accumulate::accumulate(Config& config,
                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&accumulate::main_thread, this)) {
 
-    apply_config(0);
-
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
     out_buf = get_buffer("out_buf");
@@ -22,9 +20,6 @@ accumulate::accumulate(Config& config,
 }
 
 accumulate::~accumulate() {
-}
-
-void accumulate::apply_config(uint64_t fpga_seq) {
 }
 
 void accumulate::main_thread() {

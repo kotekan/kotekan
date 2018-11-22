@@ -36,7 +36,7 @@ visFileArchive::visFileArchive(const std::string& name,
                                std::vector<int> chunk_size) {
 
     // Check axes and create file
-    setup_file(name, metadata, times, freqs, inputs, prods, num_ev, chunk_size);
+    setup_file(name, metadata, times, freqs, prods, num_ev, chunk_size);
 
     // Make datasets
     create_axes(times, freqs, inputs, prods, num_ev);
@@ -58,7 +58,7 @@ visFileArchive::visFileArchive(const std::string& name,
                                std::vector<int> chunk_size) {
 
     // Check axes and create file
-    setup_file(name, metadata, times, freqs, inputs, prods, num_ev, chunk_size);
+    setup_file(name, metadata, times, freqs, prods, num_ev, chunk_size);
     // Different bound check for stacked data
     if (chunk[1] > (int)stack.size()) {
         chunk[1] = stack.size();
@@ -80,7 +80,6 @@ void visFileArchive::setup_file(const std::string& name,
                                 const std::map<std::string, std::string>& metadata,
                                 const std::vector<time_ctype>& times,
                                 const std::vector<freq_ctype>& freqs,
-                                const std::vector<input_ctype>& inputs,
                                 const std::vector<prod_ctype>& prods,
                                 size_t num_ev,
                                 std::vector<int> chunk_size) {
@@ -97,7 +96,7 @@ void visFileArchive::setup_file(const std::string& name,
     // Check chunk size
 	// Check chunk size
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("visRawReader: config: Chunk size " \
+        throw std::invalid_argument("visFileArchive: config: Chunk size " \
             "needs to be greater or equal to (1,1,1) (is ("
             + std::to_string(chunk[0]) + ","
             + std::to_string(chunk[1]) + ","

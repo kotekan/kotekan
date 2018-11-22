@@ -11,6 +11,7 @@
 #include "visUtil.hpp"
 #include "visBuffer.hpp"
 #include "KotekanProcess.hpp"
+#include "datasetManager.hpp"
 
 using json = nlohmann::json;
 
@@ -26,9 +27,17 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   readahead_blocks		Int. Number of blocks to advise OS to read ahead of current read.
- * @conf   chunk_size			Array of [int, int, int]. Read chunk size (freq, prod, time). If not specified will read file contiguously.
- * @conf   infile				String. Path to the (data-meta-pair of) files to read (e.g. "/path/to/0000_000", without .data or .meta).
+ * @conf    readahead_blocks    Int. Number of blocks to advise OS to read ahead
+ *                              of current read.
+ * @conf    chunk_size          Array of [int, int, int]. Read chunk size (freq,
+ *                              prod, time). If not specified will read file
+ *                              contiguously.
+ * @conf    infile              String. Path to the (data-meta-pair of) files to
+ *                              read (e.g. "/path/to/0000_000", without .data or
+ *                              .meta).
+ * @conf    use_dataset_manager Bool. This will register dataset states with the
+ *                              datasetManager and write a dataset ID into the
+ *                              frame if set to true.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -42,10 +51,8 @@ public:
 
     ~visRawReader();
 
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop over buffer frames
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Get the times in the file.
@@ -55,7 +62,8 @@ public:
     /**
      * @brief Get the frequencies in the file.
      **/
-    const std::vector<freq_ctype>& freqs() { return _freqs; }
+    const std::vector<std::pair<uint32_t, freq_ctype>>& freqs()
+    { return _freqs; }
 
     /**
      * @brief Get the products in the file.
@@ -85,6 +93,17 @@ public:
 private:
 
     /**
+     * @brief Tells the datasetManager about all the datasetStates of the data
+     * that is read.
+     *
+     * Adds the following states: metadata, time, prod, freq, input, eigenvalue
+     * and stack.
+     * Sets the dataset ID that should be given to the dataset coming from
+     * the file that is read.
+     */
+    void change_dataset_state();
+
+    /**
      * @brief Read the next frame.
      *
      * The exact frame read is dependent on whether the reads are time ordered
@@ -110,11 +129,13 @@ private:
     // The metadata
     json _metadata;
     std::vector<time_ctype> _times;
-    std::vector<freq_ctype> _freqs;
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<prod_ctype> _prods;
     std::vector<input_ctype> _inputs;
     std::vector<stack_ctype> _stack;
+    std::vector<rstack_ctype> _rstack;
     std::vector<uint32_t> _ev;
+    uint32_t _num_stack;
 
     // whether to read in chunks
     bool chunked;
@@ -138,6 +159,12 @@ private:
 
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
+
+    // The ID for the data coming from the file that is read.
+    dset_id_t _dataset_id;
+
+    // Config value
+    bool _use_dataset_manager;
 };
 
 #endif

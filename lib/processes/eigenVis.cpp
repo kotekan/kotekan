@@ -18,19 +18,17 @@ eigenVis::eigenVis(Config& config,
                        bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
-    apply_config(0);
-
     input_buffer = get_buffer("in_buf");
     register_consumer(input_buffer, unique_name.c_str());
     output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
-    num_eigenvectors =  config.get<int32_t>(unique_name, "num_ev");
-    num_diagonals_filled =  config.get_default<int32_t>(unique_name,
+    num_eigenvectors =  config.get<uint32_t>(unique_name, "num_ev");
+    num_diagonals_filled =  config.get_default<uint32_t>(unique_name,
                                                    "num_diagonals_filled", 0);
     // Read a list from the config, but permit it to be absent (implying empty).
     try {
-        for (int32_t e : config.get<std::vector<int32_t>>(unique_name,
-                                                          "exclude_inputs")) {
+        for (uint32_t e : config.get<std::vector<uint32_t>>(unique_name,
+                                                            "exclude_inputs")) {
             exclude_inputs.push_back(e);
         }
     } catch (std::runtime_error const & ex) {
@@ -42,22 +40,21 @@ eigenVis::eigenVis(Config& config,
 eigenVis::~eigenVis() {
 }
 
-void eigenVis::apply_config(uint64_t fpga_seq) {
-}
-
 void eigenVis::main_thread() {
 
     unsigned int input_frame_id = 0;
     unsigned int output_frame_id = 0;
-    unsigned int num_elements;
+    uint32_t num_elements;
     bool initialized = false;
+    size_t lapack_failure_total = 0;
 
     // Memory for LAPACK interface.
     std::vector<cfloat> vis_square;
     std::vector<cfloat> evecs;
     std::vector<float> evals;
 
-    int info, ev_found, nside, nev;
+    int info, ev_found;
+    int64_t nside, nev;
 
     // Storage space for the last eigenvector calculated (scaled by sqrt
     // the eigenvalue) for each freq_id.
@@ -108,17 +105,17 @@ void eigenVis::main_thread() {
         // Fill the upper half (lower in fortran order!) of the square version
         // of the visibilities.
         int prod_ind = 0;
-        for (int i = 0; i < num_elements; i++) {
-            for (int j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
+        for (uint32_t i = 0; i < num_elements; i++) {
+            for (uint32_t j = i; j < i + num_diagonals_filled && j < num_elements; j++) {
                 cfloat value = 0;
-                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     value += (std::conj(last_evs[freq_id][ev_ind * num_elements + i])
                               * last_evs[freq_id][ev_ind * num_elements + j]);
                 }
                 vis_square[i * num_elements + j] = value;
                 prod_ind++;
             }
-            for (int j = i + num_diagonals_filled; j < num_elements; j++) {
+            for (uint32_t j = i + num_diagonals_filled; j < num_elements; j++) {
                 // Conjugate because Fortran interprets as lower triangle.
                 vis_square[i * num_elements + j] = std::conj(input_frame.vis[prod_ind]);
                 prod_ind++;
@@ -127,16 +124,16 @@ void eigenVis::main_thread() {
 
         // Go through and zero out data in excluded rows and columns.
         for (auto iexclude : exclude_inputs) {
-            for (int j = 0; j < iexclude; j++) {
+            for (uint32_t j = 0; j < iexclude; j++) {
                 vis_square[j * num_elements + iexclude] = {0, 0};
             }
-            for (int j = iexclude; j < num_elements; j++) {
+            for (uint32_t j = iexclude; j < num_elements; j++) {
                 vis_square[iexclude * num_elements + j] = {0, 0};
             }
         }
 
-        nside = (int) num_elements;
-        nev = (int) num_eigenvectors;
+        nside = (int32_t) num_elements;
+        nev = (int32_t) num_eigenvectors;
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
                               (lapack_complex_float *) vis_square.data(), nside,
                               0.0, 0.0, nside - nev + 1, nside, 0.0,
@@ -147,12 +144,23 @@ void eigenVis::main_thread() {
         DEBUG("LAPACK exit status: %d", info);
         if (info) {
             ERROR("LAPACK failed with exit code %d", info);
-            break;
+            lapack_failure_total++;
+
+            // Output prometheus metric about LAPACK failures
+            std::string labels = fmt::format(
+                "freq_id=\"{}\",dataset_id=\"{}\"",
+                freq_id, input_frame.dataset_id
+            );
+            prometheusMetrics::instance().add_process_metric(
+                "kotekan_eigenvis_lapack_failure_total",
+                unique_name, lapack_failure_total, labels
+            );
+            continue;
         }
 
         // Update the stored eigenvectors for the next iteration.
-        for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
-            for (int i = 0; i < num_elements; i++) {
+        for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+            for (uint32_t i = 0; i < num_elements; i++) {
                 last_evs[freq_id][ev_ind * num_elements + i] =
                     std::sqrt(evals[ev_ind]) * evecs[ev_ind * num_elements + i];
             }
@@ -172,7 +180,7 @@ void eigenVis::main_thread() {
             for(auto j = jstart; j != ipts.end(); j++) {
                 prod_ind = cmap(*i,*j,num_elements);
                 cfloat residual = input_frame.vis[prod_ind];
-                for (int ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
+                for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     residual -= (last_evs[freq_id][ev_ind * num_elements + *i]
                                  * std::conj(last_evs[freq_id][ev_ind * num_elements + *j]));
                 }
@@ -188,7 +196,7 @@ void eigenVis::main_thread() {
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
-        for (int i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t i = 0; i < num_eigenvectors; i++) {
             str_evals += " " + std::to_string(evals[i]);
         }
         INFO("Found eigenvalues:%s, with RMS residuals: %e, in %3.1f s.",
@@ -202,7 +210,7 @@ void eigenVis::main_thread() {
         );
 
         // Output eigenvalues to prometheus
-        for(int i = 0; i < num_eigenvectors; i++) {
+        for(uint32_t i = 0; i < num_eigenvectors; i++) {
             std::string labels = fmt::format(
                 "eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
                 i, freq_id, input_frame.dataset_id
@@ -232,11 +240,11 @@ void eigenVis::main_thread() {
         auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
 
         // Copy in eigenvectors and eigenvalues.
-        for(int i = 0; i < num_eigenvectors; i++) {
+        for(uint32_t i = 0; i < num_eigenvectors; i++) {
             int indr = num_eigenvectors - 1 - i;
             output_frame.eval[i] = evals[indr];
 
-            for(int j = 0; j < num_elements; j++) {
+            for(uint32_t j = 0; j < num_elements; j++) {
                 output_frame.evec[i * num_elements + j] = evecs[indr * num_elements + j];
             }
         }

@@ -96,7 +96,7 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates

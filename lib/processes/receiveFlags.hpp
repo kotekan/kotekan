@@ -57,9 +57,6 @@ public:
     /// Main loop, saves flags in the frames
     void main_thread() override;
 
-    /// Apply the config from the yaml file
-    void apply_config(uint64_t fpga_seq) override;
-
     /// This will be called by configUpdater
     bool flags_callback(nlohmann::json &json);
 private:

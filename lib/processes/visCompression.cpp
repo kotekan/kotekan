@@ -16,7 +16,7 @@
 using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(baselineCompression);
-REGISTER_DATASET_STATE(stackState);
+
 
 baselineCompression::baselineCompression(Config &config,
                                          const string& unique_name,
@@ -34,12 +34,9 @@ baselineCompression::baselineCompression(Config &config,
     stack_type_defs["diagonal"] = stack_diagonal;
     stack_type_defs["chime_in_cyl"] = stack_chime_in_cyl;
 
-    apply_config(0);
-}
+    err_count = 0;
 
-
-void baselineCompression::apply_config(uint64_t fpga_seq) {
-
+    // Apply config.
     std::string stack_type = config.get<std::string>(unique_name, "stack_type");
     if(stack_type_defs.count(stack_type) == 0) {
         ERROR("unknown stack type %s", stack_type.c_str());
@@ -55,11 +52,11 @@ void baselineCompression::apply_config(uint64_t fpga_seq) {
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
-        throw std::invalid_argument("baselineCompression: apply_config: "
+        throw std::invalid_argument("baselineCompression: "
                                     "num_threads has to be at least 1.");
     if (in_buf->num_frames % num_threads != 0 ||
         out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("baselineCompression: apply_config: both "
+        throw std::invalid_argument("baselineCompression: both "
                                     "the size of the input and output buffer"
                                     "have to be multiples of num_threads.");
 }
@@ -87,30 +84,67 @@ void baselineCompression::main_thread() {
     }
 }
 
+void baselineCompression::change_dataset_state(dset_id_t ds_id) {
+    auto& dm = datasetManager::instance();
+    state_id_t stack_state_id;
+
+    // TODO: get both states synchronoulsy?
+    auto input_state_ptr = dm.dataset_state<inputState>(ds_id);
+    if (input_state_ptr == nullptr)
+        throw std::runtime_error("Could not find inputState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+    prod_state_ptr = dm.dataset_state<prodState>(ds_id);
+    if (prod_state_ptr == nullptr)
+        throw std::runtime_error("Could not find prodState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+
+    auto sspec = calculate_stack(input_state_ptr->get_inputs(),
+                                 prod_state_ptr->get_prods());
+    auto sstate = std::make_unique<stackState>(
+        sspec.first, std::move(sspec.second));
+
+    std::tie(stack_state_id, stack_state_ptr) =
+        dm.add_state(std::move(sstate));
+
+    output_dset_id = dm.add_dataset(dataset(stack_state_id, ds_id));
+}
+
 void baselineCompression::compress_thread(int thread_id) {
 
     // use the thread id as an offset on frame ids
     unsigned int output_frame_id = thread_id;
     unsigned int input_frame_id = thread_id;
 
-    auto& dm = datasetManager::instance();
-    const stackState * stack_state_ptr = nullptr;
-    const prodState * prod_state_ptr = nullptr;
-    dset_id input_dset_id = -1;
-    dset_id output_dset_id = -1;
-    state_id stack_state_id;
+    bool retry_broker = false;
+
+    dset_id_t input_dset_id;
+
+    // Wait for the input buffer to be filled with data
+    // in order to get dataset ID
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           input_frame_id) == nullptr) {
+        return;
+    }
+    auto input_frame = visFrameView(in_buf, input_frame_id);
+    input_dset_id = input_frame.dataset_id;
+    try {
+        change_dataset_state(input_dset_id);
+    } catch (std::runtime_error& e) {
+        retry_broker = true;
+        WARN("visCompression: Failure in " \
+             "datasetManager, retrying: %s", e.what());
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_dataset_manager_dropped_frame_count",
+            unique_name, ++err_count);
+    }
 
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
         if(wait_for_full_frame(in_buf, unique_name.c_str(),
                                input_frame_id) == nullptr) {
-            break;
-        }
-
-        // Wait for the output buffer frame to be free
-        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                output_frame_id) == nullptr) {
             break;
         }
 
@@ -121,22 +155,31 @@ void baselineCompression::compress_thread(int thread_id) {
 
         // If the input dataset has changed construct a new stack spec from the
         // datasetManager
-        if (input_dset_id != input_frame.dataset_id) {
+        if (input_dset_id != input_frame.dataset_id || retry_broker) {
             input_dset_id = input_frame.dataset_id;
+            try {
+                change_dataset_state(input_dset_id);
+            } catch (std::runtime_error& e) {
+                WARN("visCompression: Dropping frame, failure in " \
+                     "datasetManager: %s", e.what());
+                prometheusMetrics::instance().add_process_metric(
+                    "kotekan_dataset_manager_dropped_frame_count",
+                    unique_name, ++err_count);
 
-            auto input_state_ptr = dm.closest_ancestor_of_type<inputState>(
-                input_dset_id).second;
-            prod_state_ptr = dm.closest_ancestor_of_type<prodState>(
-                input_dset_id).second;
+                // Mark the buffers and move on
+                mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+                mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
-            auto sspec = calculate_stack(input_state_ptr->get_inputs(),
-                                         prod_state_ptr->get_prods());
-            auto sstate = std::make_unique<stackState>(
-                sspec.first, std::move(sspec.second));
+                // Advance the current frame id
+                output_frame_id = (output_frame_id + num_threads)
+                        % out_buf->num_frames;
+                input_frame_id = (input_frame_id + num_threads)
+                        % in_buf->num_frames;
 
-            std::tie(stack_state_id, stack_state_ptr) =
-                dm.add_state(std::move(sstate));
-            output_dset_id = dm.add_dataset(stack_state_id, input_dset_id);
+                retry_broker  = true;
+                continue;
+            }
+            retry_broker = false;
         }
 
         const auto& stack_map = stack_state_ptr->get_rstack_map();
@@ -145,6 +188,12 @@ void baselineCompression::compress_thread(int thread_id) {
 
         std::vector<float> stack_norm(stack_state_ptr->get_num_stack(), 0.0);
         std::vector<float> stack_v2(stack_state_ptr->get_num_stack(), 0.0);
+
+        // Wait for the output buffer frame to be free
+        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                output_frame_id) == nullptr) {
+            break;
+        }
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
@@ -160,7 +209,8 @@ void baselineCompression::compress_thread(int thread_id) {
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame
-        std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
+        std::fill(std::begin(output_frame.vis),
+                  std::end(output_frame.vis), 0.0);
         std::fill(std::begin(output_frame.weight),
                   std::end(output_frame.weight), 0.0);
 
@@ -214,7 +264,11 @@ void baselineCompression::compress_thread(int thread_id) {
 
             // Calculate the mean and accumulate weight and place in the frame
             float norm = stack_norm[stack_ind];
-            output_frame.vis[stack_ind] /= norm;
+
+            // Invert norm if set, otherwise use zero to set data to zero.
+            float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
+
+            output_frame.vis[stack_ind] *= inorm;
             output_frame.weight[stack_ind] = norm * norm /
                 output_frame.weight[stack_ind];
 
@@ -224,7 +278,6 @@ void baselineCompression::compress_thread(int thread_id) {
             normt += norm;
         }
 
-
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
@@ -233,14 +286,16 @@ void baselineCompression::compress_thread(int thread_id) {
         output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
         input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
 
-        double elapsed = current_time() - start_time;
+        // Calculate residuals (return zero if no data for this freq)
+        float residual = (normt != 0.0) ? (vart / normt) : 0.0;
 
         // Update prometheus metrics
+        double elapsed = current_time() - start_time;
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
             output_frame.freq_id, output_frame.dataset_id);
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_residuals",
-            unique_name, vart / normt, labels);
+            unique_name, residual, labels);
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_time_seconds",
             unique_name, elapsed);
@@ -368,19 +423,4 @@ std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
     }
 
     return {++cur_stack_ind, stack_map};
-}
-
-
-std::vector<stack_ctype> invert_stack(
-    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map)
-{
-    std::vector<stack_ctype> res(num_stack);
-    size_t num_prod = stack_map.size();
-
-    for(uint32_t i = 0; i < num_prod; i++) {
-        uint32_t j = num_prod - i - 1;
-        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
-    }
-
-    return res;
 }

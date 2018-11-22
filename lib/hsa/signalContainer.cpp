@@ -1,15 +1,11 @@
 #include "signalContainer.hpp"
 #include "errors.h"
-#include "util.h"
 #include <unistd.h>
 
 
 signalContainer::signalContainer() {
     reset();
     stopping = false;
-}
-
-signalContainer::signalContainer(const signalContainer& obj) {
 }
 
 signalContainer::~signalContainer() {

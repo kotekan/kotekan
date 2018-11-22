@@ -6,285 +6,103 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
+#include <fmt.hpp>
 
 #include "json.hpp"
 #include "errors.h"
-#include "visUtil.hpp"
+#include "restClient.hpp"
+#include "prometheusMetrics.hpp"
+#include "datasetState.hpp"
+#include "signal.h"
+
+#define UNIQUE_NAME "/dataset_manager"
+#define TIMEOUT_BROKER_SEC 10
+
+// names of broker endpoints
+#define PATH_REGISTER_STATE "register-state"
+#define PATH_SEND_STATE "send-state"
+#define PATH_REGISTER_DATASET "register-dataset"
+#define PATH_REQUEST_ANCESTOR "request-ancestor"
 
 // Alias certain types to give semantic meaning to the IDs
-using dset_id = int32_t;
-using state_id = size_t;  // This is the output format of a std::hash (64bit so we shouldn't have collisions)
+// This is the output format of a std::hash
+// (64bit so we shouldn't have collisions)
+using dset_id_t = size_t;
+using state_id_t = size_t;
 
-// This type is used a lot so let's use an alias
-using json = nlohmann::json;
-using namespace std;
-
-// Forward declarations
-class datasetState;
-class datasetManager;
-
-using state_uptr = unique_ptr<datasetState>;
 
 /**
- * @brief A base class for representing state changes done to datasets.
+ * @brief The description of a dataset consisting of a dataset state and a base
+ * dataset.
  *
- * This is meant to be subclassed. All subclasses must implement a constructor
- * that calls the base class constructor to set any inner states. As a
- * convention it should pass the data and as a last argument `inner` (which
- * should be optional).
- *
- * @author Richard Shaw, Rick Nitsche
- **/
-class datasetState {
+ * A dataset is described by a dataset state applied to a base dataset. If the
+ * flag for this dataset being a root dataset (a dataset that has no base
+ * dataset), the base dataset ID value is not defined.
+ */
+class dataset {
 public:
+    /**
+    * @brief Dataset constructor.
+    * @param state      The state of this dataset.
+    * @param base_dset  The ID of the base datset.
+    * @param is_root    True if this is a root dataset (has no base dataset).
+    */
+    dataset(state_id_t state, dset_id_t base_dset, bool is_root = false)
+        : _state(state), _base_dset(base_dset), _is_root(is_root)
+    { }
 
     /**
-     * @brief Create a datasetState
-     *
-     * @param inner An internal state that this one wraps. Think of this
-     *              like function composition.
-     **/
-    datasetState(state_uptr inner=nullptr) :
-        _inner_state(move(inner)) {};
-
-    virtual ~datasetState() {};
-
-    /**
-     * @brief Create a dataset from a full json serialisation.
-     *
-     * This will correctly instantiate the correct types and reconstruct all
-     * inner states.
-     *
-     * @param j Full JSON serialisation.
-     * @returns The created datasetState.
-     **/
-    static state_uptr from_json(json& j);
+     * @brief Dataset constructor from json object.
+     * The json object must have the following fields:
+     * is_root:     boolean
+     * state:       integer
+     * base_dset    integer
+     * @param js    Json object describing a dataset.
+     */
+    dataset(json& js);
 
     /**
-     * @brief Full serialisation of state into JSON.
-     *
-     * @returns JSON serialisation of state.
-     **/
+     * @brief Access to the root dataset flag.
+     * @return True if this is a root dataset (has no base dataset),
+     * otherwise False.
+     */
+    bool is_root() const;
+
+    /**
+     * @brief Access to the dataset state ID of this dataset.
+     * @return The dataset state ID.
+     */
+    state_id_t state() const;
+
+    /**
+     * @brief Access to the ID of the base dataset.
+     * @return The base dataset ID. Undefined if this is a root dataset.
+     */
+    dset_id_t base_dset() const;
+
+    /**
+     * @brief Generates a json serialization of this dataset.
+     * @return A json serialization.
+     */
     json to_json() const;
 
     /**
-     * @brief Save the internal data of this instance into JSON.
-     *
-     * This must be implement by any derived classes and should save the
-     * information needed to reconstruct any subclass specific internals.
-     * Information of the baseclass (e.g. inner_state) is saved
-     * separately.
-     *
-     * @returns JSON representing the internal state.
-     **/
-    virtual json data_to_json() const = 0;
-
-    /**
-     * @brief Register a derived datasetState type
-     *
-     * @warning You shouldn't call this directly. It's only public so the macro
-     * can call it.
-     *
-     * @returns Always returns zero.
-     **/
-    template<typename T>
-    static inline int _register_state_type();
+     * @brief Compare to another dataset.
+     * @param ds    Dataset to compare with.
+     * @return True if datasets identical, False otherwise.
+     */
+    bool equals(dataset& ds) const;
 
 private:
+    /// Dataset state.
+    state_id_t _state;
 
-    /**
-     * @brief Create a datasetState subclass from a json serialisation.
-     *
-     * @param name  Name of subclass to create.
-     * @param tag   Unique string label.
-     * @param data  Serialisation of config.
-     * @param inner Inner state to compose with.
-     * @returns The created datasetState.
-     **/
-    static state_uptr _create(string name, json & data,
-                              state_uptr inner=nullptr);
+    /// Base dataset ID.
+    dset_id_t _base_dset;
 
-    // Reference to the internal state
-    state_uptr _inner_state = nullptr;
-
-    // List of registered subclass creating functions
-    static map<string, function<state_uptr(json&, state_uptr)>>&
-        _registered_types();
-
-    // Add as friend so it can walk the inner state
-    friend datasetManager;
-
-};
-
-#define REGISTER_DATASET_STATE(T) int _register_ ## T = \
-    datasetState::_register_state_type<T>()
-
-
-// Printing for datasetState
-ostream& operator<<(ostream&, const datasetState&);
-
-
-/**
- * @brief A dataset state that describes the frequencies in a datatset.
- *
- * @author Richard Shaw, Rick Nitsche
- */
-class freqState : public datasetState {
-public:
-    /**
-     * @brief Constructor
-     * @param data  The frequency information as serialized by
-     *              freqState::to_json().
-     * @param inner An inner state or a nullptr.
-     */
-    freqState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
-        try {
-            _freqs = data.get<vector<pair<uint32_t, freq_ctype>>>();
-        } catch (exception& e) {
-             throw std::runtime_error("freqState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
-        }
-    };
-
-    /**
-     * @brief Constructor
-     * @param freqs The frequency information as a vector of
-     *              {frequency ID, frequency index map}.
-     * @param inner An inner state (optional).
-     */
-    freqState(vector<pair<uint32_t, freq_ctype>> freqs,
-              state_uptr inner=nullptr) :
-        datasetState(move(inner)),
-        _freqs(freqs) {};
-
-    /**
-     * @brief Get frequency information (read only).
-     *
-     * @return The frequency information as a vector of
-     *         {frequency ID, frequency index map}
-     */
-    const vector<pair<uint32_t, freq_ctype>>& get_freqs() const {
-        return _freqs;
-    }
-
-private:
-    /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_freqs);
-        return j;
-    }
-
-    /// IDs that describe the subset that this dataset state defines
-    vector<pair<uint32_t, freq_ctype>> _freqs;
-};
-
-
-/**
- * @brief A dataset state that describes the inputs in a datatset.
- *
- * @author Richard Shaw, Rick Nitsche
- */
-class inputState : public datasetState {
-public:
-    /**
-     * @brief Constructor
-     * @param data  The input information as serialized by
-     *              inputState::to_json().
-     * @param inner An inner state or a nullptr.
-     */
-    inputState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
-        try {
-            _inputs = data.get<vector<input_ctype>>();
-        } catch (exception& e) {
-             throw std::runtime_error("inputState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
-        }
-    };
-
-    /**
-     * @brief Constructor
-     * @param inputs The input information as a vector of
-     *               input index maps.
-     * @param inner  An inner state (optional).
-     */
-    inputState(vector<input_ctype> inputs, state_uptr inner=nullptr) :
-        datasetState(move(inner)),
-        _inputs(inputs) {};
-
-    /**
-     * @brief Get input information (read only).
-     *
-     * @return The input information as a vector of input index maps.
-     */
-    const vector<input_ctype>& get_inputs() const {
-        return _inputs;
-    }
-
-private:
-    /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_inputs);
-        return j;
-    }
-
-    /// The subset that this dataset state defines
-    vector<input_ctype> _inputs;
-};
-
-
-/**
- * @brief A dataset state that describes the products in a datatset.
- *
- * @author Richard Shaw, Rick Nitsche
- */
-class prodState : public datasetState {
-public:
-    /**
-     * @brief Constructor
-     * @param data  The product information as serialized by
-     *              prodState::to_json().
-     * @param inner An inner state or a nullptr.
-     */
-    prodState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
-        try {
-            _prods = data.get<vector<prod_ctype>>();
-        } catch (exception& e) {
-             throw std::runtime_error("prodState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
-        }
-    };
-
-    /**
-     * @brief Constructor
-     * @param prods The product information as a vector of
-     *              product index maps.
-     * @param inner An inner state (optional).
-     */
-    prodState(vector<prod_ctype> prods, state_uptr inner=nullptr) :
-        datasetState(move(inner)),
-        _prods(prods) {};
-
-    /**
-     * @brief Get product information (read only).
-     *
-     * @return The prod information as a vector of product index maps.
-     */
-    const vector<prod_ctype>& get_prods() const {
-        return _prods;
-    }
-
-private:
-    /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_prods);
-        return j;
-    }
-
-    /// IDs that describe the subset that this dataset state defines
-    vector<prod_ctype> _prods;
+    /// Is this a root dataset?
+    bool _is_root;
 };
 
 
@@ -300,8 +118,8 @@ private:
  * frame to get a set of states from the datasetManager.
  * E.g.
  * ```
- * pair<dset_id, const inputState*> input_state =
- *          dm.closest_ancestor_of_type<inputState>(ds_id_from_frame);
+ * std::pair<dset_id, const inputState*> input_state =
+ *          dm.dataset_state<inputState>(ds_id_from_frame);
  * const std::vector<input_ctype>& inputs = input_state.second->get_inputs();
  * ```
  * to receive information about the inputs the datsets in the frames contain.
@@ -320,10 +138,26 @@ private:
  * If a process is altering more than one type of dataset state, it can add
  * `inner` states to the one it passes to the dataset manager.
  *
- * @author Richard Shaw, Rick Nitsche
- *
- * TODO: Centralized datasetBroker, so that states can be shared over multiple
+ * The dataset broker is a centralized part of the dataset management system.
+ * Using it allows the synchronization of datasets and states between multiple
  * kotekan instances.
+ *
+ * @conf use_dataset_broker Bool. If true, states and datasets will be
+ *                          registered with the dataset broker. If an ancestor
+ *                          can not be found locally, `dataset_state`
+ *                          will ask the broker.
+ * @conf ds_broker_port     Int. The port of the dataset broker (if
+ *                          `use_dataset_broker` is `True`). Default 12050.
+ * @conf ds_broker_host     String. Address to the dataset broker (if
+ *                          'use_ds_broke` is `True`. Prefer numerical address,
+ *                          because the DNS lookup is blocking). Default
+ *                          "127.0.0.1".
+ *
+ * @par metrics
+ * @metric kotekan_datasetbroker_error_count Number of errors encountered in
+ *                                           communication with the broker.
+ *
+ * @author Richard Shaw, Rick Nitsche
  **/
 class datasetManager {
 public:
@@ -335,6 +169,12 @@ public:
      **/
     static datasetManager& instance();
 
+    /**
+     * @brief Set and apply the static config to datasetManager
+     * @param config         The config.
+     */
+    void apply_config(Config& config);
+
     // Remove the implicit copy/assignments to prevent copying
     datasetManager(const datasetManager&) = delete;
     void operator=(const datasetManager&) = delete;
@@ -342,41 +182,76 @@ public:
     /**
      * @brief Register a new dataset.
      *
-     * @param trans The ID of an already registered state.
-     * @param input ID of the input dataset.
+     * If `use_dataset_broker` is set, this function will ask the dataset broker
+     * to assign an ID to the new dataset.
+     *
+     * @param ds The dataset to be added.
+     * @param ignore_broker If true, the dataset is not sent to the broker.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id add_dataset(state_id trans, dset_id input);
+    dset_id_t add_dataset(const dataset ds, bool ignore_broker = false);
 
     /**
      * @brief Register a state with the manager.
      *
-     * @param trans A pointer to the state.
-     * @returns The id assigned to the state.
+     * If `use_dataset_broker` is set, this function will also register the new
+     * state with the broker.
+     *
+     * The third argument of this function is to
+     * prevent compilation of this function with `T` not having the base class
+     * `datasetState`.
+     *
+     * @param state The state to be added.
+     * @param ignore_broker If true, the state is not sent to the broker.
+     * @returns The id assigned to the state and a read-only pointer to the
+     * state.
      **/
     template <typename T>
-    inline pair<state_id, const T*> add_state(unique_ptr<T>&& state);
+    inline std::pair<state_id_t, const T*> add_state(
+            std::unique_ptr<T>&& state,
+            bool ignore_broker = false,
+            typename std::enable_if<std::is_base_of<datasetState,
+                                    T>::value>::type* = 0);
 
     /**
      * @brief Return the state table.
      *
      * @returns A string summarising the state table.
      **/
-    string summary() const;
+    std::string summary();
 
     /**
      * @brief Get a read-only vector of the states.
      *
      * @returns The set of states.
      **/
-    const map<state_id, const datasetState *> states() const;
+    const map<state_id_t, const datasetState *> states();
 
     /**
      * @brief Get a read-only vector of the datasets.
      *
      * @returns The set of datasets.
      **/
-    const vector<pair<state_id, dset_id>> datasets() const;
+    const std::map<dset_id_t, dataset> datasets();
+
+    /**
+     * @brief Find the closest ancestor of a given type.
+     *
+     * If `use_dataset_broker` is set and no ancestor of the given type is found,
+     * this will ask the broker for a complete list of ancestors for the given
+     * dataset. In that case, this function is blocking, until the broker
+     * answeres. If you want to do something else, while waiting for the return
+     * value of this function, use std::future.
+     *
+     * @returns A read-only pointer to the ancestor state.
+     * Returns a `nullptr` if not found in ancestors or in a
+     * failure case.
+     **/
+    template<typename T> inline const T* dataset_state(dset_id_t);
+
+private:
+    /// Constructor
+    datasetManager();
 
     /**
      * @brief Get the states applied to generate the given dataset.
@@ -387,20 +262,8 @@ public:
      * @returns A vector of the dataset ID and the state that was
      *          applied to previous element in the vector to generate it.
      **/
-    const vector<pair<dset_id, datasetState *>> ancestors(dset_id dset) const;
-
-    /**
-     * @brief Find the closest ancestor of a given type.
-     *
-     * @returns The dataset ID and the state that generated it.
-     * Returns `{-1, nullptr}` if not found in ancestors.
-     **/
-    template<typename T>
-    inline pair<dset_id, const T*> closest_ancestor_of_type(dset_id) const;
-
-private:
-
-    datasetManager() { };
+    const std::vector<std::pair<dset_id_t, datasetState *>>
+    ancestors(dset_id_t dset);
 
     /**
      * @brief Calculate the hash of a datasetState to use as the state_id.
@@ -412,19 +275,74 @@ private:
      * @note This deliberately isn't a method of datasetState itself to ensure
      * that only the manager can issue hashes/IDs.
      **/
-    state_id hash_state(datasetState& state);
+    state_id_t hash_state(datasetState& state) const;
 
-    // Store the list of all the registered states.
-    map<state_id, state_uptr> _states;
+    /**
+     * @brief Calculate the hash of a dataset to use as the dset_id.
+     *
+     * @param ds Dataset to hash.
+     *
+     * @returns Hash to use as ID.
+     *
+     * @note This deliberately isn't a method of dataset itself to ensure
+     * that only the manager can issue hashes/IDs.
+     **/
+    dset_id_t hash_dataset(dataset& ds) const;
 
-    // Store a list of the datasets registered and what states they correspond to
-    vector<pair<state_id, dset_id>> _datasets;
+    /// register the given state with the dataset broker
+    void register_state(state_id_t state);
 
-    // Lock for changing or using the states map.
-    mutable std::mutex _lock_states;
+    /// register the given dataset with the dataset broker
+    void register_dataset(const dset_id_t hash, const dataset ds);
 
-    // Lock for changing or using the datasets.
-    mutable std::mutex _lock_dsets;
+    /// callback function for register_state()
+    void register_state_callback(restReply reply);
+
+    /// callback function for sending a state to the dataset broker
+    /// from register_state_callback()
+    void send_state_callback(restReply reply);
+
+    /// callback function for register_dataset()
+    void register_dataset_callback(restReply reply);
+
+    /// request closest ancestor of type
+    void request_ancestor(dset_id_t dset_id, const char *type);
+
+    /// callback function for request_ancestor()
+    void request_ancestor_callback(restReply reply);
+
+    template<typename T>
+    inline const T* get_closest_ancestor(dset_id_t dset);
+
+    /// Store the list of all the registered states.
+    std::map<state_id_t, state_uptr> _states;
+
+    /// Store a list of the datasets registered and what states
+    /// and input datasets they correspond to
+    std::map<dset_id_t, dataset> _datasets;
+
+    /// Lock for changing or using the states map.
+    std::mutex _lock_states;
+
+    /// Lock for changing or using the datasets.
+    std::mutex _lock_dsets;
+
+    /// Lock for the ancestors request cv.
+    std::mutex _lock_rqst;
+
+    /// Lock for the register dataset cv.
+    std::mutex _lock_reg;
+
+    /// conditional variable for requesting ancestors
+    std::condition_variable _cv_request_ancestor;
+
+    /// counter for connection and parsing errors
+    std::atomic<uint32_t> _conn_error_count;
+
+    // config params
+    bool _use_broker = false;
+    std::string _ds_broker_host;
+    unsigned short _ds_broker_port;
 };
 
 
@@ -438,43 +356,156 @@ inline int datasetState::_register_state_type() {
     // Get the unique name for the type to generate the lookup key. This is
     // the same used by RTTI which is what we use to label the serialised
     // instances.
-    string key = typeid(T).name();
+    std::string key = typeid(T).name();
 
     DEBUG("Registering state type: %s", key.c_str());
 
     // Generate a lambda function that creates an instance of the type
     datasetState::_registered_types()[key] =
         [](json & data, state_uptr inner) -> state_uptr {
-            return make_unique<T>(data, move(inner));
+            return std::make_unique<T>(data, move(inner));
         };
     return 0;
 }
 
+/* TODO:
+ * atm this receives a list from the broker of all it is missing to know the
+ * ancestor itself. Instead, receive only the requested ancestor state and
+ * keep the dataset IDs synched everywhere at all time. */
 template<typename T>
-inline pair<dset_id, const T*>
-datasetManager::closest_ancestor_of_type(dset_id dset) const {
-
-    for(auto& t : ancestors(dset)) {
-        if(typeid(*(t.second)) == typeid(T)) {
-            return {t.first, dynamic_cast<T*>(t.second)};
+inline const T* datasetManager::dataset_state(dset_id_t dset) {
+    if (!_use_broker) {
+        // check if we know that dataset at all
+        {
+            std::unique_lock<std::mutex> dslck(_lock_dsets);
+            if (_datasets.find(dset) == _datasets.end())
+                return nullptr;
         }
     }
 
-    return {-1, nullptr};
+    // is the ancestor known locally?
+    const T* ancestor = get_closest_ancestor<T>(dset);
+    if (ancestor)
+        return ancestor;
 
+    // no ancestor found locally -> ask broker
+    if (_use_broker) {
+        request_ancestor(dset, typeid(T).name());
+
+        // set timeout to hear back from callback function
+        std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
+        auto time_point = std::chrono::system_clock::now() + timeout;
+
+        // lock for conditional variable
+        std::unique_lock<std::mutex> lck(_lock_rqst);
+        while(true) {
+            if (!_cv_request_ancestor.wait_until(
+                    lck, time_point,
+                    std::bind(&datasetManager::get_closest_ancestor<T>,
+                              this, dset))) {
+
+                std::string msg = fmt::format(
+                            "datasetManager: Timeout while requesting " \
+                            "ancestors of type {} of dataset {}.",
+                            typeid(T).name(), dset);
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                            ++_conn_error_count);
+                throw std::runtime_error(msg);
+            }
+            // If the request was successful, the ancestor will be here:
+            ancestor = get_closest_ancestor<T>(dset);
+            if (ancestor)
+                return ancestor;
+        }
+    }
+
+    // not found
+    return nullptr;
 }
 
-// FIXME: add sth like
-// typename enable_if_t<is_base_of<datasetState, T>::value>::state
-// So that compilation for T not having datasetState as a base class fails.
 template <typename T>
-pair<state_id, const T*> datasetManager::add_state(unique_ptr<T>&& state) {
-    state_id hash = hash_state(*state);
-    std::lock_guard<std::mutex> lock(_lock_states);
-    if (!_states.insert(std::pair<state_id, unique_ptr<T>>(hash,
-                                                           move(state))).second)
-        INFO("datasetManager a state with hash %d is already registered.",
-             hash);
-    return pair<state_id, const T*>(hash, (const T*)(_states.at(hash).get()));
+std::pair<state_id_t, const T*> datasetManager::add_state(
+        std::unique_ptr<T>&& state,
+        bool ignore_broker,
+        typename std::enable_if<std::is_base_of<datasetState, T>::value>::type*)
+{
+
+    state_id_t hash = hash_state(*state);
+
+    // check if there is a hash collision
+    if (_states.find(hash) != _states.end()) {
+        auto find = _states.find(hash);
+        if (!state->equals(*(find->second))) {
+            // FIXME: hash collision. make the value a vector and store same
+            // hash entries? This would mean the state/dset has to be sent
+            // when registering.
+            ERROR("datasetManager: Hash collision!\n"
+                  "The following states have the same hash (%zu)." \
+                  "\n\n%s\n\n%s\n\n" \
+                  "datasetManager: Exiting...",
+                  hash, state->to_json().dump().c_str(),
+                  find->second->to_json().dump().c_str());
+            raise(SIGINT);
+        }
+    } else {
+        // insert the new state
+        std::lock_guard<std::mutex> slock(_lock_states);
+        if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>
+                                                  (hash, move(state))).second) {
+            DEBUG("datasetManager: a state with hash %zu is already " \
+                 "registered locally.", hash);
+        }
+
+        // tell the broker about it
+        if (_use_broker && !ignore_broker)
+            register_state(hash);
+    }
+
+    return std::pair<state_id_t, const T*>(hash,
+                                           (const T*)(_states.at(hash).get()));
 }
+
+template<typename T>
+inline const T*
+datasetManager::get_closest_ancestor(dset_id_t dset) {
+
+    std::lock(_lock_dsets, _lock_states);
+    std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
+    std::lock_guard<std::mutex> slock(_lock_states, std::adopt_lock);
+
+    // Walk up from the current node to the root, extracting pointers to the
+    // states
+    bool root = false;
+    while(!root) {
+        datasetState* t;
+        try {
+            t = _states.at(_datasets.at(dset).state()).get();
+        } catch (std::out_of_range& e) {
+            // we don't have the base dataset
+            DEBUG2("datasetManager: found a dead reference when looking for " \
+                   "locally known ancestor: %s", e.what());
+            break;
+        }
+
+        // Walk over the inner states.
+        while(t != nullptr) {
+            if(typeid(*t) == typeid(T))
+                return dynamic_cast<T*>(t);
+            t = t->_inner_state.get();
+        }
+
+        // if this is the root dataset, we are done
+        root = _datasets.at(dset).is_root();
+
+        // Move on to the parent dataset...
+        dset = _datasets.at(dset).base_dset();
+    }
+
+    DEBUG2("datasetManager: no ancestor of type %s and of dataset with ID %zu "\
+           "found.", typeid(T).name(), dset);
+    // not found
+    return nullptr;
+}
+
 #endif

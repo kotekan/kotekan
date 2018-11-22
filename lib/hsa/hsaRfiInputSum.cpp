@@ -31,7 +31,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     //Local Parameters
     rebuild_input_mask = true;
     //Allocate memory for input mask
-    input_mask = (uint8_t *)hsa_host_malloc(input_mask_len, device.get_gpu_id());
+    input_mask = (uint8_t *)hsa_host_malloc(input_mask_len);
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -62,7 +62,12 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     config.update_value(unique_name, "bad_inputs", _bad_inputs);
 }
 
-hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id,
+                                     hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     //Lock rest server callback mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Build Input mask when needed (after rest callback or on first execution)

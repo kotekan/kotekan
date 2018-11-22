@@ -11,9 +11,8 @@ public:
     correlator_kernel(const char* param_gpuKernel, const char* param_name, Config &config, const string &unique_name);
     ~correlator_kernel();
     virtual void build(class device_interface& param_Device) override;
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent) override;
 protected:
-    void apply_config(const uint64_t& fpga_seq) override;
     void defineOutputDataMap(device_interface& param_Device);
     cl_mem device_block_lock;
     cl_int *zeros;

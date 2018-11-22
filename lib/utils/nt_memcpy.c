@@ -32,7 +32,7 @@ void nt_aligned_memcpy(void* dest, void* src, size_t len)
     __m128i *src_p = (__m128i *) src;
     __m128i *dest_p = (__m128i *) dest;
 
-    for (int i = 0; i < num_loops; ++i) {
+    for (size_t i = 0; i < num_loops; ++i) {
         _mm_prefetch( ((const char *) src) + 768, _MM_HINT_NTA );
         _mm_prefetch( ((const char *) src) + 832, _MM_HINT_NTA );
         // Unroll for 8 128 bit registers
@@ -66,7 +66,7 @@ void nt_unaligned_memcpy(void* dest, void* src, size_t len)
     __m128i *src_p = (__m128i *) src;
     __m128i *dest_p = (__m128i *) dest;
 
-    for (int i = 0; i < num_loops; ++i) {
+    for (size_t i = 0; i < num_loops; ++i) {
         _mm_prefetch( ((const char *) src) + 768, _MM_HINT_NTA );
         _mm_prefetch( ((const char *) src) + 832, _MM_HINT_NTA );
         // Unroll for 8 128 bit registers

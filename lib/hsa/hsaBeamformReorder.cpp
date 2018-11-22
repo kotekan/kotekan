@@ -18,7 +18,7 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
 
     // Create a C style array for backwards compatibility.
     map_len = 512 * sizeof(int);
-    _reorder_map_c = (int *)hsa_host_malloc(map_len, device.get_gpu_id());
+    _reorder_map_c = (int *)hsa_host_malloc(map_len);
     for (uint i=0;i<512;++i){
         _reorder_map_c[i] = _reorder_map[i];
     }
@@ -30,7 +30,12 @@ hsaBeamformReorder::~hsaBeamformReorder() {
     hsa_host_free(_reorder_map_c);
 }
 
-hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id,
+                                         hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *map_buffer;

@@ -12,7 +12,8 @@ public:
 
     virtual ~hsaBarrier();
 
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id,
+                         hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id) override;
 };

@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsarOutput);
 
 hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const string &unique_name,
         bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("hsaBeamformPulsarOutput", "", config, unique_name, host_buffers, device) {
+    hsaCommand("", "", config, unique_name, host_buffers, device) {
     command_type = CommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
@@ -31,7 +31,8 @@ int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id,
+                                              hsa_signal_t precede_signal) {
 
     void * gpu_output_ptr = device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_buffer->frame_size);
 

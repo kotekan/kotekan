@@ -29,7 +29,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
 
 
     // Allocate and copy the block map
-    host_block_map = (uint32_t *)hsa_host_malloc(block_map_len, device.get_gpu_id());
+    host_block_map = (uint32_t *)hsa_host_malloc(block_map_len);
     int block_id = 0;
     for (int y = 0; block_id < _num_blocks; y++) {
         for (int x = y; x < _num_elements/block_size; x++) {
@@ -44,7 +44,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_na
     device.sync_copy_host_to_gpu(device_block_map, host_block_map, block_map_len);
 
     // Create the extra kernel args object.
-    host_kernel_args = (corr_kernel_config_t *)hsa_host_malloc(sizeof(corr_kernel_config_t), device.get_gpu_id());
+    host_kernel_args = (corr_kernel_config_t *)hsa_host_malloc(sizeof(corr_kernel_config_t));
     host_kernel_args->n_elem = _num_elements;
     host_kernel_args->n_intg = _n_intg;
     host_kernel_args->n_iter = _samples_per_data_set;
@@ -67,7 +67,10 @@ hsaCorrelatorKernel::~hsaCorrelatorKernel() {
 }
 
 hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
-                        const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+                                          hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
 
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;

@@ -20,6 +20,7 @@
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
 
+
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.
  *
@@ -46,6 +47,8 @@ using json = nlohmann::json;
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
+ * @metric kotekan_dataset_manager_dropped_frame_count
+ *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
  */
@@ -58,8 +61,6 @@ public:
                         const string& unique_name,
                         bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq) override;
-
     // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;
 
@@ -69,7 +70,10 @@ private:
 	/// different frame_id from the buffer and compresses them.
     void compress_thread(int thread_id);
 
-    ///Vector to hold the thread handles
+    /// Tracks input dataset ID and gets output dataset IDs from manager
+    void change_dataset_state(dset_id_t ds_id);
+
+    /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
 
     // The extra inputs we are excluding
@@ -98,6 +102,14 @@ private:
     // Buffers to read/write
     Buffer* in_buf;
     Buffer* out_buf;
+
+    // dataset states and IDs
+    dset_id_t output_dset_id;
+    const prodState* prod_state_ptr;
+    const stackState* stack_state_ptr;
+
+    // Number of errors when dealing with datasetManager
+    std::atomic<uint32_t> err_count;
 };
 
 
@@ -186,94 +198,6 @@ struct chimeFeed {
  * @brief Implement an output operator to help debugging.
  **/
 std::ostream & operator<<(std::ostream &os, const chimeFeed& f);
-
-
-/**
- * @brief A dataset state that describes a redundant baseline stacking.
- *
- * @author Richard Shaw
- */
-class stackState : public datasetState {
-public:
-    /**
-     * @brief Constructor
-     * @param data  The stack information as serialized by
-     *              stackState::to_json().
-     * @param inner An inner state or a nullptr.
-     */
-    stackState(json& data, state_uptr inner) :
-        datasetState(move(inner))
-    {
-        try {
-            _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
-            _num_stack = data["num_stack"].get<uint32_t>();
-        } catch (exception& e) {
-             throw std::runtime_error("stackState: Failure parsing json data: "s
-                                      + e.what());
-        }
-    };
-
-    /**
-     * @brief Constructor
-     * @param stack_map Definition of how the products were stacked.
-     * @param num_stack Number of stacked visibilites.
-     * @param inner  An inner state (optional).
-     */
-    stackState(uint32_t num_stack, std::vector<rstack_ctype>&& rstack_map, state_uptr inner=nullptr) :
-        datasetState(std::move(inner)),
-        _num_stack(num_stack),
-        _rstack_map(rstack_map) {};
-
-
-    /**
-     * @brief Get stack map information (read only).
-     *
-     * For every product this says which stack to add the product into and
-     * whether it needs conjugating before doing so.
-     *
-     * @return The stack map.
-     */
-    const std::vector<rstack_ctype>& get_rstack_map() const
-    {
-        return _rstack_map;
-    }
-
-    /**
-     * @brief Get the number of stacks (read only).
-     *
-     * @return The number of stacks.
-     */
-    const uint32_t get_num_stack() const
-    {
-        return _num_stack;
-    }
-
-    /**
-     * @brief Calculate and return the stack->prod mapping.
-     *
-     * This is calculated on demand and so a full fledged vector is returned.
-     *
-     * @returns The stack map.
-     **/
-    std::vector<stack_ctype> get_stack_map() const
-    {
-        return invert_stack(_num_stack, _rstack_map);
-    }
-
-    /// Serialize the data of this state in a json object
-    json data_to_json() const override
-    {
-        return {{"rstack", _rstack_map }, {"num_stack", _num_stack}};
-    }
-
-private:
-
-    /// Total number of stacks
-    uint32_t _num_stack;
-
-    /// The stack definition
-    std::vector<rstack_ctype> _rstack_map;
-};
 
 
 #endif

@@ -26,9 +26,6 @@ fftwEngine::~fftwEngine() {
     fftwf_free(fft_plan);
 }
 
-void fftwEngine::apply_config(uint64_t fpga_seq) {
-}
-
 void fftwEngine::main_thread() {
     int16_t *in_local;
     fftwf_complex *out_local;

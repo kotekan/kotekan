@@ -37,9 +37,6 @@ void bufferFactory::build_from_tree(map<string, struct Buffer *> &buffers,
                 throw std::runtime_error("The buffer named " + name + " has already been defined!");
             }
             buffers[name] = new_buffer(buffer_type, name, path + "/" + it.key());
-            if (buffers[name] == NULL) {
-                throw std::runtime_error("Cannot create buffer named '" + name + "'");
-            }
             continue;
         }
 
@@ -66,14 +63,6 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
         INFO("Creating standard buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
                 name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
         return create_buffer(num_frames, frame_size, pool, name.c_str());
-    }
-
-    if (type_name == "hsa") {
-        uint32_t frame_size = config.get<uint32_t>(location, "frame_size");
-        uint32_t gpu_id = config.get<uint32_t>(location, "gpu_id");
-        INFO("Creating HSA compatible buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
-                name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
-        return create_hsa_buffer(num_frames, frame_size, pool, name.c_str(), gpu_id);
     }
 
     if(type_name == "vis") {

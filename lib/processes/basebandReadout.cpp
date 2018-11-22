@@ -55,7 +55,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     _inputs = std::get<1>(input_reorder);
     auto inputs_copy = _inputs;
     auto order_inds = std::get<0>(input_reorder);
-    for (int i = 0; i < _inputs.size(); i++) {
+    for (size_t i = 0; i < _inputs.size(); i++) {
         _inputs[order_inds[i]] = inputs_copy[i];
     }
 
@@ -86,9 +86,6 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
 }
 
 basebandReadout::~basebandReadout() {
-}
-
-void basebandReadout::apply_config(uint64_t fpga_seq) {
 }
 
 void basebandReadout::main_thread() {

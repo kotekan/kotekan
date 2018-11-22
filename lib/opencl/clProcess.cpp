@@ -51,10 +51,6 @@ clProcess::clProcess(Config& config_,
 
 }
 
-void clProcess::apply_config(uint64_t fpga_seq) {
-    _use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
-}
-
 clProcess::~clProcess() {
     delete factory;
     delete device;
@@ -62,7 +58,8 @@ clProcess::~clProcess() {
 
 void clProcess::main_thread()
 {
-    apply_config(0);
+    // Apply config.
+    _use_beamforming = config.get<bool>(unique_name, "enable_beamforming");
 
     gpu_command * currentCommand;
     cl_event sequenceEvent;
@@ -161,7 +158,8 @@ void clProcess::main_thread()
         usleep(gpu_id*10000);
         for (uint32_t i = 0; i < factory->getNumCommands(); i++){
             currentCommand = factory->getNextCommand();
-            sequenceEvent = currentCommand->execute(frame_id, 0, *device, sequenceEvent);
+            sequenceEvent = currentCommand->execute(frame_id, *device,
+                                                    sequenceEvent);
             cb_data[frame_id]->listCommands[i] = currentCommand;
             tt.time_opencl_multi_kernel(sequenceEvent, currentCommand->get_name());
         }
@@ -197,7 +195,7 @@ void clProcess::main_thread()
         }
         time_count++;
         if(time_count == 10){
-            for (int i = 0; i < factory->getNumCommands(); i++){
+            for (uint i = 0; i < factory->getNumCommands(); i++){
                 currentCommand = factory->getNextCommand();
                 //tt.broadcast(currentCommand->get_name());
             }
@@ -344,6 +342,10 @@ void clProcess::mem_reconcil_thread()
             CHECK_ERROR( pthread_cond_broadcast(&cb_data[j]->buff_id_lock->mem_cond) );
             double end_time_2 = e_time();
             DEBUG("running_time 1: %f, running_time 2: %f, function_time: %f", end_time_1 - cb_data[j]->start_time, end_time_2 - cb_data[j]->start_time, end_time_2 - end_time_1);
+
+            // Suppress unused warning, if DEBUG macro ignored in Release build
+            (void)end_time_1;
+            (void)end_time_2;
         }
         if (break_loop == true){
             DEBUG("break out of second loop");
@@ -355,7 +357,11 @@ void clProcess::mem_reconcil_thread()
 
 void CL_CALLBACK read_complete(cl_event param_event, cl_int param_status, void* data)
 {
-    struct callBackData * cur_cb_data = (struct callBackData *) data;
+    // Unused parameters, suppress warnings.
+    (void)param_event;
+    (void)param_status;
+
+    callBackData * cur_cb_data = (callBackData *) data;
 //    std::clock_t    start;
 
     CHECK_ERROR( pthread_mutex_lock(&cur_cb_data->cnt->lock));

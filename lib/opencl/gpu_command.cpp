@@ -36,8 +36,7 @@ char* gpu_command::get_name()
     return name;
 }
 
-void gpu_command::apply_config(const uint64_t& fpga_seq) {
-    (void)fpga_seq;
+void gpu_command::apply_config() {
     _num_adjusted_elements = config.get<int32_t>(
                 unique_name, "num_adjusted_elements");
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -92,8 +91,11 @@ void gpu_command::build(class device_interface &param_Device)
     }
 }
 
-cl_event gpu_command::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface& param_Device, cl_event param_PrecedeEvent)
+cl_event gpu_command::execute(int param_bufferID, device_interface& param_Device, cl_event param_PrecedeEvent)
 {
+    // Unused parameter, suppress warning
+    (void)param_PrecedeEvent;
+
     assert(param_bufferID<param_Device.getInBuf()->num_frames);
     assert(param_bufferID>=0);
 

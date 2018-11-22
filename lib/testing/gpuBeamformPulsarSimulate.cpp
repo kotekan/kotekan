@@ -25,7 +25,12 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config,
         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
 
-    apply_config(0);
+    // Apply config.
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _num_pol = config.get<int32_t>(unique_name, "num_pol");
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());
@@ -247,7 +252,6 @@ void gpuBeamformPulsarSimulate::main_thread() {
 
         // Beamform 10 pulsars.
         cpu_beamform_pulsar(input_unpacked, phase, cpu_output, _samples_per_data_set, _num_elements, _num_pulsar, _num_pol);
-
         memcpy(output,cpu_output,output_buf->frame_size);
 
         INFO("Simulating GPU pulsar beamform processing done for %s[%d] result is in %s[%d]",

@@ -9,15 +9,13 @@ output_data_result::~output_data_result()
 {
 }
 
-void output_data_result::build(device_interface &param_Device)
-{
-    apply_config(0);
+void output_data_result::build(device_interface &param_Device) {
     gpu_command::build(param_Device);
 }
 
-cl_event output_data_result::execute(int param_bufferID, const uint64_t& fpga_seq, class device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event output_data_result::execute(int param_bufferID, class device_interface &param_Device, cl_event param_PrecedeEvent)
 {
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
 
     // Read the results
     CHECK_CL_ERROR( clEnqueueReadBuffer(param_Device.getQueue(2),
