@@ -26,8 +26,6 @@ public:
         bufferContainer &buffer_container);
     /// Destructor
     ~gpuBeamformPulsarSimulate();
-    ///Apply config
-    void apply_config(uint64_t fpga_seq) override;
     ///Main loop, read gains, calculate new phase, brute-force beamform
     void main_thread() override;
 
@@ -47,7 +45,7 @@ private:
 
     /// Config options:
     /// number of elements = 2048
-    int32_t _num_elements;
+    uint32_t _num_elements;
     /// number of samples = 49152
     int32_t _samples_per_data_set;
     /// number of pulsars = 10

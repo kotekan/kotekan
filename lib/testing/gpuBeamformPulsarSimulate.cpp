@@ -27,10 +27,19 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config,
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(unique_name,
-                                                "samples_per_data_set");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_pol = config.get<int32_t>(unique_name, "num_pol");
+    _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
+    _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
+    _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
+    _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
+    _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
+    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
+    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
+    INFO("[PSR CPU] start with gain %s %s %s",_gain_dir[0].c_str(), _gain_dir[1].c_str(), _gain_dir[2].c_str());
+    vector<float> dg = {0.0,0.0}; //re,im
+    default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
+
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());
@@ -71,22 +80,6 @@ gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
     free(phase);
     free(cpu_gain);
     free(reorder_map_c);
-}
-
-void gpuBeamformPulsarSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
-    _num_pol = config.get<int32_t>(unique_name, "num_pol");
-    _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
-    _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
-    _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
-    _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
-    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
-    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
-    INFO("[PSR CPU] start with gain %s %s %s",_gain_dir[0].c_str(), _gain_dir[1].c_str(), _gain_dir[2].c_str());
-    vector<float> dg = {0.0,0.0}; //re,im
-    default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 }
 
 void gpuBeamformPulsarSimulate::reorder(unsigned char *data, int *map){
