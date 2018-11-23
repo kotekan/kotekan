@@ -240,8 +240,9 @@ dset_id_t visAccumulate::change_dataset_state() {
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
     state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+    INFO("Will register state %zu", mstate_id);
     //register root dataset
-    return dm.add_dataset(dataset(mstate_id, 0, true));
+    return dm.add_dataset(0, mstate_id, true);
 }
 
 

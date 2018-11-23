@@ -34,7 +34,7 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(0, input_state.first, true);
     inputs = {input_ctype(1, "1"),
               input_ctype(2, "2")};
     prods = {{1, 1},
@@ -45,8 +45,7 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>(inputs,
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
-    dset_id_t init_ds_id2 = dm.add_dataset(dataset(input_state2.first,
-                                                   init_ds_id));
+    dset_id_t init_ds_id2 = dm.add_dataset(init_ds_id, input_state2.first);
 
 
     // transform that data:
@@ -84,8 +83,8 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>
                          (new_inputs, std::make_unique<prodState>(new_prods,
                           std::make_unique<freqState>(new_freqs))));
-    dset_id_t transformed_ds_id = dm.add_dataset(
-                dataset(transformed_input_state.first, init_ds_id2));
+    dset_id_t transformed_ds_id = dm.add_dataset(init_ds_id2,
+                                                 transformed_input_state.first);
 
 
     // get state
@@ -212,7 +211,7 @@ BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
     std::vector<input_ctype> inputs = {input_ctype(1, "1")};
     std::pair<state_id_t, const inputState*> input_state =
             dm.add_state(std::make_unique<inputState>(inputs));
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(0, input_state.first, true);
 
     const prodState* not_found =
             dm.dataset_state<prodState>(init_ds_id);

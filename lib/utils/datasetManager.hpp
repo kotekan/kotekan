@@ -3,11 +3,16 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <condition_variable>
 #include <fmt.hpp>
+#include <time.h>
+#include <typeindex>
+#include <thread>
+#include <chrono>
 
 #include "json.hpp"
 #include "errors.h"
@@ -17,13 +22,13 @@
 #include "signal.h"
 
 #define UNIQUE_NAME "/dataset_manager"
-#define TIMEOUT_BROKER_SEC 10
 
 // names of broker endpoints
 #define PATH_REGISTER_STATE "register-state"
 #define PATH_SEND_STATE "send-state"
 #define PATH_REGISTER_DATASET "register-dataset"
-#define PATH_REQUEST_ANCESTOR "request-ancestor"
+#define PATH_UPDATE_DATASETS "update-datasets"
+#define PATH_REQUEST_STATE "request-state"
 
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
@@ -47,10 +52,13 @@ public:
     * @param state      The state of this dataset.
     * @param base_dset  The ID of the base datset.
     * @param is_root    True if this is a root dataset (has no base dataset).
+    * @param types      The set of state types that are different from the base
+    *                   dataset.
     */
-    dataset(state_id_t state, dset_id_t base_dset, bool is_root = false)
-        : _state(state), _base_dset(base_dset), _is_root(is_root)
-    { }
+    dataset(state_id_t state, dset_id_t base_dset,
+            std::set<std::string> types, bool is_root = false)
+        : _state(state), _base_dset(base_dset), _is_root(is_root),
+          _types(types) { }
 
     /**
      * @brief Dataset constructor from json object.
@@ -58,6 +66,7 @@ public:
      * is_root:     boolean
      * state:       integer
      * base_dset    integer
+     * types        list of strings
      * @param js    Json object describing a dataset.
      */
     dataset(json& js);
@@ -82,6 +91,12 @@ public:
     dset_id_t base_dset() const;
 
     /**
+     * @brief Read only access to the set of states.
+     * @return  The set of states that are different from the base dataset.
+     */
+    const std::set<std::string>& types() const;
+
+    /**
      * @brief Generates a json serialization of this dataset.
      * @return A json serialization.
      */
@@ -103,6 +118,9 @@ private:
 
     /// Is this a root dataset?
     bool _is_root;
+
+    /// List of the types of datasetStates
+    std::set<std::string> _types;
 };
 
 
@@ -130,7 +148,7 @@ private:
  * std::pair<state_id, const inputState*> new_state =
  *          dm.add_state(std::make_unique<inputState>(new_inputs,
  *                                         make_unique<prodState>(new_prods)));
- *  dset_id new_ds_id = dm.add_dataset(new_state.first, old_state.first);
+ *  dset_id new_ds_id = dm.add_dataset(old_dataset_id, new_state);
  * ```
  * Adds an input state as well as a product dataset state to the manager. The
  * process should then write `new_ds_id` to its outgoing frames.
@@ -185,11 +203,17 @@ public:
      * If `use_dataset_broker` is set, this function will ask the dataset broker
      * to assign an ID to the new dataset.
      *
-     * @param ds The dataset to be added.
+     * @param base_dset     The ID of the dataset this dataset is based on
+     *                      (undefined if this is a root dataset).
+     * @param state         The ID of the dataset state that describes the
+     *                      difference to the base dataset.
+     * @param is_root       True if this is a root dataset (has no base
+     *                      dataset).
      * @param ignore_broker If true, the dataset is not sent to the broker.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id_t add_dataset(const dataset ds, bool ignore_broker = false);
+    dset_id_t add_dataset(dset_id_t base_dset, state_id_t state,
+                          bool is_root = false, bool ignore_broker = false);
 
     /**
      * @brief Register a state with the manager.
@@ -247,7 +271,7 @@ public:
      * Returns a `nullptr` if not found in ancestors or in a
      * failure case.
      **/
-    template<typename T> inline const T* dataset_state(dset_id_t);
+    template<typename T> inline const T* dataset_state(dset_id_t dset);
 
 private:
     /// Constructor
@@ -305,14 +329,21 @@ private:
     /// callback function for register_dataset()
     void register_dataset_callback(restReply reply);
 
-    /// request closest ancestor of type
-    void request_ancestor(dset_id_t dset_id, const char *type);
+    /// request an update on the topology of datasets (blocking)
+    void update_datasets(dset_id_t ds_id);
 
-    /// callback function for request_ancestor()
-    void request_ancestor_callback(restReply reply);
+    /// Helper function to parse the reply for update_datasets()
+    bool parse_reply_dataset_update(restReply reply);
+
+    /// request state (blocking), or wait for ongoing request
+    void request_state(state_id_t state_id);
 
     template<typename T>
     inline const T* get_closest_ancestor(dset_id_t dset);
+
+    /// Wait for any ongoing requests of the same state OR request state.
+    template<typename T>
+    inline const T* request_state(state_id_t state_id) ;
 
     /// Store the list of all the registered states.
     std::map<state_id_t, state_uptr> _states;
@@ -333,13 +364,24 @@ private:
     /// Lock for the register dataset cv.
     std::mutex _lock_reg;
 
-    /// conditional variable for requesting ancestors
-    std::condition_variable _cv_request_ancestor;
+    /// Lock for the receive state cv.
+    std::mutex _lock_recv_state;
+
+    /// conditional variable to signal a received state.
+    std::condition_variable _cv_received_state;
 
     /// counter for connection and parsing errors
     std::atomic<uint32_t> _conn_error_count;
 
-    // config params
+    /// Timestamp of last topology update (generated by broker).
+    /// It is protected by _lock_dsets.
+    json _timestamp_update;
+
+    /// set of the states currently requested from the broker.
+    /// Protected by _lock_recv_state.
+    std::set<state_id_t> _requested_states;
+
+    /// config params
     bool _use_broker = false;
     std::string _ds_broker_host;
     unsigned short _ds_broker_port;
@@ -368,60 +410,26 @@ inline int datasetState::_register_state_type() {
     return 0;
 }
 
-/* TODO:
- * atm this receives a list from the broker of all it is missing to know the
- * ancestor itself. Instead, receive only the requested ancestor state and
- * keep the dataset IDs synched everywhere at all time. */
 template<typename T>
 inline const T* datasetManager::dataset_state(dset_id_t dset) {
-    if (!_use_broker) {
-        // check if we know that dataset at all
-        {
-            std::unique_lock<std::mutex> dslck(_lock_dsets);
-            if (_datasets.find(dset) == _datasets.end())
-                return nullptr;
-        }
+
+    if (!_use_broker)
+        return get_closest_ancestor<T>(dset);
+
+    // get an update on the dataset topology (blocking)
+    update_datasets(dset);
+    
+    // get the state or ask broker for it
+    const T* state = get_closest_ancestor<T>(dset);
+
+    while (!state) {
+        // retry
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        update_datasets(dset);
+        state = get_closest_ancestor<T>(dset);
     }
 
-    // is the ancestor known locally?
-    const T* ancestor = get_closest_ancestor<T>(dset);
-    if (ancestor)
-        return ancestor;
-
-    // no ancestor found locally -> ask broker
-    if (_use_broker) {
-        request_ancestor(dset, typeid(T).name());
-
-        // set timeout to hear back from callback function
-        std::chrono::seconds timeout(TIMEOUT_BROKER_SEC);
-        auto time_point = std::chrono::system_clock::now() + timeout;
-
-        // lock for conditional variable
-        std::unique_lock<std::mutex> lck(_lock_rqst);
-        while(true) {
-            if (!_cv_request_ancestor.wait_until(
-                    lck, time_point,
-                    std::bind(&datasetManager::get_closest_ancestor<T>,
-                              this, dset))) {
-
-                std::string msg = fmt::format(
-                            "datasetManager: Timeout while requesting " \
-                            "ancestors of type {} of dataset {}.",
-                            typeid(T).name(), dset);
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                            ++_conn_error_count);
-                throw std::runtime_error(msg);
-            }
-            // If the request was successful, the ancestor will be here:
-            ancestor = get_closest_ancestor<T>(dset);
-            if (ancestor)
-                return ancestor;
-        }
-    }
-
-    // not found
-    return nullptr;
+    return state;
 }
 
 template <typename T>
@@ -469,43 +477,152 @@ std::pair<state_id_t, const T*> datasetManager::add_state(
 template<typename T>
 inline const T*
 datasetManager::get_closest_ancestor(dset_id_t dset) {
+    {
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
+        state_id_t ancestor;
 
-    std::lock(_lock_dsets, _lock_states);
-    std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
-    std::lock_guard<std::mutex> slock(_lock_states, std::adopt_lock);
+        // Check if we can find requested state in dataset topology.
+        // Walk up from the current node to the root.
+        while(true) {
+            // Search for the requested type in each dataset (includes inner
+            // states).
+            try {
+                if (_datasets.at(dset).types().count(typeid(T).name())) {
+                    ancestor = _datasets.at(dset).state();
+                    break;
+                }
 
-    // Walk up from the current node to the root, extracting pointers to the
-    // states
-    bool root = false;
-    while(!root) {
-        datasetState* t;
+                // if this is the root dataset, we don't have that ancestor
+                if (_datasets.at(dset).is_root())
+                    return nullptr;
+
+                // Move on to the parent dataset...
+                dset = _datasets.at(dset).base_dset();
+
+            } catch (std::out_of_range& e) {
+                // we don't have the base dataset
+                DEBUG2("datasetManager: found a dead reference when looking for " \
+                       "locally known ancestor: %s", e.what());
+                return nullptr;
+            }
+        }
+
+        // Check if we have that state already
         try {
-            t = _states.at(_datasets.at(dset).state()).get();
+            const datasetState* state = _states.at(ancestor).get();
+
+            // walk through the inner states until we find the right type
+            while (state != nullptr) {
+                if (typeid(*state) == typeid(T))
+                    return (const T*)state;
+                state = state->_inner_state.get();
+            }
         } catch (std::out_of_range& e) {
-            // we don't have the base dataset
-            DEBUG2("datasetManager: found a dead reference when looking for " \
-                   "locally known ancestor: %s", e.what());
-            break;
+            DEBUG("datasetManager: requested state %zu not known locally.",
+                  ancestor);
         }
+        if (_use_broker)
+            return request_state<T>(ancestor);
+        else
+            return nullptr;
+    }
+}
 
-        // Walk over the inner states.
-        while(t != nullptr) {
-            if(typeid(*t) == typeid(T))
-                return dynamic_cast<T*>(t);
-            t = t->_inner_state.get();
-        }
+template<typename T>
+inline const T* datasetManager::request_state(state_id_t state_id) {
 
-        // if this is the root dataset, we are done
-        root = _datasets.at(dset).is_root();
-
-        // Move on to the parent dataset...
-        dset = _datasets.at(dset).base_dset();
+    // If this state is requested already, wait for it.
+    if (_requested_states.count(state_id)) {
+        std::unique_lock<std::mutex> lck_rcvd(_lock_recv_state);
+        _cv_received_state.wait(lck_rcvd, [this, state_id]() {
+            return !_requested_states.count(state_id);
+        });
     }
 
-    DEBUG2("datasetManager: no ancestor of type %s and of dataset with ID %zu "\
-           "found.", typeid(T).name(), dset);
-    // not found
-    return nullptr;
+    // If an ongoing request returned just when this function was
+    // called, we are done.
+    {
+        std::lock_guard<std::mutex> lck_states(_lock_states);
+        if(_states.count(state_id))
+            return (const T*)_states.at(state_id).get();
+    }
+
+    // Request state from broker
+    _requested_states.insert(state_id);
+    json js_request;
+    js_request["id"] = state_id;
+    restReply reply = restClient::instance().make_request_blocking(
+                PATH_REQUEST_STATE, js_request,
+                _ds_broker_host, _ds_broker_port);
+    if (!reply.first) {
+        WARN("datasetManager: Failure requesting state from " \
+             "broker: %s", reply.second.c_str());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return nullptr;
+    }
+
+    json js_reply;
+    try {
+        js_reply = json::parse(reply.second);
+        if (js_reply.at("rslt") != "success")
+            throw std::runtime_error("Broker answered with rslt="
+                                     + js_reply.at("rslt").dump());
+
+        state_id_t s_id = js_reply.at("id");
+
+        state_uptr state =
+                datasetState::from_json(js_reply.at("state"));
+        if (state == nullptr) {
+            throw(std::runtime_error("Failed to parse state received from " \
+                                     "broker: " + js_reply.at("state").dump()));
+        }
+
+        // register the received state
+        std::unique_lock<std::mutex> slck(_lock_states);
+        auto new_state = _states.insert(std::pair<state_id_t,
+                                   std::unique_ptr<datasetState>>
+                                   (s_id, move(state)));
+        slck.unlock();
+
+        // signal other waiting state requests, that we received this state
+        {
+            std::unique_lock<std::mutex> _lck_rcvd(_lock_recv_state);
+            _requested_states.erase(state_id);
+        }
+        _cv_received_state.notify_all();
+
+        // hash collisions are checked for by the broker
+        if (!new_state.second)
+            INFO("datasetManager::request_ancestors_callback: received a " \
+                 "state (with hash %zu) that is already registered " \
+                 "locally.", s_id);
+
+        // get a pointer out of that iterator
+        const datasetState* s =
+                (const datasetState*) new_state.first->second.get();
+
+        // find the inner state matching the type
+        while (true) {
+            if (typeid(T) == typeid(*s))
+                return (const T*)s;
+            if (s->_inner_state == nullptr)
+                throw std::runtime_error("Broker sent state that didn't match "\
+                                         "requested type (" +
+                                         std::string(typeid(T).name()) +
+                                         "): " + js_reply.at("state").dump());
+            s = s->_inner_state.get();
+        }
+    } catch (std::exception& e) {
+        WARN("datasetManager: failure parsing reply received from broker " \
+              "after requesting state (reply: %s): %s",
+              reply.second.c_str(), e.what());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return nullptr;
+    }
 }
 
 #endif

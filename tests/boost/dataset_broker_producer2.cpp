@@ -13,7 +13,8 @@
 #include "datasetManager.hpp"
 
 // dataset id from producer
-#define DSET_ID 11310702431614462890UL
+// TODO: pass this here via a file instead
+#define DSET_ID 10856314535876447850UL
 
 using json = nlohmann::json;
 
@@ -63,7 +64,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>
                          (new_inputs, std::make_unique<freqState>(new_freqs)));
 
-    dm.add_dataset(dataset(new_input_state.first, DSET_ID));
+    dm.add_dataset(DSET_ID, new_input_state.first);
 
     std::cout << dm.summary() << std::endl;
 

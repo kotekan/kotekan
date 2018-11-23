@@ -184,7 +184,7 @@ void visRawReader::change_dataset_state() {
                                              std::move(tstate))).first;
 
         // register it as root dataset
-        _dataset_id = dm.add_dataset(dataset(mstate_id, 0, true));
+        _dataset_id = dm.add_dataset(0, mstate_id, true);
     } catch (std::runtime_error& e) {
         // Crash if anything goes wrong. This process is processing data from a
         // file, so should be restarted after fixing the problem.

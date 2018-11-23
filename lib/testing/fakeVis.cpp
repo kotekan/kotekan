@@ -165,7 +165,7 @@ void fakeVis::main_thread() {
             auto s = dm.add_state(std::move(sstate));
 
             // Register a root state
-            ds_id = dm.add_dataset(dataset(s.first, 0, true));
+            ds_id = dm.add_dataset(0, s.first, true);
         }
     }
 

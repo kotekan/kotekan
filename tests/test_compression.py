@@ -120,8 +120,6 @@ def test_chime(chime_data):
     # This is the typical number of entries per polarisation (for XX, XY and YY, not YX)
     np1 = 4 * 256 + 6 * 511
 
-    print "hello", chime_data
-
     for frame in chime_data:
         assert frame.vis.shape[0] == nvis_chime
 

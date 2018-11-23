@@ -13,6 +13,7 @@ dataset::dataset(json& js) {
     _state = js["state"];
     _base_dset = js["base_dset"];
     _is_root = js["is_root"];
+    _types = js["types"].get<std::set<std::string>>();
 }
 
 bool dataset::is_root() const {
@@ -27,18 +28,24 @@ dset_id_t dataset::base_dset() const {
     return _base_dset;
 }
 
+const std::set<std::string> &dataset::types() const {
+    return _types;
+}
+
 json dataset::to_json() const {
     json j;
     j["is_root"] = _is_root;
     j["state"] = _state;
     j["base_dset"] = _base_dset;
+    j["types"] = _types;
     return j;
 }
 
 bool dataset::equals(dataset& ds) const {
     return _state == ds.state() && _base_dset == ds.base_dset()
-            && _is_root == ds.is_root();
+            && _is_root == ds.is_root() && _types == ds.types();
 }
+
 
 std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     out << typeid(dt).name();
@@ -70,6 +77,7 @@ datasetManager& datasetManager::instance() {
 
 datasetManager::datasetManager() {
     _conn_error_count = 0;
+    _timestamp_update = json(0);
 }
 
 void datasetManager::apply_config(Config& config) {
@@ -86,8 +94,28 @@ void datasetManager::apply_config(Config& config) {
     }
 }
 
-dset_id_t datasetManager::add_dataset(dataset ds, bool ignore_broker) {
+dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state,
+                                      bool is_root, bool ignore_broker) {
 
+    // collect typeids of inner states
+    std::set<std::string> types;
+    datasetState* t;
+    try {
+        t = _states.at(state).get();
+    } catch (std::exception& e) {
+        // This must be a bug in the calling process...
+        ERROR("datasetManager: Failure registering dataset : state %zu not " \
+              "found (base dataset ID: %zu, is root: %d): %s",
+              state, base_dset, is_root, e.what());
+        raise(SIGINT);
+    }
+
+    while(t != nullptr) {
+        types.insert(typeid(*t).name());
+        t = t->_inner_state.get();
+    }
+
+    dataset ds = dataset(state, base_dset, types, is_root);
     dset_id_t new_dset_id = hash_dataset(ds);
 
     {
@@ -141,7 +169,7 @@ state_id_t datasetManager::hash_dataset(dataset& ds) const {
 
 void datasetManager::register_state(state_id_t state) {
     json js_post;
-    js_post["hash"] = state;
+    js_post["hsh"] = state;
 
     std::function<void(restReply)> callback(
                 std::bind(&datasetManager::register_state_callback,
@@ -177,22 +205,23 @@ void datasetManager::register_state_callback(restReply reply) {
         }
 
         try {
-            if (js_reply.at("result") != "success")
+            if (js_reply.at("rslt") != "success")
                 throw std::runtime_error("received error from broker: "
-                                         + js_reply.at("result").dump());
+                                         + js_reply.at("rslt").dump());
             // did the broker know this state already?
-            if (js_reply.find("request") == js_reply.end())
+            if (js_reply.find("rqust") == js_reply.end())
                 return;
             // does the broker want the whole dataset state?
-            if (js_reply.at("request") == "get_state") {
-                state_id_t state = js_reply.at("hash");
+            if (js_reply.at("rqust") == "get_state") {
+                state_id_t state = js_reply.at("hsh");
 
                 json js_post;
-                js_post["hash"] = state;
+                js_post["hsh"] = state;
 
-                _lock_states.lock();
-                js_post["state"] = _states.at(state)->to_json();
-                _lock_states.unlock();
+                {
+                    std::lock_guard<std::mutex> slck(_lock_states);
+                    js_post["state"] = _states.at(state)->to_json();
+                }
 
                 std::function<void(restReply)> callback(
                             std::bind(&datasetManager::send_state_callback,
@@ -232,9 +261,9 @@ void datasetManager::send_state_callback(restReply reply) {
     if (reply.first == true) {
         try {
             js_reply = json::parse(reply.second);
-            if (js_reply.at("result") != "success")
+            if (js_reply.at("rslt") != "success")
                 throw std::runtime_error("received error from broker: "
-                                         + js_reply.at("result").dump());
+                                         + js_reply.at("rslt").dump());
             // success
             return;
         } catch (std::exception& e) {
@@ -254,8 +283,8 @@ void datasetManager::send_state_callback(restReply reply) {
 
 void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
     json js_post;
-    js_post["dataset"] = dset.to_json();
-    js_post["hash"] = hash;
+    js_post["ds"] = dset.to_json();
+    js_post["hsh"] = hash;
 
     std::function<void(restReply)> callback(
                 std::bind(&datasetManager::register_dataset_callback,
@@ -290,9 +319,9 @@ void datasetManager::register_dataset_callback(restReply reply) {
 
     try {
         js_reply = json::parse(reply.second);
-        if (js_reply.at("result") != "success")
+        if (js_reply.at("rslt") != "success")
             throw std::runtime_error("received error from broker: "
-                                     + js_reply.at("result").dump());
+                                     + js_reply.at("rslt").dump());
     } catch (std::exception& e) {
         WARN("datasetManager: failure parsing reply received from broker "\
              "after registering dataset (reply: %s): %s",
@@ -301,127 +330,6 @@ void datasetManager::register_dataset_callback(restReply reply) {
                     "kotekan_datasetbroker_error_count", UNIQUE_NAME,
                     ++_conn_error_count);
     }
-}
-
-void datasetManager::request_ancestor(dset_id_t dset_id, const char* type) {
-    json js_post;
-    js_post["ds_id"] = dset_id;
-    js_post["type"] = type;
-
-    std::function<void(restReply)> callback(
-                std::bind(&datasetManager::request_ancestor_callback,
-                          this, std::placeholders::_1));
-    if (restClient::instance().make_request(
-            PATH_REQUEST_ANCESTOR,
-            callback,
-            js_post, _ds_broker_host, _ds_broker_port) == false) {
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                    ++_conn_error_count);
-        throw std::runtime_error("datasetManager: failed requesting ancestor" \
-                                 " of type " + std::string(type)
-                                 + " of dataset " + std::to_string(dset_id)
-                                 + " from broker.");
-    }
-
-    DEBUG("datasetManager: requesting ancestor of type %s of dataset %zu",
-          type, dset_id);
-}
-
-void datasetManager::request_ancestor_callback(restReply reply) {
-
-    json js_reply;
-
-    try {
-        js_reply = json::parse(reply.second);
-        if (js_reply.at("result") != "success")
-            throw std::runtime_error("datasetManager: Broker answered with " \
-                                     "error after requesting ancestor.");
-    } catch (std::exception& e) {
-        WARN("datasetManager: failure parsing reply received from broker " \
-              "after requesting ancestor (reply: %s): %s.",
-             reply.second.c_str(), e.what());
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                    ++_conn_error_count);
-        return;
-    }
-
-    // in case the broker doesn't have any ancestors to the dataset
-    try {
-        js_reply.at("states");
-        js_reply.at("datasets");
-    } catch (std::exception& e) {
-        DEBUG("datasetManager::request_ancestor_callback(): broker did not " \
-              "reply with any ancestor: %s", js_reply.dump().c_str());
-        return;
-    }
-
-    // register the received states
-    {
-        std::unique_lock<std::mutex> slck(_lock_states);
-        for (json::iterator s = js_reply.at("states").begin();
-                s != js_reply.at("states").end(); s++) {
-            state_id_t s_id;
-            sscanf(s.key().c_str(), "%zu", &s_id);
-
-            state_uptr state = datasetState::from_json(s.value());
-            if (state == nullptr)
-                continue;
-
-            // TODO: hash collisions should be checked for by the broker
-            if (!_states.insert(std::pair<state_id_t,
-                                std::unique_ptr<datasetState>>
-                                (s_id, move(state))).second)
-                INFO("datasetManager::request_ancestors_callback: received a " \
-                     "state (with hash %zu) that is already registered " \
-                     "locally.", s_id);
-        }
-    }
-
-    // register the received datasets
-    {
-        std::unique_lock<std::mutex> dslck(_lock_dsets);
-        for (json::iterator ds = js_reply.at("datasets").begin();
-             ds != js_reply.at("datasets").end(); ds++) {
-
-            try {
-                dset_id_t ds_id;
-                sscanf(ds.key().c_str(), "%zu", &ds_id);
-                dataset new_dset = dataset(ds.value());
-
-                if (ds_id != hash_dataset(new_dset)) {
-                    WARN("datasetManager: failure parsing reply received from"\
-                         " broker after requesting ancestors: the dataset (%s) has " \
-                         "the hash %zu, but %zu was received from the broker. " \
-                         "Ignoring this dataset...",
-                          ds.value().dump().c_str(), ds_id, hash_dataset(new_dset));
-                    continue;
-                }
-
-                // insert the new dataset and check if it was a known before
-                // TODO: collisions should be checked for by the broker
-                auto inserted = _datasets.insert(
-                            std::pair<dset_id_t, dataset>(ds_id, new_dset));
-                if (!inserted.second) {
-                    DEBUG("datasetManager::request_ancestors_callback: received " \
-                          "dataset that is already known locally: %zu : %s.",
-                          ds_id, ds.value().dump().c_str());
-                }
-            } catch (std::exception& e) {
-                WARN("datasetManager: failure parsing reply received from"\
-                      " broker after requesting ancestors: the following " \
-                      " exception was thrown when parsing dataset %s with ID %s:" \
-                      " %s", ds.key().c_str(), ds.value().dump().c_str(), e.what());
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                            ++_conn_error_count);
-            }
-        }
-    }
-
-    // tell closest_ancestor_of_type() that the work is done
-    _cv_request_ancestor.notify_all();
 }
 
 std::string datasetManager::summary() {
@@ -509,6 +417,87 @@ datasetManager::ancestors(dset_id_t dset) {
     }
 
     return a_list;
+}
+
+void datasetManager::update_datasets(dset_id_t ds_id) {
+
+    // wait for ongoing dataset updates
+    std::lock_guard<std::mutex> dslock(_lock_dsets);
+
+    // check if local dataset topology is up to date to include requested ds_id
+    if (_datasets.find(ds_id) == _datasets.end()) {
+        json js_rqst;
+        js_rqst["ts"] = _timestamp_update;
+        js_rqst["ds_id"] = ds_id;
+
+        restReply reply = restClient::instance().make_request_blocking(
+                    PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
+                    _ds_broker_port);
+
+        while (!parse_reply_dataset_update(reply)) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            reply = restClient::instance().make_request_blocking(
+                        PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
+                        _ds_broker_port);
+        }
+    }
+}
+
+bool datasetManager::parse_reply_dataset_update(restReply reply) {
+
+    if (!reply.first) {
+        WARN("datasetManager: Failure requesting update on datasets from " \
+             "broker: %s", reply.second.c_str());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return false;
+    }
+
+    json js_reply;
+    json timestamp;
+    try {
+        js_reply = json::parse(reply.second);
+        if (js_reply.at("rslt") != "success")
+            throw std::runtime_error("Broker answered with rslt="
+                                     + js_reply.at("rslt").dump());
+
+        for (json::iterator ds = js_reply.at("datasets").begin();
+             ds != js_reply.at("datasets").end(); ds++) {
+
+            try {
+                dset_id_t ds_id;
+                sscanf(ds.key().c_str(), "%zu", &ds_id);
+                dataset new_dset = dataset(ds.value());
+
+                // insert the new dataset
+                _datasets.insert(std::pair<dset_id_t,
+                                 dataset>(ds_id, new_dset));
+            } catch (std::exception& e) {
+                WARN("datasetManager: failure parsing reply received from"\
+                     " broker after requesting dataset update: the following " \
+                     " exception was thrown when parsing dataset %s with ID " \
+                     "%s: %s", ds.value().dump().c_str(), ds.key().c_str(),
+                     e.what());
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                            ++_conn_error_count);
+                return false;
+            }
+        }
+        timestamp = js_reply.at("ts");
+    } catch (std::exception& e) {
+        WARN("datasetManager: failure parsing reply received from broker " \
+              "after requesting dataset update (reply: %s): %s",
+              reply.second.c_str(), e.what());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return false;
+    }
+
+    _timestamp_update = timestamp;
+    return true;
 }
 
 

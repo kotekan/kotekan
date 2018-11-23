@@ -167,7 +167,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
 
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(0, input_state.first, true);
 
     // register first state again
     std::pair<state_id_t, const inputState*>input_state3 =
@@ -175,8 +175,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dm.add_dataset(dataset(input_state3.first,
-                                                   init_ds_id));
+    dm.add_dataset(init_ds_id, input_state3.first);
 
     std::cout << dm.summary() << std::endl;
 

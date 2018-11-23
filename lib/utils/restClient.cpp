@@ -351,7 +351,7 @@ restReply restClient::make_request_blocking(std::string path,
             + std::chrono::seconds(timeout == -1 ? 50 : timeout);
     while (!cv_reply.wait_until(lck_reply, time_point,
                               [&](){return reply_copied;})) {
-            reply.second = "Timeout in make_request_blocking.";
+            WARN("Timeout in make_request_blocking.");
             return reply;
     }
 

@@ -283,7 +283,7 @@ bool visWriter::init_acq() {
     if (use_dataset_manager) {
         ds_id = frame.dataset_id;
     } else
-        ds_id = dm.add_dataset(dataset(writer_dstate, 0, true), true);
+        ds_id = dm.add_dataset(0, writer_dstate, true, true);
 
     // get dataset states
     try {

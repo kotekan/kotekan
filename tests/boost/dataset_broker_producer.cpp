@@ -43,7 +43,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
 
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(0, input_state.first, true);
 
     // register same state
     std::pair<state_id_t, const inputState*>input_state2 =
@@ -51,7 +51,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dm.add_dataset(dataset(input_state2.first, init_ds_id));
+    dm.add_dataset(init_ds_id, input_state2.first);
 
     for (auto s : dm.states())
         std::cout << s.first << " - " << s.second->data_to_json().dump()
@@ -93,7 +93,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
 
-    dm.add_dataset(dataset(input_state.first, 0, true));
+    dm.add_dataset(0, input_state.first, true);
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(500000);

@@ -71,8 +71,8 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
     state_id_t freq_state_id_higher =
             dm.add_state(std::move(fstate_higher)).first;
 
-    return {{dm.add_dataset(dataset(freq_state_id_lower, input_dset_id)),
-                dm.add_dataset(dataset(freq_state_id_higher, input_dset_id))}};
+    return {{dm.add_dataset(input_dset_id, freq_state_id_lower),
+                dm.add_dataset(input_dset_id, freq_state_id_higher)}};
 }
 
 void freqSplit::main_thread() {
@@ -240,7 +240,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
 
     state_uptr fstate = std::make_unique<freqState>(output_freqs);
     state_id_t freq_state_id = dm.add_state(std::move(fstate)).first;
-    return dm.add_dataset(dataset(freq_state_id, input_dset_id));
+    return dm.add_dataset(input_dset_id, freq_state_id);
 }
 
 void freqSubset::main_thread() {
