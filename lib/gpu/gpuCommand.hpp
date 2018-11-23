@@ -111,7 +111,6 @@ protected:
     gpuDeviceInterface &dev;
 
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in each buffer.
-    int32_t _buffer_depth;
     int32_t _gpu_buffer_depth;
 
     // Profiling time for the last signal

@@ -32,8 +32,6 @@ gpuCommand::gpuCommand(
         kernel_command = config.get_default<string>(unique_name,"command",default_kernel_command);
     }
 
-    _buffer_depth = config.get<int>(unique_name, "buffer_depth");
-
 }
 
 gpuCommand::~gpuCommand()
