@@ -321,6 +321,7 @@ void gpuBeamformSimulate::main_thread() {
         FILE *ptr_myfile = NULL;
         char filename[512];
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
+        ptr_myfile=fopen(filename,"rb");
 
         if (ptr_myfile == NULL){
             ERROR("CPU verification code: Cannot open gain file %s", filename);
