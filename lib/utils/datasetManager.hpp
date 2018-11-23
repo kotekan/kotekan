@@ -160,16 +160,23 @@ private:
  * Using it allows the synchronization of datasets and states between multiple
  * kotekan instances.
  *
- * @conf use_dataset_broker Bool. If true, states and datasets will be
- *                          registered with the dataset broker. If an ancestor
- *                          can not be found locally, `dataset_state`
- *                          will ask the broker.
- * @conf ds_broker_port     Int. The port of the dataset broker (if
- *                          `use_dataset_broker` is `True`). Default 12050.
- * @conf ds_broker_host     String. Address to the dataset broker (if
- *                          'use_ds_broke` is `True`. Prefer numerical address,
- *                          because the DNS lookup is blocking). Default
- *                          "127.0.0.1".
+ * @conf use_dataset_broker     Bool. If true, states and datasets will be
+ *                              registered with the dataset broker. If an
+ *                              ancestor can not be found locally,
+ *                              `dataset_state` will ask the broker.
+ * @conf ds_broker_port         Int. The port of the dataset broker (if
+ *                              `use_dataset_broker` is `True`). Default 12050.
+ * @conf ds_broker_host         String. Address to the dataset broker (if
+ *                              'use_ds_broke` is `True`. Prefer numerical
+ *                              address, because the DNS lookup is blocking).
+ *                              Default "127.0.0.1".
+ * @conf retry_wait_time_ms     Int. Time to wait after failed request to broker
+ *                              before retrying in ms. Default 1000.
+ * @conf retries_rest_client    Int. Retry value passed to libevent. Caution:
+ *                              Infinite retries are performed by the
+ *                              datasetManager. Default 0.
+ * @conf timeout_rest_client_s  Int. Timeout value passed to libevent. -1 will
+ *                              use libevent default value (50s). Default -1.
  *
  * @par metrics
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
@@ -274,8 +281,13 @@ public:
     template<typename T> inline const T* dataset_state(dset_id_t dset);
 
 private:
+
     /// Constructor
-    datasetManager();
+    datasetManager() : _conn_error_count(0), _timestamp_update(json(0)),
+        _stop_request_threads(false), _n_request_threads(0) {}
+
+    /// Destructor. Joins all request threads.
+    ~datasetManager();
 
     /**
      * @brief Get the states applied to generate the given dataset.
@@ -319,15 +331,15 @@ private:
     /// register the given dataset with the dataset broker
     void register_dataset(const dset_id_t hash, const dataset ds);
 
-    /// callback function for register_state()
-    void register_state_callback(restReply reply);
+    /// parser function for register_state()
+    bool register_state_parser(std::string& reply);
 
-    /// callback function for sending a state to the dataset broker
-    /// from register_state_callback()
-    void send_state_callback(restReply reply);
+    /// parser function for sending a state to the dataset broker
+    /// from register_state_parser()
+    bool send_state_parser(std::string& reply);
 
-    /// callback function for register_dataset()
-    void register_dataset_callback(restReply reply);
+    /// parser function for register_dataset()
+    bool register_dataset_parser(std::string& reply);
 
     /// request an update on the topology of datasets (blocking)
     void update_datasets(dset_id_t ds_id);
@@ -338,6 +350,13 @@ private:
     /// request state (blocking), or wait for ongoing request
     void request_state(state_id_t state_id);
 
+    /// To be left in a detached thread: Infinitly retries request parse.
+    /// Stopped by the destructor if still unsuccessfully retrying.
+    void request_thread(const json&& request, const std::string&& endpoint,
+                        const std::function<bool(std::string&)>&& parse_reply);
+
+    /// Gets the closest ancestor of the given dataset of the given dataset
+    /// state type. If it is not known locally, it will be sent from the broker.
     template<typename T>
     inline const T* get_closest_ancestor(dset_id_t dset);
 
@@ -367,8 +386,14 @@ private:
     /// Lock for the receive state cv.
     std::mutex _lock_recv_state;
 
+    /// Lock for the stop request threads cv
+    std::mutex _lock_stop_request_threads;
+
     /// conditional variable to signal a received state.
     std::condition_variable _cv_received_state;
+
+    /// Condition Variable to signal request threads to stop on exit.
+    std::condition_variable _cv_stop_request_threads;
 
     /// counter for connection and parsing errors
     std::atomic<uint32_t> _conn_error_count;
@@ -381,10 +406,19 @@ private:
     /// Protected by _lock_recv_state.
     std::set<state_id_t> _requested_states;
 
+    /// Set to true by the destructor.
+    std::atomic<bool> _stop_request_threads;
+
+    /// Number of running request threads (for destructor to wait).
+    uint64_t _n_request_threads;
+
     /// config params
     bool _use_broker = false;
     std::string _ds_broker_host;
     unsigned short _ds_broker_port;
+    uint32_t _retry_wait_time_ms;
+    uint32_t _retries_rest_client;
+    int32_t _timeout_rest_client_s;
 };
 
 
@@ -424,7 +458,8 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     while (!state) {
         // retry
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(
+                    std::chrono::milliseconds(_retry_wait_time_ms));
         update_datasets(dset);
         state = get_closest_ancestor<T>(dset);
     }
@@ -522,6 +557,7 @@ datasetManager::get_closest_ancestor(dset_id_t dset) {
                   ancestor);
         }
         if (_use_broker)
+            // Request the state from the broker.
             return request_state<T>(ancestor);
         else
             return nullptr;
@@ -595,7 +631,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
 
         // hash collisions are checked for by the broker
         if (!new_state.second)
-            INFO("datasetManager::request_ancestors_callback: received a " \
+            INFO("datasetManager::request_state: received a " \
                  "state (with hash %zu) that is already registered " \
                  "locally.", s_id);
 

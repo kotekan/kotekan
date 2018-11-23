@@ -354,6 +354,5 @@ restReply restClient::make_request_blocking(std::string path,
             WARN("Timeout in make_request_blocking.");
             return reply;
     }
-
     return reply;
 }

@@ -75,9 +75,12 @@ datasetManager& datasetManager::instance() {
     return dm;
 }
 
-datasetManager::datasetManager() {
-    _conn_error_count = 0;
-    _timestamp_update = json(0);
+datasetManager::~datasetManager() {
+    _stop_request_threads = true;
+
+    // wait for the detached threads
+    std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
+    _cv_stop_request_threads.wait(lk, [this]{ return _n_request_threads == 0; });
 }
 
 void datasetManager::apply_config(Config& config) {
@@ -88,6 +91,12 @@ void datasetManager::apply_config(Config& config) {
                     UNIQUE_NAME, "ds_broker_port", 12050);
         _ds_broker_host = config.get_default<std::string>(
                     UNIQUE_NAME, "ds_broker_host", "127.0.0.1");
+        _retry_wait_time_ms = config.get_default<uint32_t>(
+                    UNIQUE_NAME, "retry_wait_time_ms", 1000);
+        _retries_rest_client = config.get_default<uint32_t>(
+                    UNIQUE_NAME, "retries_rest_client", 0);
+        _timeout_rest_client_s = config.get_default<int32_t>(
+                    UNIQUE_NAME, "timeout_rest_client", -1);
 
         DEBUG("datasetManager: expecting broker at %s:%d.",
               _ds_broker_host.c_str(), _ds_broker_port);
@@ -170,165 +179,185 @@ state_id_t datasetManager::hash_dataset(dataset& ds) const {
 void datasetManager::register_state(state_id_t state) {
     json js_post;
     js_post["hsh"] = state;
-
-    std::function<void(restReply)> callback(
-                std::bind(&datasetManager::register_state_callback,
+    std::string endpoint = PATH_REGISTER_STATE;
+    std::function<bool(std::string&)> parser(
+                std::bind(&datasetManager::register_state_parser,
                           this, std::placeholders::_1));
-    if (restClient::instance().make_request(
-            PATH_REGISTER_STATE,
-            callback,
-            js_post, _ds_broker_host, _ds_broker_port) == false) {
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                    ++_conn_error_count);
-        std::string msg = fmt::format(
-                    "datasetManager: Failure registering state {}\n" \
-                    "datasetManager: Make sure the broker is running.", state);
-        throw std::runtime_error(msg);
-    }
+
+    std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
+    std::thread t(&datasetManager::request_thread, this, std::move(js_post),
+      std::move(endpoint), std::move(parser));
+    _n_request_threads++;
+
+    // Let the request thread retry forever.
+    if (t.joinable())
+        t.detach();
 }
 
-void datasetManager::register_state_callback(restReply reply) {
-    if (reply.first == true) {
-        json js_reply;
+void datasetManager::request_thread(
+        const json&& request, const std::string&& endpoint,
+        const std::function<bool(std::string&)>&& parse_reply) {
 
-        try {
-            js_reply = json::parse(reply.second);
-        } catch (std::exception& e) {
-            WARN("datasetManager: failure parsing reply received from broker " \
-                  "after registering dataset state (reply: %s): %s",
-                  reply.second.c_str(), e.what());
-            prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++_conn_error_count);
-            return;
-        }
+    restReply reply;
+    while (true) {
+        reply = restClient::instance().make_request_blocking(
+                    endpoint, request, _ds_broker_host, _ds_broker_port,
+                    _retries_rest_client, _timeout_rest_client_s);
 
-        try {
-            if (js_reply.at("rslt") != "success")
-                throw std::runtime_error("received error from broker: "
-                                         + js_reply.at("rslt").dump());
-            // did the broker know this state already?
-            if (js_reply.find("rqust") == js_reply.end())
+        // If parser succeeds, the request is done and this thread can exit.
+        if (reply.first) {
+            if (parse_reply(reply.second)) {
+                std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
+                _n_request_threads--;
                 return;
-            // does the broker want the whole dataset state?
-            if (js_reply.at("rqust") == "get_state") {
-                state_id_t state = js_reply.at("hsh");
-
-                json js_post;
-                js_post["hsh"] = state;
-
-                {
-                    std::lock_guard<std::mutex> slck(_lock_states);
-                    js_post["state"] = _states.at(state)->to_json();
-                }
-
-                std::function<void(restReply)> callback(
-                            std::bind(&datasetManager::send_state_callback,
-                                      this, std::placeholders::_1));
-                if (restClient::instance().make_request(
-                        PATH_SEND_STATE,
-                        callback,
-                        js_post, _ds_broker_host, _ds_broker_port) == false)
-                    throw std::runtime_error("datasetManager: failed sending " \
-                                             "dataset state "
-                                             + std::to_string(state)
-                                             + " to broker.");
-            } else {
-                throw std::runtime_error(
-                            "datasetManager: failure parsing reply received " \
-                            "from broker after registering dataset state " \
-                            "(reply: " + reply.second + ").");
             }
-        } catch (std::exception& e) {
-            WARN("datasetManager: failure registering dataset state with " \
-                  "broker: %s", e.what());
+            // Parsing errors are reported by the parsing function.
+        } else {
+            // Complain and retry...
             prometheusMetrics::instance().add_process_metric(
                         "kotekan_datasetbroker_error_count", UNIQUE_NAME,
                         ++_conn_error_count);
+            std::string msg = fmt::format(
+                        "datasetManager: Failure in connection to broker: {}:" \
+                        "{}/{}.\ndatasetManager: Make sure the broker is " \
+                        "running.", _ds_broker_host, _ds_broker_port, endpoint);
+            WARN(msg.c_str());
         }
-    }
-    else {
-        WARN("datasetManager: failure registering dataset state with broker.");
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                    ++_conn_error_count);
+
+        // check if datasetManager destructor was called
+        if (_stop_request_threads) {
+            INFO("datasetManager: Cancelling running request thread (endpoint "\
+                 "/%s, message %s).", endpoint.c_str(), request.dump().c_str());
+            std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
+            _n_request_threads--;
+            std::notify_all_at_thread_exit(_cv_stop_request_threads,
+                                           std::move(lk));
+            return;
+        }
     }
 }
 
-void datasetManager::send_state_callback(restReply reply) {
+bool datasetManager::register_state_parser(std::string& reply) {
     json js_reply;
-    if (reply.first == true) {
-        try {
-            js_reply = json::parse(reply.second);
-            if (js_reply.at("rslt") != "success")
-                throw std::runtime_error("received error from broker: "
-                                         + js_reply.at("rslt").dump());
-            // success
-            return;
-        } catch (std::exception& e) {
-            WARN("datasetManager: failure parsing reply received from broker "\
-                  "after sending dataset state (reply: %s): %s",
-                  reply.second.c_str(), e.what());
-            prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                        ++_conn_error_count);
-        }
+
+    try {
+        js_reply = json::parse(reply);
+    } catch (std::exception& e) {
+        WARN("datasetManager: failure parsing reply received from broker " \
+              "after registering dataset state (reply: %s): %s",
+              reply.c_str(), e.what());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return false;
     }
-    WARN("datasetManager: failure sending dataset state to broker.");
-    prometheusMetrics::instance().add_process_metric(
-                "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                ++_conn_error_count);
+
+    try {
+        if (js_reply.at("rslt") != "success")
+            throw std::runtime_error("received error from broker: "
+                                     + js_reply.at("rslt").dump());
+        // did the broker know this state already?
+        if (js_reply.find("rqust") == js_reply.end())
+            return true;
+        // does the broker want the whole dataset state?
+        if (js_reply.at("rqust") == "get_state") {
+            state_id_t state = js_reply.at("hsh");
+
+            json js_post;
+            js_post["hsh"] = state;
+            std::string endpoint = PATH_SEND_STATE;
+            std::function<bool(std::string&)> parser(
+                        std::bind(&datasetManager::send_state_parser,
+                                  this, std::placeholders::_1));
+
+            {
+                std::lock_guard<std::mutex> slck(_lock_states);
+                js_post["state"] = _states.at(state)->to_json();
+            }
+
+            std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
+            std::thread t(&datasetManager::request_thread, this,
+                          std::move(js_post), std::move(endpoint),
+                          std::move(parser));
+            _n_request_threads++;
+
+            // Let the request thread retry forever.
+            if (t.joinable())
+                t.detach();
+        } else {
+            throw std::runtime_error(
+                        "datasetManager: failure parsing reply received " \
+                        "from broker after registering dataset state " \
+                        "(reply: " + reply + ").");
+        }
+    } catch (std::exception& e) {
+        WARN("datasetManager: failure registering dataset state with " \
+              "broker: %s", e.what());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return false;
+    }
+    return true;
+}
+
+bool datasetManager::send_state_parser(std::string& reply) {
+    json js_reply;
+    try {
+        js_reply = json::parse(reply);
+        if (js_reply.at("rslt") != "success")
+            throw std::runtime_error("received error from broker: "
+                                     + js_reply.at("rslt").dump());
+
+        return true;
+    } catch (std::exception& e) {
+        WARN("datasetManager: failure parsing reply received from broker "\
+              "after sending dataset state (reply: %s): %s",
+              reply.c_str(), e.what());
+        prometheusMetrics::instance().add_process_metric(
+                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    ++_conn_error_count);
+        return false;
+    }
 }
 
 void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
     json js_post;
     js_post["ds"] = dset.to_json();
     js_post["hsh"] = hash;
-
-    std::function<void(restReply)> callback(
-                std::bind(&datasetManager::register_dataset_callback,
+    std::string endpoint = PATH_REGISTER_DATASET;
+    std::function<bool(std::string&)> parser(
+                std::bind(&datasetManager::register_dataset_parser,
                           this, std::placeholders::_1));
-    if (restClient::instance().make_request(
-            PATH_REGISTER_DATASET,
-            callback,
-            js_post, _ds_broker_host, _ds_broker_port) == false) {
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                    ++_conn_error_count);
-        std::string msg = fmt::format(
-                    "datasetManager: Failure registering new dataset with " \
-                    "hash {} (dataset state {} applied to dataset {}}).\n" \
-                    "datasetManager: Make sure the broker is running.",
-                    hash, dset.state(), dset.base_dset());
-        throw std::runtime_error(msg);
-    }
+
+    std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
+    std::thread t(&datasetManager::request_thread, this, std::move(js_post),
+      std::move(endpoint), std::move(parser));
+    _n_request_threads++;
+
+    // Let the request thread retry forever.
+    if (t.joinable())
+        t.detach();
 }
 
-void datasetManager::register_dataset_callback(restReply reply) {
-
-    if (reply.first == false) {
-        WARN("datasetManager: failure registering dataset with broker.");
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
-                    ++_conn_error_count);
-        return;
-    }
+bool datasetManager::register_dataset_parser(std::string& reply) {
 
     json js_reply;
 
     try {
-        js_reply = json::parse(reply.second);
+        js_reply = json::parse(reply);
         if (js_reply.at("rslt") != "success")
             throw std::runtime_error("received error from broker: "
                                      + js_reply.at("rslt").dump());
+        return true;
     } catch (std::exception& e) {
         WARN("datasetManager: failure parsing reply received from broker "\
              "after registering dataset (reply: %s): %s",
-              reply.second.c_str(), e.what());
+              reply.c_str(), e.what());
         prometheusMetrics::instance().add_process_metric(
                     "kotekan_datasetbroker_error_count", UNIQUE_NAME,
                     ++_conn_error_count);
+        return false;
     }
 }
 
@@ -435,7 +464,8 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
                     _ds_broker_port);
 
         while (!parse_reply_dataset_update(reply)) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(
+                        std::chrono::milliseconds(_retry_wait_time_ms));
             reply = restClient::instance().make_request_blocking(
                         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                         _ds_broker_port);
