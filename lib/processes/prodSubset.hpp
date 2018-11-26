@@ -80,14 +80,14 @@ private:
     /// keeps track of the input dataset ID
     /// and gets new output dataset ID from manager
     ///
-    static dset_id_t change_dataset_state(dset_id_t ds_id,
-                                          std::vector<prod_ctype>& prod_subset,
-                                          std::vector<size_t>& prod_ind,
-                                          size_t& subset_num_prod);
+    dset_id_t change_dataset_state(dset_id_t ds_id,
+                                   std::vector<prod_ctype>& prod_subset,
+                                   std::vector<size_t>& prod_ind,
+                                   size_t& subset_num_prod);
 
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
-    bool use_dataset_manager;
+    uint64_t _ds_manage_timeout_ms;
 
     /// Number of products in subset
     size_t subset_num_prod;

@@ -16,7 +16,6 @@ params = {
     'buffer_depth': 5,
     'freq_ids': range(50),
     'subset_list': [0, 12, 34, 35],
-    'use_dataset_manager': True
 }
 
 @pytest.fixture(scope="module")

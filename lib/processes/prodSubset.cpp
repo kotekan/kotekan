@@ -18,8 +18,8 @@ prodSubset::prodSubset(Config &config,
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
-    use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
+    _ds_manage_timeout_ms = config.get_default<uint64_t>(
+                unique_name, "ds_manage_timeout_ms", 10000);
 
     // Get buffers
     in_buf = get_buffer("in_buf");
@@ -46,10 +46,12 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id,
     // create new product dataset state
     const prodState* prod_state_ptr =
             dm.dataset_state<prodState>(ds_id);
-    if (prod_state_ptr == nullptr)
-        throw std::runtime_error("prodSubset: Could not find prodState for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
+    if (prod_state_ptr == nullptr) {
+        ERROR("Set to not use dataset_broker and couldn't find " \
+              "freqState ancestor of dataset %zu. Make sure there is a process"\
+              " upstream in the config, that adds a freqState.", ds_id);
+        raise(SIGINT);
+    }
 
     // get a copy of input prods
     const std::vector<prod_ctype>& input_prods = prod_state_ptr->get_prods();
@@ -92,27 +94,23 @@ void prodSubset::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
 
-    bool broker_retry = false;
-
     dset_id_t input_dset_id;
     dset_id_t output_dset_id = 0;
 
     // number of errors when dealing with dataset manager
     uint32_t err_count = 0;
 
-    if (use_dataset_manager) {
-        // Wait for the input buffer to be filled with data
-        // in order to get dataset ID
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               input_frame_id) == nullptr) {
-            return;
-        }
-        input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
-        future_output_dset_id = std::async(change_dataset_state, input_dset_id,
-                                           std::ref(prod_subset),
-                                           std::ref(prod_ind),
-                                           std::ref(subset_num_prod));
+    // Wait for a frame in the input buffer in order to get the dataset ID
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           input_frame_id) == nullptr) {
+        return;
     }
+    input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
+    future_output_dset_id = std::async(&prodSubset::change_dataset_state, this,
+                                       input_dset_id,
+                                       std::ref(prod_subset),
+                                       std::ref(prod_ind),
+                                       std::ref(subset_num_prod));
 
     while (!stop_thread) {
 
@@ -126,13 +124,12 @@ void prodSubset::main_thread() {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
-        if ((broker_retry || input_dset_id != input_frame.dataset_id)
-                && use_dataset_manager) {
+        if (input_dset_id != input_frame.dataset_id) {
             input_dset_id = input_frame.dataset_id;
-            future_output_dset_id = std::async(change_dataset_state, input_dset_id,
-                                               std::ref(prod_subset),
-                                               std::ref(prod_ind),
-                                               std::ref(subset_num_prod));
+            future_output_dset_id = std::async(
+                        &prodSubset::change_dataset_state, this, input_dset_id,
+                        std::ref(prod_subset), std::ref(prod_ind),
+                        std::ref(subset_num_prod));
         }
 
         // Wait for the output buffer frame to be free
@@ -144,31 +141,23 @@ void prodSubset::main_thread() {
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
 
-        // Ask the datasetManager for a dataset id
-        // This also sets the info about products in the output
-        if (use_dataset_manager) {
-            if (future_output_dset_id.valid()) {
-                try {
-                    output_dset_id = future_output_dset_id.get();
-                } catch (std::runtime_error& e) {
-                    WARN("prodSubset: Dropping frame, failure in " \
-                         "datasetManager: %s",
-                         e.what());
-                    prometheusMetrics::instance().add_process_metric(
-                        "kotekan_dataset_manager_dropped_frame_count",
-                        unique_name, ++err_count);
+        // Are we waiting for a new dataset ID?
+        if (future_output_dset_id.valid()) {
+            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
+            while (future_output_dset_id.wait_for(timeout) ==
+                   std::future_status::timeout) {
+                WARN("Dropping frame, dataset management timeout.");
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_dataset_manager_dropped_frame_count",
+                            unique_name, ++err_count);
 
-                    // Mark the input buffer and move on
-                    mark_frame_empty(in_buf, unique_name.c_str(),
-                                      input_frame_id);
-                    // Advance the current input frame id
-                    input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-
-                    broker_retry = true;
-                    continue;
-                }
-                broker_retry = false;
+                // Mark the input buffer and move on
+                mark_frame_empty(in_buf, unique_name.c_str(),
+                                  input_frame_id);
+                // Advance the current input frame id
+                input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
             }
+            output_dset_id = future_output_dset_id.get();
         }
 
         // Create view to output frame
