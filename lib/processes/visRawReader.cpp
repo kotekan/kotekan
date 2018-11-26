@@ -146,10 +146,7 @@ visRawReader::visRawReader(Config &config,
 
     // tell the dataset manager and get a dataset ID for the data coming from
     // this file
-    _use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
-    if (_use_dataset_manager)
-        change_dataset_state();
+    change_dataset_state();
 }
 
 visRawReader::~visRawReader() {
@@ -166,31 +163,24 @@ void visRawReader::change_dataset_state() {
 
     // Add the states: metadata, time, prod, freq, input, eigenvalue and stack.
     state_uptr sstate = nullptr;
-    if (_stack.empty())
-        sstate = std::make_unique<stackState>(); // empty stackState
-    else
+    if (!_stack.empty())
         sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
-    state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
-    state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
+    state_uptr istate = std::make_unique<inputState>(_inputs,
+                                                     std::move(sstate));
+    state_uptr evstate = std::make_unique<eigenvalueState>(_ev,
+                                                           std::move(istate));
     state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
     state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
     state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
 
-    try {
-        state_id_t mstate_id = dm.add_state(std::make_unique<metadataState>(
-                                             _metadata.at("weight_type"),
-                                             _metadata.at("instrument_name"),
-                                             _metadata.at("git_version_tag"),
-                                             std::move(tstate))).first;
+    state_id_t mstate_id = dm.add_state(std::make_unique<metadataState>(
+                                        _metadata.at("weight_type"),
+                                        _metadata.at("instrument_name"),
+                                        _metadata.at("git_version_tag"),
+                                        std::move(tstate))).first;
 
-        // register it as root dataset
-        _dataset_id = dm.add_dataset(0, mstate_id, true);
-    } catch (std::runtime_error& e) {
-        // Crash if anything goes wrong. This process is processing data from a
-        // file, so should be restarted after fixing the problem.
-        ERROR("Failure in datasetManager: %s\nExiting...");
-        raise(SIGINT);
-    }
+    // register it as root dataset
+    _dataset_id = dm.add_dataset(0, mstate_id, true);
 }
 
 void visRawReader::read_ahead(int ind) {
@@ -291,8 +281,7 @@ void visRawReader::main_thread() {
         }
 
         // Set the dataset ID
-        if (_use_dataset_manager)
-            ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
+       ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
                 = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again

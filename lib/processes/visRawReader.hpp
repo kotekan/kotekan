@@ -35,9 +35,6 @@ using json = nlohmann::json;
  * @conf    infile              String. Path to the (data-meta-pair of) files to
  *                              read (e.g. "/path/to/0000_000", without .data or
  *                              .meta).
- * @conf    use_dataset_manager Bool. This will register dataset states with the
- *                              datasetManager and write a dataset ID into the
- *                              frame if set to true.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -97,7 +94,7 @@ private:
      * that is read.
      *
      * Adds the following states: metadata, time, prod, freq, input, eigenvalue
-     * and stack.
+     * and, if the data is stacked, stack.
      * Sets the dataset ID that should be given to the dataset coming from
      * the file that is read.
      */
@@ -162,9 +159,6 @@ private:
 
     // The ID for the data coming from the file that is read.
     dset_id_t _dataset_id;
-
-    // Config value
-    bool _use_dataset_manager;
 };
 
 #endif
