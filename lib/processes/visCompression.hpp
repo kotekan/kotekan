@@ -38,9 +38,14 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf stack_type      String. Type of stacking to apply to the data. Look at
- *                       documentation of stack_X functions for details.
- * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
+ * @conf stack_type             String. Type of stacking to apply to the data.
+ *                              Look at documentation of stack_X functions for
+ *                              details.
+ * @conf exclude_inputs         List of ints. Extra inputs to exclude from
+ *                              stack.
+ * @conf ds_manage_timeout_ms   Int. Time (in ms) before dropping the current
+ *                              input frame when waiting for the datasetManager.
+ *                              Default 10000.
  *
  * @par Metrics
  * @metric kotekan_baselinecompression_residuals
@@ -48,7 +53,7 @@ using json = nlohmann::json;
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
  * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while attempting to write.
+ *      The number of frames dropped while waiting for the dataset manager.
  *
  * @author Richard Shaw
  */
@@ -71,7 +76,7 @@ private:
     void compress_thread(int thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    void change_dataset_state(dset_id_t ds_id);
+    dset_id_t change_dataset_state(dset_id_t input_ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -110,6 +115,9 @@ private:
 
     // Number of errors when dealing with datasetManager
     std::atomic<uint32_t> err_count;
+
+    // Config values
+    uint64_t _ds_manage_timeout_ms;
 };
 
 

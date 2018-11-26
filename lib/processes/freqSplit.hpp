@@ -38,7 +38,7 @@
  *                              Default 10000.
  *
  * @metric kotekan_dataset_manager_dropped_frame_count
- *         The number of frames dropped while waiting for the dataset manager.
+ *       The number of frames dropped while waiting for the dataset manager.
  *
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino

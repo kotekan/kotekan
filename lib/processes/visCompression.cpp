@@ -6,12 +6,14 @@
 #include <stdexcept>
 #include <iostream>
 #include <pthread.h>
+#include <future>
 
 #include "visUtil.hpp"
 #include "visBuffer.hpp"
 #include "visCompression.hpp"
 #include "fmt.hpp"
 #include "prometheusMetrics.hpp"
+#include "datasetManager.hpp"
 
 using namespace std::placeholders;
 
@@ -84,21 +86,24 @@ void baselineCompression::main_thread() {
     }
 }
 
-void baselineCompression::change_dataset_state(dset_id_t ds_id) {
+dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     auto& dm = datasetManager::instance();
     state_id_t stack_state_id;
 
-    // TODO: get both states synchronoulsy?
-    auto input_state_ptr = dm.dataset_state<inputState>(ds_id);
-    if (input_state_ptr == nullptr)
-        throw std::runtime_error("Could not find inputState for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
-    prod_state_ptr = dm.dataset_state<prodState>(ds_id);
-    if (prod_state_ptr == nullptr)
-        throw std::runtime_error("Could not find prodState for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
+    // Get input & prod states synchronoulsy
+    auto input_state = std::async(&datasetManager::dataset_state<inputState>,
+                                  &dm, input_ds_id);
+    auto prod_state = std::async(&datasetManager::dataset_state<prodState>,
+                                 &dm, input_ds_id);
+
+    const inputState* input_state_ptr = input_state.get();
+    prod_state_ptr = prod_state.get();
+    if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
+        ERROR("Set to not use dataset_broker and couldn't find " \
+              "freqState ancestor of dataset %zu. Make sure there is a process"\
+              " upstream in the config, that adds a freqState.", input_ds_id);
+        raise(SIGINT);
+    }
 
     auto sspec = calculate_stack(input_state_ptr->get_inputs(),
                                  prod_state_ptr->get_prods());
@@ -108,7 +113,7 @@ void baselineCompression::change_dataset_state(dset_id_t ds_id) {
     std::tie(stack_state_id, stack_state_ptr) =
         dm.add_state(std::move(sstate));
 
-    output_dset_id = dm.add_dataset(ds_id, stack_state_id);
+    return dm.add_dataset(input_ds_id, stack_state_id);
 }
 
 void baselineCompression::compress_thread(int thread_id) {
@@ -117,9 +122,8 @@ void baselineCompression::compress_thread(int thread_id) {
     unsigned int output_frame_id = thread_id;
     unsigned int input_frame_id = thread_id;
 
-    bool retry_broker = false;
-
     dset_id_t input_dset_id;
+    dset_id_t output_dset_id;
 
     // Wait for the input buffer to be filled with data
     // in order to get dataset ID
@@ -129,16 +133,9 @@ void baselineCompression::compress_thread(int thread_id) {
     }
     auto input_frame = visFrameView(in_buf, input_frame_id);
     input_dset_id = input_frame.dataset_id;
-    try {
-        change_dataset_state(input_dset_id);
-    } catch (std::runtime_error& e) {
-        retry_broker = true;
-        WARN("visCompression: Failure in " \
-             "datasetManager, retrying: %s", e.what());
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_dataset_manager_dropped_frame_count",
-            unique_name, ++err_count);
-    }
+    auto future_output_dset_id = std::async(
+                &baselineCompression::change_dataset_state, this,
+                input_dset_id);
 
     while (!stop_thread) {
 
@@ -153,33 +150,33 @@ void baselineCompression::compress_thread(int thread_id) {
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
-        // If the input dataset has changed construct a new stack spec from the
+        // If the input dataset has changed construct a new stack spec for the
         // datasetManager
-        if (input_dset_id != input_frame.dataset_id || retry_broker) {
+        if (input_dset_id != input_frame.dataset_id) {
             input_dset_id = input_frame.dataset_id;
-            try {
-                change_dataset_state(input_dset_id);
-            } catch (std::runtime_error& e) {
-                WARN("visCompression: Dropping frame, failure in " \
-                     "datasetManager: %s", e.what());
+            future_output_dset_id = std::async(
+                        &baselineCompression::change_dataset_state, this,
+                        input_dset_id);
+        }
+
+        // Are we waiting for a new dataset ID?
+        if (future_output_dset_id.valid()) {
+            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
+            while (future_output_dset_id.wait_for(timeout) ==
+                   std::future_status::timeout) {
+                WARN("Dropping frame, dataset management timeout.");
                 prometheusMetrics::instance().add_process_metric(
-                    "kotekan_dataset_manager_dropped_frame_count",
-                    unique_name, ++err_count);
+                            "kotekan_dataset_manager_dropped_frame_count",
+                            unique_name, ++err_count);
 
-                // Mark the buffers and move on
-                mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-                mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+                 // Mark the buffers and move on
+                 mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
-                // Advance the current frame id
-                output_frame_id = (output_frame_id + num_threads)
-                        % out_buf->num_frames;
-                input_frame_id = (input_frame_id + num_threads)
-                        % in_buf->num_frames;
-
-                retry_broker  = true;
-                continue;
+                 // Advance the current frame id
+                 input_frame_id = (input_frame_id + num_threads)
+                         % in_buf->num_frames;
             }
-            retry_broker = false;
+            output_dset_id = future_output_dset_id.get();
         }
 
         const auto& stack_map = stack_state_ptr->get_rstack_map();
