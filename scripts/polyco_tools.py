@@ -1,6 +1,10 @@
 import numpy as np
 import re
 import click
+import tempfile
+from subprocess import check_call, CalledProcessError
+from shutil import rmtree
+import time
 
 
 class Timespec:
@@ -79,6 +83,7 @@ class PolycoFile:
     def __init__(self, fname):
         self.polyco_specs = []
         self.polycos = []
+        self.dm = None
         with open(fname, 'r') as fh:
             line = fh.readline()
             while line != '':
@@ -101,7 +106,7 @@ class PolycoFile:
                 line = fh.readline()
         self.tmid = np.array([p['TMID'] for p in self.polyco_specs])
         self.spans = np.array([
-                np.array((-0.5, 0.5)) * self.polyco_specs[i]['span'] / 24. + self.tmid[i]
+                np.array((-0.5, 0.5)) * self.polyco_specs[i]['span'] / 60. / 24. + self.tmid[i]
                 for i in range(len(self.tmid))
             ])
 
@@ -110,7 +115,7 @@ class PolycoFile:
 
     def config_block(self, start_t, end_t=None):
         if end_t is not None:
-            ind = np.argmin(np.array([min(end_t, s[1]) - max(start_t, s[0]) for s in self.spans]))
+            ind = np.argmax(np.array([min(end_t, s[1]) - max(start_t, s[0]) for s in self.spans]))
             poly = self.polycos[ind]
         else:
             poly = self.get_closest(start_t)
@@ -119,20 +124,85 @@ class PolycoFile:
                 "t_ref: {}\n".format(poly.tmid) +
                 "phase_ref: {}\n".format(poly.phase_ref) +
                 "rot_freq: {}\n".format(poly.f0) +
-                "dm: {}".format(poly.dm))
+                "dm: {}".format(poly.dm if self.dm is None else self.dm))
+
+    @classmethod
+    def generate(cls, start, end, parfile, dm=None, seg=300., ncoeff=12, max_ha=12.):
+
+        cmd = [
+            'tempo2', '-f', parfile, '-polyco',
+            '"{:f} {:f} {:d} {:d} {:f} chime inf"'.format(start, end, int(seg), ncoeff, max_ha),
+            '-tempo1'
+        ]
+        cmd = ' '.join(cmd)
+
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            check_call(cmd, cwd=tmp_dir, shell=True)
+        except CalledProcessError as e:
+            print("Command '{}' failed with return code {:d}.".format(e.cmd, e.returncode))
+            print(e.output)
+            rmtree(tmp_dir)
+            return None
+
+        new_polyco = cls(tmp_dir + "/newpolyco.dat")
+        if dm is not None:
+            new_polyco.dm = dm
+
+        rmtree(tmp_dir)
+
+        return new_polyco
+
+
+@click.group()
+def cli():
+    pass
 
 
 @click.command()
+def mjd_now():
+    click.echo(unix2mjd(Timespec(time.time())))
+
+
+@click.command()
+def test():
+    check_call(["echo", "$TEMPO2"])
+
+@click.command()
 @click.argument("fname", type=str)
-@click.argument("time", type=float)
+@click.argument("start-time", type=float)
+@click.option("--generate-polyco", is_flag=True,
+              help="If enabled, input file must be a pulsar parfile.")
 @click.option("--end-time", type=float, default=None,
-              help="Specify an end time to match polyco with maximum overlap")
-def get_config_block(fname, time, end_time):
-    pfile = PolycoFile(fname)
-    if end_time is None:
-        print(pfile.config_block(time))
+              help="Specify an end time to generate polyco / match segment with maximum overlap")
+@click.option("--dm", type=float, default=None,
+              help="The DM in cm^-3/pc. If not specified will try and get from file.")
+@click.option("--segment", type=float, default=300,
+              help="(generate-polyco) Length of polyco segments in minutes (default 300).")
+@click.option("--ncoeff", type=int, default=12,
+              help="(generate-polyco) Number of polyco coefficients to generate.")
+@click.option("--max_ha", type=float, default=12.,
+              help="(generate-polyco) Maximum hour angle for timing solution to span.")
+def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, ncoeff, max_ha):
+    if generate_polyco:
+        pfile = PolycoFile.generate(start_time, end_time, fname, dm, segment, ncoeff, max_ha)
     else:
-        print(pfile.config_block(time, end_time))
+        pfile = PolycoFile(fname)
+
+    if pfile is None:
+        print("\nCould not generate/read polyco file.")
+        return
+
+    if dm is not None:
+        pfile.dm = dm
+
+    print("\nConfig block:\n")
+    print(pfile.config_block(start_time, end_time))
+
 
 if __name__ == '__main__':
-    get_config_block()
+    cli.add_command(polyco_config)
+    cli.add_command(mjd_now)
+    cli.add_command(test)
+
+    cli()
