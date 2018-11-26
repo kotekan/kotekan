@@ -29,12 +29,16 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf split_freq Double. Frequency to split the incoming buffer at. Lower
- *                  frequencies got to the first output buffer, equal and higher
- *                  frequencies go to the second. Default 512.
+ * @conf split_freq             Double. Frequency to split the incoming buffer
+ *                              at. Lower frequencies got to the first output
+ *                              buffer, equal and higher frequencies go to the
+ *                              second. Default 512.
+ * @conf ds_manage_timeout_ms  Int. Time (in ms) before dropping the current
+ *                              input frame when waiting for the datasetManager.
+ *                              Default 10000.
  *
  * @metric kotekan_dataset_manager_dropped_frame_count
- *         The number of frames dropped while attempting to write.
+ *         The number of frames dropped while waiting for the dataset manager.
  *
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino

@@ -27,11 +27,14 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf  subset_list       Vector of Int. The list of frequencies that go
- *                          in the subset.
+ * @conf  subset_list           Vector of Int. The list of frequencies that go
+ *                              in the subset.
+ * @conf  ds_manage_timeout_ms  Int. Time (in ms) before dropping the current
+ *                              input frame when waiting for the datasetManager.
+ *                              Default 10000.
  *
  * @metric kotekan_dataset_manager_dropped_frame_count
- *         The number of frames dropped while attempting to write.
+ *         The number of frames dropped while waiting for the dataset manager.
  *
  * @author Mateus Fandino
  */

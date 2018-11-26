@@ -29,8 +29,7 @@
  *
  * It tags the stream with a properly allocated dataset_id if
  * `use_dataset_manager` is `true` and adds associated datasetStates to the
- * datasetManager. It adds an empty stackState to the dataset (as in not
- * stacked).
+ * datasetManager.
  *
  * @par Buffers
  * @buffer in_buf
@@ -68,7 +67,7 @@
  *      The number of frames skipped entirely because they were under the
  *      low_sample_fraction.
  * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while attempting to write.
+ *         The number of frames dropped while waiting for the dataset manager.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
@@ -182,13 +181,11 @@ private:
     /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
-    dset_id_t change_dataset_state();
-
-    // data saved to register dataset states
-    std::string _instrument_name;
-    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
-    std::vector<input_ctype> _inputs;
-    std::vector<prod_ctype> _prods;
+    dset_id_t change_dataset_state(std::string& instrument_name,
+                                   std::vector<std::pair<uint32_t, freq_ctype>>&
+                                   freqs,
+                                   std::vector<input_ctype>& inputs,
+                                   std::vector<prod_ctype>& prods);
 };
 
 #endif
