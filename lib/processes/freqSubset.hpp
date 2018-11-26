@@ -49,8 +49,8 @@ public:
 
 private:
     /// adds state and dataset and gets a new output dataset ID from manager
-    static dset_id_t change_dataset_state(dset_id_t input_dset_id,
-                                          std::vector<uint32_t>& subset_list);
+    dset_id_t change_dataset_state(dset_id_t input_dset_id,
+                                   std::vector<uint32_t>& subset_list);
 
     // List of frequencies for the subset
     std::vector<uint32_t> _subset_list;
@@ -64,7 +64,7 @@ private:
     std::future<dset_id_t> _output_dset_id;
 
     // config values
-    bool _use_dataset_manager;
+    uint64_t _ds_manage_timeout_ms;
 };
 
 

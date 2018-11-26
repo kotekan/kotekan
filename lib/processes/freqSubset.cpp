@@ -26,8 +26,8 @@ freqSubset::freqSubset(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    _use_dataset_manager = config.get_default(
-                unique_name, "use_dataset_manager", false);
+    _ds_manage_timeout_ms = config.get_default<uint64_t>(
+                unique_name, "ds_manage_timeout_ms", 10000);
 }
 
 dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
@@ -37,10 +37,12 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     // create new frequency dataset state
     const freqState* freq_state_ptr =
             dm.dataset_state<freqState>(input_dset_id);
-    if (freq_state_ptr == nullptr)
-        throw std::runtime_error("freqSubset: Could not find freqState " \
-                                 "ancestor of dataset "
-                                 + std::to_string(input_dset_id));
+    if (freq_state_ptr == nullptr) {
+        ERROR("Set to not use dataset_broker and couldn't find " \
+              "freqState ancestor of dataset %zu. Make sure there is a process"\
+              " upstream in the config, that adds a freqState.", input_dset_id);
+        raise(SIGINT);
+    }
 
     // put the input_freqs in a map and then pick the ones that are in the
     // subset list out of the map again into the output_freqs
@@ -75,20 +77,14 @@ void freqSubset::main_thread() {
     // number of errors when dealing with dataset manager
     uint32_t err_count = 0;
 
-    // flag indicating if the communication with the ds broker should be retried
-    bool broker_retry = false;
-
-    if (_use_dataset_manager) {
-        // Wait for the input buffer to be filled with data
-        // in order to get the dataset ID
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               input_frame_id) == nullptr) {
-            return;
-        }
-        input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
-        _output_dset_id = std::async(change_dataset_state,
-                                    input_dset_id, std::ref(_subset_list));
+    // Wait for a frame in the input buffer in order to get the dataset ID
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           input_frame_id) == nullptr) {
+        return;
     }
+    input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
+    _output_dset_id = std::async(&freqSubset::change_dataset_state, this,
+                                 input_dset_id, std::ref(_subset_list));
 
     while (!stop_thread) {
 
@@ -102,11 +98,10 @@ void freqSubset::main_thread() {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
-        if (_use_dataset_manager &&
-            (input_dset_id != input_frame.dataset_id || broker_retry)) {
+        if (input_dset_id != input_frame.dataset_id) {
             input_dset_id = input_frame.dataset_id;
-            _output_dset_id = std::async(change_dataset_state,
-                                         input_dset_id,
+            _output_dset_id = std::async(&freqSubset::change_dataset_state,
+                                         this, input_dset_id,
                                          std::ref(_subset_list));
         }
 
@@ -131,30 +126,22 @@ void freqSubset::main_thread() {
                                              input_frame);
 
             // set the dataset ID in the outgoing frame
-            if (_use_dataset_manager) {
-                if (_output_dset_id.valid()) {
-                    try {
-                        output_dset_id = _output_dset_id.get();
-                    } catch (std::exception& e) {
-                       WARN("freqSubset: Dropping frame, failure in " \
-                            "datasetManager: %s",
-                            e.what());
-                       prometheusMetrics::instance().add_process_metric(
-                           "kotekan_dataset_manager_dropped_frame_count",
-                           unique_name, ++err_count);
+            if (_output_dset_id.valid()) {
+                std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
+                while (_output_dset_id.wait_for(timeout) ==
+                       std::future_status::timeout) {
+                    WARN("Dropping frame, dataset management timeout.");
+                    prometheusMetrics::instance().add_process_metric(
+                                "kotekan_dataset_manager_dropped_frame_count",
+                                unique_name, ++err_count);
 
-                        // Mark the input buffer and move on
-                        mark_frame_empty(in_buf, unique_name.c_str(),
-                                                                input_frame_id);
-                        // Advance the current input frame id
-                        input_frame_id =
-                                (input_frame_id + 1) % in_buf->num_frames;
-
-                        broker_retry = true;
-                        continue;
-                    }
-                    broker_retry = false;
+                    // Mark the input buffer and move on
+                    mark_frame_empty(in_buf, unique_name.c_str(),
+                                     input_frame_id);
+                    // Advance the current input frame id
+                    input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
                 }
+                output_dset_id = _output_dset_id.get();
             }
             output_frame.dataset_id = output_dset_id;
 

@@ -88,8 +88,7 @@ void freqSplit::main_thread() {
     dset_id_t input_dset_id;
     std::array<dset_id_t, 2> output_dset_id = {{0, 0}};
 
-    // Wait for the input buffer to be filled with data
-    // in order to get the dataset ID
+    // Wait for a frame in the input buffer in order to get the dataset ID
     if(wait_for_full_frame(in_buf, unique_name.c_str(),
                            input_frame_id) == nullptr) {
         return;
@@ -147,11 +146,10 @@ void freqSplit::main_thread() {
             std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
             while (_output_dset_id.wait_for(timeout) ==
                    std::future_status::timeout) {
-                WARN("freqSplit: Dropping frame, failure in " \
-                     "dataset management.");
+                WARN("Dropping frame, dataset management timeout.");
                 prometheusMetrics::instance().add_process_metric(
-                    "kotekan_dataset_manager_dropped_frame_count",
-                    unique_name, ++err_count);
+                            "kotekan_dataset_manager_dropped_frame_count",
+                            unique_name, ++err_count);
 
                  // Mark the input buffer and move on
                  mark_frame_empty(in_buf, unique_name.c_str(),
