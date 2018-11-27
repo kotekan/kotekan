@@ -1,16 +1,34 @@
-#include <libgen.h>
+#include "visRawReader.hpp"
+
+#include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <iostream>
-#include <fstream>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <csignal>
+#include <unistd.h>
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <functional>
+#include <iostream>
+#include <fstream>
+#include <memory>
+#include <regex>
+#include <stdexcept>
 
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
+#include "datasetState.hpp"
+#include "errors.h"
 #include "fmt.hpp"
-#include "visUtil.hpp"
-#include "visRawReader.hpp"
+#include "metadata.h"
+#include "processFactory.hpp"
 #include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
 
 REGISTER_KOTEKAN_PROCESS(visRawReader);
 

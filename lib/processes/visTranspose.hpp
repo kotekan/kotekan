@@ -1,9 +1,21 @@
 #ifndef VISTRANSPOSE
 #define VISTRANSPOSE
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "json.hpp"
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "visFileArchive.hpp"
+#include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 using json = nlohmann::json;
 

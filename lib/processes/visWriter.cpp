@@ -1,25 +1,31 @@
 #include "visWriter.hpp"
-#include "visBuffer.hpp"
-#include "util.h"
-#include "errors.h"
-#include "prodSubset.hpp"
+
+#include <cxxabi.h>
+#include <signal.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <iomanip>
-#include "fpga_header_functions.h"
-#include "prometheusMetrics.hpp"
+#include <atomic>
+#include <exception>
+#include <functional>
+#include <regex>
+#include <sstream>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+
+#include "fmt.hpp"
+#include "json.hpp"
+
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "version.h"
+#include "visBuffer.hpp"
 #include "visCompression.hpp"
 
-#include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
-#include <time.h>
-#include <regex>
-#include <signal.h>
-#include "fmt.hpp"
-#include "version.h"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 REGISTER_KOTEKAN_PROCESS(visCalWriter);

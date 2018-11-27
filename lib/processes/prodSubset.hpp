@@ -6,14 +6,20 @@
 #ifndef PROD_SUB
 #define PROD_SUB
 
-#include <unistd.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <future>
-#include "buffer.h"
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "visUtil.hpp"
+
 
 /**
  * @class prodSubset

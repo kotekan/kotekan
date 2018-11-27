@@ -1,6 +1,16 @@
 #include "visDrop.hpp"
-#include "visBuffer.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <stdexcept>
+
 #include "errors.h"
+#include "processFactory.hpp"
+#include "visBuffer.hpp"
+
 
 REGISTER_KOTEKAN_PROCESS(visDrop);
 

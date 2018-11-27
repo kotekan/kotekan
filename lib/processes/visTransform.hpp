@@ -11,6 +11,7 @@
 #include "bufferContainer.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
+#include "visUtil.hpp"
 
 #include <stddef.h>
 #include <stdint.h>

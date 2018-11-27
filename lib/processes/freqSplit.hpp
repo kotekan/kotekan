@@ -6,9 +6,17 @@
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
 
+#include <stdint.h>
+#include <array>
 #include <future>
-#include "buffer.h"
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 
 

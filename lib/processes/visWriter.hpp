@@ -7,14 +7,26 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
+#include <errno.h>
+#include <stdio.h>
 #include <cstdint>
 #include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
+#include "restServer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
-#include "restServer.hpp"
+
 
 /**
  * @class visWriter

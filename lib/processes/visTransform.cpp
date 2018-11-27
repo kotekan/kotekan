@@ -1,22 +1,30 @@
 #include "visTransform.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "errors.h"
-#include "metadata.h"
-#include "processFactory.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
-#include "chimeMetadata.h"
-
-#include "gsl-lite.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <exception>
 #include <functional>
+#include <iterator>
+#include <memory>
+#include <numeric>
 #include <regex>
+#include <stdexcept>
 #include <tuple>
+
+#include "gsl-lite.hpp"
+
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "chimeMetadata.h"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "metadata.h"
+#include "processFactory.hpp"
 #include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
 
 
 REGISTER_KOTEKAN_PROCESS(visTransform);

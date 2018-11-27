@@ -1,12 +1,18 @@
-#include <typeinfo>
+#include "datasetManager.hpp"
+
+#include <signal.h>
+#include <stdio.h>
+#include <cstdint>
+#include <fmt.hpp>
 #include <functional>
-#include <algorithm>
 #include <iostream>
 #include <mutex>
+#include <regex>
+#include <typeinfo>
 
-#include "datasetManager.hpp"
-#include "fmt.hpp"
+#include "fmt/ostream.h"
 #include "restClient.hpp"
+#include "visUtil.hpp"
 
 
 dataset::dataset(json& js) {

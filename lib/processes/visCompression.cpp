@@ -1,19 +1,34 @@
-#include <cstdlib>
-#include <vector>
-#include <algorithm>
-#include <functional>
-#include <iterator>
-#include <stdexcept>
-#include <iostream>
-#include <pthread.h>
-#include <future>
-
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
 #include "visCompression.hpp"
+
+#include <cxxabi.h>
+#include <pthread.h>
+#include <sched.h>
+#include <signal.h>
+#include <algorithm>
+#include <chrono>
+#include <complex>
+#include <cstdlib>
+#include <exception>
+#include <functional>
+#include <future>
+#include <iostream>
+#include <iterator>
+#include <memory>
+#include <numeric>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+
 #include "fmt.hpp"
-#include "prometheusMetrics.hpp"
+#include "gsl-lite.hpp"
+
 #include "datasetManager.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 using namespace std::placeholders;
 
@@ -123,7 +138,7 @@ void baselineCompression::compress_thread(int thread_id) {
     unsigned int input_frame_id = thread_id;
 
     dset_id_t input_dset_id;
-    dset_id_t output_dset_id;
+    dset_id_t output_dset_id = 0;
 
     // Wait for the input buffer to be filled with data
     // in order to get dataset ID

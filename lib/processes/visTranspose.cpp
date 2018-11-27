@@ -1,19 +1,32 @@
-#include <algorithm>
-#include <sys/stat.h>
-#include <fstream>
-#include <csignal>
-#include <stdexcept>
-#include <unistd.h>
-#include <future>
-
-#include "errors.h"
-#include "visBuffer.hpp"
-#include "fmt.hpp"
-#include "visUtil.hpp"
 #include "visTranspose.hpp"
-#include "prometheusMetrics.hpp"
+
+#include <cxxabi.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <complex>
+#include <csignal>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <future>
+#include <iterator>
+#include <regex>
+#include <stdexcept>
+#include <utility>
+
+#include "gsl-lite.hpp"
+
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
 #include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 

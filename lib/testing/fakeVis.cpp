@@ -1,14 +1,33 @@
 #include "fakeVis.hpp"
+
+#include <math.h>
+#include <sys/time.h>
+#include <time.h>
+#include <algorithm>
+#include <atomic>
+#include <complex>
+#include <csignal>
+#include <cstdint>
+#include <exception>
+#include <fmt.hpp>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+#include "gsl-lite.hpp"
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
-#include "chimeMetadata.h"
-#include <csignal>
-#include <time.h>
-#include <math.h>
-#include <functional>
-#include "datasetManager.hpp"
-#include "fmt.hpp"
-#include "version.h"
 
 
 using namespace std::placeholders;

@@ -1,19 +1,22 @@
 #include "visFileArchive.hpp"
-#include "errors.h"
-#include <time.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <iomanip>
+
 #include <algorithm>
-#include <stdexcept>
+#include <cstdint>
+#include <cstdio>
 #include <iostream>
-#include <fstream>
-#include <sys/stat.h>
-#include <libgen.h>
+#include <numeric>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
+
+#include "errors.h"
+#include "visFile.hpp"
+#include "visFileH5.hpp"
 
 using namespace HighFive;
 

@@ -6,9 +6,15 @@
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
 
+#include <stdint.h>
 #include <future>
-#include "buffer.h"
+#include <string>
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 
 

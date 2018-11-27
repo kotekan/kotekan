@@ -1,9 +1,26 @@
 #include "freqSubset.hpp"
-#include "visBuffer.hpp"
-#include "errors.h"
-#include "datasetManager.hpp"
-#include <algorithm>
+
+#include <cxxabi.h>
 #include <signal.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <map>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <utility>
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(freqSubset);
 

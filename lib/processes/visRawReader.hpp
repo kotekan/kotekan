@@ -6,14 +6,22 @@
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
-#include "json.hpp"
-#include "buffer.h"
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
 
 using json = nlohmann::json;
+
 
 /**
  * @class visRawReader

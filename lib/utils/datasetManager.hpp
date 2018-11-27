@@ -1,25 +1,34 @@
 #ifndef DATASET_MANAGER_HPP
 #define DATASET_MANAGER_HPP
 
-#include <string>
-#include <vector>
-#include <set>
-#include <iostream>
+#include <stdint.h>
+#include <time.h>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <exception>
+#include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
-#include <condition_variable>
-#include <fmt.hpp>
-#include <time.h>
-#include <typeindex>
+#include <set>
+#include <stdexcept>
+#include <string>
 #include <thread>
-#include <chrono>
+#include <type_traits>
+#include <typeinfo>
+#include <utility>
+#include <vector>
 
 #include "json.hpp"
-#include "errors.h"
-#include "restClient.hpp"
-#include "prometheusMetrics.hpp"
+
+#include "Config.hpp"
 #include "datasetState.hpp"
+#include "errors.h"
+#include "prometheusMetrics.hpp"
+#include "restClient.hpp"
 #include "signal.h"
+
 
 #define UNIQUE_NAME "/dataset_manager"
 

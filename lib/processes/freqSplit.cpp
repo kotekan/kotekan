@@ -1,9 +1,26 @@
 #include "freqSplit.hpp"
-#include "visBuffer.hpp"
-#include "errors.h"
-#include "datasetManager.hpp"
-#include <algorithm>
+
+#include <cxxabi.h>
 #include <signal.h>
+#include <stddef.h>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
 
 REGISTER_KOTEKAN_PROCESS(freqSplit);
 

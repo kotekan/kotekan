@@ -5,13 +5,19 @@
 #ifndef RESTCLIENT_HPP
 #define RESTCLIENT_HPP
 
-#include "json.hpp"
-#include "restServer.hpp"
-
-#include <event.h>
-#include <thread>
+#include <event2/util.h>
 #include <atomic>
 #include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
+
+#include "json.hpp"
+
+#include "Config.hpp"
+#include "restServer.hpp"
 
 using restReply = std::pair<bool, std::string>;
 

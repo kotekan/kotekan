@@ -6,16 +6,21 @@
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
-#include <iostream>
-#include <fstream>
-#include <cstdint>
 #include <fcntl.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <cstdint>
+#include <fstream>
+#include <map>
+#include <string>
+#include <vector>
 
+#include "Config.hpp"
+#include "datasetManager.hpp"
+#include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
-#include "errors.h"
-
-#include "json.hpp"
 
 using json = nlohmann::json;
 

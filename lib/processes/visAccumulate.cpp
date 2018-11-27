@@ -1,22 +1,37 @@
 #include "visAccumulate.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "fmt.hpp"
-#include "datasetManager.hpp"
-#include "configUpdater.hpp"
-#include "version.h"
 
 #include <time.h>
-#include <iomanip>
-#include <iostream>
-#include <vector>
 #include <algorithm>
-#include <stdexcept>
-#include <mutex>
+#include <atomic>
+#include <complex>
 #include <csignal>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iterator>
+#include <mutex>
+#include <numeric>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+
+#include "fmt.hpp"
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
+#include "chimeMetadata.h"
+#include "configUpdater.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "factory.hpp"
+#include "metadata.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 
 using namespace std::placeholders;

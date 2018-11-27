@@ -1,14 +1,19 @@
 #include "restClient.hpp"
-#include "errors.h"
-#include "signal.h"
 
-#include <evhttp.h>
+#include <event2/buffer.h>
+#include <event2/dns.h>
 #include <event2/event.h>
 #include <event2/http.h>
-#include <event2/dns.h>
 #include <event2/thread.h>
-#include <cxxabi.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <chrono>
 #include <condition_variable>
+
+#include "errors.h"
+#include "signal.h"
 
 
 restClient &restClient::instance() {

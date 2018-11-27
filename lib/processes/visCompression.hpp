@@ -6,16 +6,25 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
+#include <sys/types.h>
+#include <atomic>
 #include <cstdint>
+#include <functional>
+#include <iosfwd>
+#include <map>
+#include <string>
+#include <thread>
+#include <utility>
 #include <vector>
-#include <tuple>
 
-#include "json.hpp"
-
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "visUtil.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;

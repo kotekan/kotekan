@@ -1,22 +1,25 @@
 
 #include "visFileRaw.hpp"
-#include "errors.h"
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
 #include "visCompression.hpp"
 
-#include "fmt.hpp"
+#include "json.hpp"
 
-#include <time.h>
-#include <unistd.h>
-#include <iomanip>
-#include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
-#include <sys/stat.h>
-#include <libgen.h>
+#include <cxxabi.h>
 #include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <cstdio>
+#include <exception>
+#include <fmt.hpp>
+#include <fstream>
 #include <future>
+#include <numeric>
+#include <stdexcept>
+#include <utility>
 
 
 // Register the raw file writer

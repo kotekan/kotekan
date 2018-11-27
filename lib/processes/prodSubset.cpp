@@ -1,10 +1,29 @@
 #include "prodSubset.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
-#include "datasetManager.hpp"
 
+#include <cxxabi.h>
 #include <signal.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <complex>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <utility>
+
+#include "gsl-lite.hpp"
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 
 REGISTER_KOTEKAN_PROCESS(prodSubset);
@@ -72,10 +91,9 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id,
         // so we can use binary search
         if (!std::binary_search(input_prods_copy.begin(), input_prods_copy.end(),
                                 prod_subset.at(i), compare_prods)) {
-            std::cout << "prodSubset: Product ID " << prod_ind.at(i) << " is" <<
-                         "configured to be in the subset, but is missing in " <<
-                         "dataset " << ds_id << " . Deleting it from subset." <<
-                         std::endl;
+            WARN("prodSubset: Product ID %zu is configured to be in the " \
+                 "subset, but is missing in dataset %zu . Deleting it from " \
+                 "subset.", prod_ind.at(i), ds_id);
             prod_subset.erase(prod_subset.cbegin() + i);
             prod_ind.erase(prod_ind.cbegin() + i);
         }

@@ -1,17 +1,18 @@
 #ifndef VIS_FILE_ARCHIVE_HPP
 #define VIS_FILE_ARCHIVE_HPP
 
+#include <stddef.h>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 #include <iostream>
-#include <cstdint>
 
 #include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
 
-#include "visBuffer.hpp"
-#include "visFile.hpp"
+#include "Config.hpp"
 #include "visUtil.hpp"
-#include "errors.h"
-#include "visFileH5.hpp"  // For HighFive types
 
 
 /** @brief A CHIME correlator archive file.

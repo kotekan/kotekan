@@ -6,7 +6,14 @@
 #ifndef VISDROP_HPP
 #define VISDROP_HPP
 
+#include <stdint.h>
+#include <string>
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
 /**
 * @brief Drops frames based on given criteria (for testing) without telling the

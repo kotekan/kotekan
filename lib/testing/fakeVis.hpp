@@ -7,15 +7,21 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include <unistd.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <map>
 #include <string>
-#include "buffer.h"
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.

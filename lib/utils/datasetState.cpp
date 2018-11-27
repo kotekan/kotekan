@@ -1,4 +1,5 @@
 #include "datasetState.hpp"
+#include <typeinfo>
 
 // Initialise static map of types
 std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&

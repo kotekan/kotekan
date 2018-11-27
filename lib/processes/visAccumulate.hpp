@@ -7,18 +7,25 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include <vector>
-#include <cstdint>
-#include <fstream>
-#include <functional>
-#include <memory>
 #include <time.h>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
 #include "gateSpec.hpp"
 #include "visUtil.hpp"
-#include "datasetManager.hpp"
+
 
 /**
  * @class visAccumulate

@@ -1,24 +1,30 @@
 
 #include "visFileH5.hpp"
-#include "visCompression.hpp"
-#include "errors.h"
-#include "datasetManager.hpp"
 
-#include <time.h>
+#include <cxxabi.h>
+#include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <iomanip>
-#include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
+#include <string.h>
 #include <sys/stat.h>
-#include <libgen.h>
+#include <unistd.h>
+#include <complex>
+#include <cstdio>
+#include <exception>
 #include <future>
+#include <numeric>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
+
+#include "gsl-lite.hpp"
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
 
 using namespace HighFive;
 

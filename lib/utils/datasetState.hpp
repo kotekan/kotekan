@@ -1,9 +1,21 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <iosfwd>
+#include <map>
 #include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "json.hpp"
+
+#include "Config.hpp"
+#include "errors.h"
 #include "visUtil.hpp"
 
 // This type is used a lot so let's use an alias
