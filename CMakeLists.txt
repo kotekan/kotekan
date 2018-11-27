@@ -244,7 +244,6 @@ endif()
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
-add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
 
