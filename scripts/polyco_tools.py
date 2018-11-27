@@ -160,13 +160,16 @@ def cli():
 
 
 @click.command()
-def mjd_now():
-    click.echo(unix2mjd(Timespec(time.time())))
+@click.argument('unixtime', required=False, default=None, type=float)
+def mjd(unixtime):
+    """ Convert unix time to MJD.
+        Will print MJD now if no time is provided. """
+    if unixtime is None:
+        ts = Timespec(time.time())
+    else:
+        ts = Timespec(unixtime)
+    click.echo(unix2mjd(ts))
 
-
-@click.command()
-def test():
-    check_call(["echo", "$TEMPO2"])
 
 @click.command()
 @click.argument("fname", type=str)
@@ -185,7 +188,11 @@ def test():
               help="(generate-polyco) Maximum hour angle for timing solution to span.")
 def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, ncoeff, max_ha):
     if generate_polyco:
-        pfile = PolycoFile.generate(start_time, end_time, fname, dm, segment, ncoeff, max_ha)
+        if end_time is None:
+            end = start_time + 1.
+        else:
+            end = end_time
+        pfile = PolycoFile.generate(start_time, end, fname, dm, segment, ncoeff, max_ha)
     else:
         pfile = PolycoFile(fname)
 
@@ -196,13 +203,14 @@ def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, nco
     if dm is not None:
         pfile.dm = dm
 
+    print("\nSpan of solution is {:.3f} MJD.".format(segment/1440.))
+
     print("\nConfig block:\n")
     print(pfile.config_block(start_time, end_time))
 
 
 if __name__ == '__main__':
     cli.add_command(polyco_config)
-    cli.add_command(mjd_now)
-    cli.add_command(test)
+    cli.add_command(mjd)
 
     cli()
