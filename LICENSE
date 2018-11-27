@@ -6,7 +6,7 @@ otherwise noted in the source code.
 
 N.B. Releases before git tag `2018.12` contained external source code licensed
 under the: GNU General Public License (GPL), as published by the
-Free Software Foundation.  As such the MIT License below can only apply to
+Free Software Foundation.  As such the MIT License below only applies to
 code in this repository at or after the git tag `2018.12`, which removed
 the GPL code from the source tree.
 
