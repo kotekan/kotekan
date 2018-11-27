@@ -55,10 +55,11 @@ def transpose(tmpdir_factory):
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
     fakevis_buffer.process_block.update({"fakevis_fsel": {
-            "kotekan_process": "freqSubset",
+            "kotekan_process": "visDrop",
             "in_buf": fakevis_buffer.name,
             "out_buf": fsel_buf_name,
-            "subset_list": writer_params['freq'][:-1]
+            "freq": [writer_params['freq'][-1]],
+            "log_level": "debug"
         }
     })
     fakevis_buffer.name = fsel_buf_name
@@ -66,7 +67,6 @@ def transpose(tmpdir_factory):
     # Write fake data in hdf5 format
     tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
     dumph5_conf = writer_params.copy()
-    dumph5_conf['freq_ids'] = dumph5_conf['freq']
     dumph5_conf['root_path'] = str(tmpdir_h5)
     dumph5_conf['file_name'] = 'dumph5'
     dumph5_conf['write_ev'] = True
@@ -77,7 +77,8 @@ def transpose(tmpdir_factory):
 
     writer = kotekan_runner.KotekanProcessTester(
         'visWriter',
-        {'freq_ids': params['freq'], 'node_mode': False, 'write_ev': True, 'file_type': 'raw'},
+        {'node_mode': False, 'write_ev': True,
+        'file_type': 'raw'},
         fakevis_buffer,
         None,
         params,
@@ -186,7 +187,6 @@ def transpose_stack(tmpdir_factory):
         num_frames=stack_params['file_length'],
         cadence=stack_params['cadence'],
         mode="chime",
-        use_dataset_manager=True
     )
     # Add stacking process
     stack_buf_name = "fake_stacked"
@@ -212,8 +212,8 @@ def transpose_stack(tmpdir_factory):
     writer = kotekan_runner.KotekanProcessTester(
         'visWriter',
         {
-            'freq_ids': params['freq'], 'node_mode': False, 'write_ev': True,
-            'file_type': 'raw', 'use_dataset_manager': True
+            'node_mode': False, 'write_ev': True,
+            'file_type': 'raw'
         },
         fakevis_buffer,
         None,

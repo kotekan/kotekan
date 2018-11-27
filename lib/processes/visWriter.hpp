@@ -44,8 +44,6 @@
  * @conf   instrument_name  String (default: chime). Name of the instrument
  *                          acquiring data (if ``node_mode`` the hostname is
  *                          used instead)
- * @conf   freq_ids         Array of ints. The ids of the frequencies to write
- *                          out (only needed when not in @c node_mode).
  * @conf   input_reorder    Array of [int, int, string]. A description of the
  *                          inputs. Only the last two elements of each sub-array
  *                          are used and are expected to be @c channel_id and
@@ -60,13 +58,12 @@
  *                          write into a file.
  * @conf   window           Int (default 20). Number of samples to keep active
  *                          for writing at any time.
- * @conf   use_dataset_manager Bool (default:false). Use the dataset manager.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_dataset_manager_dropped_frame_count
+ * @metric kotekan_viswriter_dropped_frame_total
  *         The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
@@ -95,7 +92,6 @@ protected:
     void setup_freq(uint32_t freq_id);
 
     // Parameters saved from the config files
-    bool use_dataset_manager;
     std::string root_path;
     std::string instrument_name;
     std::string weights_type;
@@ -113,10 +109,6 @@ protected:
 
     /// Dataset ID of current stream
     dset_id_t ds_id;
-
-    /// State ID for the internal datasetState used if the datasetManager is not
-    /// being used externally
-    state_id_t writer_dstate;
 
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
@@ -184,8 +176,6 @@ private:
  * @conf   instrument_name  String (default: chime). Name of the instrument
  *                          acquiring data (if ``node_mode`` the hostname is
  *                          used instead)
- * @conf   freq_ids         Array of ints. The ids of the frequencies to write
- *                          out (only needed when not in @c node_mode).
  * @conf   input_reorder    Array of [int, int, string]. A description of the
  *                          inputs. Only the last two elements of each sub-array
  *                          are used and are expected to be @c channel_id and
@@ -205,7 +195,7 @@ private:
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_dataset_manager_dropped_frame_count
+ * @metric kotekan_viswriter_dropped_frame_total
  *         The number of frames dropped while attempting to write.
  *
  * @author Tristan Pinsonneault-Marotte

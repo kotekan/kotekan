@@ -1,6 +1,11 @@
 
 #include "visFileRaw.hpp"
 #include "errors.h"
+#include "datasetManager.hpp"
+#include "visCompression.hpp"
+
+#include "fmt.hpp"
+
 #include <time.h>
 #include <unistd.h>
 #include <iomanip>
@@ -11,9 +16,7 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <errno.h>
-#include "fmt.hpp"
-#include "datasetManager.hpp"
-#include "visCompression.hpp"
+#include <future>
 
 
 // Register the raw file writer
@@ -31,14 +34,24 @@ void visFileRaw::create_file(
 
     // Get properties of stream from datasetManager
     auto& dm = datasetManager::instance();
-    auto istate = dm.dataset_state<inputState>(dataset);
-    auto pstate = dm.dataset_state<prodState>(dataset);
-    auto fstate = dm.dataset_state<freqState>(dataset);
-    auto sstate = dm.dataset_state<stackState>(dataset);
-    if (!istate || !pstate || !fstate || !sstate) {
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
+                                 &dm, dataset);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>,
+                                 &dm, dataset);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>,
+                                 &dm, dataset);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>,
+                                 &dm, dataset);
+
+    const stackState* sstate = sstate_fut.get();
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
+
+    if (!istate || !pstate || !fstate) {
         ERROR("Required datasetStates not found for dataset_id=%i", dataset);
         ERROR("One of them is a nullptr: inputs %d, products %d, freqs %d, " \
-              "stack %d", istate, pstate, fstate, sstate);
+              "stack %d (but that's okay)", istate, pstate, fstate, sstate);
         throw std::runtime_error("Could not create file.");
     }
 
@@ -54,7 +67,7 @@ void visFileRaw::create_file(
     std::iota(eval_index.begin(), eval_index.end(), 0);
     file_metadata["index_map"]["ev"] = eval_index;
 
-    if (sstate->is_stacked()) {
+    if (sstate) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
         file_metadata["structure"]["num_stack"] = sstate->get_num_stack();
@@ -64,7 +77,7 @@ void visFileRaw::create_file(
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();
     size_t ninput = istate->get_inputs().size();
-    size_t nvis = sstate->is_stacked() ?
+    size_t nvis = sstate ?
                 sstate->get_num_stack() : pstate->get_prods().size();
 
     // Set the alignment (in kB)

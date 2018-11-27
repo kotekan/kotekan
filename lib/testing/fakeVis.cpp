@@ -68,8 +68,6 @@ fakeVis::fakeVis(Config &config,
     cadence = config.get<float>(unique_name, "cadence");
     num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
     wait = config.get_default<bool>(unique_name, "wait", true);
-    use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
@@ -127,46 +125,40 @@ void fakeVis::main_thread() {
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
-    // If configured, register datasetStates to describe the properties of the
-    // created stream
+    // Register datasetStates to describe the properties of the created stream
     dset_id_t ds_id = 0;
-    if (use_dataset_manager) {
-        auto& dm = datasetManager::instance();
+    auto& dm = datasetManager::instance();
 
-        if (_fixed_dset_id) {
-            ds_id = _dset_id;
-        } else {
-            auto mstate = std::make_unique<metadataState>("not set", "fakeVis",
-                                                          get_git_commit_hash());
+    if (_fixed_dset_id) {
+        ds_id = _dset_id;
+    } else {
+        auto mstate = std::make_unique<metadataState>("not set", "fakeVis",
+                                                      get_git_commit_hash());
 
-            std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-            // TODO: CHIME specific
-            std::transform(
-                std::begin(freq), std::end(freq), std::back_inserter(fspec),
-                [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                    return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
-                });
-            auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
+        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+        // TODO: CHIME specific
+        std::transform(
+            std::begin(freq), std::end(freq), std::back_inserter(fspec),
+            [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+            });
+        auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
 
-            std::vector<input_ctype> ispec;
-            for (uint32_t i = 0; i < num_elements; i++)
-                ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
-            auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
+        std::vector<input_ctype> ispec;
+        for (uint32_t i = 0; i < num_elements; i++)
+            ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
+        auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
 
-            std::vector<prod_ctype> pspec;
-            for (uint16_t i = 0; i < num_elements; i++)
-                for (uint16_t j = i; j < num_elements; j++)
-                    pspec.push_back({i, j});
-            auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+        std::vector<prod_ctype> pspec;
+        for (uint16_t i = 0; i < num_elements; i++)
+            for (uint16_t j = i; j < num_elements; j++)
+                pspec.push_back({i, j});
+        auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
 
-            //empty stackState
-            auto sstate = std::make_unique<stackState>(std::move(pstate));
+        auto s = dm.add_state(std::move(pstate));
 
-            auto s = dm.add_state(std::move(sstate));
-
-            // Register a root state
-            ds_id = dm.add_dataset(0, s.first, true);
-        }
+        // Register a root state
+        ds_id = dm.add_dataset(0, s.first, true);
     }
 
     while (!stop_thread) {

@@ -13,7 +13,6 @@ diag_global_params = {
     'mode': 'phase_ij',
     'freq_ids': [0, 250],
     'buffer_depth': 5,
-    'use_dataset_manager': True
 }
 
 diag_process_params = {
@@ -29,7 +28,6 @@ chime_global_params = {
     'mode': 'chime',
     'freq_ids': [0, 250, 500],
     'buffer_depth': 100,
-    'use_dataset_manager': True
 }
 
 chime_process_params = {

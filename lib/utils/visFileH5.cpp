@@ -2,6 +2,8 @@
 #include "visFileH5.hpp"
 #include "visCompression.hpp"
 #include "errors.h"
+#include "datasetManager.hpp"
+
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -12,6 +14,7 @@
 #include <fstream>
 #include <sys/stat.h>
 #include <libgen.h>
+#include <future>
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -36,19 +39,27 @@ void visFileH5::create_file(
 {
     auto& dm = datasetManager::instance();
 
-    auto istate = dm.dataset_state<inputState>(dataset);
-    auto pstate = dm.dataset_state<prodState>(dataset);
-    auto fstate = dm.dataset_state<freqState>(dataset);
-    auto sstate = dm.dataset_state<stackState>(dataset);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>,
+                                 &dm, dataset);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm,
+                                 dataset);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm,
+                                 dataset);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
+                                 &dm, dataset);
+    const stackState* sstate = sstate_fut.get();
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
 
-    if (!istate || !pstate || !fstate || !sstate) {
+    if (!istate || !pstate || !fstate) {
         ERROR("Required datasetStates not found for dataset_id=%i", dataset);
         ERROR("One of them is a nullptr: inputs %d, products %d, freqs %d, " \
-              "stack %d", istate, pstate, fstate, sstate);
+              "stack %d (but that's okay).", istate, pstate, fstate, sstate);
         throw std::runtime_error("Could not create file.");
     }
 
-    if(sstate->is_stacked()) {
+    if(sstate) {
         throw std::runtime_error("H5 writers do not currently worked with "
                                  "stacked data.");
     }

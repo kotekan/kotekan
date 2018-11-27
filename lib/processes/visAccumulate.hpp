@@ -27,9 +27,8 @@
  * This process will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
- * It tags the stream with a properly allocated dataset_id if
- * `use_dataset_manager` is `true` and adds associated datasetStates to the
- * datasetManager.
+ * It tags the stream with a properly allocated dataset_id and adds associated
+ * datasetStates to the datasetManager.
  *
  * @par Buffers
  * @buffer in_buf

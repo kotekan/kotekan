@@ -28,7 +28,6 @@ def vis_data(tmpdir_factory):
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
-        use_dataset_manager=True,
         wait=False
     )
 
@@ -59,18 +58,13 @@ def write_data(tmpdir_factory):
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
-        use_dataset_manager=True,
         wait=False
     )
 
     write_buffer_l = kotekan_runner.VisWriterBuffer(
-            str(tmpdir_l), 'raw', {},
-            extra_config={'use_dataset_manager': True})
-
+            str(tmpdir_l), 'raw')
     write_buffer_h = kotekan_runner.VisWriterBuffer(
-            str(tmpdir_h), 'raw', {},
-            extra_config={'use_dataset_manager': True})
-
+            str(tmpdir_h), 'raw')
     test = kotekan_runner.KotekanProcessTester(
         'freqSplit', {},
         fakevis_buffer,

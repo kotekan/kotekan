@@ -231,10 +231,4 @@ BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>(inputs));
     BOOST_CHECK_EQUAL(input_state.second->to_json().dump(),
                       std::make_unique<inputState>(inputs)->to_json().dump());
-
-    // empty stackStates
-    std::pair<state_id_t, const stackState*> sstate =
-            dm.add_state(std::make_unique<stackState>());
-    BOOST_CHECK_EQUAL(sstate.second->to_json().dump(),
-                      std::make_unique<stackState>()->to_json().dump());
 }

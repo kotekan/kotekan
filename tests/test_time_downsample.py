@@ -57,7 +57,6 @@ def test_metadata(vis_data):
 
     for frame in vis_data:
         assert frame.metadata.freq_id == 0
-        assert frame.metadata.dataset_id == 0
         assert frame.metadata.fpga_length == frame_length
         assert frame.metadata.fpga_total == frame_length
 

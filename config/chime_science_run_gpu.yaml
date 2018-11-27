@@ -37,7 +37,6 @@ cpu_affinity: [2,3,8,9]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]
-use_dataset_manager: True
 
 dataset_manager:
   use_dataset_broker: True
