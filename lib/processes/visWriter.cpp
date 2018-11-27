@@ -67,15 +67,29 @@ visWriter::visWriter(Config& config,
         // Here we trim the hostname to the first alphanumeric segment only.
         instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
     }
+
+    _ds_manage_timeout_ms = config.get_default<uint64_t>(
+                unique_name, "ds_manage_timeout_ms", 10000);
 }
 
 void visWriter::main_thread() {
 
     unsigned int frame_id = 0;
 
-    // Look over the current buffers for information to setup the acquisition
-    if (!init_acq())
+    // number of errors when dealing with the dataset manager
+    uint32_t err_count = 0;
+
+    // Wait for the first frame to get the dataset ID
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
         return;
+    auto frame = visFrameView(in_buf, 0);
+
+    // Get the dataset ID that the downstream files can use to determine what
+    // they will be writing.
+    ds_id = frame.dataset_id;
+
+    // Setup the acquisition, create a new file
+    auto init_fut = std::async(&visWriter::init_acq, this);
 
     while (!stop_thread) {
 
@@ -87,6 +101,17 @@ void visWriter::main_thread() {
 
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
+
+        // Check the dataset ID hasn't changed
+        if (frame.dataset_id != ds_id) {
+            string msg = fmt::format(
+                        "Unexpected dataset ID={} received (expected id={}). " \
+                        "Creating a new file.",
+                frame.dataset_id, ds_id
+            );
+            INFO(msg.c_str());
+            auto init_fut = std::async(&visWriter::init_acq, this);
+        }
 
         // Construct the new time
         auto ftime = frame.time;
@@ -102,16 +127,23 @@ void visWriter::main_thread() {
             ERROR(msg.c_str());
             raise(SIGINT);
             return;
+        }
 
-        // Check the dataset ID hasn't changed
-        } else if (frame.dataset_id != ds_id) {
-            string msg = fmt::format(
-                "Unexpected dataset ID={} received (expected id={}).",
-                frame.dataset_id, ds_id
-            );
-            ERROR(msg.c_str());
-            raise(SIGINT);
-            return;
+        // Are we waiting for datasetStates? We need the states now...wait here.
+        if (init_fut.valid()) {
+            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
+            while (init_fut.wait_for(timeout) ==
+                   std::future_status::timeout) {
+                WARN("Dropping frame, dataset management timeout.");
+                prometheusMetrics::instance().add_process_metric(
+                            "kotekan_dataset_manager_dropped_frame_count",
+                            unique_name, ++err_count);
+
+                // Mark the buffer and move on
+                mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+                // Advance the current frame ids
+                frame_id = (frame_id + 1) % in_buf->num_frames;
+            }
         }
 
         // Check if the frequency we are receiving is on the list of frequencies
@@ -180,7 +212,7 @@ void visWriter::main_thread() {
     }
 }
 
-void visWriter::change_dataset_state() {
+void visWriter::get_dataset_state() {
 
     auto& dm = datasetManager::instance();
 
@@ -230,18 +262,8 @@ void visWriter::change_dataset_state() {
 
 bool visWriter::init_acq() {
 
-    // Fetch out information from the buffers that are needed for setting  up
-    // the acq. For the moment just read the first frame.
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
-        return false;
-    auto frame = visFrameView(in_buf, 0);
-
-    // Get the dataset ID that the downstream files can use to determine what
-    // they will be writing.
-    ds_id = frame.dataset_id;
-
     // get dataset states
-    change_dataset_state();
+    get_dataset_state();
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;
