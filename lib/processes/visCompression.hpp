@@ -117,8 +117,7 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // dataset states and IDs
-    dset_id_t output_dset_id;
+    // dataset states
     const prodState* prod_state_ptr;
     const stackState* stack_state_ptr;
 
