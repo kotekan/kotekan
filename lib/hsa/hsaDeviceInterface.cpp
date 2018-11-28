@@ -24,7 +24,7 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
     // Function parameters
     gpu_config_t gpu_config;
     gpu_config.agent = &gpu_agent;
-    gpu_config.gpu_id = gpu_id;
+    gpu_config.gpu_id = gpu_id_;
 
     // Get the CPU agent
     hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
@@ -295,13 +295,6 @@ hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t 
     }
 
     return HSA_STATUS_SUCCESS;
-}
-
-int hsaDeviceInterface::get_gpu_id() {
-    return gpu_id;
-}
-int hsaDeviceInterface::get_gpu_buffer_depth() {
-    return gpu_buffer_depth;
 }
 
 hsa_agent_t hsaDeviceInterface::get_gpu_agent() {

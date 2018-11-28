@@ -137,7 +137,7 @@ void gpuProcess::main_thread()
             }
         }
 
-        INFO("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        DEBUG("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id]->wait_for_free_slot();
         queue_commands(gpu_frame_id);

@@ -52,6 +52,16 @@ public:
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();
 
+    /// Returns the GPU ID handled by this device object
+    int get_gpu_id() {
+        return gpu_id;
+    }
+
+    /// Returns the gpu buffer depth
+    int get_gpu_buffer_depth() {
+        return gpu_buffer_depth;
+    }
+
 protected:
     virtual void* alloc_gpu_memory(int len) = 0;
     virtual void free_gpu_memory(void *) = 0;

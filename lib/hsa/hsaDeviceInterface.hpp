@@ -32,8 +32,6 @@ class hsaDeviceInterface: public gpuDeviceInterface
 public:
     hsaDeviceInterface(Config& config, int32_t gpu_id, int gpu_buffer_depth);
     virtual ~hsaDeviceInterface();
-    int get_gpu_id();
-    int get_gpu_buffer_depth();
 
     // Note, if precede_signal is 0, then we don't wait on any signal.
     // These functions should only be called once per command, and
@@ -79,8 +77,6 @@ protected:
     // CPU HSA variables
     hsa_agent_t cpu_agent;
     hsa_amd_memory_pool_t host_region;
-
-    uint32_t gpu_buffer_depth;
 
 private:
     static hsa_status_t get_gpu_agent(hsa_agent_t agent, void *data);
