@@ -89,9 +89,9 @@ void computeDualpolPower::main_thread() {
         if(in_local == NULL) break;
         out_local = (unsigned char *) wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
         if(out_local == NULL) break;
-
+#ifdef DEBUGGING
         double start_time = e_time();
-
+#endif
         for (int j=0; j<nthreads; j++) {
             this_thread[j] = std::thread(&computeDualpolPower::parallelSqSumVdif, this, j, nloop);
             cpu_set_t cpuset;
@@ -104,8 +104,7 @@ void computeDualpolPower::main_thread() {
         for (int j=0; j<nthreads; j++)
             this_thread[j].join();
 
-        double stop_time = e_time();
-        DEBUG("TIME USED FOR INTEGRATION: %fms\n",(stop_time-start_time)*1000);
+        DEBUG("TIME USED FOR INTEGRATION: %fms\n",(e_time()-start_time)*1000);
 
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);

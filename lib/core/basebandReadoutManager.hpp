@@ -72,6 +72,8 @@ struct basebandDumpStatus {
 */
 class basebandReadoutManager {
 public:
+    using requestStatusMutex = std::pair<basebandDumpStatus&, std::mutex&>;
+
     /**
      * @brief Adds a new baseband dump request to the `requests` queue and
      * notifiers threads waiting on `has_request`
@@ -89,34 +91,41 @@ public:
      * found, it is returned to the caller, and `waiting` is moved to the next
      * element in the queue.
      *
-     * @return a tuple of:
-     *    (1) a pointer to the `basebandDumpStatus` object if there is a request
-     *        available or nullptr if there are no new requests in `requests`;
-     *        and
+     * @return if there is a request available, a `unique_ptr` to the pair of:
+     *    (1) a reference to the `basebandDumpStatus` object; and
      *
-     *    (2) a pointer to the mutex that should be acquired while the (mutable)
-     *        elements of the request object are being accessed (only valid if
-     *        the returned object pointer is non-null).
+     *    (2) a reference to the mutex that should be acquired while the (mutable)
+     *        elements of the request object are being accessed.
+     * otherwise, a nullptr
      */
-    std::tuple<basebandDumpStatus*, std::mutex*> get_next_request();
+    std::unique_ptr<basebandReadoutManager::requestStatusMutex> get_next_waiting_request();
 
     /**
-     * @brief Updates the manager's internal state of which request is currently
-     * being written to the disk.
+     * @brief Tries to get the next dump request whose data is ready for writing
      *
-     * The `requests` queue will be searched for a request with the specified
-     * `event_id`, and `current` updated to point to it. The `current` pointer
-     * is not visible to outside clients, and its only purpose is so the
-     * internal code that iterates over the request queue knows when to acquire
-     * the `current_mtx` mutex to read the an element.
+     * This is the element in the `requests` pointed to by `waiting`, unless
+     * it's pointing at the `tail` (past the last element). If the element is
+     * found, it is returned to the caller, and `waiting` is moved to the next
+     * element in the queue.
      *
-     * @note If the element is not found, this method will raise a runtime
-     * exception.
+     * The `requests` queue following the last processed event (i.e., the
+     * `current` position) will be searched for a request in the `INPROGRESS`
+     * state. If the element is found, it is returned to the caller, and
+     * `current` updated to point to it. If the element is not found, this
+     * method will raise a runtime exception.
      *
-     * @return a reference to the mutex that should be acquired while the (mutable)
-     * elements of the request object are being accessed.
+     * @note The `current` pointer is not visible to outside clients, and its
+     * only purpose is so the internal code that iterates over the request queue
+     * knows when to acquire the `current_mtx` mutex to read the an element.
+     *
+     * @return a pair of:
+     *    (1) a reference to the `basebandDumpStatus` object; and
+     *
+     *    (2) a reference to the mutex that should be acquired while the (mutable)
+     *        elements of the request object are being accessed.
+     *
      */
-    std::mutex& set_current(uint64_t event_id);
+    basebandReadoutManager::requestStatusMutex get_next_ready_request();
 
     /// Returns a unique pointer to the copy of the event status for `event_id`,
     /// or nullptr if not known

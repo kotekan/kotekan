@@ -84,7 +84,7 @@ class CommandLine:
 def init():
     im.set_data(waterfall)
     if(app.mode == 'badinput'):
-        med_plot.set_ydata(np.nanmean(100.0*waterfall/float(app.config['bi_frames_per_packet']),axis = 0))
+        med_plot.set_ydata(100.0*np.nanmedian(waterfall, axis = 0)/float(app.config['bi_frames_per_packet']))
         med_plot_input.set_xdata(np.nanmean(waterfall,axis = 1))
     else:
         med_plot.set_xdata(np.linspace(x_lims[0],x_lims[1],num=waterfall.shape[1]))
@@ -101,7 +101,7 @@ def animate(i):
         ax[1,0].set_xlim([x_lims[0],x_lims[1]])
         med_plot_input.set_xdata(np.nanmedian(waterfall,axis = 1))
     else:
-        med_plot.set_ydata(np.nanmean(100.0*waterfall/float(app.config['bi_frames_per_packet']),axis = 0))
+        med_plot.set_ydata(100.0*np.nanmedian(waterfall, axis = 0)/float(app.config['bi_frames_per_packet']))
         med_plot_input.set_xdata(np.nanmean(waterfall,axis = 1))
     return im
 
@@ -140,9 +140,10 @@ def data_listener():
             break
 
         waterfall = np.fromstring(data).reshape(waterfall.shape)
-        waterfall[waterfall<0] = np.nan
+        waterfall[waterfall==-1] = np.nan
         if(app.mode == 'badinput'):
-            print(waterfall, np.where(np.nanmean(100.0*waterfall/float(app.config['bi_frames_per_packet']),axis = 0) > 5)[0].size)
+            print(np.where(100.0*np.nanmedian(waterfall, axis = 0)/float(app.config['bi_frames_per_packet']) > 10)[0])
+            print(np.where(100.0*np.nanmedian(waterfall, axis = 0)/float(app.config['bi_frames_per_packet']) > 10)[0].size)
 
         sock_tcp.send(TIMEMESSAGE.encode())
 

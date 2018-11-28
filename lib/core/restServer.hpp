@@ -2,12 +2,16 @@
 #define REST_SERVER_HPP
 
 #include "Config.hpp"
-#include "mongoose.h"
 #include "json.hpp"
+#include <evhttp.h>
+#include <event2/event.h>
+#include <event2/http.h>
+#include <event2/thread.h>
 #include <thread>
 #include <functional>
 #include <map>
 #include <atomic>
+#include <shared_mutex>
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -16,6 +20,9 @@ enum class HTTP_RESPONSE {
     NOT_FOUND = 404,
     INTERNAL_ERROR = 500
 };
+
+#define PORT_REST_SERVER 12048
+
 
 /**
  * @brief Contains details of a request (POST or GET), and provides
@@ -30,7 +37,7 @@ enum class HTTP_RESPONSE {
  */
 class connectionInstance {
 public:
-    connectionInstance(mg_connection *nc, int ev, void * ev_data);
+    connectionInstance(struct evhttp_request * request);
     ~connectionInstance();
 
     /**
@@ -68,9 +75,8 @@ public:
      * Sends an HTTP response with "content-type" header set to "text/plain"
      *
      * @param[in] reply The body of the reply
-     * @param[in] status_code HTTP response status code (default = HTTP_OK = 200)
      */
-    void send_text_reply(const std::string &reply, const HTTP_RESPONSE &status = HTTP_RESPONSE::OK);
+    void send_text_reply(const std::string &reply);
 
     /**
      * @brief Returns the message body.
@@ -80,28 +86,18 @@ public:
     std::string get_body();
 
     /**
-     * @brief Get the full http request message
-     *
-     * @return The full http request message
-     */
-    std::string get_full_message();
-
-    /**
      * @brief Get the uri
      *
      * @return The uri of the http request message
      */
     std::string get_uri();
+
 private:
+    /// The request details
+    struct evhttp_request * request;
 
-    /// The connection details
-    mg_connection *nc;
-
-    /// Event ID
-    int ev;
-
-    /// Event data
-    void * ev_data;
+    /// The buffer with the reply contents
+    struct evbuffer *event_buffer;
 };
 
 /**
@@ -113,6 +109,10 @@ private:
  * the http requests.
  *
  * See the docs for examples of using this class.
+ *
+ * @TODO Provide a way to change the default bind address and port via command line.
+ *       It cannot be done via the normal config, since the server starts before getting
+ *       getting a config file.
  *
  * @author Andre Renard
  */
@@ -225,16 +225,24 @@ private:
     /**
      * @brief Internal thread function which runs the server.
      */
-    void mongoose_thread();
+    void http_server_thread();
 
     /**
-     * @brief Internal callback function for the mongoose server.
+     * @brief Internal timer call back to check for thread exit condition
      *
-     * @param nc Connection struct
-     * @param ev Event ID
-     * @param ev_data Event data struct
+     * @param fd Not used
+     * @param event Not used
+     * @param arg The bufferRecv object (just `this`, but this is a static function)
      */
-    static void handle_request(struct mg_connection *nc, int ev, void *ev_data);
+    static void timer(evutil_socket_t fd, short event, void *arg);
+
+    /**
+     * @brief Internal callback function for the evhttp server.
+     *
+     * @param evhttp_request The request object
+     * @param cb_data Expects a pointer to the REST server object
+     */
+    static void handle_request(struct evhttp_request * request, void * cb_data);
 
     /**
      * @brief Callback which returns list of endpoints to caller.
@@ -251,13 +259,28 @@ private:
      *
      * If this function falls, then don't call @c ms_send
      *
-     * @param nc connection object
-     * @param ev event ID
-     * @param ev_data event data
+     * @param request The libevent http request object
      * @param json_parse Reference to the JSON object to fill.
      * @return int 0 if the message contains valid JSON, and -1 if not.
      */
-    int handle_json(struct mg_connection *nc, int ev, void *ev_data, nlohmann::json &json_parse);
+    int handle_json(struct evhttp_request * request, nlohmann::json &json_parse);
+
+    /**
+     * @brief Returns the http message as a string, or an empty string
+     *
+     * @param request The libevent http request object
+     * @return string The http message if it exists, or an empty string
+     */
+    static string get_http_message(struct evhttp_request * request);
+
+    /**
+     * @brief Generates a string message to match one of the response codes
+     *        in the @c HTTP_RESPONSE enum
+     *
+     * @param status The responce code enum
+     * @return string The string message matching that code
+     */
+    static string get_http_responce_code_text(const HTTP_RESPONSE &status);
 
     /**
      * @brief Returns the aliases map
@@ -275,20 +298,29 @@ private:
     /// Alias map
     std::map<std::string, std::string> aliases;
 
-    /// mongoose management object.
-    struct mg_mgr mgr;
+    /// Mutex to lock changes to the maps while a request is in progress
+    std::shared_timed_mutex callback_map_lock;
 
-    /// mongoose main listen connection.
-    struct mg_connection *nc;
+    /// The libevent base
+	struct event_base *event_base = nullptr;
+
+    /// The libevent HTTP server object
+    struct evhttp *ev_server = nullptr;
 
     /// The port to use, for now this is constant 12048
-    const char *port = "12048";
+    u_short port = PORT_REST_SERVER;
+
+    /// Bind address
+    std::string bind_address = "0.0.0.0";
 
     /// Main server thread handle
     std::thread main_thread;
 
     /// Flag set to true when exit condition is reached
     std::atomic<bool> stop_thread;
+
+    /// Allow connectionInstance to use internal helper functions
+    friend class connectionInstance;
 };
 
 #endif /* REST_SERVER_HPP */

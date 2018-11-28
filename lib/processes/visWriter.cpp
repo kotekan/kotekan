@@ -17,7 +17,9 @@
 #include <fstream>
 #include <time.h>
 #include <regex>
+#include <signal.h>
 #include "fmt.hpp"
+#include "version.h"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 REGISTER_KOTEKAN_PROCESS(visCalWriter);
@@ -40,11 +42,6 @@ visWriter::visWriter(Config& config,
     file_type = config.get_default<std::string>(
                 unique_name, "file_type", "hdf5fast");
 
-    // If specified, get the weights type to write to attributes
-    // TODO: add this to the datasetManager framework
-    weights_type = config.get_default<std::string>(
-                unique_name, "weights_type", "unknown");
-
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
 
@@ -52,12 +49,20 @@ visWriter::visWriter(Config& config,
     bool write_ev = config.get_default<bool>(unique_name, "write_ev", false);
     num_ev = write_ev ? config.get<size_t>(unique_name, "num_ev") : 0;
 
+    // TODO: get this from the datasetManager and put data type somewhere else
+    instrument_name = config.get_default<std::string>(
+                unique_name, "instrument_name", "chime");
+
     use_dataset_manager = config.get_default<bool>(
                 unique_name, "use_dataset_manager", false);
 
     // If we are not using the dataset manager directly, create fake entries
     // from the config information supplied to the class
     if (!use_dataset_manager) {
+
+        // If specified, get the weights type to write to attributes
+        weights_type = config.get_default<std::string>(
+                    unique_name, "weights_type", "unknown");
 
         // Get the input labels and the products we are writing from the config
         auto ispec = std::get<1>(parse_reorder_default(config, unique_name));
@@ -77,20 +82,22 @@ visWriter::visWriter(Config& config,
         auto& dm = datasetManager::instance();
 
         // Construct a nested description of the initial state
-        state_uptr freq_state = std::make_unique<freqState>(fspec);
+        state_uptr mstate = std::make_unique<metadataState>(
+                    weights_type, instrument_name, get_git_commit_hash());
+        state_uptr freq_state = std::make_unique<freqState>(fspec,
+                                                            std::move(mstate));
         state_uptr input_state = std::make_unique<inputState>(
             ispec, std::move(freq_state));
         state_uptr prod_state = std::make_unique<prodState>(
             pspec, std::move(input_state));
+        // empty stack state
+        state_uptr stack_state =
+                std::make_unique<stackState>(std::move(prod_state));
 
         // Register the initial state with the manager
-        auto s = dm.add_state(std::move(prod_state));
+        auto s = dm.add_state(std::move(stack_state), true);
         writer_dstate = s.first;
     }
-
-    // TODO: long term this should come from some dynamic source (dM?)
-    instrument_name = config.get_default<std::string>(
-                unique_name, "instrument_name", "chime");
 
     // Set the instrument name from the hostname if in node mode
     node_mode = config.get_default<bool>(unique_name, "node_mode", false);
@@ -129,24 +136,8 @@ void visWriter::main_thread() {
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        // Check if the frequency we are receiving is on the list of frequencies
-        // we are processing
-        if (freq_id_map.count(frame.freq_id) == 0) {
-            WARN("Frequency id=%i not enabled for visWriter, discarding frame",
-                 frame.freq_id);
-
-        // Check that the number of visibilities matches what we expect
-        } else if (frame.num_prod != num_vis) {
-            string msg = fmt::format(
-                "Number of products in frame doesn't match file ({} != {}).",
-                frame.num_prod, num_vis
-            );
-            ERROR(msg.c_str());
-            raise(SIGINT);
-            return;
-
         // Check the number of eigen vectors is as expected
-        } else if (num_ev > 0  and frame.num_ev != num_ev) {
+        if (num_ev > 0  and frame.num_ev != num_ev) {
 
             string msg = fmt::format(
                 "Number of eigenvectors in frame doesn't match file ({} != {}).",
@@ -157,10 +148,28 @@ void visWriter::main_thread() {
             return;
 
         // Check the dataset ID hasn't changed
-        } else if (use_dataset_manager && frame.dataset_id != dataset) {
+        } else if (use_dataset_manager && frame.dataset_id != ds_id) {
             string msg = fmt::format(
                 "Unexpected dataset ID={} received (expected id={}).",
-                frame.dataset_id, dataset
+                frame.dataset_id, ds_id
+            );
+            ERROR(msg.c_str());
+            raise(SIGINT);
+            return;
+        }
+
+        // Check if the frequency we are receiving is on the list of frequencies
+        // we are processing
+        if (_freq_id_map.count(frame.freq_id) == 0) {
+            WARN("Frequency id=%i not enabled for visWriter, discarding frame",
+                 frame.freq_id);
+
+        // Check that the number of visibilities matches what we expect
+        } else if (frame.num_prod != _num_vis) {
+            string msg = fmt::format(
+                "Number of products in frame doesn't match state or file " \
+                        "({} != {}).",
+                frame.num_prod, _num_vis
             );
             ERROR(msg.c_str());
             raise(SIGINT);
@@ -170,7 +179,7 @@ void visWriter::main_thread() {
 
             DEBUG("Writing frequency id=%i", frame.freq_id);
 
-            uint32_t freq_ind = freq_id_map[frame.freq_id];
+            uint32_t freq_ind = _freq_id_map[frame.freq_id];
 
             // Add all the new information to the file.
             double start = current_time();
@@ -183,11 +192,18 @@ void visWriter::main_thread() {
 
             // Increase metric count if we dropped a frame at write time
             if(error) {
-                dropped_frame_count++;
+                auto key = std::make_pair(frame.dataset_id, frame.freq_id);
+                // Relies on the fact that insertion zero intialises
+                dropped_frame_count[key] += 1;
+                std::string labels = fmt::format("freq_id=\"{}\"," \
+                                                 "dataset_id=\"{}\"",
+                                                 frame.freq_id,
+                                                 frame.dataset_id);
                 prometheusMetrics::instance().add_process_metric(
-                    "kotekan_viswriter_dropped_frame_total",
-                    unique_name, dropped_frame_count
-                );
+                            "kotekan_viswriter_dropped_frame_total",
+                            unique_name,
+                            dropped_frame_count.at(key),
+                            labels);
             }
 
             // Update average write time in prometheus
@@ -208,7 +224,53 @@ void visWriter::main_thread() {
     }
 }
 
+void visWriter::change_dataset_state() {
 
+    auto& dm = datasetManager::instance();
+
+    // TODO: get all 3 states synchronously
+
+    // Get the frequency spec to determine the freq_ids expected at this Writer.
+    auto fstate = dm.dataset_state<freqState>(ds_id);
+    if (fstate == nullptr)
+        throw std::runtime_error("Could not find freqState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs())
+        _freq_id_map[f.first] = ind++;
+
+    // Get the product spec and (if available) the stackState to determine the
+    // number of vis entries we are expecting
+    auto pstate = dm.dataset_state<prodState>(ds_id);
+    auto sstate = dm.dataset_state<stackState>(ds_id);
+    auto mstate = dm.dataset_state<metadataState>(ds_id);
+    if (pstate == nullptr || sstate == nullptr || mstate == nullptr)
+        throw std::runtime_error("Could not find all dataset states for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".\n" \
+                                 "One of them is a nullptr (0): prod "
+                                 + std::to_string(pstate != nullptr)
+                                 + ", stack "
+                                 + std::to_string(sstate != nullptr)
+                                 + ", metadata "
+                                 + std::to_string(mstate != nullptr));
+
+    weights_type = mstate->get_weight_type();
+
+    // compare git commit hashes
+    // TODO: enforce and crash here if build type is Release?
+    if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
+        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
+             "the local git version tag is %s", ds_id,
+             mstate->get_git_version_tag().c_str(),
+             get_git_commit_hash());
+    }
+
+    _num_vis = sstate->is_stacked() ?
+            sstate->get_num_stack() : pstate->get_prods().size();
+}
 
 bool visWriter::init_acq() {
 
@@ -223,23 +285,23 @@ bool visWriter::init_acq() {
     // Get the dataset ID that the downstream files can use to determine what
     // they will be writing.
     if (use_dataset_manager) {
-        dataset = frame.dataset_id;
-    } else {
-        dataset = dm.add_dataset(writer_dstate, -1);
+        ds_id = frame.dataset_id;
+    } else
+        ds_id = dm.add_dataset(dataset(writer_dstate, 0, true), true);
+
+    // get dataset states
+    try {
+        change_dataset_state();
+    } catch (std::runtime_error& e) {
+        ERROR("Failure in datasetManager: %s", e.what());
+        ERROR("Cancelling write to file.");
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_dataset_manager_dropped_frame_count",
+            unique_name, 1
+        );
+
+        return false;
     }
-
-    // Get the frequency spec to determine the freq_ids expected at this Writer.
-    auto fstate = dm.closest_ancestor_of_type<freqState>(
-        dataset).second;
-    uint ind = 0;
-    for (auto& f : fstate->get_freqs())
-        freq_id_map[f.first] = ind++;
-
-    // Get the product spec and (if available) the stackState to determine the
-    // number of vis entries we are expecting
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
-    num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;
@@ -259,7 +321,7 @@ bool visWriter::init_acq() {
     metadata["archive_version"] = "NT_3.1.0";
     metadata["instrument_name"] = instrument_name;
     metadata["notes"] = "";   // TODO: connect up notes
-    metadata["git_version_tag"] = "not set";
+    metadata["git_version_tag"] = get_git_commit_hash();
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
 
@@ -283,7 +345,7 @@ bool visWriter::init_acq() {
 void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::make_unique<visFileBundle>(
         file_type, root_path, instrument_name, metadata, chunk_id,
-        rollover, window, dataset, num_ev, file_length
+        rollover, window, ds_id, num_ev, file_length
     );
 }
 
@@ -359,7 +421,7 @@ void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::unique_ptr<visCalFileBundle>(
         new visCalFileBundle(
             file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, dataset, num_ev, file_length
+            window, ds_id, num_ev, file_length
         )
     );
 

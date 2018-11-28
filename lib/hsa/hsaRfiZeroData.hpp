@@ -46,10 +46,19 @@ public:
                             bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiZeroData();
+
+    /// Function to hadle updatable config rest server calls
+    bool update_rfi_zero_flag(nlohmann::json &json);
+
     /// Executes rfi_chime_zero.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
                          hsa_signal_t precede_signal) override;
 private:
+
+    ///The current netowrk buffer frame id
+    int32_t network_buffer_id;
+    /// The network buffer object (i.e. the host input data buffer)
+    Buffer * network_buf;
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
     uint32_t input_frame_len;
     /// Length of the RFI mask
@@ -62,6 +71,10 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
+    /// Boolean to toggle RFI zeroing
+    bool _rfi_zeroing;
+    /// Rest server callback mutex
+    std::mutex rest_callback_mutex;
 };
 
 #endif

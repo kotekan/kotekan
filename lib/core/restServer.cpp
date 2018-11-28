@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <string>
+#include <signal.h>
 #ifdef MAC_OSX
 	#include "osxBindCPU.hpp"
 #endif
@@ -21,7 +22,7 @@ restServer &restServer::instance() {
 restServer::restServer() : main_thread() {
 
     stop_thread = false;
-    main_thread = std::thread(&restServer::mongoose_thread, this);
+    main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
     pthread_setname_np(main_thread.native_handle(), "rest_server");
@@ -38,81 +39,95 @@ restServer::~restServer() {
     main_thread.join();
 }
 
-void restServer::handle_request(mg_connection* nc, int ev, void* ev_data) {
-    if (ev != MG_EV_HTTP_REQUEST)
-        return;
+void restServer::handle_request(struct evhttp_request * request, void * cb_data) {
 
-    restServer &server = restServer::instance();
+    restServer *server = (restServer *)(cb_data);
 
-    struct http_message *msg = (struct http_message *)ev_data;
-    string url = string(msg->uri.p, msg->uri.len);
-    string method = string(msg->method.p, msg->method.len);
+    string url = string(evhttp_request_get_uri(request));
 
-    map<string, string> &aliases = server.get_aliases();
-    if (aliases.find(url) != aliases.end()) {
-        url = aliases[url];
-    }
+    DEBUG2("restServer: Got request with url %s", url.c_str());
 
-    if (method == "GET") {
-        if (!server.get_callbacks.count(url)) {
-            DEBUG("GET Endpoint %s called, but not found", url.c_str());
-            mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), 0, NULL);
-            return;
+    {
+	// TODO This function should be locked against changes to the callback
+	// maps form other threads.  However there are a number of callbacks (start, stop, etc)
+	// which add or remove callbacks from the maps. So a more fine-grained
+	// locking system is needed here.  
+        //std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+        map<string, string> &aliases = server->get_aliases();
+        if (aliases.find(url) != aliases.end()) {
+            url = aliases[url];
         }
-        connectionInstance conn(nc, ev, ev_data);
-        server.get_callbacks[url](conn);
-        return;
-    }
 
-    // TODO should we add `&& Content == Application/JSON` ?
-    if (method == "POST") {
-        if (!server.json_callbacks.count(url)) {
-            DEBUG("Endpoint %s called, but not found", url.c_str());
-            mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), 0, NULL);
+        if (request->type == EVHTTP_REQ_GET) {
+            if (!server->get_callbacks.count(url)) {
+                DEBUG("restServer: GET Endpoint %s called, but not found", url.c_str());
+                evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+                return;
+            }
+            connectionInstance conn(request);
+            server->get_callbacks[url](conn);
             return;
         }
 
-        json json_request;
-        if (server.handle_json(nc, ev, ev_data, json_request) != 0) {
+        if (request->type == EVHTTP_REQ_POST) {
+            if (!server->json_callbacks.count(url)) {
+                DEBUG("restServer: Endpoint %s called, but not found", url.c_str());
+                evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+                return;
+            }
+
+            // We currently assume that POST requests come with a JSON message
+            json json_request;
+            if (server->handle_json(request, json_request) != 0) {
+                return;
+            }
+
+            connectionInstance conn(request);
+            server->json_callbacks[url](conn, json_request);
             return;
         }
-
-        connectionInstance conn(nc, ev, ev_data);
-        server.json_callbacks[url](conn, json_request);
-        return;
     }
 
-    WARN("Call back with method != POST or GET called, method = %s, endpoint = %s",
-         method.c_str(), url.c_str());
-    mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), 0, NULL);
+    DEBUG("restServer: Call back with method != POST|GET called!");
+    evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), "BAD_REQUEST");
 }
 
 void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
-    if (get_callbacks.count(endpoint)) {
-        WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
+
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
+        if (get_callbacks.count(endpoint)) {
+            WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+        }
+        get_callbacks[endpoint] = callback;
     }
-    INFO("Adding REST endpoint: %s", endpoint.c_str());
-    get_callbacks[endpoint] = callback;
+    INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
 }
 
 void restServer::register_post_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
-    if (json_callbacks.count(endpoint)) {
-        WARN("Call back %s already exists, overriding old call back!!", endpoint.c_str());
+
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
+        if (json_callbacks.count(endpoint)) {
+            WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+        }
+        json_callbacks[endpoint] = callback;
     }
-    INFO("Adding REST endpoint: %s", endpoint.c_str());
-    json_callbacks[endpoint] = callback;
+    INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
 }
 
 void restServer::remove_get_callback(string endpoint) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
+
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     auto it = get_callbacks.find(endpoint);
     if (it != get_callbacks.end()) {
         get_callbacks.erase(it);
@@ -123,6 +138,8 @@ void restServer::remove_json_callback(string endpoint) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
+
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     auto it = json_callbacks.find(endpoint);
     if (it != json_callbacks.end()) {
         json_callbacks.erase(it);
@@ -137,12 +154,12 @@ void restServer::add_alias(string alias, string target) {
         target = "/" + target;
     }
 
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     if (json_callbacks.find(alias) != json_callbacks.end() ||
         get_callbacks.find(alias) != get_callbacks.end()) {
-        WARN("The endpoint %s already exists, cannot add an alias with that name");
+        WARN("restServer: The endpoint %s already exists, cannot add an alias with that name");
         return;
     }
-
     aliases[alias] = target;
 }
 
@@ -151,6 +168,7 @@ void restServer::remove_alias(string alias) {
         alias = "/" + alias;
     }
 
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     auto it = aliases.find(alias);
     if (it != aliases.end()) {
         aliases.erase(it);
@@ -161,13 +179,14 @@ void restServer::add_aliases_from_config(Config &config) {
     if (!config.exists("/rest_server", "aliases"))
         return;
     json config_aliases = config.get_value("/rest_server", "aliases");
-    INFO("%s", config_aliases.dump().c_str());
+    INFO("restServer: config aliases: %s", config_aliases.dump().c_str());
     for (json::iterator it = config_aliases.begin(); it != config_aliases.end(); ++it) {
         add_alias(it.key(), it.value());
     }
 }
 
 void restServer::remove_all_aliases() {
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     aliases.clear();
 }
 
@@ -175,15 +194,69 @@ map<string, string> &restServer::get_aliases() {
     return aliases;
 }
 
-int restServer::handle_json(mg_connection* nc, int ev, void* ev_data, json &json_parse) {
+string restServer::get_http_message(struct evhttp_request * request) {
 
-    struct http_message *msg = (struct http_message *)ev_data;
+    string str_data;
+
+    // get input buffer
+    evbuffer* input_buffer = evhttp_request_get_input_buffer(request);
+    size_t datalen = evbuffer_get_length(input_buffer);
+    if (datalen == 0) {
+        return "";
+    }
+
+    // Reserve space to avoid causing mallocs when appending data.
+    str_data.reserve(datalen);
+
+     // peek into the input buffer
+    // (treating it as char's and putting it into a string)
+    struct evbuffer_iovec* vec_out;
+    size_t written = 0;
+    // determine how many chunks we need.
+    int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
+    if (n_vec < 0) {
+        WARN("restClient: Failure in evbuffer_peek(), assuming no message and returning an empty string");
+        return "";
+    }
+
+    // Allocate space for the chunks.
+    vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
+    n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
+    for (int i = 0; i < n_vec; i++) {
+        size_t len = vec_out[i].iov_len;
+        if (written + len > datalen)
+            len = datalen - written;
+        str_data.append((char*)vec_out[i].iov_base, len);
+        written += len;
+    }
+    free(vec_out);
+
+    return str_data;
+}
+
+int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
+
+    struct evbuffer * ev_buf = evhttp_request_get_input_buffer(request);
+    if(ev_buf == nullptr) {
+        ERROR("restServer: Cannot get the libevent buffer for the request");
+        return -1;
+    }
+
+    string message = get_http_message(request);
+
+    if (message.empty()) {
+        ERROR("restServer: Request is empty, returning error");
+        string error_message = "Error Message: Message was empty, expected JSON string";
+        evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), message.c_str());
+        return -1;
+    }
 
     try {
-        json_parse = json::parse(string(msg->body.p, msg->body.len));
+        json_parse = json::parse(message);
     } catch (std::exception ex) {
-        string message =  string("Error Message: JSON failed to parse, error: ") + string(ex.what());
-        mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), 0, message.c_str());
+        string error_message = string("Error Message: JSON failed to parse, error: ") + string(ex.what());
+        ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP message was: %s", ex.what(), message.c_str());
+        evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), error_message.c_str());
         return -1;
     }
     return 0;
@@ -214,22 +287,67 @@ void restServer::endpoint_list_callback(connectionInstance &conn) {
     conn.send_json_reply(reply);
 }
 
-void restServer::mongoose_thread() {
-    // init http server
-    mg_mgr_init(&mgr, NULL);
-    nc = mg_bind(&mgr, port, handle_request);
-    if (!nc) {
-        INFO("restServer: cannot bind to %s", port);
+void restServer::timer(evutil_socket_t fd, short event, void *arg) {
+    restServer * rest_server = (restServer *)arg;
+    if (rest_server->stop_thread) {
+        event_base_loopbreak(rest_server->event_base);
+    }
+}
+
+void restServer::http_server_thread() {
+
+    // Allow for using extra threads (not currently needed)
+    if (evthread_use_pthreads()) {
+        ERROR("restServer: Cannot use pthreads with libevent!");
         return;
     }
-    mg_set_protocol_http_websocket(nc);
 
-    INFO("restServer: started server on port %s", port);
+    // Create the base event for handling requests
+	event_base = event_base_new();
+    if (event_base == nullptr) {
+        ERROR("restServer: Failed to create libevent base");
+        // Use exit() not raise() since this happens early in startup before
+        // the signal handlers are all in place.
+        exit(1);
+        return;
+    }
+
+    // Create the server
+	ev_server = evhttp_new (event_base);
+    if (ev_server == nullptr) {
+        ERROR("restServer: Failed to create libevent base");
+        exit(1);
+        return;
+    }
+
+    // Currently allow only GET and POST requests
+	evhttp_set_allowed_methods (ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
+
+    // Just setup one handler and implement the URL parsing internally
+    evhttp_set_gencb(ev_server, handle_request, (void *)this);
+
+    // Bind to the IP and port
+    if (evhttp_bind_socket(ev_server, bind_address.c_str(), port) != 0) {
+        ERROR("restServer: Failed to bind to %s:%d", bind_address.c_str(), port);
+        exit(1);
+        return;
+    }
+
+    INFO("restServer: started server on address:port %s:%d", bind_address.c_str(), port);
+
+    // Create a timer to check for the exit condition
+    struct event *timer_event;
+    timer_event = event_new(event_base, -1, EV_PERSIST, &restServer::timer, this);
+    struct timeval interval;
+    interval.tv_sec = 0;
+    interval.tv_usec = 100000;
+    event_add(timer_event, &interval);
 
     // run event loop
-    while (!stop_thread) mg_mgr_poll(&mgr, 1000);
+    event_base_dispatch(event_base);
 
-    mg_mgr_free(&mgr);
+    evhttp_free (ev_server);
+    event_base_free (event_base);
 }
 
 void restServer::set_server_affinity(Config &config) {
@@ -243,57 +361,97 @@ void restServer::set_server_affinity(Config &config) {
     pthread_setaffinity_np(main_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 }
 
+string restServer::get_http_responce_code_text(const HTTP_RESPONSE &status) {
+    switch (status) {
+        case HTTP_RESPONSE::OK:
+            return "OK";
+        case HTTP_RESPONSE::NOT_FOUND:
+            return "NOT_FOUND";
+        case HTTP_RESPONSE::INTERNAL_ERROR:
+            return "INTERNAL_ERROR";
+        case HTTP_RESPONSE::BAD_REQUEST:
+            return "BAD_REQUEST";
+        case HTTP_RESPONSE::REQUEST_FAILED:
+            return "REQUEST_FAILED";
+        default:
+            return "";
+    }
+}
+
 // *** Connection Instance functions ***
 
-connectionInstance::connectionInstance(mg_connection* nc_, int ev_, void* ev_data_) :
-    nc(nc_), ev(ev_), ev_data(ev_data_) {
-    (void)ev; // No warning
+connectionInstance::connectionInstance(struct evhttp_request * request) :
+    request(request) {
+    event_buffer = evbuffer_new();
+    if (event_buffer == nullptr) {
+        throw std::runtime_error("Failed to create evbuffer");
+    }
+
 }
 
 connectionInstance::~connectionInstance() {
-
+    evbuffer_free (event_buffer);
 }
 
 string connectionInstance::get_uri() {
-    struct http_message *msg = (struct http_message *)ev_data;
-    return string(msg->uri.p, msg->uri.len);
+    return string(evhttp_request_get_uri(request));
 }
 
 string connectionInstance::get_body() {
-    struct http_message *msg = (struct http_message *)ev_data;
-    return string(msg->body.p, msg->body.len);
-}
-
-string connectionInstance::get_full_message() {
-    struct http_message *msg = (struct http_message *)ev_data;
-    return string(msg->message.p, msg->message.len);
+    return restServer::get_http_message(request);
 }
 
 void connectionInstance::send_empty_reply(const HTTP_RESPONSE &status) {
-    mg_send_head(nc, static_cast<int>(status), 0, NULL);
+    evhttp_send_reply(request, static_cast<int>(status),
+                      restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
-void connectionInstance::send_text_reply(const string &reply, const HTTP_RESPONSE &status) {
-    mg_send_head(nc, static_cast<int>(status), reply.length(), "Content-Type: text/plain");
-    mg_send(nc, (void *) reply.c_str(), reply.length());
+void connectionInstance::send_text_reply(const string &reply_message) {
+
+    if (evhttp_add_header (evhttp_request_get_output_headers (request),
+			"Content-Type", "text/plain") != 0) {
+        throw std::runtime_error("Failed to add header to reply");
+    }
+
+    if (evbuffer_add(event_buffer, (void *)reply_message.c_str(), reply_message.size()) != 0) {
+        throw std::runtime_error("Failed to add reply message");
+    }
+
+    evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
 }
 
 void connectionInstance::send_binary_reply(uint8_t * data, int len) {
     assert(data != nullptr);
     assert(len > 0);
 
-    mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK),
-                 len, "Content-Type: application/octet-stream");
-    mg_send(nc, (void *)data, len);
+    if (evhttp_add_header (evhttp_request_get_output_headers (request),
+			"Content-Type", "Application/octet-stream") != 0) {
+        throw std::runtime_error("Failed to add header to reply");
+    }
+
+    if (evbuffer_add(event_buffer, (void *)data, len) != 0) {
+        throw std::runtime_error("Failed to add data to reply message");
+    }
+
+    evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
 }
 
 void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &status) {
     string error_message = "Error: " + message;
-    mg_send_head(nc, static_cast<int>(status), 0, error_message.c_str());
+    evhttp_send_error(request, static_cast<int>(status), error_message.c_str());
 }
 
 void connectionInstance::send_json_reply(const json &json_reply) {
     string json_string = json_reply.dump(0);
-    mg_send_head(nc, static_cast<int>(HTTP_RESPONSE::OK), json_string.size(), NULL);
-    mg_send(nc, (void*) json_string.c_str(), json_string.size());
+
+    if (evhttp_add_header (evhttp_request_get_output_headers (request),
+			"Content-Type", "Application/JSON") != 0) {
+        throw std::runtime_error("Failed to add header to reply");
+    }
+
+    if (evbuffer_add(event_buffer, (void *)json_string.c_str(), json_string.size()) != 0) {
+        throw std::runtime_error("Failed to add JSON string to reply message");
+    }
+
+    evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
 }

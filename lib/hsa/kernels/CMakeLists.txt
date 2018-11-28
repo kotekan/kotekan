@@ -105,17 +105,17 @@ else()
                   "-include" "opencl-c.h"
                   "-Dcl_clang_storage_class_specifiers"
                   "-Dcl_khr_fp64"
-                  "-target" "amdgcn--amdhsa"
+                  "-target" "amdgcn-amd-amdhsa"
                   "-mcpu=gfx803"
                   "-c" "-emit-llvm"
                   "-o" ${bcfile}
                   ${clfile}
           COMMAND "/opt/rocm/opencl/bin/x86_64/llvm-link"
                   ${bcfile}
-                  "/opt/rocm/lib/opencl.amdgcn.bc"
-                  "/opt/rocm/lib/ockl.amdgcn.bc"
-                  "/opt/rocm/lib/irif.amdgcn.bc"
-                  "/opt/rocm/lib/ocml.amdgcn.bc"
+                  "/opt/rocm/opencl/lib/x86_64/bitcode/opencl.amdgcn.bc"
+                  "/opt/rocm/opencl/lib/x86_64/bitcode/ockl.amdgcn.bc"
+                  "/opt/rocm/opencl/lib/x86_64/bitcode/irif.amdgcn.bc"
+                  "/opt/rocm/opencl/lib/x86_64/bitcode/ocml.amdgcn.bc"
                   "-o" ${lnkdbcfile}
           COMMAND "/opt/rocm/opencl/bin/x86_64/opt"
                   "-O2"
@@ -124,7 +124,7 @@ else()
                   "-o" ${finalbcfile}
                   ${lnkdbcfile}
           COMMAND "/opt/rocm/opencl/bin/x86_64/llc"
-                  "-mtriple" "amdgcn--amdhsa"
+                  "-mtriple" "amdgcn-amd-amdhsa"
                   "-mcpu=gfx803"
                   "-filetype=obj"
                   "-o" ${gcnfile}
