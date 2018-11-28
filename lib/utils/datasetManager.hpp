@@ -359,7 +359,7 @@ private:
     /// request state (blocking), or wait for ongoing request
     void request_state(state_id_t state_id);
 
-    /// To be left in a detached thread: Infinitly retries request parse.
+    /// To be left in a detached thread: Infinitely retries request parse.
     /// Stopped by the destructor if still unsuccessfully retrying.
     void request_thread(const json&& request, const std::string&& endpoint,
                         const std::function<bool(std::string&)>&& parse_reply);
