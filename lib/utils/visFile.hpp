@@ -196,7 +196,6 @@ public:
                   int freq_chunk,
                   size_t rollover, size_t window_size,
                   InitArgs... args);
-    virtual ~visFileBundle() {};
 
     /**
      * Write a new time sample into this set of files
@@ -264,7 +263,6 @@ public:
     template<typename... Args>
     visCalFileBundle(Args... args) :
         visFileBundle(args...) {};
-    virtual ~visCalFileBundle() {};
 
     /**
      * Close all files and clear the map.
