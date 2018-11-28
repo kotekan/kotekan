@@ -126,7 +126,6 @@ gpu_n2_buffers:
   metadata_pool: main_pool
   gpu_n2_output_buffer_0:
     kotekan_buffer: standard
-    drop_old_when_full: True
   gpu_n2_output_buffer_1:
     kotekan_buffer: standard
   gpu_n2_output_buffer_2:

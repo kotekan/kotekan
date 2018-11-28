@@ -50,8 +50,7 @@ void private_reset_consumers(struct Buffer * buf, const int ID);
 
 
 struct Buffer* create_buffer(int num_frames, int len,
-                  struct metadataPool * pool, const char * buffer_name,
-                  char drop_old_when_full)
+                  struct metadataPool * pool, const char * buffer_name)
 {
 
     assert(num_frames > 0);
@@ -73,7 +72,6 @@ struct Buffer* create_buffer(int num_frames, int len,
     buf->num_frames = num_frames;
     buf->metadata_pool = pool;
     buf->frame_size = len;
-    buf->drop_old_when_full = drop_old_when_full;
 
     // We align the buffer length to a multiple of the system page size.
     // This may result in the memory allocated being larger than the size of the
@@ -319,10 +317,6 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
     while ((buf->is_full[ID] == 1 ||
             buf->producers_done[ID][producer_id] == 1)
             && buf->shutdown_signal == 0) {
-        if (buf->drop_old_when_full) {
-            WARN("Buffer %s is full, dropping frame %d.", buf->buffer_name, ID);
-            break;
-        }
         DEBUG("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
               producer_name, ID, buf->buffer_name);
         print_stat = 1;

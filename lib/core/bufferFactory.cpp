@@ -58,14 +58,11 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
     }
     struct metadataPool * pool = metadataPools[metadataPool_name];
 
-    bool drop_old_when_full = config.get_default<bool>(
-                location, "drop_old_when_full", false);
     if (type_name == "standard") {
         uint32_t frame_size = config.get<uint32_t>(location, "frame_size");
         INFO("Creating standard buffer named %s, with %d frames, frame_size of %d, and metadata pool %s",
                 name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
-        return create_buffer(num_frames, frame_size, pool, name.c_str(),
-                             drop_old_when_full);
+        return create_buffer(num_frames, frame_size, pool, name.c_str());
     }
 
     if(type_name == "vis") {
@@ -84,8 +81,7 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
 
         INFO("Creating visBuffer named %s with %d frames, frame size of %d and metadata pool %s",
              name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
-        return create_buffer(num_frames, frame_size, pool, name.c_str(),
-                             drop_old_when_full);
+        return create_buffer(num_frames, frame_size, pool, name.c_str());
     }
 
     // No metadata found

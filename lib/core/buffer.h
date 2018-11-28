@@ -191,10 +191,6 @@ struct Buffer {
 
     /// The name of the buffer for use in debug messages.
     char * buffer_name;
-
-    /// If true, old frames are dropped by the buffer if it is full and a new
-    /// frame is inserted.
-    char drop_old_when_full;
 };
 
 /**
@@ -204,19 +200,14 @@ struct Buffer {
  * as a part of the pipeline generation from the config file, not intended
  * to be called directly.
  *
- * @param[in] num_frames            The number of frames to create in the buffer
- *                                  ring.
- * @param[in] frame_size            The length of each frame in bytes.
- * @param[in] pool                  The metadataPool, which may be shared
- *                                  between more than one buffer.
- * @param[in] buffer_name           The unique name of this buffer.
- * @param[in] drop_old_when_full    Drop old frames, when it is full and a new
- *                                  frame is inserted.
+ * @param[in] num_frames The number of frames to create in the buffer ring.
+ * @param[in] frame_size The length of each frame in bytes.
+ * @param[in] pool The metadataPool, which may be shared between more than one buffer.
+ * @param[in] buffer_name The unique name of this buffer.
  * @returns A buffer object.
  */
 struct Buffer * create_buffer(int num_frames, int frame_size,
-                  struct metadataPool * pool, const char * buffer_name,
-                  char drop_old_when_full);
+                  struct metadataPool * pool, const char * buffer_name);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
