@@ -16,6 +16,9 @@ subset_params = {
     'prod_subset_type': 'baseline',
     'max_ew_baseline': 1,
     'max_ns_baseline': 63,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 vis_params = {}

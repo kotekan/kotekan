@@ -74,9 +74,46 @@ std::vector<stack_ctype> invert_stack(
     return res;
 }
 
+datasetManager& datasetManager::private_instance() {
+    static datasetManager dm;
+    return dm;
+}
+
 
 datasetManager& datasetManager::instance() {
-    static datasetManager dm;
+    datasetManager& dm = private_instance();
+
+    if (!dm._config_applied) {
+        ERROR("A part of kotekan that is configured to load uses the" \
+              " datasetManager, but no block named '%s' was found in the " \
+              "config.\nExiting...", UNIQUE_NAME);
+        exit(-1);
+    }
+
+    return dm;
+}
+
+datasetManager& datasetManager::instance(Config& config) {
+    datasetManager& dm = private_instance();
+
+    dm._use_broker = config.get<bool>(
+                UNIQUE_NAME, "use_dataset_broker");
+    if (dm._use_broker) {
+        dm._ds_broker_port = config.get_default<uint32_t>(
+                    UNIQUE_NAME, "ds_broker_port", 12050);
+        dm._ds_broker_host = config.get_default<std::string>(
+                    UNIQUE_NAME, "ds_broker_host", "127.0.0.1");
+        dm._retry_wait_time_ms = config.get_default<uint32_t>(
+                    UNIQUE_NAME, "retry_wait_time_ms", 1000);
+        dm._retries_rest_client = config.get_default<uint32_t>(
+                    UNIQUE_NAME, "retries_rest_client", 0);
+        dm._timeout_rest_client_s = config.get_default<int32_t>(
+                    UNIQUE_NAME, "timeout_rest_client", -1);
+
+        DEBUG("datasetManager: expecting broker at %s:%d.",
+              dm._ds_broker_host.c_str(), dm._ds_broker_port);
+    }
+    dm._config_applied = true;
 
     return dm;
 }
@@ -87,26 +124,6 @@ datasetManager::~datasetManager() {
     // wait for the detached threads
     std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
     _cv_stop_request_threads.wait(lk, [this]{ return _n_request_threads == 0; });
-}
-
-void datasetManager::apply_config(Config& config) {
-    _use_broker = config.get_default<bool>(
-                UNIQUE_NAME, "use_dataset_broker", false);
-    if (_use_broker) {
-        _ds_broker_port = config.get_default<uint32_t>(
-                    UNIQUE_NAME, "ds_broker_port", 12050);
-        _ds_broker_host = config.get_default<std::string>(
-                    UNIQUE_NAME, "ds_broker_host", "127.0.0.1");
-        _retry_wait_time_ms = config.get_default<uint32_t>(
-                    UNIQUE_NAME, "retry_wait_time_ms", 1000);
-        _retries_rest_client = config.get_default<uint32_t>(
-                    UNIQUE_NAME, "retries_rest_client", 0);
-        _timeout_rest_client_s = config.get_default<int32_t>(
-                    UNIQUE_NAME, "timeout_rest_client", -1);
-
-        DEBUG("datasetManager: expecting broker at %s:%d.",
-              _ds_broker_host.c_str(), _ds_broker_port);
-    }
 }
 
 dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state,

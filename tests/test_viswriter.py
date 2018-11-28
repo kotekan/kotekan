@@ -11,6 +11,9 @@ writer_params = {
     'cadence': 5.0,
     'total_frames': 10,
     'freq': [3, 777, 554],
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 

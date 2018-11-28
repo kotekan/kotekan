@@ -11,7 +11,10 @@ accumulate_params = {
     'int_frames': 64,
     'total_frames': 257,  # One extra sample to ensure we actually get 256
     'block_size': 2,
-    'freq': 777
+    'freq': 777,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 gaussian_params = accumulate_params.copy()

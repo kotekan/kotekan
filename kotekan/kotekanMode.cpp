@@ -67,7 +67,8 @@ void kotekanMode::initalize_processes() {
     buffer_container.set_buffer_map(buffers);
 
     // Apply config to datasetManager
-    datasetManager::instance().apply_config(config);
+    if (config.exists("/", "dataset_manager"))
+        datasetManager::instance(config);
 
     // Create Processes
     processFactory process_factory(config, buffer_container);

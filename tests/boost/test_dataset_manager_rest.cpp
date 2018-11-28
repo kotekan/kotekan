@@ -149,10 +149,9 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
 
     TestContext::init();
 
-    datasetManager& dm = datasetManager::instance();
     Config conf;
     conf.update_config(json_config);
-    dm.apply_config(conf);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // generate datasets:
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),

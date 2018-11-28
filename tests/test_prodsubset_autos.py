@@ -16,6 +16,9 @@ subset_params = {
     'freq_ids': [250],
     'buffer_depth': 5,
     'prod_subset_type': 'autos',
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 vis_params = {}

@@ -9,7 +9,10 @@ downsamp_params = {
     'num_samples': 2,
     'total_frames': 11,
     'fakevis_mode': 'fill_ij',
-    'cadence': 2.
+    'cadence': 2.,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")

@@ -18,12 +18,15 @@ pulsar_params = {
     'phase_ref': 0.,
     'rot_freq': 0.03e3,  # one period spans 3 frames
     'pulse_width': 1e-3,
-    'gaussian_bgnd': False
+    'gaussian_bgnd': False,
 }
 
 accumulate_params = pulsar_params.copy()
 accumulate_params.update({
     'num_gpu_frames': 1,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
     })
 
 

@@ -14,6 +14,9 @@ subset_params = {
     'buffer_depth': 5,
     'prod_subset_type': 'only_inputs',
     'input_list': [1, 134],
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 vis_params = {}

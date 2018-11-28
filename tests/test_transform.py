@@ -11,7 +11,10 @@ params = {
     'total_frames': 7,
     'block_size': 1,
     'freq': 777,
-    'num_gpu_buffers': 1
+    'num_gpu_buffers': 1,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")

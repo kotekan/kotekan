@@ -18,7 +18,10 @@ writer_params = {
     'chunk_size': [2, 6, 5],
     'mode': 'test_pattern_simple',
     'test_pattern_value': [0, 0],
-    'file_type': 'hdf5fast'
+    'file_type': 'hdf5fast',
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 stack_params = {
@@ -28,6 +31,7 @@ stack_params = {
     'file_length': 3,
     'freq': [3, 777, 554],
     'chunk_size': [2, 64, 3],
+    'dataset_manager': {'use_dataset_broker':False},
 }
 
 @pytest.fixture(scope="module")
@@ -201,7 +205,7 @@ def transpose_stack(tmpdir_factory):
             "kotekan_process": "baselineCompression",
             "in_buf": fakevis_buffer.name,
             "out_buf": stack_buf_name,
-            "stack_type": "chime_in_cyl"
+            "stack_type": "chime_in_cyl",
         }
     })
     fakevis_buffer.name = stack_buf_name

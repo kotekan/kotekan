@@ -5,6 +5,7 @@
 #include <iostream>
 #include "json.hpp"
 #include "visUtil.hpp"
+#include "Config.hpp"
 #include "test_utils.hpp"
 
 // the code to test:
@@ -18,8 +19,13 @@ using namespace std::string_literals;
 BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
     __log_level = 5;
     __enable_syslog = 0;
-
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
     // generate datasets:
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),
                                        input_ctype(2, "2"),
@@ -106,7 +112,13 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
 
 BOOST_AUTO_TEST_CASE( _serialization_input ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // serialize and deserialize
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),
@@ -146,7 +158,13 @@ BOOST_AUTO_TEST_CASE( _serialization_input ) {
 
 BOOST_AUTO_TEST_CASE( _serialization_prod ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // serialize and deserialize
     std::vector<prod_ctype> prods = {{2, 2},
@@ -176,7 +194,13 @@ BOOST_AUTO_TEST_CASE( _serialization_prod ) {
 
 BOOST_AUTO_TEST_CASE( _serialization_freq ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // serialize and deserialize
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}},
@@ -206,7 +230,13 @@ BOOST_AUTO_TEST_CASE( _serialization_freq ) {
 
 BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     std::vector<input_ctype> inputs = {input_ctype(1, "1")};
     std::pair<state_id_t, const inputState*> input_state =
@@ -222,7 +252,13 @@ BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
 
 BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // inputStates
     std::vector<input_ctype> inputs = {input_ctype(24, "4"),

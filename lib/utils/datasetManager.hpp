@@ -206,8 +206,10 @@ public:
     /**
      * @brief Set and apply the static config to datasetManager
      * @param config         The config.
+     *
+     * @returns A reference to the global datasetManager instance.
      */
-    void apply_config(Config& config);
+    static datasetManager& instance(Config& config);
 
     // Remove the implicit copy/assignments to prevent copying
     datasetManager(const datasetManager&) = delete;
@@ -293,7 +295,13 @@ private:
 
     /// Constructor
     datasetManager() : _conn_error_count(0), _timestamp_update(json(0)),
-        _stop_request_threads(false), _n_request_threads(0) {}
+        _stop_request_threads(false),
+        _n_request_threads(0),
+        _config_applied(false) {}
+
+    /// Generate a private static instance so that the overloaded instance()
+    /// members can use the same static variable
+    static datasetManager& private_instance();
 
     /// Destructor. Joins all request threads.
     ~datasetManager();
@@ -420,6 +428,9 @@ private:
 
     /// Number of running request threads (for destructor to wait).
     uint64_t _n_request_threads;
+
+    /// Check if config loaded for this singleton before handing out instances
+    bool _config_applied;
 
     /// config params
     bool _use_broker = false;

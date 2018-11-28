@@ -12,6 +12,9 @@ writer_params = {
     'cadence': 5.0,
     'total_frames': 10,  # One extra sample to ensure we actually get 256
     'freq': [3, 777, 554],
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")

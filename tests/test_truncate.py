@@ -14,7 +14,10 @@ trunc_params = {
     'data_fixed_precision': 0.0001,
     'num_ev': 4,
     'num_elements': 4,
-    'out_file': '/tmp/out.csv'
+    'out_file': '/tmp/out.csv',
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")

@@ -12,7 +12,10 @@ merge_params = {
     'cadence': 5.0,
     'mode': 'fill_ij',
     'freq': list(range(3)),
-    'buffer_depth': 20
+    'buffer_depth': 20,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 

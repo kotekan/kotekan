@@ -25,12 +25,13 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
     __enable_syslog = 0;
 
     json json_config;
-    json_config["use_dataset_broker"] = true;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = true;
+    json_config["dataset_manager"] = json_config_dm;
 
-    datasetManager& dm = datasetManager::instance();
     Config conf;
     conf.update_config(json_config);
-    dm.apply_config(conf);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // generate datasets:
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),
