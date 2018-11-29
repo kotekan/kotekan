@@ -622,9 +622,9 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
     json js_reply;
     try {
         js_reply = json::parse(reply.second);
-        if (js_reply.at("rslt") != "success")
-            throw std::runtime_error("Broker answered with rslt="
-                                     + js_reply.at("rslt").dump());
+        if (js_reply.at("result") != "success")
+            throw std::runtime_error("Broker answered with result="
+                                     + js_reply.at("result").dump());
 
         state_id_t s_id = js_reply.at("id");
 

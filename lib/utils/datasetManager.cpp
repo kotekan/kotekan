@@ -201,7 +201,7 @@ state_id_t datasetManager::hash_dataset(dataset& ds) const {
 
 void datasetManager::register_state(state_id_t state) {
     json js_post;
-    js_post["hsh"] = state;
+    js_post["hash"] = state;
     std::string endpoint = PATH_REGISTER_STATE;
     std::function<bool(std::string&)> parser(
                 std::bind(&datasetManager::register_state_parser,
@@ -276,18 +276,18 @@ bool datasetManager::register_state_parser(std::string& reply) {
     }
 
     try {
-        if (js_reply.at("rslt") != "success")
+        if (js_reply.at("result") != "success")
             throw std::runtime_error("received error from broker: "
-                                     + js_reply.at("rslt").dump());
+                                     + js_reply.at("result").dump());
         // did the broker know this state already?
-        if (js_reply.find("rqust") == js_reply.end())
+        if (js_reply.find("request") == js_reply.end())
             return true;
         // does the broker want the whole dataset state?
-        if (js_reply.at("rqust") == "get_state") {
-            state_id_t state = js_reply.at("hsh");
+        if (js_reply.at("request") == "get_state") {
+            state_id_t state = js_reply.at("hash");
 
             json js_post;
-            js_post["hsh"] = state;
+            js_post["hash"] = state;
             std::string endpoint = PATH_SEND_STATE;
             std::function<bool(std::string&)> parser(
                         std::bind(&datasetManager::send_state_parser,
@@ -328,9 +328,9 @@ bool datasetManager::send_state_parser(std::string& reply) {
     json js_reply;
     try {
         js_reply = json::parse(reply);
-        if (js_reply.at("rslt") != "success")
+        if (js_reply.at("result") != "success")
             throw std::runtime_error("received error from broker: "
-                                     + js_reply.at("rslt").dump());
+                                     + js_reply.at("result").dump());
 
         return true;
     } catch (std::exception& e) {
@@ -347,7 +347,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
 void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
     json js_post;
     js_post["ds"] = dset.to_json();
-    js_post["hsh"] = hash;
+    js_post["hash"] = hash;
     std::string endpoint = PATH_REGISTER_DATASET;
     std::function<bool(std::string&)> parser(
                 std::bind(&datasetManager::register_dataset_parser,
@@ -369,9 +369,9 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
 
     try {
         js_reply = json::parse(reply);
-        if (js_reply.at("rslt") != "success")
+        if (js_reply.at("result") != "success")
             throw std::runtime_error("received error from broker: "
-                                     + js_reply.at("rslt").dump());
+                                     + js_reply.at("result").dump());
         return true;
     } catch (std::exception& e) {
         WARN("datasetManager: failure parsing reply received from broker "\
@@ -511,9 +511,9 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
     json timestamp;
     try {
         js_reply = json::parse(reply.second);
-        if (js_reply.at("rslt") != "success")
-            throw std::runtime_error("Broker answered with rslt="
-                                     + js_reply.at("rslt").dump());
+        if (js_reply.at("result") != "success")
+            throw std::runtime_error("Broker answered with result="
+                                     + js_reply.at("result").dump());
 
         for (json::iterator ds = js_reply.at("datasets").begin();
              ds != js_reply.at("datasets").end(); ds++) {

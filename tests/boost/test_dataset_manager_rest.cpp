@@ -41,7 +41,7 @@ struct TestContext {
         DEBUG("test: /register-state received: %s", js.dump().c_str());
         json reply;
         try {
-            js.at("hsh");
+            js.at("hash");
         } catch (std::exception& e) {
             std::string error = fmt::format(
                 "Failure parsing register state message from datasetManager: " \
@@ -51,10 +51,10 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hsh").is_number());
-        reply["rqst"] = "get_state";
-        reply["hsh"] = js.at("hsh");
-        reply["rslt"] = "success";
+        BOOST_CHECK(js.at("hash").is_number());
+        reply["request"] = "get_state";
+        reply["hash"] = js.at("hash");
+        reply["result"] = "success";
         con.send_json_reply(reply);
         DEBUG("test: /register-state: replied with %s", reply.dump().c_str());
     }
@@ -63,7 +63,7 @@ struct TestContext {
         DEBUG("test: /send-state received: %s", js.dump().c_str());
         json reply;
         try {
-            js.at("hsh");
+            js.at("hash");
             js.at("state");
             js.at("state").at("type");
             js.at("state").at("data");
@@ -76,7 +76,7 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hsh").is_number());
+        BOOST_CHECK(js.at("hash").is_number());
 
         // check the received state
         std::vector<input_ctype> inputs = {input_ctype(1, "1"),
@@ -97,7 +97,7 @@ struct TestContext {
 
         BOOST_CHECK(same_state->to_json() == received_state->to_json());
 
-        reply["rslt"] = "success";
+        reply["result"] = "success";
         con.send_json_reply(reply);
         DEBUG("test: /send-state: replied with %s", reply.dump().c_str());
     }
@@ -107,7 +107,7 @@ struct TestContext {
         json reply;
         json js_ds;
         try {
-            js.at("hsh");
+            js.at("hash");
             js_ds = js.at("ds");
             js_ds.at("is_root");
             js_ds.at("state");
@@ -116,7 +116,7 @@ struct TestContext {
             std::string error = fmt::format(
                         "Failure parsing register-dataset message from " \
                         "datasetManager: {}\n{}.", js.dump(), e.what());
-            reply["rslt"] = error;
+            reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
         }
@@ -124,14 +124,14 @@ struct TestContext {
         BOOST_CHECK(js_ds.at("state").is_number());
         BOOST_CHECK(js_ds.at("base_dset").is_number());
         BOOST_CHECK(js_ds.at("is_root").is_boolean());
-        BOOST_CHECK(js.at("hsh").is_number());
+        BOOST_CHECK(js.at("hash").is_number());
 
         dataset recvd(js_ds);
 
         static std::hash<std::string> hash_function;
-        BOOST_CHECK(hash_function(recvd.to_json().dump()) == js.at("hsh"));
+        BOOST_CHECK(hash_function(recvd.to_json().dump()) == js.at("hash"));
 
-        reply["rslt"] = "success";
+        reply["result"] = "success";
         con.send_json_reply(reply);
         DEBUG("test: /request-ancestors: replied with %s", reply.dump().c_str());
     }
