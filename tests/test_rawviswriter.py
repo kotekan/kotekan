@@ -30,8 +30,9 @@ def written_data(tmpdir_factory):
     params['root_path'] = tmpdir
 
     test = runner.KotekanProcessTester(
-        'visWriter', {'freq_ids': params['write_freq'], 'node_mode': False,
-        'write_ev': True, 'file_type': 'raw'},
+        'visWriter',
+        {'freq_ids': params['write_freq'], 'node_mode': False,
+         'write_ev': True, 'file_type': 'raw'},
         fakevis_buffer,
         None,
         params
@@ -48,18 +49,15 @@ def written_data(tmpdir_factory):
 
 def test_vis(written_data):
 
-    nt = writer_params['total_frames']
-
     for vr in written_data:
 
         # Construct vis array
-        vis_data = [[fr.vis for fr in freq_data] for freq_data in vr.data]
-        vis = np.array(vis_data)
+        vis = vr.data['vis']
 
         # Extract metadata
-        ftime = np.array([t['fpga_count'] for t in vr.metadata['index_map']['time']])
-        ctime = np.array([t['ctime'] for t in vr.metadata['index_map']['time']])
-        freq = np.array([f['centre'] for f in vr.metadata['index_map']['freq']])
+        ftime = vr.time['fpga_count']
+        ctime = vr.time['ctime']
+        freq = np.array([f['centre'] for f in vr.index_map['freq']])
 
         # Check the diagonals are correct
         pi = 0
@@ -83,14 +81,13 @@ def test_metadata(written_data):
     for vr in written_data:
 
         # Extract metadata
-        ftime = np.array([t['fpga_count'] for t in vr.metadata['index_map']['time']])
-        ctime = np.array([t['ctime'] for t in vr.metadata['index_map']['time']])
-        freq = np.array([f['centre'] for f in vr.metadata['index_map']['freq']])
-        input_a = np.array([p[0] for p in vr.metadata['index_map']['prod']])
-        input_b = np.array([p[1] for p in vr.metadata['index_map']['prod']])
+        ctime = vr.time['ctime']
+        freq = np.array([f['centre'] for f in vr.index_map['freq']])
+        input_a = np.array([p[0] for p in vr.index_map['prod']])
+        input_b = np.array([p[1] for p in vr.index_map['prod']])
 
         # Check the number of samples has been written correctly
-        assert vr.metadata['structure']['ntime'] == nt
+        assert vr.num_time == nt
 
         # Check the times
         assert np.allclose(np.diff(ctime), writer_params['cadence'])
@@ -114,18 +111,18 @@ def test_eigenvectors(written_data):
         ne = writer_params['num_ev']
         ni = writer_params['num_elements']
 
-        evals = np.array([[fr.eval for fr in freq_data] for freq_data in vr.data])
-        evecs = np.array([[fr.evec for fr in freq_data] for freq_data in vr.data])
-        erms = np.array([[fr.erms for fr in freq_data] for freq_data in vr.data])
+        evals = vr.data['eval']
+        evecs = vr.data['evec']
+        erms = vr.data['erms']
 
         # Check datasets are present
         assert evals.shape == (nt, nf, ne)
         assert evecs.shape == (nt, nf, ne * ni)
-        assert erms.shape == (nt, nf, 1)
+        assert erms.shape == (nt, nf)
 
         evecs = evecs.reshape(nt, nf, ne, ni)
 
-        im_ev = np.array(vr.metadata['index_map']['ev'])
+        im_ev = np.array(vr.index_map['ev'])
 
         print im_ev, ne
 
