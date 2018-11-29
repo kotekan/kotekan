@@ -9,7 +9,7 @@ REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
                          bufferContainer& host_buffers,
                          hsaDeviceInterface& device):
-    hsaCommand("rfi_chime_timesum", "rfi_chime_timesum_private.hsaco", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_timesum", "rfi_chime_timesum_private.hsaco"){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
