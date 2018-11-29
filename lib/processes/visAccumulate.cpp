@@ -337,10 +337,12 @@ void visAccumulate::main_thread() {
         // copy over any metadata.
         if (frame_count % num_gpu_frames == 0) {
 
+            // Current time will be used to determine weight function
+            timespec t = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
             // Reset gated streams and find which ones are enabled for this period
             enabled_gated_datasets.clear();
             for (auto& state : gated_datasets) {
-                if (reset_state(state)) {
+                if (reset_state(state, t)) {
                     enabled_gated_datasets.push_back(state);
                 }
             }
@@ -524,7 +526,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
 }
 
 
-bool visAccumulate::reset_state(visAccumulate::internalState& state) {
+bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t) {
 
     // Reset the internal counters
     state.sample_weight_total = 0;
@@ -540,7 +542,7 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state) {
     }
 
     // Save out the weight function in case an update arrives mid integration
-    state.calculate_weight = state.spec->weight_function();
+    state.calculate_weight = state.spec->weight_function(t);
 
     // Zero out accumulation arrays
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);

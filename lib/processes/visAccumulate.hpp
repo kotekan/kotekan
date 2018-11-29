@@ -171,7 +171,7 @@ private:
      *
      * @returns Return if this accumulation was enabled.
      **/
-    bool reset_state(internalState& state);
+    bool reset_state(internalState& state, timespec t);
 
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;

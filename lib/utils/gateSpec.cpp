@@ -38,21 +38,27 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         return true;
     }
 
-    std::vector<float> coeff;
+    std::vector<std::vector<float>> coeff;
     try {
         // Get gating specifications from config
         _pulsar_name = json.at("pulsar_name").get<std::string>();
-        coeff = json.at("coeff").get<std::vector<float>>();
+        coeff = json.at("coeff").get<std::vector<std::vector<float>>>();
         _dm = json.at("dm").get<float>();
-        _tmid = json.at("t_ref").get<double>();
-        _phase_ref = json.at("phase_ref").get<double>();
+        _tmid = json.at("t_ref").get<std::vector<double>>();
+        _phase_ref = json.at("phase_ref").get<std::vector<double>>();
         _rot_freq = json.at("rot_freq").get<double>();
+        _seg = json.at("segment").get<float>();
         _pulse_width = json.at("pulse_width").get<float>();
     } catch (std::exception& e) {
         WARN("Failure reading pulsar parameters from update: %s", e.what());
         return false;
     }
-    _polyco = Polyco(_tmid, _dm, _phase_ref, _rot_freq, coeff);
+    try {
+        _polycos = SegmentedPolyco(_rot_freq, _dm, _seg, _tmid, _phase_ref, coeff);
+    } catch (std::exception& e) {
+        WARN("Could not generate polyco from config parameters: %s", e.what());
+        return false;
+    }
     INFO("Dataset %s now gating on pulsar %s",
          name().c_str(), _pulsar_name.c_str());
 
@@ -60,11 +66,19 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
 }
 
 
-std::function<float(timespec, timespec, float)> pulsarSpec::weight_function() const {
+std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(timespec t) const {
 
+    const Polyco * a_polyco;
+    try {
+        a_polyco = &_polycos.get_polyco(t);
+    } catch (std::exception& e) {
+        WARN("Could not find a polyco solution for this time."
+             "Will use last polyco, but timing may be off.");
+        a_polyco = &_polycos.get_polyco(-1);
+    }
     // capture the variables needed to calculate timing
     return [
-        p = _polyco, f0 = _rot_freq, pw = _pulse_width
+        p = *a_polyco, f0 = _rot_freq, pw = _pulse_width
     ](timespec t_s, timespec t_e, float freq) {
         // Calculate nearest pulse times of arrival
         double toa = p.next_toa(t_s, freq);
@@ -95,7 +109,7 @@ bool uniformSpec::update_spec(nlohmann::json &json)
 }
 
 
-std::function<float(timespec, timespec, float)> uniformSpec::weight_function() const
+std::function<float(timespec, timespec, float)> uniformSpec::weight_function(timespec t) const
 {
     return [](timespec ts, timespec te, float freq) -> float { return 1.0; };
 }
