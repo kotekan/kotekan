@@ -1,10 +1,19 @@
+"""Use Python to run a kotekan instance, particularly for testing.
+"""
+# Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from builtins import (ascii, bytes, chr, dict, filter, hex, input,
+                      int, map, next, oct, open, pow, range, round,
+                      str, super, zip)
+
 import os
 import itertools
 import subprocess
 import tempfile
 import time
 
-import visbuffer
+from . import visbuffer
 
 
 class KotekanRunner(object):
@@ -50,18 +59,30 @@ class KotekanRunner(object):
         config_dict.update(self._buffers)
         config_dict.update(self._processes)
 
-        kotekan_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
-                                                    "..", "build", "kotekan"))
+        # Set the working directory for the run
+        build_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
+                                                  "..", "..", "build", "kotekan"))
+
+        # If this path exists we are using a non installed versoin of the
+        # kotekan python packages. If so we want to run the local kotekan
+        # binary
+        if os.path.exists(build_dir):
+            kotekan_cmd = './kotekan -c %s'
+            wd = build_dir
+        else:
+            kotekan_cmd = 'kotekan -d %s'
+            wd = os.curdir
 
         with tempfile.NamedTemporaryFile() as fh, \
              tempfile.NamedTemporaryFile() as f_out:
 
-            yaml.dump(config_dict, fh)
-            print yaml.dump(config_dict)
+            yaml.safe_dump(config_dict, fh)
+            print(yaml.safe_dump(config_dict))
             fh.flush()
 
-            cmd = ["./kotekan", "-c", fh.name]
-            p = subprocess.Popen(cmd, cwd=kotekan_dir,
+            print(kotekan_cmd, fh.name, build_dir)
+            cmd = (kotekan_cmd % fh.name).split()
+            p = subprocess.Popen(cmd, cwd=wd,
                                  stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
@@ -69,7 +90,7 @@ class KotekanRunner(object):
                 import requests
                 import json
                 # Wait a moment for rest servers to start up.
-                time.sleep(1.)
+                time.sleep(1.0)
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == 'wait':
                         time.sleep(endpoint)
@@ -91,13 +112,15 @@ class KotekanRunner(object):
                         self.output = file(f_out.name).read()
 
                         # Print out the output from Kotekan for debugging
-                        print self.output
+                        print(self.output)
 
                         # Throw an exception if we don't exit cleanly
                         if p.returncode:
-                            raise subprocess.CalledProcessError(p.returncode, cmd)
+                            raise subprocess.CalledProcessError(p.returncode,
+                                                                cmd)
 
-                        print "Failed sending REST command: " + rtype + " to " + endpoint + " with data ", data
+                        print("Failed sending REST command: " + rtype + " to " +
+                              endpoint + " with data " + data)
 
 
             # Wait for kotekan to finish and capture the output
@@ -105,7 +128,7 @@ class KotekanRunner(object):
             self.output = file(f_out.name).read()
 
             # Print out the output from Kotekan for debugging
-            print self.output
+            print(self.output)
 
             # Throw an exception if we don't exit cleanly
             if p.returncode:
@@ -431,7 +454,6 @@ class ReadRawBuffer(InputBuffer):
         self.process_block = {process_name: process_config}
 
 
-
 class KotekanProcessTester(KotekanRunner):
     """Construct a test around a single Kotekan process.
 
@@ -471,35 +493,35 @@ class KotekanProcessTester(KotekanRunner):
         noise_config = {}
 
         if noise:
-          if buffers_in is None:
-              buffers_in = []
-          else:
-              noise_config['in_buf'] = buffers_in.name
-              buffers_in = [buffers_in]
-          noise_config['kotekan_process'] = 'visNoise'
-          noise_config['out_buf'] = 'noise_buf'
-          if noise == "random":
-              noise_config['random'] = True
-          noise_block = {('visNoise_test'): noise_config}
-          config['in_buf'] = 'noise_buf'
-          parallel_config['in_buf'] = 'noise_buf'
-          noise_buffer = {
-            "noise_buf": {
-              'kotekan_buffer': 'vis',
-              'metadata_pool': 'vis_pool',
-              'num_frames': 'buffer_depth',
+            if buffers_in is None:
+                buffers_in = []
+            else:
+                noise_config['in_buf'] = buffers_in.name
+                buffers_in = [buffers_in]
+            noise_config['kotekan_process'] = 'visNoise'
+            noise_config['out_buf'] = 'noise_buf'
+            if noise == "random":
+                noise_config['random'] = True
+            noise_block = {('visNoise_test'): noise_config}
+            config['in_buf'] = 'noise_buf'
+            parallel_config['in_buf'] = 'noise_buf'
+            noise_buffer = {
+                "noise_buf": {
+                  'kotekan_buffer': 'vis',
+                  'metadata_pool': 'vis_pool',
+                  'num_frames': 'buffer_depth',
+                }
             }
-          }
         else:
-          if buffers_in is None:
-              buffers_in = []
-          elif isinstance(buffers_in, (list, tuple)):
-              config['in_bufs'] = [buf.name for buf in buffers_in]
-              parallel_config['in_bufs'] = [buf.name for buf in buffers_in]
-          else:
-              config['in_buf'] = buffers_in.name
-              parallel_config['in_buf'] = buffers_in.name
-              buffers_in = [buffers_in]
+            if buffers_in is None:
+                buffers_in = []
+            elif isinstance(buffers_in, (list, tuple)):
+                config['in_bufs'] = [buf.name for buf in buffers_in]
+                parallel_config['in_bufs'] = [buf.name for buf in buffers_in]
+            else:
+                config['in_buf'] = buffers_in.name
+                parallel_config['in_buf'] = buffers_in.name
+                buffers_in = [buffers_in]
 
         if buffers_out is None:
             buffers_out = []

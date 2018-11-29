@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 import glob
 
-import kotekan_runner
+from kotekan import runner
 
 
 subset_params = {
@@ -26,18 +26,18 @@ def subset_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("subset")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames'],
         use_dataset_manager=True
     )
 
-    write_buffer = kotekan_runner.VisWriterBuffer(
+    write_buffer = runner.VisWriterBuffer(
         str(tmpdir), "raw",
         subset_params['freq_ids'],
         extra_config={'use_dataset_manager': True})
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'prodSubset', vis_params,
         fakevis_buffer,
         write_buffer,

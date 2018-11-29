@@ -3,8 +3,8 @@ import pytest
 import numpy as np
 import h5py
 
-import visbuffer
-import kotekan_runner
+from kotekan import visbuffer
+from kotekan import runner
 
 writer_params = {
     'num_elements': 4,
@@ -20,7 +20,7 @@ def written_data(tmpdir_factory):
 
     tmpdir = str(tmpdir_factory.mktemp("writer"))
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=writer_params['freq'],
         num_frames=writer_params['total_frames'],
         cadence=writer_params['cadence']
@@ -29,7 +29,7 @@ def written_data(tmpdir_factory):
     params = writer_params.copy()
     params['root_path'] = tmpdir
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visWriter', {'freq_ids': params['write_freq'], 'node_mode': False,
         'write_ev': True, 'file_type': 'raw'},
         fakevis_buffer,
@@ -88,7 +88,7 @@ def test_metadata(written_data):
         freq = np.array([f['centre'] for f in vr.metadata['index_map']['freq']])
         input_a = np.array([p[0] for p in vr.metadata['index_map']['prod']])
         input_b = np.array([p[1] for p in vr.metadata['index_map']['prod']])
-    
+
         # Check the number of samples has been written correctly
         assert vr.metadata['structure']['ntime'] == nt
 
@@ -106,7 +106,7 @@ def test_metadata(written_data):
 
 
 def test_eigenvectors(written_data):
-    
+
     for vr in written_data:
 
         nt = writer_params['total_frames']
@@ -123,7 +123,7 @@ def test_eigenvectors(written_data):
         assert evecs.shape == (nt, nf, ne * ni)
         assert erms.shape == (nt, nf, 1)
 
-        evecs = evecs.reshape(nt, nf, ne, ni) 
+        evecs = evecs.reshape(nt, nf, ne, ni)
 
         im_ev = np.array(vr.metadata['index_map']['ev'])
 

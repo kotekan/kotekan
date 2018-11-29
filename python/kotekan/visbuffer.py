@@ -1,5 +1,11 @@
 """Read a visBuffer dump into python.
 """
+# Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from builtins import (ascii, bytes, chr, dict, filter, hex, input,
+                      int, map, next, oct, open, pow, range, round,
+                      str, super, zip)
 
 import ctypes
 import os
@@ -49,7 +55,7 @@ class VisBuffer(object):
     """
 
     def __init__(self, buffer, skip=4):
-    
+
         self._buffer = buffer[skip:]
 
         meta_size = ctypes.sizeof(VisMetadata)
@@ -74,7 +80,7 @@ class VisBuffer(object):
             arr = np.frombuffer(_data[member['start']:member['end']],
                                 dtype=member['dtype'])
             setattr(self, member['name'], arr)
-        
+
     @classmethod
     def _calculate_layout(cls, num_elements, num_prod, num_ev):
         """Calculate the buffer layout.
@@ -151,7 +157,7 @@ class VisBuffer(object):
         ----------
         pattern : str
             A globable pattern to read.
-        
+
         Returns
         -------
         buffers : list of VisBuffers
@@ -172,7 +178,7 @@ class VisBuffer(object):
             Basename for filenames.
         """
         pat = basename + "_%07d.dump"
-        
+
         msize_c = ctypes.c_int(ctypes.sizeof(VisMetadata))
 
         for ii, buf in enumerate(buffers):
@@ -233,8 +239,8 @@ class VisRaw(object):
 
         meta_path = base + '.meta'
         data_path = base + '.data'
-        
-        with open(meta_path, 'r') as fh:
+
+        with open(meta_path, 'rb') as fh:
             self.metadata = msgpack.load(fh)
 
         self.data = []
@@ -256,7 +262,7 @@ class VisRaw(object):
 
                     buf = bytearray(data_size + metadata_size + 1)
                     fh.seek((ti * nfreq + fi) * frame_size)
-                    fh.readinto(buf) 
+                    fh.readinto(buf)
 
                     if buf[0] == 0:
                         fs.append(None)
