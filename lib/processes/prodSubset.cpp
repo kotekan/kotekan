@@ -4,7 +4,6 @@
 #include <signal.h>
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <complex>
 #include <cstdint>
 #include <exception>
@@ -37,8 +36,6 @@ prodSubset::prodSubset(Config &config,
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
-    _ds_manage_timeout_ms = config.get_default<uint64_t>(
-                unique_name, "ds_manage_timeout_ms", 10000);
 
     // Get buffers
     in_buf = get_buffer("in_buf");
@@ -116,9 +113,6 @@ void prodSubset::main_thread() {
     dset_id_t input_dset_id;
     dset_id_t output_dset_id = 0;
 
-    // number of errors when dealing with dataset manager
-    uint32_t err_count = 0;
-
     // Wait for a frame in the input buffer in order to get the dataset ID
     if(wait_for_full_frame(in_buf, unique_name.c_str(),
                            input_frame_id) == nullptr) {
@@ -161,23 +155,8 @@ void prodSubset::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Are we waiting for a new dataset ID?
-        if (future_output_dset_id.valid()) {
-            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
-            while (future_output_dset_id.wait_for(timeout) ==
-                   std::future_status::timeout) {
-                WARN("Dropping frame, dataset management timeout.");
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_dataset_manager_dropped_frame_count",
-                            unique_name, ++err_count);
-
-                // Mark the input buffer and move on
-                mark_frame_empty(in_buf, unique_name.c_str(),
-                                  input_frame_id);
-                // Advance the current input frame id
-                input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-            }
+        if (future_output_dset_id.valid())
             output_dset_id = future_output_dset_id.get();
-        }
 
         // Create view to output frame
         auto output_frame = visFrameView(out_buf, output_frame_id,

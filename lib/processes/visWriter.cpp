@@ -67,17 +67,11 @@ visWriter::visWriter(Config& config,
         // Here we trim the hostname to the first alphanumeric segment only.
         instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
     }
-
-    _ds_manage_timeout_ms = config.get_default<uint64_t>(
-                unique_name, "ds_manage_timeout_ms", 10000);
 }
 
 void visWriter::main_thread() {
 
     unsigned int frame_id = 0;
-
-    // number of errors when dealing with the dataset manager
-    uint32_t err_count = 0;
 
     // Wait for the first frame to get the dataset ID
     if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
@@ -131,20 +125,6 @@ void visWriter::main_thread() {
 
         // Are we waiting for datasetStates? We need the states now...wait here.
         if (init_fut.valid()) {
-            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
-            while (init_fut.wait_for(timeout) ==
-                   std::future_status::timeout) {
-                WARN("Dropping frame, dataset management timeout.");
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_dataset_manager_dropped_frame_count",
-                            unique_name, ++err_count);
-
-                // Mark the buffer and move on
-                mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-                // Advance the current frame ids
-                frame_id = (frame_id + 1) % in_buf->num_frames;
-            }
-
             // Get void future, otherwise it will stay valid.
             init_fut.get();
         }

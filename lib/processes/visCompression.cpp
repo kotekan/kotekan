@@ -5,7 +5,6 @@
 #include <sched.h>
 #include <signal.h>
 #include <algorithm>
-#include <chrono>
 #include <complex>
 #include <cstdlib>
 #include <exception>
@@ -50,8 +49,6 @@ baselineCompression::baselineCompression(Config &config,
     // Fill out the map of stack types
     stack_type_defs["diagonal"] = stack_diagonal;
     stack_type_defs["chime_in_cyl"] = stack_chime_in_cyl;
-
-    err_count = 0;
 
     // Apply config.
     std::string stack_type = config.get<std::string>(unique_name, "stack_type");
@@ -176,24 +173,8 @@ void baselineCompression::compress_thread(int thread_id) {
         }
 
         // Are we waiting for a new dataset ID?
-        if (future_output_dset_id.valid()) {
-            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
-            while (future_output_dset_id.wait_for(timeout) ==
-                   std::future_status::timeout) {
-                WARN("Dropping frame, dataset management timeout.");
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_dataset_manager_dropped_frame_count",
-                            unique_name, ++err_count);
-
-                 // Mark the buffers and move on
-                 mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
-
-                 // Advance the current frame id
-                 input_frame_id = (input_frame_id + num_threads)
-                         % in_buf->num_frames;
-            }
+        if (future_output_dset_id.valid())
             output_dset_id = future_output_dset_id.get();
-        }
 
         const auto& stack_map = stack_state_ptr->get_rstack_map();
         const auto& prods = prod_state_ptr->get_prods();

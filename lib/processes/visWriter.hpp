@@ -73,9 +73,6 @@
  *                              write into a file.
  * @conf   window               Int (default 20). Number of samples to keep
  *                              active for writing at any time.
- * @conf ds_manage_timeout_ms   Int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
@@ -83,8 +80,6 @@
  *         samples.
  * @metric kotekan_viswriter_dropped_frame_total
  *         The number of frames dropped while attempting to write.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *         The number of frames dropped while waiting for the dataset manager.
  *
  * @author Richard Shaw
  */
@@ -161,9 +156,6 @@ private:
 
     /// number of products
     size_t _num_vis;
-
-    /// Config values.
-    uint64_t _ds_manage_timeout_ms;
 };
 
 /**
@@ -218,9 +210,6 @@ private:
  *                              file in number of time samples.
  * @conf   window               Int (default 10). Number of samples to keep
  *                              active for writing at any time.
- * @conf ds_manage_timeout_ms   Int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
@@ -228,8 +217,6 @@ private:
  *         samples.
  * @metric kotekan_viswriter_dropped_frame_total
  *         The number of frames dropped while attempting to write.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *         The number of frames dropped while waiting for the dataset manager.
  *
  * @author Tristan Pinsonneault-Marotte
  **/

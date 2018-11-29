@@ -4,7 +4,6 @@
 #include <signal.h>
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -42,9 +41,6 @@ freqSubset::freqSubset(Config& config,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-
-    _ds_manage_timeout_ms = config.get_default<uint64_t>(
-                unique_name, "ds_manage_timeout_ms", 10000);
 }
 
 dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
@@ -91,9 +87,6 @@ void freqSubset::main_thread() {
     unsigned int freq;
     dset_id_t output_dset_id = 0;
     dset_id_t input_dset_id;
-
-    // number of errors when dealing with dataset manager
-    uint32_t err_count = 0;
 
     // Wait for a frame in the input buffer in order to get the dataset ID
     if(wait_for_full_frame(in_buf, unique_name.c_str(),
@@ -144,23 +137,9 @@ void freqSubset::main_thread() {
                                              input_frame);
 
             // set the dataset ID in the outgoing frame
-            if (_output_dset_id.valid()) {
-                std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
-                while (_output_dset_id.wait_for(timeout) ==
-                       std::future_status::timeout) {
-                    WARN("Dropping frame, dataset management timeout.");
-                    prometheusMetrics::instance().add_process_metric(
-                                "kotekan_dataset_manager_dropped_frame_count",
-                                unique_name, ++err_count);
-
-                    // Mark the input buffer and move on
-                    mark_frame_empty(in_buf, unique_name.c_str(),
-                                     input_frame_id);
-                    // Advance the current input frame id
-                    input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-                }
+            if (_output_dset_id.valid())
                 output_dset_id = _output_dset_id.get();
-            }
+
             output_frame.dataset_id = output_dset_id;
 
             // Mark the output buffer and move on

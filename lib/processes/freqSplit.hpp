@@ -41,12 +41,6 @@
  *                              at. Lower frequencies got to the first output
  *                              buffer, equal and higher frequencies go to the
  *                              second. Default 512.
- * @conf ds_manage_timeout_ms  Int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
- *
- * @metric kotekan_dataset_manager_dropped_frame_count
- *       The number of frames dropped while waiting for the dataset manager.
  *
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
@@ -75,7 +69,6 @@ private:
 
     // config values
     double _split_freq;
-    uint64_t _ds_manage_timeout_ms;
 };
 
 

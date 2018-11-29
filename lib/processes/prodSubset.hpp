@@ -62,12 +62,7 @@
  *                              direction to include in subset (in units of the
  *                              shortest NS baseline)
  * @conf  input_list            vector of int. The list of inputs to include.
- * @conf  ds_manage_timeout_ms  int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
  *
- * @metric kotekan_dataset_manager_dropped_frame_count
- *        The number of frames dropped while waiting for the dataset manager.
  *
  * @warning This will only work correctly if the full correlation triangle is
  * passed in as input.
@@ -97,7 +92,6 @@ private:
 
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
-    uint64_t _ds_manage_timeout_ms;
 
     /// Number of products in subset
     size_t subset_num_prod;

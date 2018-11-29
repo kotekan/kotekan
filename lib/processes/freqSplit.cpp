@@ -4,7 +4,6 @@
 #include <signal.h>
 #include <stddef.h>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -46,8 +45,6 @@ freqSplit::freqSplit(Config& config,
         out_bufs.push_back({buf, 0});
     }
 
-    _ds_manage_timeout_ms = config.get_default<uint64_t>(
-                unique_name, "ds_manage_timeout_ms", 10000);
     _split_freq = config.get_default<double>(
                 unique_name, "split_freq", 512);
 }
@@ -99,9 +96,6 @@ void freqSplit::main_thread() {
     unsigned int input_frame_id = 0;
     unsigned int freq;
     unsigned int buf_ind;
-
-    // number of errors when dealing with the dataset manager
-    uint32_t err_count = 0;
 
     dset_id_t input_dset_id;
     std::array<dset_id_t, 2> output_dset_id = {{0, 0}};
@@ -160,24 +154,9 @@ void freqSplit::main_thread() {
         auto frame = visFrameView(buf, frame_id, input_frame);
 
         // Are we waiting for a new dataset ID?
-        if (_output_dset_id.valid()) {
-            std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
-            while (_output_dset_id.wait_for(timeout) ==
-                   std::future_status::timeout) {
-                WARN("Dropping frame, dataset management timeout.");
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_dataset_manager_dropped_frame_count",
-                            unique_name, ++err_count);
-
-                 // Mark the input buffer and move on
-                 mark_frame_empty(in_buf, unique_name.c_str(),
-                                  input_frame_id);
-                 // Advance the current input frame ids
-                 std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
-                 input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
-            }
+        if (_output_dset_id.valid())
             output_dset_id = _output_dset_id.get();
-        }
+
         // set the dataset ID in the outgoing frame
         frame.dataset_id = output_dset_id.at(buf_ind);
 

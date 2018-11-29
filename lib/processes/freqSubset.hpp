@@ -35,12 +35,6 @@
  *
  * @conf  subset_list           Vector of Int. The list of frequencies that go
  *                              in the subset.
- * @conf  ds_manage_timeout_ms  Int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
- *
- * @metric kotekan_dataset_manager_dropped_frame_count
- *        The number of frames dropped while waiting for the dataset manager.
  *
  * @author Mateus Fandino
  */
@@ -72,8 +66,6 @@ private:
     // dataset IDs
     std::future<dset_id_t> _output_dset_id;
 
-    // config values
-    uint64_t _ds_manage_timeout_ms;
 };
 
 

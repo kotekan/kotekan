@@ -45,12 +45,6 @@ using json = nlohmann::json;
  *                              (freq, prod, time).
  * @conf   outfile              String. Path to the (data-meta-pair of) files to
  *                              write to (e.g. "/path/to/0000_000", without .h5).
- * @conf   crash_on_ds_timeout  Bool. If set to true, this process will not drop
- *                              frames but crash if the data management times
- *                              out. Default true.
- * @conf   ds_manage_timeout_ms Int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
  *
  * @par Metrics
  * @metric kotekan_vistranspose_data_transposed_bytes
@@ -85,8 +79,6 @@ private:
 
     // Config values
     std::string filename;
-    uint64_t _ds_manage_timeout_ms;
-    bool _crash_on_ds_timeout;
 
     // Datasets to be stored until ready to write
     std::vector<time_ctype> time;

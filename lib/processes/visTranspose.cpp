@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <complex>
 #include <csignal>
 #include <cstdint>
@@ -64,12 +63,6 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     gethostname(temp, 256);
     std::string hostname = temp;
     metadata["collection_server"] = hostname;
-
-    // Config for dataset management.
-    _ds_manage_timeout_ms = config.get_default<uint64_t>(
-                unique_name, "ds_manage_timeout_ms", 10000);
-    _crash_on_ds_timeout = config.get_default<bool>(
-                unique_name, "crash_on_ds_timeout", true);
 }
 
 bool visTranspose::get_dataset_state(dset_id_t ds_id) {
@@ -186,9 +179,6 @@ void visTranspose::main_thread() {
 
     uint64_t frame_size = 0;
 
-    // number of errors when dealing with the dataset manager
-    uint32_t err_count = 0;
-
     // Wait for a frame in the input buffer in order to get the dataset ID
     if((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
         return;
@@ -197,23 +187,6 @@ void visTranspose::main_thread() {
     dset_id_t ds_id = frame.dataset_id;
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this,
                                       ds_id);
-
-    std::chrono::milliseconds timeout(_ds_manage_timeout_ms);
-    while (future_ds_state.wait_for(timeout) ==
-           std::future_status::timeout) {
-        WARN("Dataset management timeout.");
-        prometheusMetrics::instance().add_process_metric(
-                    "kotekan_dataset_manager_dropped_frame_count",
-                    unique_name, ++err_count);
-        if (_crash_on_ds_timeout) {
-            ERROR("Exiting...");
-            raise(SIGINT);
-        } else {
-            WARN("Dropping frame %d.", frame_id);
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-            frame_id = (frame_id + 1) % in_buf->num_frames;
-        }
-    }
 
     if (!future_ds_state.get()) {
        ERROR("Set to not use dataset_broker and couldn't find " \

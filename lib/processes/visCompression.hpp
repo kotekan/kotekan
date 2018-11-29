@@ -52,17 +52,12 @@ using json = nlohmann::json;
  *                              details.
  * @conf exclude_inputs         List of ints. Extra inputs to exclude from
  *                              stack.
- * @conf ds_manage_timeout_ms   Int. Time (in ms) before dropping the current
- *                              input frame when waiting for the datasetManager.
- *                              Default 10000.
  *
  * @par Metrics
  * @metric kotekan_baselinecompression_residuals
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while waiting for the dataset manager.
  *
  * @author Richard Shaw
  */
@@ -120,12 +115,6 @@ private:
     // dataset states
     const prodState* prod_state_ptr;
     const stackState* stack_state_ptr;
-
-    // Number of errors when dealing with datasetManager
-    std::atomic<uint32_t> err_count;
-
-    // Config values
-    uint64_t _ds_manage_timeout_ms;
 };
 
 

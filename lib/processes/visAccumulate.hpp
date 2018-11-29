@@ -72,8 +72,6 @@
  * @metric  kotekan_vis_accumulate_skipped_frame_total
  *      The number of frames skipped entirely because they were under the
  *      low_sample_fraction.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while waiting for the dataset manager.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
