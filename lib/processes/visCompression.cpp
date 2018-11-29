@@ -116,7 +116,8 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find " \
               "freqState ancestor of dataset %zu. Make sure there is a process"\
-              " upstream in the config, that adds a freqState.", input_ds_id);
+              " upstream in the config, that adds a freqState.\nExiting...",
+              input_ds_id);
         raise(SIGINT);
     }
 

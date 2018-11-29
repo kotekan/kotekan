@@ -50,7 +50,7 @@ void visDrop::main_thread() {
         }
         // Copy frame into output buffer
         auto frame = visFrameView::copy_frame(buf_in, frame_id_in,
-                                                  buf_out, frame_id_out);
+                                              buf_out, frame_id_out);
 
         // Check if this frame should be dropped because of its freq_id.
         if (std::find(drop_freqs.begin(), drop_freqs.end(), frame.freq_id)

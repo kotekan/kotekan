@@ -218,9 +218,9 @@ void visTranspose::main_thread() {
     if (!future_ds_state.get()) {
        ERROR("Set to not use dataset_broker and couldn't find " \
              "ancestor of dataset %zu. Make sure there is a process"\
-             " upstream in the config, that adds the dataset states.",
+             " upstream in the config, that adds the dataset states." \
+             "\nExiting...",
              ds_id);
-       ERROR("Exiting...");
        raise(SIGINT);
    }
 

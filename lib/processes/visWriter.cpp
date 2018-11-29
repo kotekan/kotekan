@@ -237,7 +237,7 @@ void visWriter::get_dataset_state() {
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find " \
               "ancestor of dataset %zu. Make sure there is a process"\
-              " upstream in the config, that the dataset states.",
+              " upstream in the config, that the dataset states.\nExiting...",
               ds_id);
         ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, " \
               "freqState %d, stackState %d (but that one is okay).", pstate,

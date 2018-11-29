@@ -57,7 +57,8 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     if (freq_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find " \
               "freqState ancestor of dataset %zu. Make sure there is a process"\
-              " upstream in the config, that adds a freqState.", input_dset_id);
+              " upstream in the config, that adds a freqState.\nExiting...",
+              input_dset_id);
         raise(SIGINT);
     }
 

@@ -23,7 +23,7 @@
 * TODO: Add more options.
 *
 * @conf  freq           Vector of Uint32. Frequency IDs of frames that should be
-*                       dropped.
+*                       dropped. By default none.
 **/
 class visDrop : public KotekanProcess {
 public:
