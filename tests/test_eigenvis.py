@@ -12,8 +12,11 @@ default_params = {
     # 'mode': 'fill_ij',
     'freq': [0],
     'buffer_depth': 5,
-    'num_diagonals_filled': 0
-     }
+    'num_diagonals_filled': 0,
+    'dataset_manager': {
+        'use_dataset_broker': False,
+    },
+}
 
 
 def run_eigenvis(tdir_factory, params=None):
