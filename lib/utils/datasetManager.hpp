@@ -57,16 +57,25 @@ using state_id_t = size_t;
 class dataset {
 public:
     /**
-    * @brief Dataset constructor.
+    * @brief Dataset constructor for a root dataset.
+    * @param state      The state of this dataset.
+    * @param types      The set of state types that are different from the base
+    *                   dataset.
+    */
+    dataset(state_id_t state, std::set<std::string> types)
+        : _state(state), _base_dset(0), _is_root(true),
+          _types(types) { }
+
+    /**
+    * @brief Dataset constructor for a non-root dataset.
     * @param state      The state of this dataset.
     * @param base_dset  The ID of the base datset.
-    * @param is_root    True if this is a root dataset (has no base dataset).
     * @param types      The set of state types that are different from the base
     *                   dataset.
     */
     dataset(state_id_t state, dset_id_t base_dset,
-            std::set<std::string> types, bool is_root = false)
-        : _state(state), _base_dset(base_dset), _is_root(is_root),
+            std::set<std::string> types)
+        : _state(state), _base_dset(base_dset), _is_root(false),
           _types(types) { }
 
     /**
@@ -216,22 +225,29 @@ public:
     void operator=(const datasetManager&) = delete;
 
     /**
-     * @brief Register a new dataset.
+     * @brief Register a new root dataset.
      *
      * If `use_dataset_broker` is set, this function will ask the dataset broker
      * to assign an ID to the new dataset.
      *
-     * @param base_dset     The ID of the dataset this dataset is based on
-     *                      (undefined if this is a root dataset).
      * @param state         The ID of the dataset state that describes the
      *                      difference to the base dataset.
-     * @param is_root       True if this is a root dataset (has no base
-     *                      dataset).
-     * @param ignore_broker If true, the dataset is not sent to the broker.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id_t add_dataset(dset_id_t base_dset, state_id_t state,
-                          bool is_root = false, bool ignore_broker = false);
+    dset_id_t add_dataset(state_id_t state);
+
+    /**
+     * @brief Register a new non-root dataset.
+     *
+     * If `use_dataset_broker` is set, this function will ask the dataset broker
+     * to assign an ID to the new dataset.
+     *
+     * @param base_dset     The ID of the dataset this dataset is based on.
+     * @param state         The ID of the dataset state that describes the
+     *                      difference to the base dataset.
+     * @returns The ID assigned to the new dataset.
+     **/
+    dset_id_t add_dataset(dset_id_t base_dset, state_id_t state);
 
     /**
      * @brief Register a state with the manager.
@@ -244,14 +260,12 @@ public:
      * `datasetState`.
      *
      * @param state The state to be added.
-     * @param ignore_broker If true, the state is not sent to the broker.
      * @returns The id assigned to the state and a read-only pointer to the
      * state.
      **/
     template <typename T>
     inline std::pair<state_id_t, const T*> add_state(
             std::unique_ptr<T>&& state,
-            bool ignore_broker = false,
             typename std::enable_if<std::is_base_of<datasetState,
                                     T>::value>::type* = 0);
 
@@ -305,6 +319,22 @@ private:
 
     /// Destructor. Joins all request threads.
     ~datasetManager();
+
+    /**
+     * @brief Register a new dataset.
+     *
+     * If `use_dataset_broker` is set, this function will ask the dataset broker
+     * to assign an ID to the new dataset.
+     *
+     * @param base_dset     The ID of the dataset this dataset is based on
+     *                      (undefined if this is a root dataset).
+     * @param state         The ID of the dataset state that describes the
+     *                      difference to the base dataset.
+     * @param is_root       True if this is a root dataset (has no base
+     *                      dataset).
+     * @returns The ID assigned to the new dataset.
+     **/
+    dset_id_t add_dataset(dataset ds);
 
     /**
      * @brief Get the states applied to generate the given dataset.
@@ -490,7 +520,6 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 template <typename T>
 std::pair<state_id_t, const T*> datasetManager::add_state(
         std::unique_ptr<T>&& state,
-        bool ignore_broker,
         typename std::enable_if<std::is_base_of<datasetState, T>::value>::type*)
 {
 
@@ -521,7 +550,7 @@ std::pair<state_id_t, const T*> datasetManager::add_state(
         }
 
         // tell the broker about it
-        if (_use_broker && !ignore_broker)
+        if (_use_broker)
             register_state(hash);
     }
 

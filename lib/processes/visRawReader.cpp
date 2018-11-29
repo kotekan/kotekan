@@ -198,7 +198,7 @@ void visRawReader::change_dataset_state() {
                                         std::move(tstate))).first;
 
     // register it as root dataset
-    _dataset_id = dm.add_dataset(0, mstate_id, true);
+    _dataset_id = dm.add_dataset(mstate_id);
 }
 
 void visRawReader::read_ahead(int ind) {

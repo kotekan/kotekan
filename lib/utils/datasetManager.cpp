@@ -17,8 +17,11 @@
 
 dataset::dataset(json& js) {
     _state = js["state"];
-    _base_dset = js["base_dset"];
     _is_root = js["is_root"];
+    if (_is_root)
+        _base_dset = 0;
+    else
+        _base_dset = js["base_dset"];
     _types = js["types"].get<std::set<std::string>>();
 }
 
@@ -42,14 +45,20 @@ json dataset::to_json() const {
     json j;
     j["is_root"] = _is_root;
     j["state"] = _state;
-    j["base_dset"] = _base_dset;
+    if (!_is_root)
+        j["base_dset"] = _base_dset;
     j["types"] = _types;
     return j;
 }
 
 bool dataset::equals(dataset& ds) const {
+    if (_is_root != ds.is_root())
+        return false;
+    if (_is_root) {
+        return _state == ds.state() && _types == ds.types();
+    }
     return _state == ds.state() && _base_dset == ds.base_dset()
-            && _is_root == ds.is_root() && _types == ds.types();
+            && _types == ds.types();
 }
 
 
@@ -126,28 +135,41 @@ datasetManager::~datasetManager() {
     _cv_stop_request_threads.wait(lk, [this]{ return _n_request_threads == 0; });
 }
 
-dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state,
-                                      bool is_root, bool ignore_broker) {
+dset_id_t datasetManager::add_dataset(state_id_t state) {
+    datasetState* t = nullptr;
+    try {
+        t = _states.at(state).get();
+    } catch (std::exception& e) {
+        // This must be a bug in the calling process...
+        ERROR("datasetManager: Failure registering root dataset : state %zu " \
+              "not found: %s",
+              state, e.what());
+        raise(SIGINT);
+    }
+    std::set<std::string> types = t->types();
+    dataset ds(state, types);
+    return add_dataset(ds);
+}
 
-    // collect typeids of inner states
-    std::set<std::string> types;
-    datasetState* t;
+dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
+    datasetState* t = nullptr;
     try {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling process...
         ERROR("datasetManager: Failure registering dataset : state %zu not " \
-              "found (base dataset ID: %zu, is root: %d): %s",
-              state, base_dset, is_root, e.what());
+              "found (base dataset ID: %zu): %s",
+              state, base_dset, e.what());
         raise(SIGINT);
     }
+    std::set<std::string> types = t->types();
+    dataset ds(state, base_dset, types);
+    return add_dataset(ds);
+}
 
-    while(t != nullptr) {
-        types.insert(typeid(*t).name());
-        t = t->_inner_state.get();
-    }
+// Private.
+dset_id_t datasetManager::add_dataset(dataset ds) {
 
-    dataset ds = dataset(state, base_dset, types, is_root);
     dset_id_t new_dset_id = hash_dataset(ds);
 
     {
@@ -176,7 +198,7 @@ dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state,
         }
     }
 
-    if (_use_broker && !ignore_broker)
+    if (_use_broker)
         register_dataset(new_dset_id, ds);
 
     return new_dset_id;

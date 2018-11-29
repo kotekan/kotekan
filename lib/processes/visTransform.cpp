@@ -193,5 +193,5 @@ dset_id_t visTransform::change_dataset_state() {
     datasetManager& dm = datasetManager::instance();
     state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
     //register root dataset
-    return dm.add_dataset(0, mstate_id, true);
+    return dm.add_dataset(mstate_id);
 }

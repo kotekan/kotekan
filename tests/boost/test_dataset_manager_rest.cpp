@@ -111,7 +111,8 @@ struct TestContext {
             js_ds = js.at("ds");
             js_ds.at("is_root");
             js_ds.at("state");
-            js_ds.at("base_dset");
+            if(!js_ds.at("is_root"))
+                js_ds.at("base_dset");
         } catch (std::exception& e) {
             std::string error = fmt::format(
                         "Failure parsing register-dataset message from " \
@@ -122,7 +123,8 @@ struct TestContext {
         }
 
         BOOST_CHECK(js_ds.at("state").is_number());
-        BOOST_CHECK(js_ds.at("base_dset").is_number());
+        if (!js_ds.at("is_root"))
+            BOOST_CHECK(js_ds.at("base_dset").is_number());
         BOOST_CHECK(js_ds.at("is_root").is_boolean());
         BOOST_CHECK(js.at("hash").is_number());
 
@@ -169,7 +171,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
 
-    dset_id_t init_ds_id = dm.add_dataset(0, input_state.first, true);
+    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
 
     // register first state again
     std::pair<state_id_t, const inputState*>input_state3 =

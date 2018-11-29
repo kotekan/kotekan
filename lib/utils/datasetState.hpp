@@ -6,6 +6,7 @@
 #include <functional>
 #include <iosfwd>
 #include <map>
+#include <set>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -99,6 +100,12 @@ public:
      */
     bool equals(datasetState& s) const;
 
+    /**
+     * @brief Get typeids of this state and its inner states.
+     * @return A set of state names.
+     */
+    std::set<std::string> types() const;
+
 private:
 
     /**
@@ -121,7 +128,6 @@ private:
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
-
 };
 
 #define REGISTER_DATASET_STATE(T) int _register_ ## T = \
