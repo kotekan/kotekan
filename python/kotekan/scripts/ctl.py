@@ -1,9 +1,14 @@
-#!/usr/bin/env python
+# Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from builtins import (ascii, bytes, chr, dict, filter, hex, input,
+                      int, map, next, oct, open, pow, range, round,
+                      str, super, zip)
+
 import requests
 from urlparse import urljoin, urlsplit
 import click
 import yaml
-import json
 
 TIMEOUT = 5.
 
@@ -70,7 +75,3 @@ def status(url):
         host_addr = urlsplit(url).netloc
         state = "running" if r.json()['running'] else "idle"
         print("Kotekan instance on {} is {}.".format(host_addr, state))
-
-
-if __name__ == "__main__":
-    cli()

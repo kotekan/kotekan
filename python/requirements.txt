@@ -1,0 +1,4 @@
+numpy>=1.7
+msgpack
+click
+h5py
