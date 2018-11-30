@@ -36,9 +36,6 @@ void pyPlotN2::request_plot_callback(connectionInstance& conn) {
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
-void pyPlotN2::apply_config(uint64_t fpga_seq) {
-}
-
 void pyPlotN2::main_thread() {
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();

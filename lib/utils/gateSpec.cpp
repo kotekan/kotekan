@@ -105,11 +105,21 @@ uniformSpec::uniformSpec(const std::string& name) : gateSpec(name)
 
 bool uniformSpec::update_spec(nlohmann::json &json)
 {
+    // Parameter not used in this spec, suppress warning.
+    (void)json;
+
     return true;
 }
 
 
 std::function<float(timespec, timespec, float)> uniformSpec::weight_function(timespec t) const
 {
-    return [](timespec ts, timespec te, float freq) -> float { return 1.0; };
+    return [](timespec ts, timespec te, float freq) -> float {
+
+        // Parameters not used in this spec, suppress warnings.
+        (void)ts;
+        (void)te;
+        (void)freq;
+
+        return 1.0; };
 }

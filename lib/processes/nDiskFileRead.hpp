@@ -70,26 +70,24 @@
  */
 class nDiskFileRead : public KotekanProcess {
 public:
-    ///Constructor, calls apply_config to intialize parameters
+    ///Constructor
     nDiskFileRead(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_containter);
 
-    ///Destructor, currently does nothing 
-    ~nDiskFileRead();
+    ///Destructor, currently does nothing
+    ~nDiskFileRead() override {};
 
     /**
      * Entrance point for n threads. 
      * Reads files from a given drive in order
      * and places the file contents into a kotekan buffer.
-     * @param disk_id 	Tells the function which disk to read off of. 
-     * 			The function will read off of the disk indicated by
-     * 			disk_id.
+     *
+     * @param disk_id   Tells the function which disk to read off of.
+     *                  The function will read off of the disk indicated by
+     *                  disk_id.
      */
     void file_read_thread(int disk_id);
-
-    ///Applies the config parameters
-    void apply_config(uint64_t fpga_seq) override;
 
     ///Creates n safe instances of the file_read_thread thread
     void main_thread() override;

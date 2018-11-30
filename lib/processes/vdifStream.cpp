@@ -26,14 +26,11 @@ vdifStream::vdifStream(Config& config, const string& unique_name,
 vdifStream::~vdifStream() {
 }
 
-void vdifStream::apply_config(uint64_t fpga_seq) {
-    _vdif_port = config.get<uint32_t>(unique_name, "vdif_port");
-    _vdif_server_ip = config.get<std::string>(unique_name, "vdif_server_ip");
-}
-
 void vdifStream::main_thread() {
 
-    apply_config(0);
+    // Apply config.
+    _vdif_port = config.get<uint32_t>(unique_name, "vdif_port");
+    _vdif_server_ip = config.get<std::string>(unique_name, "vdif_server_ip");
 
     int frame_id = {0};
     uint8_t * frame = NULL;

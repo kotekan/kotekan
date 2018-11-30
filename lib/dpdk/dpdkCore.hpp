@@ -163,8 +163,7 @@ public:
              bufferContainer &buffer_container);
     ~dpdkCore();
 
-    void main_thread();
-    void apply_config(uint64_t fpga_seq) {};
+    void main_thread() override;
 
 private:
 

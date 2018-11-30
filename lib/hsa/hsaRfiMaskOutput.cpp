@@ -5,7 +5,7 @@ REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
 hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("","", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "",""){
     command_type = CommandType::COPY_OUT;
     //Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
@@ -38,7 +38,7 @@ int hsaRfiMaskOutput::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     //Get GPU memory
     void * gpu_output_ptr = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, _rfi_mask_output_buf->frame_size);
     //Copy GPU memory to host

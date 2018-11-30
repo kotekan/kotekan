@@ -31,9 +31,6 @@ rawFileRead::rawFileRead(Config& config, const string& unique_name,
 rawFileRead::~rawFileRead() {
 }
 
-void rawFileRead::apply_config(uint64_t fpga_seq) {
-}
-
 void rawFileRead::main_thread() {
 
     int file_num = 0;

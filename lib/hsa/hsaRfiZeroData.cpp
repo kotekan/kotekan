@@ -10,7 +10,7 @@ REGISTER_HSA_COMMAND(hsaRfiZeroData);
 hsaRfiZeroData::hsaRfiZeroData(Config& config,const string &unique_name,
                          bufferContainer& host_buffers,
                          hsaDeviceInterface& device):
-    hsaCommand("rfi_chime_zero", "rfi_chime_zero.hsaco", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero", "rfi_chime_zero.hsaco"){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -44,7 +44,11 @@ bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json &json) {
 }
 
 
-hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+
+    // Unused variable, suppress warning.
+    (void)precede_signal;
+
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {

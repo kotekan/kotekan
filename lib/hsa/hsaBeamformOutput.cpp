@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
 hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string &unique_name,
         bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "", "") {
     command_type = CommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
@@ -21,6 +21,7 @@ hsaBeamformOutputData::~hsaBeamformOutputData() {
 }
 
 int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL) return -1;
@@ -29,7 +30,7 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     void * gpu_output_ptr = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_buffer->frame_size);
 

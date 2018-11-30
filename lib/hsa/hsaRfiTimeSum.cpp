@@ -9,7 +9,7 @@ REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
                          bufferContainer& host_buffers,
                          hsaDeviceInterface& device):
-    hsaCommand("rfi_chime_timesum", "rfi_chime_timesum_private.hsaco", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_timesum", "rfi_chime_timesum_private.hsaco"){
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -29,7 +29,12 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config,const string &unique_name,
 hsaRfiTimeSum::~hsaRfiTimeSum() {
 }
 
-hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id,
+                                    hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     //Structure for gpu arguments
     struct __attribute__ ((aligned(16))) args_t {
         void *input;

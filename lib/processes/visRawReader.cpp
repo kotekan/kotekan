@@ -22,11 +22,6 @@ visRawReader::visRawReader(Config &config,
 
     filename = config.get<std::string>(unique_name, "infile");
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
-    if (readahead_blocks < 0) {
-        throw std::invalid_argument("visRawReader: config: readahead_blocks" \
-                                    "should be positive (is " +
-                                    std::to_string(readahead_blocks) + ").");
-    }
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -164,10 +159,6 @@ visRawReader::~visRawReader() {
     }
 
     close(fd);
-}
-
-void visRawReader::apply_config(uint64_t fpga_seq) {
-
 }
 
 void visRawReader::change_dataset_state() {

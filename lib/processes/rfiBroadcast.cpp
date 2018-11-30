@@ -34,8 +34,27 @@ rfiBroadcast::rfiBroadcast(Config& config,
     register_consumer(rfi_buf, unique_name.c_str());
     //Register process as consumer
     register_consumer(rfi_mask_buf, unique_name.c_str());
-    //Intialize internal config
-    apply_config(0);
+
+    // Intialize internal config
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_total_freq = config.get_default<uint32_t>(
+                unique_name, "num_total_freq", 1024);
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
+    //Rfi paramters
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
+    _frames_per_packet = config.get_default<uint32_t>(
+                unique_name, "frames_per_packet",1);
+    //Process specific paramters
+    total_links = config.get_default<uint32_t>(unique_name, "total_links",1);
+    dest_port = config.get<uint32_t>(unique_name, "destination_port");
+    dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
+    dest_protocol = config.get_default<std::string>(
+                unique_name, "destination_protocol", "UDP");
+    replay = config.get_default<bool>(unique_name, "replay", false);
+
     //Initialize rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -75,29 +94,6 @@ void rfiBroadcast::rest_zero(connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
-
-void rfiBroadcast::apply_config(uint64_t fpga_seq) {
-    //Standard Config parameters
-    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
-    _num_total_freq = config.get_default<uint32_t>(
-                unique_name, "num_total_freq", 1024);
-    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<uint32_t>(
-                unique_name, "samples_per_data_set");
-    //Rfi paramters
-    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
-    _frames_per_packet = config.get_default<uint32_t>(
-                unique_name, "frames_per_packet",1);
-    //Process specific paramters
-    total_links = config.get_default<uint32_t>(unique_name, "total_links",1);
-    dest_port = config.get<uint32_t>(unique_name, "destination_port");
-    dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
-    dest_protocol = config.get_default<std::string>(
-                unique_name, "destination_protocol", "UDP");
-    replay = config.get_default<bool>(unique_name, "replay", false);
-}
-
 void rfiBroadcast::main_thread() {
     //Intialize variables
     uint32_t frame_id = 0;
@@ -110,9 +106,19 @@ void rfiBroadcast::main_thread() {
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
     prometheusMetrics &metrics = prometheusMetrics::instance();
+
     //Intialize packet header
-    struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)_rfi_combined, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
-                      .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, .frames_per_packet=_frames_per_packet};
+    struct RFIHeader rfi_header = {
+            .rfi_combined=(uint8_t)_rfi_combined,
+            .sk_step=_sk_step,
+            .num_elements=_num_elements,
+            .samples_per_data_set=_samples_per_data_set,
+            .num_total_freq=_num_total_freq,
+            .num_local_freq=_num_local_freq,
+            .frames_per_packet=_frames_per_packet,
+            .seq_num= 0,
+            .streamID= 0};
+
     //Intialize empty packet
     uint32_t packet_length = sizeof(rfi_header) + _num_local_freq*sizeof(float);
     char *packet_buffer = (char *)malloc(packet_length);

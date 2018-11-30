@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
 hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("","", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "","") {
     command_type = CommandType::COPY_IN;
 
     int block_size = config.get<int>(unique_name, "block_size");
@@ -24,7 +24,8 @@ hsaOutputDataZero::~hsaOutputDataZero() {
     hsa_host_free(output_zeros);
 }
 
-hsa_signal_t hsaOutputDataZero::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaOutputDataZero::execute(int gpu_frame_id,
+                                        hsa_signal_t precede_signal) {
 
     void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_len);
 

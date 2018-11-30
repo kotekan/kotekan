@@ -10,7 +10,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     //Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
-    hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum", "rfi_chime_inputsum.hsaco") {
     command_type = CommandType::KERNEL;
     //Retrieve parameters from kotekan config
     //Data Parameters
@@ -62,7 +62,12 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     config.update_value(unique_name, "bad_inputs", _bad_inputs);
 }
 
-hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id,
+                                     hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     //Lock rest server callback mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Build Input mask when needed (after rest callback or on first execution)

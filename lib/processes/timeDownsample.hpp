@@ -48,11 +48,8 @@ public:
                    const string& unique_name,
                    bufferContainer &buffer_container);
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
 

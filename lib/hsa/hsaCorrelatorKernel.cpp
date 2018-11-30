@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("CHIME_X","N2.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "CHIME_X","N2.hsaco") {
     command_type = CommandType::KERNEL;
 
 
@@ -67,7 +67,10 @@ hsaCorrelatorKernel::~hsaCorrelatorKernel() {
 }
 
 hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id,
-                        const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+                                          hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
 
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;

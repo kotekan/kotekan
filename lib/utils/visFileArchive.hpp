@@ -101,7 +101,6 @@ private:
                     const std::map<std::string, std::string>& metadata,
                     const std::vector<time_ctype>& times,
                     const std::vector<freq_ctype>& freqs,
-                    const std::vector<input_ctype>& inputs,
                     const std::vector<prod_ctype>& prods,
                     size_t num_ev,
                     std::vector<int> chunk_size);

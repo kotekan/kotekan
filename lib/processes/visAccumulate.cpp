@@ -30,102 +30,6 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                    std::bind(&visAccumulate::main_thread, this))
 {
 
-    // Fetch and apply config
-    apply_config(0);
-
-    in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
-
-    out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
-
-    // Create the state for the main visibility accumulation
-    gated_datasets.emplace_back(
-        out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
-    );
-
-
-    // Get and validate any gating config
-    nlohmann::json gating_conf = config.get_default<nlohmann::json>(
-        unique_name, "gating", {});
-    if (!gating_conf.empty() && !gating_conf.is_object()) {
-        ERROR("Gating config must be a dictionary: %s",
-              gating_conf.dump().c_str());
-        std::raise(SIGINT);
-    }
-
-    if(!gating_conf.empty() && num_freq_in_frame > 1) {
-        ERROR("Cannot use gating with multifrequency GPU buffers"
-              "[num_freq_in_frame=%i; gating config=%s].",
-              num_freq_in_frame, gating_conf.dump().c_str());
-        std::raise(SIGINT);
-    }
-
-    // Register gating update callbacks
-    std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
-
-    for (auto& it : gating_conf.items()) {
-
-        // Get the name of the gated dataset
-        std::string name = it.key();
-
-        // Validate and fetch the gating mode
-        try {
-            if (!it.value().at("mode").is_string()) {
-                throw std::invalid_argument(
-                    "Config for gated dataset " + name +
-                    " did not have a valid mode argument: " + it.value().dump()
-                );
-            }
-        } catch (std::exception& e) {
-            ERROR("Failure reading 'mode' from config: %s", e.what());
-            std::raise(SIGINT);
-        }
-        std::string mode = it.value().at("mode");
-
-        if (!FACTORY(gateSpec)::exists(mode)) {
-            ERROR("Requested gating mode %s for dataset %s is not a known.",
-                  name.c_str(), mode.c_str());
-            std::raise(SIGINT);
-        }
-
-        INFO("Creating gated dataset %s of type %s",
-             name.c_str(), mode.c_str());
-
-        // Validate and fetch the output buffer name
-        try {
-            if (!it.value().at("buf").is_string()) {
-                throw std::invalid_argument(
-                    "Config for gated dataset " + name +
-                    " did not have a valid buf argument: " + it.value().dump()
-                );
-            }
-        } catch (std::exception& e) {
-            ERROR("Failure reading 'buf' from config: %s", e.what());
-            std::raise(SIGINT);
-        }
-        std::string buffer_name = it.value().at("buf");
-
-        // Fetch and register the buffer
-        auto buf = buffer_container.get_buffer(buffer_name);
-        register_producer(buf, unique_name.c_str());
-
-        // Create the gated dataset and register the update callback
-        gated_datasets.emplace_back(
-            buf, gateSpec::create(mode, name), num_prod_gpu
-        );
-        callbacks[name] = std::bind(&gateSpec::update_spec,
-                                    gated_datasets.back().spec.get(), _1);
-    }
-
-    configUpdater::instance().subscribe(this, callbacks);
-
-}
-
-visAccumulate::~visAccumulate() {}
-
-void visAccumulate::apply_config(uint64_t fpga_seq)
-{
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_freq_in_frame = config.get_default<size_t>(
@@ -221,8 +125,97 @@ void visAccumulate::apply_config(uint64_t fpga_seq)
         }
         break;
     }
+
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
+
+    // Create the state for the main visibility accumulation
+    gated_datasets.emplace_back(
+        out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
+    );
+
+
+    // Get and validate any gating config
+    nlohmann::json gating_conf = config.get_default<nlohmann::json>(
+        unique_name, "gating", {});
+    if (!gating_conf.empty() && !gating_conf.is_object()) {
+        ERROR("Gating config must be a dictionary: %s",
+              gating_conf.dump().c_str());
+        std::raise(SIGINT);
+    }
+
+    if(!gating_conf.empty() && num_freq_in_frame > 1) {
+        ERROR("Cannot use gating with multifrequency GPU buffers"
+              "[num_freq_in_frame=%i; gating config=%s].",
+              num_freq_in_frame, gating_conf.dump().c_str());
+        std::raise(SIGINT);
+    }
+
+    // Register gating update callbacks
+    std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
+
+    for (auto& it : gating_conf.items()) {
+
+        // Get the name of the gated dataset
+        std::string name = it.key();
+
+        // Validate and fetch the gating mode
+        try {
+            if (!it.value().at("mode").is_string()) {
+                throw std::invalid_argument(
+                    "Config for gated dataset " + name +
+                    " did not have a valid mode argument: " + it.value().dump()
+                );
+            }
+        } catch (std::exception& e) {
+            ERROR("Failure reading 'mode' from config: %s", e.what());
+            std::raise(SIGINT);
+        }
+        std::string mode = it.value().at("mode");
+
+        if (!FACTORY(gateSpec)::exists(mode)) {
+            ERROR("Requested gating mode %s for dataset %s is not a known.",
+                  name.c_str(), mode.c_str());
+            std::raise(SIGINT);
+        }
+
+        INFO("Creating gated dataset %s of type %s",
+             name.c_str(), mode.c_str());
+
+        // Validate and fetch the output buffer name
+        try {
+            if (!it.value().at("buf").is_string()) {
+                throw std::invalid_argument(
+                    "Config for gated dataset " + name +
+                    " did not have a valid buf argument: " + it.value().dump()
+                );
+            }
+        } catch (std::exception& e) {
+            ERROR("Failure reading 'buf' from config: %s", e.what());
+            std::raise(SIGINT);
+        }
+        std::string buffer_name = it.value().at("buf");
+
+        // Fetch and register the buffer
+        auto buf = buffer_container.get_buffer(buffer_name);
+        register_producer(buf, unique_name.c_str());
+
+        // Create the gated dataset and register the update callback
+        gated_datasets.emplace_back(
+            buf, gateSpec::create(mode, name), num_prod_gpu
+        );
+        callbacks[name] = std::bind(&gateSpec::update_spec,
+                                    gated_datasets.back().spec.get(), _1);
+    }
+
+    configUpdater::instance().subscribe(this, callbacks);
+
 }
 
+visAccumulate::~visAccumulate() {}
 
 dset_id_t visAccumulate::change_dataset_state() {
 
@@ -294,7 +287,7 @@ void visAccumulate::main_thread() {
 
             // Iterate over *only* the gated datasets (remember that element
             // zero is the vis), and remove the bias and copy in the variance
-            for (int i = 1; i < enabled_gated_datasets.size(); i++) {
+            for (size_t i = 1; i < enabled_gated_datasets.size(); i++) {
                 combine_gated(enabled_gated_datasets.at(i),
                               enabled_gated_datasets.at(0));
             }
@@ -479,7 +472,7 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 
     // Subtract out the bias from the gated data
     float scl = gate.sample_weight_total / vis.sample_weight_total;
-    for (int i = 0; i < num_prod_gpu; i++) {
+    for (size_t i = 0; i < num_prod_gpu; i++) {
         gate.vis1[i] -= scl * vis.vis1[i];
     }
 
@@ -489,7 +482,7 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
         gate.sample_weight_total;
 
     // Copy in the proto weight data
-    for (int i = 0; i < num_prod_gpu; i++) {
+    for (size_t i = 0; i < num_prod_gpu; i++) {
         gate.vis2[i] = scl * (1.0 - scl) * vis.vis2[i];
     }
 }
@@ -516,6 +509,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     // Unpack and invert the weights
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
+            (void)conj;
             float t = state.vis2[bi];
             output_frame.weight[pi] = w * w / t;
         }

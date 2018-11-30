@@ -109,17 +109,17 @@ BOOST_AUTO_TEST_CASE( chimeStacking )
     BOOST_CHECK_EQUAL(stack.first, nstack);
 
     // Check a few indices that we have calculated by hand
-    BOOST_CHECK_EQUAL(stack.second[491648].stack, 0); // Auto of Cyl A Feed 0 pol X
-    BOOST_CHECK_EQUAL(stack.second[493440].stack, 0); // Auto of Cyl A Feed 1 pol X
-    BOOST_CHECK_EQUAL(stack.second[491649].stack, 1); // Delta 1 sep for XX in Cyl A
+    BOOST_CHECK_EQUAL(stack.second[491648].stack, 0u); // Auto of Cyl A Feed 0 pol X
+    BOOST_CHECK_EQUAL(stack.second[493440].stack, 0u); // Auto of Cyl A Feed 1 pol X
+    BOOST_CHECK_EQUAL(stack.second[491649].stack, 1u); // Delta 1 sep for XX in Cyl A
 
 
     // Check the reverse mapping
     auto istack = invert_stack(stack.first, stack.second);
 
     // Check the precalculated values above (though this relies on the sort order)
-    BOOST_CHECK_EQUAL(istack[0].prod, 491648);
-    BOOST_CHECK_EQUAL(istack[1].prod, 491649);
+    BOOST_CHECK_EQUAL(istack[0].prod, 491648u);
+    BOOST_CHECK_EQUAL(istack[1].prod, 491649u);
 
     // Check that all the entries are the inverses
     std::vector<uint32_t> stack_ind1(stack.first);

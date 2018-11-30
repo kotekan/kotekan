@@ -25,13 +25,7 @@ testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
     assert(type == "const" || type == "random");
 }
 
-testDataGenQuad::~testDataGenQuad() {
-
-}
-
-void testDataGenQuad::apply_config(uint64_t fpga_seq) {
-
-}
+testDataGenQuad::~testDataGenQuad() {}
 
 void testDataGenQuad::main_thread() {
 

@@ -42,13 +42,14 @@ else ()
 endif ()
 
 if (${USE_HSA})
-  find_package( HSA )
+  find_package( HSA REQUIRED )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
 
 if (${USE_OPENCL})
-  find_package( OpenCL )
+  set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
+  find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
 endif ()
 
@@ -162,14 +163,11 @@ find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-# Required for some SSE/AVX intrinsics
-add_definitions(-D__STDC_LIMIT_MACROS)
-
 # Note that -lrt here is needed on some versions of CentOS
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
 endif ()
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
 if(${USE_OMP})
@@ -185,7 +183,15 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+
+# Warning about missing override is called differently in clang and gcc
+# TODO: enable once we are using a release version of HighFive
+#if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Winconsistent-missing-override")
+#else()
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wsuggest-override")
+#endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
@@ -234,7 +240,6 @@ endif()
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
-add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
 

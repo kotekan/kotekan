@@ -42,6 +42,11 @@ restClient::~restClient() {
 }
 
 void restClient::timer(evutil_socket_t fd, short event, void *arg) {
+
+    // Unused parameters, required by libevent. Suppress warning.
+    (void)fd;
+    (void)event;
+
     restClient * client = (restClient *)arg;
     if (client->_stop_thread) {
         event_base_loopbreak(client->_base);

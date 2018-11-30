@@ -8,20 +8,23 @@
 #include "hsa/hsa_ext_amd.h"
 
 void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
+    // Unused parameter, suppress warning.
+    (void)data;
+
     const char* message;
     hsa_status_string(status, &message);
     INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);
 }
 
 hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
-    config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
+    gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
 
     hsa_status_t hsa_status;
 
     // Function parameters
     gpu_config_t gpu_config;
     gpu_config.agent = &gpu_agent;
-    gpu_config.gpu_id = gpu_id;
+    gpu_config.gpu_id = gpu_id_;
 
     // Get the CPU agent
     hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
@@ -73,9 +76,20 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
 }
 
 hsaDeviceInterface::~hsaDeviceInterface() {
-    hsa_status_t hsa_status = hsa_queue_destroy(queue);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    assert(HSA_STATUS_SUCCESS == hsa_queue_destroy(queue));
 }
+
+void * hsaDeviceInterface::alloc_gpu_memory(int len) {
+    void *ptr;
+    assert(HSA_STATUS_SUCCESS == hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr));
+    return ptr;
+}
+
+void hsaDeviceInterface::free_gpu_memory(void *ptr) {
+    assert(HSA_STATUS_SUCCESS == hsa_amd_memory_pool_free(ptr));
+
+}
+
 
 hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, int len,
         hsa_signal_t precede_signal, hsa_signal_t copy_signal) {
@@ -283,55 +297,6 @@ hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t 
     return HSA_STATUS_SUCCESS;
 }
 
-void* hsaDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index, const uint32_t len) {
-    assert(index < gpu_buffer_depth);
-    hsa_status_t hsa_status;
-    // Check if the memory isn't yet allocated
-    if (gpu_memory.count(name) == 0) {
-        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
-            void * ptr;
-            hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
-            INFO("Allocating GPU[%d] memory: %s[%d], len: %d, ptr: %p", gpu_id, name.c_str(), i, len, ptr);
-            assert(hsa_status == HSA_STATUS_SUCCESS);
-            gpu_memory[name].len = len;
-            gpu_memory[name].gpu_pointers.push_back(ptr);
-        }
-    }
-    // The size must match what has already been allocated.
-    assert(len == gpu_memory[name].len);
-    // Make sure we aren't asking for an index past the end of the array.
-    assert(index < gpu_memory[name].gpu_pointers.size());
-
-    // Return the requested memory.
-    return gpu_memory[name].gpu_pointers[index];
-}
-
-void* hsaDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
-    hsa_status_t hsa_status;
-    // Check if the memory isn't yet allocated
-    if (gpu_memory.count(name) == 0) {
-        void * ptr;
-        hsa_status=hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
-        INFO("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
-        assert(hsa_status == HSA_STATUS_SUCCESS);
-        gpu_memory[name].len = len;
-        gpu_memory[name].gpu_pointers.push_back(ptr);
-    }
-    // The size must match what has already been allocated.
-    assert(len == gpu_memory[name].len);
-    assert(gpu_memory[name].gpu_pointers.size() == 1);
-
-    // Return the requested memory.
-    return gpu_memory[name].gpu_pointers[0];
-}
-
-int hsaDeviceInterface::get_gpu_id() {
-    return gpu_id;
-}
-int hsaDeviceInterface::get_gpu_buffer_depth() {
-    return gpu_buffer_depth;
-}
-
 hsa_agent_t hsaDeviceInterface::get_gpu_agent() {
     return gpu_agent;
 }
@@ -346,11 +311,4 @@ hsa_queue_t* hsaDeviceInterface::get_queue() {
 
 uint64_t hsaDeviceInterface::get_hsa_timestamp_freq() {
     return timestamp_frequency_hz;
-}
-
-gpuMemoryBlock::~gpuMemoryBlock()  {
-    for (auto&& gpu_pointer : gpu_pointers) {
-        hsa_amd_memory_pool_free(gpu_pointer);
-    }
-    // TODO delete queue
 }

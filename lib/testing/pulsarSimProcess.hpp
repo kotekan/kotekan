@@ -51,8 +51,6 @@ public:
 
     void main_thread() override;
 
-    virtual void apply_config(uint64_t fpga_seq) override;
-
     /// parses the hostname to get the unique node_id used for freqency_id
     void parse_host_name();
 private:

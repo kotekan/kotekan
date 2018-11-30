@@ -32,7 +32,7 @@ public:
     //Builds gpu command
     virtual void build(device_interface &param_Device) override;
     //Reads gpu memory and places in kotekan buffer
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent) override;
 protected:
 };
 

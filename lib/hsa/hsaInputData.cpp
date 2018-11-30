@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaInputData);
 
 hsaInputData::hsaInputData( Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "", ""){
     command_type = CommandType::COPY_IN;
 
     int header_size = 0;
@@ -48,8 +48,9 @@ hsaInputData::~hsaInputData() {
 
 int hsaInputData::wait_on_precondition(int gpu_frame_id)
 {
-    // Wait for there to be data in the input (network) buffer.
+    (void)gpu_frame_id;
 
+    // Wait for there to be data in the input (network) buffer.
     uint8_t * frame = wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
     if (frame == NULL) return -1;
     //INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name, network_buffer_precondition_id,
@@ -76,7 +77,7 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id)
     return 0;
 }
 
-hsa_signal_t hsaInputData::execute(int gpu_frame_id, const uint64_t& fpga_seq,
+hsa_signal_t hsaInputData::execute(int gpu_frame_id,
                                    hsa_signal_t precede_signal) {
 
     // Get the gpu and cpu memory pointers.

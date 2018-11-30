@@ -53,6 +53,6 @@ json datasetState::to_json() const {
 }
 
 // TODO: compare without serialization
-const bool datasetState::equals(datasetState& s) const {
+bool datasetState::equals(datasetState& s) const {
     return to_json() == s.to_json();
 }
