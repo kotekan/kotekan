@@ -493,7 +493,7 @@ datasetManager::ancestors(dset_id_t dset) {
     return a_list;
 }
 
-void datasetManager::update_datasets(dset_id_t ds_id) {
+void datasetManager::update_datasets(dset_id_t ds_id, bool ignore_timestamp) {
 
     // wait for ongoing dataset updates
     std::lock_guard<std::mutex> dslock(_lock_dsets);
@@ -501,7 +501,10 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
     // check if local dataset topology is up to date to include requested ds_id
     if (_datasets.find(ds_id) == _datasets.end()) {
         json js_rqst;
-        js_rqst["ts"] = _timestamp_update;
+        if (ignore_timestamp)
+            js_rqst["ts"] = 0;
+        else
+            js_rqst["ts"] = _timestamp_update;
         js_rqst["ds_id"] = ds_id;
 
         restReply reply = restClient::instance().make_request_blocking(

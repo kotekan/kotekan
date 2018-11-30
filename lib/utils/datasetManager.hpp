@@ -148,31 +148,30 @@ private:
  * This is a singleton class. Use `datasetManager::instance()` to get a
  * reference to it.
  *
- * This is used to manage the states of datasets that get passed through
- * kotekan processes.
+ * The datasetManager is used to manage the states of datasets that get passed
+ * through kotekan processes.
  * A process in the kotekan pipeline may use the dataset ID found in an incoming
  * frame to get a set of states from the datasetManager.
- * E.g.
+ *
+ * To receive information about the inputs the datsets in the frames contain, it
+ * could do thew following:
  * ```
- * std::pair<dset_id, const inputState*> input_state =
- *          dm.dataset_state<inputState>(ds_id_from_frame);
- * const std::vector<input_ctype>& inputs = input_state.second->get_inputs();
+ * auto input_state = dm.dataset_state<inputState>(ds_id_from_frame);
+ * const std::vector<input_ctype>& inputs = input_state->get_inputs();
  * ```
- * to receive information about the inputs the datsets in the frames contain.
  *
  * A process that changes the state of the dataset in the frames it processes
- * should inform the datasetManager by adding a state. For example
- * ```
- * std::pair<state_id, const inputState*> new_state =
- *          dm.add_state(std::make_unique<inputState>(new_inputs,
- *                                         make_unique<prodState>(new_prods)));
- *  dset_id new_ds_id = dm.add_dataset(old_dataset_id, new_state);
- * ```
- * Adds an input state as well as a product dataset state to the manager. The
- * process should then write `new_ds_id` to its outgoing frames.
- *
- * If a process is altering more than one type of dataset state, it can add
+ * should inform the datasetManager by adding a new state and dataset.
+ *  If a process is altering more than one type of dataset state, it can add
  * `inner` states to the one it passes to the dataset manager.
+ * The following adds an input state as well as a product state. The
+ * process should then write `new_ds_id` to its outgoing frames.
+ * ```
+ * auto new_state = dm.add_state(std::make_unique<inputState>(
+ *                              new_inputs, make_unique<prodState>(new_prods)));
+ *  dset_id_t new_ds_id = dm.add_dataset(old_dataset_id, new_state);
+ * ```
+ *
  *
  * The dataset broker is a centralized part of the dataset management system.
  * Using it allows the synchronization of datasets and states between multiple
@@ -326,12 +325,7 @@ private:
      * If `use_dataset_broker` is set, this function will ask the dataset broker
      * to assign an ID to the new dataset.
      *
-     * @param base_dset     The ID of the dataset this dataset is based on
-     *                      (undefined if this is a root dataset).
-     * @param state         The ID of the dataset state that describes the
-     *                      difference to the base dataset.
-     * @param is_root       True if this is a root dataset (has no base
-     *                      dataset).
+     * @param ds     The dataset to get registered.
      * @returns The ID assigned to the new dataset.
      **/
     dset_id_t add_dataset(dataset ds);
@@ -389,7 +383,7 @@ private:
     bool register_dataset_parser(std::string& reply);
 
     /// request an update on the topology of datasets (blocking)
-    void update_datasets(dset_id_t ds_id);
+    void update_datasets(dset_id_t ds_id, bool ignore_timestamp = false);
 
     /// Helper function to parse the reply for update_datasets()
     bool parse_reply_dataset_update(restReply reply);
@@ -506,11 +500,20 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
     // get the state or ask broker for it
     const T* state = get_closest_ancestor<T>(dset);
 
+    if (!state) {
+        // This can happen, when the dM has a recent update of a dataset that is
+        // not an ancestor of `dset`. We have to request an update with
+        // timestamp 0.
+        update_datasets(dset, true);
+        state = get_closest_ancestor<T>(dset);
+    }
+
     while (!state) {
-        // retry
+        // Problem with the connection or trying to get information from the
+        // broker it doesn't have yet. Wait and retry...
         std::this_thread::sleep_for(
                     std::chrono::milliseconds(_retry_wait_time_ms));
-        update_datasets(dset);
+        update_datasets(dset, true);
         state = get_closest_ancestor<T>(dset);
     }
 
