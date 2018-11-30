@@ -95,7 +95,7 @@ def test_write(write_data):
     for t in range(params['total_frames']):
         for f in range(len(params['subset_list'])):
             # get freq ids from fakeVis
-            fid = int(write_data[t][f].vis[2].real)
+            fid = int(write_data.data[t, f]['vis'][2].real)
             assert fid in params['subset_list']
             # Check the order
             assert fid == params['subset_list'][f]

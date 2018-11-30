@@ -51,18 +51,13 @@ def subset_data(tmpdir_factory):
 
 def test_subset(subset_data):
 
-    for t in range(subset_params['total_frames']):
-        for f in range(len(subset_params['freq_ids'])):
-            frame = subset_data[t][f]
-            # With fill_ij, vis_ij = i+j*(1j)
-            assert np.all(frame.vis[:].real
-                          == np.arange(subset_params['num_elements']))
-            assert np.all(frame.vis[:].imag
-                          == np.arange(subset_params['num_elements']))
-            assert (frame.vis.real == frame.vis.imag).all()
-            assert (frame.eval == np.arange(
-                    subset_params['num_ev'])).all()
-            evecs = (np.arange(subset_params['num_ev'])[:, None] +
-                     1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
-            assert (frame.evec == evecs).all()
-            assert (frame.erms == 1.)
+    vis = (np.arange(subset_params['num_elements']) +
+           1.0J * np.arange(subset_params['num_elements']))
+    evecs = (np.arange(subset_params['num_ev'])[:, None] +
+             1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
+
+    assert (subset_data.data['vis'] == np.array(vis)).all()
+    assert (subset_data.data['eval'] == np.arange(
+            subset_params['num_ev'])).all()
+    assert (subset_data.data['evec'] == evecs).all()
+    assert (subset_data.data['erms'] == 1.0).all()
