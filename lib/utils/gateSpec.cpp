@@ -114,6 +114,7 @@ bool uniformSpec::update_spec(nlohmann::json &json)
 
 std::function<float(timespec, timespec, float)> uniformSpec::weight_function(timespec t) const
 {
+    (void)t;
     return [](timespec ts, timespec te, float freq) -> float {
 
         // Parameters not used in this spec, suppress warnings.
