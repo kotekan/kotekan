@@ -52,7 +52,6 @@
  *                              correlator data.
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
  *                              Only the first element of each sub-array is used and it is the the index of
  *                              the input to move into this new location. The remaining elements of the
@@ -136,7 +135,6 @@ private:
     // Parameters saved from the config files
     size_t num_elements;
     size_t num_freq_in_frame;
-    size_t num_eigenvectors;
     size_t block_size;
     size_t samples_per_data_set;
     size_t num_gpu_frames;

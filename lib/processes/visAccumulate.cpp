@@ -35,7 +35,6 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     num_freq_in_frame = config.get_default<size_t>(
         unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
-    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
     samples_per_data_set = config.get<size_t>(
         unique_name, "samples_per_data_set");
     low_sample_fraction = config.get_default<float>(
@@ -368,8 +367,7 @@ void visAccumulate::main_thread() {
             timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
             timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
             internalState& state = enabled_gated_datasets[0];
-            auto frame = visFrameView(state.buf, state.frame_id,
-                                      num_elements, num_eigenvectors);
+            auto frame = visFrameView(state.buf, state.frame_id);
             float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
             long samples_in_frame = samples_per_data_set -
@@ -436,7 +434,7 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state,
 
     allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
     auto frame = visFrameView(state.buf, state.frame_id + freq_ind,
-                              num_elements, num_eigenvectors);
+                              num_elements, 0);
 
     // Copy over the metadata
     // TODO: CHIME

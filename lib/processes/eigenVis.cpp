@@ -237,7 +237,11 @@ void eigenVis::main_thread() {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
+        auto output_frame = visFrameView(
+            output_buffer, output_frame_id,
+            input_frame.num_elements, input_frame.num_prod, num_eigenvectors
+        );
+        output_frame.copy_nonconst_metadata(input_frame);
 
         // Copy in eigenvectors and eigenvalues.
         for(uint32_t i = 0; i < num_eigenvectors; i++) {
