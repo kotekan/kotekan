@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("CHIME_X","N2.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "CHIME_X","N2.hsaco") {
     command_type = CommandType::KERNEL;
 
 

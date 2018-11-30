@@ -54,7 +54,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
 if (${USE_AIRSPY})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} airspyInput.cpp)
 endif ()
-
 if (${USE_FFTW})
        set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
@@ -80,7 +79,6 @@ if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
 endif ()
 
-
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})
 target_link_libraries( kotekan_processes ${EVENT_LIBRARIES} )
 
@@ -91,10 +89,19 @@ if (${USE_FFTW})
   target_link_libraries ( kotekan_processes -lfftw3f)
 endif ()
 
-# HDF5 stuff
+
+if (${USE_AIRSPY})
+  target_link_libraries ( kotekan_processes -lairspy)
+endif ()
+if (${USE_FFTW})
+  target_link_libraries ( kotekan_processes -lfftw3f)
+endif ()
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   target_link_libraries ( kotekan_processes ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+endif ()
+if (${USE_EVENT})
+    target_link_libraries( kotekan_processes ${EVENT_LIBRARIES} )
 endif ()
 
 if (${USE_LAPACK})

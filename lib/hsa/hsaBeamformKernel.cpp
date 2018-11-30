@@ -15,7 +15,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
                             hsaDeviceInterface& device) :
-    hsaCommand("zero_padded_FFT512","unpack_shift_beamform_flip.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "zero_padded_FFT512","unpack_shift_beamform_flip.hsaco") {
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -70,8 +70,10 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     rest_server.register_post_callback(endpoint_EW_beam,
             std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
     //listen for gain updates
-    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain_frb"),
-                                        std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
+    _gain_dir = config.get_default<std::string>(unique_name,"updatable_gain_frb","");
+    if (_gain_dir.length() > 0)
+        configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_gain_frb"),
+                                            std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
