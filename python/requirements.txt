@@ -2,3 +2,4 @@ numpy>=1.15.1
 msgpack
 click
 h5py
+future
