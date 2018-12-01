@@ -15,6 +15,7 @@
 // dataset id from producer
 // TODO: pass this here via a file instead
 #define DSET_ID 12068105840200711747UL
+#define SECOND_ROOT 1355729954233464875UL
 
 using json = nlohmann::json;
 
@@ -77,5 +78,5 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                      std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(700000);
+    usleep(1000000);
 }

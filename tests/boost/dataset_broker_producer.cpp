@@ -16,7 +16,7 @@ using json = nlohmann::json;
 using namespace std::string_literals;
 
 BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
-    __log_level = 4;
+    __log_level = 5;
     __enable_syslog = 0;
 
     json json_config;
@@ -62,12 +62,12 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
         std::cout << s.second.state() << " - " << s.second.base_dset() <<
                      std::endl;
 
-    usleep(2000000);
+    usleep(1000000);
 }
 
 
 BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
-    __log_level = 4;
+    __log_level = 5;
     __enable_syslog = 0;
 
     json json_config;
@@ -99,4 +99,37 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_state_known_to_broker ) {
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(500000);
+}
+
+BOOST_AUTO_TEST_CASE( _dataset_manager_second_root ) {
+    __log_level = 5;
+    __enable_syslog = 0;
+
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = true;
+    json_config["dataset_manager"] = json_config_dm;
+
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
+
+    // generate datasets:
+    std::vector<input_ctype> inputs = {input_ctype(1, "4"),
+                                       input_ctype(3, "3")};
+    std::vector<prod_ctype> prods = {{4, 1},
+                                     {2, 2},
+                                     {3, 3}};
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{4, {1.1, 1}},
+                                                          {3, {3, 3}}};
+
+    std::pair<state_id_t, const inputState*> input_state =
+            dm.add_state(std::make_unique<inputState>
+                         (inputs, std::make_unique<prodState>(prods,
+                          std::make_unique<freqState>(freqs))));
+
+    dm.add_dataset(input_state.first);
+
+    // wait a bit, to make sure we see errors in any late callbacks
+    usleep(1000000);
 }
