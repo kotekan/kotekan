@@ -18,6 +18,23 @@
 #include "buffer.h"
 #include "chimeMetadata.h"
 
+
+/**
+ * @brief The fields within the visBuffer.
+ *
+ * Use this enum to refer to the fields.
+ **/
+enum class visField {
+    vis,
+    weight,
+    flags,
+    eval,
+    evec,
+    erms,
+    gain
+};
+
+
 /**
  * @struct visMetadata
  * @brief Metadata for the visibility style buffers
@@ -162,9 +179,9 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
-    static struct_layout calculate_buffer_layout(uint32_t num_elements,
-                                                 uint32_t num_prod,
-                                                 uint32_t num_ev);
+    static struct_layout<visField> calculate_buffer_layout(
+        uint32_t num_elements, uint32_t num_prod, uint32_t num_ev
+    );
 
     /**
      * @brief Return a summary of the visibility buffer contents.
@@ -218,6 +235,8 @@ public:
      **/
     const uint8_t* data() const { return _frame; }
 
+
+
 private:
 
     // References to the buffer and metadata we are viewing
@@ -230,7 +249,7 @@ private:
     uint8_t * const _frame;
 
     // The calculated layout of the buffer
-    struct_layout buffer_layout;
+    struct_layout<visField> buffer_layout;
 
 // NOTE: these need to be defined in a final public block to ensure that they
 // are initialised after the above members.

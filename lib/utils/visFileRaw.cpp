@@ -75,7 +75,7 @@ void visFileRaw::create_file(
     auto layout = visFrameView::calculate_buffer_layout(
         ninput, nvis, num_ev
     );
-    data_size = layout["_struct"].second;
+    data_size = layout.first;
     metadata_size = sizeof(visMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1,
                                    alignment * 1024);

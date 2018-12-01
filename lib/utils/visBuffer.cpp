@@ -59,13 +59,13 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
     dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and refernces on the view
-    vis(bind_span<cfloat>(_frame, buffer_layout["vis"])),
-    weight(bind_span<float>(_frame, buffer_layout["weight"])),
-    flags(bind_span<float>(_frame, buffer_layout["flags"])),
-    eval(bind_span<float>(_frame, buffer_layout["eval"])),
-    evec(bind_span<cfloat>(_frame, buffer_layout["evec"])),
-    erms(bind_scalar<float>(_frame, buffer_layout["erms"])),
-    gain(bind_span<cfloat>(_frame, buffer_layout["gain"]))
+    vis(bind_span<cfloat>(_frame, buffer_layout.second[visField::vis])),
+    weight(bind_span<float>(_frame, buffer_layout.second[visField::weight])),
+    flags(bind_span<float>(_frame, buffer_layout.second[visField::flags])),
+    eval(bind_span<float>(_frame, buffer_layout.second[visField::eval])),
+    evec(bind_span<cfloat>(_frame, buffer_layout.second[visField::evec])),
+    erms(bind_scalar<float>(_frame, buffer_layout.second[visField::erms])),
+    gain(bind_span<cfloat>(_frame, buffer_layout.second[visField::gain]))
 
 {
     // Initialise the structure if not already done
@@ -77,7 +77,7 @@ visFrameView::visFrameView(Buffer * buf, int frame_id, uint32_t n_elements,
 
     // Check that the actual buffer size is big enough to contain the calculated
     // view
-    size_t required_size = buffer_layout["_struct"].second;
+    size_t required_size = buffer_layout.first;
 
     if(required_size > (uint32_t)buffer->frame_size) {
 
@@ -205,20 +205,20 @@ void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
               gain.begin());
 }
 
-struct_layout visFrameView::calculate_buffer_layout(
+struct_layout<visField> visFrameView::calculate_buffer_layout(
     uint32_t num_elements, uint32_t num_prod, uint32_t num_ev
 )
 {
     // TODO: get the types of each element using a template on the member
     // definition
-    std::vector<std::tuple<std::string, size_t, size_t>> buffer_members = {
-        std::make_tuple("vis", sizeof(cfloat), num_prod),
-        std::make_tuple("weight", sizeof(float),  num_prod),
-        std::make_tuple("flags", sizeof(float),  num_elements),
-        std::make_tuple("eval", sizeof(float),  num_ev),
-        std::make_tuple("evec", sizeof(cfloat), num_ev * num_elements),
-        std::make_tuple("erms", sizeof(float),  1),
-        std::make_tuple("gain", sizeof(cfloat), num_elements)
+    std::vector<std::tuple<visField, size_t, size_t>> buffer_members = {
+        std::make_tuple(visField::vis, sizeof(cfloat), num_prod),
+        std::make_tuple(visField::weight, sizeof(float),  num_prod),
+        std::make_tuple(visField::flags, sizeof(float),  num_elements),
+        std::make_tuple(visField::eval, sizeof(float),  num_ev),
+        std::make_tuple(visField::evec, sizeof(cfloat), num_ev * num_elements),
+        std::make_tuple(visField::erms, sizeof(float),  1),
+        std::make_tuple(visField::gain, sizeof(cfloat), num_elements)
     };
 
     return struct_alignment(buffer_members);
