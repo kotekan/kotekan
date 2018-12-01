@@ -3,6 +3,8 @@ import numpy as np
 
 import kotekan_runner
 
+import pickle
+
 
 accumulate_params = {
     'num_elements': 4,
@@ -10,7 +12,7 @@ accumulate_params = {
     'samples_per_data_set': 32768,
     'int_frames': 64,
     'total_frames': 257,  # One extra sample to ensure we actually get 256
-    'block_size': 2,
+    'block_size': 1,
     'freq': 777
 }
 
@@ -282,6 +284,9 @@ def test_lostsamples(lostsamples_data):
 
 
 def test_pulsar(pulsar_data):
+
+    with open('pulsar_dump.pkl', 'w') as fh:
+        pickle.dump(pulsar_data, fh)
 
     assert len(pulsar_data) != 0
     print len(pulsar_data)
