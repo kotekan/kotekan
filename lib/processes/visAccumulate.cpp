@@ -474,6 +474,7 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
     float scl = gate.sample_weight_total / vis.sample_weight_total;
     for (size_t i = 0; i < num_prod_gpu; i++) {
         gate.vis1[i] -= scl * vis.vis1[i];
+        gate.vis1[i] /= scl;
     }
 
     // TODO: very strong assumption that the weights are one (when on) baked in

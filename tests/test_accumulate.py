@@ -24,6 +24,22 @@ gaussian_params.update({
 time_params = accumulate_params.copy()
 time_params.update({'integration_time': 5.0})
 
+pulsar_params = gaussian_params.copy()
+pulsar_params.update({
+    'mode': 'pulsar',
+    'gaussian_bgnd': False,
+    'wait': True,
+    'samples_per_data_set': 3906,  # 10. ms frames
+    'num_frames': 200,
+    'integration_time': 0.5,
+    'coeff': [0., 0.],
+    'dm': 0.,
+    't_ref': 58000.,
+    'phase_ref': 0.,
+    'rot_freq': 0.025e3,  # one period spans 4 frames
+    'pulse_width': 1e-3,
+})
+
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
@@ -115,6 +131,60 @@ def time_data(tmpdir_factory):
     test.run()
 
     yield dump_buffer.load()
+
+
+@pytest.fixture(scope="module")
+def pulsar_data(tmpdir_factory):
+
+    tmpdir = tmpdir_factory.mktemp("pulsar")
+
+    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_gated = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    # Insert an extra buffer for gated stream
+    dump_buffer.buffer_block.update(dump_buffer_gated.buffer_block)
+    dump_buffer.process_block.update(dump_buffer_gated.process_block)
+
+    acc_par = pulsar_params.copy()
+    acc_par.update({
+        'gating': {
+            'psr0': {
+                'mode': 'pulsar',
+                'buf': dump_buffer_gated.name
+            },
+        },
+        'updatable_config': {
+            'psr0': "/updatable_config/psr0_config"
+        },
+        'num_gpu_frames': 16,
+    })
+    updatable_params = pulsar_params.copy()
+    updatable_params.update({
+        'updatable_config': {
+            'psr0_config': {
+                'kotekan_update_endpoint': 'json',
+                'enabled': True,
+                'pulsar_name': 'fakepsr',
+                'segment': 100.,
+                'coeff': [pulsar_params['coeff']],
+                'dm': pulsar_params['dm'],
+                't_ref': [pulsar_params['t_ref']],
+                'phase_ref': [pulsar_params['phase_ref']],
+                'rot_freq': pulsar_params['rot_freq'],  # one period spans 3 frames
+                'pulse_width': pulsar_params['pulse_width'],
+            }
+        }
+    })
+
+    test = kotekan_runner.KotekanProcessTester(
+        'visAccumulate', acc_par,
+        kotekan_runner.FakeGPUBuffer(**pulsar_params),
+        dump_buffer,
+        updatable_params
+    )
+
+    test.run()
+
+    yield dump_buffer_gated.load()
 
 
 def test_structure(accumulate_data):
@@ -209,3 +279,15 @@ def test_lostsamples(lostsamples_data):
     for frame in lostsamples_data:
 
         assert np.allclose(frame.vis, pat, rtol=1e-7, atol=1e-8)
+
+
+def test_pulsar(pulsar_data):
+
+    assert len(pulsar_data) != 0
+    print len(pulsar_data)
+    for frame in pulsar_data:
+        assert np.allclose(
+            frame.vis,
+            10.,
+            rtol=1e-7, atol=1e-8
+        )
