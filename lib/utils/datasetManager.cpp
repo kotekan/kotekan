@@ -193,6 +193,10 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                       find->second.to_json().dump().c_str());
                 raise(SIGINT);
             }
+
+            if (ds.is_root())
+                _known_roots.insert(new_dset_id);
+
             // this dataset was already added
             return new_dset_id;
         }
@@ -493,7 +497,7 @@ datasetManager::ancestors(dset_id_t dset) {
     return a_list;
 }
 
-void datasetManager::update_datasets(dset_id_t ds_id, bool ignore_timestamp) {
+void datasetManager::update_datasets(dset_id_t ds_id) {
 
     // wait for ongoing dataset updates
     std::lock_guard<std::mutex> dslock(_lock_dsets);
@@ -501,11 +505,9 @@ void datasetManager::update_datasets(dset_id_t ds_id, bool ignore_timestamp) {
     // check if local dataset topology is up to date to include requested ds_id
     if (_datasets.find(ds_id) == _datasets.end()) {
         json js_rqst;
-        if (ignore_timestamp)
-            js_rqst["ts"] = 0;
-        else
-            js_rqst["ts"] = _timestamp_update;
+        js_rqst["ts"] = _timestamp_update;
         js_rqst["ds_id"] = ds_id;
+        js_rqst["roots"] = _known_roots;
 
         restReply reply = restClient::instance().make_request_blocking(
                     PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
@@ -551,6 +553,10 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
                 // insert the new dataset
                 _datasets.insert(std::pair<dset_id_t,
                                  dataset>(ds_id, new_dset));
+
+                if (new_dset.is_root())
+                    _known_roots.insert(ds_id);
+
             } catch (std::exception& e) {
                 WARN("datasetManager: failure parsing reply received from"\
                      " broker after requesting dataset update: the following " \

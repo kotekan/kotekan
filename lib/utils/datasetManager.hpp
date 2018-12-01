@@ -305,9 +305,10 @@ public:
     template<typename T> inline const T* dataset_state(dset_id_t dset);
 
 private:
-
     /// Constructor
-    datasetManager() : _conn_error_count(0), _timestamp_update(json(0)),
+    datasetManager() :
+        _conn_error_count(0),
+        _timestamp_update(json(0)),
         _stop_request_threads(false),
         _n_request_threads(0),
         _config_applied(false) {}
@@ -383,7 +384,7 @@ private:
     bool register_dataset_parser(std::string& reply);
 
     /// request an update on the topology of datasets (blocking)
-    void update_datasets(dset_id_t ds_id, bool ignore_timestamp = false);
+    void update_datasets(dset_id_t ds_id);
 
     /// Helper function to parse the reply for update_datasets()
     bool parse_reply_dataset_update(restReply reply);
@@ -411,6 +412,9 @@ private:
     /// Store a list of the datasets registered and what states
     /// and input datasets they correspond to
     std::map<dset_id_t, dataset> _datasets;
+
+    /// Set of known root datasets (Protected by _lock_datasets).
+    std::set<dset_id_t> _known_roots;
 
     /// Lock for changing or using the states map.
     std::mutex _lock_states;
@@ -501,10 +505,7 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
     const T* state = get_closest_ancestor<T>(dset);
 
     if (!state) {
-        // This can happen, when the dM has a recent update of a dataset that is
-        // not an ancestor of `dset`. We have to request an update with
-        // timestamp 0.
-        update_datasets(dset, true);
+        update_datasets(dset);
         state = get_closest_ancestor<T>(dset);
     }
 
@@ -513,7 +514,7 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
         // broker it doesn't have yet. Wait and retry...
         std::this_thread::sleep_for(
                     std::chrono::milliseconds(_retry_wait_time_ms));
-        update_datasets(dset, true);
+        update_datasets(dset);
         state = get_closest_ancestor<T>(dset);
     }
 
