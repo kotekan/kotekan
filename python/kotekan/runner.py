@@ -63,7 +63,7 @@ class KotekanRunner(object):
         build_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
                                                   "..", "..", "build", "kotekan"))
 
-        # If this path exists we are using a non installed versoin of the
+        # If this path exists we are using a non installed version of the
         # kotekan python packages. If so we want to run the local kotekan
         # binary
         if os.path.exists(build_dir):
