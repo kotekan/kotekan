@@ -3,8 +3,6 @@ import numpy as np
 
 import kotekan_runner
 
-import pickle
-
 
 accumulate_params = {
     'num_elements': 4,
@@ -284,9 +282,6 @@ def test_lostsamples(lostsamples_data):
 
 
 def test_pulsar(pulsar_data):
-
-    with open('pulsar_dump.pkl', 'w') as fh:
-        pickle.dump(pulsar_data, fh)
 
     assert len(pulsar_data) != 0
     print len(pulsar_data)
