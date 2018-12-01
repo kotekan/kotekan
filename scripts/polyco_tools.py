@@ -25,12 +25,13 @@ class Timespec:
 class Polyco:
     """ Hold a pulsar timing solution and provide time of arrival predictions. """
 
-    def __init__(self, tmid, dm, phase_ref, f0, coeff):
+    def __init__(self, tmid, dm, phase_ref, f0, coeff, seg=None):
         self.tmid = tmid
         self.dm = dm
         self.phase_ref = phase_ref
         self.f0 = f0
         self.coeff = coeff
+        self.seg = seg
 
     def mjd2phase(self, t):
         dt = (t - self.tmid) * 1440
@@ -102,9 +103,14 @@ class PolycoFile:
                         line = fh.readline()
                         coeff.append(float(line.strip()))
                     params = [new_header[k] for k in ('TMID', 'DM', 'RPHASE', 'F0')] + [coeff, ]
+                    params += [new_header['span']]
                     self.polycos.append(Polyco(*params))
                 line = fh.readline()
         self.tmid = np.array([p['TMID'] for p in self.polyco_specs])
+        for p in self.polyco_specs:
+            if p['span'] != self.polyco_specs[0]['span']:
+                raise Exception("Polycos in file {} have segments of".format(fname)
+                                + " different lengths.")
         self.spans = np.array([
                 np.array((-0.5, 0.5)) * self.polyco_specs[i]['span'] / 60. / 24. + self.tmid[i]
                 for i in range(len(self.tmid))
@@ -115,16 +121,18 @@ class PolycoFile:
 
     def config_block(self, start_t, end_t=None):
         if end_t is not None:
-            ind = np.argmax(np.array([min(end_t, s[1]) - max(start_t, s[0]) for s in self.spans]))
-            poly = self.polycos[ind]
+            start_ind = np.argmin(np.abs(start_t - self.tmid))
+            end_ind = np.argmin(np.abs(end_t - self.tmid))
+            poly = self.polycos[start_ind:end_ind+1]
         else:
-            poly = self.get_closest(start_t)
+            poly = [self.get_closest(start_t)]
 
-        return ("coeff: {}\n".format(poly.coeff) +
-                "t_ref: {}\n".format(poly.tmid) +
-                "phase_ref: {}\n".format(poly.phase_ref) +
-                "rot_freq: {}\n".format(poly.f0) +
-                "dm: {}".format(poly.dm if self.dm is None else self.dm))
+        return ("coeff: {}\n".format([ p.coeff for p in poly ]) +
+                "t_ref: {}\n".format([ p.tmid for p in poly ]) +
+                "phase_ref: {}\n".format([ p.phase_ref for p in poly ]) +
+                "rot_freq: {}\n".format(poly[0].f0) +
+                "dm: {}\n".format(poly[0].dm if self.dm is None else self.dm) +
+                "segment: {}".format(poly[0].seg * 60))
 
     @classmethod
     def generate(cls, start, end, parfile, dm=None, seg=300., ncoeff=12, max_ha=12.):
@@ -196,14 +204,12 @@ def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, nco
     else:
         pfile = PolycoFile(fname)
 
-    if pfile is None:
+    if pfile is None or len(pfile.polycos) == 0:
         print("\nCould not generate/read polyco file.")
         return
 
     if dm is not None:
         pfile.dm = dm
-
-    print("\nSpan of solution is {:.3f} MJD.".format(segment/1440.))
 
     print("\nConfig block:\n")
     print(pfile.config_block(start_time, end_time))

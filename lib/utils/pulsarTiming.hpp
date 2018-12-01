@@ -74,7 +74,7 @@ public:
      * @brief Constructor.
      * @param rot_freq   Rotation frequency (Hz), i.e. (period)^-1.
      * @param dm         Dispersion measure (cm^-3 pc).
-     * @param segment    Length of time segments over which solutions are valid.
+     * @param segment    Length in time (s) of polyco segments.
      * @param tmid       Reference times in MJD (days). i.e. centres of segments.
      * @param phase_ref  Reference phases at tmid
      * @param coeff      Polynomial coefficients in Tempo format.
