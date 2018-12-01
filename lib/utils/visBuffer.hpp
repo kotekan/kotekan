@@ -23,7 +23,7 @@
  * @brief Metadata for the visibility style buffers
  *
  * @author Richard Shaw
- */
+ **/
 struct visMetadata {
 
     /// The FPGA sequence number of the integration frame
@@ -68,7 +68,7 @@ struct visMetadata {
  *       references.
  *
  * @author Richard Shaw
- */
+ **/
 class visFrameView {
 
 public:
@@ -95,7 +95,7 @@ public:
      * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
-     */
+     **/
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
                  uint32_t num_ev);
 
@@ -112,7 +112,7 @@ public:
      * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
-     */
+     **/
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
                  uint32_t num_prod, uint32_t num_ev);
 
@@ -126,7 +126,7 @@ public:
      * @param frame_to_copy    An instance of visFrameView corresponding to the frame to be copied.
      *
      * @warning The metadata object must already have been allocated.
-     */
+     **/
     visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
 
     /**
@@ -147,7 +147,7 @@ public:
      *
      * @returns A visFrameView of the copied frame.
      *
-     */
+     **/
     static visFrameView copy_frame(Buffer* buf_src, int frame_id_src,
                                    Buffer* buf_dest, int frame_id_dest);
 
@@ -161,7 +161,7 @@ public:
      * @returns A map from member name to start and end in bytes. The start
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
-     */
+     **/
     static struct_layout calculate_buffer_layout(uint32_t num_elements,
                                                  uint32_t num_prod,
                                                  uint32_t num_ev);
@@ -203,20 +203,20 @@ public:
      *
      * @param chime_metadata Metadata to fill from.
      *
-     */
-     void fill_chime_metadata(const chimeMetadata * chime_metadata);
+     **/
+    void fill_chime_metadata(const chimeMetadata* chime_metadata);
 
     /**
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const visMetadata * metadata() const { return _metadata; }
+    const visMetadata* metadata() const { return _metadata; }
 
     /**
      * @brief Read only access to the frame data.
      * @returns The data.
      **/
-    const uint8_t * data() const { return _frame; }
+    const uint8_t* data() const { return _frame; }
 
 private:
 
