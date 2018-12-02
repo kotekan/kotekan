@@ -500,10 +500,13 @@ datasetManager::ancestors(dset_id_t dset) {
 void datasetManager::update_datasets(dset_id_t ds_id) {
 
     // wait for ongoing dataset updates
-    std::lock_guard<std::mutex> dslock(_lock_dsets);
+    std::lock(_lock_dsets, _lock_ds_update);
+    std::unique_lock<std::mutex> dslock(_lock_dsets, std::adopt_lock);
+    std::lock_guard<std::mutex> updatelock(_lock_ds_update, std::adopt_lock);
 
     // check if local dataset topology is up to date to include requested ds_id
     if (_datasets.find(ds_id) == _datasets.end()) {
+        dslock.unlock();
         json js_rqst;
         js_rqst["ts"] = _timestamp_update;
         js_rqst["ds_id"] = ds_id;
@@ -542,6 +545,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
             throw std::runtime_error("Broker answered with result="
                                      + js_reply.at("result").dump());
 
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
         for (json::iterator ds = js_reply.at("datasets").begin();
              ds != js_reply.at("datasets").end(); ds++) {
 

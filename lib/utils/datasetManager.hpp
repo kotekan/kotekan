@@ -434,6 +434,9 @@ private:
     /// Lock for the stop request threads cv
     std::mutex _lock_stop_request_threads;
 
+    /// Lock to only allow one dataset update at a time.
+    std::mutex _lock_ds_update;
+
     /// conditional variable to signal a received state.
     std::condition_variable _cv_received_state;
 
