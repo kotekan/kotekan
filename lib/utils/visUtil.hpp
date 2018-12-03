@@ -226,7 +226,7 @@ inline timespec double_to_ts(double dtime) {
  * @return        Time as timeval.
  **/
 inline timeval double_to_tv(double dtime) {
-    return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e6)};
+    return {(time_t)dtime, (suseconds_t)(fmod(dtime, 1.0) * 1e6)};
 }
 
 /**
