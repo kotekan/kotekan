@@ -1,5 +1,11 @@
 """Read a visBuffer dump into python.
 """
+# Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from builtins import (ascii, bytes, chr, dict, filter, hex, input,
+                      int, map, next, oct, open, pow, range, round,
+                      str, super, zip)
 
 import ctypes
 import os
@@ -49,7 +55,7 @@ class VisBuffer(object):
     """
 
     def __init__(self, buffer, skip=4):
-    
+
         self._buffer = buffer[skip:]
 
         meta_size = ctypes.sizeof(VisMetadata)
@@ -74,7 +80,7 @@ class VisBuffer(object):
             arr = np.frombuffer(_data[member['start']:member['end']],
                                 dtype=member['dtype'])
             setattr(self, member['name'], arr)
-        
+
     @classmethod
     def _calculate_layout(cls, num_elements, num_prod, num_ev):
         """Calculate the buffer layout.
@@ -151,7 +157,7 @@ class VisBuffer(object):
         ----------
         pattern : str
             A globable pattern to read.
-        
+
         Returns
         -------
         buffers : list of VisBuffers
@@ -172,7 +178,7 @@ class VisBuffer(object):
             Basename for filenames.
         """
         pat = basename + "_%07d.dump"
-        
+
         msize_c = ctypes.c_int(ctypes.sizeof(VisMetadata))
 
         for ii, buf in enumerate(buffers):
@@ -217,50 +223,80 @@ def _offset(offset, size):
 
 
 class VisRaw(object):
-    """Read a raw visibilty file.
+    """Reader for correlator files in the raw format.
+
+    Parses the structure of the binary files and loads them
+    into an memmap-ed numpy array.
 
     Parameters
     ----------
-    filename : string
-        Path to either `.meta` or `.data` file, or common root.
+    filename : str
+        Name of file to open.
+    mmap : bool, optional
+        Use an mmap to open the file to avoid loading it all into memory.
+
+    Attributes
+    ----------
+    data : np.ndarray
+        Contains the datasets. Accessed as a numpy record array.
+    metadata : dict
+        Holds associated metadata, including the index_map.
+    valid_frames : np.ndarray
+        Indicates whether each frame is populated with valid (1) or not (0)
+        data.
+    time : np.ndarray
+        Is the array of times, in the usual correlator file format.
     """
 
-    def __init__(self, filename):
+    def __init__(self, filename, mmap=False):
 
         import msgpack
 
-        base = os.path.splitext(filename)[0]
+        # Get filenames
+        self.filename = self._parse_filename(filename)
+        self.meta_path = self.filename + ".meta"
+        self.data_path = self.filename + ".data"
 
-        meta_path = base + '.meta'
-        data_path = base + '.data'
-        
-        with open(meta_path, 'r') as fh:
-            self.metadata = msgpack.load(fh)
+        # Read file metadata
+        with open(self.meta_path, 'rb') as fh:
+            metadata = msgpack.load(fh)
 
-        self.data = []
+        self.index_map = metadata['index_map']
 
-        frame_size = self.metadata['structure']['frame_size']
-        data_size = self.metadata['structure']['data_size']
-        metadata_size = self.metadata['structure']['metadata_size']
+        self.time = np.array(
+            [(t['fpga_count'], t['ctime']) for t in self.index_map['time']],
+            dtype=[('fpga_count', np.uint64), ('ctime', np.float64)]
+        )
 
-        nfreq = self.metadata['structure']['nfreq']
-        ntime = self.metadata['structure']['ntime']
+        self.num_freq = metadata['structure']['nfreq']
+        self.num_time = metadata['structure']['ntime']
+        self.num_prod = len(self.index_map['prod'])
+        self.num_elements = len(self.index_map['input'])
+        self.num_ev = len(self.index_map['ev'])
 
-        with io.FileIO(data_path, 'rb') as fh:
+        # Packing of the data on disk. First byte indicates if data is present.
+        data_struct = np.dtype([
+            ('vis', np.complex64, self.num_prod),
+            ('weight', np.float32, self.num_prod),
+            ('flags', np.float32, self.num_elements),
+            ("eval", np.float32,  self.num_ev),
+            ("evec", np.complex64, self.num_ev * self.num_elements),
+            ("erms", np.float32,  1),
+            ("gain", np.complex64, self.num_elements),
+        ], align=True)
+        frame_struct = np.dtype({
+            'names': ['valid', 'metadata', 'data'],
+            'formats': [np.uint8, VisMetadata, data_struct],
+            'itemsize': metadata['structure']['frame_size']
+        })
 
-            for ti in range(ntime):
+        # Load data into on-disk numpy array
+        self.raw = np.memmap(self.data_path, dtype=frame_struct, mode='r',
+                             shape=(self.num_time, self.num_freq))
+        self.data = self.raw['data']
+        self.metadata = self.raw['metadata']
+        self.valid_frames = self.raw['valid']
 
-                fs = []
-
-                for fi in range(nfreq):
-
-                    buf = bytearray(data_size + metadata_size + 1)
-                    fh.seek((ti * nfreq + fi) * frame_size)
-                    fh.readinto(buf) 
-
-                    if buf[0] == 0:
-                        fs.append(None)
-                    else:
-                        fs.append(VisBuffer(buf, skip=1))
-
-                self.data.append(fs)
+    @staticmethod
+    def _parse_filename(fname):
+        return os.path.splitext(fname)[0]

@@ -6,7 +6,7 @@ import glob
 import os
 import msgpack
 
-import kotekan_runner
+from kotekan import runner
 from test_compression import float_allclose
 
 writer_params = {
@@ -37,7 +37,7 @@ def transpose(tmpdir_factory):
 
     # Write fake data in raw format
     tmpdir = str(tmpdir_factory.mktemp("writer"))
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=writer_params['freq'],
         num_frames=writer_params['total_frames'],
         cadence=writer_params['cadence'],
@@ -75,7 +75,7 @@ def transpose(tmpdir_factory):
     params = writer_params.copy()
     params['root_path'] = tmpdir
 
-    writer = kotekan_runner.KotekanProcessTester(
+    writer = runner.KotekanProcessTester(
         'visWriter',
         {'freq_ids': params['freq'], 'node_mode': False, 'write_ev': True, 'file_type': 'raw'},
         fakevis_buffer,
@@ -99,9 +99,9 @@ def transpose(tmpdir_factory):
     infile_h5 = os.path.splitext(files[0])[0]
 
     # Tranpose and write data
-    raw_buf = kotekan_runner.ReadRawBuffer(infile, writer_params['chunk_size'])
+    raw_buf = runner.ReadRawBuffer(infile, writer_params['chunk_size'])
     outfile = tmpdir + "/transposed"
-    transposer = kotekan_runner.KotekanProcessTester(
+    transposer = runner.KotekanProcessTester(
         'visTranspose',
         {'outfile': outfile, 'infile': infile,
             'chunk_size': writer_params['chunk_size']},
@@ -181,7 +181,7 @@ def transpose_stack(tmpdir_factory):
 
     # Write fake stacked data in raw format
     tmpdir = str(tmpdir_factory.mktemp("writer"))
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=stack_params['freq'],
         num_frames=stack_params['file_length'],
         cadence=stack_params['cadence'],
@@ -209,7 +209,7 @@ def transpose_stack(tmpdir_factory):
     params = stack_params.copy()
     params['root_path'] = tmpdir
 
-    writer = kotekan_runner.KotekanProcessTester(
+    writer = runner.KotekanProcessTester(
         'visWriter',
         {
             'freq_ids': params['freq'], 'node_mode': False, 'write_ev': True,
@@ -228,9 +228,9 @@ def transpose_stack(tmpdir_factory):
     infile = os.path.splitext(files[0])[0]
 
     # Tranpose and write data
-    raw_buf = kotekan_runner.ReadRawBuffer(infile, stack_params['chunk_size'])
+    raw_buf = runner.ReadRawBuffer(infile, stack_params['chunk_size'])
     outfile = tmpdir + "/transposed"
-    transposer = kotekan_runner.KotekanProcessTester(
+    transposer = runner.KotekanProcessTester(
         'visTranspose',
         {
             'outfile': outfile, 'infile': infile,
