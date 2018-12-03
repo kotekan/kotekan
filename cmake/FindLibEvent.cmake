@@ -1,31 +1,27 @@
-# Find Libevent
-# http://monkey.org/~provos/libevent/
-#
-# Once done, this will define:
-#
-#  Event_FOUND - system has Event
-#  Event_INCLUDE_DIRS - the Event include directories
-#  Event_LIBRARIES - link these to use Event
-#
-if (EVENT_INCLUDE_DIR AND EVENT_LIBRARY)
-  # Already in cache, be silent
-  set(EVENT_FIND_QUIETLY TRUE)
-endif (EVENT_INCLUDE_DIR AND EVENT_LIBRARY)
-find_path(EVENT_INCLUDE_DIR event.h
-  PATHS /usr/include /usr/local/include
-  PATH_SUFFIXES event2
-)
-find_library(EVENT_LIBRARY
-  NAMES event
-  PATHS /usr/lib /usr/local/lib
-)
-get_filename_component(EVENT_LIBRARY_DIR ${EVENT_LIBRARY} DIRECTORY)
-set(EVENT_LIBRARIES ${EVENT_LIBRARY} )
-add_definitions(-DLIBNET_LIL_ENDIAN)
-include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(EVENT
-  DEFAULT_MSG
-  EVENT_INCLUDE_DIR
-  EVENT_LIBRARIES
-)
-mark_as_advanced(EVENT_INCLUDE_DIR EVENT_LIBRARY) 
+# Finds libevent include path and libraries
+# Sets the following if libevent is found:
+# LibEvent_FOUND, LIBEVENT_INCLUDE_DIR, LIBEVENT_LIBRARIES
+
+include (FindPackageHandleStandardArgs)
+
+set(LIBEVENT_SEARCH_PATHS /usr/include /usr/local/include)
+
+find_path(LIBEVENT_INCLUDE_DIR NAMES event.h
+          PATHS ${LIBEVENT_SEARCH_PATHS}
+          PATH_SUFFIXES event2)
+
+# We need event core (timers, buffers),
+# pthreads (thread safe call backs), and extra (http)
+find_library(LIBEVENT_BASE NAMES event)
+find_library(LIBEVENT_CORE NAMES event_core)
+find_library(LIBEVENT_PTHREADS NAMES event_pthreads)
+find_library(LIBEVENT_EXTRA NAMES event_extra)
+
+set(LIBEVENT_LIBRARIES ${LIBEVENT_BASE} ${LIBEVENT_CORE}
+                       ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA})
+
+find_package_handle_standard_args (LibEvent DEFAULT_MSG
+                                   LIBEVENT_LIBRARIES
+                                   LIBEVENT_INCLUDE_DIR)
+
+mark_as_advanced(LIBEVENT_INCLUDE_DIR LIBEVENT_LIBRARIES)
