@@ -1,56 +1,20 @@
+# Finds airspy include path and libraries
+# Sets the following if libevent is found:
+# LibAirSpy_FOUND, LIBAIRSPY_INCLUDE_DIR, LIBAIRSPY_LIBRARIES
 
-# - Try to find the libairspy library
-# Once done this defines
-#
-#  LIBAIRSPY_FOUND - system has libairspy
-#  LIBAIRSPY_INCLUDE_DIR - the libairspy include directory
-#  LIBAIRSPY_LIBRARIES - Link these to use libairspy
+include(FindPackageHandleStandardArgs)
 
-# Copyright (c) 2013  Benjamin Vernoux
-#
+set(LIBAIRSPY_SEARCH_PATHS /usr/include /usr/local/include)
 
+find_path(LIBAIRSPY_INCLUDE_DIR NAMES airspy.h
+          PATHS ${LIBAIRSPY_SEARCH_PATHS}
+          PATH_SUFFIXES libairspy)
 
-if (LIBAIRSPY_INCLUDE_DIR AND LIBAIRSPY_LIBRARIES)
+find_library(LIBAIRSPY_LIBRARIES NAMES airspy
+             PATHS /usr/local/lib /usr/lib)
 
-  # in cache already
-  set(LIBAIRSPY_FOUND TRUE)
+find_package_handle_standard_args(LibAirSpy DEFAULT_MSG
+                                  LIBAIRSPY_LIBRARIES
+                                  LIBAIRSPY_INCLUDE_DIR)
 
-else (LIBAIRSPY_INCLUDE_DIR AND LIBAIRSPY_LIBRARIES)
-  IF (NOT WIN32)
-    # use pkg-config to get the directories and then use these values
-    # in the FIND_PATH() and FIND_LIBRARY() calls
-    find_package(PkgConfig)
-    pkg_check_modules(PC_LIBAIRSPY QUIET libairspy)
-  ENDIF(NOT WIN32)
-
-  FIND_PATH(LIBAIRSPY_INCLUDE_DIR
-    NAMES airspy.h
-    HINTS $ENV{LIBAIRSPY_DIR}/include ${PC_LIBAIRSPY_INCLUDEDIR}
-    PATHS /usr/local/include/libairspy /usr/include/libairspy /usr/local/include
-    /usr/include ${CMAKE_SOURCE_DIR}/../libairspy/src
-    /opt/local/include/libairspy
-    ${LIBAIRSPY_INCLUDE_DIR}
-  )
-
-  set(libairspy_library_names airspy)
-
-  FIND_LIBRARY(LIBAIRSPY_LIBRARIES
-    NAMES ${libairspy_library_names}
-    HINTS $ENV{LIBAIRSPY_DIR}/lib ${PC_LIBAIRSPY_LIBDIR}
-    PATHS /usr/local/lib /usr/lib /opt/local/lib ${PC_LIBAIRSPY_LIBDIR} ${PC_LIBAIRSPY_LIBRARY_DIRS} ${CMAKE_SOURCE_DIR}/../libairspy/src
-  )
-
-  if(LIBAIRSPY_INCLUDE_DIR)
-    set(CMAKE_REQUIRED_INCLUDES ${LIBAIRSPY_INCLUDE_DIR})
-  endif()
-
-  if(LIBAIRSPY_LIBRARIES)
-    set(CMAKE_REQUIRED_LIBRARIES ${LIBAIRSPY_LIBRARIES})
-  endif()
-
-  include(FindPackageHandleStandardArgs)
-  FIND_PACKAGE_HANDLE_STANDARD_ARGS(LIBAIRSPY DEFAULT_MSG LIBAIRSPY_LIBRARIES LIBAIRSPY_INCLUDE_DIR)
-
-  MARK_AS_ADVANCED(LIBAIRSPY_INCLUDE_DIR LIBAIRSPY_LIBRARIES)
-
-endif (LIBAIRSPY_INCLUDE_DIR AND LIBAIRSPY_LIBRARIES)
+mark_as_advanced(LIBAIRSPY_INCLUDE_DIR LIBAIRSPY_LIBRARIES)
