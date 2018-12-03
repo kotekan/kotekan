@@ -27,7 +27,7 @@
 #include "visUtil.hpp"
 
 
-#define TARGET_CHUNK_SIZE 1024 * 1024
+constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
 
 
 /**
@@ -49,7 +49,7 @@ struct basebandDumpData {
             uint32_t freq_id_,
             uint32_t num_elements_,
             int64_t data_start_fpga_,
-            int64_t data_length_fpga_,
+            uint64_t data_length_fpga_,
             timespec data_start_ctime_,
             uint8_t * data_ref
             );

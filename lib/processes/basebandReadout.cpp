@@ -91,7 +91,6 @@ basebandReadout::~basebandReadout() {
 void basebandReadout::main_thread() {
 
     int frame_id = 0;
-    int done_frame;
 
     std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
@@ -116,7 +115,7 @@ void basebandReadout::main_thread() {
             wt = std::make_unique<std::thread>([&]{this->write_thread(mgr);});
         }
 
-        done_frame = add_replace_frame(frame_id);
+        int done_frame = add_replace_frame(frame_id);
         if (done_frame >= 0) {
             mark_frame_empty(buf, unique_name.c_str(),
                              done_frame % buf->num_frames);
@@ -518,9 +517,9 @@ void basebandReadout::write_dump(basebandDumpData data,
     size_t num_elements = data.num_elements;
     size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
 
-    std::vector<size_t> cur_dims = {0, (size_t) num_elements};
-    std::vector<size_t> max_dims = {(size_t) data.data_length_fpga, (size_t) num_elements};
-    std::vector<size_t> chunk_dims = {(size_t) ntime_chunk, (size_t) num_elements};
+    std::vector<size_t> cur_dims = {0, num_elements};
+    std::vector<size_t> max_dims = {data.data_length_fpga, num_elements};
+    std::vector<size_t> chunk_dims = {ntime_chunk, num_elements};
 
     auto index_map = file.createGroup("index_map");
     index_map.createDataSet(
@@ -601,7 +600,7 @@ basebandDumpData::basebandDumpData(
         uint32_t freq_id_,
         uint32_t num_elements_,
         int64_t data_start_fpga_,
-        int64_t data_length_fpga_,
+        uint64_t data_length_fpga_,
         timespec data_start_ctime_,
         uint8_t * baseband_data
         ) :

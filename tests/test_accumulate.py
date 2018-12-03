@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 
 accumulate_params = {
@@ -30,11 +30,11 @@ def accumulate_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', {'num_ev': 4},
-        kotekan_runner.FakeGPUBuffer(
+        runner.FakeGPUBuffer(
             mode='accumulate',
             freq=accumulate_params['freq'],
             num_frames=accumulate_params['total_frames']
@@ -53,11 +53,11 @@ def gaussian_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("gaussian")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', {'num_ev': 4},
-        kotekan_runner.FakeGPUBuffer(
+        runner.FakeGPUBuffer(
             mode='gaussian',
             freq=gaussian_params['freq'],
             num_frames=gaussian_params['total_frames']
@@ -76,11 +76,11 @@ def lostsamples_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("lostsamples")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', {'num_ev': 4},
-        kotekan_runner.FakeGPUBuffer(
+        runner.FakeGPUBuffer(
             mode='lostsamples',
             freq=accumulate_params['freq'],
             num_frames=accumulate_params['total_frames']
@@ -99,11 +99,11 @@ def time_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("time")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', {'num_ev': 4},
-        kotekan_runner.FakeGPUBuffer(
+        runner.FakeGPUBuffer(
             mode='accumulate',
             freq=time_params['freq'],
             num_frames=time_params['total_frames']
