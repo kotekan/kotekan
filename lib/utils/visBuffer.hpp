@@ -7,6 +7,7 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
+#include <set>
 #include <time.h>
 #include <sys/time.h>
 #include <tuple>
@@ -175,7 +176,7 @@ public:
      * @param num_prod         Number of products.
      * @param num_ev           Number of eigenvectors.
      *
-     * @returns A map from member name to start and end in bytes. The start
+     * @returns A mnonvis_bufferap from member name to start and end in bytes. The start
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
@@ -195,21 +196,29 @@ public:
      *
      * Transfers all the non-structural metadata from the source frame.
      *
-     * @param frame_to_copy Frame to copy metadata from.
+     * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_nonconst_metadata(visFrameView frame_to_copy);
+    void copy_metadata(visFrameView frame_to_copy);
 
     /**
-     * @brief Copy the non-visibility parts of the buffer.
+     * @brief Copy over the data, skipping specified members.
      *
-     * Transfers all the datasets except the visibilities and their weights.
+     * This routine copys member by member and the structural parameters of the
+     * buffer only need to match for the members actually being copied. If they
+     * don't match and exception is thrown.
      *
-     * @param frame_to_copy Frame to copy metadata from.
+     * @note To copy the whole frame it is more efficient to use the copying
+     * constructor.
+     *
+     * @param  frame_to_copy  Frame to copy metadata from.
+     * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_nonvis_buffer(visFrameView frame_to_copy);
+    void copy_data(visFrameView frame_to_copy,
+                   const std::set<visField>& skip_members);
 
+    // TODO: CHIME specific
     /**
      * @brief Fill the visMetadata from a chimeMetadata struct.
      *
@@ -234,8 +243,6 @@ public:
      * @returns The data.
      **/
     const uint8_t* data() const { return _frame; }
-
-
 
 private:
 

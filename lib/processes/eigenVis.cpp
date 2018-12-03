@@ -241,7 +241,13 @@ void eigenVis::main_thread() {
             output_buffer, output_frame_id,
             input_frame.num_elements, input_frame.num_prod, num_eigenvectors
         );
-        output_frame.copy_nonconst_metadata(input_frame);
+
+        // Copy over metadata and data, but skip all ev members which may not be
+        // defined
+        output_frame.copy_metadata(input_frame);
+        output_frame.copy_data(
+            input_frame, {visField::eval, visField::evec, visField::erms}
+        );
 
         // Copy in eigenvectors and eigenvalues.
         for(uint32_t i = 0; i < num_eigenvectors; i++) {

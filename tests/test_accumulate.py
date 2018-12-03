@@ -125,8 +125,7 @@ def test_structure(accumulate_data):
     for frame in accumulate_data:
         assert frame.metadata.num_elements == n
         assert frame.metadata.num_prod == (n * (n + 1) / 2)
-        assert (frame.metadata.num_ev ==
-                accumulate_params['num_ev'])
+        assert (frame.metadata.num_ev == 0)
 
     # Check that we have the expected number of samples
     nsamp = accumulate_params['total_frames'] / accumulate_params['int_frames']

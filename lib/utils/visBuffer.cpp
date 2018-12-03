@@ -1,3 +1,5 @@
+#include <set>
+
 #include "visBuffer.hpp"
 #include "gpsTime.h"
 #include "fmt.hpp"
@@ -173,7 +175,7 @@ visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src,
 
 
 // Copy the non-const parts of the metadata
-void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
+void visFrameView::copy_metadata(visFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
     _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
     _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
@@ -183,26 +185,91 @@ void visFrameView::copy_nonconst_metadata(visFrameView frame_to_copy) {
 }
 
 // Copy the non-visibility parts of the buffer
-void visFrameView::copy_nonvis_buffer(visFrameView frame_to_copy) {
+void visFrameView::copy_data(visFrameView frame_to_copy,
+                             const std::set<visField>& skip_members)
+{
 
-    // Copy eigenvector parts
-    std::copy(frame_to_copy.eval.begin(),
-              frame_to_copy.eval.end(),
-              eval.begin());
-    std::copy(frame_to_copy.evec.begin(),
-              frame_to_copy.evec.end(),
-              evec.begin());
-    erms = frame_to_copy.erms;
+    // Define some helper methods so we don't need to code up the same checks everywhere
+    auto copy_member = [&](visField member) {
+        return (skip_members.count(member) == 0);
+    };
 
-    // Copy per input flags
-    std::copy(frame_to_copy.flags.begin(),
-              frame_to_copy.flags.end(),
-              flags.begin());
+    auto check_elements = [&]() {
+        if (num_elements != frame_to_copy.num_elements) {
+            auto msg = fmt::format(
+                "Number of inputs don't match for copy [src={}; dest={}].",
+                frame_to_copy.num_elements, num_elements
+            );
+            throw std::runtime_error(msg);
+        }
+    };
 
-    // Copy gains
-    std::copy(frame_to_copy.gain.begin(),
-              frame_to_copy.gain.end(),
-              gain.begin());
+    auto check_prod = [&]() {
+        if (num_elements != frame_to_copy.num_elements) {
+            auto msg = fmt::format(
+                "Number of products don't match for copy [src={}; dest={}].",
+                frame_to_copy.num_prod, num_prod
+            );
+            throw std::runtime_error(msg);
+        }
+    };
+
+    auto check_ev = [&]() {
+        if (num_ev != frame_to_copy.num_ev) {
+            auto msg = fmt::format(
+                "Number of ev don't match for copy [src={}; dest={}].",
+                frame_to_copy.num_ev, num_ev
+            );
+            throw std::runtime_error(msg);
+        }
+    };
+
+    if (copy_member(visField::vis)) {
+        check_prod();
+        std::copy(frame_to_copy.vis.begin(),
+                  frame_to_copy.vis.end(),
+                  vis.begin());
+    }
+
+    if (copy_member(visField::weight)) {
+        check_prod();
+        std::copy(frame_to_copy.weight.begin(),
+                  frame_to_copy.weight.end(),
+                  weight.begin());
+    }
+
+
+    if (copy_member(visField::flags)) {
+        check_elements();
+        std::copy(frame_to_copy.flags.begin(),
+                  frame_to_copy.flags.end(),
+                  flags.begin());
+    }
+
+    if (copy_member(visField::eval)) {
+        check_ev();
+        std::copy(frame_to_copy.eval.begin(),
+                  frame_to_copy.eval.end(),
+                  eval.begin());
+    }
+
+    if (copy_member(visField::evec)) {
+        check_ev();
+        check_elements();
+        std::copy(frame_to_copy.evec.begin(),
+                  frame_to_copy.evec.end(),
+                  evec.begin());
+    }
+
+    if (copy_member(visField::erms))
+        erms = frame_to_copy.erms;
+
+    if (copy_member(visField::gain)) {
+        check_elements();
+        std::copy(frame_to_copy.gain.begin(),
+                  frame_to_copy.gain.end(),
+                  gain.begin());
+    }
 }
 
 struct_layout<visField> visFrameView::calculate_buffer_layout(
@@ -248,3 +315,4 @@ void visFrameView::fill_chime_metadata(const chimeMetadata * chime_metadata) {
 
     time = std::make_tuple(fpga_seq, ts);
 }
+
