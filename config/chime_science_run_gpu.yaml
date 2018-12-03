@@ -875,15 +875,15 @@ updatable_config:
 
 valve:
   valve0:
-    kotekan_process: valve
+    kotekan_process: Valve
     in_buf: gpu_n2_output_buffer_0
     out_buf: valve_buffer_0
   valve1:
-    kotekan_process: valve
+    kotekan_process: Valve
     in_buf: gpu_n2_output_buffer_1
     out_buf: valve_buffer_1
   valve2:
-    kotekan_process: valve
+    kotekan_process: Valve
     in_buf: gpu_n2_output_buffer_2
     out_buf: valve_buffer_2
   valve3:
