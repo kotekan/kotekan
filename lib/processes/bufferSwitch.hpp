@@ -1,0 +1,61 @@
+#ifndef BUFFER_SWITCH_HPP
+#define BUFFER_SWITCH_HPP
+
+#include <vector>
+#include <string>
+#include <map>
+
+#include "buffer.h"
+#include "mergeBuffer.hpp"
+
+/**
+ * @brief Selects buffers based on the values in an updatable config endpoint.
+ *
+ * See mergeBuffer for more docs.
+ *
+ * @conf updatable_config  String.  JSON pointer to the updatable config block.
+ *                                  An example block would be:
+ *                                  switch_config:
+ *                                      updatable_config: "json"
+ *                                      internal_buffer_name_0: true
+ *                                      internal_buffer_name_1: false
+ *
+ * @author Andre Renard
+ */
+class bufferSwitch : public mergeBuffer {
+public:
+
+    /// Constructor
+    bufferSwitch(Config& config,
+                const string& unique_name,
+                bufferContainer &buffer_container);
+
+    /// Destructor
+    ~bufferSwitch() = default;
+
+    /**
+     * @brief Selects a buffer if it's internal name is set to true in the
+     *        updatable config block.
+     *
+     * @param internal_name The name given in the config to the buffer
+     *                      (not the buffer name)
+     * @param in_buf        not used.
+     * @param frame_id      not used.
+     *
+     * @return true if the internal name is set to true in @c enabled_buffers_lock
+     */
+    virtual bool select_frame(const std::string &internal_name,
+                              Buffer * in_buf, uint32_t frame_id) override;
+
+    /// Called by the configUpdater to change which buffers are selected.
+    bool enabled_buffers_callback(nlohmann::json &json);
+private:
+
+    /// Map of internal names with a true/false value for if we include frames from it
+    std::map<std::string, bool> enabled_buffers;
+
+    /// Lock updates to the list of enabled_buffers.
+    std::mutex enabled_buffers_lock;
+};
+
+#endif

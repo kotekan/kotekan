@@ -21,6 +21,8 @@ enum class HTTP_RESPONSE {
     INTERNAL_ERROR = 500
 };
 
+#define PORT_REST_SERVER 12048
+
 /**
  * @brief Contains details of a request (POST or GET), and provides
  *        functions for replying to the request.
@@ -122,10 +124,10 @@ public:
     /**
      * @brief Start the rest server, should only be called once by the framework
      *
-     * @param bind_address The address to bind too.
-     * @param port The port to bind.
+     * @param bind_address The address to bind too.  Default: 0.0.0.0
+     * @param port The port to bind.  Default: PORT_REST_SERVER
      */
-    void start(const std::string &bind_address, u_short port);
+    void start(const std::string &bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
 
     /**
      * @brief Set the server thread CPU affinity

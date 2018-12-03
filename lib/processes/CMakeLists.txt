@@ -39,6 +39,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               frbNetworkProcess.cpp
               pulsarNetworkProcess.cpp
               mergeBuffer.cpp
+              bufferSwitch.cpp
               #RFI Pipeline Processes
               rfiVDIF.cpp
               rfiAVXVDIF.cpp
