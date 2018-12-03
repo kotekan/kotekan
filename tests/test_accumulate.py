@@ -283,11 +283,22 @@ def test_lostsamples(lostsamples_data):
 
 def test_pulsar(pulsar_data):
 
+    # count number of frames that span a pulse
+    pulse_width = int(pulsar_params['pulse_width'] /
+                      (pulsar_params['samples_per_data_set']*2.56e-6))
+    pulse_width += ((pulsar_params['pulse_width'] %
+                     (pulsar_params['samples_per_data_set']*2.56e-6)) > 0)
+    # count number of pulses in an accumulation
+    num_pulse = int(pulsar_params['integration_time'] * pulsar_params['rot_freq'])
+    # count total number of frames in an accumulation
+    num_tot = int(pulsar_params['integration_time'] /
+                  (pulsar_params['samples_per_data_set']*2.56e-6))
+
+    # fudge factor for numerical uncertainty
+    fudge = 1e-3
+
     assert len(pulsar_data) != 0
-    print len(pulsar_data)
     for frame in pulsar_data:
-        assert np.allclose(
-            frame.vis,
-            10.,
-            rtol=1e-7, atol=1e-8
-        )
+        # allow for one frame to be added from time to time
+        assert (frame.vis >= (1-fudge) * 10 * pulse_width * num_pulse / num_tot).all()
+        assert (frame.vis <= (1+fudge) * 10 * pulse_width * (num_pulse+1) / num_tot).all()
