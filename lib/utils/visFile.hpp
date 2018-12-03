@@ -31,7 +31,7 @@ class visFile {
 
 public:
 
-virtual ~visFile() {};
+    virtual ~visFile() = default;
 
     /** @brief Create the file.
      *
@@ -205,6 +205,8 @@ public:
      **/
     template<typename... WriteArgs>
     bool add_sample(time_ctype new_time, WriteArgs&&... args);
+
+    virtual ~visFileBundle() = default;
 
 protected:
 

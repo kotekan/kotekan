@@ -12,6 +12,8 @@ public:
     ~gpuSimulate();
     void main_thread() override;
 private:
+    int dot4b(uint a, uint b);
+
     struct Buffer *input_buf;
     struct Buffer *output_buf;
 
@@ -22,6 +24,8 @@ private:
     int32_t _num_elements;
     int32_t _samples_per_data_set;
     int32_t _num_blocks;
+    int32_t _block_size;
+    string _data_format;
 };
 
 #endif

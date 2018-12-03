@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("reorder", "reorder.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "reorder", "reorder.hsaco") {
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

@@ -70,20 +70,20 @@ cpu_output_buffers:
 
 cpu_affinity: [2,3,8,9]
 
-#gen_data:
-#  type: random
-#  value: 153
-#  test_data_gen_0:
-#    kotekan_process: testDataGen
-#    network_out_buf: network_buffer_0
+gen_data:
+  type: random
+  value: 153
+  test_data_gen_0:
+    kotekan_process: testDataGen
+    network_out_buf: network_buffer_0
 
-baseband:
-  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
-  file_name: csDg7_bb
-  read0:
-    kotekan_process: rawFileRead
-    file_ext: dat0
-    buf: network_buffer_0
+#baseband:
+#  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
+#  file_name: csDg7_bb
+#  read0:
+#    kotekan_process: rawFileRead
+#    file_ext: dat0
+#    buf: network_buffer_0
 
 cpu_simulate:
   cpu_data_sim_0:
