@@ -5,8 +5,9 @@ REGISTER_HSA_COMMAND(hsaPresumKernel);
 hsaPresumKernel::hsaPresumKernel(
                             Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "CHIME_presum","presum.hsaco"){
-    command_type = CommandType::KERNEL;
+    hsaCorrelatorSubframeCommand(config, unique_name, host_buffers,
+                                 device, "CHIME_presum","presum.hsaco") {
+    command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
@@ -16,11 +17,10 @@ hsaPresumKernel::hsaPresumKernel(
 
     //pre-allocate GPU memory
     device.get_gpu_memory_array("input", 0, input_frame_len);
-    device.get_gpu_memory_array("presum", 0, presum_len);
+    device.get_gpu_memory_array("presum_" + std::to_string(_sub_frame_index), 0, presum_len);
 }
 
 hsaPresumKernel::~hsaPresumKernel() {
-
 }
 
 hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id,
@@ -39,10 +39,12 @@ hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id,
 
     memset(&args, 0, sizeof(args));
 
-    args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    // Index past the start of the input for the required sub frame
+    args.input_buffer = (void *)((uint8_t *)device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len) +
+                        _num_elements * _num_local_freq * _sub_frame_samples * _sub_frame_index);
     args.mystery = NULL;
     args.constant = _num_elements/4;//global_x size
-    args.presum_buffer = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
+    args.presum_buffer = device.get_gpu_memory_array("presum_" + std::to_string(_sub_frame_index), gpu_frame_id, presum_len);
 
     // Copy kernel args into correct location for GPU
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
@@ -53,7 +55,7 @@ hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id,
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
     params.grid_size_x = _num_elements/4;
-    params.grid_size_y = _samples_per_data_set/N_PRESUM;
+    params.grid_size_y = _sub_frame_samples/1024;
     params.grid_size_z = 1;
     params.num_dims = 2;
 

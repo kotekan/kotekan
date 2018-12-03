@@ -11,7 +11,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                        hsaDeviceInterface& device) :
     //Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum", "rfi_chime_inputsum.hsaco") {
-    command_type = CommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
     //Retrieve parameters from kotekan config
     //Data Parameters
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");

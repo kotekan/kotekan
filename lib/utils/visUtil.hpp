@@ -221,6 +221,15 @@ inline timespec double_to_ts(double dtime) {
 }
 
 /**
+ * @brief Convert a UNIX time as double into a timeval.
+ * @param  dtime  Time as double.
+ * @return        Time as timeval.
+ **/
+inline timeval double_to_tv(double dtime) {
+    return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e6)};
+}
+
+/**
  * @brief Division and positive modulus of two integers.
  *
  * @param  a  Dividend.

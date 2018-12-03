@@ -310,23 +310,15 @@ zero_samples:
     zero_0:
         kotekan_process: zeroSamples
         out_buf: network_buffer_0
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_0
     zero_1:
         kotekan_process: zeroSamples
         out_buf: network_buffer_1
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_1
     zero_2:
         kotekan_process: zeroSamples
         out_buf: network_buffer_2
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_2
     zero_3:
         kotekan_process: zeroSamples
         out_buf: network_buffer_3
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_3
 
 baseband:
     max_dump_samples: 400000
@@ -370,11 +362,25 @@ monitor_2:
 
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
-  commands:
+  commands: &command_list
   # Copy in queue
   - name: hsaInputData
   - name: hsaPresumZero
+    sub_frame_index: 0
+  - name: hsaPresumZero
+    sub_frame_index: 1
+  - name: hsaPresumZero
+    sub_frame_index: 2
+  - name: hsaPresumZero
+    sub_frame_index: 3
   - name: hsaOutputDataZero
+    sub_frame_index: 0
+  - name: hsaOutputDataZero
+    sub_frame_index: 1
+  - name: hsaOutputDataZero
+    sub_frame_index: 2
+  - name: hsaOutputDataZero
+    sub_frame_index: 3
   - name: hsaPulsarUpdatePhase
   # Barrier between copy in and kernels
   - name: hsaBarrier
@@ -389,20 +395,44 @@ gpu:
   - name: hsaRfiInputSum
   - name: hsaRfiZeroData
   - name: hsaPresumKernel
+    sub_frame_index: 0
+  - name: hsaPresumKernel
+    sub_frame_index: 1
+  - name: hsaPresumKernel
+    sub_frame_index: 2
+  - name: hsaPresumKernel
+    sub_frame_index: 3
   - name: hsaCorrelatorKernel
+    sub_frame_index: 0
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 1
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 2
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 3
   #Copy out queue
   - name: hsaRfiBadInputOutput
-  - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
   - name: hsaBeamformPulsarOutput
   - name: hsaBeamformOutputData
   - name: hsaOutputData
+    sub_frame_index: 0
+  - name: hsaOutputData
+    sub_frame_index: 1
+  - name: hsaOutputData
+    sub_frame_index: 2
+  - name: hsaOutputData
+    sub_frame_index: 3
+  - name: hsaRfiMaskOutput
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
   block_size: 32
   buffer_depth: 4
-  n_intg: 24576
+  # How many sub frames to devide the N2 products into.
+  num_sub_frames: 4
+  n_intg: 24576 / num_sub_frames
+  sub_frame_samples: samples_per_data_set / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
@@ -416,8 +446,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -437,8 +469,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -458,8 +492,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -479,8 +515,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
@@ -517,7 +555,7 @@ frb:
     out_buf: frb_output_buffer
   buffer_read:
     cpu_affinity: [11]
-    kotekan_process: frbNetworkProcess
+    #kotekan_process: frbNetworkProcess
     in_buf: frb_output_buffer
     udp_frb_port_number: 1313
     number_of_nodes: 256
@@ -818,7 +856,7 @@ pulsar:
     network_input_buffer_3: beamform_pulsar_output_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   networkProcess:
-    kotekan_process: pulsarNetworkProcess
+    #kotekan_process: pulsarNetworkProcess
     pulsar_out_buf: pulsar_output_buffer
     udp_pulsar_port_number: 1414
     number_of_nodes: 256
@@ -1012,15 +1050,15 @@ vis_debug:
 buffer_send:
   server_ip: 10.1.50.12
   n2:
-    kotekan_process: bufferSend
+    #kotekan_process: bufferSend
     buf: visbuf_10s_merge
     server_port: 11024
   26m:
-    kotekan_process: bufferSend
+    #kotekan_process: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
   26m_psr0:
-    kotekan_process: bufferSend
+    #kotekan_process: bufferSend
     buf: visbuf_psr0_5s_26m
     server_port: 11026
 

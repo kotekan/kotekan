@@ -1,12 +1,9 @@
 #ifndef HSA_PRESUM_KERNEL_H
 #define HSA_PRESUM_KERNEL_H
 
-#include "hsaCommand.hpp"
+#include "hsaCorrelatorSubframeCommand.hpp"
 
-// What is this?
-#define N_PRESUM 1024
-
-class hsaPresumKernel: public hsaCommand
+class hsaPresumKernel: public hsaCorrelatorSubframeCommand
 {
 public:
 

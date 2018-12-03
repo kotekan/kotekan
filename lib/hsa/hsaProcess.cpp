@@ -28,9 +28,10 @@ hsaProcess::~hsaProcess() {
     delete device;
 }
 
-gpuCommand *hsaProcess::create_command(json cmd_info)
+gpuCommand *hsaProcess::create_command(const std::string &cmd_name,
+                                       const std::string &unique_name)
 {
-    auto cmd = FACTORY(hsaCommand)::create_bare(cmd_info["name"], config, unique_name, local_buffer_container, *device);
+    auto cmd = FACTORY(hsaCommand)::create_bare(cmd_name, config, unique_name, local_buffer_container, *device);
     return cmd;
 }
 

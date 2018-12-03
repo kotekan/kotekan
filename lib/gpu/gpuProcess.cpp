@@ -26,7 +26,6 @@ gpuProcess::gpuProcess(Config& config_,
         string global_buffer_name = it.value();
         struct Buffer * buf = buffer_container.get_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
-        register_consumer(buf, unique_name.c_str());
     }
 
     json out_bufs = config.get_value(unique_name, "out_buffers");
@@ -35,7 +34,6 @@ gpuProcess::gpuProcess(Config& config_,
         string global_buffer_name = it.value();
         struct Buffer * buf = buffer_container.get_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
-        register_producer(buf, unique_name.c_str());
     }
     INFO("GPU Process Starting...");
 }
@@ -61,8 +59,11 @@ void gpuProcess::init() {
     dev->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
 
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
-    for (auto cmd : cmds){
-        commands.push_back(create_command(cmd));
+    int i = 0;
+    for (json cmd : cmds){
+        std::string unique_path = unique_name + "/commands/" + std::to_string(i++);
+        std::string command_name = cmd["name"];
+        commands.push_back(create_command(command_name, unique_path));
     }
 }
 

@@ -457,7 +457,7 @@ int private_consumers_done(struct Buffer * buf, const int ID) {
 
 int private_producers_done(struct Buffer * buf, const int ID) {
 
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1 && buf->producers_done[ID][i] == 0)
             return 0;
     }
@@ -515,7 +515,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
     while ( (buf->is_full[ID] == 0 ||
-            buf->consumers_done[ID][consumer_id] == 1) && 
+            buf->consumers_done[ID][consumer_id] == 1) &&
             buf->shutdown_signal == 0 && err == 0) {
         err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
     }
@@ -524,7 +524,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
 
     if (buf->shutdown_signal == 1)
         return -1;
-    
+
     if (err == ETIMEDOUT)
         return 1;
 
@@ -598,6 +598,37 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
     // If this is true then the to_buf already has a metadata container for this ID and its different!
     assert(to_buf->metadata[to_ID] == metadata_container);
     CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
+}
+
+void copy_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
+
+    CHECK_ERROR( pthread_mutex_lock(&from_buf->lock) );
+    CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
+
+    if (from_buf->metadata[from_ID] == NULL) {
+        WARN("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
+        // Cannot wait to update this to C++14 locks...
+        goto unlock_exit;
+    }
+
+    if (to_buf->metadata[to_ID] == NULL) {
+        WARN("No metadata in dest buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
+        goto unlock_exit;
+    }
+
+    struct metadataContainer * from_metadata_container = from_buf->metadata[from_ID];
+    struct metadataContainer * to_metadata_container = to_buf->metadata[to_ID];
+
+    if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
+        WARN("Metadata sizes don't match, cannot copy metadata!!");
+        goto unlock_exit;
+    }
+
+    memcpy(to_metadata_container->metadata, from_metadata_container->metadata, from_metadata_container->metadata_size);
+
+    unlock_exit:
+    CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
+    CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
 }
 
 void allocate_new_metadata_object(struct Buffer * buf, int ID) {

@@ -28,13 +28,14 @@ gpuEventContainer *clProcess::create_signal(){
     return new clEventContainer();
 }
 
-gpuCommand *clProcess::create_command(json cmd_info){
-    auto cmd = FACTORY(clCommand)::create_bare(cmd_info["name"], config,
+gpuCommand *clProcess::create_command(const std::string &cmd_name,
+                                      const std::string &unique_name){
+    auto cmd = FACTORY(clCommand)::create_bare(cmd_name, config,
                                                unique_name, local_buffer_container,
                                                *device);
+    // TODO Why is this not in the constructor?
     cmd->build();
-    std::string name = cmd_info["name"];
-    DEBUG("Command added: %s",name.c_str());
+    DEBUG("Command added: %s", cmd_name.c_str());
     return cmd;
 }
 

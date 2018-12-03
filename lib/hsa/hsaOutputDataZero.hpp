@@ -1,13 +1,13 @@
 #ifndef HSA_OUTPUT_DATA_ZERO_H
 #define HSA_OUTPUT_DATA_ZERO_H
 
-#include "hsaCommand.hpp"
+#include "hsaCorrelatorSubframeCommand.hpp"
 
-class hsaOutputDataZero: public hsaCommand
+class hsaOutputDataZero: public hsaCorrelatorSubframeCommand
 {
 public:
 
-    hsaOutputDataZero(Config &config, const string &unique_name, 
+    hsaOutputDataZero(Config &config, const string &unique_name,
                   bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaOutputDataZero();

@@ -4,8 +4,8 @@ REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
 hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "","") {
-    command_type = CommandType::COPY_IN;
+    hsaCorrelatorSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputDataZero","") {
+    command_type = gpuCommandType::COPY_IN;
 
     int block_size = config.get<int>(unique_name, "block_size");
     int num_elements = config.get<int>(unique_name, "num_elements");
@@ -27,7 +27,8 @@ hsaOutputDataZero::~hsaOutputDataZero() {
 hsa_signal_t hsaOutputDataZero::execute(int gpu_frame_id,
                                         hsa_signal_t precede_signal) {
 
-    void * gpu_output_ptr = device.get_gpu_memory_array("corr", gpu_frame_id, output_len);
+    void * gpu_output_ptr = device.get_gpu_memory_array("corr_" + std::to_string(_sub_frame_index),
+                                                        gpu_frame_id, output_len);
 
     device.async_copy_host_to_gpu(gpu_output_ptr,
                                     output_zeros, output_len,

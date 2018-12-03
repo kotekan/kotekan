@@ -39,9 +39,6 @@ struct kernelParams {
     uint16_t group_segment_size;
 };
 
-// TODO: GET RID OF ME! USE BASE GPU ENUM!
-enum class CommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
-
 // Note there are _gpu_buffer_depth frames, which can be thought of as distinct
 // blocks of input, output, and kernel arg memory for each chain in the
 // gpu pipeline which looks something like:
@@ -72,7 +69,7 @@ public:
     // function has been cased.
     virtual void finalize_frame(int frame_id);
 
-    CommandType get_command_type();
+    gpuCommandType get_command_type();
 
     string get_kernel_file_name();
 
@@ -88,9 +85,6 @@ protected:
     // Requires that kernel_args[frame_id] has been populated with the
     // kernel arguments.
     hsa_signal_t enqueue_kernel(const kernelParams &dims, const int gpu_frame_id);
-
-    // The subclass must set the type.
-    CommandType command_type = CommandType::NOT_SET;
 
     // Final signals array
     // Note a value of zero for one of the signals means that

@@ -16,7 +16,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
                             bufferContainer& host_buffers,
                             hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "zero_padded_FFT512","unpack_shift_beamform_flip.hsaco") {
-    command_type = CommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
