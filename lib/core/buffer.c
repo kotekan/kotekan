@@ -624,37 +624,6 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
     CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
 }
 
-void copy_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
-
-    CHECK_ERROR( pthread_mutex_lock(&from_buf->lock) );
-    CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
-
-    if (from_buf->metadata[from_ID] == NULL) {
-        WARN("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
-        // Cannot wait to update this to C++14 locks...
-        goto unlock_exit;
-    }
-
-    if (to_buf->metadata[to_ID] == NULL) {
-        WARN("No metadata in dest buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
-        goto unlock_exit;
-    }
-
-    struct metadataContainer * from_metadata_container = from_buf->metadata[from_ID];
-    struct metadataContainer * to_metadata_container = to_buf->metadata[to_ID];
-
-    if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
-        WARN("Metadata sizes don't match, cannot copy metadata!!");
-        goto unlock_exit;
-    }
-
-    memcpy(to_metadata_container->metadata, from_metadata_container->metadata, from_metadata_container->metadata_size);
-
-    unlock_exit:
-    CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
-    CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
-}
-
 void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
