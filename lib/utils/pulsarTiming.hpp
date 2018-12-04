@@ -65,7 +65,7 @@ private:
  * @brief Collection of Polyco objects representing timing solutions
  *        over a segmented span of time.
  *
- * @author Tristan Pinsonneault-Marotte     * @param dm         Dispersion measure (cm^-3 pc).
+ * @author Tristan Pinsonneault-Marotte
  **/
 class SegmentedPolyco {
 
@@ -91,7 +91,7 @@ public:
      * @returns    The corresponding Polyco object.
      * @raises     std::runtime_error if no polyco is found.
      **/
-    const Polyco & get_polyco(timespec t) const;
+    const Polyco& get_polyco(timespec t) const;
 
     /**
      * @brief Get the polyco at the given index.
@@ -99,7 +99,7 @@ public:
      * @returns    The corresponding Polyco object.
      * @raises     std::runtime_error if no polyco is found.
      **/
-    const Polyco & get_polyco(int i) const;
+    const Polyco& get_polyco(int i) const;
 
 private:
     std::vector<Polyco> polycos;

@@ -68,17 +68,17 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
 
 std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(timespec t) const {
 
-    const Polyco * a_polyco;
+    Polyco a_polyco;
     try {
-        a_polyco = &_polycos.get_polyco(t);
+        a_polyco = _polycos.get_polyco(t);
     } catch (std::exception& e) {
         WARN("Could not find a polyco solution for this time."
              "Will use last polyco, but timing may be off.");
-        a_polyco = &_polycos.get_polyco(-1);
+        a_polyco = _polycos.get_polyco(-1);
     }
     // capture the variables needed to calculate timing
     return [
-        p = *a_polyco, f0 = _rot_freq, pw = _pulse_width
+        p = a_polyco, f0 = _rot_freq, pw = _pulse_width
     ](timespec t_s, timespec t_e, float freq) {
         // Calculate nearest pulse times of arrival
         double toa = p.next_toa(t_s, freq);

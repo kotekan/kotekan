@@ -64,7 +64,7 @@ public:
     /**
      * @brief Get a function/closure to calculate the weights for a subsample.
      *
-     * @param  timespec  The time the weight function is to be updated for.
+     * @param    timespec  The start time of this frame.
      *
      * @note This must return a closure that captures by value such that its
      *       lifetime can be longer than the gateSpec object that generated it.
@@ -133,6 +133,8 @@ public:
 
     /**
      * @brief Return a closure te calculate the weigths.
+     *
+     * @param    timespec  The start time of this frame.
      **/
     std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
 
@@ -170,6 +172,8 @@ public:
 
     /**
      * @brief Return the weight calculation function.
+     *
+     * @param    timespec  The start time of this frame.
      **/
     std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
 };
