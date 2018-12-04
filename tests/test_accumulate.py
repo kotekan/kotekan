@@ -29,15 +29,17 @@ pulsar_params.update({
     'mode': 'pulsar',
     'gaussian_bgnd': False,
     'wait': True,
-    'samples_per_data_set': 3906,  # 10. ms frames
+    'samples_per_data_set': 4000,  # ~10. ms frames
     'num_frames': 200,
-    'integration_time': 0.5,
+    #'integration_time': 0.5,
+    'num_gpu_frames': 40,
     'coeff': [0., 0.],
     'dm': 0.,
     't_ref': 58000.,
     'phase_ref': 0.,
-    'rot_freq': 0.025e3,  # one period spans 4 frames
-    'pulse_width': 1e-3,
+    #'rot_freq': 9.765625,  # period exactly 10 frames
+    'rot_freq': 8.,
+    'pulse_width': 1e-9,
 })
 
 
@@ -155,7 +157,6 @@ def pulsar_data(tmpdir_factory):
         'updatable_config': {
             'psr0': "/updatable_config/psr0_config"
         },
-        'num_gpu_frames': 16,
     })
     updatable_params = pulsar_params.copy()
     updatable_params.update({
@@ -169,8 +170,8 @@ def pulsar_data(tmpdir_factory):
                 'dm': pulsar_params['dm'],
                 't_ref': [pulsar_params['t_ref']],
                 'phase_ref': [pulsar_params['phase_ref']],
-                'rot_freq': pulsar_params['rot_freq'],  # one period spans 3 frames
-                'pulse_width': pulsar_params['pulse_width'],
+                'rot_freq': pulsar_params['rot_freq'],
+                'pulse_width': 1e-3,
             }
         }
     })
@@ -288,11 +289,15 @@ def test_pulsar(pulsar_data):
                       (pulsar_params['samples_per_data_set']*2.56e-6))
     pulse_width += ((pulsar_params['pulse_width'] %
                      (pulsar_params['samples_per_data_set']*2.56e-6)) > 0)
-    # count number of pulses in an accumulation
-    num_pulse = int(pulsar_params['integration_time'] * pulsar_params['rot_freq'])
     # count total number of frames in an accumulation
-    num_tot = int(pulsar_params['integration_time'] /
-                  (pulsar_params['samples_per_data_set']*2.56e-6))
+    if 'num_gpu_frames' in pulsar_params.keys():
+        num_tot = pulsar_params['num_gpu_frames']
+    else:
+        num_tot = int(pulsar_params['integration_time'] /
+                      (pulsar_params['samples_per_data_set']*2.56e-6))
+    actual_integration = num_tot * (pulsar_params['samples_per_data_set']*2.56e-6)
+    # count number of pulses in an accumulation
+    num_pulse = int(actual_integration * pulsar_params['rot_freq'])
 
     # fudge factor for numerical uncertainty
     fudge = 1e-3
