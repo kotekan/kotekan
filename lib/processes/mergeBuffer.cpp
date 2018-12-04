@@ -21,14 +21,26 @@ mergeBuffer::mergeBuffer(Config& config,
 
     json buffer_list = config.get<std::vector<json>>(unique_name, "in_bufs");
     Buffer * in_buf = nullptr;
+    std::string internal_name;
+    std::string buffer_name;
     INFO("buffer_list %s", buffer_list.dump().c_str());
     for (json buffer : buffer_list) {
-        // Assuming each array entry has only one key.
-        json::iterator it = buffer.begin();
-        std::string internal_name = it.key();
-        std::string buffer_name = it.value();
-        in_buf = buffer_container.get_buffer(buffer_name);
-        assert(in_buf != nullptr);
+
+        if (buffer.is_object()) {
+            // Assuming each array entry has only one key.
+            json::iterator it = buffer.begin();
+            internal_name = it.key();
+            buffer_name = it.value();
+            in_buf = buffer_container.get_buffer(buffer_name);
+            assert(in_buf != nullptr);
+        } else if (buffer.is_string()) {
+            buffer_name = buffer.get<std::string>();
+            internal_name = "";
+            in_buf = buffer_container.get_buffer(buffer_name);
+            assert(in_buf != nullptr);
+        } else {
+            throw std::runtime_error("Unknown value in in_bufs: " + buffer.dump());
+        }
 
         if(in_buf->frame_size != out_buf->frame_size) {
             throw std::invalid_argument("Input buffer '" + buffer_name +

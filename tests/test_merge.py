@@ -12,7 +12,8 @@ merge_params = {
     'cadence': 5.0,
     'mode': 'fill_ij',
     'freq': list(range(3)),
-    'buffer_depth': 20
+    'buffer_depth': 20,
+    'timeout': 0.1
 }
 
 
@@ -31,7 +32,7 @@ def merge_data(tmpdir_factory):
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'visMerge', {},
+        'mergeBuffer', {},
         fakevis_buffers,
         dump_buffer,
         merge_params
@@ -54,19 +55,19 @@ def mergewait_data(tmpdir_factory):
         cadence=0.3,
         wait=True,
         num_frames=5
-    ) 
+    )
 
     fakevis_slow = kotekan_runner.FakeVisBuffer(
         freq_ids=[1],
         cadence=5.0,
         wait=True,
         num_frames=10
-    ) 
+    )
 
     dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
 
     test = kotekan_runner.KotekanProcessTester(
-        'visMerge', {},
+        'mergeBuffer', {},
         [fakevis_fast, fakevis_slow],
         dump_buffer,
         merge_params

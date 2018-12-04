@@ -11,7 +11,21 @@
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.
  *
- * See mergeBuffer for more docs.
+ * An example config:
+ *
+ * buffer_switch:
+ * kotekan_process: bufferSwitch
+ * in_bufs:
+ *   - network_data_0: gpu_data_buffer_0
+ *   - network_data_1: gpu_data_buffer_1
+ * out_buf: network_buffer
+ * updatable_config: "/buffer_switch/switch_status"
+ * switch_status:
+ *   kotekan_update_endpoint: "json"
+ *   network_data_0: false # Don't merge frames from gpu_data_buffer_0
+ *   network_data_1: true  # Merge frames from gpu_data_buffer_1
+ *
+ * See mergeBuffer for more docs.  Requires internal names.
  *
  * @conf updatable_config  String.  JSON pointer to the updatable config block.
  *                                  An example block would be:

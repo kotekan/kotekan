@@ -914,19 +914,19 @@ vis_accumulate:
 vis_merge_5s:
   kotekan_process: mergeBuffer
   in_bufs:
-    - vis_5s: visbuf_5s_0
-    - vis_5s: visbuf_5s_1
-    - vis_5s: visbuf_5s_2
-    - vis_5s: visbuf_5s_3
+    - visbuf_5s_0
+    - visbuf_5s_1
+    - visbuf_5s_2
+    - visbuf_5s_3
   out_buf: visbuf_5s_merge
 
 vis_merge_gated_psr0:
   kotekan_process: mergeBuffer
   in_bufs:
-    - vis_psr0_5s: visbuf_psr0_5s_0
-    - vis_psr0_5s: visbuf_psr0_5s_1
-    - vis_psr0_5s: visbuf_psr0_5s_2
-    - vis_psr0_5s: visbuf_psr0_5s_3
+    - visbuf_psr0_5s_0
+    - visbuf_psr0_5s_1
+    - visbuf_psr0_5s_2
+    - visbuf_psr0_5s_3
   out_buf: visbuf_psr0_5s_merge
 
 vis_int_10s:
@@ -977,10 +977,10 @@ merge_eig_10s:
   kotekan_process: mergeBuffer
   timeout: 0.1
   in_bufs:
-    - full_10s: visbuf_eig_10s_0
-    - full_10s: visbuf_eig_10s_1
-    - full_10s: visbuf_eig_10s_2
-    - full_10s: visbuf_eig_10s_3
+    - visbuf_eig_10s_0
+    - visbuf_eig_10s_1
+    - visbuf_eig_10s_2
+    - visbuf_eig_10s_3
   out_buf: visbuf_10s_merge
 
 ## Time integration done
