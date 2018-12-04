@@ -84,7 +84,7 @@ def test_vis(written_data_ev):
 
     nt = writer_params['total_frames']
 
-    for fh in written_data:
+    for fh in written_data_ev:
         vis = fh['vis'][:nt]
 
         # Check the diagonals are correct
@@ -109,7 +109,7 @@ def test_metadata(written_data_ev):
 
     nt = writer_params['total_frames']
 
-    for fh in written_data:
+    for fh in written_data_ev:
 
         # Check the number of samples has been written correctly
         assert fh.attrs['num_time'] == nt
@@ -130,14 +130,6 @@ def test_metadata(written_data_ev):
         ia, ib = np.triu_indices(writer_params['num_elements'])
         assert (fh['index_map/prod']['input_a'] == ia).all()
         assert (fh['index_map/prod']['input_b'] == ib).all()
-
-
-def test_no_eigenvectors(written_data):
-
-    for fh in written_data:
-        assert 'eval' not in fh
-        assert 'evec' not in fh
-        assert 'erms' not in fh
 
 
 def test_eigenvectors(written_data_ev):
@@ -167,11 +159,11 @@ def test_eigenvectors(written_data_ev):
         assert (erms == 1.0).all()
 
 
-def test_unwritten(written_data):
+def test_unwritten(written_data_ev):
 
     nt = writer_params['total_frames']
 
-    for fh in written_data:
+    for fh in written_data_ev:
 
         assert (fh['vis'][nt:] == 0.0).all()
         assert (fh['flags/vis_weight'][nt:] == 0.0).all()
