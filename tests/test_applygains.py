@@ -1,13 +1,13 @@
 import pytest
 import numpy as np
 import h5py
-import kotekan_runner
-import visutil
+from kotekan import runner
+from kotekan import visutil
 import time
 
-print kotekan_runner.__file__
+print runner.__file__
 
-old_tmstp = time.time() 
+old_tmstp = time.time()
 old_tag = "gains{0}".format(int(old_tmstp))
 
 global_params = {
@@ -38,7 +38,7 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset('gain', (nfreq, nelem), dtype='c8')
-    gain = (np.arange(nfreq, dtype='f2')[:, None] 
+    gain = (np.arange(nfreq, dtype='f2')[:, None]
             * 1j*np.arange(nelem, dtype='f2')[None, :])
     dset[...] = gain * mult_factor
 
@@ -46,7 +46,7 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
     weight = np.ones((nfreq, nelem), dtype=float)
     # Make some weights zero to test the behaviour of apply_gains
     weight[:, 1] = 0.
-    weight[:, 3] = 0. 
+    weight[:, 3] = 0.
     dset2[...] = weight
 
     freq_ds = f.create_dataset('index_map/freq', (nfreq,), dtype='f')
@@ -62,15 +62,15 @@ def apply_data(cmds, tmpdir_factory):
 
     apply_dir = tmpdir_factory.mktemp("apply")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=global_params['freq_ids'],
         num_frames=global_params['total_frames'],
         wait=global_params['wait']
     )
 
-    out_dump_buffer = kotekan_runner.DumpVisBuffer(str(apply_dir))
+    out_dump_buffer = runner.DumpVisBuffer(str(apply_dir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'applyGains', global_params,
         buffers_in=fakevis_buffer,
         buffers_out=out_dump_buffer,
@@ -101,7 +101,7 @@ def load_gain_weight(filepath, fr, ipt=None):
         return gain_weight[fr, ipt]
 
 
-def combine_gains(tframe, tcombine, new_tmstp, old_tmstp, 
+def combine_gains(tframe, tcombine, new_tmstp, old_tmstp,
                   new_gains, old_gains):
     if tframe < old_tmstp:
         # TODO: This should not happen. Add a warning or a raise?
@@ -134,7 +134,7 @@ def test_apply(tmpdir_factory):
     num_prod = n_el * (n_el + 1) / 2
 
     # REST commands
-    cmds = [["post", "gains", 
+    cmds = [["post", "gains",
              {'tag': new_tag,
               'start_time': new_tmstp}]]
     gains_dump = apply_data(cmds, tmpdir_factory)
@@ -144,8 +144,8 @@ def test_apply(tmpdir_factory):
         old_gains = load_gains(old_filepath, frqid)
         new_gains = load_gains(new_filepath, frqid)
         gain_weight = load_gain_weight(new_filepath, frqid)
-        frame_tmstp = visutil.ts_to_double(frame.metadata.ctime)  
-        gains = combine_gains(frame_tmstp, tcombine, new_tmstp, old_tmstp, 
+        frame_tmstp = visutil.ts_to_double(frame.metadata.ctime)
+        gains = combine_gains(frame_tmstp, tcombine, new_tmstp, old_tmstp,
                               new_gains, old_gains)
 
         weight_factor = np.ones(n_el)
@@ -174,15 +174,15 @@ def test_apply(tmpdir_factory):
         assert (frame.eval == np.arange(
                 global_params['num_ev'])).all()
         evecs = (np.arange(global_params['num_ev'])[:, None]
-                 + 1.0J 
+                 + 1.0J
                  * np.arange(global_params['num_elements'])[None, :]).flatten()
         assert (frame.evec == evecs).all()
         assert (frame.erms == 1.)
-        # This relies on the fact that the initial value 
+        # This relies on the fact that the initial value
         # of the gains is 1 in fakevis.
-        assert (abs(frame.gain.real - gains.real) 
+        assert (abs(frame.gain.real - gains.real)
                 <= 1E-5*abs(gains.real)).all()
-        assert (abs(frame.gain.imag - gains.imag) 
+        assert (abs(frame.gain.imag - gains.imag)
                 <= 1E-5*abs(gains.imag)).all()
 
         expweight = []
