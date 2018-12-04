@@ -14,16 +14,14 @@
  * Merges the frames in order in a round-robin pattern. This means
  * the frame arrival rate must be the same for all input buffers.
  *
- * This process uses a frame swapping model, which requires that it be
- * the only consumer of the input buffers, and the only producer of the
- * output buffer.  The upside of this is it is zero copy operation.
+ * If this process is the only comsumer of the input buffers then
+ * the operation is zero-copy, it just swaps the frames.  However
+ * if there is more than one comsumer on the input buffer then it
+ * does a full memcpy of the frame.
  *
  * @warn The sizes of the frames must be the same in all buffers, and the
  *       metadata types and underlying pools must also be the same.
  *
- * @todo Remove the restriction that all buffers have the same arrival rates.
- *       This involves being able to select the next available frame, which
- *       requires changes to the buffer API.
  *
  * @par Buffers
  * @buffer in_bufs Array of input buffers to merge frames from.
@@ -36,9 +34,9 @@
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers
  *
- * @config timeout    Double. Default -1.0   Timeout in seconds for waiting for a
- *                    frame on any of the input buffers.
- *                    Set to a negative number for no timeout.
+ * @config timeout       Double. Default -1.0   Timeout in seconds for waiting
+ *                       for a frame on any of the input buffers.
+ *                       Set to a negative number for no timeout.
  *
  * @author Andre Renard
  */

@@ -307,18 +307,18 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, co
 
 /**
  * @brief Wait for a full frame on the given buffer up to timeout.
- * 
+ *
  * This function will timeout after `wait` seconds.
- * 
+ *
  * @param[in] buf Buffer to wait on.
  * @param[in] name Name of the process.
  * @param[in] ID Frame ID to wait at.
  * @param[in] timeout Exit after this we exceed this *absolute* time.
- * 
+ *
  * @return Return status:
  *   - `0`: Success! We have a new frame.
  *   - `1`: Failure! We timed out waiting.
- *   - `-1`: Failure! We received the thread exit signal. 
+ *   - `-1`: Failure! We received the thread exit signal.
  **/
 int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
                                 const int ID, const struct timespec timeout);
@@ -341,6 +341,22 @@ int is_frame_empty(struct Buffer * buf, const int frame_id);
  * @returns The number of currently full frames in the buffer
  */
 int get_num_full_frames(struct Buffer * buf);
+
+/**
+ * @brief Get the number of consumers on this buffer
+ *
+ * @param buf The buffer
+ * @return int The number of consumers on the buffer
+ */
+int get_num_consumers(struct Buffer * buf);
+
+/**
+ * @brief Get the number of producers for this buffer
+ *
+ * @param buf The buffer
+ * @return int The number of producers on this buffer
+ */
+int get_num_producers(struct Buffer * buf);
 
 /**
  * @brief Returns the last time a frame was marked as full

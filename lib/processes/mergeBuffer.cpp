@@ -2,6 +2,8 @@
 #include "json.hpp"
 #include "visUtil.hpp"
 
+#include <signal.h>
+
 using nlohmann::json;
 
 REGISTER_KOTEKAN_PROCESS(mergeBuffer);
@@ -9,7 +11,8 @@ REGISTER_KOTEKAN_PROCESS(mergeBuffer);
 mergeBuffer::mergeBuffer(Config& config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&mergeBuffer::main_thread, this)) {
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&mergeBuffer::main_thread, this)) {
 
     _timeout = config.get_default<double>(unique_name, "timeout", -1.0);
 
@@ -55,6 +58,11 @@ void mergeBuffer::main_thread() {
 
     uint32_t out_frame_id = 0;
 
+    if (get_num_producers(out_buf) != 1) {
+        ERROR("Cannot merge into a buffer with more than one producer");
+        raise(SIGINT);
+    }
+
     while(!stop_thread) {
         for (auto &buffer_info : in_bufs) {
             std::tie(internal_buffer_name, in_buf, in_frame_id) = buffer_info;
@@ -75,11 +83,20 @@ void mergeBuffer::main_thread() {
 
             if (select_frame(internal_buffer_name, in_buf, in_frame_id)) {
 
-                uint8_t * output_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+                uint8_t * output_frame = wait_for_empty_frame(out_buf,
+                                                              unique_name.c_str(),
+                                                              out_frame_id);
                 if (output_frame == NULL) break;
 
-                swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
+                // Move the metadata over to the new frame
                 pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+
+                // Copy or swap the frame.
+                if (get_num_consumers(in_buf) > 1) {
+                    std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);
+                } else {
+                    swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
+                }
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
                 out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
