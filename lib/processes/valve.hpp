@@ -50,6 +50,10 @@ public:
     void main_thread() override;
 
 private:
+    /// Copy a frame from the input buffer to the output buffer.
+    void copy_frame(Buffer* buf_src, int frame_id_src,
+                    Buffer* buf_dest, int frame_id_dest);
+
     /// Input buffer
     Buffer * _buf_in;
 

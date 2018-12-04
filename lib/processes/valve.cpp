@@ -12,7 +12,6 @@
 #include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
 #include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
 
 
 REGISTER_KOTEKAN_PROCESS(Valve);
@@ -43,8 +42,12 @@ void Valve::main_thread() {
 
         // check if there is space for it in the output buffer
         if (is_frame_empty(_buf_out, frame_id_out)) {
-            visFrameView::copy_frame(_buf_in, frame_id_in,
-                                     _buf_out, frame_id_out);
+            try {
+                copy_frame(_buf_in, frame_id_in, _buf_out, frame_id_out);
+            } catch (std::exception& e) {
+                ERROR("Failure copying frame: %s\nExiting...", e.what());
+                raise(SIGINT);
+            }
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
             WARN("Output buffer full. Dropping incoming frame %d.",
@@ -56,3 +59,70 @@ void Valve::main_thread() {
     }
 }
 
+// mostly copied from visFrameView
+void Valve::copy_frame(Buffer* buf_src, int frame_id_src,
+                       Buffer* buf_dest, int frame_id_dest) {
+    allocate_new_metadata_object(buf_dest, frame_id_dest);
+
+    // Buffer sizes must match exactly
+    if (buf_src->frame_size != buf_dest->frame_size) {
+        std::string msg = fmt::format(
+            "Buffer sizes must match for direct copy (src %i != dest %i).",
+            buf_src->frame_size, buf_dest->frame_size);
+        throw std::runtime_error(msg);
+    }
+
+    // Metadata sizes must match exactly
+    if (buf_src->metadata[frame_id_src]->metadata_size !=
+        buf_dest->metadata[frame_id_dest]->metadata_size) {
+        std::string msg = fmt::format(
+            "Metadata sizes must match for direct copy (src %i != dest %i).",
+            buf_src->metadata[frame_id_src]->metadata_size,
+            buf_dest->metadata[frame_id_dest]->metadata_size);
+        throw std::runtime_error(msg);
+    }
+
+    // Calculate the number of consumers on the source buffer and copy over the
+    // data. Keep a lock on the buffer to prevent consumers from joining.
+    int err = pthread_mutex_lock(&buf_src->lock);
+    if (err) {
+        std::string msg = fmt::format("Failure locking input buffer: {}",
+                                      std::strerror(err));
+        throw std::runtime_error(msg);
+    }
+
+    int num_consumers = 0;
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf_src->consumers[i].in_use == 1) {
+            num_consumers++;
+        }
+    }
+
+    // Copy or transfer the data part.
+    if (num_consumers == 1) {
+        err = pthread_mutex_unlock(&buf_src->lock);
+        if (err) {
+            std::string msg = fmt::format("Failure unlocking input buffer: {}",
+                                          std::strerror(err));
+            throw std::runtime_error(msg);
+        }
+        // Transfer frame contents with directly...
+        swap_frames(buf_src, frame_id_src, buf_dest, frame_id_dest);
+    } else if (num_consumers > 1) {
+        // Copy the frame data over, leaving the source intact
+        std::memcpy(buf_dest->frames[frame_id_dest],
+                    buf_src->frames[frame_id_src], buf_src->frame_size);
+        err = pthread_mutex_unlock(&buf_src->lock);
+        if (err) {
+            std::string msg = fmt::format("Failure unlocking input buffer: {}",
+                                          std::strerror(err));
+            throw std::runtime_error(msg);
+        }
+    }
+
+    // Copy over the metadata
+    std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
+                buf_src->metadata[frame_id_src]->metadata,
+                buf_src->metadata[frame_id_src]->metadata_size);
+
+}
