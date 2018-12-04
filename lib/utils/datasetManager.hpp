@@ -389,9 +389,6 @@ private:
     /// Helper function to parse the reply for update_datasets()
     bool parse_reply_dataset_update(restReply reply);
 
-    /// request state (blocking), or wait for ongoing request
-    void request_state(state_id_t state_id);
-
     /// To be left in a detached thread: Infinitely retries request parse.
     /// Stopped by the destructor if still unsuccessfully retrying.
     void request_thread(const json&& request, const std::string&& endpoint,
@@ -507,20 +504,6 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
     // get the state or ask broker for it
     const T* state = get_closest_ancestor<T>(dset);
 
-    if (!state) {
-        update_datasets(dset);
-        state = get_closest_ancestor<T>(dset);
-    }
-
-    while (!state) {
-        // Problem with the connection or trying to get information from the
-        // broker it doesn't have yet. Wait and retry...
-        std::this_thread::sleep_for(
-                    std::chrono::milliseconds(_retry_wait_time_ms));
-        update_datasets(dset);
-        state = get_closest_ancestor<T>(dset);
-    }
-
     return state;
 }
 
@@ -599,8 +582,9 @@ datasetManager::get_closest_ancestor(dset_id_t dset) {
         }
 
         // Check if we have that state already
+        const datasetState* state = nullptr;
         try {
-            const datasetState* state = _states.at(ancestor).get();
+            state = _states.at(ancestor).get();
 
             // walk through the inner states until we find the right type
             while (state != nullptr) {
@@ -612,10 +596,18 @@ datasetManager::get_closest_ancestor(dset_id_t dset) {
             DEBUG("datasetManager: requested state %zu not known locally.",
                   ancestor);
         }
-        if (_use_broker)
+        if (_use_broker) {
             // Request the state from the broker.
-            return request_state<T>(ancestor);
-        else
+            state = request_state<T>(ancestor);
+            while (!state) {
+                WARN("datasetManager: Failure requesting state %zu from " \
+                     "broker.\nRetrying...");
+                std::this_thread::sleep_for(
+                            std::chrono::milliseconds(_retry_wait_time_ms));
+                state = request_state<T>(ancestor);
+            }
+            return (const T*)state;
+        } else
             return nullptr;
     }
 }
