@@ -67,7 +67,7 @@ virtual ~visFile() {};
      **/
     void deactivate_time(uint32_t time_ind) {
         (void)time_ind;
-        WARN("visFile::deactivate_time: called but not implemented.");
+        DEBUG("visFile::deactivate_time: called but not implemented.");
     };
 
     /**
