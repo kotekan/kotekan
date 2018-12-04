@@ -22,7 +22,8 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
     frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
 
     final_signals.resize(_gpu_buffer_depth);
-    std::fill(final_signals.begin(), final_signals.end(), std::make_shared<signalContainer>());
+    for (size_t s = 0; s < _gpu_buffer_depth; s++)
+                final_signals.at(s) = std::make_shared<signalContainer>();
 
     json in_bufs = config.get_value(unique_name, "in_buffers");
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
