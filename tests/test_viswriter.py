@@ -31,8 +31,7 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
 
     process_params = {
         'freq_ids': writer_params['write_freq'],
-        'node_mode': False,
-        'write_ev': False
+        'node_mode': False
     }
 
     if process_extra is not None:
@@ -55,24 +54,11 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
 
 
 @pytest.fixture(scope="module")
-def written_data(request, tmpdir_factory):
-
-    tmpdir = tmpdir_factory.mktemp("writer")
-
-    fhlist = written_data_base(str(tmpdir), process_extra={'write_ev': False})
-
-    yield fhlist
-
-    for fh in fhlist:
-        fh.close()
-
-
-@pytest.fixture(scope="module")
 def written_data_ev(request, tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("writer_ev")
 
-    fhlist = written_data_base(str(tmpdir), process_extra={'write_ev': True})
+    fhlist = written_data_base(str(tmpdir))
 
     yield fhlist
 
@@ -94,7 +80,7 @@ def written_data_dm(request, tmpdir_factory):
         fh.close()
 
 
-def test_vis(written_data):
+def test_vis(written_data_ev):
 
     nt = writer_params['total_frames']
 
@@ -119,7 +105,7 @@ def test_vis(written_data):
         assert (vfreq == freq[np.newaxis, :]).all()
 
 
-def test_metadata(written_data):
+def test_metadata(written_data_ev):
 
     nt = writer_params['total_frames']
 

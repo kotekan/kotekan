@@ -69,7 +69,6 @@ def transpose(tmpdir_factory):
     dumph5_conf['freq_ids'] = dumph5_conf['freq']
     dumph5_conf['root_path'] = str(tmpdir_h5)
     dumph5_conf['file_name'] = 'dumph5'
-    dumph5_conf['write_ev'] = True
     dumph5_conf['node_mode'] = False
 
     params = writer_params.copy()

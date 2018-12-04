@@ -54,8 +54,6 @@
  * @conf   weights_type     Indicate what the visibility weights represent, e.g,
  *                          'inverse_var'. Will saved as an attribute in the saved
  *                          file. (default 'unknown')
- * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
- * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Maximum number of samples to
  *                          write into a file.
  * @conf   window           Int (default 20). Number of samples to keep active
@@ -194,8 +192,6 @@ private:
  * @conf   weights_type     Indicate what the visibility weights represent, e.g,
  *                          'inverse_var'. Will saved as an attribute in the saved
  *                          file. (default 'unknown')
- * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
- * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Fixed length of the ring file
  *                          in number of time samples.
  * @conf   window           Int (default 10). Number of samples to keep active

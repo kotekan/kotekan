@@ -45,10 +45,6 @@ visWriter::visWriter(Config& config,
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
 
-    // Write the eigen values out? Communicated to visFile by num_ev > 0
-    bool write_ev = config.get_default<bool>(unique_name, "write_ev", false);
-    num_ev = write_ev ? config.get<size_t>(unique_name, "num_ev") : 0;
-
     // TODO: get this from the datasetManager and put data type somewhere else
     instrument_name = config.get_default<std::string>(
                 unique_name, "instrument_name", "chime");
@@ -301,6 +297,10 @@ bool visWriter::init_acq() {
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;
+
+    // Set the number of eigenvectors to the number in the first frame
+    // TODO: might want to shift this into the dM
+    num_ev = frame.num_ev;
 
     // Get the current user
     std::string user(256, '\0');

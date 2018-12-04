@@ -32,7 +32,7 @@ def written_data(tmpdir_factory):
     test = runner.KotekanProcessTester(
         'visWriter',
         {'freq_ids': params['write_freq'], 'node_mode': False,
-         'write_ev': True, 'file_type': 'raw'},
+         'file_type': 'raw'},
         fakevis_buffer,
         None,
         params
