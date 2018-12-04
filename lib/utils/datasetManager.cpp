@@ -513,14 +513,16 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
 
         restReply reply = restClient::instance().make_request_blocking(
                     PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
-                    _ds_broker_port);
+                    _ds_broker_port, _retries_rest_client,
+                    _timeout_rest_client_s);
 
         while (!parse_reply_dataset_update(reply)) {
             std::this_thread::sleep_for(
                         std::chrono::milliseconds(_retry_wait_time_ms));
             reply = restClient::instance().make_request_blocking(
                         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
-                        _ds_broker_port);
+                        _ds_broker_port, _retries_rest_client,
+                        _timeout_rest_client_s);
         }
     }
 }
