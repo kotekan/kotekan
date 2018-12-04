@@ -63,6 +63,7 @@ public:
 
     /// Called by the configUpdater to change which buffers are selected.
     bool enabled_buffers_callback(nlohmann::json &json);
+
 private:
 
     /// Map of internal names with a true/false value for if we include frames from it

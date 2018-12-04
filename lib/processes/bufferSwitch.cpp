@@ -15,9 +15,14 @@ bufferSwitch::bufferSwitch(Config& config,
                          bufferContainer &buffer_container) :
     bufferMerge(config, unique_name, buffer_container) {
 
+    // Disabled by default
+    for (auto &buffer_info : in_bufs) {
+        std::string buffer_name = std::get<0>(buffer_info);
+        enabled_buffers[buffer_name] = false;
+    }
+
     configUpdater::instance().subscribe(this,
                     std::bind(&bufferSwitch::enabled_buffers_callback, this, _1));
-
 }
 
 bool bufferSwitch::enabled_buffers_callback(json &update) {
@@ -29,11 +34,18 @@ bool bufferSwitch::enabled_buffers_callback(json &update) {
             if (key == "kotekan_update_endpoint")
                 continue;
 
+            if (enabled_buffers.count(key) == 0) {
+                WARN("Message contains a key we didn't expect: %s, request JSON %s",
+                     key.c_str(), update.dump().c_str());
+                return false;
+            }
+
             bool enabled = it.value();
-            enabled_buffers[key] = enabled;
+            enabled_buffers.at(key) = enabled;
         }
     } catch (std::exception& e) {
-        WARN("bufferSwitch: Failure parsing message: %s", e.what());
+        WARN("bufferSwitch: Failure parsing message. Error: %s, Request JSON: %s",
+             e.what(), update.dump().c_str());
         return false;
     }
     return true;

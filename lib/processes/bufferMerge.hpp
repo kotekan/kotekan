@@ -7,6 +7,7 @@
 
 #include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "visUtil.hpp"
 
 /**
  * @brief Merges frames from many buffers into one buffer.
@@ -73,11 +74,11 @@ public:
 
     /// Thread for merging the frames.
     void main_thread() override;
-private:
+protected:
 
     /// Array of input buffers to get frames from
-    /// Items are "internal_name", "buffer", "frame_id"
-    std::vector<std::tuple<std::string, Buffer *, uint32_t>> in_bufs;
+    /// Items are "internal_name", "buffer", "frame_id", "use_memcpy"
+    std::vector<std::tuple<std::string, Buffer *, frameID>> in_bufs;
 
     /// The output buffer to put frames into
     struct Buffer *out_buf;

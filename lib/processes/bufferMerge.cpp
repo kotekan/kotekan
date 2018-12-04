@@ -49,9 +49,8 @@ bufferMerge::bufferMerge(Config& config,
 
         register_consumer(in_buf, unique_name.c_str());
         INFO("Adding buffer: %s:%s", internal_name.c_str(), in_buf->buffer_name);
-        in_bufs.push_back(std::make_tuple(internal_name, in_buf, 0));
+        in_bufs.push_back(std::make_tuple(internal_name, in_buf, frameID(in_buf)) );
     }
-
 }
 
 bool bufferMerge::select_frame(const std::string &internal_name,
@@ -64,11 +63,7 @@ bool bufferMerge::select_frame(const std::string &internal_name,
 
 void bufferMerge::main_thread() {
 
-    Buffer * in_buf;
-    uint32_t in_frame_id;
-    std::string internal_buffer_name;
-
-    uint32_t out_frame_id = 0;
+    frameID out_frame_id(out_buf);
 
     if (get_num_producers(out_buf) != 1) {
         ERROR("Cannot merge into a buffer with more than one producer");
@@ -77,11 +72,13 @@ void bufferMerge::main_thread() {
 
     while(!stop_thread) {
         for (auto &buffer_info : in_bufs) {
-            std::tie(internal_buffer_name, in_buf, in_frame_id) = buffer_info;
+            const std::string &internal_buffer_name = std::get<0>(buffer_info);
+            Buffer * in_buf = std::get<1>(buffer_info);
+            frameID &in_frame_id = std::get<2>(buffer_info);
 
             /// Wait for an input frame
             if (_timeout < 0) {
-                DEBUG2("Waiting for %s[%d]", in_buf->buffer_name, in_frame_id);
+                DEBUG2("Waiting for %s[%d]", in_buf->buffer_name, (int)in_frame_id);
                 uint8_t * input_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
                                                             in_frame_id);
                 if (input_frame == NULL) goto exit_loop; // Shutdown condition
@@ -111,13 +108,14 @@ void bufferMerge::main_thread() {
                 }
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-                out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
+                out_frame_id++;
             }
 
             // We always release the input buffer even if it isn't selected.
             mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
 
-            std::get<2>(buffer_info) = (in_frame_id + 1) % in_buf->num_frames;
+            // Increase the in_frame_id for the input buffer
+            in_frame_id++;
         }
     }
     exit_loop:;
