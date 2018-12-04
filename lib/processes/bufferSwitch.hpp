@@ -6,7 +6,7 @@
 #include <map>
 
 #include "buffer.h"
-#include "mergeBuffer.hpp"
+#include "bufferMerge.hpp"
 
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.
@@ -25,7 +25,7 @@
  *   network_data_0: false # Don't merge frames from gpu_data_buffer_0
  *   network_data_1: true  # Merge frames from gpu_data_buffer_1
  *
- * See mergeBuffer for more docs.  Requires internal names.
+ * See bufferMerge for more docs.  Requires internal names.
  *
  * @conf updatable_config  String.  JSON pointer to the updatable config block.
  *                                  An example block would be:
@@ -36,7 +36,7 @@
  *
  * @author Andre Renard
  */
-class bufferSwitch : public mergeBuffer {
+class bufferSwitch : public bufferMerge {
 public:
 
     /// Constructor

@@ -1,5 +1,5 @@
-#ifndef MERGE_BUFFER_HPP
-#define MERGE_BUFFER_HPP
+#ifndef BUFFER_MERGE_HPP
+#define BUFFER_MERGE_HPP
 
 #include <vector>
 #include <string>
@@ -45,16 +45,16 @@
  *
  * @author Andre Renard
  */
-class mergeBuffer : public KotekanProcess {
+class bufferMerge : public KotekanProcess {
 public:
 
     /// Constructor
-    mergeBuffer(Config& config,
+    bufferMerge(Config& config,
                 const string& unique_name,
                 bufferContainer &buffer_container);
 
     /// Destructor
-    ~mergeBuffer() = default;
+    ~bufferMerge() = default;
 
     /**
      * @brief This function can be overridden to implement different selection

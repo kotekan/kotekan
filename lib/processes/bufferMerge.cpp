@@ -1,4 +1,4 @@
-#include "mergeBuffer.hpp"
+#include "bufferMerge.hpp"
 #include "json.hpp"
 #include "visUtil.hpp"
 
@@ -6,13 +6,13 @@
 
 using nlohmann::json;
 
-REGISTER_KOTEKAN_PROCESS(mergeBuffer);
+REGISTER_KOTEKAN_PROCESS(bufferMerge);
 
-mergeBuffer::mergeBuffer(Config& config,
+bufferMerge::bufferMerge(Config& config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&mergeBuffer::main_thread, this)) {
+                   std::bind(&bufferMerge::main_thread, this)) {
 
     _timeout = config.get_default<double>(unique_name, "timeout", -1.0);
 
@@ -54,7 +54,7 @@ mergeBuffer::mergeBuffer(Config& config,
 
 }
 
-bool mergeBuffer::select_frame(const std::string &internal_name,
+bool bufferMerge::select_frame(const std::string &internal_name,
                                Buffer * in_buf, uint32_t frame_id) {
     (void)internal_name;
     (void)in_buf;
@@ -62,7 +62,7 @@ bool mergeBuffer::select_frame(const std::string &internal_name,
     return true;
 }
 
-void mergeBuffer::main_thread() {
+void bufferMerge::main_thread() {
 
     Buffer * in_buf;
     uint32_t in_frame_id;

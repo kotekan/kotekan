@@ -13,7 +13,7 @@ REGISTER_KOTEKAN_PROCESS(bufferSwitch);
 bufferSwitch::bufferSwitch(Config& config,
                          const string& unique_name,
                          bufferContainer &buffer_container) :
-    mergeBuffer(config, unique_name, buffer_container) {
+    bufferMerge(config, unique_name, buffer_container) {
 
     configUpdater::instance().subscribe(this,
                     std::bind(&bufferSwitch::enabled_buffers_callback, this, _1));

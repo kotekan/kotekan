@@ -32,7 +32,7 @@ def merge_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanProcessTester(
-        'mergeBuffer', {},
+        'bufferMerge', {},
         fakevis_buffers,
         dump_buffer,
         merge_params
@@ -67,7 +67,7 @@ def mergewait_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanProcessTester(
-        'mergeBuffer', {},
+        'bufferMerge', {},
         [fakevis_fast, fakevis_slow],
         dump_buffer,
         merge_params

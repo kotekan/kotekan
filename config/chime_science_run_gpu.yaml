@@ -911,7 +911,8 @@ vis_accumulate:
 ## Perform all extra time integration and calculate eigenvalues
 
 vis_merge_5s:
-  kotekan_process: mergeBuffer
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_5s_0
     - visbuf_5s_1
@@ -920,7 +921,8 @@ vis_merge_5s:
   out_buf: visbuf_5s_merge
 
 vis_merge_gated_psr0:
-  kotekan_process: mergeBuffer
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_psr0_5s_0
     - visbuf_psr0_5s_1
@@ -973,7 +975,7 @@ eigcalc:
     out_buf: visbuf_eig_10s_3
 
 merge_eig_10s:
-  kotekan_process: mergeBuffer
+  kotekan_process: bufferMerge
   timeout: 0.1
   in_bufs:
     - visbuf_eig_10s_0
