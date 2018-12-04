@@ -6,7 +6,8 @@ hsaPresumKernel::hsaPresumKernel(
                             Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCorrelatorSubframeCommand(config, unique_name, host_buffers,
-                                 device, "CHIME_presum","presum.hsaco") {
+//                                 device, "CHIME_presum","presum.hsaco") {
+                                 device, "CHIME_presum","presum_opencl.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
