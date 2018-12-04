@@ -845,7 +845,7 @@ pulsar:
 
 #### N2 GPU Post processing and Tx ####
 
-# Updateable config for gating
+# Updatable config for gating
 updatable_config:
   gating:
     psr0_config:
