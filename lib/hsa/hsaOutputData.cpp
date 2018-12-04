@@ -60,7 +60,7 @@ hsa_signal_t hsaOutputData::execute(int gpu_frame_id,
             gpu_output_ptr, output_buffer->frame_size,
             precede_signal, signals[gpu_frame_id]);
 
-    output_buffer_excute_id = (output_buffer_excute_id + _sub_frame_index) %
+    output_buffer_excute_id = (output_buffer_excute_id + _num_sub_frames) %
                               output_buffer->num_frames;
 
     return signals[gpu_frame_id];
