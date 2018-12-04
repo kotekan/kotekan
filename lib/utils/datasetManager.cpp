@@ -266,11 +266,10 @@ void datasetManager::request_thread(
             prometheusMetrics::instance().add_process_metric(
                         "kotekan_datasetbroker_error_count", UNIQUE_NAME,
                         ++_conn_error_count);
-            std::string msg = fmt::format(
-                        "datasetManager: Failure in connection to broker: {}:" \
-                        "{}/{}.\ndatasetManager: Make sure the broker is " \
-                        "running.", _ds_broker_host, _ds_broker_port, endpoint);
-            WARN(msg.c_str());
+            WARN("datasetManager: Failure in connection to broker: %s:" \
+                 "%d/%s.\ndatasetManager: Make sure the broker is " \
+                 "running.", _ds_broker_host.c_str(), _ds_broker_port,
+                 endpoint.c_str());
         }
 
         // check if datasetManager destructor was called
