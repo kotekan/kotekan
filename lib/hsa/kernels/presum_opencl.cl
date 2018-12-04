@@ -1,4 +1,4 @@
-#define NUM_TIMESTEPS_LOCAL         1024
+#define NUM_TIMESTEPS_LOCAL         128
 
 __kernel void CHIME_presum (__global uint *inputData,
                                         __global void *nah,

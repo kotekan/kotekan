@@ -56,7 +56,7 @@ hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id,
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
     params.grid_size_x = _num_elements/4;
-    params.grid_size_y = _sub_frame_samples/1024;
+    params.grid_size_y = _sub_frame_samples/128; //should be /1024 for presum.hsaco!
     params.grid_size_z = 1;
     params.num_dims = 2;
 
