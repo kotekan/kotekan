@@ -30,7 +30,7 @@
 #include "signal.h"
 
 
-#define UNIQUE_NAME "/dataset_manager"
+#define DS_UNIQUE_NAME "/dataset_manager"
 
 // names of broker endpoints
 #define PATH_REGISTER_STATE "register-state"
@@ -642,7 +642,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: Failure requesting state from " \
              "broker: %s", reply.second.c_str());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return nullptr;
     }
@@ -703,7 +703,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
               "after requesting state (reply: %s): %s",
               reply.second.c_str(), e.what());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return nullptr;
     }

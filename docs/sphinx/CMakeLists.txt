@@ -16,9 +16,9 @@ set(SPHINX_CACHE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_doctrees")
 set(SPHINX_HTML_DIR "${CMAKE_CURRENT_BINARY_DIR}/html")
 
 if (NOT DEFINED PLANTUML_PATH)
-        MESSAGE("PLANTUML_PATH not specified: Can't draw some graphs in the html docs.")
+    message("PLANTUML_PATH not specified: Can't draw some graphs in the html docs.")
 else()
-        MESSAGE("Using plantUML from ${PLANTUML_PATH}")
+    message("Using plantUML from ${PLANTUML_PATH}")
 endif()
  
 configure_file(

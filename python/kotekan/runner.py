@@ -127,7 +127,7 @@ class KotekanRunner(object):
 
             while (self.debug and None == p.poll()):
                 time.sleep(10)
-                print file(f_out.name).read()
+                print(file(f_out.name).read())
 
             # Wait for kotekan to finish and capture the output
             p.wait()

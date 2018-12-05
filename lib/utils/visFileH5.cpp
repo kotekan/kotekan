@@ -59,9 +59,10 @@ void visFileH5::create_file(
     const freqState* fstate = fstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetStates not found for dataset_id=%i", dataset);
-        ERROR("One of them is a nullptr: inputs %d, products %d, freqs %d, " \
-              "stack %d (but that's okay).", istate, pstate, fstate, sstate);
+        ERROR("Required datasetState not found for dataset ID %zu\nThe " \
+              "following required states were found:\ninputState - %d\n" \
+              "prodState - %d\nfreqState - %d", dataset, istate, pstate,
+              fstate);
         throw std::runtime_error("Could not create file.");
     }
 

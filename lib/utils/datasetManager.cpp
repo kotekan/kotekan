@@ -95,7 +95,7 @@ datasetManager& datasetManager::instance() {
     if (!dm._config_applied) {
         ERROR("A part of kotekan that is configured to load uses the" \
               " datasetManager, but no block named '%s' was found in the " \
-              "config.\nExiting...", UNIQUE_NAME);
+              "config.\nExiting...", DS_UNIQUE_NAME);
         exit(-1);
     }
 
@@ -106,18 +106,18 @@ datasetManager& datasetManager::instance(Config& config) {
     datasetManager& dm = private_instance();
 
     dm._use_broker = config.get<bool>(
-                UNIQUE_NAME, "use_dataset_broker");
+                DS_UNIQUE_NAME, "use_dataset_broker");
     if (dm._use_broker) {
         dm._ds_broker_port = config.get_default<uint32_t>(
-                    UNIQUE_NAME, "ds_broker_port", 12050);
+                    DS_UNIQUE_NAME, "ds_broker_port", 12050);
         dm._ds_broker_host = config.get_default<std::string>(
-                    UNIQUE_NAME, "ds_broker_host", "127.0.0.1");
+                    DS_UNIQUE_NAME, "ds_broker_host", "127.0.0.1");
         dm._retry_wait_time_ms = config.get_default<uint32_t>(
-                    UNIQUE_NAME, "retry_wait_time_ms", 1000);
+                    DS_UNIQUE_NAME, "retry_wait_time_ms", 1000);
         dm._retries_rest_client = config.get_default<uint32_t>(
-                    UNIQUE_NAME, "retries_rest_client", 0);
+                    DS_UNIQUE_NAME, "retries_rest_client", 0);
         dm._timeout_rest_client_s = config.get_default<int32_t>(
-                    UNIQUE_NAME, "timeout_rest_client", -1);
+                    DS_UNIQUE_NAME, "timeout_rest_client", -1);
 
         DEBUG("datasetManager: expecting broker at %s:%d.",
               dm._ds_broker_host.c_str(), dm._ds_broker_port);
@@ -264,7 +264,7 @@ void datasetManager::request_thread(
         } else {
             // Complain and retry...
             prometheusMetrics::instance().add_process_metric(
-                        "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                        "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                         ++_conn_error_count);
             WARN("datasetManager: Failure in connection to broker: %s:" \
                  "%d/%s.\ndatasetManager: Make sure the broker is " \
@@ -295,7 +295,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
               "after registering dataset state (reply: %s): %s",
               reply.c_str(), e.what());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return false;
     }
@@ -342,7 +342,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
         WARN("datasetManager: failure registering dataset state with " \
               "broker: %s", e.what());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return false;
     }
@@ -363,7 +363,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
               "after sending dataset state (reply: %s): %s",
               reply.c_str(), e.what());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return false;
     }
@@ -403,7 +403,7 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
              "after registering dataset (reply: %s): %s",
               reply.c_str(), e.what());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return false;
     }
@@ -533,7 +533,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
         WARN("datasetManager: Failure requesting update on datasets from " \
              "broker: %s", reply.second.c_str());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return false;
     }
@@ -569,7 +569,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
                      "%s: %s", ds.value().dump().c_str(), ds.key().c_str(),
                      e.what());
                 prometheusMetrics::instance().add_process_metric(
-                            "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                             ++_conn_error_count);
                 return false;
             }
@@ -580,7 +580,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
               "after requesting dataset update (reply: %s): %s",
               reply.second.c_str(), e.what());
         prometheusMetrics::instance().add_process_metric(
-                    "kotekan_datasetbroker_error_count", UNIQUE_NAME,
+                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                     ++_conn_error_count);
         return false;
     }
