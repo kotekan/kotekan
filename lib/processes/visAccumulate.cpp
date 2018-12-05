@@ -278,6 +278,11 @@ void visAccumulate::main_thread() {
         int32_t* input = (int32_t *)in_frame;
         uint32_t frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
 
+        // Start and end times of this frame
+        // TODO: CHIME specific
+        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
+
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
         // accumulates and do any final manipulations.
@@ -334,7 +339,7 @@ void visAccumulate::main_thread() {
             // Reset gated streams and find which ones are enabled for this period
             enabled_gated_datasets.clear();
             for (auto& state : gated_datasets) {
-                if (reset_state(state)) {
+                if (reset_state(state, t_s)) {
                     enabled_gated_datasets.push_back(state);
                 }
             }
@@ -365,9 +370,6 @@ void visAccumulate::main_thread() {
 
             // Now the main accumulation work starts...
 
-            // TODO: CHIME specific
-            timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-            timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
             internalState& state = enabled_gated_datasets[0];
             auto frame = visFrameView(state.buf, state.frame_id,
                                       num_elements, num_eigenvectors);
@@ -519,7 +521,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
 }
 
 
-bool visAccumulate::reset_state(visAccumulate::internalState& state) {
+bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t) {
 
     // Reset the internal counters
     state.sample_weight_total = 0;
@@ -535,7 +537,7 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state) {
     }
 
     // Save out the weight function in case an update arrives mid integration
-    state.calculate_weight = state.spec->weight_function();
+    state.calculate_weight = state.spec->weight_function(t);
 
     // Zero out accumulation arrays
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);

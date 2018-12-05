@@ -159,6 +159,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     request["array"] = {1,2,3};
     request["flag"] = true;
 
+    restServer::instance().start("127.0.0.1");
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
@@ -283,54 +284,4 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply_blocking, TestContext ) {
     BOOST_CHECK(reply.first == true);
     json js = json::parse(reply.second);
     BOOST_CHECK(js["test"] == "failed");
-}
-
-BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json_blocking, TestContext ) {
-    __log_level = 4;
-    __enable_syslog = 0;
-    restReply reply;
-    json request;
-    request["array"] = {1,2,3};
-    request["flag"] = true;
-
-    TestContext::init(std::bind(&TestContext::callback, this,
-                          std::placeholders::_1,
-                          std::placeholders::_2));
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    reply = restClient::instance().make_request_blocking("test_restclient",
-                                                       request);
-    BOOST_CHECK(reply.first == true);
-    BOOST_CHECK(reply.second.empty());
-
-
-    /* Test send a bad json */
-
-    json bad_request;
-    bad_request["bla"] = 0;
-    reply = restClient::instance().make_request_blocking("test_restclient",
-                                                         bad_request);
-    BOOST_CHECK(reply.first == false);
-    BOOST_CHECK(reply.second.empty());
-
-    bad_request["array"] = 0;
-    reply = restClient::instance().make_request_blocking("test_restclient",
-                                                         bad_request);
-    BOOST_CHECK(reply.first == false);
-    BOOST_CHECK(reply.second.empty());
-
-
-    /* Test with bad URL */
-
-    reply = restClient::instance().make_request_blocking("doesntexist",
-                                                         request);
-    BOOST_CHECK(reply.first == false);
-    BOOST_CHECK(reply.second.empty());
-
-
-    reply = restClient::instance().make_request_blocking("test_restclient",
-                                                         request, "localhost",
-                                                         1);
-    BOOST_CHECK(reply.first == false);
-    BOOST_CHECK(reply.second.empty());
 }

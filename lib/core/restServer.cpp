@@ -20,8 +20,19 @@ restServer &restServer::instance() {
 }
 
 restServer::restServer() : main_thread() {
-
     stop_thread = false;
+}
+
+restServer::~restServer() {
+    stop_thread = true;
+    main_thread.join();
+}
+
+void restServer::start(const std::string &bind_address, u_short port) {
+
+    this->bind_address = bind_address;
+    this->port = port;
+
     main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
@@ -32,11 +43,6 @@ restServer::restServer() : main_thread() {
     using namespace std::placeholders;
     register_get_callback("/endpoints",
         std::bind(&restServer::endpoint_list_callback, this, _1));
-}
-
-restServer::~restServer() {
-    stop_thread = true;
-    main_thread.join();
 }
 
 void restServer::handle_request(struct evhttp_request * request, void * cb_data) {

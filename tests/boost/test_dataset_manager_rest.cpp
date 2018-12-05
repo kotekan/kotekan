@@ -8,6 +8,7 @@
 #include "json.hpp"
 #include "visUtil.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -148,6 +149,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
 
     // kotekan restServer endpoints defined above
     json_config["ds_broker_port"] = 12048;
+    restServer::instance().start("127.0.0.1");
 
     TestContext::init();
 

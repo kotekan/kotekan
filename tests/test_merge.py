@@ -13,6 +13,7 @@ merge_params = {
     'mode': 'fill_ij',
     'freq': list(range(3)),
     'buffer_depth': 20,
+    'timeout': 0.1,
     'dataset_manager': {
         'use_dataset_broker': False
     },
@@ -34,7 +35,7 @@ def merge_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanProcessTester(
-        'visMerge', {},
+        'bufferMerge', {},
         fakevis_buffers,
         dump_buffer,
         merge_params
@@ -69,7 +70,7 @@ def mergewait_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanProcessTester(
-        'visMerge', {},
+        'bufferMerge', {},
         [fakevis_fast, fakevis_slow],
         dump_buffer,
         merge_params

@@ -508,6 +508,17 @@ inline std::vector<U> func_map(const std::vector<T>& vec,
     return ret;
 }
 
+/**
+ * @brief Splits a string based on a regex delimiter
+ *
+ * Aside: how is something like this not in std::string?
+ *
+ * @param input The string to split
+ * @param reg The regex string delimiter
+ * @return A vector of strings as split by the delimiter
+ */
+std::vector<std::string> regex_split(const std::string input, const std::string reg);
+
 
 /**
  * @brief A class for modular arithmetic. Used for holding ring buffer indices.

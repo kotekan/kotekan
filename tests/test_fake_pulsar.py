@@ -50,6 +50,7 @@ def pulsar_data(tmpdir_factory):
 
 
 def test_pulsar(pulsar_data):
+    assert len(pulsar_data) != 0
     # Should have one or two frames with a pulse
     real_part = 0
     for frame in pulsar_data:
