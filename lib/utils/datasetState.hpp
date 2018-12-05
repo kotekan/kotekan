@@ -604,5 +604,31 @@ private:
     std::string _weight_type, _instrument_name, _git_version_tag;
 };
 
+
+/**
+ * @brief A state to describe any applied gating.
+ *
+ * @author Richard Shaw
+ **/
+class gatingState : public datasetState {
+public:
+
+    gatingState(json& data, state_uptr inner) :
+        datasetState(std::move(inner)),
+        _data(data)
+    {
+    }
+
+
+
+
+    json data_to_json() const override {
+        return _data;
+    }
+
+private:
+    json _data;
+}
+
 #endif // DATASETSTATE_HPP
 
