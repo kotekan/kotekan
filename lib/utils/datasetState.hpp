@@ -613,22 +613,52 @@ private:
 class gatingState : public datasetState {
 public:
 
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  type   A string labelling the type of the gating.
+     * @param  data   Arbitrary type specific data to describe what's happening.
+     * @param  inner  Inner state.
+     **/
+    gatingState(const std::string& type, json& data, state_uptr inner) :
+        datasetState(std::move(inner)),
+        gating_type(type),
+        gating_data(data)
+    {
+    }
+
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  data   Full serialised data.
+     * @param  inner  Inner state.
+     **/
     gatingState(json& data, state_uptr inner) :
         datasetState(std::move(inner)),
-        _data(data)
+        gating_type(data["type"].get<std::string>()),
+        gating_data(data["data"])
     {
     }
 
 
-
-
+    /**
+     * @brief Serialise the gatingState data.
+     *
+     * @return  JSON serialisation.
+     **/
     json data_to_json() const override {
-        return _data;
+        return {
+            {"type", gating_type},
+            {"data", gating_data}
+        };
     }
 
-private:
-    json _data;
-}
+    /// Type of gating
+    const std::string gating_type;
+
+    /// Type specific data
+    const json gating_data;
+};
 
 #endif // DATASETSTATE_HPP
 
