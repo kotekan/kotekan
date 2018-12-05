@@ -73,7 +73,7 @@ num_beams: 10
 num_pol: 2
 pulsar_gain:
   kotekan_update_endpoint: json
-  pulsar_gain_dir: 
+  pulsar_gain_dir:
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
@@ -911,7 +911,8 @@ vis_accumulate:
 ## Perform all extra time integration and calculate eigenvalues
 
 vis_merge_5s:
-  kotekan_process: visMerge
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_5s_0
     - visbuf_5s_1
@@ -920,7 +921,8 @@ vis_merge_5s:
   out_buf: visbuf_5s_merge
 
 vis_merge_gated_psr0:
-  kotekan_process: visMerge
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_psr0_5s_0
     - visbuf_psr0_5s_1
@@ -972,8 +974,9 @@ eigcalc:
     in_buf: visbuf_10s_3
     out_buf: visbuf_eig_10s_3
 
-vis_merge_eig_10s:
-  kotekan_process: visMerge
+merge_eig_10s:
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_eig_10s_0
     - visbuf_eig_10s_1

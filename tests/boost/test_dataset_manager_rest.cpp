@@ -8,6 +8,7 @@
 #include "json.hpp"
 #include "visUtil.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -144,6 +145,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
     json json_config;
     json_config["use_dataset_broker"] = true;
 
+    restServer::instance().start("127.0.0.1");
     TestContext::init();
 
     datasetManager& dm = datasetManager::instance();

@@ -38,6 +38,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               restInspectFrame.cpp
               frbNetworkProcess.cpp
               pulsarNetworkProcess.cpp
+              bufferMerge.cpp
+              bufferSwitch.cpp
               #RFI Pipeline Processes
               rfiVDIF.cpp
               rfiAVXVDIF.cpp
@@ -48,7 +50,6 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               visTransform.cpp
               visTestPattern.cpp
               visDebug.cpp
-              visMerge.cpp
               )
 
 if (${USE_AIRSPY})
