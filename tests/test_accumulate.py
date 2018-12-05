@@ -140,8 +140,8 @@ def pulsar_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("pulsar")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
-    dump_buffer_gated = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_gated = runner.DumpVisBuffer(str(tmpdir))
     # Insert an extra buffer for gated stream
     dump_buffer.buffer_block.update(dump_buffer_gated.buffer_block)
     dump_buffer.process_block.update(dump_buffer_gated.process_block)
@@ -176,9 +176,9 @@ def pulsar_data(tmpdir_factory):
         }
     })
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', acc_par,
-        kotekan_runner.FakeGPUBuffer(**pulsar_params),
+        runner.FakeGPUBuffer(**pulsar_params),
         dump_buffer,
         updatable_params
     )
