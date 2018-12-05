@@ -156,6 +156,9 @@ private:
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;
 
+    /// Config base (@TODO this is a huge hack replace with updatable config)
+    string config_base;
+
 };
 
 #endif

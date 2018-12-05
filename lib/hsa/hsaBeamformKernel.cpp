@@ -61,12 +61,15 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string &unique_name,
     update_EW_beam=true;
     first_pass=true;
 
+    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint_NS_beam = unique_name + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
+    endpoint_NS_beam = config_base + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_NS_beam,
             std::bind(&hsaBeamformKernel::update_NS_beam_callback, this, _1, _2));
-    endpoint_EW_beam = unique_name + "/frb/update_EW_beam/" + std::to_string(device.get_gpu_id());
+    endpoint_EW_beam = config_base + "/frb/update_EW_beam/" + std::to_string(device.get_gpu_id());
+
     rest_server.register_post_callback(endpoint_EW_beam,
             std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
     //listen for gain updates
@@ -110,7 +113,7 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     }
     _ew_spacing_c[ew_id] = json_request["ew_beam"];
     update_EW_beam=true;
-    config.update_value(unique_name, "ew_spacing/" + std::to_string(ew_id), json_request["ew_beam"]);
+    config.update_value(config_base, "ew_spacing/" + std::to_string(ew_id), json_request["ew_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 
 }
@@ -125,9 +128,10 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
     freq_ref = (LIGHT_SPEED*(128) / (sin(_northmost_beam *PI/180.) * FEED_SEP *256))/1.e6;
     update_NS_beam=true;
 
-    config.update_value(unique_name, "northmost_beam", json_request["northmost_beam"]);
+    config.update_value(config_base, "northmost_beam", json_request["northmost_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    config.update_value(unique_name, "gain_dir", _gain_dir);
+    // AR Commended this out because it doesn't make sense to be here...
+    //config.update_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {

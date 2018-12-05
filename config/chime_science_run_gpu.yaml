@@ -913,7 +913,7 @@ updatable_config:
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
-  samples_per_data_set: sub_frame_samples
+  samples_per_data_set: 12288
   acc0:
     kotekan_process: visAccumulate
     in_buf: gpu_n2_output_buffer_0

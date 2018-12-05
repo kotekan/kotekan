@@ -75,11 +75,13 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_use_0 = 0;
     bank_use_1 = 0;
     second_last = 0;
-    
+
+    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint_psrcoord = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    endpoint_psrcoord = config_base + "/update_pulsar/"+std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_psrcoord,
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
@@ -284,9 +286,9 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord_latest_update.dec[beam] = json_request["dec"];
         psr_coord_latest_update.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-        config.update_value(unique_name, "source_ra/" + std::to_string(beam), json_request["ra"]);
-        config.update_value(unique_name, "source_dec/" + std::to_string(beam), json_request["dec"]);
-        config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
+        config.update_value(config_base, "source_ra/" + std::to_string(beam), json_request["ra"]);
+        config.update_value(config_base, "source_dec/" + std::to_string(beam), json_request["dec"]);
+        config.update_value(config_base, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
         update_phase = true;
     }
 }
