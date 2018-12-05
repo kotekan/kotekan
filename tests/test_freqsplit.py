@@ -4,7 +4,7 @@ import os
 import re
 
 import visbuffer
-import kotekan_runner
+from kotekan import runner
 
 
 params = {
@@ -27,20 +27,20 @@ def vis_data(tmpdir_factory):
     tmpdir_l = tmpdir_factory.mktemp("freqsplit_lower")
     tmpdir_h = tmpdir_factory.mktemp("freqsplit_higher")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
         wait=False
     )
 
-    dump_buffer_l = kotekan_runner.DumpVisBuffer(
+    dump_buffer_l = runner.DumpVisBuffer(
             str(tmpdir_l))
 
-    dump_buffer_h = kotekan_runner.DumpVisBuffer(
+    dump_buffer_h = runner.DumpVisBuffer(
             str(tmpdir_h))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'freqSplit', {},
         fakevis_buffer,
         [dump_buffer_l, dump_buffer_h],
@@ -57,18 +57,18 @@ def write_data(tmpdir_factory):
     tmpdir_l = tmpdir_factory.mktemp("freqsplit_write_lower")
     tmpdir_h = tmpdir_factory.mktemp("freqsplit_write_higher")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
         wait=False
     )
 
-    write_buffer_l = kotekan_runner.VisWriterBuffer(
+    write_buffer_l = runner.VisWriterBuffer(
             str(tmpdir_l), 'raw')
-    write_buffer_h = kotekan_runner.VisWriterBuffer(
+    write_buffer_h = runner.VisWriterBuffer(
             str(tmpdir_h), 'raw')
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'freqSplit', {},
         fakevis_buffer,
         [write_buffer_l, write_buffer_h],
@@ -121,7 +121,7 @@ def test_write(write_data):
     for t in range(params['total_frames']):
         for f in range(len(f_lower)):
             # get freq ids from fakeVis
-            fid = int(write_data_l[t][f].vis[2].real)
+            fid = int(write_data_l.data[t, f]['vis'][2].real)
             assert fid in f_lower
             # Check the order
             assert fid == f_lower[f]
@@ -134,7 +134,7 @@ def test_write(write_data):
     for t in range(params['total_frames']):
         for f in range(len(f_higher)):
             # get freq ids from fakeVis
-            fid = int(write_data_h[t][f].vis[2].real)
+            fid = int(write_data_h.data[t, f]['vis'][2].real)
             assert fid in f_higher
             # Check the order
             assert fid == f_higher[f]

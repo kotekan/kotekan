@@ -1,8 +1,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
-
+from kotekan import runner
 
 params = {
     'num_elements': 4,
@@ -22,11 +21,11 @@ def transform_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("transform")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTransform', {'num_ev': 4},
-        [kotekan_runner.FakeGPUBuffer(
+        [runner.FakeGPUBuffer(
             mode='accumulate',
             freq=params['freq'],
             num_frames=params['total_frames']
@@ -45,11 +44,11 @@ def lostsamples_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("lostsamples")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTransform', {'num_ev': 4},
-        [kotekan_runner.FakeGPUBuffer(
+        [runner.FakeGPUBuffer(
             mode='lostsamples',
             freq=params['freq'],
             num_frames=params['total_frames']

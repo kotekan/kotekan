@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 
 global_params = {
@@ -38,12 +38,12 @@ def complete_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("no_drop")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=global_params['freq_ids'],
         num_frames=global_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
     global_params.update(dump_buffer.buffer_block)
     global_params.update(dump_buffer.process_block)
     global_params['compress']['out_buf'] = dump_buffer.name
@@ -52,7 +52,7 @@ def complete_data(tmpdir_factory):
         'out_buf': 'compress_buffer'
     }
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'Valve', valve_params,
         fakevis_buffer,
         None,
@@ -75,12 +75,12 @@ def incomplete_data(tmpdir_factory):
     # Make the buffer flow over:
     global_params['total_frames'] = 100
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=global_params['freq_ids'],
         num_frames=global_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
     global_params.update(dump_buffer.buffer_block)
     global_params.update(dump_buffer.process_block)
     global_params['compress']['out_buf'] = dump_buffer.name
@@ -90,7 +90,7 @@ def incomplete_data(tmpdir_factory):
         'out_buf': 'compress_buffer'
     }
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'Valve', valve_params,
         fakevis_buffer,
         None,
