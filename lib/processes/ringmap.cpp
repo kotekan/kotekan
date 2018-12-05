@@ -1,6 +1,7 @@
 #include "ringmap.hpp"
 #include "visBuffer.hpp"
 #include <complex>
+#include <cblas.h>
 
 using namespace std::complex_literals;
 const float pi = std::acos(-1);
@@ -39,6 +40,9 @@ void mapMaker::main_thread() {
         return;
 
     unsigned int input_frame_id = 0;
+    // coefficients of CBLAS multiplication
+    float alpha = 1.;
+    float beta = 0.;
 
     while (!stop_thread) {
 
@@ -48,13 +52,32 @@ void mapMaker::main_thread() {
             break;
         }
 
+        // Check dataset id hasn't changed
+
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
-        // multiply visibilities with transfer matrix
+        time_ctype t = {std::get<0>(input_frame.time),
+                        ts_to_double(std::get<1>(input_frame.time))};
+        uint32_t f_id = input_frame.freq_id;
+        size_t t_ind = append_time(t);
+        if (t_ind >= 0) {
+            size_t pol_XX = 0;
+            // something like
+            for (uint p = 0; p < num_pol; p++) {
+                // transform into map slice
+                cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
+                            &alpha, vis2map.at(f_id).data, num_pix, &input_frame.vis[p*num_bl],
+                            1, &beta, &map.at(f_id).at(p).data[t_ind*num_pix], 1);
 
-        // multiply weights
+                 // same for weights map
+                cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
+                            &alpha, vis2map.at(f_id).data, num_pix, &input_frame.weights[p*num_bl],
+                            1, &beta, &wgt_map.at(f_id).at(p).data[t_ind*num_pix], 1);
+            }
+        }
 
+        input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
     }
 }
 
@@ -63,10 +86,10 @@ nlohmann::json mapMaker::rest_callback(connectionInstance& conn, nlohmann::json&
     // make sure to lock the map arrays
 }
 
-bool mapMaker::setup() {
+bool mapMaker::setup(uint frame_id) {
 
     // Wait for the input buffer to be filled with data
-    if(wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
+    if(wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
         return false;
 
     // read products and frequencies from dataset manager
@@ -113,4 +136,8 @@ void mapMaker::gen_matrices() {
 void mapMaker::gen_baselines() {
 
     // calculate baseline for every product
+}
+
+size_t append_time(time_ctype t){
+
 }
