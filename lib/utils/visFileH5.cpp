@@ -32,21 +32,23 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 void visFileH5::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t num_ev, size_t max_time)
 {
     auto& dm = datasetManager::instance();
 
-    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    auto istate = dm.dataset_state<inputState>(dataset);
+    auto pstate = dm.dataset_state<prodState>(dataset);
+    auto fstate = dm.dataset_state<freqState>(dataset);
+    auto sstate = dm.dataset_state<stackState>(dataset);
 
-    if (!istate || !pstate || !fstate) {
+    if (!istate || !pstate || !fstate || !sstate) {
         ERROR("Required datasetStates not found for dataset_id=%i", dataset);
+        ERROR("One of them is a nullptr: inputs %d, products %d, freqs %d, " \
+              "stack %d", istate, pstate, fstate, sstate);
         throw std::runtime_error("Could not create file.");
     }
 
-    if(sstate) {
+    if(sstate->is_stacked()) {
         throw std::runtime_error("H5 writers do not currently worked with "
                                  "stacked data.");
     }
@@ -264,7 +266,7 @@ void visFileH5::write_sample(
 void visFileH5Fast::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time
+    dset_id_t dataset, size_t num_ev, size_t max_time
 ) {
     visFileH5::create_file(name, metadata, dataset, num_ev, max_time);
     setup_raw();
@@ -383,6 +385,10 @@ bool visFileH5Fast::write_raw(off_t dset_base, int ind, size_t n,
 void visFileH5Fast::flush_raw_async(off_t dset_base, int ind, size_t n) {
 #ifdef __linux__
     sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#else
+    (void)dset_base;
+    (void)ind;
+    (void)n;
 #endif
 }
 
@@ -393,6 +399,10 @@ void visFileH5Fast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED);
+#else
+    (void)dset_base;
+    (void)ind;
+    (void)n;
 #endif
 }
 

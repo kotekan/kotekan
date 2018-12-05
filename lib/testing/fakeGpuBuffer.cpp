@@ -5,6 +5,7 @@
 #include <csignal>
 #include <unistd.h>
 #include <random>
+#include <iterator>
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "visUtil.hpp"
@@ -41,16 +42,28 @@ fakeGpuBuffer::fakeGpuBuffer(Config& config,
     fill_map["lostsamples"] = &fakeGpuBuffer::fill_mode_lostsamples;
     fill_map["accumulate"] = &fakeGpuBuffer::fill_mode_accumulate;
     fill_map["gaussian"] = &fakeGpuBuffer::fill_mode_gaussian;
+    fill_map["pulsar"] = &fakeGpuBuffer::fill_mode_pulsar;
 
     // Fetch the correct fill function
     std::string mode = config.get<std::string>(unique_name, "mode");
     fill = fill_map[mode];
+
+    // Get additional config for pulsar
+    if (mode == "pulsar") {
+        // set up pulsar polyco
+        std::vector<float> coeff = config.get<std::vector<float>>(unique_name, "coeff");
+        dm = config.get<float>(unique_name, "dm");
+        double tmid = config.get<double>(unique_name, "t_ref");  // in days since MJD
+        double phase_ref = config.get<double>(unique_name, "phase_ref");  // in number of rotations
+        rot_freq = config.get<double>(unique_name, "rot_freq");  // in Hz
+        pulse_width = config.get<float>(unique_name, "pulse_width");
+        polyco = new Polyco(tmid, dm, phase_ref, rot_freq, coeff);
+        // what to use for background
+        gaussian_bgnd = config.get_default<bool>(unique_name, "gaussian_bgnd", true);
+    }
 }
 
 fakeGpuBuffer::~fakeGpuBuffer() {
-}
-
-void fakeGpuBuffer::apply_config(uint64_t fpga_seq) {
 }
 
 void fakeGpuBuffer::main_thread() {
@@ -134,6 +147,9 @@ void fakeGpuBuffer::main_thread() {
 
 void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number,
                                     chimeMetadata* metadata) {
+    // Parameters not used in this fill mode, suppress warning.
+    (void)frame_number;
+    (void)metadata;
 
     int nb1 = num_elements / block_size;
     int num_blocks = nb1 * (nb1 + 1) / 2;
@@ -173,6 +189,8 @@ void fakeGpuBuffer::fill_mode_lostsamples(int32_t* data, int frame_number,
 
 void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number,
                                          chimeMetadata* metadata) {
+    // Parameter not used in this fill mode, suppress warning.
+    (void)metadata;
 
     for(int i = 0; i < num_elements; i++) {
         for(int j = i; j < num_elements; j++) {
@@ -193,6 +211,9 @@ void fakeGpuBuffer::fill_mode_accumulate(int32_t* data, int frame_number,
 
 void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number,
                                        chimeMetadata* metadata) {
+    // Parameters not used in this fill mode, suppress warning.
+    (void)frame_number;
+    (void)metadata;
 
     std::random_device rd{};
     std::mt19937 gen{rd()};
@@ -211,6 +232,36 @@ void fakeGpuBuffer::fill_mode_gaussian(int32_t* data, int frame_number,
             } else {
                 data[2 * bi + 1] = (int32_t)(f_cross * gaussian(gen));
                 data[2 * bi    ] = (int32_t)(f_cross * gaussian(gen));
+            }
+        }
+    }
+}
+
+void fakeGpuBuffer::fill_mode_pulsar(int32_t* data, int frame_number,
+                                    chimeMetadata* metadata) {
+
+    // Fill frame with gaussian noise as background
+    if (gaussian_bgnd) {
+        fill_mode_gaussian(data, frame_number, metadata);
+    } else {
+        std::fill(data, data + num_elements * (num_elements+1), 0);
+    }
+
+    DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
+
+    // Figure out if we are in a pulse
+    double toa = polyco->next_toa(metadata->gps_time, freq_from_bin(freq));
+    double last_toa = toa - 1. / rot_freq;
+    DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
+
+    // TODO: CHIME specific
+    // If so, add 10 to real part
+    if (toa < samples_per_data_set * 2.56e-6 || last_toa + pulse_width > 0) {
+        //DEBUG("Found pulse!");
+        for(int i = 0; i < num_elements; i++) {
+            for(int j = i; j < num_elements; j++) {
+                uint32_t bi = prod_index(i, j, block_size, num_elements);
+                data[2 * bi + 1] += 10 * samples_per_data_set;
             }
         }
     }

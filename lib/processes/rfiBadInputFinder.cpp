@@ -29,8 +29,25 @@ rfiBadInputFinder::rfiBadInputFinder(Config& config,
     rfi_buf = get_buffer("rfi_in");
     //Register process as consumer
     register_consumer(rfi_buf, unique_name.c_str());
+
     //Intialize internal config
-    apply_config(0);
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_total_freq = config.get_default<uint32_t>(
+                unique_name, "num_total_freq", 1024);
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
+    //Rfi paramters
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
+    _frames_per_packet = config.get_default<uint32_t>(
+                unique_name, "bi_frames_per_packet",10);
+    //Process specific paramters
+    dest_port = config.get<uint32_t>(unique_name, "destination_port");
+    dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
+    dest_protocol = config.get_default<std::string>(
+                unique_name, "destination_protocol", "UDP");
+
     // Set stats variables
     stats_sigma = 3;
     //Initialize rest server endpoint
@@ -57,26 +74,6 @@ void rfiBadInputFinder::rest_callback(connectionInstance& conn, json& json_reque
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     //Unlock mutex
     rest_callback_mutex.unlock();
-}
-
-void rfiBadInputFinder::apply_config(uint64_t fpga_seq) {
-    //Standard Config parameters
-    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
-    _num_total_freq = config.get_default<uint32_t>(
-                unique_name, "num_total_freq", 1024);
-    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<uint32_t>(
-                unique_name, "samples_per_data_set");
-    //Rfi paramters
-    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
-    _frames_per_packet = config.get_default<uint32_t>(
-                unique_name, "bi_frames_per_packet",10);
-    //Process specific paramters
-    dest_port = config.get<uint32_t>(unique_name, "destination_port");
-    dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
-    dest_protocol = config.get_default<std::string>(
-                unique_name, "destination_protocol", "UDP");
 }
 
 float rfiBadInputFinder::median(float array[], uint32_t num){
@@ -122,9 +119,19 @@ void rfiBadInputFinder::main_thread() {
     float rfi_data[_num_local_freq*_num_elements];
     uint8_t faulty_counter[_num_local_freq*_num_elements];
     memset(faulty_counter, (uint8_t)0,sizeof(faulty_counter));
+
     //Intialize packet header
-    struct RFIHeader rfi_header = {.rfi_combined=(uint8_t)_rfi_combined, .sk_step=_sk_step, .num_elements=_num_elements, .samples_per_data_set=_samples_per_data_set,
-                      .num_total_freq=_num_total_freq, .num_local_freq=_num_local_freq, .frames_per_packet=_frames_per_packet};
+    struct RFIHeader rfi_header = {
+            .rfi_combined=(uint8_t)_rfi_combined,
+            .sk_step=_sk_step,
+            .num_elements=_num_elements,
+            .samples_per_data_set=_samples_per_data_set,
+            .num_total_freq=_num_total_freq,
+            .num_local_freq=_num_local_freq,
+            .frames_per_packet=_frames_per_packet,
+            .seq_num= 0,
+            .streamID= 0};
+
     //Intialize empty packet
     uint32_t packet_length = sizeof(rfi_header) + sizeof(faulty_counter);
     char *packet_buffer = (char *)malloc(packet_length);
@@ -150,8 +157,10 @@ void rfiBadInputFinder::main_thread() {
         //Get a frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
         if (frame == NULL) break;
+#ifdef DEBUGGING
         //Reset Timer
         double start_time = e_time();
+#endif
         //Copy frame data to array
         memcpy(rfi_data, frame, rfi_buf->frame_size);
         //Add frame metadata to header

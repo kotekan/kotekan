@@ -31,7 +31,7 @@ class visFile {
 
 public:
 
-virtual ~visFile() {};
+    virtual ~visFile() = default;
 
     /** @brief Create the file.
      *
@@ -65,7 +65,10 @@ virtual ~visFile() {};
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind) {};
+    void deactivate_time(uint32_t time_ind) {
+        (void)time_ind;
+        WARN("visFile::deactivate_time: called but not implemented.");
+    };
 
     /**
      * @brief Write a sample of data into the file at the given index.
@@ -110,7 +113,7 @@ protected:
     virtual void create_file(
         const std::string& name,
         const std::map<std::string, std::string>& metadata,
-        dset_id dataset, size_t num_ev, size_t max_time) = 0;
+        dset_id_t dataset, size_t num_ev, size_t max_time) = 0;
 
     // Private constructor to discourage creation of subclasses outside of the
     // create routine
@@ -202,6 +205,8 @@ public:
      **/
     template<typename... WriteArgs>
     bool add_sample(time_ctype new_time, WriteArgs&&... args);
+
+    virtual ~visFileBundle() = default;
 
 protected:
 

@@ -56,9 +56,6 @@ public:
   /// Destructor , cleaning local allocations
   virtual ~pulsarNetworkProcess();
   
-  /// Applies the config parameters
-  void apply_config(uint64_t fpga_seq) override;
-  
   /// main thread
   void main_thread() override;
 private:
@@ -80,9 +77,6 @@ private:
 
   /// number of pulsar VLANS
   int number_of_subnets;
-
-  /// node id derived from the hostname 
-  int my_node_id;
 
   /// host name from the gethosename()
   char *my_host_name;

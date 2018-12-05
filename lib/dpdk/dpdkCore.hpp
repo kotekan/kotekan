@@ -112,7 +112,7 @@ protected:
 /**
  * @brief The core interface between DPDK enabled NICs and the kotekan framework.
  *
- * The idea of this objection is to deal with all the boilder plate which is needed
+ * The idea of this objection is to deal with all the boiler plate which is needed
  * to setup DPDK on enabled NICs and map all the ports to lcores (DPDK threads).
  *
  * In the end anyone should be able to use this class with their own subclass of the
@@ -163,8 +163,7 @@ public:
              bufferContainer &buffer_container);
     ~dpdkCore();
 
-    void main_thread();
-    void apply_config(uint64_t fpga_seq) {};
+    void main_thread() override;
 
 private:
 

@@ -25,10 +25,6 @@ timeDownsample::timeDownsample(Config &config,
 
 }
 
-void timeDownsample::apply_config(uint64_t fpga_seq) {
-
-}
-
 void timeDownsample::main_thread() {
 
     unsigned int frame_id = 0;

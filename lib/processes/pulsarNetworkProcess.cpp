@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <signal.h>
 #include <functional>
 #include <string>
 
@@ -36,7 +37,19 @@ std::bind(&pulsarNetworkProcess::main_thread, this))
 {
     in_buf = get_buffer("pulsar_out_buf");
     register_consumer(in_buf, unique_name.c_str());
-    apply_config(0);
+
+    // Apply config.
+    udp_pulsar_packet_size = config.get<int>(
+                unique_name, "udp_pulsar_packet_size");
+    udp_pulsar_port_number = config.get<int>(
+                unique_name, "udp_pulsar_port_number");
+    number_of_nodes = config.get<int>(unique_name, "number_of_nodes");
+    number_of_subnets = config.get<int>(unique_name, "number_of_subnets");
+    timesamples_per_pulsar_packet = config.get_default<int>(
+                unique_name, "timesamples_per_pulsar_packet",625);
+    num_packet_per_stream = config.get_default<int>(
+                unique_name, "num_packet_per_stream",80);
+
     my_host_name = (char*) malloc(sizeof(char)*100);
     CHECK_MEM(my_host_name);
 }
@@ -51,21 +64,6 @@ pulsarNetworkProcess::~pulsarNetworkProcess()
     free(myaddr);
     free(server_address);
     free(sock_fd);
-}
-
-
-void pulsarNetworkProcess::apply_config(uint64_t fpga_seq) 
-{
-    udp_pulsar_packet_size = config.get<int>(
-                unique_name, "udp_pulsar_packet_size");
-    udp_pulsar_port_number = config.get<int>(
-                unique_name, "udp_pulsar_port_number");
-    number_of_nodes = config.get<int>(unique_name, "number_of_nodes");
-    number_of_subnets = config.get<int>(unique_name, "number_of_subnets");
-    timesamples_per_pulsar_packet = config.get_default<int>(
-                unique_name, "timesamples_per_pulsar_packet",625);
-    num_packet_per_stream = config.get_default<int>(
-                unique_name, "num_packet_per_stream",80);
 }
 
 void pulsarNetworkProcess::main_thread() 

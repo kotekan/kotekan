@@ -31,25 +31,22 @@ void clRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) 
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
-void clRfiInputSum::apply_config(const uint64_t& fpga_seq) {
-    //Apply general command config
-    gpu_command::apply_config(fpga_seq);
+void clRfiInputSum::build(device_interface &param_Device)
+{
+    //Lock callback mutex
+    std::lock_guard<std::mutex> lock(rest_callback_mutex);
+
+    //Apply config
+    gpu_command::apply_config();
     //RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _num_bad_inputs = config.config.get<std::vector<uint32_t>>(
+    _num_bad_inputs = config.get<std::vector<uint32_t>>(
                 unique_name, "bad_inputs").size();
     _use_local_sum = config.get_default<bool>(unique_name, "local_sum", true);
     DEBUG("Number of bad inputs computed: %d",_num_bad_inputs);
     //Calculate integration length
     _M = (_num_elements - _num_bad_inputs)*_sk_step;
-}
 
-void clRfiInputSum::build(device_interface &param_Device)
-{
-    //Lock callback mutex
-    std::lock_guard<std::mutex> lock(rest_callback_mutex);
-    //Apply config
-    apply_config(0);
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -92,10 +89,10 @@ void clRfiInputSum::build(device_interface &param_Device)
     lws[1] = 1;
     lws[2] = 1;
 }
-cl_event clRfiInputSum::execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent)
+cl_event clRfiInputSum::execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent)
 {
     //General GPU command execute
-    gpu_command::execute(param_bufferID, 0, param_Device, param_PrecedeEvent);
+    gpu_command::execute(param_bufferID, param_Device, param_PrecedeEvent);
     //Lock rest server mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Set input/output buffer argumnets

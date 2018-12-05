@@ -56,9 +56,6 @@ public:
   /// Destructor , cleaning local allocations
   virtual ~frbNetworkProcess();
 
-  ///parse config
-  void apply_config(uint64_t fpga_seq) override;
-
   /// Callback to update the beam offset
   void update_offset_callback(connectionInstance& conn, json& json_request);
 
@@ -86,9 +83,6 @@ private:
 
   /// number of packets to each L1 nodes
   int packets_per_stream;
-
-  /// node id derived from the hostname 
-  int my_node_id;
 
   /// host name from the gethosename()
   char *my_host_name;

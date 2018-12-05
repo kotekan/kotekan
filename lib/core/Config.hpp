@@ -35,7 +35,7 @@ using std::vector;
 class Config {
 public:
     Config();
-    Config(const Config& orig);
+
     virtual ~Config();
 
     /**
@@ -129,7 +129,7 @@ public:
     /**
      * @brief Checks if a value exists at the given location "base_path" + "name"
      *
-     * @param base_path JSON pointer string were the value should be serched for.
+     * @param base_path JSON pointer string were the value should be searched for.
      * @param name The name of the value (the key)
      * @return true if the key exists in the path, and false otherwise.
      */
@@ -152,12 +152,33 @@ public:
     // This function should be moved, it doesn't really belong here...
     int32_t num_links_per_gpu(const int32_t &gpu_id);
 
-    // @breaf Finds the value with key "name" starts looking at the
-    // "base_pointer" location, and then works backwards up the config tree.
-    // @param base_pointer Contains a JSON pointer which points to the
-    // process's location in the config tree. i.e. /vdif_cap/disk_write
-    // @param name The name of the property i.e. num_frequencies
+    /**
+     * @brief Finds the value with key "name" starts looking at the
+     * "base_pointer" location, and then works backwards up the config tree.
+     *
+     * @throws  std::runtime_error  If the value was not found.
+     *
+     * @param base_pointer  Contains a JSON pointer which points to the
+     *                      process's location in the config tree. i.e.
+     *                      /vdif_cap/disk_write
+     * @param name          The name of the property i.e. num_frequencies
+     *
+     * @return              The value that was found.
+     **/
     json get_value(const string &base_pointer, const string &name);
+
+    /**
+     * @brief Finds all values with key "name". Searches the whole config tree.
+     *
+     * @note This should only be used by internal (core framework) systems.
+     * Usage by normal processes risks unexpected side effects in the config
+     * scoping logic.
+     *
+     * @param name  The name of the property i.e. num_frequencies
+     *
+     * @return      The values found or an empty list if nothing was found.
+     **/
+    std::vector<json> get_value(const string& name) const;
 
     /**
      * @brief Updates a config value at an existing config option
@@ -187,7 +208,7 @@ public:
      *
      * The HASH is based on the json string dump with no spaces or newlines
      *
-     * Only avaibile if OpenSSL was installed on a system,
+     * Only available if OpenSSL was installed on a system,
      * so wrap any uses in @c #ifdef WITH_SSL
      *
      * @return The MD5sum as 32 char hex std::string
@@ -197,7 +218,7 @@ public:
 
     /**
      * @brief Returns the full json data structure (for internal framework use)
-     * @warn This shouldn't be called outside of the core freamwork
+     * @warn This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
     json &get_full_config_json();
@@ -210,6 +231,16 @@ private:
 
     /// Internal json object
     json _json;
+
+    /**
+     * @brief Finds all values with key "name". Searches the given json.
+     *
+     * @param j         The json to look in.
+     * @param name      The name of the property i.e. num_frequencies
+     * @param results   Vector found values are added to.
+     **/
+    void get_value_recursive(const json& j, const std::string& name,
+                        std::vector<json>& results) const;
 
     /**
      * @brief Helper class, gets an arithmetic expression from the config.

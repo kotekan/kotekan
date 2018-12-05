@@ -53,10 +53,6 @@ eigenWriter::~eigenWriter() {
     file->flush();
 }
 
-void eigenWriter::apply_config(uint64_t fpga_seq) {
-
-}
-
 void eigenWriter::main_thread() {
 
     unsigned int frame_id = 0;

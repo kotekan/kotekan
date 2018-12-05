@@ -25,18 +25,20 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 void visFileRaw::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t num_ev, size_t max_time)
 {
     INFO("Creating new output file %s", name.c_str());
 
     // Get properties of stream from datasetManager
     auto& dm = datasetManager::instance();
-    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
-    if (!istate || !pstate || !fstate) {
+    auto istate = dm.dataset_state<inputState>(dataset);
+    auto pstate = dm.dataset_state<prodState>(dataset);
+    auto fstate = dm.dataset_state<freqState>(dataset);
+    auto sstate = dm.dataset_state<stackState>(dataset);
+    if (!istate || !pstate || !fstate || !sstate) {
         ERROR("Required datasetStates not found for dataset_id=%i", dataset);
+        ERROR("One of them is a nullptr: inputs %d, products %d, freqs %d, " \
+              "stack %d", istate, pstate, fstate, sstate);
         throw std::runtime_error("Could not create file.");
     }
 
@@ -52,16 +54,18 @@ void visFileRaw::create_file(
     std::iota(eval_index.begin(), eval_index.end(), 0);
     file_metadata["index_map"]["ev"] = eval_index;
 
-    if (sstate) {
+    if (sstate->is_stacked()) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
+        file_metadata["structure"]["num_stack"] = sstate->get_num_stack();
     }
 
 
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();
     size_t ninput = istate->get_inputs().size();
-    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    size_t nvis = sstate->is_stacked() ?
+                sstate->get_num_stack() : pstate->get_prods().size();
 
     // Set the alignment (in kB)
     // TODO: find some way of getting this from config
@@ -100,8 +104,11 @@ void visFileRaw::create_file(
 #ifdef FALLOC_FL_KEEP_SIZE
     fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
 #else
+    (void)max_time; // Suppress warning
     WARN("fallocate not supported on this system!");
 #endif
+#else
+    (void)max_time; // Suppress warning
 #endif
 }
 
@@ -128,6 +135,8 @@ void visFileRaw::flush_raw_async(int ind) {
 #ifdef __linux__
     size_t n = nfreq * frame_size;
     sync_file_range(fd, ind * n, n, SYNC_FILE_RANGE_WRITE);
+#else
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -139,6 +148,8 @@ void visFileRaw::flush_raw_sync(int ind) {
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
+#else
+    (void)ind; // Suppress warning
 #endif
 }
 

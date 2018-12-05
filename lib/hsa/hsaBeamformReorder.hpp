@@ -27,15 +27,20 @@
  * @requires_kernel    reorder.hsaco
  *
  * @par GPU Memory 
- * @gpu_mem input        Input data of size input_frame_len, it is also the output.
- * @gpu_mem_type         staging
- * @gpu_mem_format       Array of @c uchar
- * @gpu_mem_metadata     chimeMetadata
+ * @gpu_mem input            Input data of size input_frame_len
+ * @gpu_mem_type             staging
+ * @gpu_mem_format           Array of @c uchar
+ * @gpu_mem_metadata         chimeMetadata
  * 
- * @gpu_mem reorder_map  Array of reordering index of size 512
- * @gpu_mem_type         static
- * @gpu_mem_format       Array of @c uint8
- * @gpu_mem_metadata     none
+ * @gpu_mem reorder_map      Array of reordering index of size 512
+ * @gpu_mem_type             static
+ * @gpu_mem_format           Array of @c uint8
+ * @gpu_mem_metadata         none
+ *
+ * @gpu_mem input_reordered  Reordered data
+ * @gpu_mem_type             static
+ * @gpu_mem_format           Array of @c uchar
+ * @gpu_mem_metadata         chimeMetadata
  *
  * @conf  num_elements          Int (default 2048). Number of elements
  * @conf  samples_per_data_set  Int (default 49152). Number of time samples in a data set
@@ -59,7 +64,7 @@ public:
     virtual ~hsaBeamformReorder();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
 private:

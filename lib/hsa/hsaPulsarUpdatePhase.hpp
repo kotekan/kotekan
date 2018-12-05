@@ -27,15 +27,13 @@
  * Each of the 10 source position (and an associated scaling factor) can be 
  * changed/re-pointed on a per beam basis via endpoint.
  *
+ * The gain path is registered as a subscriber to an updatable config block.
+ *
  * @par REST Endpoints
  * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
  *            specific beam at RA+Dec with a scaling factor.
  *            requires json values      "beam", "ra", "dec", "scaling"
  *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
- * @endpoint  /update_gains_psr/<gpu_id> ``POST`` Trigger re-load of gain 
- *            at specific path for calibration purpose.
- *            requires json values      "gain_dir"
- *            update config             "gain_dir"
  *
  * @par GPU Memory
  * @gpu_mem  beamform_phase     Array of phase delays size 2048x10x2
@@ -44,10 +42,9 @@
  *     @gpu_mem_metadata        none
  *
  * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   num_pulsar           Int (default 10). Number of pulsars
+ * @conf   num_beams            Int (default 10). Number of pulsars
  * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * @conf   gain_dir             String - directory path where gain files are
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
  * @conf   source_ra            Float array - 10 initial RA (in deg) to form beams on.
  * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
@@ -72,13 +69,13 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Endpoint for providing new directory path for gain updates
-    void update_gains_callback(connectionInstance& conn, json& json_request);
+    bool update_gains_callback(nlohmann::json &json);
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays at each input
     void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gain, float *output);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id);
@@ -97,16 +94,16 @@ private:
     /// 2048 elements x 2 for complex
     int32_t gain_len;
     /// Directory path where gain files are
-    string _gain_dir;
+    vector<string> _gain_dir;
     /// Default gain values if gain file is missing for this freq
     vector<float> default_gains;
     /// Array of gains, float size of 2048*2
     float * host_gain;
 
     /// Number of elements, should be 2048
-    int32_t _num_elements;
+    uint32_t _num_elements;
     /// Number of pulsar beams, should be 10
-    int16_t _num_pulsar;
+    int16_t _num_beams;
 
     /// Metadata buffer ID
     int32_t metadata_buffer_id;
@@ -158,8 +155,6 @@ private:
 
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;
-    /// Endpoint for updating gains
-    std::string endpoint_gains_psr;
 
 };
 

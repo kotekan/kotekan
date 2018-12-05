@@ -31,8 +31,23 @@ rfiRecord::rfiRecord(Config& config,
     rfi_buf = get_buffer("rfi_in");
     //Register process as consumer
     register_consumer(rfi_buf, unique_name.c_str());
-    //Intialize internal config
-    apply_config(0);
+
+    //General config parameters
+    _num_freq = config.get_default<uint32_t>(
+                unique_name, "num_total_freq", 1024);
+    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<uint32_t>(
+                unique_name, "samples_per_data_set");
+    //RFI config parameters
+    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step",256);
+    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
+    //Process specific parameters
+    _total_links = config.get_default<uint32_t>(unique_name, "total_links",1);
+    _write_to = config.get<std::string>(unique_name, "write_to");
+    _write_to_disk = config.get_default<bool>(
+                unique_name, "write_to_disk",false);
+
     //Initialize rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
@@ -67,24 +82,6 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     rest_callback_mutex.unlock();
 }
 
-void rfiRecord::apply_config(uint64_t fpga_seq) {
-    //General config parameters
-    _num_freq = config.get_default<uint32_t>(
-                unique_name, "num_total_freq", 1024);
-    _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
-    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<uint32_t>(
-                unique_name, "samples_per_data_set");
-    //RFI config parameters
-    _sk_step = config.get_default<uint32_t>(unique_name, "sk_step",256);
-    _rfi_combined = config.get_default<bool>(unique_name,"rfi_combined", true);
-    //Process specific parameters
-    _total_links = config.get_default<uint32_t>(unique_name, "total_links",1);
-    _write_to = config.get<std::string>(unique_name, "write_to");
-    _write_to_disk = config.get_default<bool>(
-                unique_name, "write_to_disk",false);
-}
-
 void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts) {
     //Create Directories
     char data_time[50];
@@ -112,7 +109,11 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     fprintf(info_file, "first_packet_gps_tv_sec=%ld\n",ts.tv_sec);
     fprintf(info_file, "first_packet_gps_tv_nsec=%09ld\n",ts.tv_nsec);
     fprintf(info_file, "first_packet_ntp_tv_sec=%ld\n",tv.tv_sec);
+#ifndef MAC_OSX
     fprintf(info_file, "first_packet_ntp_tv_usec=%06ld\n",tv.tv_usec);
+#else
+    fprintf(info_file, "first_packet_ntp_tv_usec=%06d\n",tv.tv_usec);
+#endif
     fprintf(info_file, "num_elements=%d\n", _num_elements);
     fprintf(info_file, "num_total_freq=%d\n", _num_freq);
     fprintf(info_file, "num_local_freq=%d\n", _num_local_freq);

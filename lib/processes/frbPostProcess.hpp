@@ -12,6 +12,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include <emmintrin.h>
+#include <immintrin.h>
 
 using std::vector;
 
@@ -47,19 +48,19 @@ using std::vector;
  *     @buffer_format Array of @c uchars
  *     @buffer_metadata chimeMetadata
  *
- * @conf   num_gpus             Int. Number of GPUs.
- * @conf   samples_per_data_set Int. Number of baseband samples corresponding to each buffer.
- * @conf   downsample_time      Int. Number of time samples summed in the FRB kernels.
- * @conf   factor_upchan        Int. Total upchannelization in the FRB kernels.
- * @conf   factor_upchan_out    Int. Upchannelization that exits the FRB kernels,
- *                                   also number of freqs that will go into each output packet
- * @conf   num_beams            Int. Number of FRB beam in each output stream. (?) Should be 4?
- * @conf   timesamples_per_frb_packet    Int. Number of times that will go into each packet.
- * @conf   incoherent_beam      Bool (default=false). Form the incoherent beam or not.
- *                                   If true, will stuff incoherent beam in position 0.
- * @conf   incoherent_truncate  Float (default=1e10). To deal with inputs / times /freqs with
- *                              anomalously high values, this limits values used prior to summing
- *                              into the incoherent beam.
+ * @conf   num_gpus                   Int. Number of GPUs.
+ * @conf   samples_per_data_set       Int. Number of baseband samples corresponding to each buffer.
+ * @conf   downsample_time            Int. Number of time samples summed in the FRB kernels.
+ * @conf   factor_upchan              Int. Total upchannelization in the FRB kernels.
+ * @conf   factor_upchan_out          Int. Upchannelization that exits the FRB kernels,
+ *                                        also number of freqs that will go into each output packet
+ * @conf   num_beams_per_frb_packet   Int. Number of FRB beam in each output stream. (?) Should be 4?
+ * @conf   timesamples_per_frb_packet Int. Number of times that will go into each packet.
+ * @conf   incoherent_beam            Bool (default=false). Form the incoherent beam or not.
+ *                                        If true, will stuff incoherent beam in position 0.
+ * @conf   incoherent_truncate        Float (default=1e10). To deal with inputs / times /freqs with
+ *                                        anomalously high values, this limits values used prior to summing
+ *                                        into the incoherent beam.
  *
  * @author Keith Vanderlinde
  *
@@ -77,9 +78,6 @@ public:
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
-
-    /// Initializes internal variables from config
-    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
     void write_header(unsigned char * dest);

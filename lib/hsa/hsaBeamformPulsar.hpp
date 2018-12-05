@@ -25,8 +25,8 @@
  * @requires_kernel    pulsar_beamformer.hasco
  *
  * @par GPU Memory
- * @gpu_mem  input           Input data of size input_frame_len
- *     @gpu_mem_type         staging
+ * @gpu_mem  input_reordered Input data of size input_frame_len
+ *     @gpu_mem_type         static
  *     @gpu_mem_format       Array of @c uchar
  *     @gpu_mem_metadata     chimeMetadata
  * @gpu_mem  bf_output       Output data of size output_frame_len
@@ -63,7 +63,7 @@ public:
     virtual ~hsaBeamformPulsar();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
 private:

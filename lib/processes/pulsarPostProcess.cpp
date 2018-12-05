@@ -31,7 +31,20 @@ pulsarPostProcess::pulsarPostProcess(Config& config_,
         KotekanProcess(config_, unique_name, buffer_container,
         std::bind(&pulsarPostProcess::main_thread, this)){
 
-    apply_config(0);
+    // Apply config.
+    _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
+    _samples_per_data_set = config.get<uint32_t>(unique_name,
+                                                 "samples_per_data_set");
+    _num_pulsar = config.get<uint32_t>(unique_name, "num_beams");
+    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
+    _timesamples_per_pulsar_packet = config.get<uint32_t>(
+                unique_name, "timesamples_per_pulsar_packet");
+    _udp_pulsar_packet_size = config.get<uint32_t>(unique_name,
+                                                   "udp_pulsar_packet_size");
+    _num_packet_per_stream = config.get<uint32_t>(unique_name,
+                                                  "num_packet_per_stream");
+    _num_stream = config.get<uint32_t>(unique_name, "num_stream");
+
     assert (_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
 
     in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
@@ -95,21 +108,6 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
     } //end packet
 }
 
-void pulsarPostProcess::apply_config(uint64_t fpga_seq) {
-    _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
-    _samples_per_data_set = config.get<uint32_t>(unique_name,
-                                                 "samples_per_data_set");
-    _num_pulsar = config.get<uint32_t>(unique_name, "num_pulsar");
-    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
-    _timesamples_per_pulsar_packet = config.get<uint32_t>(
-                unique_name, "timesamples_per_pulsar_packet");
-    _udp_pulsar_packet_size = config.get<uint32_t>(unique_name,
-                                                   "udp_pulsar_packet_size");
-    _num_packet_per_stream = config.get<uint32_t>(unique_name,
-                                                  "num_packet_per_stream");
-    _num_stream = config.get<uint32_t>(unique_name, "num_stream");
-}
-
 void pulsarPostProcess::main_thread() {
 
     uint in_buffer_ID[_num_gpus] ; //4 of these , cycle through buffer depth
@@ -151,7 +149,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.eud3 = 0;  // UD: fpga count low bit
     vdif_header.eud4 = 0;  // 16-b RA + 16-b Dec
 
-    int frame = 0;
+    uint frame = 0;
     uint in_frame_location = 0; //goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
@@ -205,7 +203,7 @@ void pulsarPostProcess::main_thread() {
                 time_now.tv_sec += (uint)(time_now.tv_nsec / 1000000000.);
                 time_now.tv_nsec = time_now.tv_nsec % 1000000000;
             }
-            
+
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
             fill_headers((unsigned char*)out_frame,
@@ -244,7 +242,7 @@ void pulsarPostProcess::main_thread() {
                     float * in_buf_data = (float *)in_frame[thread_id];
                     for (uint32_t psr = 0; psr<_num_pulsar; ++psr) { //loop psr
                         for (uint32_t p=0;p<_num_pol; ++p) {
-                            uint32_t out_index;
+                            uint32_t out_index=0;
                             if (_timesamples_per_pulsar_packet == 3125) {
                                 //freq->beam->packets->[time-pol]
                                 out_index = (thread_id*_num_pulsar+psr) *_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size 
@@ -255,6 +253,8 @@ void pulsarPostProcess::main_thread() {
                                 out_index = psr*_udp_pulsar_packet_size*_num_packet_per_stream + frame * _udp_pulsar_packet_size
                                             + (in_frame_location*_num_gpus*_num_pol + thread_id*_num_pol + p) + udp_pulsar_header_size;
                             }
+                            else throw std::runtime_error("Unknown timesamples per VDIF packet.");
+
                             uint8_t real_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2  ])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
                             uint8_t imag_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2+1])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
                             if (real_part > 15) real_part = 15;

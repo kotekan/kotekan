@@ -8,6 +8,7 @@
 #include <functional>
 #include "datasetManager.hpp"
 #include "fmt.hpp"
+#include "version.h"
 
 
 using namespace std::placeholders;
@@ -37,6 +38,13 @@ fakeVis::fakeVis(Config &config,
 
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+
+    // Was a fixed dataset ID configured?
+    if (config.exists(unique_name, "dataset_id")) {
+        _dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
+        _fixed_dset_id = true;
+    } else
+        _fixed_dset_id = false;
 
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
@@ -107,10 +115,6 @@ fakeVis::fakeVis(Config &config,
     }
 }
 
-void fakeVis::apply_config(uint64_t fpga_seq) {
-
-}
-
 void fakeVis::main_thread() {
 
     unsigned int output_frame_id = 0, frame_count = 0;
@@ -125,32 +129,44 @@ void fakeVis::main_thread() {
 
     // If configured, register datasetStates to describe the properties of the
     // created stream
-    dset_id dataset = 0;
+    dset_id_t ds_id = 0;
     if (use_dataset_manager) {
-
         auto& dm = datasetManager::instance();
 
-        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-        std::transform(
-            std::begin(freq), std::end(freq), std::back_inserter(fspec),
-            [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
-            });
-        auto fstate = std::make_unique<freqState>(fspec);
+        if (_fixed_dset_id) {
+            ds_id = _dset_id;
+        } else {
+            auto mstate = std::make_unique<metadataState>("not set", "fakeVis",
+                                                          get_git_commit_hash());
 
-        std::vector<input_ctype> ispec;
-        for (uint32_t i = 0; i < num_elements; i++)
-            ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
-        auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
+            std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+            // TODO: CHIME specific
+            std::transform(
+                std::begin(freq), std::end(freq), std::back_inserter(fspec),
+                [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                    return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                });
+            auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
 
-        std::vector<prod_ctype> pspec;
-        for (uint16_t i = 0; i < num_elements; i++)
-            for (uint16_t j = i; j < num_elements; j++)
-                pspec.push_back({i, j});
-        auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+            std::vector<input_ctype> ispec;
+            for (uint32_t i = 0; i < num_elements; i++)
+                ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
+            auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
 
-        auto s = dm.add_state(std::move(pstate));
-        dataset = dm.add_dataset(s.first, -1);  // Register a root state
+            std::vector<prod_ctype> pspec;
+            for (uint16_t i = 0; i < num_elements; i++)
+                for (uint16_t j = i; j < num_elements; j++)
+                    pspec.push_back({i, j});
+            auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+
+            //empty stackState
+            auto sstate = std::make_unique<stackState>(std::move(pstate));
+
+            auto s = dm.add_state(std::move(sstate));
+
+            // Register a root state
+            ds_id = dm.add_dataset(dataset(s.first, 0, true));
+        }
     }
 
     while (!stop_thread) {
@@ -172,7 +188,7 @@ void fakeVis::main_thread() {
             auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
-            output_frame.dataset_id = dataset;
+            output_frame.dataset_id = ds_id;
 
             // Set the frequency index
             output_frame.freq_id = f;
@@ -406,9 +422,6 @@ replaceVis::replaceVis(Config& config,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-}
-
-void replaceVis::apply_config(uint64_t fpga_seq) {
 }
 
 void replaceVis::main_thread() {

@@ -9,7 +9,7 @@ If you wrote a new Process or you added to it's functionality, you should
 probably test if it behaves as expected in all the possible cases.
 To do this you can write a test using
 `pytest <https://docs.pytest.org/en/latest/>`_ and various tools from
-`kotekan_runner.py <https://github.com/kotekan/kotekan/blob/master/tests/kotekan_runner.py>`_
+`runner.py <https://github.com/kotekan/kotekan/blob/master/python/kotekan/runner.py>`_
 like in the following example.
 
 Example

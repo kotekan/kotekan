@@ -3,15 +3,15 @@ project( libkotekan_hsa )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 
 include_directories ( /opt/rocm/hsa/include/ )
 
 add_library ( kotekan_hsa
-              signalContainer.cpp
+              hsaEventContainer.cpp
               hsaBase.c
               hsaCommand.cpp
-              hsaCommandFactory.cpp
               hsaDeviceInterface.cpp
               hsaProcess.cpp
 

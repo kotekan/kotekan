@@ -27,12 +27,7 @@ hccGPUThread::~hccGPUThread() {
     free(_zeros);
 }
 
-void hccGPUThread::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void hccGPUThread::main_thread() {
-    apply_config(0);
 
     //find accelerators
     std::vector<hc::accelerator> all_accelerators = hc::accelerator::get_all();
@@ -319,9 +314,6 @@ void hccGPUThread::main_thread() {
 }
 
 #else  // For building on systems without HCC.
-
-void hccGPUThread::apply_config(uint64_t fpga_seq) {
-}
 
 hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_):
     KotekanProcess(config_, std::bind(&hccGPUThread::main_thread, this)),

@@ -16,18 +16,6 @@ nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
                      std::bind(&nDiskFileRead::main_thread, this))
 {
     //Get variables from config
-    apply_config(0);
-
-    //Mark as producer
-    register_producer(buf, unique_name.c_str());
-}
-
-nDiskFileRead::~nDiskFileRead() {
-
-}
-
-void nDiskFileRead::apply_config(uint64_t fpga_seq) {
-
     buf = get_buffer("out_buf"); //Buffer
 
     //Data paramters
@@ -38,6 +26,9 @@ void nDiskFileRead::apply_config(uint64_t fpga_seq) {
     disk_set = config.get<std::string>(unique_name,"disk_set");
     capture = config.get<std::string>(unique_name,"capture");
     starting_index = config.get<uint32_t>(unique_name,"starting_file_index");
+
+    //Mark as producer
+    register_producer(buf, unique_name.c_str());
 }
 
 void nDiskFileRead::main_thread() {

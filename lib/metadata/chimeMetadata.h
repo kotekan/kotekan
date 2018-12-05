@@ -25,6 +25,7 @@ struct chimeMetadata {
     int32_t lost_timesamples;
     uint16_t stream_ID;
     struct psrCoord psr_coord;
+    uint32_t rfi_zeroed;
 };
 
 // Helper functions to save lots of pointer work
@@ -39,6 +40,12 @@ inline struct psrCoord get_psr_coord(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->psr_coord;
+}
+
+inline uint32_t  get_rfi_zeroed(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->rfi_zeroed;
 }
 
 inline int32_t get_lost_timesamples(struct Buffer * buf, int ID) {
@@ -92,6 +99,12 @@ inline void set_psr_coord(struct Buffer * buf, int ID, struct psrCoord psr_coord
     struct chimeMetadata * chime_metadata =
       (struct chimeMetadata *) buf->metadata[ID]->metadata;
     chime_metadata->psr_coord = psr_coord;
+  }
+
+inline void set_rfi_zeroed(struct Buffer * buf, int ID, uint32_t rfi_zeroed) {
+    struct chimeMetadata * chime_metadata =
+      (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->rfi_zeroed = rfi_zeroed;
   }
 
 inline void set_stream_id(struct Buffer * buf, int ID, uint16_t stream_id) {

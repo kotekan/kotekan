@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsarOneFeed);
 
 hsaBeamformPulsarOneFeed::hsaBeamformPulsarOneFeed(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("pulsarbf", "pulsar_beamformer.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf", "pulsar_beamformer.hsaco") {
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_pulsar = config.get<int32_t>(unique_name, "num_pulsar");
@@ -43,9 +43,12 @@ hsaBeamformPulsarOneFeed::~hsaBeamformPulsarOneFeed() {
     hsa_host_free(host_phase);
 }
 
-hsa_signal_t hsaBeamformPulsarOneFeed::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformPulsarOneFeed::execute(int gpu_frame_id,
+                                               hsa_signal_t precede_signal) {
   //INFO("##[BeamformPulsar]###  gpu_frame_id=%d, input_frame_len=%lu ", gpu_frame_id, input_frame_len);
 
+    // Unused parameter, suppress warning
+    (void)precede_signal;
 
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;

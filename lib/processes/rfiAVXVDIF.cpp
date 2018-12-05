@@ -48,10 +48,8 @@ rfiAVXVDIF::rfiAVXVDIF(Config &config, const string& unique_name,
     //Register Consumer/Producer
     register_consumer(buf_in, unique_name.c_str());
     register_producer(buf_out, unique_name.c_str());
-    apply_config(0);
-}
 
-void rfiAVXVDIF::apply_config(uint64_t fpga_seq) {
+    // Apply config.
     //Standard config variables
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -82,8 +80,10 @@ void rfiAVXVDIF::main_thread() {
         //Get output frame
         out_local = (uint8_t *) wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
         if(out_local == NULL) break;
+#ifdef DEBUGGING
         //Start timer
         double start_time = e_time();
+#endif
         //Create threads to do parallel spectral kurtosis
         for (uint32_t j = 0; j < nthreads; j++) {
             this_thread[j] = std::thread(&rfiAVXVDIF::parallelSpectralKurtosis, this, j, nloop);

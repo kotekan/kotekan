@@ -2,6 +2,7 @@ pipeline {
   agent any
   options {
     timeout(time: 1, unit: 'HOURS')
+    disableConcurrentBuilds()
   }
   stages {
     stage('Build') {
@@ -62,7 +63,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-              pytest -s -vvv'''
+              PYTHONPATH=../python/ pytest -s -vvv'''
       }
     }
   }

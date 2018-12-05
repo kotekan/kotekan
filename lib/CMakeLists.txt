@@ -46,18 +46,22 @@ if (${USE_HCC})
     target_link_libraries( kotekan_libs kotekan_hcc )
 endif ()
 
+if (${USE_HSA} OR ${USE_OPENCL})
+    add_subdirectory(gpu)
+endif ()
+
 if (${USE_HSA})
     add_subdirectory(hsa)
     link_directories ( /opt/rocm/hsa/lib/ )
-    target_link_libraries( kotekan_libs kotekan_hsa )
+    target_link_libraries( kotekan_libs kotekan_hsa kotekan_gpu )
     target_link_libraries( kotekan_libs hsa-runtime64 )
     include_directories ( /opt/rocm/hsa/include/ )
 endif ()
 
 if (${USE_OPENCL})
     add_subdirectory(opencl)
-    target_link_libraries( kotekan_libs ${OPENCL_LIBRARIES} )
-    target_link_libraries( kotekan_libs kotekan_opencl )
+    target_link_libraries( kotekan_libs kotekan_opencl kotekan_gpu )
+    target_link_libraries( kotekan_libs ${OpenCL_LIBRARY} )
 endif ()
 
 if (${USE_DPDK})
@@ -78,5 +82,17 @@ if (${USE_HDF5})
 endif ()
 
 add_subdirectory(version)
+
+# There are no symbols in this entire library,
+# the following lines prevent warnings on MacOS.
+# If someone ever adds symbols this library,
+# the lines below should be removed!
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    SET(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+    SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+    SET(CMAKE_C_ARCHIVE_FINISH   "")
+    SET(CMAKE_CXX_ARCHIVE_FINISH "")
+endif ()
+
 target_link_libraries( kotekan_libs kotekan_version )
 

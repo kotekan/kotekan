@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 
 diag_global_params = {
@@ -36,19 +36,34 @@ chime_process_params = {
     'stack_type': 'chime_in_cyl'
 }
 
+
+def float_allclose(a, b):
+    """Compare two float (arrays).
+
+    This comparison uses a tolerance related to the precision of the datatypes
+    to account for rounding errors in arithmetic.
+    """
+
+    res_a = np.finfo(np.array(a).dtype).resolution
+    res_b = np.finfo(np.array(b).dtype).resolution
+
+    tol = max(res_a, res_b)
+    return np.allclose(a, b, rtol=tol, atol=0)
+
+
 @pytest.fixture(scope="module")
 def diagonal_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("diagonal")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=diag_global_params['freq_ids'],
         num_frames=diag_global_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'baselineCompression', diag_process_params,
         fakevis_buffer,
         dump_buffer,
@@ -65,15 +80,15 @@ def chime_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("chime")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=chime_global_params['freq_ids'],
         num_frames=chime_global_params['total_frames'],
         wait=True
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'baselineCompression', chime_process_params,
         fakevis_buffer,
         dump_buffer,
@@ -93,7 +108,6 @@ def test_metadata(diagonal_data):
     nprod = np.array([frame.metadata.num_prod for frame in diagonal_data])
 
     assert (freq_ids.reshape((-1, 2)) == np.array([[0, 250]])).all()
-    assert (dset_ids == 1).all()
     assert ((fpga_seqs.reshape((-1, 2)) / 800e6) ==
             (np.arange(diag_global_params['total_frames']))[:, np.newaxis]).all()
     assert (nprod == diag_global_params['num_elements']).all()
@@ -112,7 +126,7 @@ def test_chime(chime_data):
         assert frame.vis.shape[0] == nvis_chime
 
         # Check that the entries in XX and XY are the same
-        assert (frame.vis[:np1] == frame.vis[np1:(2 * np1)]).all()
+        assert float_allclose(frame.vis[:np1], frame.vis[np1:(2 * np1)])
 
         v1 = frame.vis[:np1]
         w1 = frame.weight[:np1]
@@ -128,8 +142,8 @@ def test_chime(chime_data):
                 # A list of the feed separations in the NS dir
                 d = np.arange(lb, 256)
 
-                assert (v1[:nv] == (cj - ci + 1.0j * d)).all()
-                assert (w1[:nv] == (256 - np.abs(d))).all()
+                assert float_allclose(v1[:nv], (cj - ci + 1.0j * d))
+                assert float_allclose(w1[:nv], (256.0 - np.abs(d)))
 
                 v1 = v1[nv:]
                 w1 = w1[nv:]

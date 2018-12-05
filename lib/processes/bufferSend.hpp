@@ -78,10 +78,8 @@ public:
     ~bufferSend();
 
     /// Main loop for sending data
-    void main_thread();
+    void main_thread() override;
 
-    /// Deprecated
-    virtual void apply_config(uint64_t fpga_seq);
 private:
     /// The input buffer to send frames from.
     struct Buffer *buf;
