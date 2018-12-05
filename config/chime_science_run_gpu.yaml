@@ -848,10 +848,11 @@ updatable_config:
       pulsar_name: "B0329"
       pulse_width: 0.0314
       dm: 26.7641
+      segment: 18000.
       rot_freq: 1.39954153872
-      t_ref: 58437.4583333332
-      phase_ref: 1446745468.8439252
-      coeff: [
+      t_ref: [58437.4583333332,]
+      phase_ref: [1446745468.8439252,]
+      coeff: [[
                3.428779943504219e-10,
                0.0011253963075329334,
                -1.1565642124857199e-07,
@@ -863,8 +864,8 @@ updatable_config:
                2.745973613190195e-26,
                -2.279050323988331e-29,
                -1.1771713330451292e-32,
-               3.948826407949732e-35
-             ]
+               3.948826407949732e-35,
+             ],]
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
