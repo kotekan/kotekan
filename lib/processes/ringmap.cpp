@@ -1,5 +1,6 @@
 #include "ringmap.hpp"
 #include "visBuffer.hpp"
+#include "visCompression.hpp"
 #include <complex>
 #include <cblas.h>
 
@@ -24,8 +25,6 @@ mapMaker::mapMaker(Config &config,
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-
-    freq_id = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
 
     if (config.exists(unique_name, "exclude_inputs")) {
         excl_input = config.get<std::vector<uint32_t>>(unique_name,
@@ -57,11 +56,23 @@ void mapMaker::main_thread() {
             break;
         }
 
-        // Check dataset id hasn't changed
-
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, in_frame_id);
         uint32_t f_id = input_frame.freq_id;
+
+        // Check dataset id hasn't changed
+        if (input_frame.dataset_id != ds_id) {
+
+            // TODO: what should happen in this case?
+
+            //string msg = fmt::format(
+            //    "Unexpected dataset ID={} received (expected id={}).",
+            //    input_frame.dataset_id, ds_id
+            //);
+            //ERROR(msg.c_str());
+            //raise(SIGINT);
+            //return;
+        }
 
         // Find the time index to append to
         time_ctype t = {std::get<0>(input_frame.time),
@@ -96,18 +107,58 @@ bool mapMaker::setup(size_t frame_id) {
     if(wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
         return false;
 
-    // read products and frequencies from dataset manager
+    // get a dataset manager instance
+    auto frame = visFrameView(in_buf, frame_id);
+    auto& dm = datasetManager::instance();
+    ds_id = frame.dataset_id;
 
+    // read the states
+    auto fstate = dm.dataset_state<freqState>(ds_id);
+    if (fstate == nullptr)
+        throw std::runtime_error("Could not find freqState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs()) {
+        freq_id[ind] = f.first;
+        freqs[ind] = f.second;
+    }
+
+    // Get the product spec and (if available) the stackState to determine the
+    // number of vis entries we are expecting
+    auto istate = dm.dataset_state<inputState>(ds_id);
+    auto pstate = dm.dataset_state<prodState>(ds_id);
+    auto sstate = dm.dataset_state<stackState>(ds_id);
+    auto mstate = dm.dataset_state<metadataState>(ds_id);
+    if (pstate == nullptr || sstate == nullptr || mstate == nullptr || istate == nullptr)
+        throw std::runtime_error("Could not find all dataset states for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".\n" \
+                                 "One of them is a nullptr (0): prod "
+                                 + std::to_string(pstate != nullptr)
+                                 + ", stack "
+                                 + std::to_string(sstate != nullptr)
+                                 + ", metadata "
+                                 + std::to_string(mstate != nullptr));
+
+    // TODO: make these config options ?
     num_pix = 512; // # unique NS baselines
-    num_time = 24. * 360. / 10.; // TODO: can I get integration time from frame?
     num_pol = 4;
+    num_time = 24. * 360. / (frame.fpga_seq_length * 2.56e-6);
+    num_stack = sstate->get_num_stack();
+    num_bl = num_stack / 4;
+
     sinza = std::vector<float>(num_pix, 0.);
     for (uint i = 0; i < num_pix; i++) {
         sinza[i] = i * 2. / num_pix - 1. + 1. / num_pix;
     }
 
-    // generate operators for map making
-    gen_baselines();
+    stacks = sstate->get_stack_map();
+    prods = pstate->get_prods();
+    inputs = istate->get_inputs();
+
+    // generate map making matrices
     gen_matrices();
 
     // initialize map containers
@@ -123,27 +174,29 @@ bool mapMaker::setup(size_t frame_id) {
 
 void mapMaker::gen_matrices() {
 
-    // TODO: should the matrix also stack visibilities or do it separately?
-    uint32_t n_unique_bl = 256 + 3*511;
-    std::vector<float> cyl_stacker = std::vector<float>(num_stack * n_unique_bl, 0.);
+    // calculate baseline for every stacked product
+    ns_baselines.reserve(num_bl);
+    chimeFeed input_a, input_b;
+    for (size_t i = 0; i < num_bl; i++) {
+        stack_ctype s = stacks[i];
+        input_a = chimeFeed::from_input(inputs[prods[s.prod].input_a]);
+        input_b = chimeFeed::from_input(inputs[prods[s.prod].input_b]);
+        ns_baselines[i] = input_b.feed_location - input_a.feed_location;
+        if (s.conjugate)
+            ns_baselines[i] *= -1;
+    }
 
-    // Map making matrix for each frequency operates on vector of unique baseline visibilities
+    // Construct matrix of phase weights for every baseline and pixel
     for (auto fid : freq_id) {
         std::vector<cfloat> m = vis2map[fid];
-        m.reserve(num_time * num_pix * n_unique_bl);
-        for (uint t = 0; t < num_time; t++) {
-            for (uint p = 0; p < num_pix; p ++) {
-                for (uint b = 0; b < n_unique_bl; b ++) {
-                    m[(t*num_pix + p)*n_unique_bl + b] = std::exp(cfloat(-2.i) * pi * baselines[b] / wl(fid) * sinza[b]);
-                }
+        m.reserve(num_pix * num_bl);
+        float lam = wl(fid);
+        for (uint p = 0; p < num_pix; p++) {
+            for (uint i = 0; i < num_bl; i++) {
+                m[p*num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]);
             }
         }
     }
-}
-
-void mapMaker::gen_baselines() {
-
-    // calculate baseline for every product
 }
 
 int64_t mapMaker::resolve_time(time_ctype t){

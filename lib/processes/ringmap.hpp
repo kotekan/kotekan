@@ -6,6 +6,7 @@
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
 #include "restServer.hpp"
+#include "datasetManager.hpp"
 
 class mapMaker : public KotekanProcess {
 
@@ -33,21 +34,26 @@ private:
 
     void gen_matrices();
 
-    void gen_baselines();
-
     int64_t resolve_time(time_ctype t);
 
-    inline float wl(uint32_t fid);
+    inline float wl(uint32_t fid) {
+        return 299.792458 / freq_from_bin(fid);
+    };
 
     // Matrix from visibilities to map for every freq (same for each pol)
     std::map<uint32_t,std::vector<cfloat>> vis2map;
     // Store the maps and weight maps for every frequency
     std::map<uint32_t,RingMap> map;
     std::map<uint32_t,RingMap> wgt_map;
-    std::vector<float> baselines;
+    std::vector<float> ns_baselines;
+    std::vector<stack_ctype> stacks;
+    std::vector<prod_ctype> prods;
+    std::vector<input_ctype> inputs;
 
     // Keep track of map dimensions
     std::vector<float> sinza;
+    std::vector<uint32_t> freq_id;
+    std::vector<freq_ctype> freqs;
     std::vector<time_ctype> times;
     std::map<uint64_t, size_t> times_map;
     modulo<size_t> latest;
@@ -60,11 +66,10 @@ private:
     uint32_t num_bl;
 
     std::vector<uint32_t> excl_input;
-    std::vector<uint32_t> freq_id;
-    std::vector<prod_ctype> prod;
 
     // Buffer to read from
     Buffer* in_buf;
+    dset_id_t ds_id;
 };
 
 #endif
