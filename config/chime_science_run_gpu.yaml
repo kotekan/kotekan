@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 296  # 118 GB, 37s buffer
+baseband_buffer_depth: 260 # Set this back up later, maybe 296 = 118 GB, 37s buffer
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -52,6 +52,11 @@ num_ev: 4
 # This option now does very little. You probably want to look at
 # visAccumulate:integration_time
 num_gpu_frames: 128
+# Sets the number of sub frames for shorter than ~120ms N2 output
+num_sub_frames: 4
+# The number of samples that go into each frame of N2 output
+sub_frame_samples: samples_per_data_set / num_sub_frames
+
 
 #FRB global options
 downsample_time: 3
@@ -122,7 +127,9 @@ network_buffers:
     kotekan_buffer: standard
 
 gpu_n2_buffers:
-  num_frames: buffer_depth
+  # We need a longer output buffer depth because the
+  # output now comes in chunks of 4 at once.
+  num_frames: buffer_depth * 2
   frame_size: 4 * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
   metadata_pool: main_pool
   gpu_n2_output_buffer_0:
@@ -356,6 +363,7 @@ monitor_2:
       - beamform_pulsar_output_buffer_1
       - beamform_pulsar_output_buffer_2
       - beamform_pulsar_output_buffer_3
+      - lost_samples_buffer
     timeout: 10
     fill_threshold: 0.80
 
@@ -429,9 +437,7 @@ gpu:
   block_size: 32
   buffer_depth: 4
   # How many sub frames to devide the N2 products into.
-  num_sub_frames: 4
   n_intg: 24576 / num_sub_frames
-  sub_frame_samples: samples_per_data_set / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
@@ -554,7 +560,7 @@ frb:
     out_buf: frb_output_buffer
   buffer_read:
     cpu_affinity: [11]
-    #kotekan_process: frbNetworkProcess
+    kotekan_process: frbNetworkProcess
     in_buf: frb_output_buffer
     udp_frb_port_number: 1313
     number_of_nodes: 256
@@ -855,7 +861,7 @@ pulsar:
     network_input_buffer_3: beamform_pulsar_output_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   networkProcess:
-    #kotekan_process: pulsarNetworkProcess
+    kotekan_process: pulsarNetworkProcess
     pulsar_out_buf: pulsar_output_buffer
     udp_pulsar_port_number: 1414
     number_of_nodes: 256
@@ -905,6 +911,7 @@ updatable_config:
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
+  samples_per_data_set: sub_frame_samples
   acc0:
     kotekan_process: visAccumulate
     in_buf: gpu_n2_output_buffer_0
@@ -1052,15 +1059,15 @@ vis_debug:
 buffer_send:
   server_ip: 10.1.50.12
   n2:
-    #kotekan_process: bufferSend
+    kotekan_process: bufferSend
     buf: visbuf_10s_merge
     server_port: 11024
   26m:
-    #kotekan_process: bufferSend
+    kotekan_process: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
   26m_psr0:
-    #kotekan_process: bufferSend
+    kotekan_process: bufferSend
     buf: visbuf_psr0_5s_26m
     server_port: 11026
 
