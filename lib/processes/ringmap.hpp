@@ -8,6 +8,11 @@
 #include "restServer.hpp"
 #include "datasetManager.hpp"
 
+#define XX=0
+#define XY=1
+#define YX=2
+#define YY=3
+
 class mapMaker : public KotekanProcess {
 
 public:
@@ -16,8 +21,6 @@ public:
     mapMaker(Config &config,
              const string& unique_name,
              bufferContainer &buffer_container);
-
-    void apply_config(uint64_t fpga_seq) override;
 
     // Main loop for the process
     void main_thread() override;
