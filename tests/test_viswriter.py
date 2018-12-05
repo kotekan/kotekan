@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 import h5py
 
-import kotekan_runner
+from kotekan import runner
 
 writer_params = {
     'num_elements': 4,
@@ -19,7 +19,7 @@ writer_params = {
 
 def written_data_base(outdir, process_extra=None, root_extra=None):
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=writer_params['freq'],
         num_frames=writer_params['total_frames'],
         cadence=writer_params['cadence']
@@ -39,7 +39,7 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
     if process_extra is not None:
         process_params.update(process_extra)
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visWriter', process_params,
         fakevis_buffer,
         None,

@@ -1,7 +1,7 @@
 # import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 default_params = {
     'num_elements': 200,
@@ -26,15 +26,15 @@ def run_eigenvis(tdir_factory, params=None):
 
     tmpdir = tdir_factory.mktemp("eigenvis")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
             freq_ids=params['freq'],
             num_frames=params['total_frames'],
             mode=params['mode'],
             )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'eigenVis', {},
         fakevis_buffer,
         dump_buffer,

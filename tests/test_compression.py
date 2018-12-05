@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 
 diag_global_params = {
@@ -60,14 +60,14 @@ def diagonal_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("diagonal")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=diag_global_params['freq_ids'],
         num_frames=diag_global_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'baselineCompression', diag_process_params,
         fakevis_buffer,
         dump_buffer,
@@ -84,15 +84,15 @@ def chime_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("chime")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=chime_global_params['freq_ids'],
         num_frames=chime_global_params['total_frames'],
         wait=True
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'baselineCompression', chime_process_params,
         fakevis_buffer,
         dump_buffer,

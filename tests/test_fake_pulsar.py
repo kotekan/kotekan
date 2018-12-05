@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 pulsar_params = {
     'num_elements': 4,
@@ -35,11 +35,11 @@ def pulsar_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', accumulate_params,
-        kotekan_runner.FakeGPUBuffer(**pulsar_params),
+        runner.FakeGPUBuffer(**pulsar_params),
         dump_buffer,
         accumulate_params
     )

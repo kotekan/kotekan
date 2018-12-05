@@ -5,8 +5,8 @@ import subprocess
 from requests.exceptions import ConnectionError
 import time
 
-import visbuffer
-import kotekan_runner
+from kotekan import visbuffer
+from kotekan import runner
 
 params = {
     'fakevis_mode': 'fill_ij',
@@ -40,15 +40,15 @@ def run_flagging(tmpdir_factory, cmds):
 
     tmpdir = tmpdir_factory.mktemp("receiveflags")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
             num_frames=params['total_frames'],
             mode=params['fakevis_mode'],
             cadence=params['cadence'],
             wait=params['wait']);
 
-    out_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'receiveFlags', params,
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,

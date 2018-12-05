@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaPresumZero);
 
 hsaPresumZero::hsaPresumZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("","", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "","") {
     command_type = CommandType::COPY_IN;
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");

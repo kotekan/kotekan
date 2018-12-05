@@ -89,6 +89,7 @@ void frbPostProcess::write_header(unsigned char * dest){
 
 }
 
+#ifdef __AVX2__
 void frbPostProcess::main_thread() {
 
     uint in_buffer_ID[_num_gpus] ;   //4 of these , cycle through buffer depth
@@ -243,3 +244,9 @@ void frbPostProcess::main_thread() {
         }
     } //end stop thread
 }
+#else
+void frbPostProcess::main_thread() {
+    ERROR("No AVX2 intrinsics present on this node")
+}
+#endif
+

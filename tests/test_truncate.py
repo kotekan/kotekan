@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 
-import visbuffer
-import kotekan_runner
+from kotekan import visbuffer
+from kotekan import runner
 
 trunc_params = {
     'fakevis_mode': 'test_pattern_simple',
@@ -26,7 +26,7 @@ def vis_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("vis_data_t")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
             num_frames=trunc_params['total_frames'],
             mode=trunc_params['fakevis_mode'],
             test_pattern_value=trunc_params['test_pattern_value'],
@@ -37,9 +37,9 @@ def vis_data(tmpdir_factory):
     in_dump_config['file_name'] = 'fakevis'
     in_dump_config['file_ext'] = 'dump'
 
-    out_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTruncate', trunc_params,
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
@@ -60,7 +60,7 @@ def vis_data_zero_weights(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("vis_data_t")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
             num_frames=trunc_params['total_frames'],
             mode=trunc_params['fakevis_mode'],
             cadence=trunc_params['cadence'],
@@ -71,9 +71,9 @@ def vis_data_zero_weights(tmpdir_factory):
     in_dump_config['file_name'] = 'fakevis'
     in_dump_config['file_ext'] = 'dump'
 
-    out_dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTruncate', trunc_params,
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,

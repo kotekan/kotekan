@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 
 replace_params = {
@@ -24,14 +24,14 @@ def replace_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("replace")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq=replace_params['freq'],
         num_frames=replace_params['total_frames']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'replaceVis', {},
         fakevis_buffer,
         dump_buffer,

@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
-import visutil
+from kotekan import runner
+from kotekan import visutil
 
 subset_params = {
     'num_elements': 16,
@@ -26,14 +26,14 @@ def subset_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("subset")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames'])
 
-    write_buffer = kotekan_runner.VisWriterBuffer(
+    write_buffer = runner.VisWriterBuffer(
         str(tmpdir), "raw")
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'prodSubset', vis_params,
         fakevis_buffer,
         write_buffer,
@@ -49,10 +49,10 @@ def only_inputs_condition(prod, input_list):
 
     inpa_in_list = False
     inpb_in_list = False
-    for ipt in input_list :
-        if (prod.input_a==ipt):
+    for ipt in input_list:
+        if (prod.input_a == ipt):
             inpa_in_list = True
-        if (prod.input_b==ipt):
+        if (prod.input_b == ipt):
             inpb_in_list = True
 
     return (inpa_in_list and inpb_in_list)
@@ -66,20 +66,17 @@ def test_subset(subset_data):
     vis = []
     for ii in range(num_prod):
         # With fill_ij, vis_ij = i+j*(1j)
-        prod = visutil.icmap(ii,subset_params['num_elements'])
+        prod = visutil.icmap(ii, subset_params['num_elements'])
         if only_inputs_condition(prod,
-                            subset_params['input_list']) :
-            vis.append(prod.input_a+1j*prod.input_b)
+                                 subset_params['input_list']):
+            vis.append(prod.input_a + 1j * prod.input_b)
 
     evecs = (np.arange(subset_params['num_ev'])[:, None] +
              1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
 
-    for t in range(subset_params['total_frames']):
-        for f in range(len(subset_params['freq_ids'])):
-            frame = subset_data[t][f]
-            assert (frame.vis == np.array(vis)).all()
-            assert (frame.eval == np.arange(
-                    subset_params['num_ev'])).all()
-            assert (frame.evec == evecs).all()
-            assert (frame.erms == 1.)
+    assert (subset_data.data['vis'] == np.array(vis)).all()
+    assert (subset_data.data['eval'] == np.arange(
+            subset_params['num_ev'])).all()
+    assert (subset_data.data['evec'] == evecs).all()
+    assert (subset_data.data['erms'] == 1.0).all()
 
