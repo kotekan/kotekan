@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 import h5py
 
-import kotekan_runner
+from kotekan import runner
 
 
 default_params = {
@@ -62,13 +62,13 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
     if params:
         p.update(params)
 
-    fake_buffer = kotekan_runner.FakeNetworkBuffer(
+    fake_buffer = runner.FakeNetworkBuffer(
             process_name=DATAGEN_PNAME,
             num_frames=p['total_frames'],
             type=p['type'],
             )
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'basebandReadout', {},
         fake_buffer,
         None,

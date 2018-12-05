@@ -181,6 +181,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     request["array"] = {1,2,3};
     request["flag"] = true;
 
+    restServer::instance().start("127.0.0.1");
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
@@ -269,37 +270,3 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
                                        "restClient OR the test didn't wait " \
                                        "long enough.", cb_called_count);
     BOOST_CHECK_MESSAGE(cb_called_count == 2, fail_msg);}
-
-BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
-    __log_level = 4;
-    __enable_syslog = 0;
-    json request, bad_request;
-    request["array"] = {1,2,3};
-    request["flag"] = true;
-    bad_request["array"] = 0;
-
-
-    /* Test N threads */
-
-    TestContext::init(std::bind(&TestContext::pong, this,
-                                std::placeholders::_1,
-                                std::placeholders::_2),
-                                "/test_restclient_pong");
-#define N 100
-    std::thread t[N];
-    for (int i = 0; i < N; i++) {
-        t[i] = std::thread(check);
-    }
-    for (int i = 0; i < N; i++) {
-        t[i].join();
-    }
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    BOOST_CHECK_MESSAGE(error == false,
-                        "Run pytest with -s to see where the error is.");
-    std::string fail_msg = fmt::format("Only {} callback functions where " \
-                                       "called (expected {}). This suggests " \
-                                       "some requests were never sent by the " \
-                                       "restClient OR the test didn't wait " \
-                                       "long enough.", cb_called_count, N);
-    BOOST_CHECK_MESSAGE(cb_called_count == N, fail_msg);
-}

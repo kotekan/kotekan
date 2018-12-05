@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 120  # 48Gb, 15s buffer.
+baseband_buffer_depth: 296  # 118 GB, 37s buffer
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -73,7 +73,7 @@ num_beams: 10
 num_pol: 2
 pulsar_gain:
   kotekan_update_endpoint: json
-  pulsar_gain_dir: 
+  pulsar_gain_dir:
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
@@ -322,8 +322,7 @@ zero_samples:
 
 baseband:
     max_dump_samples: 400000
-    #num_frames_buffer: ( baseband_buffer_depth - 4 )   # XXX Why does this fail?
-    num_frames_buffer: 110
+    num_frames_buffer: baseband_buffer_depth - 10
     base_dir: /mnt/frb-archiver/
     write_throttle: 0
     baseband0:
@@ -950,7 +949,8 @@ vis_accumulate:
 ## Perform all extra time integration and calculate eigenvalues
 
 vis_merge_5s:
-  kotekan_process: visMerge
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_5s_0
     - visbuf_5s_1
@@ -959,7 +959,8 @@ vis_merge_5s:
   out_buf: visbuf_5s_merge
 
 vis_merge_gated_psr0:
-  kotekan_process: visMerge
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_psr0_5s_0
     - visbuf_psr0_5s_1
@@ -1011,8 +1012,9 @@ eigcalc:
     in_buf: visbuf_10s_3
     out_buf: visbuf_eig_10s_3
 
-vis_merge_eig_10s:
-  kotekan_process: visMerge
+merge_eig_10s:
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_eig_10s_0
     - visbuf_eig_10s_1

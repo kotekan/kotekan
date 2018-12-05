@@ -343,6 +343,22 @@ int is_frame_empty(struct Buffer * buf, const int frame_id);
 int get_num_full_frames(struct Buffer * buf);
 
 /**
+ * @brief Get the number of consumers on this buffer
+ *
+ * @param buf The buffer
+ * @return int The number of consumers on the buffer
+ */
+int get_num_consumers(struct Buffer * buf);
+
+/**
+ * @brief Get the number of producers for this buffer
+ *
+ * @param buf The buffer
+ * @return int The number of producers on this buffer
+ */
+int get_num_producers(struct Buffer * buf);
+
+/**
  * @brief Returns the last time a frame was marked as full
  * @param buf The buffer to get the last arrival time for.
  * @return A double (with units: seconds) containing the unix time of the last frame arrival

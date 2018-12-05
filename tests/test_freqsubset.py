@@ -3,8 +3,8 @@ import numpy as np
 import os
 import re
 
-import visbuffer
-import kotekan_runner
+from kotekan import visbuffer
+from kotekan import runner
 
 
 params = {
@@ -24,7 +24,7 @@ def vis_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("freqsub")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
@@ -32,10 +32,10 @@ def vis_data(tmpdir_factory):
         wait=False
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(
+    dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'freqSubset', {},
         fakevis_buffer,
         dump_buffer,
@@ -51,7 +51,7 @@ def write_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("freqsub_write")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
@@ -59,11 +59,11 @@ def write_data(tmpdir_factory):
         wait=False
     )
 
-    write_buffer = kotekan_runner.VisWriterBuffer(
+    write_buffer = runner.VisWriterBuffer(
             str(tmpdir), 'raw', params['subset_list'],
             extra_config={'use_dataset_manager': True})
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'freqSubset', {},
         fakevis_buffer,
         write_buffer,
@@ -95,7 +95,7 @@ def test_write(write_data):
     for t in range(params['total_frames']):
         for f in range(len(params['subset_list'])):
             # get freq ids from fakeVis
-            fid = int(write_data[t][f].vis[2].real)
+            fid = int(write_data.data[t, f]['vis'][2].real)
             assert fid in params['subset_list']
             # Check the order
             assert fid == params['subset_list'][f]
