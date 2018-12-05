@@ -1,5 +1,5 @@
 import pytest
-import kotekan_runner
+from kotekan import runner
 
 # this is the equivalent of the config file for kotekan to run your test
 params = {
@@ -17,16 +17,16 @@ def data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("name_of_the_test_case")
 
     # you can use FakeVisBuffer to produce fake data
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode='gaussian',
     )
 
     # DumpVisBuffer can be used to dump data for testing
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     # KotekanProcessTester is used to run kotekan with your config
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'processUnderTest', {},
         fakevis_buffer,
         dump_buffer,

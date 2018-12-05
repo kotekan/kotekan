@@ -2,4 +2,3 @@ install(FILES kotekan.service DESTINATION /etc/systemd/system/ PERMISSIONS OWNER
 
 install(PROGRAMS yaml_to_json.py DESTINATION /usr/local/bin/ COMPONENT scripts)
 install(PROGRAMS gps_yaml_to_json.py DESTINATION /usr/local/bin/ COMPONENT scripts)
-install(PROGRAMS kotekan_ctl.py DESTINATION /usr/local/bin/ COMPONENT scripts)
