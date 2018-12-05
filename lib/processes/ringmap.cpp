@@ -36,34 +36,38 @@ mapMaker::mapMaker(Config &config,
 
 void mapMaker::main_thread() {
 
-    if (!setup())
+    frameID in_frame_id(in_buf);
+
+    if (!setup(in_frame_id))
         return;
 
-    unsigned int input_frame_id = 0;
     // coefficients of CBLAS multiplication
     float alpha = 1.;
     float beta = 0.;
+
+    // Initialize the time indexing
+    max_fpga, min_fpga = 0;
+    latest = 0;
 
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
         if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               input_frame_id) == nullptr) {
+                               in_frame_id) == nullptr) {
             break;
         }
 
         // Check dataset id hasn't changed
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = visFrameView(in_buf, in_frame_id);
+        uint32_t f_id = input_frame.freq_id;
 
+        // Find the time index to append to
         time_ctype t = {std::get<0>(input_frame.time),
                         ts_to_double(std::get<1>(input_frame.time))};
-        uint32_t f_id = input_frame.freq_id;
-        size_t t_ind = append_time(t);
+        int64_t t_ind = resolve_time(t);
         if (t_ind >= 0) {
-            size_t pol_XX = 0;
-            // something like
             for (uint p = 0; p < num_pol; p++) {
                 // transform into map slice
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
@@ -72,12 +76,12 @@ void mapMaker::main_thread() {
 
                  // same for weights map
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data, num_pix, &input_frame.weights[p*num_bl],
+                            &alpha, vis2map.at(f_id).data, num_pix, &input_frame.weight[p*num_bl],
                             1, &beta, &wgt_map.at(f_id).at(p).data[t_ind*num_pix], 1);
             }
         }
-
-        input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
+        // Move to next frame
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
     }
 }
 
@@ -86,7 +90,7 @@ nlohmann::json mapMaker::rest_callback(connectionInstance& conn, nlohmann::json&
     // make sure to lock the map arrays
 }
 
-bool mapMaker::setup(uint frame_id) {
+bool mapMaker::setup(size_t frame_id) {
 
     // Wait for the input buffer to be filled with data
     if(wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
@@ -107,9 +111,13 @@ bool mapMaker::setup(uint frame_id) {
     gen_matrices();
 
     // initialize map containers
-    for (uint p = 0; p < num_pol; p++) {
-        map[p].reserve(num_pix*num_time);
-        wgt_map[p].reserve(num_pix*num_time);
+    for (auto fid : freq_id) {
+        map.at(fid).reserve(num_pol);
+        wgt_map.at(fid).reserve(num_pol);
+        for (uint p = 0; p < num_pol; p++) {
+            map.at(fid).at(p).reserve(num_pix*num_time);
+            wgt_map.at(fid).at(p).reserve(num_pix*num_time);
+        }
     }
 }
 
@@ -138,6 +146,39 @@ void mapMaker::gen_baselines() {
     // calculate baseline for every product
 }
 
-size_t append_time(time_ctype t){
+int64_t mapMaker::resolve_time(time_ctype t){
 
+    if (t.fpga_count < min_fpga) {
+        // time is too old, discard
+        WARN("Frame older than oldest time in ringmap. Discarding.");
+        return -1;
+    }
+
+    if (t.fpga_count > max_fpga) {
+        // We need to add a new time
+        max_fpga = t.fpga_count;
+        // Increment position and remove previous entry
+        min_fpga = times[latest++].fpga_count;
+        times_map.erase(min_fpga);
+        for (auto fid : freq_id) {
+            for (uint p = 0; p < num_pol; p++) {
+                std::fill(map.at(fid).at(p).begin() + latest*num_pix,
+                          map.at(fid).at(p).begin() + (latest+1)*num_pix, 0.);
+                std::fill(wgt_map.at(fid).at(p).begin() + latest*num_pix,
+                          wgt_map.at(fid).at(p).begin() + (latest+1)*num_pix, 0.);
+        }
+        times[latest] = t;
+        times_map.at(t.fpga_count) = latest;
+
+        return latest;
+    }
+
+    // Otherwise find the existing time
+    auto res = times_map.find(t.fpga_count);
+    if (res == times_map.end()) {
+        // No entry for this time
+        WARN("Could not find this time in ringmap. Discarding.");
+        return -1;
+    }
+    return res->second;
 }

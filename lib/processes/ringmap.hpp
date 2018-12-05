@@ -25,17 +25,17 @@ public:
     nlohmann::json rest_callback(connectionInstance& conn, nlohmann::json &json);
 
     /// Abbreviation for RingMap type
-    typedef RingMap std::vector<std::vector<cfloat>>;
+    typedef std::vector<std::vector<cfloat>> RingMap;
 
 private:
 
-    bool setup();
+    bool setup(size_t frame_id);
 
     void gen_matrices();
 
     void gen_baselines();
 
-    size_t append_time(time_ctype t);
+    int64_t resolve_time(time_ctype t);
 
     inline float wl(uint32_t fid);
 
@@ -50,6 +50,7 @@ private:
     std::vector<float> sinza;
     std::vector<time_ctype> times;
     std::map<uint64_t, size_t> times_map;
+    modulo<size_t> latest;
     uint64_t max_fpga, min_fpga;
 
     uint32_t num_time;
