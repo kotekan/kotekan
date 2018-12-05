@@ -3,7 +3,7 @@ import numpy as np
 import os
 import re
 
-import visbuffer
+from kotekan import visbuffer
 from kotekan import runner
 
 
