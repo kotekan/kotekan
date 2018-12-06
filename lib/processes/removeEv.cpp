@@ -49,7 +49,7 @@ void removeEv::main_thread() {
             input_frame, {visField::eval, visField::evec, visField::erms}
         );
 
-        // Finish up interation.
+        // Finish up iteration.
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
     }

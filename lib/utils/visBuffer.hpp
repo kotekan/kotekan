@@ -206,7 +206,7 @@ public:
      *
      * This routine copys member by member and the structural parameters of the
      * buffer only need to match for the members actually being copied. If they
-     * don't match and exception is thrown.
+     * don't match an exception is thrown.
      *
      * @note To copy the whole frame it is more efficient to use the copying
      * constructor.
