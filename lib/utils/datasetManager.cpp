@@ -9,6 +9,7 @@
 #include <mutex>
 #include <regex>
 #include <typeinfo>
+#include <inttypes.h>
 
 #include "fmt/ostream.h"
 #include "restClient.hpp"
@@ -141,9 +142,8 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling process...
-        ERROR("datasetManager: Failure registering root dataset : state %zu " \
-              "not found: %s",
-              state, e.what());
+        ERROR("datasetManager: Failure registering root dataset : state " \
+              "0x%" PRIx64 " not found: %s", state, e.what());
         raise(SIGINT);
     }
     std::set<std::string> types = t->types();
@@ -157,8 +157,8 @@ dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling process...
-        ERROR("datasetManager: Failure registering dataset : state %zu not " \
-              "found (base dataset ID: %zu): %s",
+        ERROR("datasetManager: Failure registering dataset : state " \
+              "0x%" PRIx64 " not found (base dataset ID: 0x%" PRIx64 "): %s",
               state, base_dset, e.what());
         raise(SIGINT);
     }
@@ -186,8 +186,8 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
                 ERROR("datasetManager: Hash collision!\n"
-                      "The following datasets have the same hash (%zu)." \
-                      "\n\n%s\n\n%s\n\n" \
+                      "The following datasets have the same hash (" \
+                      "0x%" PRIx64 ").\n\n%s\n\n%s\n\n" \
                       "datasetManager: Exiting...",
                       new_dset_id, ds.to_json().dump().c_str(),
                       find->second.to_json().dump().c_str());
@@ -413,7 +413,7 @@ std::string datasetManager::summary() {
     int id = 0;
     std::string out;
 
-    // lock both of them using std::lock to prevent a deadlock
+    // lock both of them at the same time to prevent deadlocks
     std::lock(_lock_states, _lock_dsets);
     std::lock_guard<std::mutex> slock(_lock_states, std::adopt_lock);
     std::lock_guard<std::mutex> dslock(_lock_dsets, std::adopt_lock);
@@ -422,13 +422,13 @@ std::string datasetManager::summary() {
         try{
             datasetState* dt = _states.at(t.second.state()).get();
 
-            out += fmt::format("{:>30} : {:2} -> {:2}\n",
-                               *dt, t.second.base_dset(), id);
+            out += fmt::format("{:>30} : {:#x}\n",
+                               *dt, t.second.base_dset());
             id++;
         } catch (std::out_of_range& e) {
-            // this is fine
-            DEBUG("This datasetManager instance does not know state %zu, " \
-                  "referenced by dataset %zu. (std::out_of_range: %s)",
+            WARN("datasetManager::summary(): This datasetManager instance " \
+                  "does not know state " \
+                  "0x%" PRIx64 ", referenced by dataset 0x%" PRIx64 ". (%s)",
                   t.second.state(), t.first, e.what());
         }
     }
@@ -464,7 +464,8 @@ datasetManager::ancestors(dset_id_t dset) {
 
     // make sure we know this dataset before running into trouble
     if (_datasets.find(dset) == _datasets.end()) {
-        DEBUG("datasetManager: dataset %zu was not found locally.", dset);
+        DEBUG("datasetManager: dataset 0x%" PRIx64 " was not found locally.",
+              dset);
         return a_list;
     }
 

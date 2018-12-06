@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <tuple>
 #include <vector>
+#include <inttypes.h>
 
 #include "fmt.hpp"
 #include "json.hpp"
@@ -216,7 +217,7 @@ void visWriter::get_dataset_state() {
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find " \
-              "ancestor of dataset %zu. Make sure there is a process"\
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"\
               " upstream in the config, that the dataset states.\nExiting...",
               ds_id);
         ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, " \
@@ -234,8 +235,8 @@ void visWriter::get_dataset_state() {
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
-             "the local git version tag is %s", ds_id,
+        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s," \
+             "while the local git version tag is %s", ds_id,
              mstate->get_git_version_tag().c_str(),
              get_git_commit_hash());
     }

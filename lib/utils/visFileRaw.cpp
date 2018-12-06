@@ -20,6 +20,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <utility>
+#include <inttypes.h>
 
 
 // Register the raw file writer
@@ -52,10 +53,10 @@ void visFileRaw::create_file(
     const freqState* fstate = fstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID %zu\nThe " \
-              "following required states were found:\ninputState - %d\n" \
-              "prodState - %d\nfreqState - %d", dataset, istate, pstate,
-              fstate);
+        ERROR("Required datasetState not found for dataset ID " \
+              "0x%" PRIx64 "\nThe following required states were found:\n" \
+              "inputState - %d\nprodState - %d\nfreqState - %d",
+              dataset, istate, pstate, fstate);
         throw std::runtime_error("Could not create file.");
     }
 

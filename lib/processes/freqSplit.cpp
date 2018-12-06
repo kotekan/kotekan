@@ -11,6 +11,7 @@
 #include <regex>
 #include <stdexcept>
 #include <tuple>
+#include <inttypes.h>
 
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
@@ -58,9 +59,9 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
             dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find " \
-              "freqState ancestor of dataset %zu. Make sure there is a process"\
-              " upstream in the config, that adds a freqState.\nExiting...",
-              input_dset_id);
+              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there " \
+              "is a process upstream in the config, that adds a freqState.\n" \
+              "Exiting...", input_dset_id);
         raise(SIGINT);
     }
 

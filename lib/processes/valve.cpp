@@ -53,7 +53,8 @@ void Valve::main_thread() {
             WARN("Output buffer full. Dropping incoming frame %d.",
                  frame_id_in);
             prometheusMetrics::instance().add_process_metric(
-                        "dropped_frames_total", unique_name, ++_dropped_total);
+                        "kotekan_valve_dropped_frames_total",
+                        unique_name, ++_dropped_total);
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }
@@ -82,42 +83,16 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src,
         throw std::runtime_error(msg);
     }
 
-    // Calculate the number of consumers on the source buffer and copy over the
-    // data. Keep a lock on the buffer to prevent consumers from joining.
-    int err = pthread_mutex_lock(&buf_src->lock);
-    if (err) {
-        std::string msg = fmt::format("Failure locking input buffer: {}",
-                                      std::strerror(err));
-        throw std::runtime_error(msg);
-    }
-
-    int num_consumers = 0;
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf_src->consumers[i].in_use == 1) {
-            num_consumers++;
-        }
-    }
+    int num_consumers = get_num_consumers(buf_src);
 
     // Copy or transfer the data part.
     if (num_consumers == 1) {
-        err = pthread_mutex_unlock(&buf_src->lock);
-        if (err) {
-            std::string msg = fmt::format("Failure unlocking input buffer: {}",
-                                          std::strerror(err));
-            throw std::runtime_error(msg);
-        }
         // Transfer frame contents with directly...
         swap_frames(buf_src, frame_id_src, buf_dest, frame_id_dest);
     } else if (num_consumers > 1) {
         // Copy the frame data over, leaving the source intact
         std::memcpy(buf_dest->frames[frame_id_dest],
                     buf_src->frames[frame_id_src], buf_src->frame_size);
-        err = pthread_mutex_unlock(&buf_src->lock);
-        if (err) {
-            std::string msg = fmt::format("Failure unlocking input buffer: {}",
-                                          std::strerror(err));
-            throw std::runtime_error(msg);
-        }
     }
 
     // Copy over the metadata

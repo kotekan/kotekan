@@ -15,6 +15,7 @@
 #include <regex>
 #include <stdexcept>
 #include <utility>
+#include <inttypes.h>
 
 #include "gsl-lite.hpp"
 
@@ -109,8 +110,8 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     //TODO: enforce this if build type == release?
     if (git_commit_hash_dataset
                 != metadata["git_version_tag"].get<std::string>())
-        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
-             "the local git version tag is %s", ds_id,
+        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s," \
+             "while the local git version tag is %s", ds_id,
              git_commit_hash_dataset.c_str(),
              metadata["git_version_tag"].get<std::string>().c_str());
 
@@ -144,7 +145,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
-    DEBUG("Dataset %zu has %d times, %d frequencies, %d products",
+    DEBUG("Dataset 0x%" PRIx64 " has %d times, %d frequencies, %d products",
           ds_id, num_time, num_freq, eff_prod_dim);
 
     // Ensure chunk_size not too large
@@ -190,7 +191,7 @@ void visTranspose::main_thread() {
 
     if (!future_ds_state.get()) {
        ERROR("Set to not use dataset_broker and couldn't find " \
-             "ancestor of dataset %zu. Make sure there is a process"\
+             "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"\
              " upstream in the config, that adds the dataset states." \
              "\nExiting...",
              ds_id);
@@ -223,7 +224,8 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            ERROR("Dataset ID of incoming frames changed from %zu to %zu. " \
+            ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"\
+                  "0x%" PRIx64 ". " \
                   "Not supported, exiting...", ds_id, frame.dataset_id);
             raise(SIGINT);
         }

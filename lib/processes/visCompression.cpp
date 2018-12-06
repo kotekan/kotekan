@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <tuple>
 #include <vector>
+#include <inttypes.h>
 
 #include "fmt.hpp"
 #include "gsl-lite.hpp"
@@ -112,9 +113,9 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     prod_state_ptr = prod_state.get();
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find " \
-              "freqState ancestor of dataset %zu. Make sure there is a process"\
-              " upstream in the config, that adds a freqState.\nExiting...",
-              input_ds_id);
+              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there " \
+              "is a process upstream in the config, that adds a freqState.\n" \
+              "Exiting...", input_ds_id);
         raise(SIGINT);
     }
 

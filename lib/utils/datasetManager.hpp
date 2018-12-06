@@ -19,6 +19,7 @@
 #include <typeinfo>
 #include <utility>
 #include <vector>
+#include <inttypes.h>
 
 #include "json.hpp"
 
@@ -523,7 +524,7 @@ std::pair<state_id_t, const T*> datasetManager::add_state(
             // hash entries? This would mean the state/dset has to be sent
             // when registering.
             ERROR("datasetManager: Hash collision!\n"
-                  "The following states have the same hash (%zu)." \
+                  "The following states have the same hash (0x%" PRIx64 ")." \
                   "\n\n%s\n\n%s\n\n" \
                   "datasetManager: Exiting...",
                   hash, state->to_json().dump().c_str(),
@@ -535,7 +536,7 @@ std::pair<state_id_t, const T*> datasetManager::add_state(
         std::lock_guard<std::mutex> slock(_lock_states);
         if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>
                                                   (hash, move(state))).second) {
-            DEBUG("datasetManager: a state with hash %zu is already " \
+            DEBUG("datasetManager: a state with hash 0x%" PRIx64 " is already "\
                  "registered locally.", hash);
         }
 
@@ -593,15 +594,15 @@ datasetManager::get_closest_ancestor(dset_id_t dset) {
                 state = state->_inner_state.get();
             }
         } catch (std::out_of_range& e) {
-            DEBUG("datasetManager: requested state %zu not known locally.",
-                  ancestor);
+            DEBUG("datasetManager: requested state 0x%" PRIx64 " not known " \
+                  "locally.", ancestor);
         }
         if (_use_broker) {
             // Request the state from the broker.
             state = request_state<T>(ancestor);
             while (!state) {
-                WARN("datasetManager: Failure requesting state %zu from " \
-                     "broker.\nRetrying...");
+                WARN("datasetManager: Failure requesting state " \
+                     "0x%" PRIx64 " from broker.\nRetrying...");
                 std::this_thread::sleep_for(
                             std::chrono::milliseconds(_retry_wait_time_ms));
                 state = request_state<T>(ancestor);
@@ -680,7 +681,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         // hash collisions are checked for by the broker
         if (!new_state.second)
             INFO("datasetManager::request_state: received a " \
-                 "state (with hash %zu) that is already registered " \
+                 "state (with hash 0x%" PRIx64 ") that is already registered " \
                  "locally.", s_id);
 
         // get a pointer out of that iterator

@@ -31,7 +31,7 @@
  *         @buffer_metadata chimeMetadata
  *
  * @par Metrics
- * @metric dropped_frames_total
+ * @metric kotekan_valve_dropped_frames_total
  *        The number of frames dropped.
  *
  *
@@ -51,8 +51,8 @@ public:
 
 private:
     /// Copy a frame from the input buffer to the output buffer.
-    void copy_frame(Buffer* buf_src, int frame_id_src,
-                    Buffer* buf_dest, int frame_id_dest);
+    static void copy_frame(Buffer* buf_src, int frame_id_src,
+                           Buffer* buf_dest, int frame_id_dest);
 
     /// Input buffer
     Buffer * _buf_in;

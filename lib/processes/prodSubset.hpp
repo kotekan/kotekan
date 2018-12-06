@@ -3,8 +3,8 @@
 @brief Extract a subset of products from a visBuffer.
 - prodSubset : public KotekanProcess
 *****************************************/
-#ifndef PROD_SUB
-#define PROD_SUB
+#ifndef PROD_SUB_HPP
+#define PROD_SUB_HPP
 
 #include <stddef.h>
 #include <stdint.h>
