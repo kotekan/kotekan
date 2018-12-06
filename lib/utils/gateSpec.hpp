@@ -85,6 +85,16 @@ public:
      **/
     const std::string& name() const { return _name; }
 
+    /**
+     * @brief Get a description of the spec for the dataset manager.
+     *
+     * Should be re-implemented by subclasses, and include information beyond
+     * the type of the gating (the type is captured separately).
+     *
+     * @return  Serialized config.
+     **/
+    virtual json to_dm_json() const { return {}; }
+
 protected:
 
     // Name of the gated dataset in the config

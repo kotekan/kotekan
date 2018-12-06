@@ -5,6 +5,7 @@
 
 #include "json.hpp"
 #include "visUtil.hpp"
+#include "gateSpec.hpp"
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -620,10 +621,10 @@ public:
      * @param  data   Arbitrary type specific data to describe what's happening.
      * @param  inner  Inner state.
      **/
-    gatingState(const std::string& type, json& data, state_uptr inner) :
+    gatingState(const std::string& type, const gateSpec& spec, state_uptr inner) :
         datasetState(std::move(inner)),
         gating_type(type),
-        gating_data(data)
+        gating_data(spec.to_dm_json())
     {
     }
 

@@ -231,11 +231,10 @@ dset_id_t visAccumulate::change_dataset_state() {
         _prods, std::move(input_state));
     //empty stackState
     state_uptr stack_state =
-            std::make_unique<stackState>(std::move(prod_state));
-    state_uptr mstate = std::make_unique<metadataState>(weight_type,
-                                                        _instrument_name,
-                                                        git_tag,
-                                                        std::move(stack_state));
+        std::make_unique<stackState>(std::move(prod_state));
+    state_uptr mstate = std::make_unique<metadataState>(
+        weight_type, _instrument_name, git_tag, std::move(stack_state)
+    );
 
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
