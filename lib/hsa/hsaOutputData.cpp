@@ -96,9 +96,7 @@ void hsaOutputData::finalize_frame(int frame_id) {
     set_first_packet_recv_time(output_buffer, output_buffer_id, sys_time);
 
     // Add up the number of lost samples (from packet loss/packet errors)
-    // This should never block.
-    uint8_t * frame = wait_for_full_frame(lost_samples_buf, static_unique_name.c_str(), lost_samples_buf_id);
-    if (frame == NULL) return;
+    uint8_t * frame = lost_samples_buf->frames[lost_samples_buf_id];
 
     uint32_t num_sum_frame_lost_samples = 0;
     for (uint32_t i = _sub_frame_samples * _sub_frame_index;

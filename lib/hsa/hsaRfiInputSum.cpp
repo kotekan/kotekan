@@ -32,9 +32,9 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     rebuild_input_mask = true;
     //Allocate memory for input mask
     input_mask = (uint8_t *)hsa_host_malloc(input_mask_len);
-    
+
     config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
-    
+
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();

@@ -181,7 +181,15 @@ void gpuProcess::results_thread() {
         DEBUG2("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
 
         for (auto &command : commands) {
-            command->finalize_frame(gpu_frame_id);
+            // Note the fact that we don't run `finalize_frame()` when the shutdown
+            // signal is set, means that we cannot use it to free memory.
+            // In theory this shouldn't be a problem, but it might be an issue for
+            // some GPU APIs which require a memory clean up step after each run.
+            // Two ways around this would be to have a different call for memory freeing
+            // which is always called, or make sure that all finalize_frame calls can
+            // run even when there is a shutdown in progress.
+            if (!stop_thread)
+                command->finalize_frame(gpu_frame_id);
         }
         DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
 

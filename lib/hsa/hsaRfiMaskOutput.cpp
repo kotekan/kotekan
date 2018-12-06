@@ -62,13 +62,13 @@ hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, hsa_signal_t precede_si
 void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
-    if(get_rfi_zeroed(_network_buf,_network_buf_id)){
+    if (get_rfi_zeroed(_network_buf,_network_buf_id)){
         uint8_t * frame_mask = _rfi_mask_output_buf->frames[_rfi_mask_output_buf_id];
         uint32_t total_lost = 0;
         //Copy RFI mask to array
-        for(uint32_t subframe = 0; subframe < _num_sub_frames; ++subframe) {
+        for (uint32_t subframe = 0; subframe < _num_sub_frames; ++subframe) {
             uint32_t lost_in_subframe = 0;
-            for(uint32_t i = subframe * _sub_frame_samples / _sk_step;
+            for (uint32_t i = subframe * _sub_frame_samples / _sk_step;
                 i < (subframe + 1) * _sub_frame_samples / _sk_step;
                 i++){
                 assert(i < (uint32_t)_rfi_mask_output_buf->frame_size);
@@ -81,6 +81,12 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
             total_lost += lost_in_subframe;
         }
         atomic_add_lost_timesamples(_network_buf, _network_buf_id, total_lost);
+    } else {
+        // Since we are a producer we always need to sign off on the frame
+        for (uint32_t subframe = 0; subframe < _num_sub_frames; ++subframe) {
+            mark_frame_full(_output_buf, unique_name.c_str(), _output_buf_id);
+            _output_buf_id = (_output_buf_id + 1) % _output_buf->num_frames;
+        }
     }
     // Pass the information contained in the input buffer
     pass_metadata(_network_buf, _network_buf_id,
