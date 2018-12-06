@@ -5,7 +5,7 @@
 // the code to test:
 #include "visUtil.hpp"
 
-#include <stdio.h>
+#include <chrono>
 
 BOOST_AUTO_TEST_CASE( _divmod_pos )
 {
@@ -24,40 +24,57 @@ BOOST_AUTO_TEST_CASE( _ts_to_double )
     BOOST_CHECK(ts_to_double(b) == 15.000000002);
 }
 
-BOOST_AUTO_TEST_CASE( _timespec_substraction )
-{
+BOOST_AUTO_TEST_CASE( _timespec_addition ) {
+    __log_level = 5;
+    __enable_syslog = 0;
+
     timespec a = {10, 5};
-    timespec b = {15, 2};
-    BOOST_CHECK_THROW(subtract(a, b), std::runtime_error);
+    timespec b = {10, 0};
+    timespec expected = {20, 5};
+    BOOST_CHECK(a + b == expected);
 
-    a = {14, 99};
-    b = {4, 88};
-    timespec res = {10, 11};
-    BOOST_CHECK(subtract(a, b) == res);
+    timespec c = {0, 10};
+    expected = {10, 15};
+    BOOST_CHECK(a + c == expected);
 
-    a = {14, 1};
-    b = {10, 2};
-    res = {3, 999999999};
-    BOOST_CHECK(subtract(a, b) == res);
+    timespec d = {10, 10};
+    expected = {20, 15};
+    BOOST_CHECK(a + d == expected);
+}
 
-    a = {1, 0};
-    b = {2, 0};
-    BOOST_CHECK_THROW(subtract(a, b), std::runtime_error);
+BOOST_AUTO_TEST_CASE( _timespec_subtraction ) {
+    __log_level = 5;
+    __enable_syslog = 0;
+    // positive durations
+    timespec start = {10, 0};
+    timespec end = {10, 5};
+    std::chrono::nanoseconds res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::nanoseconds(5));
 
-    a = {1, 0};
-    b = {1, 1};
-    BOOST_CHECK_THROW(subtract(a, b), std::runtime_error);
+    start = {0, 10};
+    res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::seconds(10) + std::chrono::nanoseconds(5)
+                - std::chrono::nanoseconds(10));
 
-    a = {2, 0};
-    b = {1, 1};
-    res = {0, 999999999};
-    BOOST_CHECK(subtract(a, b) == res);
+    start = {10, 5};
+    res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::seconds(0));
 
-    a = {1, 0};
-    b = {2, 1};
-    BOOST_CHECK_THROW(subtract(a, b), std::runtime_error);
+    start = {9, 4};
+    res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::seconds(1) + std::chrono::nanoseconds(1));
 
-    a = {14, 99};
-    b = {15, 101};
-    BOOST_CHECK_THROW(subtract(a, b), std::runtime_error);
+    // negative durations
+    start = {10, 10};
+    res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::nanoseconds(-5));
+
+    start = {11, 10};
+    res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::seconds(-1) + std::chrono::nanoseconds(-5));
+
+    start = {100, 0};
+    end = {10, 0};
+    res = difference(start, end);
+    BOOST_CHECK(res == std::chrono::seconds(-90));
 }

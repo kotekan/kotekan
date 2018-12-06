@@ -71,7 +71,7 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function() co
         double last_toa = toa - 1. / f0;
 
         // width of frame
-        double fw = ts_to_double(subtract(t_e, t_s));
+        double fw = ts_to_double(t_e - t_s);
 
         // Weights are on/off for now
         if (toa < fw || last_toa + pw > 0) {

@@ -18,13 +18,15 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <chrono>
 
 #include "gsl-lite.hpp"
 #include "json.hpp"
-#include "fmt.hpp"
 
 #include "Config.hpp"
 #include "buffer.h"
+
+#define NS_PER_SECOND 1000000000L
 
 using json = nlohmann::json;
 
@@ -218,7 +220,8 @@ inline double ts_to_double(const timespec & ts) {
  * @return        Time as timespec.
  **/
 inline timespec double_to_ts(double dtime) {
-    return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e9)};
+    return {(int64_t)dtime,
+            (int64_t)(fmod(dtime, 1.0) * NS_PER_SECOND)};
 }
 
 /**
@@ -244,12 +247,51 @@ inline std::pair<T, T> divmod_pos(T a, T n) {
  * @return      Modified timespec.
  **/
 inline timespec add_nsec(const timespec& t, const long nsec) {
-    auto dm = divmod_pos(t.tv_nsec + nsec, 1000000000L);
+    auto dm = divmod_pos(t.tv_nsec + nsec, NS_PER_SECOND);
     return {t.tv_sec + dm.first, dm.second};
 }
 
 /**
+ * @brief Subtraction of two timespec structs.
+ *
+ * @note The result is not defined if a or b have a negative value or if a < b.
+ *
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a - b as timespec.
+ **/
+inline timespec operator-(const timespec & a, const timespec & b)
+{
+    auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, NS_PER_SECOND);
+    return {a.tv_sec - b.tv_sec + dm.first, dm.second};
+}
+
+/**
+ * @brief Calculate difference between two timespec structs as a duration of
+ * time in nanoseconds. The result can be negative.
+ *
+ * @note The result is not defined if a or b have a negative value.
+ *
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a - b as a duration.
+ **/
+inline std::chrono::nanoseconds
+difference(const timespec & start, const timespec & end)
+{
+    using seconds = std::chrono::seconds;
+    using nanoseconds = std::chrono::nanoseconds;
+
+    nanoseconds result = seconds(end.tv_sec) - seconds(start.tv_sec)
+                    + nanoseconds(end.tv_nsec) - nanoseconds(start.tv_nsec);
+    return result;
+}
+
+/**
  * @brief Addition of two timespec structs.
+ *
+ * @note The result is not defined if a or b have a negative value.
+ *
  * @param  a  Time as timespec.
  * @param  b  Time as timespec.
  * @return    a + b as timespec.
@@ -257,7 +299,7 @@ inline timespec add_nsec(const timespec& t, const long nsec) {
 inline timespec operator+(const timespec & a, const timespec & b)
 {
     // Use std::div instead of divmod_pos to save the extra instructions.
-    auto ns_div = std::div(a.tv_nsec + b.tv_nsec, 1000000000L);
+    auto ns_div = std::div(a.tv_nsec + b.tv_nsec, NS_PER_SECOND);
     return {a.tv_sec + b.tv_sec + ns_div.quot, ns_div.rem};
 }
 
@@ -281,26 +323,6 @@ inline bool operator==(const timespec & a, const timespec & b) {
 inline bool operator>(const timespec & a,const timespec & b) {
     return (a.tv_sec > b.tv_sec ||
             (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec));
-}
-
-/**
- * @brief Subtraction of two timespec structs.
- * @param  a  Time as timespec.
- * @param  b  Time as timespec.
- * @return    a - b as timespec.
- *
- * @throws  std::runtime_error  If the result would be negative.
- **/
-inline timespec subtract(const timespec & a, const timespec & b)
-{
-    auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, 1000000000L);
-    if (b > a) {
-        std::string msg = fmt::format("Result of timespec substraction would be "
-                                      "negative ({}.{} - {}.{}).", a.tv_sec,
-                                      a.tv_nsec, b.tv_sec, b.tv_nsec);
-        throw std::runtime_error(msg);
-    }
-    return {a.tv_sec - b.tv_sec + dm.first, dm.second};
 }
 
 /**
