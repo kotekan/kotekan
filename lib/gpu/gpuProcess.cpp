@@ -134,7 +134,7 @@ void gpuProcess::main_thread()
         for (auto &command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0){
                 INFO("Received exit in GPU command precondition! (Command '%s')",command->get_name().c_str());
-                break;
+                goto exit_loop;
             }
         }
 
@@ -158,11 +158,13 @@ void gpuProcess::main_thread()
 
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
+    exit_loop:
     for (auto &sig_container : final_signals) {
         sig_container->stop();
     }
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");
-    results_thread_handle.join();
+    if (results_thread_handle.joinable())
+        results_thread_handle.join();
 }
 
 
