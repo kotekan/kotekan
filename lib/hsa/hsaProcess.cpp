@@ -15,8 +15,7 @@ hsaProcess::hsaProcess(Config& config, const string& unique_name,
                      bufferContainer &buffer_container):
     gpuProcess(config, unique_name, buffer_container)
 {
-    device = new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
-    dev = device;
+    dev = (gpuDeviceInterface *) new hsaDeviceInterface(config, gpu_id, _gpu_buffer_depth);
     init();
 }
 
@@ -25,13 +24,14 @@ gpuEventContainer *hsaProcess::create_signal(){
 }
 
 hsaProcess::~hsaProcess() {
-    delete device;
 }
 
 gpuCommand *hsaProcess::create_command(const std::string &cmd_name,
                                        const std::string &unique_name)
 {
-    auto cmd = FACTORY(hsaCommand)::create_bare(cmd_name, config, unique_name, local_buffer_container, *device);
+    auto cmd = FACTORY(hsaCommand)::create_bare(cmd_name, config,
+                                                unique_name, local_buffer_container,
+                                                *(hsaDeviceInterface *)dev);
     return cmd;
 }
 

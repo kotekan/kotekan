@@ -26,8 +26,6 @@ protected:
     gpuEventContainer *create_signal() override;
     void queue_commands(int gpu_frame_id) override;
 
-private:
-    hsaDeviceInterface * device;
 };
 
 #endif // HSA_PROCESS_H
