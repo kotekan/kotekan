@@ -247,9 +247,11 @@ void datasetManager::request_thread(
         const json&& request, const std::string&& endpoint,
         const std::function<bool(std::string&)>&& parse_reply) {
 
+    restClient& rest_client = restClient::instance();
     restReply reply;
+
     while (true) {
-        reply = restClient::instance().make_request_blocking(
+        reply = rest_client.make_request_blocking(
                     endpoint, request, _ds_broker_host, _ds_broker_port,
                     _retries_rest_client, _timeout_rest_client_s);
 
@@ -267,7 +269,7 @@ void datasetManager::request_thread(
                         "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                         ++_conn_error_count);
             WARN("datasetManager: Failure in connection to broker: %s:" \
-                 "%d/%s.\ndatasetManager: Make sure the broker is " \
+                 "%d/%s. Make sure the broker is " \
                  "running.", _ds_broker_host.c_str(), _ds_broker_port,
                  endpoint.c_str());
         }
