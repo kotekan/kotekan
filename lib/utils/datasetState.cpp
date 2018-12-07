@@ -11,6 +11,15 @@ datasetState::_registered_types()
     return _register;
 }
 
+std::map<std::string, std::function<bool(const datasetState*)>>&
+datasetState::_registered_base_types()
+{
+   static std::map<std::string, std::function<bool(const datasetState*)>>
+          _register_base;
+
+   return _register_base;
+}
+
 state_uptr datasetState::_create(std::string name, json & data,
                                  state_uptr inner) {
     try {
@@ -61,14 +70,36 @@ bool datasetState::equals(datasetState& s) const {
 std::set<std::string> datasetState::types() const {
     std::set<std::string> types;
 
-    types.insert(typeid(*this).name());
-
-    const datasetState* t = _inner_state.get();
+    const datasetState* t = this;
 
     while(t != nullptr) {
         types.insert(typeid(*t).name());
+        std::set<std::string> base_states = t->base_states();
+        types.insert(base_states.begin(), base_states.end());
         t = t->_inner_state.get();
     }
 
     return types;
 }
+
+std::set<std::string> datasetState::base_states() const {
+    std::set<std::string> types;
+
+    for (auto type : _registered_base_types()) {
+        if (type.second(this))
+            types.insert(type.first);
+    }
+
+    return types;
+}
+
+REGISTER_DATASET_STATE(freqState);
+REGISTER_DATASET_STATE(inputState);
+REGISTER_DATASET_STATE(prodState);
+REGISTER_DATASET_STATE(stackState);
+REGISTER_DATASET_STATE(eigenvalueState);
+REGISTER_DATASET_STATE(timeState);
+REGISTER_DATASET_STATE(metadataState);
+
+REGISTER_BASE_DATASET_STATE(gatingState);
+REGISTER_DATASET_STATE(pulsarGatingState);

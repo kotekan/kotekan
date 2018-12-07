@@ -588,12 +588,3 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
     _timestamp_update = timestamp;
     return true;
 }
-
-
-REGISTER_DATASET_STATE(freqState);
-REGISTER_DATASET_STATE(inputState);
-REGISTER_DATASET_STATE(prodState);
-REGISTER_DATASET_STATE(stackState);
-REGISTER_DATASET_STATE(eigenvalueState);
-REGISTER_DATASET_STATE(timeState);
-REGISTER_DATASET_STATE(metadataState);

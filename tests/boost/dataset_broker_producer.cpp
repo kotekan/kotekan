@@ -2,7 +2,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <string>
-#include <iostream>
+#include <inttypes.h>
 #include "json.hpp"
 #include "visUtil.hpp"
 #include "restClient.hpp"
@@ -52,17 +52,25 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dm.add_dataset(init_ds_id, input_state2.first);
+    dset_id_t ds_id2 = dm.add_dataset(init_ds_id, input_state2.first);
+
+    // register a pulsarGatingState to test polymorphic dM
+    std::pair<state_id_t, const pulsarGatingState*>pstate =
+            dm.add_state(std::make_unique<pulsarGatingState>("test_pulsar"));
+    dset_id_t ds_id3 = dm.add_dataset(ds_id2, pstate.first);
+
+    INFO("Registered dataset 0x%" PRIx64 " (%zu) with pulsar gating state.",
+         ds_id3, ds_id3);
 
     for (auto s : dm.states())
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
+        INFO("0x%" PRIx64 " - %s",
+             s.first, s.second->data_to_json().dump().c_str());
 
     for (auto s : dm.datasets())
-        std::cout << s.second.state() << " - " << s.second.base_dset() <<
-                     std::endl;
+        INFO("0x%" PRIx64 " - 0x%" PRIx64 , s.second.state(),
+                     s.second.base_dset());
 
-    usleep(1000000);
+    usleep(2000000);
 }
 
 
@@ -131,5 +139,5 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_second_root ) {
     dm.add_dataset(input_state.first);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(2000000);
 }

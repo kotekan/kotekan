@@ -94,6 +94,20 @@ public:
     static inline int _register_state_type();
 
     /**
+     * @brief Register a base datasetState type
+     *
+     * If a datasetState type is registered with this, derived sub classes can
+     * be found by the datasetManager using the base state.
+     *
+     * @warning You shouldn't call this directly. It's only public so the macro
+     * can call it.
+     *
+     * @returns Always returns zero.
+     **/
+    template<typename T>
+    static inline int _register_base_state_type();
+
+    /**
      * @brief Compare to another dataset state.
      * @param s    State to compare with.
      * @return True if states identical, False otherwise.
@@ -126,12 +140,57 @@ private:
     static std::map<string, std::function<state_uptr(json&, state_uptr)>>&
         _registered_types();
 
+    // List of registered functions that check inheritance from base states.
+    static std::map<std::string, std::function<bool (const datasetState *)> > &_registered_base_types();
+
+    // Returns all base states of this datasetState.
+    std::set<std::string> base_states() const;
+
     // Add as friend so it can walk the inner state
     friend datasetManager;
 };
 
+template<typename T>
+inline int datasetState::_register_state_type() {
+
+    // Get the unique name for the type to generate the lookup key. This is
+    // the same used by RTTI which is what we use to label the serialised
+    // instances.
+    std::string key = typeid(T).name();
+
+    DEBUG("Registering state type: %s", key.c_str());
+
+    // Generate a lambda function that creates an instance of the type
+    datasetState::_registered_types()[key] =
+        [](json & data, state_uptr inner) -> state_uptr {
+            return std::make_unique<T>(data, move(inner));
+        };
+    return 0;
+}
+
+template<typename T>
+inline int datasetState::_register_base_state_type() {
+
+    // Get the unique name for the type to generate the lookup key. This is
+    // the same used by RTTI which is what we use to label the serialised
+    // instances.
+    std::string key = typeid(T).name();
+
+    DEBUG("Registering base state type: %s", key.c_str());
+
+    // Generate a lambda function that tells if any given state is derived
+    // from T.
+    datasetState::_registered_base_types()[key] =
+        [](const datasetState* t) -> bool {
+            return (bool)dynamic_cast<const T*>(t);
+        };
+    return 0;
+}
+
 #define REGISTER_DATASET_STATE(T) int _register_ ## T = \
     datasetState::_register_state_type<T>()
+#define REGISTER_BASE_DATASET_STATE(T) int _register_ ## T = \
+    datasetState::_register_base_state_type<T>()
 
 
 // Printing for datasetState
@@ -584,5 +643,68 @@ private:
     std::string _weight_type, _instrument_name, _git_version_tag;
 };
 
-#endif // DATASETSTATE_HPP
+/**
+ * @brief A base state for all types of gating.
+ *
+ * TODO: make sure the base state can't be instanciated?
+ *
+ * @author Rick Nitsche
+ */
+class gatingState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param inner             An inner state (optional).
+     */
+    gatingState(state_uptr inner=nullptr) :
+        datasetState(move(inner)) {}
+};
 
+/**
+ * @brief A state to describe any applied gating.
+ *
+ * @author Richard Shaw, Rick Nitsche
+ **/
+class pulsarGatingState : public gatingState {
+public:
+    /**
+     * @brief Construct a gating state
+     *
+     * @param data  The metadata as serialized by to_json():
+     *              name: string
+     * @param inner Inner state.
+     **/
+    pulsarGatingState(json & data, state_uptr inner) :
+        gatingState(move(inner)) {
+        _name = data.at("name").get<std::string>();
+    }
+
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  name   The name of the pulsar.
+     * @param  inner  Inner state.
+     **/
+    pulsarGatingState(const std::string name, state_uptr inner=nullptr) :
+        gatingState(move(inner)), _name(name) {}
+
+    /**
+     * @brief Get the name of the pulsar.
+     * @return The name of the pulsar.
+     */
+    const std::string& get_name() const {
+        return _name;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override {
+        json j;
+        j["name"] = _name;
+        return j;
+    }
+
+    std::string _name;
+};
+
+#endif // DATASETSTATE_HPP

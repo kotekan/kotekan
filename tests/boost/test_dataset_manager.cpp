@@ -268,3 +268,25 @@ BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
     BOOST_CHECK_EQUAL(input_state.second->to_json().dump(),
                       std::make_unique<inputState>(inputs)->to_json().dump());
 }
+
+BOOST_FIXTURE_TEST_CASE( _gating_state, CompareCTypes ) {
+    __log_level = 4;
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
+
+    // pulsarGatingState
+    std::string name = "casA";
+    std::pair<state_id_t, const pulsarGatingState*> pstate =
+            dm.add_state(std::make_unique<pulsarGatingState>(name));
+    BOOST_CHECK_EQUAL(pstate.second->to_json().dump(),
+                      std::make_unique<pulsarGatingState>(name)->to_json().dump());
+
+    dset_id_t ds = dm.add_dataset(pstate.first);
+    BOOST_CHECK_EQUAL(dm.dataset_state<gatingState>(ds)->to_json().dump(),
+                      pstate.second->to_json().dump());
+}

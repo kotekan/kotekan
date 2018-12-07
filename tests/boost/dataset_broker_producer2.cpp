@@ -2,7 +2,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <string>
-#include <iostream>
+#include <inttypes.h>
 #include "json.hpp"
 #include "visUtil.hpp"
 #include "restClient.hpp"
@@ -67,16 +67,15 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
 
     dm.add_dataset(DSET_ID, new_input_state.first);
 
-    std::cout << dm.summary() << std::endl;
+    INFO("%s", dm.summary().c_str());
 
     for (auto s : dm.states())
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
+        INFO("0x%" PRIx64 " - %s",
+             s.first, s.second->data_to_json().dump().c_str());
 
     for (auto s : dm.datasets())
-        std::cout << s.second.state() << " - " << s.second.base_dset() <<
-                     std::endl;
-
+        INFO("0x%" PRIx64 " - 0x%" PRIx64 , s.second.state(),
+                     s.second.base_dset());
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(2000000);
 }

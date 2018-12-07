@@ -475,24 +475,6 @@ private:
 //
 
 template<typename T>
-inline int datasetState::_register_state_type() {
-
-    // Get the unique name for the type to generate the lookup key. This is
-    // the same used by RTTI which is what we use to label the serialised
-    // instances.
-    std::string key = typeid(T).name();
-
-    DEBUG("Registering state type: %s", key.c_str());
-
-    // Generate a lambda function that creates an instance of the type
-    datasetState::_registered_types()[key] =
-        [](json & data, state_uptr inner) -> state_uptr {
-            return std::make_unique<T>(data, move(inner));
-        };
-    return 0;
-}
-
-template<typename T>
 inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     if (!_use_broker)
@@ -590,6 +572,17 @@ datasetManager::get_closest_ancestor(dset_id_t dset) {
             while (state != nullptr) {
                 if (typeid(*state) == typeid(T))
                     return (const T*)state;
+
+                // Check if we are looking for a registered base state type.
+                try {
+                    if (datasetState::_registered_base_types().at(
+                            std::string(typeid(T).name()))(state))
+                        return (const T*) state;
+                } catch (std::exception& e) {
+                    DEBUG("datasetManager: %s is not a registered base state.",
+                          typeid(T).name());
+                }
+
                 state = state->_inner_state.get();
             }
         } catch (std::out_of_range& e) {
@@ -691,6 +684,17 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         while (true) {
             if (typeid(T) == typeid(*s))
                 return (const T*)s;
+
+            // Check if this is a request for a registered base state type.
+            try {
+                if (datasetState::_registered_base_types().at(
+                        std::string(typeid(T).name()))(s))
+                    return (const T*) s;
+            } catch (std::exception& e) {
+                DEBUG("datasetManager: %s is not a registered base state.",
+                      typeid(T).name());
+            }
+
             if (s->_inner_state == nullptr)
                 throw std::runtime_error("Broker sent state that didn't match "\
                                          "requested type (" +
