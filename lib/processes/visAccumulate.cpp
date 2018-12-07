@@ -390,9 +390,8 @@ void visAccumulate::main_thread() {
                 // not doing this because I don't want to burn cycles doing the
                 // multiplications
                 // Perform primary accumulation (assume that the weight is one)
-                for (size_t i = 0; i < num_prod_gpu; i++) {
-                    cfloat t = {(float)input[2*i+1], (float)input[2*i]};
-                    dset.vis1[i] += t;
+                for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+                    dset.vis1[i] += input[i];
                 }
 
                 // Accumulate the weights
@@ -472,8 +471,8 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 
     // Subtract out the bias from the gated data
     float scl = gate.sample_weight_total / vis.sample_weight_total;
-    for (size_t i = 0; i < num_prod_gpu; i++) {
-        gate.vis1[i] -= scl * vis.vis1[i];
+    for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+        gate.vis1[i] -= (int32_t)(scl * vis.vis1[i]);
     }
 
     // TODO: very strong assumption that the weights are one (when on) baked in
@@ -501,7 +500,8 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     // Copy the visibilities into place
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
-            cfloat t = !conj ? state.vis1[bi] : std::conj(state.vis1[bi]);
+            cfloat t =  {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+            t = !conj ? t : std::conj(t);
             output_frame.vis[pi] = iw * t;
         }
     );
@@ -551,7 +551,7 @@ visAccumulate::internalState::internalState(
     buf(out_buf),
     frame_id(buf),
     spec(std::move(gate_spec)),
-    vis1(nprod),
+    vis1(2 * nprod),
     vis2(nprod)
 {
 
