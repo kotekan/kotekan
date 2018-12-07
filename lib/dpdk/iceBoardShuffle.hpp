@@ -87,8 +87,10 @@ protected:
      *
      * @param lost_samples The number of lost samples to record
      * @todo This could be make slightly more efficent, see notes in code
+     * @return Returns false if the function encountered an exit condition,
+     *         returns true otherwise.
      */
-    void handle_lost_samples(int64_t lost_samples);
+    bool handle_lost_samples(int64_t lost_samples);
 
     /**
      * @brief Checks the FPGA shuffle flags in the footer.
@@ -224,7 +226,7 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf *mbuf) {
             // we want to start at the alignment point.
             // See align_first_packet for details.
             if (!advance_frames(last_seq, true))
-                return 0; // If for some reason we exit at this stange drop the packet
+                return -1; // Exit condition reached
         }
     } else {
         cur_seq = iceBoardHandler::get_mbuf_seq_num(mbuf);
@@ -248,7 +250,8 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf *mbuf) {
     // because we don't update the last_seq number value if the
     // packet isn't accepted for any reason.
     if (unlikely(diff > samples_per_packet))
-        iceBoardShuffle::handle_lost_samples(diff - samples_per_packet);
+        if (unlikely(!iceBoardShuffle::handle_lost_samples(diff - samples_per_packet)))
+            return -1; // Exit condition hit, don't copy packet below.
 
     // copy packet
     iceBoardShuffle::copy_packet_shuffle(mbuf);
@@ -306,7 +309,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     return true;
 }
 
-inline void iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
+inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
 
     // By design all the seq numbers for all frames should be the same here.
     int64_t lost_sample_location = last_seq + samples_per_packet
@@ -319,7 +322,9 @@ inline void iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         // same, which should be true in all cases, but should still be tested
         // elsewhere.
         if (unlikely(lost_sample_location * sample_size == out_bufs[0]->frame_size)) {
-            advance_frames(temp_seq);
+            // If advance_frames() returns false then we are in shutdown mode.
+            if (!advance_frames(temp_seq))
+                return false;
             lost_sample_location = 0;
         }
 
@@ -341,6 +346,7 @@ inline void iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         rx_lost_samples_total += 1;
         temp_seq += 1;
     }
+    return true;
 }
 
 inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf *mbuf) {
