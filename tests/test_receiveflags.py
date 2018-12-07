@@ -26,7 +26,10 @@ params = {
                       'start_time': time.time(),
                       'tag': "initial_test_flags" }
     },
-    'wait': True
+    'wait': True,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 start_time = time.time()

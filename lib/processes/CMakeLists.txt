@@ -26,7 +26,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
-              freqSlicer.cpp
+              freqSplit.cpp
+              freqSubset.cpp
               prodSubset.cpp
               countCheck.cpp
               visAccumulate.cpp
@@ -47,6 +48,7 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiRecord.cpp
               rfiBadInputFinder.cpp
               receiveFlags.cpp
+              valve.cpp
               visTransform.cpp
               visTestPattern.cpp
               visDebug.cpp

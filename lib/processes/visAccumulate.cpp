@@ -1,22 +1,37 @@
 #include "visAccumulate.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "fmt.hpp"
-#include "datasetManager.hpp"
-#include "configUpdater.hpp"
-#include "version.h"
 
 #include <time.h>
-#include <iomanip>
-#include <iostream>
-#include <vector>
 #include <algorithm>
-#include <stdexcept>
-#include <mutex>
+#include <atomic>
+#include <complex>
 #include <csignal>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iterator>
+#include <mutex>
+#include <numeric>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+
+#include "fmt.hpp"
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
+#include "chimeMetadata.h"
+#include "configUpdater.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "factory.hpp"
+#include "metadata.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 
 using namespace std::placeholders;
@@ -70,7 +85,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     // Get everything we need for registering dataset states
 
     // --> get metadata
-    _instrument_name = config.get_default<std::string>(
+    std::string instrument_name = config.get_default<std::string>(
                 unique_name, "instrument_name", "chime");
 
     std::vector<uint32_t> freq_ids;
@@ -88,43 +103,28 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
     // Create the frequency specification
     // TODO: CHIME specific
-    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
                    [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
                        return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                    });
 
     // The input specification from the config
-    _inputs = std::get<1>(input_reorder);
+    std::vector<input_ctype> inputs = std::get<1>(input_reorder);
 
-    size_t num_elements = _inputs.size();
+    size_t num_elements = inputs.size();
 
     // Create the product specification
-    _prods.reserve(num_elements * (num_elements+1) / 2);
+    std::vector<prod_ctype> prods;
+    prods.reserve(num_elements * (num_elements+1) / 2);
     for(uint16_t i = 0; i < num_elements; i++) {
         for(uint16_t j = i; j < num_elements; j++) {
-            _prods.push_back({i, j});
+            prods.push_back({i, j});
         }
     }
 
     // get dataset ID for out frames
-    uint32_t err_count = 0;
-    while (true) {
-        try {
-            _ds_id_out = change_dataset_state();
-        } catch (std::runtime_error& e) {
-            WARN("Failure in datasetManager: %s",
-                 e.what());
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_dataset_manager_dropped_frame_count",
-                unique_name, ++err_count);
-            // wait a second
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            WARN("Retrying...");
-
-            continue;
-        }
-        break;
-    }
+    _ds_id_out = change_dataset_state(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -217,31 +217,32 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
 visAccumulate::~visAccumulate() {}
 
-dset_id_t visAccumulate::change_dataset_state() {
-
+dset_id_t visAccumulate::change_dataset_state(
+        std::string& instrument_name,
+        std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+        std::vector<input_ctype>& inputs,
+        std::vector<prod_ctype>& prods) {
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
 
     // create all the states
-    state_uptr freq_state = std::make_unique<freqState>(_freqs);
+    state_uptr freq_state = std::make_unique<freqState>(freqs);
     state_uptr input_state = std::make_unique<inputState>(
-        _inputs, std::move(freq_state));
+                inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
-        _prods, std::move(input_state));
-    //empty stackState
-    state_uptr stack_state =
-            std::make_unique<stackState>(std::move(prod_state));
+                prods, std::move(input_state));
     state_uptr mstate = std::make_unique<metadataState>(weight_type,
-                                                        _instrument_name,
+                                                        instrument_name,
                                                         git_tag,
-                                                        std::move(stack_state));
+                                                        std::move(prod_state));
 
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
     state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+
     //register root dataset
-    return dm.add_dataset(dataset(mstate_id, 0, true));
+    return dm.add_dataset(mstate_id);
 }
 
 

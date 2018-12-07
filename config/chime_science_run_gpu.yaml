@@ -37,7 +37,6 @@ cpu_affinity: [2,3,8,9]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]
-use_dataset_manager: True
 
 dataset_manager:
   use_dataset_broker: True
@@ -132,6 +131,14 @@ gpu_n2_buffers:
   gpu_n2_output_buffer_2:
     kotekan_buffer: standard
   gpu_n2_output_buffer_3:
+    kotekan_buffer: standard
+  valve_buffer_0:
+    kotekan_buffer: standard
+  valve_buffer_1:
+    kotekan_buffer: standard
+  valve_buffer_2:
+    kotekan_buffer: standard
+  valve_buffer_3:
     kotekan_buffer: standard
 
 gpu_beamform_output_buffers:
@@ -838,7 +845,7 @@ pulsar:
 
 #### N2 GPU Post processing and Tx ####
 
-# Updateable config for gating
+# Updatable config for gating
 updatable_config:
   gating:
     psr0_config:
@@ -867,11 +874,29 @@ updatable_config:
                3.948826407949732e-35,
              ],]
 
+valve:
+  valve0:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_0
+    out_buf: valve_buffer_0
+  valve1:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_1
+    out_buf: valve_buffer_1
+  valve2:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_2
+    out_buf: valve_buffer_2
+  valve3:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_3
+    out_buf: valve_buffer_3
+
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   acc0:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_0
+    in_buf: valve_buffer_0
     out_buf: visbuf_5s_0
     gating:
       psr0:
@@ -881,7 +906,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_1
+    in_buf: valve_buffer_1
     out_buf: visbuf_5s_1
     gating:
       psr0:
@@ -891,7 +916,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_2
+    in_buf: valve_buffer_2
     out_buf: visbuf_5s_2
     gating:
       psr0:
@@ -901,7 +926,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_3
+    in_buf: valve_buffer_3
     out_buf: visbuf_5s_3
     gating:
       psr0:

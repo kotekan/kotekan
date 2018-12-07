@@ -7,18 +7,25 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include <vector>
-#include <cstdint>
-#include <fstream>
-#include <functional>
-#include <memory>
 #include <time.h>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
 #include "gateSpec.hpp"
 #include "visUtil.hpp"
-#include "datasetManager.hpp"
+
 
 /**
  * @class visAccumulate
@@ -27,10 +34,8 @@
  * This process will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
- * It tags the stream with a properly allocated dataset_id if
- * `use_dataset_manager` is `true` and adds associated datasetStates to the
- * datasetManager. It adds an empty stackState to the dataset (as in not
- * stacked).
+ * It tags the stream with a properly allocated dataset_id and adds associated
+ * datasetStates to the datasetManager.
  *
  * @par Buffers
  * @buffer in_buf
@@ -67,8 +72,6 @@
  * @metric  kotekan_vis_accumulate_skipped_frame_total
  *      The number of frames skipped entirely because they were under the
  *      low_sample_fraction.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
@@ -184,13 +187,11 @@ private:
     /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
-    dset_id_t change_dataset_state();
-
-    // data saved to register dataset states
-    std::string _instrument_name;
-    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
-    std::vector<input_ctype> _inputs;
-    std::vector<prod_ctype> _prods;
+    dset_id_t change_dataset_state(std::string& instrument_name,
+                                   std::vector<std::pair<uint32_t, freq_ctype>>&
+                                   freqs,
+                                   std::vector<input_ctype>& inputs,
+                                   std::vector<prod_ctype>& prods);
 };
 
 #endif

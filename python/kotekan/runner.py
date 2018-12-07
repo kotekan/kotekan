@@ -30,16 +30,19 @@ class KotekanRunner(object):
         Global configuration at the root level.
     rest_commands : list
         REST commands to run packed as `(request_type, endpoint, json_data)`.
+    debug: bool
+        Shows kotekan stdout and stderr before exit.
     """
 
     def __init__(self, buffers=None, processes=None, config=None,
-                 rest_commands=None):
+                 rest_commands=None, debug=False):
 
         self._buffers = buffers if buffers is not None else {}
         self._processes = processes if processes is not None else {}
         self._config = config if config is not None else {}
         self._rest_commands = (rest_commands if rest_commands is not None
                                else [])
+        self.debug = debug
 
     def run(self):
         """Run kotekan.
@@ -122,6 +125,9 @@ class KotekanRunner(object):
                         print("Failed sending REST command: " + rtype + " to " +
                               endpoint + " with data " + data)
 
+            while (self.debug and None == p.poll()):
+                time.sleep(10)
+                print(file(f_out.name).read())
 
             # Wait for kotekan to finish and capture the output
             p.wait()
@@ -268,8 +274,6 @@ class VisWriterBuffer(OutputBuffer):
         Temporary directory to output to. The dumped files are not removed.
     file_type : string
         File type to write into (see visWriter documentation)
-    freq_ids : Array of Int.
-        Frequency IDs
     in_buf : string
         Optionally specify the name of an input buffer instead of creating one.
     """
@@ -278,7 +282,7 @@ class VisWriterBuffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir, file_type, freq_ids, in_buf=None, extra_config=None):
+    def __init__(self, output_dir, file_type, in_buf=None, extra_config=None):
 
         self.name = 'viswriter_buf%i' % self._buf_ind
         process_name = 'write%i' % self._buf_ind
@@ -307,9 +311,9 @@ class VisWriterBuffer(OutputBuffer):
             'root_path': output_dir,
             'write_ev': True,
             'node_mode': False,
-            'freq_ids': freq_ids,
         }
-        process_config.update(extra_config);
+        if extra_config is not None:
+            process_config.update(extra_config);
 
         self.process_block = {process_name: process_config}
 

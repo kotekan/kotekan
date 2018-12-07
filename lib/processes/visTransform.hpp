@@ -10,6 +10,8 @@
 #include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
 #include "buffer.h"
+#include "datasetManager.hpp"
+#include "visUtil.hpp"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -53,8 +55,8 @@ public:
 
     // Default constructor
     visTransform(Config &config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+                 const std::string& unique_name,
+                 bufferContainer &buffer_container);
 
     // Main loop for the process
     void main_thread() override;
@@ -70,6 +72,19 @@ private:
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
+
+    // dataset ID written to output frames
+    dset_id_t _ds_id_out;
+
+    /// Sets the metadataState with a hardcoded weight type ("none"),
+    /// prodState, inputState and freqState according to config
+    dset_id_t change_dataset_state();
+
+    // data saved to register dataset states
+    std::string _instrument_name;
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<input_ctype> _inputs;
+    std::vector<prod_ctype> _prods;
 
 };
 
