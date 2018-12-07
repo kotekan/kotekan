@@ -194,7 +194,7 @@ private:
  *                              Infinite retries are performed by the
  *                              datasetManager. Default 0.
  * @conf timeout_rest_client_s  Int. Timeout value passed to libevent. -1 will
- *                              use libevent default value (50s). Default -1.
+ *                              use libevent default value (50s). Default 100.
  *
  * @par metrics
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
@@ -312,7 +312,8 @@ private:
         _timestamp_update(json(0)),
         _stop_request_threads(false),
         _n_request_threads(0),
-        _config_applied(false) {}
+        _config_applied(false),
+        _rest_client(restClient::instance()) {}
 
     /// Generate a private static instance so that the overloaded instance()
     /// members can use the same static variable
@@ -468,6 +469,9 @@ private:
     uint32_t _retry_wait_time_ms;
     uint32_t _retries_rest_client;
     int32_t _timeout_rest_client_s;
+
+    /// a reference to the restClient instance
+    restClient& _rest_client;
 };
 
 
@@ -636,7 +640,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
     _requested_states.insert(state_id);
     json js_request;
     js_request["id"] = state_id;
-    restReply reply = restClient::instance().make_request_blocking(
+    restReply reply = _rest_client.make_request_blocking(
                 PATH_REQUEST_STATE, js_request,
                 _ds_broker_host, _ds_broker_port);
     if (!reply.first) {

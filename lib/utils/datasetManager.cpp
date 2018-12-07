@@ -118,7 +118,7 @@ datasetManager& datasetManager::instance(Config& config) {
         dm._retries_rest_client = config.get_default<uint32_t>(
                     DS_UNIQUE_NAME, "retries_rest_client", 0);
         dm._timeout_rest_client_s = config.get_default<int32_t>(
-                    DS_UNIQUE_NAME, "timeout_rest_client", -1);
+                    DS_UNIQUE_NAME, "timeout_rest_client", 100);
 
         DEBUG("datasetManager: expecting broker at %s:%d.",
               dm._ds_broker_host.c_str(), dm._ds_broker_port);
@@ -247,11 +247,10 @@ void datasetManager::request_thread(
         const json&& request, const std::string&& endpoint,
         const std::function<bool(std::string&)>&& parse_reply) {
 
-    restClient& rest_client = restClient::instance();
     restReply reply;
 
     while (true) {
-        reply = rest_client.make_request_blocking(
+        reply = _rest_client.make_request_blocking(
                     endpoint, request, _ds_broker_host, _ds_broker_port,
                     _retries_rest_client, _timeout_rest_client_s);
 
@@ -514,7 +513,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
         js_rqst["ds_id"] = ds_id;
         js_rqst["roots"] = _known_roots;
 
-        restReply reply = restClient::instance().make_request_blocking(
+        restReply reply = _rest_client.make_request_blocking(
                     PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                     _ds_broker_port, _retries_rest_client,
                     _timeout_rest_client_s);
@@ -522,7 +521,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
         while (!parse_reply_dataset_update(reply)) {
             std::this_thread::sleep_for(
                         std::chrono::milliseconds(_retry_wait_time_ms));
-            reply = restClient::instance().make_request_blocking(
+            reply = _rest_client.make_request_blocking(
                         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                         _ds_broker_port, _retries_rest_client,
                         _timeout_rest_client_s);
