@@ -96,8 +96,8 @@ protected:
     HighFive::DataSet dset(const std::string& name);
     size_t length(const std::string& axis_name);
 
-    // Whether to write eigenvalues or not
-    bool write_ev;
+    // Number of eigenvalues
+    size_t num_ev;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;

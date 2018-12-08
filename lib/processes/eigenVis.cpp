@@ -54,7 +54,7 @@ void eigenVis::main_thread() {
     uint32_t num_elements;
     bool initialized = false;
     size_t lapack_failure_total = 0;
-    dset_id_t _output_dset_id;
+    dset_id_t _output_dset_id = 0;
 
     // Memory for LAPACK interface.
     std::vector<cfloat> vis_square;

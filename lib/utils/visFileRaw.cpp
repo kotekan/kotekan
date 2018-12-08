@@ -56,12 +56,11 @@ void visFileRaw::create_file(
     const freqState* fstate = fstate_fut.get();
     const eigenvalueState* evstate = evstate_fut.get();
 
-    if (!istate || !pstate || !fstate || !evstate) {
+    if (!istate || !pstate || !fstate) {
         ERROR("Required datasetState not found for dataset ID " \
               "0x%" PRIx64 "\nThe following required states were found:\n" \
-              "inputState - %d\nprodState - %d\nfreqState - %d\n" \
-              "eigenvalueState - %d",
-              dataset, istate, pstate, fstate, evstate);
+              "inputState - %d\nprodState - %d\nfreqState - %d\n",
+              dataset, istate, pstate, fstate);
         throw std::runtime_error("Could not create file.");
     }
 
@@ -72,8 +71,13 @@ void visFileRaw::create_file(
     file_metadata["index_map"]["prod"] = pstate->get_prods();
 
     // Create and add eigenvalue index
-    file_metadata["index_map"]["ev"] = evstate->get_ev();
-    num_ev = evstate->get_num_ev();
+    if (evstate) {
+        file_metadata["index_map"]["ev"] = evstate->get_ev();
+        num_ev = evstate->get_num_ev();
+    }
+    else {
+        num_ev = 0;
+    }
 
     if (sstate) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
@@ -227,10 +231,10 @@ void visFileRaw::write_sample(
     uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
 )
 {
-
+    // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
         std::string msg = fmt::format(
-            "Number of eigenvalues don't match (got {}, expected {})",
+            "Number of eigenvalues don't match for write (got {}, expected {})",
             frame.num_ev, num_ev
         );
         throw std::runtime_error(msg);
