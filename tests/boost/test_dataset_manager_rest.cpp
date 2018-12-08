@@ -136,7 +136,7 @@ struct TestContext {
 
         reply["result"] = "success";
         con.send_json_reply(reply);
-        DEBUG("test: /request-ancestors: replied with %s", reply.dump().c_str());
+        DEBUG("test: /register-dataset: replied with %s", reply.dump().c_str());
     }
 };
 

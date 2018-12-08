@@ -300,7 +300,7 @@ bool restClient::make_request(std::string path,
         }
 
         evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)datalen);
-        evhttp_add_header(output_headers, "Content-Length", buf);
+        ret = evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
             WARN("restClient: Failure adding \"Content-Length\" header.");
             evhttp_connection_free(evcon);
@@ -360,8 +360,9 @@ restReply restClient::make_request_blocking(std::string path,
             + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
     while (!cv_reply.wait_until(lck_reply, time_point,
                               [&](){return reply_copied;})) {
-            ERROR("restClient: Timeout in make_request_blocking. This might " \
-                  "leave the restClient in an abnormal state. Exiting...");
+            ERROR("restClient: Timeout in make_request_blocking " \
+                  "(%s:%d/%s). This might leave the restClient in an abnormal "\
+                  "state. Exiting...", host.c_str(), port, path.c_str());
             raise(SIGINT);
             return reply;
     }

@@ -154,6 +154,7 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
 dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
     datasetState* t = nullptr;
     try {
+        std::lock_guard<std::mutex> slck(_lock_states);
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling process...

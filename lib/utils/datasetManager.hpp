@@ -460,7 +460,7 @@ private:
     uint64_t _n_request_threads;
 
     /// Check if config loaded for this singleton before handing out instances
-    bool _config_applied;
+    std::atomic<bool> _config_applied;
 
     /// config params
     bool _use_broker = false;
