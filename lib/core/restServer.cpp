@@ -261,7 +261,7 @@ int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
 
     try {
         json_parse = json::parse(message);
-    } catch (std::exception ex) {
+    } catch (const std::exception& ex) {
         string error_message = string("Error Message: JSON failed to parse, error: ") + string(ex.what());
         ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP message was: %s", ex.what(), message.c_str());
         evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), error_message.c_str());

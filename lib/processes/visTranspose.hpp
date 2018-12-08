@@ -140,7 +140,9 @@ private:
 
 template<typename T>
 inline void strided_copy(T* in, T* out, size_t offset, size_t stride, size_t n_val) {
+#ifdef _OPENMP
     #pragma omp parallel for
+#endif
     for (size_t i = 0; i < n_val; i++) {
         out[offset + i * stride] = in[i];
     }
