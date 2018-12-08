@@ -1,12 +1,9 @@
 import pytest
-import numpy as np
 import os.path
 import time
 from subprocess import Popen
 from subprocess import call
 import signal
-
-import kotekan_runner
 
 producer_path = "./boost/dataset-broker/dataset_broker_producer"
 producer2_path = "./boost/dataset-broker/dataset_broker_producer2"
