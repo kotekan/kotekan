@@ -42,7 +42,7 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 void visFileH5::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id_t dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t max_time)
 {
     auto& dm = datasetManager::instance();
 
@@ -54,18 +54,25 @@ void visFileH5::create_file(
                                  dataset);
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
                                  &dm, dataset);
+    auto evstate_fut = std::async(
+        &datasetManager::dataset_state<eigenvalueState>, &dm, dataset
+    );
+
     const stackState* sstate = sstate_fut.get();
     const inputState* istate = istate_fut.get();
     const prodState* pstate = pstate_fut.get();
     const freqState* fstate = fstate_fut.get();
+    const eigenvalueState* evstate = evstate_fut.get();
 
-    if (!istate || !pstate || !fstate) {
+    if (!istate || !pstate || !fstate || !evstate) {
         ERROR("Required datasetState not found for dataset ID " \
               "0x%" PRIx64 "\nThe following required states were found:\n" \
-              "inputState - %d\nprodState - %d\nfreqState - %d",
-              dataset, istate, pstate, fstate);
+              "inputState - %d\nprodState - %d\nfreqState - %d\n" \
+              "eigenvalueState - %d",
+              dataset, istate, pstate, fstate, evstate);
         throw std::runtime_error("Could not create file.");
     }
+
 
     if(sstate) {
         throw std::runtime_error("H5 writers do not currently worked with "
@@ -77,6 +84,7 @@ void visFileH5::create_file(
     lock_filename = create_lockfile(data_filename);
 
     // Determine whether to write the eigensector or not...
+    size_t num_ev = evstate->get_num_ev();
     write_ev = (num_ev > 0);
 
     INFO("Creating new output file %s", name.c_str());
@@ -285,9 +293,9 @@ void visFileH5::write_sample(
 void visFileH5Fast::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id_t dataset, size_t num_ev, size_t max_time
+    dset_id_t dataset, size_t max_time
 ) {
-    visFileH5::create_file(name, metadata, dataset, num_ev, max_time);
+    visFileH5::create_file(name, metadata, dataset, max_time);
     setup_raw();
 }
 

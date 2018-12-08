@@ -173,8 +173,10 @@ void fakeVis::main_thread() {
             for (uint16_t j = i; j < num_elements; j++)
                 pspec.push_back({i, j});
         auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+        auto evstate = std::make_unique<eigenvalueState>(num_eigenvectors,
+                                                         std::move(pstate));
 
-        auto s = dm.add_state(std::move(pstate));
+        auto s = dm.add_state(std::move(evstate));
 
         // Register a root state
         ds_id = dm.add_dataset(s.first);

@@ -214,13 +214,14 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
 }
 
-visAccumulate::~visAccumulate() {}
 
 dset_id_t visAccumulate::change_dataset_state(
-        std::string& instrument_name,
-        std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
-        std::vector<input_ctype>& inputs,
-        std::vector<prod_ctype>& prods) {
+    std::string& instrument_name,
+    std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+    std::vector<input_ctype>& inputs,
+    std::vector<prod_ctype>& prods
+)
+{
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
@@ -231,10 +232,11 @@ dset_id_t visAccumulate::change_dataset_state(
                 inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
                 prods, std::move(input_state));
-    state_uptr mstate = std::make_unique<metadataState>(weight_type,
-                                                        instrument_name,
-                                                        git_tag,
-                                                        std::move(prod_state));
+    state_uptr ev_state = std::make_unique<eigenvalueState>(
+                0, std::move(prod_state));
+    state_uptr mstate = std::make_unique<metadataState>(
+                weight_type, instrument_name, git_tag, std::move(ev_state)
+    );
 
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();

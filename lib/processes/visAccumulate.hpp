@@ -79,7 +79,7 @@ public:
     visAccumulate(Config& config,
                   const string& unique_name,
                   bufferContainer &buffer_container);
-    ~visAccumulate();
+    ~visAccumulate() = default;
     void main_thread() override;
 
 private:

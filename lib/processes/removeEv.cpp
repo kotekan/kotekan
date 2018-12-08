@@ -2,6 +2,7 @@
 #include "visBuffer.hpp"
 #include "errors.h"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 
 REGISTER_KOTEKAN_PROCESS(removeEv);
@@ -15,12 +16,27 @@ removeEv::removeEv(Config& config,
     register_consumer(in_buf, unique_name.c_str());
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
+
+    // Create the state describing the eigenvalues
+    auto& dm = datasetManager::instance();
+    state_uptr ev_state = std::make_unique<eigenvalueState>(0);
+    ev_state_id = dm.add_state(std::move(ev_state)).first;
 }
+
+
+dset_id_t removeEv::change_dataset_state(dset_id_t input_dset_id)
+{
+    auto& dm = datasetManager::instance();
+    return dm.add_dataset(input_dset_id, ev_state_id);
+}
+
 
 void removeEv::main_thread() {
 
     frameID in_frame_id(in_buf);
     frameID out_frame_id(out_buf);
+
+    dset_id_t _output_dset_id;
 
     while (!stop_thread) {
 
@@ -42,12 +58,19 @@ void removeEv::main_thread() {
             input_frame.num_elements, input_frame.num_prod, 0
         );
 
+        // check if the input dataset has changed
+        if (input_dset_id != input_frame.dataset_id) {
+            input_dset_id = input_frame.dataset_id;
+            _output_dset_id = change_dataset_state(input_dset_id);
+        }
+
         // Copy over metadata and data, but skip all ev members which may not be
         // defined
         output_frame.copy_metadata(input_frame);
         output_frame.copy_data(
             input_frame, {visField::eval, visField::evec, visField::erms}
         );
+        output_frame.dataset_id = _output_dset_id;
 
         // Finish up iteration.
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
