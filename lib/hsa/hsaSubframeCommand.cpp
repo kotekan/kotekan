@@ -11,7 +11,7 @@ hsaSubframeCommand::hsaSubframeCommand(
 
     _sub_frame_index = config.get_default<uint32_t>(unique_name, "sub_frame_index", 0);
     _num_sub_frames = config.get_default<uint32_t>(unique_name, "num_sub_frames", 1);
-    uint32_t samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set")
+    uint32_t samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _sub_frame_samples = samples_per_data_set / _num_sub_frames;
 
     if (_sub_frame_index >= _num_sub_frames) {
