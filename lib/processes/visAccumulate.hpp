@@ -126,7 +126,7 @@ private:
         std::mutex state_mtx;
 
         /// Accumulation vectors
-        std::vector<cfloat> vis1;
+        std::vector<int32_t> vis1;
         std::vector<float> vis2;
 
         friend visAccumulate;
