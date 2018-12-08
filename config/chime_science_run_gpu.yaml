@@ -913,7 +913,7 @@ updatable_config:
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
-  # This (12288) is for sub_frame_samples = 4, there is currently a config bug that
+  # This (12288) is for num_sub_frames = 4, there is currently a config bug that
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
   acc0:
