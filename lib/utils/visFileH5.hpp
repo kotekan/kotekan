@@ -157,7 +157,7 @@ public:
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind);
+    void deactivate_time(uint32_t time_ind) override;
 
 protected:
 
