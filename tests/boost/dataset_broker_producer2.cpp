@@ -13,7 +13,9 @@
 #include "datasetManager.hpp"
 
 // dataset id from producer
-#define DSET_ID 11310702431614462890UL
+// TODO: pass this here via a file instead
+#define DSET_ID 12068105840200711747UL
+#define SECOND_ROOT 1355729954233464875UL
 
 using json = nlohmann::json;
 
@@ -24,12 +26,13 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
     __enable_syslog = 0;
 
     json json_config;
-    json_config["use_dataset_broker"] = true;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = true;
+    json_config["dataset_manager"] = json_config_dm;
 
-    datasetManager& dm = datasetManager::instance();
     Config conf;
     conf.update_config(json_config);
-    dm.apply_config(conf);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // reproduce states:
     std::vector<input_ctype> old_inputs = {input_ctype(1, "1"),
@@ -57,13 +60,12 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
     std::vector<std::pair<uint32_t, freq_ctype>> new_freqs = {{1, {1.1, 1}},
                                                               {3, {3, 3}}};
 
-
     // add new input state and new freq state
     std::pair<state_id_t, const inputState*> new_input_state =
             dm.add_state(std::make_unique<inputState>
                          (new_inputs, std::make_unique<freqState>(new_freqs)));
 
-    dm.add_dataset(dataset(new_input_state.first, DSET_ID));
+    dm.add_dataset(DSET_ID, new_input_state.first);
 
     std::cout << dm.summary() << std::endl;
 
@@ -76,5 +78,5 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, CompareCTypes ) {
                      std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(700000);
+    usleep(2000000);
 }

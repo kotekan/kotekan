@@ -19,4 +19,5 @@ add_library ( kotekan_testing
               test_data_generation.c
               pulsarSimProcess.cpp
               visNoise.cpp
+              visDrop.cpp
               )

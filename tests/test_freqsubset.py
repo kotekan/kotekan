@@ -16,7 +16,9 @@ params = {
     'buffer_depth': 5,
     'freq_ids': range(50),
     'subset_list': [0, 12, 34, 35],
-    'use_dataset_manager': True
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")
@@ -28,7 +30,6 @@ def vis_data(tmpdir_factory):
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
-        use_dataset_manager=True,
         wait=False
     )
 
@@ -55,13 +56,11 @@ def write_data(tmpdir_factory):
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
-        use_dataset_manager=True,
         wait=False
     )
 
     write_buffer = runner.VisWriterBuffer(
-            str(tmpdir), 'raw', params['subset_list'],
-            extra_config={'use_dataset_manager': True})
+            str(tmpdir), 'raw')
 
     test = runner.KotekanProcessTester(
         'freqSubset', {},

@@ -17,7 +17,9 @@ params = {
     'buffer_depth': 5,
     'tolerance': 0.001,
     'report_freq': 60,
-    'log_level': 'DEBUG'
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")

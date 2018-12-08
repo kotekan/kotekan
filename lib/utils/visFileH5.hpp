@@ -7,16 +7,23 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
-#include <iostream>
+#include <stddef.h>
+#include <sys/types.h>
 #include <cstdint>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
 
+#include "Config.hpp"
+#include "datasetManager.hpp"
 #include "visBuffer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
-#include "errors.h"
 
 /** @brief A CHIME correlator file.
  *
