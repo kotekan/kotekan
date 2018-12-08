@@ -15,7 +15,8 @@ def test_produce_consume():
       not os.path.isfile(consumer_path) or \
       not os.path.isfile(producer2_path) or \
       not os.path.isfile(broker_path):
-        print "Deactivated! Build with -DBOOST_TESTS=ON to activate this test."
+        print("Deactivated! Build with -DBOOST_TESTS=ON to activate this test")
+        print("and make sure the dataset_broker is at", broker_path)
         return
 
     broker = Popen([broker_path])
