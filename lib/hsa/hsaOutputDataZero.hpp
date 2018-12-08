@@ -1,9 +1,9 @@
 #ifndef HSA_OUTPUT_DATA_ZERO_H
 #define HSA_OUTPUT_DATA_ZERO_H
 
-#include "hsaCorrelatorSubframeCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-class hsaOutputDataZero: public hsaCorrelatorSubframeCommand
+class hsaOutputDataZero: public hsaSubframeCommand
 {
 public:
 

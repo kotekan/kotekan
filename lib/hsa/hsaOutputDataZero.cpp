@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
 hsaOutputDataZero::hsaOutputDataZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCorrelatorSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputDataZero","") {
+    hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputDataZero","") {
     command_type = gpuCommandType::COPY_IN;
 
     int block_size = config.get<int>(unique_name, "block_size");

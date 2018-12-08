@@ -3,9 +3,9 @@
 
 #include <string>
 
-#include "hsaCorrelatorSubframeCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-class hsaOutputData: public hsaCorrelatorSubframeCommand
+class hsaOutputData: public hsaSubframeCommand
 {
 public:
 

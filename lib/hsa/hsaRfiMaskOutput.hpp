@@ -6,7 +6,7 @@
 #ifndef HSA_RFI_MASK_OUTPUT_H
 #define HSA_RFI_MASK_OUTPUT_H
 
-#include "hsaCorrelatorSubframeCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
 /*
  * @class hsaRfiMaskOutput
@@ -27,7 +27,7 @@
  *
  * @author Jacob Taylor
  */
-class hsaRfiMaskOutput: public hsaCorrelatorSubframeCommand
+class hsaRfiMaskOutput: public hsaSubframeCommand
 {
 public:
     ///Constructor

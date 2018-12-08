@@ -6,7 +6,7 @@ REGISTER_HSA_COMMAND(hsaOutputData);
 
 hsaOutputData::hsaOutputData(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCorrelatorSubframeCommand(config, unique_name,
+    hsaSubframeCommand(config, unique_name,
                                  host_buffers, device, "hsaOutputData",""){
     command_type = gpuCommandType::COPY_OUT;
 

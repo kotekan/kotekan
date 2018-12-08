@@ -1,9 +1,9 @@
 #ifndef HSA_PRESUM_KERNEL_H
 #define HSA_PRESUM_KERNEL_H
 
-#include "hsaCorrelatorSubframeCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-class hsaPresumKernel: public hsaCorrelatorSubframeCommand
+class hsaPresumKernel: public hsaSubframeCommand
 {
 public:
 

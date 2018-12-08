@@ -14,7 +14,7 @@ add_library ( kotekan_hsa
               hsaCommand.cpp
               hsaDeviceInterface.cpp
               hsaProcess.cpp
-              hsaCorrelatorSubframeCommand.cpp
+              hsaSubframeCommand.cpp
 
 # Copy-in & general-purpose:
               hsaInputData.cpp

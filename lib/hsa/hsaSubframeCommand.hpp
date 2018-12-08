@@ -3,7 +3,7 @@
 
 #include "hsaCommand.hpp"
 
-class hsaCorrelatorSubframeCommand: public hsaCommand
+class hsaSubframeCommand: public hsaCommand
 {
 public:
     /**
@@ -11,11 +11,11 @@ public:
      *        values from the config and possibly other common
      *        variables.
      */
-    hsaCorrelatorSubframeCommand(Config &config, const string &unique_name,
+    hsaSubframeCommand(Config &config, const string &unique_name,
                bufferContainer &host_buffers, hsaDeviceInterface &device,
                const string &default_kernel_command="",
                const string &default_kernel_file_name="");
-    virtual ~hsaCorrelatorSubframeCommand() = default;
+    virtual ~hsaSubframeCommand() = default;
 
 protected:
     uint32_t _sub_frame_samples;

@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaPresumZero);
 
 hsaPresumZero::hsaPresumZero(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCorrelatorSubframeCommand(config, unique_name, host_buffers, device, "hsaPresumZero","") {
+    hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaPresumZero","") {
     command_type = gpuCommandType::COPY_IN;
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
