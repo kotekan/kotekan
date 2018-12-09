@@ -65,7 +65,7 @@ public:
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind) {
+    virtual void deactivate_time(uint32_t time_ind) {
         (void)time_ind;
         DEBUG("visFile::deactivate_time: called but not implemented.");
     };
