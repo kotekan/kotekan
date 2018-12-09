@@ -389,12 +389,34 @@ public:
         _ev(ev) {};
 
     /**
+     * @brief Constructor
+     * @param num_ev The number of eigenvalues. The indices will end up
+     *               running from 0 to num_ev - 1
+     * @param inner An inner state (optional).
+     */
+    eigenvalueState(size_t num_ev, state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+        _ev(num_ev)
+    {
+        std::iota(_ev.begin(), _ev.end(), 0);
+    }
+
+    /**
      * @brief Get eigenvalues (read only).
      *
      * @return The eigenvalues.
      */
     const std::vector<uint32_t>& get_ev() const {
         return _ev;
+    }
+
+    /**
+     * @brief Get the number of eigenvalues
+     *
+     * @return The number of eigenvalues.
+     */
+    size_t get_num_ev() const {
+        return _ev.size();
     }
 
 private:

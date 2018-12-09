@@ -90,6 +90,8 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     //Get current time and format it
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
+
+    // TODO: switch to using fmt
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
     snprintf(time_dir, sizeof(time_dir), "%s_rfi", data_time);
     //Call to utils to that actually makes the directories

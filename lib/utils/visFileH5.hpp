@@ -69,7 +69,7 @@ protected:
     // Implement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t num_ev, size_t max_time) override;
+                     dset_id_t dataset, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     virtual void create_time_axis(size_t num_time);
@@ -96,8 +96,8 @@ protected:
     HighFive::DataSet dset(const std::string& name);
     size_t length(const std::string& axis_name);
 
-    // Whether to write eigenvalues or not
-    bool write_ev;
+    // Number of eigenvalues
+    size_t num_ev;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;
@@ -164,7 +164,7 @@ protected:
     // Reimplement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t num_ev, size_t max_time) override;
+                     dset_id_t dataset, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     void create_time_axis(size_t num_time) override;

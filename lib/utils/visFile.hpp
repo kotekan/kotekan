@@ -105,15 +105,13 @@ protected:
      *  @param name     Name of the file to write
      *  @param metadata Textual metadata to write into the file.
      *  @param dataset  ID of dataset we are writing.
-     *  @param num_ev   Number of eigenvectors to write (0 turns off the
-     *                  datasets entirely).
      *  @param max_time Maximum number of times to write into the file.
      **/
     // TODO: decide if the num_ev can be eliminated.
     virtual void create_file(
         const std::string& name,
         const std::map<std::string, std::string>& metadata,
-        dset_id_t dataset, size_t num_ev, size_t max_time) = 0;
+        dset_id_t dataset, size_t max_time) = 0;
 
     // Private constructor to discourage creation of subclasses outside of the
     // create routine

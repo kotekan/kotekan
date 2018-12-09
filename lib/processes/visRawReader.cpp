@@ -284,17 +284,16 @@ void visRawReader::main_thread() {
                 num_elements = _inputs.size();
             // Fill data with zeros
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto visFrame = visFrameView(out_buf, frame_id, _inputs.size(),
-                    num_vis, _ev.size());
-            std::memset(visFrame.vis.data(), 0, sizeof(cfloat) * visFrame.num_prod);
-            std::memset(visFrame.weight.data(), 0, sizeof(float) * visFrame.num_prod);
-            std::memset(visFrame.eval.data(), 0, sizeof(float) * visFrame.num_ev);
-            std::memset(visFrame.evec.data(), 0, sizeof(cfloat) * visFrame.num_ev
-                    * visFrame.num_elements);
-            std::memset(visFrame.gain.data(), 0, sizeof(cfloat) * visFrame.num_elements);
-            std::memset(visFrame.flags.data(), 0, sizeof(float) * visFrame.num_elements);
-            visFrame.freq_id = 0;
-            visFrame.erms = 0;
+            auto frame = visFrameView(out_buf, frame_id, _inputs.size(),
+                                      num_vis, _ev.size());
+            std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
+            std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
+            std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
+            std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
+            std::fill(frame.gain.begin(), frame.gain.end(), 0.0);
+            std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
+            frame.freq_id = 0;
+            frame.erms = 0;
 			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
         }
 

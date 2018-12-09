@@ -49,30 +49,27 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   node_mode            Bool (default: false). Run in ``node_mode`` or
- *                              not.
- * @conf   file_type            String. Type of file to write. One of 'hdf5',
- *                              'hdf5fast' or 'raw'.
- * @conf   root_path            String. Location in filesystem to write to.
- * @conf   instrument_name      String (default: chime). Name of the instrument
- *                              acquiring data (if ``node_mode`` the hostname is
- *                              used instead)
- * @conf   input_reorder        Array of [int, int, string]. A description of
- *                              the inputs. Only the last two elements of each
- *                              sub-array are used and are expected to be @c
- *                              channel_id and @c channel_serial (the first
- *                              contains the @c adc_id used for reordering in
- *                              ``visTransform``)
- *  @conf   weights_type        Indicate what the visibility weights represent,
- *                              e.g, 'inverse_var'. Will saved as an attribute
- *                              in the saved file. (default 'unknown')
- * @conf   write_ev             Bool (default: false). Write out the
- *                              eigenvalues/vectors.
- * @conf   num_ev               Int. Only needed if `write_ev` is true.
- * @conf   file_length          Int (default 1024). Maximum number of samples to
- *                              write into a file.
- * @conf   window               Int (default 20). Number of samples to keep
- *                              active for writing at any time.
+ * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
+ * @conf   file_type        String. Type of file to write. One of 'hdf5',
+ *                          'hdf5fast' or 'raw'.
+ * @conf   root_path        String. Location in filesystem to write to.
+ * @conf   instrument_name  String (default: chime). Name of the instrument
+ *                          acquiring data (if ``node_mode`` the hostname is
+ *                          used instead)
+ * @conf   freq_ids         Array of ints. The ids of the frequencies to write
+ *                          out (only needed when not in @c node_mode).
+ * @conf   input_reorder    Array of [int, int, string]. A description of the
+ *                          inputs. Only the last two elements of each sub-array
+ *                          are used and are expected to be @c channel_id and
+ *                          @c channel_serial (the first contains the @c adc_id
+ *                          used for reordering om ``visTransform``)
+ * @conf   weights_type     Indicate what the visibility weights represent, e.g,
+ *                          'inverse_var'. Will saved as an attribute in the saved
+ *                          file. (default 'unknown')
+ * @conf   file_length      Int (default 1024). Maximum number of samples to
+ *                          write into a file.
+ * @conf   window           Int (default 20). Number of samples to keep active
+ *                          for writing at any time.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
@@ -184,32 +181,27 @@ private:
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   root_path            String. Location in filesystem to write to.
- * @conf   file_base            String. Base filename to buffer data in (omit
- *                              ext).
- * @conf   dir_name             String. Name of directory to hold the above
- *                              files.
- * @conf   node_mode            Bool (default: false). Run in ``node_mode`` or
- *                              not.
- * @conf   instrument_name      String (default: chime). Name of the instrument
- *                              acquiring data (if ``node_mode`` the hostname is
- *                              used instead)
- * @conf   input_reorder        Array of [int, int, string]. A description of
- *                              the inputs. Only the last two elements of each
- *                              sub-array are used and are expected to be @c
- *                              channel_id and @c channel_serial (the first
- *                              contains the @c adc_id used for reordering in
- *                              ``visTransform``)
- * @conf   weights_type         Indicate what the visibility weights represent,
- *                              e.g, 'inverse_var'. Will saved as an attribute
- *                              in the saved file. (default 'unknown')
- * @conf   write_ev             Bool (default: false). Write out the
- *                              eigenvalues/vectors.
- * @conf   num_ev               Int. Only needed if `write_ev` is true.
- * @conf   file_length          Int (default 1024). Fixed length of the ring
- *                              file in number of time samples.
- * @conf   window               Int (default 10). Number of samples to keep
- *                              active for writing at any time.
+ * @conf   root_path        String. Location in filesystem to write to.
+ * @conf   file_base        String. Base filename to buffer data in (omit ext).
+ * @conf   dir_name         String. Name of directory to hold the above files.
+ * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
+ * @conf   instrument_name  String (default: chime). Name of the instrument
+ *                          acquiring data (if ``node_mode`` the hostname is
+ *                          used instead)
+ * @conf   freq_ids         Array of ints. The ids of the frequencies to write
+ *                          out (only needed when not in @c node_mode).
+ * @conf   input_reorder    Array of [int, int, string]. A description of the
+ *                          inputs. Only the last two elements of each sub-array
+ *                          are used and are expected to be @c channel_id and
+ *                          @c channel_serial (the first contains the @c adc_id
+ *                          used for reordering om ``visTransform``)
+ * @conf   weights_type     Indicate what the visibility weights represent, e.g,
+ *                          'inverse_var'. Will saved as an attribute in the saved
+ *                          file. (default 'unknown')
+ * @conf   file_length      Int (default 1024). Fixed length of the ring file
+ *                          in number of time samples.
+ * @conf   window           Int (default 10). Number of samples to keep active
+ *                          for writing at any time.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds

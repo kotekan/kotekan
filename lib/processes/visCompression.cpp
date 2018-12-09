@@ -199,8 +199,8 @@ void baselineCompression::compress_thread(int thread_id) {
                                          input_frame.num_ev);
 
         // Copy over the data we won't modify
-        output_frame.copy_nonconst_metadata(input_frame);
-        output_frame.copy_nonvis_buffer(input_frame);
+        output_frame.copy_metadata(input_frame);
+        output_frame.copy_data(input_frame, {visField::vis});
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame

@@ -52,10 +52,6 @@ visWriter::visWriter(Config& config,
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
 
-    // Write the eigen values out? Communicated to visFile by num_ev > 0
-    bool write_ev = config.get_default<bool>(unique_name, "write_ev", false);
-    num_ev = write_ev ? config.get<size_t>(unique_name, "num_ev") : 0;
-
     // TODO: get this from the datasetManager and put data type somewhere else
     instrument_name = config.get_default<std::string>(
                 unique_name, "instrument_name", "chime");
@@ -72,7 +68,7 @@ visWriter::visWriter(Config& config,
 
 void visWriter::main_thread() {
 
-    unsigned int frame_id = 0;
+    frameID frame_id(in_buf);
 
     // Wait for the first frame to get the dataset ID
     if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
@@ -112,17 +108,6 @@ void visWriter::main_thread() {
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        // Check the number of eigen vectors is as expected
-        if (num_ev > 0  and frame.num_ev != num_ev) {
-
-            string msg = fmt::format(
-                "Number of eigenvectors in frame doesn't match file ({} != {}).",
-                frame.num_ev, num_ev
-            );
-            ERROR(msg.c_str());
-            raise(SIGINT);
-            return;
-        }
 
         // Are we waiting for datasetStates? We need the states now...wait here.
         if (init_fut.valid()) {
@@ -188,11 +173,7 @@ void visWriter::main_thread() {
         }
 
         // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-
-        // Advance the current frame ids
-        frame_id = (frame_id + 1) % in_buf->num_frames;
-
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
     }
 }
 
@@ -289,7 +270,7 @@ void visWriter::init_acq() {
 void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::make_unique<visFileBundle>(
         file_type, root_path, instrument_name, metadata, chunk_id,
-        rollover, window, ds_id, num_ev, file_length
+        rollover, window, ds_id, file_length
     );
 }
 
@@ -322,7 +303,7 @@ visCalWriter::visCalWriter(Config &config,
 
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
-     if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
+    if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
         || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
         INFO(("Clobering files in " + full_path).c_str());
         check_remove((full_path + fname_base + "_A.data").c_str());
@@ -365,7 +346,7 @@ void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::unique_ptr<visCalFileBundle>(
         new visCalFileBundle(
             file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, ds_id, num_ev, file_length
+            window, ds_id, file_length
         )
     );
 

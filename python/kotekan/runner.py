@@ -309,7 +309,6 @@ class VisWriterBuffer(OutputBuffer):
             'file_name': self.name,
             'file_type': file_type,
             'root_path': output_dir,
-            'write_ev': True,
             'node_mode': False,
         }
         if extra_config is not None:
