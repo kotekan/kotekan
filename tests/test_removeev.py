@@ -12,7 +12,10 @@ remove_params = {
     'cadence': 5.0,
     'mode': 'default',
     'freq': list(range(16)),
-    'buffer_depth': 5
+    'buffer_depth': 5,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    }
 }
 
 
