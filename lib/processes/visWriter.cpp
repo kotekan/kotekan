@@ -52,35 +52,27 @@ visWriter::visWriter(Config& config,
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
 
+    // Check that the window isn't too long
+    if (window > file_length) {
+        std::string msg = fmt::format(
+            "Active times window ({}) should not be greater than file length" \
+            " ({}). Setting window to file length.", window, file_length
+        );
+        INFO(msg.c_str());
+        window = file_length;
+    }
+
     // TODO: get this from the datasetManager and put data type somewhere else
     instrument_name = config.get_default<std::string>(
                 unique_name, "instrument_name", "chime");
 
-    // Set the instrument name from the hostname if in node mode
-    node_mode = config.get_default<bool>(unique_name, "node_mode", false);
-    if(node_mode) {
-        std::string t(256, '\0');
-        gethostname(&t[0], 256);
-        // Here we trim the hostname to the first alphanumeric segment only.
-        instrument_name = t.substr(0, (t + ".").find_first_of(".-"));
-    }
+    // Get the acq time out from the config
+    acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
 }
 
 void visWriter::main_thread() {
 
     frameID frame_id(in_buf);
-
-    // Wait for the first frame to get the dataset ID
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
-        return;
-    auto frame = visFrameView(in_buf, 0);
-
-    // Get the dataset ID that the downstream files can use to determine what
-    // they will be writing.
-    ds_id = frame.dataset_id;
-
-    // Setup the acquisition, create a new file
-    auto init_fut = std::async(&visWriter::init_acq, this);
 
     while (!stop_thread) {
 
@@ -94,39 +86,48 @@ void visWriter::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         // Check the dataset ID hasn't changed
-        if (frame.dataset_id != ds_id) {
+        if (acqs.count(frame.dataset_id) == 0) {
             string msg = fmt::format(
-                        "Unexpected dataset ID={} received (expected id={}). " \
-                        "Creating a new file.",
-                frame.dataset_id, ds_id
+                "Got new dataset ID={}. Starting a new acquisition.",
+                frame.dataset_id
             );
             INFO(msg.c_str());
-            auto init_fut = std::async(&visWriter::init_acq, this);
+
+            // Try to initialise a new acquisition, if anything happens try to
+            // exit gracefully
+            try {
+                init_acq(frame.dataset_id);
+            }
+            catch(const std::exception& e) {
+                std::string msg = fmt::format(
+                    "Error initialising acquisition output for dataset={}: {}",
+                    frame.dataset_id, e.what()
+                );
+                ERROR(msg.c_str());
+                raise(SIGINT);
+                return;
+            }
         }
+
+        // Get the acquisition we are writing into
+        auto& acq = acqs.at(frame.dataset_id);
 
         // Construct the new time
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-
-        // Are we waiting for datasetStates? We need the states now...wait here.
-        if (init_fut.valid()) {
-            // Get void future, otherwise it will stay valid.
-            init_fut.get();
-        }
-
         // Check if the frequency we are receiving is on the list of frequencies
         // we are processing
-        if (_freq_id_map.count(frame.freq_id) == 0) {
+        if (acq.freq_id_map.count(frame.freq_id) == 0) {
             WARN("Frequency id=%i not enabled for visWriter, discarding frame",
                  frame.freq_id);
 
         // Check that the number of visibilities matches what we expect
-        } else if (frame.num_prod != _num_vis) {
+        } else if (frame.num_prod != acq.num_vis) {
             string msg = fmt::format(
                 "Number of products in frame doesn't match state or file " \
                         "({} != {}).",
-                frame.num_prod, _num_vis
+                frame.num_prod, acq.num_vis
             );
             ERROR(msg.c_str());
             raise(SIGINT);
@@ -136,12 +137,12 @@ void visWriter::main_thread() {
 
             DEBUG("Writing frequency id=%i", frame.freq_id);
 
-            uint32_t freq_ind = _freq_id_map[frame.freq_id];
+            uint32_t freq_ind = acq.freq_id_map[frame.freq_id];
 
             // Add all the new information to the file.
             double start = current_time();
             write_mutex.lock();
-            bool error = file_bundle->add_sample(t, freq_ind, frame);
+            bool error = acq.file_bundle->add_sample(t, freq_ind, frame);
             write_mutex.unlock();
             double elapsed = current_time() - start;
 
@@ -149,9 +150,8 @@ void visWriter::main_thread() {
 
             // Increase metric count if we dropped a frame at write time
             if(error) {
-                auto key = std::make_pair(frame.dataset_id, frame.freq_id);
                 // Relies on the fact that insertion zero intialises
-                dropped_frame_count[key] += 1;
+                acq.dropped_frame_count[frame.freq_id] += 1;
                 std::string labels = fmt::format("freq_id=\"{}\"," \
                                                  "dataset_id=\"{}\"",
                                                  frame.freq_id,
@@ -159,7 +159,7 @@ void visWriter::main_thread() {
                 prometheusMetrics::instance().add_process_metric(
                             "kotekan_viswriter_dropped_frame_total",
                             unique_name,
-                            dropped_frame_count.at(key),
+                            acq.dropped_frame_count.at(frame.freq_id),
                             labels);
             }
 
@@ -174,10 +174,32 @@ void visWriter::main_thread() {
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+
+        // Clean out any acquisitions that have been inactive long
+        close_old_acqs();
+
     }
 }
 
-void visWriter::get_dataset_state() {
+
+void visWriter::close_old_acqs()
+{
+    auto it = acqs.begin();
+    while (it != acqs.end()) {
+        auto last_update = it->second.file_bundle->last_update();
+        double age = current_time() - last_update.ctime;
+
+        if (age > acq_timeout) {
+            it = acqs.erase(it);
+        }
+        else {
+            it++;
+        }
+    }
+}
+
+
+void visWriter::get_dataset_state(dset_id_t ds_id) {
 
     auto& dm = datasetManager::instance();
 
@@ -207,11 +229,12 @@ void visWriter::get_dataset_state() {
         raise(SIGINT);
     }
 
+    // Get a reference to the acq state
+    auto& acq = acqs.at(ds_id);
+
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
-        _freq_id_map[f.first] = ind++;
-
-    weights_type = mstate->get_weight_type();
+        acq.freq_id_map[f.first] = ind++;
 
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
@@ -222,16 +245,36 @@ void visWriter::get_dataset_state() {
              get_git_commit_hash());
     }
 
-    _num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    acq.num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 }
 
-void visWriter::init_acq() {
+
+void visWriter::init_acq(dset_id_t ds_id)
+{
+    // Create the new acqState
+    auto& acq = acqs[ds_id];
 
     // get dataset states
-    get_dataset_state();
+    get_dataset_state(ds_id);
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
-    chunk_id = 0;
+    uint32_t chunk_id = 0;
+
+    // Construct metadata
+    auto metadata = make_metadata(ds_id);
+
+    acq.file_bundle = std::make_unique<visFileBundle>(
+        file_type, root_path, instrument_name, metadata, chunk_id, file_length,
+        window, ds_id, file_length
+    );
+}
+
+
+std::map<std::string, std::string> visWriter::make_metadata(dset_id_t ds_id)
+{
+    // Get the metadata state from the dM
+    auto& dm = datasetManager::instance();
+    const metadataState* mstate = dm.dataset_state<metadataState>(ds_id);
 
     // Get the current user
     std::string user(256, '\0');
@@ -244,7 +287,7 @@ void visWriter::init_acq() {
 
     // Set the metadata that we want to save with the file
     std::map<std::string, std::string> metadata;
-    metadata["weight_type"] = weights_type;
+    metadata["weight_type"] = mstate->get_weight_type();
     metadata["archive_version"] = "NT_3.1.0";
     metadata["instrument_name"] = instrument_name;
     metadata["notes"] = "";   // TODO: connect up notes
@@ -252,26 +295,7 @@ void visWriter::init_acq() {
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
 
-    // For a ring-type file, rollover must be disabled,
-    // window should be less than file length
-    rollover = file_length;
-    if (file_type == "ring") {
-        rollover = 0;
-        if (window > file_length) {
-            INFO("Active times window cannot be greater than file length for "
-                 "ring type files. Setting window to file length.");
-            window = file_length;
-        }
-    }
-    make_bundle(metadata);
-}
-
-
-void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
-    file_bundle = std::make_unique<visFileBundle>(
-        file_type, root_path, instrument_name, metadata, chunk_id,
-        rollover, window, ds_id, file_length
-    );
+    return metadata;
 }
 
 
@@ -306,12 +330,12 @@ visCalWriter::visCalWriter(Config &config,
     if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
         || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
         INFO(("Clobering files in " + full_path).c_str());
-        check_remove((full_path + fname_base + "_A.data").c_str());
-        check_remove(("." + full_path + fname_base + "_A.lock").c_str());
-        check_remove((full_path + fname_base + "_A.meta").c_str());
-        check_remove((full_path + fname_base + "_B.data").c_str());
-        check_remove(("." + full_path + fname_base + "_B.lock").c_str());
-        check_remove((full_path + fname_base + "_B.meta").c_str());
+        check_remove(full_path + fname_base + "_A.data");
+        check_remove("." + full_path + fname_base + "_A.lock");
+        check_remove(full_path + fname_base + "_A.meta");
+        check_remove(full_path + fname_base + "_B.data");
+        check_remove("." + full_path + fname_base + "_B.lock");
+        check_remove(full_path + fname_base + "_B.meta");
     }
 }
 
@@ -339,19 +363,35 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     INFO("Done. Resuming write loop.");
 }
 
-void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
 
-    // Create the visFileBundle. This will not create any files until add_sample
-    // is called
-    file_bundle = std::unique_ptr<visCalFileBundle>(
-        new visCalFileBundle(
-            file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, ds_id, file_length
-        )
+void visCalWriter::init_acq(dset_id_t ds_id)
+{
+    if (acqs.size() == 1) {
+        throw std::runtime_error(
+            "Cannot change dataset_id of visCalWriter. Exiting..."
+        );
+    }
+
+    // Create the new acqState
+    auto& acq = acqs[ds_id];
+
+    // get dataset states
+    get_dataset_state(ds_id);
+
+    // TODO: chunk ID is not really supported now. Just set it to zero.
+    uint32_t chunk_id = 0;
+
+    // Construct metadata
+    auto metadata = make_metadata(ds_id);
+
+    // Create the derived class visCalFileBundle, and save to the instance, then
+    // return as a unique_ptr
+    file_cal_bundle = new visCalFileBundle(
+        file_type, root_path, instrument_name, metadata, chunk_id, file_length,
+        window, ds_id, file_length
     );
-
-    // TODO: is there a better way of using the child class method?
-    file_cal_bundle = std::dynamic_pointer_cast<visCalFileBundle>(file_bundle);
-
     file_cal_bundle->set_file_name(fname_live, acq_name);
+
+    acq.file_bundle = std::unique_ptr<visFileBundle>(file_cal_bundle);
 }
+

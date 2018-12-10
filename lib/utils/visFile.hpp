@@ -204,7 +204,14 @@ public:
     template<typename... WriteArgs>
     bool add_sample(time_ctype new_time, WriteArgs&&... args);
 
-    virtual ~visFileBundle() = default;
+    virtual ~visFileBundle();
+
+    /**
+     * @brief Get the time of the last update.
+     *
+     * @return  The time of the last update.
+     **/
+    time_ctype last_update() const;
 
 protected:
 
@@ -214,7 +221,7 @@ protected:
     // Find/create the slot for data at this time to go into
     bool resolve_sample(time_ctype new_time);
 
-    std::map<uint64_t, std::tuple<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
+    std::map<time_ctype, std::pair<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
     // Thin function to actually create the file
     std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mk_file;
 
@@ -261,13 +268,12 @@ public:
      * @warning The directory will not be created if it doesn't exist.
      **/
     template<typename... Args>
-    visCalFileBundle(Args... args) :
-        visFileBundle(args...) {};
-
-    /**
-     * Close all files and clear the map.
-     **/
-    void clear_file_map();
+    visCalFileBundle(Args&&... args) :
+        visFileBundle(std::forward<Args>(args)...)
+    {
+        // Override the rollover setting for the calibration bundles
+        rollover = 0;
+    }
 
     /**
      * Set the file name to write to.
@@ -327,7 +333,7 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
         std::shared_ptr<visFile> file;
         uint32_t ind;
         // We can now safely add the sample into the file
-        std::tie(file, ind) = vis_file_map[new_time.fpga_count];
+        std::tie(file, ind) = vis_file_map[new_time];
         file->write_sample(ind, std::forward<WriteArgs>(args)...);
 
         return false;

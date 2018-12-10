@@ -49,27 +49,18 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
  * @conf   file_type        String. Type of file to write. One of 'hdf5',
  *                          'hdf5fast' or 'raw'.
  * @conf   root_path        String. Location in filesystem to write to.
  * @conf   instrument_name  String (default: chime). Name of the instrument
  *                          acquiring data (if ``node_mode`` the hostname is
  *                          used instead)
- * @conf   freq_ids         Array of ints. The ids of the frequencies to write
- *                          out (only needed when not in @c node_mode).
- * @conf   input_reorder    Array of [int, int, string]. A description of the
- *                          inputs. Only the last two elements of each sub-array
- *                          are used and are expected to be @c channel_id and
- *                          @c channel_serial (the first contains the @c adc_id
- *                          used for reordering om ``visTransform``)
- * @conf   weights_type     Indicate what the visibility weights represent, e.g,
- *                          'inverse_var'. Will saved as an attribute in the saved
- *                          file. (default 'unknown')
  * @conf   file_length      Int (default 1024). Maximum number of samples to
  *                          write into a file.
  * @conf   window           Int (default 20). Number of samples to keep active
  *                          for writing at any time.
+ * @conf   acq_timeout      Double (default 300). Close acquisitions when they
+ *                          have been inactive this long (in seconds).
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
@@ -90,23 +81,19 @@ public:
 
 
 protected:
-    // The current file of visibilities that we are writing
-    std::shared_ptr<visFileBundle> file_bundle;
-
-    // Override to use a visFileBundle child class
-    virtual void make_bundle(std::map<std::string, std::string>& metadata);
 
     /// Setup the acquisition
-    void init_acq();
+    virtual void init_acq(dset_id_t ds_id);
 
-    /// Using the first frequency ID found, and any config parameters, determine
-    /// which frequencies will end up in the file
-    void setup_freq(uint32_t freq_id);
+    /// Construct the set of metadata
+    std::map<std::string, std::string> make_metadata(dset_id_t ds_id);
+
+    /// Close inactive acquisitions
+    void close_old_acqs();
 
     // Parameters saved from the config files
     std::string root_path;
     std::string instrument_name;
-    std::string weights_type;
 
     // Type of the file we are writing
     std::string file_type;
@@ -116,27 +103,37 @@ protected:
     size_t window;
     size_t rollover;
 
+    // Acq timeout in seconds
+    double acq_timeout;
+
     /// Input buffer to read from
     Buffer * in_buf;
-
-    /// Dataset ID of current stream
-    dset_id_t ds_id;
-
-    /// A unique ID for the chunk (i.e. frequency set)
-    uint32_t chunk_id;
-
-    /// Params for supporting old node based HDF5 writing scheme
-    bool node_mode;
-
-    // Number of eigenvectors to write out
-    size_t num_ev;
 
     /// Mutex for updating file_bundle (used in for visCalWriter)
     std::mutex write_mutex;
 
-private:
     /// Gets states from the dataset manager and saves some metadata
-    void get_dataset_state();
+    void get_dataset_state(dset_id_t ds_id);
+
+    struct acqState {
+
+        // The current set of files we are writing
+        std::unique_ptr<visFileBundle> file_bundle;
+
+        /// Counts per freq ID and per dset ID
+        std::map<uint32_t, uint64_t> dropped_frame_count;
+
+        /// Frequency IDs that we are expecting
+        std::map<uint32_t, uint32_t> freq_id_map;
+
+        /// Number of products
+        size_t num_vis;
+    };
+
+    std::map<dset_id_t, acqState> acqs;
+
+
+private:
 
     /// Number of products to write and freqency map
     std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>
@@ -144,15 +141,6 @@ private:
 
     /// Keep track of the average write time
     movingAverage write_time;
-
-    /// Counts per freq ID and per dset ID
-    std::map<std::pair<dset_id_t, uint32_t>, uint64_t> dropped_frame_count;
-
-    /// Frequency IDs that we are expecting
-    std::map<uint32_t, uint32_t> _freq_id_map;
-
-    /// number of products
-    size_t _num_vis;
 };
 
 /**
@@ -227,15 +215,16 @@ public:
 protected:
 
     // Override function to make visCalFileBundle and set its file name
-    void make_bundle(std::map<std::string, std::string>& metadata) override;
+    void init_acq(dset_id_t ds_id) override;
 
-    std::shared_ptr<visCalFileBundle> file_cal_bundle;
+    visCalFileBundle* file_cal_bundle;
 
     std::string acq_name, fname_live, fname_frozen;
 
     std::string endpoint;
 
 };
+
 
 inline void check_remove(std::string fname) {
     if (remove(fname.c_str()) != 0) {
