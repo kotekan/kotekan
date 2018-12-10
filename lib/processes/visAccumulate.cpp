@@ -123,7 +123,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     }
 
     // get dataset ID for out frames
-    _ds_id_out = change_dataset_state(instrument_name, freqs, inputs, prods);
+    base_dataset_id = base_dataset_state(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -135,6 +135,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     gated_datasets.emplace_back(
         out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
     );
+    gated_datasets.at(0).output_dataset_id = base_ds_id;
 
 
     // Get and validate any gating config
