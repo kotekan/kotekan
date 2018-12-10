@@ -49,12 +49,12 @@ void visFileRaw::create_file(
     auto evstate_fut = std::async(
         &datasetManager::dataset_state<eigenvalueState>, &dm, dataset
     );
+    auto gstate_fut = std::async(&datasetManager::dataset_state<gatingState>,
+                                 &dm, dataset);
 
-    const stackState* sstate = sstate_fut.get();
     const inputState* istate = istate_fut.get();
     const prodState* pstate = pstate_fut.get();
     const freqState* fstate = fstate_fut.get();
-    const eigenvalueState* evstate = evstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
         ERROR("Required datasetState not found for dataset ID " \
@@ -71,6 +71,7 @@ void visFileRaw::create_file(
     file_metadata["index_map"]["prod"] = pstate->get_prods();
 
     // Create and add eigenvalue index
+    const eigenvalueState* evstate = evstate_fut.get();
     if (evstate) {
         file_metadata["index_map"]["ev"] = evstate->get_ev();
         num_ev = evstate->get_num_ev();
@@ -79,12 +80,18 @@ void visFileRaw::create_file(
         num_ev = 0;
     }
 
+    const stackState* sstate = sstate_fut.get();
     if (sstate) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
         file_metadata["structure"]["num_stack"] = sstate->get_num_stack();
     }
 
+    const gatingState* gstate = gstate_fut.get();
+    if (gstate) {
+        file_metadata["gating_type"] = gstate->gating_type;
+        file_metadata["gating_data"] = gstate->gating_data;
+    }
 
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();

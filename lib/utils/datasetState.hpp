@@ -623,9 +623,9 @@ public:
      * @param  data   Arbitrary type specific data to describe what's happening.
      * @param  inner  Inner state.
      **/
-    gatingState(const std::string& type, const gateSpec& spec, state_uptr inner) :
+    gatingState(const gateSpec& spec, state_uptr inner=nullptr) :
         datasetState(std::move(inner)),
-        gating_type(type),
+        gating_type(FACTORY(gateSpec)::label(spec)),
         gating_data(spec.to_dm_json())
     {
     }

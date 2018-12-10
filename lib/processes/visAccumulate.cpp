@@ -135,7 +135,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     gated_datasets.emplace_back(
         out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
     );
-    gated_datasets.at(0).output_dataset_id = base_ds_id;
+    gated_datasets.at(0).output_dataset_id = base_dataset_id;
 
 
     // Get and validate any gating config
@@ -207,8 +207,16 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         gated_datasets.emplace_back(
             buf, gateSpec::create(mode, name), num_prod_gpu
         );
-        callbacks[name] = std::bind(&gateSpec::update_spec,
-                                    gated_datasets.back().spec.get(), _1);
+
+        auto& state = gated_datasets.back();
+        callbacks[name] = [&state](nlohmann::json& json) -> bool {
+            bool success = state.spec->update_spec(json);
+            if (success) {
+                std::lock_guard<std::mutex> lock(state.state_mtx);
+                state.changed = true;
+            }
+            return success;
+        };
     }
 
     configUpdater::instance().subscribe(this, callbacks);
@@ -216,7 +224,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 }
 
 
-dset_id_t visAccumulate::change_dataset_state(
+dset_id_t visAccumulate::base_dataset_state(
     std::string& instrument_name,
     std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
     std::vector<input_ctype>& inputs,
@@ -245,6 +253,20 @@ dset_id_t visAccumulate::change_dataset_state(
 
     //register root dataset
     return dm.add_dataset(mstate_id);
+}
+
+
+dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec)
+{
+    // create the state
+    state_uptr gate_state = std::make_unique<gatingState>(spec);
+
+    // register with the datasetManager
+    datasetManager& dm = datasetManager::instance();
+    state_id_t gstate_id = dm.add_state(std::move(gate_state)).first;
+
+    // register gated dataset
+    return dm.add_dataset(base_dataset_id, gstate_id);
 }
 
 
@@ -451,7 +473,7 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state,
 
     // Set dataset ID produced by the dM
     // TODO: this should be different for different gated streams
-    frame.dataset_id = _ds_id_out;
+    frame.dataset_id = state.output_dataset_id;
 
     // Set the length of time this frame will cover
     frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
@@ -530,15 +552,25 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
 
     // Acquire the lock so we don't get confused by any changes made via the
     // REST callback
-    std::lock_guard<std::mutex> lock(state.state_mtx);
+    {
+        std::lock_guard<std::mutex> lock(state.state_mtx);
 
-    if (!state.spec->enabled()) {
-        state.calculate_weight = nullptr;
-        return false;
+        // Update the weight function in case an update arrives mid integration
+        // This is done every cycle to allow the calculation to change with time
+        // (without any external update), e.g. in SegmentedPolyco's.
+        if (!state.spec->enabled()) {
+            state.calculate_weight = nullptr;
+            return false;
+        }
+        state.calculate_weight = state.spec->weight_function(t);
+
+
+        // Update dataset ID if an external change occurred
+        if (state.changed) {
+            state.output_dataset_id = gate_dataset_state(*state.spec.get());
+            state.changed = false;
+        }
     }
-
-    // Save out the weight function in case an update arrives mid integration
-    state.calculate_weight = state.spec->weight_function(t);
 
     // Zero out accumulation arrays
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);

@@ -122,7 +122,9 @@ private:
         std::function<float(timespec, timespec, float)> calculate_weight;
 
         /// Mutex to control update of gateSpec
+        /// ... and bool to signal changes (should only be changed when locked)
         std::mutex state_mtx;
+        bool changed;
 
         /// Accumulation vectors
         std::vector<int32_t> vis1;

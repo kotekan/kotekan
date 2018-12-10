@@ -144,7 +144,7 @@ def pulsar_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("pulsar")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
-    dump_buffer_gated = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_gated = runner.VisWriterBuffer(str(tmpdir), "raw")
     # Insert an extra buffer for gated stream
     dump_buffer.buffer_block.update(dump_buffer_gated.buffer_block)
     dump_buffer.process_block.update(dump_buffer_gated.process_block)
@@ -304,8 +304,14 @@ def test_pulsar(pulsar_data):
     # fudge factor for numerical uncertainty
     fudge = 1e-3
 
-    assert len(pulsar_data) != 0
-    for frame in pulsar_data:
-        # allow for one frame to be added from time to time
-        assert (frame.vis >= (1-fudge) * 10 * pulse_width * num_pulse / num_tot).all()
-        assert (frame.vis <= (1+fudge) * 10 * pulse_width * (num_pulse+1) / num_tot).all()
+    assert pulsar_data.num_time > 0
+
+    vis = pulsar_data.data['vis'][:, pulsar_params['freq']]
+    # allow for one frame to be added from time to time
+    assert (vis >= (1-fudge) * 10 * pulse_width * num_pulse / num_tot).all()
+    assert (vis <= (1+fudge) * 10 * pulse_width * (num_pulse+1) / num_tot).all()
+
+
+def test_pulsar_metadata(pulsar_data):
+    assert pulsar_data.file_metadata['gating_type'] == 'pulsar'
+    assert pulsar_data.file_metadata['gating_data']['pulsar_name'] == 'fakepsr'

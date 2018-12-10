@@ -88,6 +88,13 @@ public:
     const std::string& name() const { return _name; }
 
     /**
+     * @brief Get the name of the gated dataset.
+     *
+     * @return Name of the gated dataset.
+     **/
+    const std::string& type() const { return _type; }
+
+    /**
      * @brief Get a description of the spec for the dataset manager.
      *
      * Should be re-implemented by subclasses, and include information beyond
@@ -101,6 +108,9 @@ protected:
 
     // Name of the gated dataset in the config
     const std::string _name;
+
+    // Type of the gated dataset in the config
+    const std::string _type;
 
     // Is the dataset enabled?
     bool _enabled = false;
@@ -147,6 +157,13 @@ public:
      * @param    timespec  The start time of this frame.
      **/
     std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
+
+    /**
+     * @brief Return JSON config for the dM
+     *
+     * @return  JSON config.
+     **/
+    json to_dm_json() const override;
 
 private:
     // Config parameters for pulsar gating

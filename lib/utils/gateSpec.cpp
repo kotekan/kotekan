@@ -5,7 +5,8 @@ REGISTER_GATESPEC(pulsarSpec, "pulsar");
 REGISTER_GATESPEC(uniformSpec, "uniform");
 
 
-gateSpec::gateSpec(const std::string& name) : _name(name)
+gateSpec::gateSpec(const std::string& name) :
+    _name(name)
 {
 
 }
@@ -94,6 +95,12 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(time
             return 0.;
         }
     };
+}
+
+
+json pulsarSpec::to_dm_json() const
+{
+    return {{"pulsar_name", _pulsar_name}};
 }
 
 
