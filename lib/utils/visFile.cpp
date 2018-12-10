@@ -73,7 +73,7 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
             if((rollover == 0 || file->num_time() < rollover) && !change_file) {
                 // Extend the time axis and add into the sample map
                 ind = file->extend_time(new_time);
-                vis_file_map[new_time] = std::make_tuple(file, ind);
+                vis_file_map[new_time] = std::make_pair(file, ind);
             } else {
                 add_file(new_time);
                 change_file = false;
@@ -126,7 +126,7 @@ void visFileBundle::add_file(time_ctype first_time) {
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);
     auto ind = file->extend_time(first_time);
-    vis_file_map[first_time] = std::make_tuple(file, ind);
+    vis_file_map[first_time] = std::make_pair(file, ind);
 }
 
 void visCalFileBundle::set_file_name(std::string fname, std::string aname) {
@@ -140,7 +140,7 @@ void visCalFileBundle::add_file(time_ctype first_time) {
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);
     auto ind = file->extend_time(first_time);
-    vis_file_map[first_time] = std::make_tuple(file, ind);
+    vis_file_map[first_time] = std::make_pair(file, ind);
 }
 
 
