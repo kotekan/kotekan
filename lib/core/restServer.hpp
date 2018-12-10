@@ -23,7 +23,6 @@ enum class HTTP_RESPONSE {
 
 #define PORT_REST_SERVER 12048
 
-
 /**
  * @brief Contains details of a request (POST or GET), and provides
  *        functions for replying to the request.
@@ -110,10 +109,6 @@ private:
  *
  * See the docs for examples of using this class.
  *
- * @TODO Provide a way to change the default bind address and port via command line.
- *       It cannot be done via the normal config, since the server starts before getting
- *       getting a config file.
- *
  * @author Andre Renard
  */
 class restServer {
@@ -125,6 +120,14 @@ public:
      * @return Returns the rest server instance.
      */
     static restServer &instance();
+
+    /**
+     * @brief Start the rest server, should only be called once by the framework
+     *
+     * @param bind_address The address to bind too.  Default: 0.0.0.0
+     * @param port The port to bind.  Default: PORT_REST_SERVER
+     */
+    void start(const std::string &bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
 
     /**
      * @brief Set the server thread CPU affinity
@@ -302,16 +305,16 @@ private:
     std::shared_timed_mutex callback_map_lock;
 
     /// The libevent base
-	struct event_base *event_base = nullptr;
+    struct event_base *event_base = nullptr;
 
     /// The libevent HTTP server object
     struct evhttp *ev_server = nullptr;
 
-    /// The port to use, for now this is constant 12048
-    u_short port = PORT_REST_SERVER;
+    /// The port to use
+    u_short port;
 
     /// Bind address
-    std::string bind_address = "0.0.0.0";
+    std::string bind_address;
 
     /// Main server thread handle
     std::thread main_thread;

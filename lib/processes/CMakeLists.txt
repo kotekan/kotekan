@@ -26,7 +26,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               bufferSend.cpp
               bufferRecv.cpp
               simpleAutocorr.cpp
-              freqSlicer.cpp
+              freqSplit.cpp
+              freqSubset.cpp
               prodSubset.cpp
               countCheck.cpp
               visAccumulate.cpp
@@ -38,6 +39,8 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               restInspectFrame.cpp
               frbNetworkProcess.cpp
               pulsarNetworkProcess.cpp
+              bufferMerge.cpp
+              bufferSwitch.cpp
               #RFI Pipeline Processes
               rfiVDIF.cpp
               rfiAVXVDIF.cpp
@@ -45,10 +48,11 @@ set (KOTEKAN_PROCESS_LIB_SOURCES
               rfiRecord.cpp
               rfiBadInputFinder.cpp
               receiveFlags.cpp
+              valve.cpp
               visTransform.cpp
               visTestPattern.cpp
               visDebug.cpp
-              visMerge.cpp
+              removeEv.cpp
               )
 
 if (${USE_AIRSPY})

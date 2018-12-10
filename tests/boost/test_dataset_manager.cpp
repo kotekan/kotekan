@@ -5,6 +5,7 @@
 #include <iostream>
 #include "json.hpp"
 #include "visUtil.hpp"
+#include "Config.hpp"
 #include "test_utils.hpp"
 
 // the code to test:
@@ -18,8 +19,13 @@ using namespace std::string_literals;
 BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
     __log_level = 5;
     __enable_syslog = 0;
-
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
     // generate datasets:
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),
                                        input_ctype(2, "2"),
@@ -34,7 +40,7 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
     inputs = {input_ctype(1, "1"),
               input_ctype(2, "2")};
     prods = {{1, 1},
@@ -45,8 +51,7 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>(inputs,
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
-    dset_id_t init_ds_id2 = dm.add_dataset(dataset(input_state2.first,
-                                                   init_ds_id));
+    dset_id_t init_ds_id2 = dm.add_dataset(init_ds_id, input_state2.first);
 
 
     // transform that data:
@@ -84,8 +89,8 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>
                          (new_inputs, std::make_unique<prodState>(new_prods,
                           std::make_unique<freqState>(new_freqs))));
-    dset_id_t transformed_ds_id = dm.add_dataset(
-                dataset(transformed_input_state.first, init_ds_id2));
+    dset_id_t transformed_ds_id = dm.add_dataset(init_ds_id2,
+                                                 transformed_input_state.first);
 
 
     // get state
@@ -107,7 +112,13 @@ BOOST_FIXTURE_TEST_CASE( _general, CompareCTypes ) {
 
 BOOST_AUTO_TEST_CASE( _serialization_input ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // serialize and deserialize
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),
@@ -147,7 +158,13 @@ BOOST_AUTO_TEST_CASE( _serialization_input ) {
 
 BOOST_AUTO_TEST_CASE( _serialization_prod ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // serialize and deserialize
     std::vector<prod_ctype> prods = {{2, 2},
@@ -177,7 +194,13 @@ BOOST_AUTO_TEST_CASE( _serialization_prod ) {
 
 BOOST_AUTO_TEST_CASE( _serialization_freq ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // serialize and deserialize
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}},
@@ -207,12 +230,18 @@ BOOST_AUTO_TEST_CASE( _serialization_freq ) {
 
 BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     std::vector<input_ctype> inputs = {input_ctype(1, "1")};
     std::pair<state_id_t, const inputState*> input_state =
             dm.add_state(std::make_unique<inputState>(inputs));
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
 
     const prodState* not_found =
             dm.dataset_state<prodState>(init_ds_id);
@@ -223,7 +252,13 @@ BOOST_AUTO_TEST_CASE( _no_state_of_type_found ) {
 
 BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
     __log_level = 4;
-    datasetManager& dm = datasetManager::instance();
+    json json_config;
+    json json_config_dm;
+    json_config_dm["use_dataset_broker"] = false;
+    json_config["dataset_manager"] = json_config_dm;
+    Config conf;
+    conf.update_config(json_config);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // inputStates
     std::vector<input_ctype> inputs = {input_ctype(24, "4"),
@@ -232,10 +267,4 @@ BOOST_FIXTURE_TEST_CASE( _equal_states, CompareCTypes ) {
             dm.add_state(std::make_unique<inputState>(inputs));
     BOOST_CHECK_EQUAL(input_state.second->to_json().dump(),
                       std::make_unique<inputState>(inputs)->to_json().dump());
-
-    // empty stackStates
-    std::pair<state_id_t, const stackState*> sstate =
-            dm.add_state(std::make_unique<stackState>());
-    BOOST_CHECK_EQUAL(sstate.second->to_json().dump(),
-                      std::make_unique<stackState>()->to_json().dump());
 }

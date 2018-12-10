@@ -64,12 +64,14 @@ public:
     /**
      * @brief Get a function/closure to calculate the weights for a subsample.
      *
+     * @param    timespec  The start time of this frame.
+     *
      * @note This must return a closure that captures by value such that its
      *       lifetime can be longer than the gateSpec object that generated it.
      *
      * @return  A function to calculate the weights.
      **/
-    virtual std::function<float(timespec, timespec, float)> weight_function() const = 0;
+    virtual std::function<float(timespec, timespec, float)> weight_function(timespec t) const = 0;
 
     /**
      * @brief Is this enabled at the moment?
@@ -116,12 +118,14 @@ CREATE_FACTORY(gateSpec, const std::string&);
  * @conf  enabled      Bool. Is the gating enabled or not.
  * @conf  pulsar_name  String. Name of the pulsar.
  * @conf  dm           Float. Dispersion measure in pc/cm^3.
- * @conf  t_ref        Float. Reference time for solution. Should be close to
- *                     the observing time.
- * @conf  phase_ref    Float. Phase of pulsar at t_ref.
  * @conf  rot_freq     Float. Rotational frequency in Hz.
  * @conf  pulse_width  Float. Width of pulse in s.
- * @conf  coeff        Array of floats. Polyco coefficients for timing solution.
+ * @conf  segment      Float. Length of polyco segments in s.
+ * @conf  t_ref        Array of floats. Reference times (MJD) for solution
+ *                     segment. Should be close to the observing time.
+ * @conf  phase_ref    Array of floats. Phases of pulsar at t_ref.
+ * @conf  coeff        Array of array of floats. Polyco coefficients
+ *                     for every timing solution segment.
  **/
 class pulsarSpec : public gateSpec {
 
@@ -139,18 +143,21 @@ public:
 
     /**
      * @brief Return a closure te calculate the weigths.
+     *
+     * @param    timespec  The start time of this frame.
      **/
-    std::function<float(timespec, timespec, float)> weight_function() const override;
+    std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
 
 private:
     // Config parameters for pulsar gating
     std::string _pulsar_name;
     float _dm;           // in pc / cm^3
-    double _tmid;        // in days since MJD
-    double _phase_ref;   // in number of rotations
     double _rot_freq;    // in Hz
     float _pulse_width;  // in s
-    Polyco _polyco;
+    float _seg;  // length of polyco segments in s
+    std::vector<double> _tmid;  // in MJD
+    std::vector<double> _phase_ref;  // in number of rotations
+    SegmentedPolyco _polycos;
 };
 
 
@@ -175,8 +182,10 @@ public:
 
     /**
      * @brief Return the weight calculation function.
+     *
+     * @param    timespec  The start time of this frame.
      **/
-    std::function<float(timespec, timespec, float)> weight_function() const override;
+    std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
 };
 
 #endif

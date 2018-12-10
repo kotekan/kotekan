@@ -200,31 +200,6 @@ size_t _member_alignment(size_t offset, size_t size) {
     return (((size - (offset % size)) % size) + offset);
 }
 
-struct_layout struct_alignment(
-    std::vector<std::tuple<std::string, size_t, size_t>> members
-) {
-
-    std::string name;
-    size_t size, num, end = 0, max_size = 0;
-
-    std::map<std::string, std::pair<size_t, size_t>> layout;
-
-    for(auto member : members) {
-        std::tie(name, size, num) = member;
-
-        // Uses the end of the *last* member
-        size_t start = _member_alignment(end, size);
-        end = start + size * num;
-        max_size = std::max(max_size, size);
-
-        layout[name] = {start, end};
-    }
-
-    layout["_struct"] = {0, _member_alignment(end, max_size)};
-
-    return layout;
-}
-
 
 movingAverage::movingAverage(double length) {
     // Calculate the coefficient for the moving average as a halving of the weight
@@ -248,4 +223,13 @@ double movingAverage::average() {
         return NAN;
     }
     return current_value;
+}
+
+std::vector<std::string> regex_split(const std::string input, const std::string reg) {
+    vector<std::string> split_array;
+    std::regex split_regex(reg);
+    std::copy(std::sregex_token_iterator(input.begin(), input.end(), split_regex, -1),
+              std::sregex_token_iterator(),
+              std::back_inserter(split_array));
+    return split_array;
 }

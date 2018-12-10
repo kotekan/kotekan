@@ -9,7 +9,10 @@ downsamp_params = {
     'num_samples': 2,
     'total_frames': 11,
     'fakevis_mode': 'fill_ij',
-    'cadence': 2.
+    'cadence': 2.,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")
@@ -57,7 +60,6 @@ def test_metadata(vis_data):
 
     for frame in vis_data:
         assert frame.metadata.freq_id == 0
-        assert frame.metadata.dataset_id == 0
         assert frame.metadata.fpga_length == frame_length
         assert frame.metadata.fpga_total == frame_length
 

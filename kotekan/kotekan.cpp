@@ -45,6 +45,7 @@ extern "C" {
 #include "prometheusMetrics.hpp"
 #include "basebandApiManager.hpp"
 #include "processFactory.hpp"
+#include "visUtil.hpp"
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -65,12 +66,13 @@ void signal_handler(int signal)
 void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
-    printf("    --config (-c) [file]        The local JSON config file to use.\n");
-    printf("    --config-daemon (-d) [file] Same as -c, but uses installed yaml->json script\n");
-    printf("    --gps-time (-g)             Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
-    printf("    --syslog (-s)               Send a copy of the output to syslog.\n");
-    printf("    --no-stderr (-n)            Disables output to std error if syslog (-s) is enabled.\n");
-    printf("    --version (-v)              Prints the kotekan version and build details.\n\n");
+    printf("    --config (-c) [file]           The local JSON config file to use.\n");
+    printf("    --config-daemon (-d) [file]    Same as -c, but uses installed yaml->json script\n");
+    printf("    --bind-address (-b) [ip:port]  The IP address and port to bind (default 0.0.0.0:12048)\n");
+    printf("    --gps-time (-g)                Used with -c, try to get GPS time (CHIME cmd line runs only).\n");
+    printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
+    printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is enabled.\n");
+    printf("    --version (-v)                 Prints the kotekan version and build details.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
@@ -206,6 +208,7 @@ int main(int argc, char ** argv) {
     bool opt_d_set = false;
     bool gps_time = false;
     bool enable_stderr = true;
+    std::string bind_address = "0.0.0.0:12048";
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
     // If --syslog is added, then output is to both syslog and stderr
@@ -217,6 +220,7 @@ int main(int argc, char ** argv) {
         static struct option long_options[] = {
             {"config", required_argument, 0, 'c'},
             {"config-daemon", required_argument, 0, 'd'},
+            {"bind-address", required_argument, 0, 'b'},
             {"gps-time", no_argument, 0, 'g'},
             {"help", no_argument, 0, 'h'},
             {"syslog", no_argument, 0, 's'},
@@ -227,7 +231,7 @@ int main(int argc, char ** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long (argc, argv, "ghc:d:snv",
+        opt_val = getopt_long (argc, argv, "ghc:d:b:snv",
                                long_options, &option_index);
 
         // End of args
@@ -246,6 +250,9 @@ int main(int argc, char ** argv) {
             case 'd':
                 config_file_name = strdup(optarg);
                 opt_d_set = true;
+                break;
+            case 'b':
+                bind_address = string(optarg);
                 break;
             case 'g':
                 gps_time = true;
@@ -294,6 +301,9 @@ int main(int argc, char ** argv) {
     Config config;
 
     restServer &rest_server = restServer::instance();
+    std::vector<std::string> address_parts = regex_split(bind_address, ":");
+    // TODO validate IP and port
+    rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.

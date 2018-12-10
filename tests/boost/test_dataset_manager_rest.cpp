@@ -8,6 +8,7 @@
 #include "json.hpp"
 #include "visUtil.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -108,10 +109,11 @@ struct TestContext {
         json js_ds;
         try {
             js.at("hash");
-            js_ds = js.at("dataset");
+            js_ds = js.at("ds");
             js_ds.at("is_root");
             js_ds.at("state");
-            js_ds.at("base_dset");
+            if(!js_ds.at("is_root"))
+                js_ds.at("base_dset");
         } catch (std::exception& e) {
             std::string error = fmt::format(
                         "Failure parsing register-dataset message from " \
@@ -122,7 +124,8 @@ struct TestContext {
         }
 
         BOOST_CHECK(js_ds.at("state").is_number());
-        BOOST_CHECK(js_ds.at("base_dset").is_number());
+        if (!js_ds.at("is_root"))
+            BOOST_CHECK(js_ds.at("base_dset").is_number());
         BOOST_CHECK(js_ds.at("is_root").is_boolean());
         BOOST_CHECK(js.at("hash").is_number());
 
@@ -144,12 +147,15 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
     json json_config;
     json_config["use_dataset_broker"] = true;
 
+    // kotekan restServer endpoints defined above
+    json_config["ds_broker_port"] = 12048;
+    restServer::instance().start("127.0.0.1");
+
     TestContext::init();
 
-    datasetManager& dm = datasetManager::instance();
     Config conf;
     conf.update_config(json_config);
-    dm.apply_config(conf);
+    datasetManager& dm = datasetManager::instance(conf);
 
     // generate datasets:
     std::vector<input_ctype> inputs = {input_ctype(1, "1"),
@@ -167,7 +173,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                          (inputs, std::make_unique<prodState>(prods,
                           std::make_unique<freqState>(freqs))));
 
-    dset_id_t init_ds_id = dm.add_dataset(dataset(input_state.first, 0, true));
+    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
 
     // register first state again
     std::pair<state_id_t, const inputState*>input_state3 =
@@ -175,8 +181,7 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
                               std::make_unique<prodState>(prods,
                               std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dm.add_dataset(dataset(input_state3.first,
-                                                   init_ds_id));
+    dm.add_dataset(init_ds_id, input_state3.first);
 
     std::cout << dm.summary() << std::endl;
 

@@ -1,25 +1,32 @@
 #include "visWriter.hpp"
-#include "visBuffer.hpp"
-#include "util.h"
-#include "errors.h"
-#include "prodSubset.hpp"
+
+#include <cxxabi.h>
+#include <signal.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <iomanip>
-#include "fpga_header_functions.h"
-#include "prometheusMetrics.hpp"
+#include <atomic>
+#include <exception>
+#include <functional>
+#include <regex>
+#include <sstream>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+#include <inttypes.h>
+
+#include "fmt.hpp"
+#include "json.hpp"
+
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "version.h"
+#include "visBuffer.hpp"
 #include "visCompression.hpp"
 
-#include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
-#include <time.h>
-#include <regex>
-#include <signal.h>
-#include "fmt.hpp"
-#include "version.h"
 
 REGISTER_KOTEKAN_PROCESS(visWriter);
 REGISTER_KOTEKAN_PROCESS(visCalWriter);
@@ -45,59 +52,9 @@ visWriter::visWriter(Config& config,
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
 
-    // Write the eigen values out? Communicated to visFile by num_ev > 0
-    bool write_ev = config.get_default<bool>(unique_name, "write_ev", false);
-    num_ev = write_ev ? config.get<size_t>(unique_name, "num_ev") : 0;
-
     // TODO: get this from the datasetManager and put data type somewhere else
     instrument_name = config.get_default<std::string>(
                 unique_name, "instrument_name", "chime");
-
-    use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
-
-    // If we are not using the dataset manager directly, create fake entries
-    // from the config information supplied to the class
-    if (!use_dataset_manager) {
-
-        // If specified, get the weights type to write to attributes
-        weights_type = config.get_default<std::string>(
-                    unique_name, "weights_type", "unknown");
-
-        // Get the input labels and the products we are writing from the config
-        auto ispec = std::get<1>(parse_reorder_default(config, unique_name));
-        auto pspec = std::get<1>(parse_prod_subset(config, unique_name));
-
-        // Get the frequency IDs we are going to write
-        auto freq_id_list = config.get<std::vector<uint32_t>>(
-                    unique_name, "freq_ids");
-        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-        std::transform(freq_id_list.begin(), freq_id_list.end(),
-                       std::back_inserter(fspec),
-                       [](uint32_t f) -> std::pair<uint32_t, freq_ctype> {
-                           return {f, {freq_from_bin(f), (400.0 / 1024)}};
-                       });
-
-        // Create the datasetState
-        auto& dm = datasetManager::instance();
-
-        // Construct a nested description of the initial state
-        state_uptr mstate = std::make_unique<metadataState>(
-                    weights_type, instrument_name, get_git_commit_hash());
-        state_uptr freq_state = std::make_unique<freqState>(fspec,
-                                                            std::move(mstate));
-        state_uptr input_state = std::make_unique<inputState>(
-            ispec, std::move(freq_state));
-        state_uptr prod_state = std::make_unique<prodState>(
-            pspec, std::move(input_state));
-        // empty stack state
-        state_uptr stack_state =
-                std::make_unique<stackState>(std::move(prod_state));
-
-        // Register the initial state with the manager
-        auto s = dm.add_state(std::move(stack_state), true);
-        writer_dstate = s.first;
-    }
 
     // Set the instrument name from the hostname if in node mode
     node_mode = config.get_default<bool>(unique_name, "node_mode", false);
@@ -111,11 +68,19 @@ visWriter::visWriter(Config& config,
 
 void visWriter::main_thread() {
 
-    unsigned int frame_id = 0;
+    frameID frame_id(in_buf);
 
-    // Look over the current buffers for information to setup the acquisition
-    if (!init_acq())
+    // Wait for the first frame to get the dataset ID
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
         return;
+    auto frame = visFrameView(in_buf, 0);
+
+    // Get the dataset ID that the downstream files can use to determine what
+    // they will be writing.
+    ds_id = frame.dataset_id;
+
+    // Setup the acquisition, create a new file
+    auto init_fut = std::async(&visWriter::init_acq, this);
 
     while (!stop_thread) {
 
@@ -128,30 +93,26 @@ void visWriter::main_thread() {
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
 
+        // Check the dataset ID hasn't changed
+        if (frame.dataset_id != ds_id) {
+            string msg = fmt::format(
+                        "Unexpected dataset ID={} received (expected id={}). " \
+                        "Creating a new file.",
+                frame.dataset_id, ds_id
+            );
+            INFO(msg.c_str());
+            auto init_fut = std::async(&visWriter::init_acq, this);
+        }
+
         // Construct the new time
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-        // Check the number of eigen vectors is as expected
-        if (num_ev > 0  and frame.num_ev != num_ev) {
 
-            string msg = fmt::format(
-                "Number of eigenvectors in frame doesn't match file ({} != {}).",
-                frame.num_ev, num_ev
-            );
-            ERROR(msg.c_str());
-            raise(SIGINT);
-            return;
-
-        // Check the dataset ID hasn't changed
-        } else if (use_dataset_manager && frame.dataset_id != ds_id) {
-            string msg = fmt::format(
-                "Unexpected dataset ID={} received (expected id={}).",
-                frame.dataset_id, ds_id
-            );
-            ERROR(msg.c_str());
-            raise(SIGINT);
-            return;
+        // Are we waiting for datasetStates? We need the states now...wait here.
+        if (init_fut.valid()) {
+            // Get void future, otherwise it will stay valid.
+            init_fut.get();
         }
 
         // Check if the frequency we are receiving is on the list of frequencies
@@ -212,92 +173,62 @@ void visWriter::main_thread() {
         }
 
         // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-
-        // Advance the current frame ids
-        frame_id = (frame_id + 1) % in_buf->num_frames;
-
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
     }
 }
 
-void visWriter::change_dataset_state() {
+void visWriter::get_dataset_state() {
 
     auto& dm = datasetManager::instance();
 
-    // TODO: get all 3 states synchronously
+    // Get all states synchronously.
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm,
+                                 ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm,
+                                 ds_id);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
+                                 &dm, ds_id);
+    auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>,
+                                 &dm, ds_id);
 
-    // Get the frequency spec to determine the freq_ids expected at this Writer.
-    auto fstate = dm.dataset_state<freqState>(ds_id);
-    if (fstate == nullptr)
-        throw std::runtime_error("Could not find freqState for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
+    const metadataState* mstate = mstate_fut.get();
+    const stackState* sstate = sstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+
+    if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
+        ERROR("Set to not use dataset_broker and couldn't find " \
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"\
+              " upstream in the config, that the dataset states.\nExiting...",
+              ds_id);
+        ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, " \
+              "freqState %d, stackState %d (but that one is okay).", pstate,
+              mstate, fstate, sstate);
+        raise(SIGINT);
+    }
 
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         _freq_id_map[f.first] = ind++;
-
-    // Get the product spec and (if available) the stackState to determine the
-    // number of vis entries we are expecting
-    auto pstate = dm.dataset_state<prodState>(ds_id);
-    auto sstate = dm.dataset_state<stackState>(ds_id);
-    auto mstate = dm.dataset_state<metadataState>(ds_id);
-    if (pstate == nullptr || sstate == nullptr || mstate == nullptr)
-        throw std::runtime_error("Could not find all dataset states for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".\n" \
-                                 "One of them is a nullptr (0): prod "
-                                 + std::to_string(pstate != nullptr)
-                                 + ", stack "
-                                 + std::to_string(sstate != nullptr)
-                                 + ", metadata "
-                                 + std::to_string(mstate != nullptr));
 
     weights_type = mstate->get_weight_type();
 
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
-             "the local git version tag is %s", ds_id,
+        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s," \
+             "while the local git version tag is %s", ds_id,
              mstate->get_git_version_tag().c_str(),
              get_git_commit_hash());
     }
 
-    _num_vis = sstate->is_stacked() ?
-            sstate->get_num_stack() : pstate->get_prods().size();
+    _num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 }
 
-bool visWriter::init_acq() {
-
-    // Fetch out information from the buffers that are needed for setting  up
-    // the acq. For the moment just read the first frame.
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
-        return false;
-    auto frame = visFrameView(in_buf, 0);
-
-    auto& dm = datasetManager::instance();
-
-    // Get the dataset ID that the downstream files can use to determine what
-    // they will be writing.
-    if (use_dataset_manager) {
-        ds_id = frame.dataset_id;
-    } else
-        ds_id = dm.add_dataset(dataset(writer_dstate, 0, true), true);
+void visWriter::init_acq() {
 
     // get dataset states
-    try {
-        change_dataset_state();
-    } catch (std::runtime_error& e) {
-        ERROR("Failure in datasetManager: %s", e.what());
-        ERROR("Cancelling write to file.");
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_dataset_manager_dropped_frame_count",
-            unique_name, 1
-        );
-
-        return false;
-    }
+    get_dataset_state();
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     chunk_id = 0;
@@ -333,15 +264,13 @@ bool visWriter::init_acq() {
         }
     }
     make_bundle(metadata);
-
-    return true;
 }
 
 
 void visWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::make_unique<visFileBundle>(
         file_type, root_path, instrument_name, metadata, chunk_id,
-        rollover, window, ds_id, num_ev, file_length
+        rollover, window, ds_id, file_length
     );
 }
 
@@ -374,7 +303,7 @@ visCalWriter::visCalWriter(Config &config,
 
     // Check if any of these files exist
     std::string full_path = root_path + "/" + acq_name + "/";
-     if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
+    if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
         || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
         INFO(("Clobering files in " + full_path).c_str());
         check_remove((full_path + fname_base + "_A.data").c_str());
@@ -417,7 +346,7 @@ void visCalWriter::make_bundle(std::map<std::string, std::string>& metadata) {
     file_bundle = std::unique_ptr<visCalFileBundle>(
         new visCalFileBundle(
             file_type, root_path, instrument_name, metadata, chunk_id, rollover,
-            window, ds_id, num_ev, file_length
+            window, ds_id, file_length
         )
     );
 

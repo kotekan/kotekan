@@ -1,22 +1,37 @@
 #include "visAccumulate.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "fmt.hpp"
-#include "datasetManager.hpp"
-#include "configUpdater.hpp"
-#include "version.h"
 
 #include <time.h>
-#include <iomanip>
-#include <iostream>
-#include <vector>
 #include <algorithm>
-#include <stdexcept>
-#include <mutex>
+#include <atomic>
+#include <complex>
 #include <csignal>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iterator>
+#include <mutex>
+#include <numeric>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+
+#include "fmt.hpp"
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
+#include "chimeMetadata.h"
+#include "configUpdater.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "factory.hpp"
+#include "metadata.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 
 using namespace std::placeholders;
@@ -35,7 +50,6 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     num_freq_in_frame = config.get_default<size_t>(
         unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
-    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
     samples_per_data_set = config.get<size_t>(
         unique_name, "samples_per_data_set");
     low_sample_fraction = config.get_default<float>(
@@ -70,7 +84,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     // Get everything we need for registering dataset states
 
     // --> get metadata
-    _instrument_name = config.get_default<std::string>(
+    std::string instrument_name = config.get_default<std::string>(
                 unique_name, "instrument_name", "chime");
 
     std::vector<uint32_t> freq_ids;
@@ -88,43 +102,28 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
     // Create the frequency specification
     // TODO: CHIME specific
-    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
                    [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
                        return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                    });
 
     // The input specification from the config
-    _inputs = std::get<1>(input_reorder);
+    std::vector<input_ctype> inputs = std::get<1>(input_reorder);
 
-    size_t num_elements = _inputs.size();
+    size_t num_elements = inputs.size();
 
     // Create the product specification
-    _prods.reserve(num_elements * (num_elements+1) / 2);
+    std::vector<prod_ctype> prods;
+    prods.reserve(num_elements * (num_elements+1) / 2);
     for(uint16_t i = 0; i < num_elements; i++) {
         for(uint16_t j = i; j < num_elements; j++) {
-            _prods.push_back({i, j});
+            prods.push_back({i, j});
         }
     }
 
     // get dataset ID for out frames
-    uint32_t err_count = 0;
-    while (true) {
-        try {
-            _ds_id_out = change_dataset_state();
-        } catch (std::runtime_error& e) {
-            WARN("Failure in datasetManager: %s",
-                 e.what());
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_dataset_manager_dropped_frame_count",
-                unique_name, ++err_count);
-            // wait a second
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            WARN("Retrying...");
-
-            continue;
-        }
-        break;
-    }
+    _ds_id_out = change_dataset_state(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -215,32 +214,36 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
 }
 
-visAccumulate::~visAccumulate() {}
 
-dset_id_t visAccumulate::change_dataset_state() {
-
+dset_id_t visAccumulate::change_dataset_state(
+    std::string& instrument_name,
+    std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+    std::vector<input_ctype>& inputs,
+    std::vector<prod_ctype>& prods
+)
+{
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
 
     // create all the states
-    state_uptr freq_state = std::make_unique<freqState>(_freqs);
+    state_uptr freq_state = std::make_unique<freqState>(freqs);
     state_uptr input_state = std::make_unique<inputState>(
-        _inputs, std::move(freq_state));
+                inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
-        _prods, std::move(input_state));
-    //empty stackState
-    state_uptr stack_state =
-        std::make_unique<stackState>(std::move(prod_state));
+                prods, std::move(input_state));
+    state_uptr ev_state = std::make_unique<eigenvalueState>(
+                0, std::move(prod_state));
     state_uptr mstate = std::make_unique<metadataState>(
-        weight_type, _instrument_name, git_tag, std::move(stack_state)
+                weight_type, instrument_name, git_tag, std::move(ev_state)
     );
 
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
     state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+
     //register root dataset
-    return dm.add_dataset(dataset(mstate_id, 0, true));
+    return dm.add_dataset(mstate_id);
 }
 
 
@@ -275,6 +278,11 @@ void visAccumulate::main_thread() {
 
         int32_t* input = (int32_t *)in_frame;
         uint32_t frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
+
+        // Start and end times of this frame
+        // TODO: CHIME specific
+        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
@@ -332,7 +340,7 @@ void visAccumulate::main_thread() {
             // Reset gated streams and find which ones are enabled for this period
             enabled_gated_datasets.clear();
             for (auto& state : gated_datasets) {
-                if (reset_state(state)) {
+                if (reset_state(state, t_s)) {
                     enabled_gated_datasets.push_back(state);
                 }
             }
@@ -363,12 +371,8 @@ void visAccumulate::main_thread() {
 
             // Now the main accumulation work starts...
 
-            // TODO: CHIME specific
-            timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-            timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
             internalState& state = enabled_gated_datasets[0];
-            auto frame = visFrameView(state.buf, state.frame_id,
-                                      num_elements, num_eigenvectors);
+            auto frame = visFrameView(state.buf, state.frame_id);
             float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
             long samples_in_frame = samples_per_data_set -
@@ -387,9 +391,8 @@ void visAccumulate::main_thread() {
                 // not doing this because I don't want to burn cycles doing the
                 // multiplications
                 // Perform primary accumulation (assume that the weight is one)
-                for (size_t i = 0; i < num_prod_gpu; i++) {
-                    cfloat t = {(float)input[2*i+1], (float)input[2*i]};
-                    dset.vis1[i] += t;
+                for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+                    dset.vis1[i] += input[i];
                 }
 
                 // Accumulate the weights
@@ -435,7 +438,7 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state,
 
     allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
     auto frame = visFrameView(state.buf, state.frame_id + freq_ind,
-                              num_elements, num_eigenvectors);
+                              num_elements, 0);
 
     // Copy over the metadata
     // TODO: CHIME
@@ -469,8 +472,8 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 
     // Subtract out the bias from the gated data
     float scl = gate.sample_weight_total / vis.sample_weight_total;
-    for (size_t i = 0; i < num_prod_gpu; i++) {
-        gate.vis1[i] -= scl * vis.vis1[i];
+    for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+        gate.vis1[i] -= (int32_t)(scl * vis.vis1[i]);
     }
 
     // TODO: very strong assumption that the weights are one (when on) baked in
@@ -498,7 +501,8 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     // Copy the visibilities into place
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
-            cfloat t = !conj ? state.vis1[bi] : std::conj(state.vis1[bi]);
+            cfloat t =  {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+            t = !conj ? t : std::conj(t);
             output_frame.vis[pi] = iw * t;
         }
     );
@@ -517,7 +521,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
 }
 
 
-bool visAccumulate::reset_state(visAccumulate::internalState& state) {
+bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t) {
 
     // Reset the internal counters
     state.sample_weight_total = 0;
@@ -533,7 +537,7 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state) {
     }
 
     // Save out the weight function in case an update arrives mid integration
-    state.calculate_weight = state.spec->weight_function();
+    state.calculate_weight = state.spec->weight_function(t);
 
     // Zero out accumulation arrays
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);
@@ -548,7 +552,7 @@ visAccumulate::internalState::internalState(
     buf(out_buf),
     frame_id(buf),
     spec(std::move(gate_spec)),
-    vis1(nprod),
+    vis1(2 * nprod),
     vis2(nprod)
 {
 

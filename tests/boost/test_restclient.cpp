@@ -149,28 +149,6 @@ struct TestContext {
             INFO("test: sending back json: %s", j.dump().c_str());
          }
     }
-
-    void pong(connectionInstance& con, json json_request) {
-        cb_called_count++;
-        INFO("pong: json: %s", json_request.dump().c_str());
-        con.send_json_reply(json_request);
-    }
-
-    static void check() {
-        json request;
-        request["array"] = {1,2,3};
-        request["flag"] = true;
-
-        std::function<void(restReply)> fun = TestContext::rq_callback_pong;
-        std::string path("test_restclient_pong");
-        bool ret = restClient::instance().make_request(path,
-                                                       fun,
-                                                       request);
-        if (ret != true) {
-            INFO("test: restClient::make_request failed.");
-            error = true;
-        }
-    }
 };
 
 BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
@@ -181,6 +159,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     request["array"] = {1,2,3};
     request["flag"] = true;
 
+    restServer::instance().start("127.0.0.1");
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
@@ -268,38 +247,41 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
                                        "some requests were never sent by the " \
                                        "restClient OR the test didn't wait " \
                                        "long enough.", cb_called_count);
-    BOOST_CHECK_MESSAGE(cb_called_count == 2, fail_msg);}
+    BOOST_CHECK_MESSAGE(cb_called_count == 2, fail_msg);
+}
 
-BOOST_FIXTURE_TEST_CASE( _test_restclient_multithr_request, TestContext ) {
+BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply_blocking, TestContext ) {
     __log_level = 4;
     __enable_syslog = 0;
+    restReply reply;
     json request, bad_request;
     request["array"] = {1,2,3};
     request["flag"] = true;
     bad_request["array"] = 0;
 
 
-    /* Test N threads */
+    /* Test receiveing a text reply */
 
-    TestContext::init(std::bind(&TestContext::pong, this,
+    TestContext::init(std::bind(&TestContext::callback_text, this,
                                 std::placeholders::_1,
                                 std::placeholders::_2),
-                                "/test_restclient_pong");
-#define N 100
-    std::thread t[N];
-    for (int i = 0; i < N; i++) {
-        t[i] = std::thread(check);
-    }
-    for (int i = 0; i < N; i++) {
-        t[i].join();
-    }
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    BOOST_CHECK_MESSAGE(error == false,
-                        "Run pytest with -s to see where the error is.");
-    std::string fail_msg = fmt::format("Only {} callback functions where " \
-                                       "called (expected {}). This suggests " \
-                                       "some requests were never sent by the " \
-                                       "restClient OR the test didn't wait " \
-                                       "long enough.", cb_called_count, N);
-    BOOST_CHECK_MESSAGE(cb_called_count == N, fail_msg);
+                                "/test_restclient_json");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    reply = restClient::instance().make_request_blocking("test_restclient_json",
+                                                         request);
+    BOOST_CHECK(reply.first == true);
+    BOOST_CHECK(reply.second == "this is a test");
+
+
+    /* Test with json in reply */
+
+    bad_request["flag"] = false;
+    bad_request["array"] = {4,5,6};
+
+    reply = restClient::instance().make_request_blocking("test_restclient_json",
+                                                         bad_request);
+    BOOST_CHECK(reply.first == true);
+    json js = json::parse(reply.second);
+    BOOST_CHECK(js["test"] == "failed");
 }

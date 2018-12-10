@@ -7,16 +7,23 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
-#include <iostream>
+#include <stddef.h>
+#include <sys/types.h>
 #include <cstdint>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
 
+#include "Config.hpp"
+#include "datasetManager.hpp"
 #include "visBuffer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
-#include "errors.h"
 
 /** @brief A CHIME correlator file.
  *
@@ -62,7 +69,7 @@ protected:
     // Implement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t num_ev, size_t max_time) override;
+                     dset_id_t dataset, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     virtual void create_time_axis(size_t num_time);
@@ -89,8 +96,8 @@ protected:
     HighFive::DataSet dset(const std::string& name);
     size_t length(const std::string& axis_name);
 
-    // Whether to write eigenvalues or not
-    bool write_ev;
+    // Number of eigenvalues
+    size_t num_ev;
 
     // Pointer to the underlying HighFive file
     std::unique_ptr<HighFive::File> file;
@@ -150,14 +157,14 @@ public:
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind);
+    void deactivate_time(uint32_t time_ind) override;
 
 protected:
 
     // Reimplement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t num_ev, size_t max_time) override;
+                     dset_id_t dataset, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     void create_time_axis(size_t num_time) override;

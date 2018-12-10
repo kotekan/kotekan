@@ -1,16 +1,34 @@
-#include <libgen.h>
+#include "visRawReader.hpp"
+
+#include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <iostream>
-#include <fstream>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <csignal>
+#include <unistd.h>
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <functional>
+#include <iostream>
+#include <fstream>
+#include <memory>
+#include <regex>
+#include <stdexcept>
 
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
+#include "datasetState.hpp"
+#include "errors.h"
 #include "fmt.hpp"
-#include "visUtil.hpp"
-#include "visRawReader.hpp"
+#include "metadata.h"
+#include "processFactory.hpp"
 #include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
 
 REGISTER_KOTEKAN_PROCESS(visRawReader);
 
@@ -146,10 +164,7 @@ visRawReader::visRawReader(Config &config,
 
     // tell the dataset manager and get a dataset ID for the data coming from
     // this file
-    _use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
-    if (_use_dataset_manager)
-        change_dataset_state();
+    change_dataset_state();
 }
 
 visRawReader::~visRawReader() {
@@ -166,31 +181,24 @@ void visRawReader::change_dataset_state() {
 
     // Add the states: metadata, time, prod, freq, input, eigenvalue and stack.
     state_uptr sstate = nullptr;
-    if (_stack.empty())
-        sstate = std::make_unique<stackState>(); // empty stackState
-    else
+    if (!_stack.empty())
         sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
-    state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
-    state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
+    state_uptr istate = std::make_unique<inputState>(_inputs,
+                                                     std::move(sstate));
+    state_uptr evstate = std::make_unique<eigenvalueState>(_ev,
+                                                           std::move(istate));
     state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
     state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
     state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
 
-    try {
-        state_id_t mstate_id = dm.add_state(std::make_unique<metadataState>(
-                                             _metadata.at("weight_type"),
-                                             _metadata.at("instrument_name"),
-                                             _metadata.at("git_version_tag"),
-                                             std::move(tstate))).first;
+    state_id_t mstate_id = dm.add_state(std::make_unique<metadataState>(
+                                        _metadata.at("weight_type"),
+                                        _metadata.at("instrument_name"),
+                                        _metadata.at("git_version_tag"),
+                                        std::move(tstate))).first;
 
-        // register it as root dataset
-        _dataset_id = dm.add_dataset(dataset(mstate_id, 0, true));
-    } catch (std::runtime_error& e) {
-        // Crash if anything goes wrong. This process is processing data from a
-        // file, so should be restarted after fixing the problem.
-        ERROR("Failure in datasetManager: %s\nExiting...");
-        raise(SIGINT);
-    }
+    // register it as root dataset
+    _dataset_id = dm.add_dataset(mstate_id);
 }
 
 void visRawReader::read_ahead(int ind) {
@@ -276,23 +284,21 @@ void visRawReader::main_thread() {
                 num_elements = _inputs.size();
             // Fill data with zeros
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto visFrame = visFrameView(out_buf, frame_id, _inputs.size(),
-                    num_vis, _ev.size());
-            std::memset(visFrame.vis.data(), 0, sizeof(cfloat) * visFrame.num_prod);
-            std::memset(visFrame.weight.data(), 0, sizeof(float) * visFrame.num_prod);
-            std::memset(visFrame.eval.data(), 0, sizeof(float) * visFrame.num_ev);
-            std::memset(visFrame.evec.data(), 0, sizeof(cfloat) * visFrame.num_ev
-                    * visFrame.num_elements);
-            std::memset(visFrame.gain.data(), 0, sizeof(cfloat) * visFrame.num_elements);
-            std::memset(visFrame.flags.data(), 0, sizeof(float) * visFrame.num_elements);
-            visFrame.freq_id = 0;
-            visFrame.erms = 0;
+            auto frame = visFrameView(out_buf, frame_id, _inputs.size(),
+                                      num_vis, _ev.size());
+            std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
+            std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
+            std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
+            std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
+            std::fill(frame.gain.begin(), frame.gain.end(), 0.0);
+            std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
+            frame.freq_id = 0;
+            frame.erms = 0;
 			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
         }
 
         // Set the dataset ID
-        if (_use_dataset_manager)
-            ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
+       ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
                 = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again

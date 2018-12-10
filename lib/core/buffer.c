@@ -457,7 +457,7 @@ int private_consumers_done(struct Buffer * buf, const int ID) {
 
 int private_producers_done(struct Buffer * buf, const int ID) {
 
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1 && buf->producers_done[ID][i] == 0)
             return 0;
     }
@@ -515,7 +515,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
     while ( (buf->is_full[ID] == 0 ||
-            buf->consumers_done[ID][consumer_id] == 1) && 
+            buf->consumers_done[ID][consumer_id] == 1) &&
             buf->shutdown_signal == 0 && err == 0) {
         err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
     }
@@ -524,7 +524,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
 
     if (buf->shutdown_signal == 1)
         return -1;
-    
+
     if (err == ETIMEDOUT)
         return 1;
 
@@ -546,6 +546,30 @@ int get_num_full_frames(struct Buffer* buf)
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
     return numFull;
+}
+
+int get_num_consumers(struct Buffer * buf) {
+    int num_consumers = 0;
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf->consumers[i].in_use == 1) {
+            num_consumers++;
+        }
+    }
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+    return num_consumers;
+}
+
+int get_num_producers(struct Buffer * buf) {
+    int num_producers = 0;
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
+        if (buf->producers[i].in_use == 1) {
+            num_producers++;
+        }
+    }
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+    return num_producers;
 }
 
 void print_buffer_status(struct Buffer* buf)
@@ -651,34 +675,15 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
     assert(to_frame_id < to_buf->num_frames);
     assert(from_buf->aligned_frame_size == to_buf->aligned_frame_size);
 
-    CHECK_ERROR( pthread_mutex_lock(&from_buf->lock) );
-    CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
-
-    // Check that we don't have more than one consumer on the from_buf.
-    int num_consumers = 0;
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (from_buf->consumers[i].in_use == 1) {
-            num_consumers++;
-        }
-    }
+    int num_consumers = get_num_consumers(from_buf);
     assert(num_consumers == 1);
-
-    // Check that we don't have more than one producer on the to_buf.
-    int num_producers = 0;
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (to_buf->producers[i].in_use == 1) {
-            num_producers++;
-        }
-    }
+    int num_producers = get_num_producers(to_buf);
     assert(num_producers == 1);
 
     // Swap the frames
     uint8_t * temp_frame = from_buf->frames[from_frame_id];
     from_buf->frames[from_frame_id] = to_buf->frames[to_frame_id];
     to_buf->frames[to_frame_id] = temp_frame;
-
-    CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
-    CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
 
 }
 

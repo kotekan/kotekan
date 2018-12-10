@@ -37,7 +37,6 @@ cpu_affinity: [2,3,8,9]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]
-use_dataset_manager: True
 
 dataset_manager:
   use_dataset_broker: True
@@ -73,7 +72,7 @@ num_beams: 10
 num_pol: 2
 pulsar_gain:
   kotekan_update_endpoint: json
-  pulsar_gain_dir: 
+  pulsar_gain_dir:
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
@@ -132,6 +131,14 @@ gpu_n2_buffers:
   gpu_n2_output_buffer_2:
     kotekan_buffer: standard
   gpu_n2_output_buffer_3:
+    kotekan_buffer: standard
+  valve_buffer_0:
+    kotekan_buffer: standard
+  valve_buffer_1:
+    kotekan_buffer: standard
+  valve_buffer_2:
+    kotekan_buffer: standard
+  valve_buffer_3:
     kotekan_buffer: standard
 
 gpu_beamform_output_buffers:
@@ -545,8 +552,8 @@ frb:
       - 10.7.201.17
       - 10.6.201.18
       - 10.7.201.18
-      #- 10.6.201.19 -- cf1n9 -- Motherboard Issues
-      #- 10.7.201.19
+      - 10.6.201.19
+      - 10.7.201.19
       # Rack 2
       - 10.8.202.10
       - 10.9.202.10
@@ -793,7 +800,8 @@ frb:
       - 10.7.213.15
       - 10.6.213.16
       - 10.7.213.16
-      # cfDn7
+      - 10.6.213.17
+      - 10.7.213.17
       # cfDn8
       # cfDn9
 
@@ -837,7 +845,7 @@ pulsar:
 
 #### N2 GPU Post processing and Tx ####
 
-# Updateable config for gating
+# Updatable config for gating
 updatable_config:
   gating:
     psr0_config:
@@ -847,10 +855,11 @@ updatable_config:
       pulsar_name: "B0329"
       pulse_width: 0.0314
       dm: 26.7641
+      segment: 18000.
       rot_freq: 1.39954153872
-      t_ref: 58437.4583333332
-      phase_ref: 1446745468.8439252
-      coeff: [
+      t_ref: [58437.4583333332,]
+      phase_ref: [1446745468.8439252,]
+      coeff: [[
                3.428779943504219e-10,
                0.0011253963075329334,
                -1.1565642124857199e-07,
@@ -862,14 +871,32 @@ updatable_config:
                2.745973613190195e-26,
                -2.279050323988331e-29,
                -1.1771713330451292e-32,
-               3.948826407949732e-35
-             ]
+               3.948826407949732e-35,
+             ],]
+
+valve:
+  valve0:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_0
+    out_buf: valve_buffer_0
+  valve1:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_1
+    out_buf: valve_buffer_1
+  valve2:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_2
+    out_buf: valve_buffer_2
+  valve3:
+    kotekan_process: Valve
+    in_buf: gpu_n2_output_buffer_3
+    out_buf: valve_buffer_3
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   acc0:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_0
+    in_buf: valve_buffer_0
     out_buf: visbuf_5s_0
     gating:
       psr0:
@@ -879,7 +906,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_1
+    in_buf: valve_buffer_1
     out_buf: visbuf_5s_1
     gating:
       psr0:
@@ -889,7 +916,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_2
+    in_buf: valve_buffer_2
     out_buf: visbuf_5s_2
     gating:
       psr0:
@@ -899,7 +926,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_process: visAccumulate
-    in_buf: gpu_n2_output_buffer_3
+    in_buf: valve_buffer_3
     out_buf: visbuf_5s_3
     gating:
       psr0:
@@ -911,7 +938,8 @@ vis_accumulate:
 ## Perform all extra time integration and calculate eigenvalues
 
 vis_merge_5s:
-  kotekan_process: visMerge
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_5s_0
     - visbuf_5s_1
@@ -920,7 +948,8 @@ vis_merge_5s:
   out_buf: visbuf_5s_merge
 
 vis_merge_gated_psr0:
-  kotekan_process: visMerge
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_psr0_5s_0
     - visbuf_psr0_5s_1
@@ -972,8 +1001,9 @@ eigcalc:
     in_buf: visbuf_10s_3
     out_buf: visbuf_eig_10s_3
 
-vis_merge_eig_10s:
-  kotekan_process: visMerge
+merge_eig_10s:
+  kotekan_process: bufferMerge
+  timeout: 0.1
   in_bufs:
     - visbuf_eig_10s_0
     - visbuf_eig_10s_1

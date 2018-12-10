@@ -3,17 +3,23 @@
 @brief Extract a subset of products from a visBuffer.
 - prodSubset : public KotekanProcess
 *****************************************/
-#ifndef PROD_SUB
-#define PROD_SUB
+#ifndef PROD_SUB_HPP
+#define PROD_SUB_HPP
 
-#include <unistd.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <future>
-#include "buffer.h"
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "visUtil.hpp"
+
 
 /**
  * @class prodSubset
@@ -45,19 +51,18 @@
  *     @buffer_format visBuffer structured
 +*     @buffer_metadata visMetadata
  *
- * @conf  prod_subset_type  string. Type of product subset to perform.
- * @conf  num_elements      int. The number of elements (i.e. inputs) in the
-+*                               correlator data
-+* @conf  num_ev            int. The number of eigenvectors to be stored
- * @conf  max_ew_baseline   int. The maximum baseline length along the EW direction to
- *                               include in subset (in units of the shortest EW baseline)
- * @conf  max_ns_baseline   int. The maximum baseline length along the NS direction to
- *                               include in subset (in units of the shortest NS baseline)
- * @conf  input_list        vector of int. The list of inputs to include.
- * @conf  use_dataset_manager Bool (default: false) Use the dataset manager.
+ * @conf  prod_subset_type      string. Type of product subset to perform.
+ * @conf  num_elements          int. The number of elements (i.e. inputs) in the
++*                              correlator data
++* @conf  num_ev                int. The number of eigenvectors to be stored
+ * @conf  max_ew_baseline       int. The maximum baseline length along the EW
+ *                              direction to include in subset (in units of the
+ *                              shortest EW baseline)
+ * @conf  max_ns_baseline       int. The maximum baseline length along the NS
+ *                              direction to include in subset (in units of the
+ *                              shortest NS baseline)
+ * @conf  input_list            vector of int. The list of inputs to include.
  *
- * @metric kotekan_dataset_manager_dropped_frame_count
- *        The number of frames dropped while attempting to write.
  *
  * @warning This will only work correctly if the full correlation triangle is
  * passed in as input.
@@ -80,14 +85,13 @@ private:
     /// keeps track of the input dataset ID
     /// and gets new output dataset ID from manager
     ///
-    static dset_id_t change_dataset_state(dset_id_t ds_id,
-                                          std::vector<prod_ctype>& prod_subset,
-                                          std::vector<size_t>& prod_ind,
-                                          size_t& subset_num_prod);
+    dset_id_t change_dataset_state(dset_id_t ds_id,
+                                   std::vector<prod_ctype>& prod_subset,
+                                   std::vector<size_t>& prod_ind,
+                                   size_t& subset_num_prod);
 
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
-    bool use_dataset_manager;
 
     /// Number of products in subset
     size_t subset_num_prod;

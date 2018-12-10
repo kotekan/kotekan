@@ -26,6 +26,9 @@ global_params = {
     'wait': True,
     'combine_gains_time': 10.,
     'num_threads': 4,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 

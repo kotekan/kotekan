@@ -7,14 +7,26 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
+#include <errno.h>
+#include <stdio.h>
 #include <cstdint>
 #include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
+#include "restServer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
-#include "restServer.hpp"
+
 
 /**
  * @class visWriter
@@ -54,19 +66,16 @@
  * @conf   weights_type     Indicate what the visibility weights represent, e.g,
  *                          'inverse_var'. Will saved as an attribute in the saved
  *                          file. (default 'unknown')
- * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
- * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Maximum number of samples to
  *                          write into a file.
  * @conf   window           Int (default 20). Number of samples to keep active
  *                          for writing at any time.
- * @conf   use_dataset_manager Bool (default:false). Use the dataset manager.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_dataset_manager_dropped_frame_count
+ * @metric kotekan_viswriter_dropped_frame_total
  *         The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
@@ -88,14 +97,13 @@ protected:
     virtual void make_bundle(std::map<std::string, std::string>& metadata);
 
     /// Setup the acquisition
-    bool init_acq();
+    void init_acq();
 
     /// Using the first frequency ID found, and any config parameters, determine
     /// which frequencies will end up in the file
     void setup_freq(uint32_t freq_id);
 
     // Parameters saved from the config files
-    bool use_dataset_manager;
     std::string root_path;
     std::string instrument_name;
     std::string weights_type;
@@ -114,10 +122,6 @@ protected:
     /// Dataset ID of current stream
     dset_id_t ds_id;
 
-    /// State ID for the internal datasetState used if the datasetManager is not
-    /// being used externally
-    state_id_t writer_dstate;
-
     /// A unique ID for the chunk (i.e. frequency set)
     uint32_t chunk_id;
 
@@ -132,7 +136,7 @@ protected:
 
 private:
     /// Gets states from the dataset manager and saves some metadata
-    void change_dataset_state();
+    void get_dataset_state();
 
     /// Number of products to write and freqency map
     std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>
@@ -194,8 +198,6 @@ private:
  * @conf   weights_type     Indicate what the visibility weights represent, e.g,
  *                          'inverse_var'. Will saved as an attribute in the saved
  *                          file. (default 'unknown')
- * @conf   write_ev         Bool (default: false). Write out the eigenvalues/vectors.
- * @conf   num_ev           Int. Only needed if `write_ev` is true.
  * @conf   file_length      Int (default 1024). Fixed length of the ring file
  *                          in number of time samples.
  * @conf   window           Int (default 10). Number of samples to keep active
@@ -205,7 +207,7 @@ private:
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_dataset_manager_dropped_frame_count
+ * @metric kotekan_viswriter_dropped_frame_total
  *         The number of frames dropped while attempting to write.
  *
  * @author Tristan Pinsonneault-Marotte

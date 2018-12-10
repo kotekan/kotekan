@@ -20,8 +20,19 @@ restServer &restServer::instance() {
 }
 
 restServer::restServer() : main_thread() {
-
     stop_thread = false;
+}
+
+restServer::~restServer() {
+    stop_thread = true;
+    main_thread.join();
+}
+
+void restServer::start(const std::string &bind_address, u_short port) {
+
+    this->bind_address = bind_address;
+    this->port = port;
+
     main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
@@ -32,11 +43,6 @@ restServer::restServer() : main_thread() {
     using namespace std::placeholders;
     register_get_callback("/endpoints",
         std::bind(&restServer::endpoint_list_callback, this, _1));
-}
-
-restServer::~restServer() {
-    stop_thread = true;
-    main_thread.join();
 }
 
 void restServer::handle_request(struct evhttp_request * request, void * cb_data) {
@@ -255,7 +261,7 @@ int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
 
     try {
         json_parse = json::parse(message);
-    } catch (std::exception ex) {
+    } catch (const std::exception& ex) {
         string error_message = string("Error Message: JSON failed to parse, error: ") + string(ex.what());
         ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP message was: %s", ex.what(), message.c_str());
         evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), error_message.c_str());
