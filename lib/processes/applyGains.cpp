@@ -306,7 +306,7 @@ void applyGains::apply_thread(int thread_id) {
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis});
+        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
 
         cfloat * out_vis = output_frame.vis.data();
         cfloat * in_vis = input_frame.vis.data();

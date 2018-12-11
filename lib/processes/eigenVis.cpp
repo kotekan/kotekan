@@ -92,11 +92,6 @@ void eigenVis::main_thread() {
 
         if (!initialized) {
             num_elements = input_frame.num_elements;
-            if (input_frame.num_ev < num_eigenvectors) {
-                throw std::runtime_error("Insufficient storage space for"
-                                         " requested number of eigenvectors.");
-            }
-
             vis_square.resize(num_elements * num_elements, 0);
             evecs.resize(num_elements * num_eigenvectors, 0);
             evals.resize(num_elements, 0);
@@ -170,6 +165,9 @@ void eigenVis::main_thread() {
                 "kotekan_eigenvis_lapack_failure_total",
                 unique_name, lapack_failure_total, labels
             );
+
+            // Clear frame and advance
+            mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
             continue;
         }
 
