@@ -43,9 +43,10 @@ vis_buffer:
     kotekan_buffer: vis
   visbuf_10s_gain:
     kotekan_buffer: vis
+    buffer_depth: 384  # Before slow process
   visbuf_10s_flags:
     kotekan_buffer: vis
-    buffer_depth: 512  # This is immediately before the first slow process so it needs a longer length
+    buffer_depth: 256  # Before slow process
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
