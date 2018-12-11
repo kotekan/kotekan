@@ -300,7 +300,7 @@ bool restClient::make_request(std::string path,
         }
 
         evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)datalen);
-        evhttp_add_header(output_headers, "Content-Length", buf);
+        ret = evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
             WARN("restClient: Failure adding \"Content-Length\" header.");
             evhttp_connection_free(evcon);
@@ -351,12 +351,19 @@ restReply restClient::make_request_blocking(std::string path,
         return reply;
     }
 
-    // wait for the callback to receive the reply
+    // Wait for the callback to receive the reply.
+    // Note: This timeout is only in case libevent for any reason never
+    // calls the callback lambda we pass to it. That's a serious error case.
+    // In a normal timeout situation, we have to make sure libevent times out
+    // before this, that's why we wait twice as long.
     auto time_point = std::chrono::system_clock::now()
-            + std::chrono::seconds(timeout == -1 ? 50 : timeout);
+            + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
     while (!cv_reply.wait_until(lck_reply, time_point,
                               [&](){return reply_copied;})) {
-            WARN("Timeout in make_request_blocking.");
+            ERROR("restClient: Timeout in make_request_blocking " \
+                  "(%s:%d/%s). This might leave the restClient in an abnormal "\
+                  "state. Exiting...", host.c_str(), port, path.c_str());
+            raise(SIGINT);
             return reply;
     }
     return reply;

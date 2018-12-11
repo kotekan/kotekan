@@ -118,7 +118,7 @@ datasetManager& datasetManager::instance(Config& config) {
         dm._retries_rest_client = config.get_default<uint32_t>(
                     DS_UNIQUE_NAME, "retries_rest_client", 0);
         dm._timeout_rest_client_s = config.get_default<int32_t>(
-                    DS_UNIQUE_NAME, "timeout_rest_client", -1);
+                    DS_UNIQUE_NAME, "timeout_rest_client", 100);
 
         DEBUG("datasetManager: expecting broker at %s:%d.",
               dm._ds_broker_host.c_str(), dm._ds_broker_port);
@@ -154,6 +154,7 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
 dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
     datasetState* t = nullptr;
     try {
+        std::lock_guard<std::mutex> slck(_lock_states);
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling process...
@@ -248,8 +249,9 @@ void datasetManager::request_thread(
         const std::function<bool(std::string&)>&& parse_reply) {
 
     restReply reply;
+
     while (true) {
-        reply = restClient::instance().make_request_blocking(
+        reply = _rest_client.make_request_blocking(
                     endpoint, request, _ds_broker_host, _ds_broker_port,
                     _retries_rest_client, _timeout_rest_client_s);
 
@@ -267,7 +269,7 @@ void datasetManager::request_thread(
                         "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME,
                         ++_conn_error_count);
             WARN("datasetManager: Failure in connection to broker: %s:" \
-                 "%d/%s.\ndatasetManager: Make sure the broker is " \
+                 "%d/%s. Make sure the broker is " \
                  "running.", _ds_broker_host.c_str(), _ds_broker_port,
                  endpoint.c_str());
         }
@@ -512,7 +514,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
         js_rqst["ds_id"] = ds_id;
         js_rqst["roots"] = _known_roots;
 
-        restReply reply = restClient::instance().make_request_blocking(
+        restReply reply = _rest_client.make_request_blocking(
                     PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                     _ds_broker_port, _retries_rest_client,
                     _timeout_rest_client_s);
@@ -520,7 +522,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
         while (!parse_reply_dataset_update(reply)) {
             std::this_thread::sleep_for(
                         std::chrono::milliseconds(_retry_wait_time_ms));
-            reply = restClient::instance().make_request_blocking(
+            reply = _rest_client.make_request_blocking(
                         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                         _ds_broker_port, _retries_rest_client,
                         _timeout_rest_client_s);
