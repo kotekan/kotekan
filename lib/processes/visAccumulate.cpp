@@ -585,6 +585,7 @@ visAccumulate::internalState::internalState(
     buf(out_buf),
     frame_id(buf),
     spec(std::move(gate_spec)),
+    changed(true),
     vis1(2 * nprod),
     vis2(nprod)
 {
