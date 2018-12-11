@@ -189,7 +189,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
 
         // If there are no consumers registered then we can just mark the buffer empty
         if (private_consumers_done(buf, ID) == 1) {
-            INFO("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
+            DEBUG("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
             buf->is_full[ID] = 0;
             if (buf->metadata[ID] != NULL) {
                 decrement_metadata_ref_count(buf->metadata[ID]);

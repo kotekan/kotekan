@@ -287,7 +287,8 @@ protected:
     uint64_t last_seq = 0;
 
     /// The streamID seen by this port handler
-    stream_id_t port_stream_id;
+    /// Values of 255 = unset
+    stream_id_t port_stream_id = {255, 255, 255, 255};
 
     /// Set to true after the first packet is alligned.
     bool got_first_packet = false;
@@ -363,7 +364,18 @@ json iceBoardHandler::get_json_port_info() {
     stream_id_t temp_stream_id = port_stream_id;
     temp_stream_id.crate_id = port_stream_id.crate_id % 2;
     for (int32_t i = 0; i < num_local_freq; ++i) {
-        if (num_local_freq == 1) { // CHIME
+        if (port_stream_id.crate_id == 255) {
+            // This is the error case where the stream ID hasn't been set yet.
+            if (num_local_freq == 1) {
+                for (int j = 0; j < 4; ++j) {
+                    freq_bins.push_back(std::numeric_limits<uint32_t>::max());
+                    freq_mhz.push_back(0);
+                }
+            } else {
+                freq_bins.push_back(std::numeric_limits<uint32_t>::max());
+                freq_mhz.push_back(0);
+            }
+        } else if (num_local_freq == 1) { // CHIME
             // Even though CHIME sets num_local_freq == 1
             // The packets actually have 4 frequencies and 512 elements before the transpose
             for (int j = 0; j < 4; ++j) {
