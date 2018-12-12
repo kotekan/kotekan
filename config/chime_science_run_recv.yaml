@@ -48,13 +48,29 @@ vis_buffer:
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
+  visbuf_10s_stack_ne:
+    kotekan_buffer: vis
+    num_ev: 0
+    num_prod: 17000  # Approximation to the correct size
   visbuf_10s_mfreq:
     kotekan_buffer: vis
   visbuf_10s_stack_mfreq:
     kotekan_buffer: vis
-  visbuf_5s_26m:
+  visbuf_5s_26m_ungated:
     kotekan_buffer: vis
     buffer_depth: 4096
+    num_prod: 4096
+  visbuf_5s_26m_gated:
+    kotekan_buffer: vis
+    buffer_depth: 4096
+    num_prod: 4096
+  visbuf_5s_26m_ungated_post:
+    kotekan_buffer: vis
+    buffer_depth: 1024
+    num_prod: 4096
+  visbuf_5s_26m_gated_post:
+    kotekan_buffer: vis
+    buffer_depth: 1024
     num_prod: 4096
   visbuf_10s_cal:
     kotekan_buffer: vis
@@ -62,6 +78,11 @@ vis_buffer:
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
     num_prod: 66
+    kotekan_buffer: vis
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
+  visbuf_10s_timing_ne:
+    num_prod: 66
+    num_ev: 0
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
@@ -79,7 +100,12 @@ updatable_config:
     kotekan_update_endpoint: "json"
     start_time: 1541039597.
     tag: "gain_20181101T023317.440691Z_cyga"
-
+  26m_gated:
+    kotekan_update_endpoint: "json"
+    enabled: false
+  26m_ungated:
+    kotekan_update_endpoint: "json"
+    enabled: false
 
 # Kotekan processes
 buffer_recv:
@@ -89,14 +115,28 @@ buffer_recv:
     listen_port: 11024
     cpu_affinity: [0, 8]
     num_threads: 2
-  26m:
+  26m_ungated:
     kotekan_process: bufferRecv
-    buf: visbuf_5s_26m
+    buf: visbuf_5s_26m_ungated
     listen_port: 11025
-#  26m_gated:
-#    kotekan_process: bufferRecv
-#    buf: visbuf_5s_26m
-#    listen_port: 11026
+  26m_gated:
+    kotekan_process: bufferRecv
+    buf: visbuf_5s_26m_gated
+    listen_port: 11026
+
+switch_26m_ungated:
+  kotekan_process: bufferSwitch
+  in_bufs:
+    - enabled: visbuf_5s_26m_ungated
+  out_buf: visbuf_5s_26m_ungated_post
+  updatable_config: "/updatable_config/26m_ungated"
+
+switch_26m_gated:
+  kotekan_process: bufferSwitch
+  in_bufs:
+    - enabled: visbuf_5s_26m_gated
+  out_buf: visbuf_5s_26m_gated_post
+  updatable_config: "/updatable_config/26m_gated"
 
 apply_flags:
   kotekan_process: receiveFlags
@@ -108,17 +148,23 @@ vis_debug:
   n2:
     kotekan_process: visDebug
     in_buf: visbuf_10s_flags
-  26m:
+  26m_ungated:
     kotekan_process: visDebug
-    in_buf: visbuf_5s_26m
+    in_buf: visbuf_5s_26m_ungated_post
+  26m_gated:
+    kotekan_process: visDebug
+    in_buf: visbuf_5s_26m_gated_post
 
 count_check:
   n2:
     kotekan_process: countCheck
     in_buf: visbuf_10s_flags
-  26m:
+  26m_ungated:
     kotekan_process: countCheck
-    in_buf: visbuf_5s_26m
+    in_buf: visbuf_5s_26m_ungated
+  26m_gated:
+    kotekan_process: countCheck
+    in_buf: visbuf_5s_26m_gated
 
 apply_gains:
   cpu_affinity: [4, 5]
@@ -165,10 +211,10 @@ mfreq_subset:
     kotekan_process: freqSubset
     in_buf: visbuf_10s_flags
     out_buf: visbuf_10s_mfreq
-#  stack:
-#    kotekan_process: freqSubset
-#    in_buf: visbuf_10s_stack
-#    out_buf: visbuf_10s_stack_mfreq
+  stack:
+    kotekan_process: freqSubset
+    in_buf: visbuf_10s_stack
+    out_buf: visbuf_10s_stack_mfreq
 
 buffer_writers:
   file_length: 256
@@ -189,11 +235,23 @@ buffer_writers:
     instrument_name: chimetiming
     dir_name: timing
 
+remove_ev:
+
+  chimestack:
+    kotekan_process: removeEv
+    in_buf: visbuf_10s_stack
+    out_buf: visbuf_10s_stack_ne
+
+  timing:
+    kotekan_process: removeEv
+    in_buf: visbuf_10s_timing
+    out_buf: visbuf_10s_timing_ne
+
+
 archive_writers:
 
   file_length: 512
   file_type: raw
-  write_ev: True
   root_path: /data/untransposed/
 
   n2_mf:
@@ -203,18 +261,18 @@ archive_writers:
 
   chimestack:
     kotekan_process: visWriter
-    in_buf: visbuf_10s_stack
+    in_buf: visbuf_10s_stack_ne
     instrument_name: chimestack
 
-#  26m:
-#    kotekan_process: visWriter
-#    in_buf: visbuf_5s_26m
-#    instrument_name: chime26m
+  26m:
+    kotekan_process: visWriter
+    in_buf: visbuf_5s_26m_ungated_post
+    instrument_name: chime26m
 
-#  26m_gated:
-#    kotekan_process: visWriter
-#    in_buf: visbuf_5s_26m
-#    instrument_name: chime26mgated
+  26mgated:
+    kotekan_process: visWriter
+    in_buf: visbuf_5s_26m_gated_post
+    instrument_name: chime26mgated
 
   cal:
     kotekan_process: visWriter
@@ -224,15 +282,15 @@ archive_writers:
 
   timing:
     kotekan_process: visWriter
-    in_buf: visbuf_10s_timing
+    in_buf: visbuf_10s_timing_ne
     instrument_name: chimetiming
-    write_ev: False
 
 
 # Transmit part of the stack to the recv1 for testing
-#buffer_send:
-#  server_ip: 10.1.50.11
-#  stack_mfreq:
-#    kotekan_process: bufferSend
-#    buf: visbuf_10s_stack_mfreq
-#    server_port: 14096
+buffer_send:
+  server_ip: 10.1.50.11
+  stack_mfreq:
+    kotekan_process: bufferSend
+    buf: visbuf_10s_stack_mfreq
+    server_port: 14096
+
