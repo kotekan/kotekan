@@ -122,11 +122,16 @@ private:
         std::function<float(timespec, timespec, float)> calculate_weight;
 
         /// Mutex to control update of gateSpec
+        /// ... and bool to signal changes (should only be changed when locked)
         std::mutex state_mtx;
+        bool changed;
 
         /// Accumulation vectors
         std::vector<int32_t> vis1;
         std::vector<float> vis2;
+
+        /// Dataset ID for output
+        dset_id_t output_dataset_id;
 
         friend visAccumulate;
     };
@@ -178,18 +183,21 @@ private:
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;
 
-    // dataset ID written to output frames
-    dset_id_t _ds_id_out;
+    // dataset ID for the base (input, prod, freq, meta)
+    dset_id_t base_dataset_id;
 
 
     /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
-    dset_id_t change_dataset_state(std::string& instrument_name,
-                                   std::vector<std::pair<uint32_t, freq_ctype>>&
-                                   freqs,
-                                   std::vector<input_ctype>& inputs,
-                                   std::vector<prod_ctype>& prods);
+    dset_id_t base_dataset_state(std::string& instrument_name,
+                                 std::vector<std::pair<uint32_t, freq_ctype>>&
+                                 freqs,
+                                 std::vector<input_ctype>& inputs,
+                                 std::vector<prod_ctype>& prods);
+
+    /// Register a new state with the gating params
+    dset_id_t gate_dataset_state(const gateSpec& spec);
 };
 
 #endif
