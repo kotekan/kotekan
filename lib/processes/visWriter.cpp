@@ -31,6 +31,14 @@
 REGISTER_KOTEKAN_PROCESS(visWriter);
 REGISTER_KOTEKAN_PROCESS(visCalWriter);
 
+
+// Define the string name of the bad frame types, required for the prometheus output
+std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
+    {visWriter::droppedType::late, "late"},
+    {visWriter::droppedType::bad_dataset, "bad_dataset"}
+};
+
+
 visWriter::visWriter(Config& config,
                        const string& unique_name,
                        bufferContainer &buffer_container) :
@@ -39,6 +47,9 @@ visWriter::visWriter(Config& config,
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
+    acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
+    ignore_version = config.get_default<bool>(unique_name, "ignore_version",
+                                              false);
 
     // Get the list of buffers that this process shoud connect to
     in_buf = get_buffer("in_buf");
@@ -67,7 +78,7 @@ visWriter::visWriter(Config& config,
                 unique_name, "instrument_name", "chime");
 
     // Get the acq time out from the config
-    acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
+
 }
 
 void visWriter::main_thread() {
@@ -93,32 +104,22 @@ void visWriter::main_thread() {
             );
             INFO(msg.c_str());
 
-            // Try to initialise a new acquisition, if anything happens try to
-            // exit gracefully
-            try {
-                init_acq(frame.dataset_id);
-            }
-            catch(const std::exception& e) {
-                std::string msg = fmt::format(
-                    "Error initialising acquisition output for dataset={}: {}",
-                    frame.dataset_id, e.what()
-                );
-                ERROR(msg.c_str());
-                raise(SIGINT);
-                return;
-            }
+            init_acq(frame.dataset_id);
         }
 
         // Get the acquisition we are writing into
         auto& acq = acqs.at(frame.dataset_id);
 
-        // Construct the new time
-        auto ftime = frame.time;
-        time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
+
+        // If the dataset is bad, skip the frame and move onto the next
+        if (acq.bad_dataset) {
+            report_dropped_frame(frame.dataset_id, frame.freq_id,
+                                 droppedType::bad_dataset);
 
         // Check if the frequency we are receiving is on the list of frequencies
         // we are processing
-        if (acq.freq_id_map.count(frame.freq_id) == 0) {
+        // TODO: this should probably be reported to prometheus
+        } else if (acq.freq_id_map.count(frame.freq_id) == 0) {
             WARN("Frequency id=%i not enabled for visWriter, discarding frame",
                  frame.freq_id);
 
@@ -135,32 +136,28 @@ void visWriter::main_thread() {
 
         } else {
 
-            DEBUG("Writing frequency id=%i", frame.freq_id);
-
-            uint32_t freq_ind = acq.freq_id_map[frame.freq_id];
+            // Get the time and frequency of the frame
+            auto ftime = frame.time;
+            time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
+            uint32_t freq_ind = acq.freq_id_map.at(frame.freq_id);
 
             // Add all the new information to the file.
+            bool late;
             double start = current_time();
-            write_mutex.lock();
-            bool error = acq.file_bundle->add_sample(t, freq_ind, frame);
-            write_mutex.unlock();
+
+            // Lock and write data
+            {
+                std::lock_guard<std::mutex> lock(write_mutex);
+                late = acq.file_bundle->add_sample(t, freq_ind, frame);
+            }
             double elapsed = current_time() - start;
 
-            DEBUG("Write time %.5f s", elapsed);
+            DEBUG("Written frequency %i in %.5f s", frame.freq_id, elapsed);
 
             // Increase metric count if we dropped a frame at write time
-            if(error) {
-                // Relies on the fact that insertion zero intialises
-                acq.dropped_frame_count[frame.freq_id] += 1;
-                std::string labels = fmt::format("freq_id=\"{}\"," \
-                                                 "dataset_id=\"{}\"",
-                                                 frame.freq_id,
-                                                 frame.dataset_id);
-                prometheusMetrics::instance().add_process_metric(
-                            "kotekan_viswriter_dropped_frame_total",
-                            unique_name,
-                            acq.dropped_frame_count.at(frame.freq_id),
-                            labels);
+            if (late) {
+                report_dropped_frame(frame.dataset_id, frame.freq_id,
+                                     droppedType::late);
             }
 
             // Update average write time in prometheus
@@ -182,6 +179,26 @@ void visWriter::main_thread() {
 }
 
 
+void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id,
+                                     droppedType reason)
+{
+
+    // Get acqusition
+    auto& acq = acqs.at(ds_id);
+
+    // Relies on the fact that insertion zero intialises
+    auto key = std::make_pair(freq_id, reason);
+    acq.dropped_frame_count[key] += 1;
+    std::string labels = fmt::format(
+        "freq_id=\"{}\",dataset_id=\"{}\",reason=\"{}\"",
+        freq_id, ds_id, dropped_type_map.at(reason)
+    );
+    prometheusMetrics::instance().add_process_metric(
+        "kotekan_viswriter_dropped_frame_total",
+        unique_name, acq.dropped_frame_count.at(key), labels
+    );
+}
+
 void visWriter::close_old_acqs()
 {
     auto it = acqs.begin();
@@ -189,7 +206,7 @@ void visWriter::close_old_acqs()
         auto last_update = it->second.file_bundle->last_update();
         double age = current_time() - last_update.ctime;
 
-        if (age > acq_timeout) {
+        if (!it->second.bad_dataset && age > acq_timeout) {
             it = acqs.erase(it);
         }
         else {
@@ -249,6 +266,25 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
 }
 
 
+bool visWriter::check_git_version(dset_id_t ds_id)
+{
+    // Get the metadata state from the dM
+    auto& dm = datasetManager::instance();
+    const metadataState* mstate = dm.dataset_state<metadataState>(ds_id);
+
+    // compare git commit hashes
+    // TODO: enforce and crash here if build type is Release?
+    if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
+        WARN("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s," \
+             "while the local git version tag is %s", ds_id,
+             mstate->get_git_version_tag().c_str(),
+             get_git_commit_hash());
+        return ignore_version;
+    }
+    return true;
+}
+
+
 void visWriter::init_acq(dset_id_t ds_id)
 {
     // Create the new acqState
@@ -256,6 +292,12 @@ void visWriter::init_acq(dset_id_t ds_id)
 
     // get dataset states
     get_dataset_state(ds_id);
+
+    // Check the git version...
+    if (!check_git_version(ds_id)) {
+        acq.bad_dataset = true;
+        return;
+    }
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     uint32_t chunk_id = 0;
@@ -366,17 +408,34 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
 
 void visCalWriter::init_acq(dset_id_t ds_id)
 {
-    if (acqs.size() == 1) {
-        throw std::runtime_error(
-            "Cannot change dataset_id of visCalWriter. Exiting..."
-        );
-    }
+    // Count the number of enabled acqusitions, for the visCalWriter this can't
+    // be more than one
+    int num_enabled = std::count_if(
+        acqs.begin(), acqs.end(),
+        [](auto& item) -> bool {
+            return !(item.second.bad_dataset);
+        }
+    );
 
     // Create the new acqState
     auto& acq = acqs[ds_id];
 
     // get dataset states
     get_dataset_state(ds_id);
+
+    // Check there are no other valid acqs
+    if (num_enabled > 0) {
+        WARN("visCalWriter can only have one acquistion. Dropping all frames "
+             "of dataset_id=%" PRIx64, ds_id);
+        acq.bad_dataset = true;
+        return;
+    }
+
+    // Check the git version...
+    if (!check_git_version(ds_id)) {
+        acq.bad_dataset = true;
+        return;
+    }
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     uint32_t chunk_id = 0;

@@ -32,15 +32,17 @@
  * @class visWriter
  * @brief Write the data out to an HDF5 file .
  *
- * This process operates in two modes, ``node_mode`` where it runs on a per-GPU
- * node basis (inferring its frequency selection from that) and writes a new
- * acquisition per node. Alternatively it can be run more generally, receiving
- * and writing arbitrary frequencies, but it must be given the frequency list in
- * the config.
+ * This process gets writes out the data it receives with minimal processing.
+ * Removing certain fields from the output must be done in a prior
+ * transformation. See `removeEv` for instance.
  *
- * The products we are outputting must be specified correctly. This is done
- * using the same configuration parameters as `prodSubset`. If not explicitly
- * set `all` products is assumed.
+ * To obtain the metadata about the stream received usage of the datasetManager
+ * is required.
+ *
+ * This process will check that git hash of the data source (obtained from the
+ * metadataState) matches the current version. Depending on the value of
+ * `ignore_version` a mismatch will either generate a warning, or cause the
+ * mismatched data to be dropped.
  *
  * The output is written into the CHIME N^2 HDF5 format version 3.1.0.
  *
@@ -61,6 +63,10 @@
  *                          for writing at any time.
  * @conf   acq_timeout      Double (default 300). Close acquisitions when they
  *                          have been inactive this long (in seconds).
+ * @conf   ignore_version   Bool (default False). If true, a git version
+ *                          mistmatch will generate a warning, if false, it
+ *                          will cause data to be dropped. This should only be
+ *                          set to true when testing.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
@@ -79,6 +85,11 @@ public:
 
     void main_thread() override;
 
+    /// Why was a frame dropped?
+    enum class droppedType {
+        late,  // Data arrived too late
+        bad_dataset  // Dataset ID issues
+    };
 
 protected:
 
@@ -89,21 +100,39 @@ protected:
     std::map<std::string, std::string> make_metadata(dset_id_t ds_id);
 
     /// Close inactive acquisitions
-    void close_old_acqs();
+    virtual void close_old_acqs();
+
+    /// Gets states from the dataset manager and saves some metadata
+    void get_dataset_state(dset_id_t ds_id);
+
+    /**
+     * Check git version.
+     *
+     * @param  ds_id  Dataset ID.
+     *
+     * @return        False if there's a mismatch. Always returns true if
+     *                `ignore_version` is set.
+     **/
+    bool check_git_version(dset_id_t ds_id);
+
+    /**
+     * Report a dropped frame to prometheus.
+     *
+     * @param  ds_id    Dataset ID of frame.
+     * @param  freq_id  Freq ID of frame.
+     * @param  reason   Reason frame was dropped.
+     **/
+    void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id,
+                              droppedType reason);
 
     // Parameters saved from the config files
     std::string root_path;
     std::string instrument_name;
-
-    // Type of the file we are writing
-    std::string file_type;
-
-    // File length and number of samples to keep "active"
+    std::string file_type; // Type of the file we are writing
     size_t file_length;
     size_t window;
     size_t rollover;
-
-    // Acq timeout in seconds
+    bool ignore_version;
     double acq_timeout;
 
     /// Input buffer to read from
@@ -112,16 +141,20 @@ protected:
     /// Mutex for updating file_bundle (used in for visCalWriter)
     std::mutex write_mutex;
 
-    /// Gets states from the dataset manager and saves some metadata
-    void get_dataset_state(dset_id_t ds_id);
-
+    /// Hold the internal state of an acquisition (one per dataset ID)
+    /// Note that we create an acqState even for invalid datasets that we will
+    /// reject all data from
     struct acqState {
 
-        // The current set of files we are writing
+        /// Is the acq invalid? Drops data with this dataset ID.
+        bool bad_dataset = false;
+
+        /// The current set of files we are writing
         std::unique_ptr<visFileBundle> file_bundle;
 
-        /// Counts per freq ID and per dset ID
-        std::map<uint32_t, uint64_t> dropped_frame_count;
+        /// Dropped frame counts per freq ID
+        std::map<std::pair<uint32_t, droppedType>, uint64_t>
+            dropped_frame_count;
 
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
@@ -130,8 +163,11 @@ protected:
         size_t num_vis;
     };
 
+    /// The set of open acquisitions
     std::map<dset_id_t, acqState> acqs;
 
+    /// Translate droppedTypes to string description for prometheus
+    static std::map<droppedType, std::string> dropped_type_map;
 
 private:
 
@@ -216,6 +252,9 @@ protected:
 
     // Override function to make visCalFileBundle and set its file name
     void init_acq(dset_id_t ds_id) override;
+
+    // Disable closing old acqs
+    void close_old_acqs() override {};
 
     visCalFileBundle* file_cal_bundle;
 
