@@ -61,7 +61,7 @@ public:
      * (of 50 seconds) is set (default: -1).
      * @return          `true` if successfull, otherwise `false`.
      */
-    bool make_request(std::string path,
+    bool make_request(const std::string &path,
                       std::function<void(restReply)> request_done_cb,
                       const nlohmann::json& data = {},
                       const std::string& host = "127.0.0.1",
@@ -89,7 +89,7 @@ public:
      * @return          restReply object.
      */
     restReply make_request_blocking(
-            std::string path,
+            const std::string& path,
             const nlohmann::json& data = {},
             const std::string& host = "127.0.0.1",
             const unsigned short port = PORT_REST_SERVER,

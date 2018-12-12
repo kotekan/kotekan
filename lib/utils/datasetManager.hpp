@@ -34,11 +34,11 @@
 #define DS_UNIQUE_NAME "/dataset_manager"
 
 // names of broker endpoints
-#define PATH_REGISTER_STATE "register-state"
-#define PATH_SEND_STATE "send-state"
-#define PATH_REGISTER_DATASET "register-dataset"
-#define PATH_UPDATE_DATASETS "update-datasets"
-#define PATH_REQUEST_STATE "request-state"
+const std::string PATH_REGISTER_STATE = "/register-state";
+const std::string PATH_SEND_STATE = "/send-state";
+const std::string PATH_REGISTER_DATASET = "/register-dataset";
+const std::string PATH_UPDATE_DATASETS = "/update-datasets";
+const std::string PATH_REQUEST_STATE = "/request-state";
 
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
