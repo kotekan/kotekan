@@ -216,6 +216,7 @@ void frbNetworkProcess::main_thread()
     int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
 
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (packet_buffer == NULL) return;
 
     //waiting for atleast two frames for the buffer to fill up takes care of the random delay at the start.
 

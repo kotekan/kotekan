@@ -21,12 +21,11 @@ public:
     virtual ~hsaProcess();
 
 protected:
-    gpuCommand *create_command(json cmd) override;
+    gpuCommand *create_command(const std::string &cmd_name,
+                               const std::string &unique_name) override;
     gpuEventContainer *create_signal() override;
     void queue_commands(int gpu_frame_id) override;
 
-private:
-    hsaDeviceInterface * device;
 };
 
 #endif // HSA_PROCESS_H

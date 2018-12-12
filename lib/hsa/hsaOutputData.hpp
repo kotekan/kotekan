@@ -1,9 +1,11 @@
 #ifndef HSA_OUTPUT_DATA_H
 #define HSA_OUTPUT_DATA_H
 
-#include "hsaCommand.hpp"
+#include <string>
 
-class hsaOutputData: public hsaCommand
+#include "hsaSubframeCommand.hpp"
+
+class hsaOutputData: public hsaSubframeCommand
 {
 public:
 
@@ -20,14 +22,22 @@ public:
     void finalize_frame(int frame_id) override;
 
 private:
+
+    /// Use the same consumer/producer name accross subframes, 
+    /// but unique for each GPU.
+    std::string static_unique_name;
+
     Buffer * network_buffer;
+    Buffer * lost_samples_buf;
     Buffer * output_buffer;
 
     int32_t network_buffer_id;
-    int32_t output_buffer_id;
 
     int32_t output_buffer_precondition_id;
     int32_t output_buffer_excute_id;
+    int32_t output_buffer_id;
+
+    int32_t lost_samples_buf_id;
 };
 
 #endif

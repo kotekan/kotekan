@@ -1,9 +1,9 @@
 #ifndef HSA_PRESUM_ZERO_H
 #define HSA_PRESUM_ZERO_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-class hsaPresumZero: public hsaCommand
+class hsaPresumZero: public hsaSubframeCommand
 {
 public:
 

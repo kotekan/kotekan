@@ -12,6 +12,7 @@ clInputData::clInputData(Config& config, const string &unique_name,
     input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
 
     network_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(network_buf, unique_name.c_str());
     network_buffer_id = 0;
     network_buffer_precondition_id = 0;
     network_buffer_finalize_id = 0;
@@ -58,4 +59,11 @@ cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event)
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
     return post_events[gpu_frame_id];
+}
+
+void clInputData::finalize_frame(int frame_id)
+{
+    clCommand::finalize_frame(frame_id);
+    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
+    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
 }

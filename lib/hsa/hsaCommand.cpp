@@ -88,14 +88,14 @@ void hsaCommand::finalize_frame(int frame_id) {
         return;
     }
 
-    if (command_type == CommandType::KERNEL) {
+    if (command_type == gpuCommandType::KERNEL) {
         hsa_status = hsa_amd_profiling_get_dispatch_time(device.get_gpu_agent(),
                                                 signals[frame_id], &kernel_time);
         last_gpu_execution_time =
                 ((double)(kernel_time.end - kernel_time.start))/
                 (double)timestamp_frequency_hz;
-    } else if (command_type == CommandType::COPY_IN ||
-               command_type == CommandType::COPY_OUT) {
+    } else if (command_type == gpuCommandType::COPY_IN ||
+               command_type == gpuCommandType::COPY_OUT) {
         hsa_status = hsa_amd_profiling_get_async_copy_time(signals[frame_id],
                                                                 &copy_time);
         last_gpu_execution_time =
@@ -248,7 +248,7 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     return packet->completion_signal;
 }
 
-CommandType hsaCommand::get_command_type() {
+gpuCommandType hsaCommand::get_command_type() {
     return command_type;
 }
 

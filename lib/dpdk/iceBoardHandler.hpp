@@ -93,7 +93,6 @@ protected:
             last_seq = seq - seq % alignment;
             cur_seq = seq;
             port_stream_id = stream_id;
-            got_first_packet = true;
 
             INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, start seq num: %" PRIu64 " current seq num: %" PRIu64 "",
                 port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused, last_seq, seq);
@@ -103,6 +102,8 @@ protected:
                 raise(SIGINT);
                 return false;
             }
+
+            got_first_packet = true;
 
             return true;
         }

@@ -14,6 +14,7 @@ add_library ( kotekan_hsa
               hsaCommand.cpp
               hsaDeviceInterface.cpp
               hsaProcess.cpp
+              hsaSubframeCommand.cpp
 
 # Copy-in & general-purpose:
               hsaInputData.cpp
@@ -43,12 +44,10 @@ add_library ( kotekan_hsa
               hsaBeamformTranspose.cpp
               hsaBeamformUpchan.cpp
               hsaBeamformOutput.cpp
-              hsaBeamformOutputSolo.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
               hsaBeamformPulsar.cpp
               hsaBeamformPulsarOutput.cpp
-              hsaBeamformPulsarOneFeed.cpp
               hsaPulsarUpdatePhase.cpp
               )
 
