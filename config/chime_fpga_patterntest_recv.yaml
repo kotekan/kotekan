@@ -1,0 +1,77 @@
+##########################################
+#
+# chime_fpga_patterntest_recv.yaml
+#
+# CHIME receiver node configuration to run a simple pattern test
+# where all visibility values are expected to be 1+0j.
+#
+# Author: Rick Nitsche
+#
+##########################################
+---
+type: config
+log_level: info
+num_elements: 2048
+num_local_freq: 1
+udp_packet_size: 4928
+num_data_sets: 1
+samples_per_data_set: 32768
+buffer_depth: 64
+num_gpu_frames: 128
+block_size: 32
+cpu_affinity: [4,5,6,7,12,13,14,15]
+num_ev: 4
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: "10.1.50.11" # recv1
+
+vis_pool:
+  kotekan_metadata_pool: visMetadata
+  num_metadata_objects: 500 * buffer_depth
+
+vis_buffer:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
+  visbuf_10s_all:
+    kotekan_buffer: vis
+  vis_test_dump:
+    kotekan_buffer: vis
+
+# test process
+pattern_test:
+  kotekan_process: visTestPattern
+  in_buf: visbuf_10s_all
+  out_buf: vis_test_dump
+  out_file: '/data/patterntest/20181211/simple_test/report.csv'
+  mode: 'test_pattern_simple'
+
+test_writer:
+  kotekan_process: rawFileWrite
+  in_buf: vis_test_dump
+  file_name: 'patterntest'
+  file_ext: 'dump'
+  base_dir: '/data/patterntest/20181211/simple_test'
+
+# Kotekan processes
+buffer_recv:
+  n2:
+    kotekan_process: bufferRecv
+    buf: visbuf_10s_all
+    listen_port: 11024
+    cpu_affinity: [0, 8]
+    num_threads: 2
+
+vis_debug:
+  n2:
+    kotekan_process: visDebug
+    in_buf: visbuf_10s_all
+
+count_check:
+  n2:
+    kotekan_process: countCheck
+    in_buf: visbuf_10s_all
+
+buffer_status:
+  kotekan_process: bufferStatus
+  print_status: false
