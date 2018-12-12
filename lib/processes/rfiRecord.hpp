@@ -92,7 +92,7 @@ private:
     /// Where to record the RFI data
     string _write_to;
     /// Holder for time-code directory name
-    char time_dir[50];
+    char time_dir[64];
     /// Whether or not the process should write to the disk
     bool _write_to_disk;
     /// A mutex to prevent the rest server callback from overwriting data currently in use

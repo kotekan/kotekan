@@ -35,18 +35,26 @@ eigenVis::eigenVis(Config& config,
         // Missing, leave empty.
     }
 
+    // Create the state describing the eigenvalues
+    auto& dm = datasetManager::instance();
+    state_uptr ev_state = std::make_unique<eigenvalueState>(num_eigenvectors);
+    ev_state_id = dm.add_state(std::move(ev_state)).first;
 }
 
-eigenVis::~eigenVis() {
+dset_id_t eigenVis::change_dataset_state(dset_id_t input_dset_id)
+{
+    auto& dm = datasetManager::instance();
+    return dm.add_dataset(input_dset_id, ev_state_id);
 }
 
 void eigenVis::main_thread() {
 
-    unsigned int input_frame_id = 0;
-    unsigned int output_frame_id = 0;
+    frameID input_frame_id(input_buffer);
+    frameID output_frame_id(output_buffer);
     uint32_t num_elements;
     bool initialized = false;
     size_t lapack_failure_total = 0;
+    dset_id_t _output_dset_id = 0;
 
     // Memory for LAPACK interface.
     std::vector<cfloat> vis_square;
@@ -72,16 +80,18 @@ void eigenVis::main_thread() {
         }
         auto input_frame = visFrameView(input_buffer, input_frame_id);
 
+
+        // check if the input dataset has changed
+        if (input_dset_id != input_frame.dataset_id) {
+            input_dset_id = input_frame.dataset_id;
+            _output_dset_id = change_dataset_state(input_dset_id);
+        }
+
         // Start the calculation clock.
         double start_time = current_time();
 
         if (!initialized) {
             num_elements = input_frame.num_elements;
-            if (input_frame.num_ev < num_eigenvectors) {
-                throw std::runtime_error("Insufficient storage space for"
-                                         " requested number of eigenvectors.");
-            }
-
             vis_square.resize(num_elements * num_elements, 0);
             evecs.resize(num_elements * num_eigenvectors, 0);
             evals.resize(num_elements, 0);
@@ -155,6 +165,9 @@ void eigenVis::main_thread() {
                 "kotekan_eigenvis_lapack_failure_total",
                 unique_name, lapack_failure_total, labels
             );
+
+            // Clear frame and advance
+            mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
             continue;
         }
 
@@ -237,7 +250,18 @@ void eigenVis::main_thread() {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame);
+        auto output_frame = visFrameView(
+            output_buffer, output_frame_id,
+            input_frame.num_elements, input_frame.num_prod, num_eigenvectors
+        );
+
+        // Copy over metadata and data, but skip all ev members which may not be
+        // defined
+        output_frame.copy_metadata(input_frame);
+        output_frame.dataset_id = _output_dset_id;
+        output_frame.copy_data(
+            input_frame, {visField::eval, visField::evec, visField::erms}
+        );
 
         // Copy in eigenvectors and eigenvalues.
         for(uint32_t i = 0; i < num_eigenvectors; i++) {
@@ -251,10 +275,7 @@ void eigenVis::main_thread() {
         output_frame.erms = rms;
 
         // Finish up interation.
-        mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id);
-        mark_frame_full(output_buffer, unique_name.c_str(),
-                        output_frame_id);
-        input_frame_id = (input_frame_id + 1) % input_buffer->num_frames;
-        output_frame_id = (output_frame_id + 1) % output_buffer->num_frames;
+        mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
+        mark_frame_full(output_buffer, unique_name.c_str(), output_frame_id++);
     }
 }

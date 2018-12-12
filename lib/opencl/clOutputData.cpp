@@ -13,7 +13,11 @@ clOutputData::clOutputData(Config& config, const string &unique_name,
     _num_blocks = config.get<int>(unique_name,"num_blocks");
 
     network_buffer = host_buffers.get_buffer("network_buf");
+    register_consumer(network_buffer, unique_name.c_str());
+
     output_buffer = host_buffers.get_buffer("output_buf");
+    register_producer(output_buffer, unique_name.c_str());
+
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
 

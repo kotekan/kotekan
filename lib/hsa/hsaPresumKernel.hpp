@@ -1,12 +1,9 @@
 #ifndef HSA_PRESUM_KERNEL_H
 #define HSA_PRESUM_KERNEL_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-// What is this?
-#define N_PRESUM 1024
-
-class hsaPresumKernel: public hsaCommand
+class hsaPresumKernel: public hsaSubframeCommand
 {
 public:
 

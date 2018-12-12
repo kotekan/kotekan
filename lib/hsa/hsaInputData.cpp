@@ -7,8 +7,8 @@ REGISTER_HSA_COMMAND(hsaInputData);
 
 hsaInputData::hsaInputData( Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "", ""){
-    command_type = CommandType::COPY_IN;
+    hsaCommand(config, unique_name, host_buffers, device, "hsaInputData", ""){
+    command_type = gpuCommandType::COPY_IN;
 
     int header_size = 0;
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -36,6 +36,7 @@ hsaInputData::hsaInputData( Config& config, const string &unique_name,
     }
 
     network_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(network_buf, unique_name.c_str());
     network_buffer_id = 0;
     network_buffer_precondition_id = 0;
     network_buffer_finalize_id = 0;
@@ -98,10 +99,7 @@ hsa_signal_t hsaInputData::execute(int gpu_frame_id,
 void hsaInputData::finalize_frame(int frame_id)
 {
     hsaCommand::finalize_frame(frame_id);
-    // This is currently done in output data because we need to move the
-    // info object first, this should be fixed at the buffer level somehow.
-    //release_info_object(network_buf, network_buffer_id);
-    //mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
-    //network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
+    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
+    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
 }
 

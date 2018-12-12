@@ -77,7 +77,7 @@ struct Buffer* bufferFactory::new_buffer(const string &type_name, const string &
         auto layout = visFrameView::calculate_buffer_layout(
             num_elements, num_prod, num_ev
         );
-        uint32_t frame_size = layout["_struct"].second;
+        uint32_t frame_size = layout.first;
 
         INFO("Creating visBuffer named %s with %d frames, frame size of %d and metadata pool %s",
              name.c_str(), num_frames, frame_size, metadataPool_name.c_str());

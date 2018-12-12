@@ -34,10 +34,6 @@ prodSubset::prodSubset(Config &config,
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&prodSubset::main_thread, this)) {
 
-    // Fetch any simple configuration
-    num_elements = config.get<size_t>(unique_name, "num_elements");
-    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
-
     // Get buffers
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -160,9 +156,10 @@ void prodSubset::main_thread() {
             output_dset_id = future_output_dset_id.get();
 
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id,
-                                     num_elements, subset_num_prod,
-                                     num_eigenvectors);
+        auto output_frame = visFrameView(
+            out_buf, output_frame_id,
+            input_frame.num_elements, subset_num_prod, input_frame.num_ev
+        );
 
         // Copy over subset of visibilities
         for (size_t i = 0; i < subset_num_prod; i++) {
@@ -170,10 +167,10 @@ void prodSubset::main_thread() {
             output_frame.weight[i] = input_frame.weight[prod_ind[i]];
         }
 
-        // Copy the non-visibility parts of the buffer
-        output_frame.copy_nonvis_buffer(input_frame);
         // Copy metadata
-        output_frame.copy_nonconst_metadata(input_frame);
+        output_frame.copy_metadata(input_frame);
+        // Copy the non-visibility parts of the buffer
+        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
 
         // set the dataset ID in the outgoing frame
         output_frame.dataset_id = output_dset_id;
@@ -208,9 +205,9 @@ inline bool max_bl_condition(uint32_t vis_ind, int n, int xmax, int ymax) {
     return max_bl_condition(prod, xmax, ymax);
 }
 
-inline bool have_inputs_condition(prod_ctype prod, 
+inline bool have_inputs_condition(prod_ctype prod,
                                 std::vector<int> input_list) {
-   
+
     bool prod_in_list = false;
     for(auto ipt : input_list) {
         if ((prod.input_a==ipt) || (prod.input_b==ipt)) {
@@ -222,18 +219,18 @@ inline bool have_inputs_condition(prod_ctype prod,
     return prod_in_list;
 }
 
-inline bool have_inputs_condition(uint32_t vis_ind, int n, 
+inline bool have_inputs_condition(uint32_t vis_ind, int n,
                                 std::vector<int> input_list) {
-    
+
     // Get product indices
     prod_ctype prod = icmap(vis_ind, n);
 
     return have_inputs_condition(prod, input_list);
 }
 
-inline bool only_inputs_condition(prod_ctype prod, 
+inline bool only_inputs_condition(prod_ctype prod,
                                 std::vector<int> input_list) {
-   
+
     bool ipta_in_list = false;
     bool iptb_in_list = false;
     for(auto ipt : input_list) {
@@ -248,9 +245,9 @@ inline bool only_inputs_condition(prod_ctype prod,
     return (ipta_in_list && iptb_in_list);
 }
 
-inline bool only_inputs_condition(uint32_t vis_ind, int n, 
+inline bool only_inputs_condition(uint32_t vis_ind, int n,
                                 std::vector<int> input_list) {
-    
+
     // Get product indices
     prod_ctype prod = icmap(vis_ind, n);
 

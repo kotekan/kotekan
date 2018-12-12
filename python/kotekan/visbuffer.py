@@ -296,6 +296,8 @@ class VisRaw(object):
         self.data = self.raw['data']
         self.metadata = self.raw['metadata']
         self.valid_frames = self.raw['valid']
+        self.file_metadata = metadata
+
 
     @staticmethod
     def _parse_filename(fname):

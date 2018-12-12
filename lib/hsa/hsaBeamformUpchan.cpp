@@ -5,7 +5,7 @@ REGISTER_HSA_COMMAND(hsaBeamformUpchan);
 hsaBeamformUpchan::hsaBeamformUpchan(Config& config,const string &unique_name,
                             bufferContainer& host_buffers,hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "upchannelize", "upchannelize_flip.hsaco") {
-    command_type = CommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _samples_per_data_set = config.get<int32_t>(

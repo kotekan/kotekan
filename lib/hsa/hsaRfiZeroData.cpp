@@ -11,7 +11,7 @@ hsaRfiZeroData::hsaRfiZeroData(Config& config,const string &unique_name,
                          bufferContainer& host_buffers,
                          hsaDeviceInterface& device):
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero", "rfi_chime_zero.hsaco"){
-    command_type = CommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
     //Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");

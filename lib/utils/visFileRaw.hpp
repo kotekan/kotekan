@@ -85,14 +85,14 @@ public:
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind);
+    void deactivate_time(uint32_t time_ind) override;
 
 protected:
 
     // Implement the create file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t num_ev, size_t max_time) override;
+                     dset_id_t dataset, size_t max_time) override;
 
     /// Flags used for opening new files
     int oflags = O_CREAT | O_EXCL | O_WRONLY;
@@ -139,6 +139,12 @@ protected:
 
     // File name (used for debugging)
     std::string _name;
+
+    // Number of eigenvalues, used for checking structure
+    // TODO: consider if this is necessary at all, or whether we need to be
+    // checking all structure params
+    size_t num_ev;
+
 };
 
 #endif

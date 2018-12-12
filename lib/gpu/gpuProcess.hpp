@@ -20,7 +20,8 @@ public:
     void main_thread() override;
     void profile_callback(connectionInstance& conn);
 protected:
-    virtual gpuCommand *create_command(json cmd) = 0;
+    virtual gpuCommand *create_command(const std::string &cmd_name,
+                                       const std::string &unique_name) = 0;
     virtual gpuEventContainer *create_signal() = 0;
     virtual void queue_commands(int gpu_frame_id) = 0;
     void results_thread();

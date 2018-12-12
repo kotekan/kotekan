@@ -12,11 +12,11 @@
  * @class hsaRfiOutput
  * @brief hsaCommand for copying RFI output gpu to host.
  *
- * This is an hsaCommand that async copy RFI output buffer from GPU 
- * to CPU. It marks the RFI output buffer to be full when done so that 
- * it can be reused. This code also passes metadata along. The finalize_frame 
- * function has been hacked by not marking _network_buf empty, for 
- * concurrent run with N2, because the equivalent output code from the N2 
+ * This is an hsaCommand that async copy RFI output buffer from GPU
+ * to CPU. It marks the RFI output buffer to be full when done so that
+ * it can be reused. This code also passes metadata along. The finalize_frame
+ * function has been hacked by not marking _network_buf empty, for
+ * concurrent run with N2, because the equivalent output code from the N2
  * side is already marking network buffer empty.
  *
  * @par GPU Memory

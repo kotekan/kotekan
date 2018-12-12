@@ -9,6 +9,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 /**
  * @class eigenVis
@@ -58,11 +59,14 @@ public:
     eigenVis(Config& config,
              const string& unique_name,
              bufferContainer &buffer_container);
-    ~eigenVis();
+    virtual ~eigenVis() = default;
     void main_thread() override;
 private:
-    struct Buffer *input_buffer;
-    struct Buffer *output_buffer;
+
+    dset_id_t change_dataset_state(dset_id_t input_dset_id);
+
+    Buffer *input_buffer;
+    Buffer *output_buffer;
 
     uint32_t num_eigenvectors;
     uint32_t num_diagonals_filled;
@@ -71,6 +75,9 @@ private:
 
     /// Keep track of the average write time
     movingAverage calc_time;
+
+    state_id_t ev_state_id;
+    dset_id_t input_dset_id = 0;
 
 };
 

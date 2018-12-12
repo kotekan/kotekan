@@ -50,7 +50,6 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     num_freq_in_frame = config.get_default<size_t>(
         unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
-    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
     samples_per_data_set = config.get<size_t>(
         unique_name, "samples_per_data_set");
     low_sample_fraction = config.get_default<float>(
@@ -124,7 +123,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     }
 
     // get dataset ID for out frames
-    _ds_id_out = change_dataset_state(instrument_name, freqs, inputs, prods);
+    base_dataset_id = base_dataset_state(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -136,6 +135,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     gated_datasets.emplace_back(
         out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
     );
+    gated_datasets.at(0).output_dataset_id = base_dataset_id;
 
 
     // Get and validate any gating config
@@ -207,21 +207,30 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         gated_datasets.emplace_back(
             buf, gateSpec::create(mode, name), num_prod_gpu
         );
-        callbacks[name] = std::bind(&gateSpec::update_spec,
-                                    gated_datasets.back().spec.get(), _1);
+
+        auto& state = gated_datasets.back();
+        callbacks[name] = [&state](nlohmann::json& json) -> bool {
+            bool success = state.spec->update_spec(json);
+            if (success) {
+                std::lock_guard<std::mutex> lock(state.state_mtx);
+                state.changed = true;
+            }
+            return success;
+        };
     }
 
     configUpdater::instance().subscribe(this, callbacks);
 
 }
 
-visAccumulate::~visAccumulate() {}
 
-dset_id_t visAccumulate::change_dataset_state(
-        std::string& instrument_name,
-        std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
-        std::vector<input_ctype>& inputs,
-        std::vector<prod_ctype>& prods) {
+dset_id_t visAccumulate::base_dataset_state(
+    std::string& instrument_name,
+    std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+    std::vector<input_ctype>& inputs,
+    std::vector<prod_ctype>& prods
+)
+{
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
@@ -232,10 +241,11 @@ dset_id_t visAccumulate::change_dataset_state(
                 inputs, std::move(freq_state));
     state_uptr prod_state = std::make_unique<prodState>(
                 prods, std::move(input_state));
-    state_uptr mstate = std::make_unique<metadataState>(weight_type,
-                                                        instrument_name,
-                                                        git_tag,
-                                                        std::move(prod_state));
+    state_uptr ev_state = std::make_unique<eigenvalueState>(
+                0, std::move(prod_state));
+    state_uptr mstate = std::make_unique<metadataState>(
+                weight_type, instrument_name, git_tag, std::move(ev_state)
+    );
 
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
@@ -243,6 +253,20 @@ dset_id_t visAccumulate::change_dataset_state(
 
     //register root dataset
     return dm.add_dataset(mstate_id);
+}
+
+
+dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec)
+{
+    // create the state
+    state_uptr gate_state = std::make_unique<gatingState>(spec);
+
+    // register with the datasetManager
+    datasetManager& dm = datasetManager::instance();
+    state_id_t gstate_id = dm.add_state(std::move(gate_state)).first;
+
+    // register gated dataset
+    return dm.add_dataset(base_dataset_id, gstate_id);
 }
 
 
@@ -371,8 +395,7 @@ void visAccumulate::main_thread() {
             // Now the main accumulation work starts...
 
             internalState& state = enabled_gated_datasets[0];
-            auto frame = visFrameView(state.buf, state.frame_id,
-                                      num_elements, num_eigenvectors);
+            auto frame = visFrameView(state.buf, state.frame_id);
             float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
             long samples_in_frame = samples_per_data_set -
@@ -391,9 +414,8 @@ void visAccumulate::main_thread() {
                 // not doing this because I don't want to burn cycles doing the
                 // multiplications
                 // Perform primary accumulation (assume that the weight is one)
-                for (size_t i = 0; i < num_prod_gpu; i++) {
-                    cfloat t = {(float)input[2*i+1], (float)input[2*i]};
-                    dset.vis1[i] += t;
+                for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+                    dset.vis1[i] += input[i];
                 }
 
                 // Accumulate the weights
@@ -439,7 +461,7 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state,
 
     allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
     auto frame = visFrameView(state.buf, state.frame_id + freq_ind,
-                              num_elements, num_eigenvectors);
+                              num_elements, 0);
 
     // Copy over the metadata
     // TODO: CHIME
@@ -451,7 +473,7 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state,
 
     // Set dataset ID produced by the dM
     // TODO: this should be different for different gated streams
-    frame.dataset_id = _ds_id_out;
+    frame.dataset_id = state.output_dataset_id;
 
     // Set the length of time this frame will cover
     frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
@@ -473,8 +495,8 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 
     // Subtract out the bias from the gated data
     float scl = gate.sample_weight_total / vis.sample_weight_total;
-    for (size_t i = 0; i < num_prod_gpu; i++) {
-        gate.vis1[i] -= scl * vis.vis1[i];
+    for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+        gate.vis1[i] -= (int32_t)(scl * vis.vis1[i]);
     }
 
     // TODO: very strong assumption that the weights are one (when on) baked in
@@ -502,7 +524,8 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     // Copy the visibilities into place
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
         [&](int32_t pi, int32_t bi, bool conj) {
-            cfloat t = !conj ? state.vis1[bi] : std::conj(state.vis1[bi]);
+            cfloat t =  {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+            t = !conj ? t : std::conj(t);
             output_frame.vis[pi] = iw * t;
         }
     );
@@ -529,15 +552,25 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
 
     // Acquire the lock so we don't get confused by any changes made via the
     // REST callback
-    std::lock_guard<std::mutex> lock(state.state_mtx);
+    {
+        std::lock_guard<std::mutex> lock(state.state_mtx);
 
-    if (!state.spec->enabled()) {
-        state.calculate_weight = nullptr;
-        return false;
+        // Update the weight function in case an update arrives mid integration
+        // This is done every cycle to allow the calculation to change with time
+        // (without any external update), e.g. in SegmentedPolyco's.
+        if (!state.spec->enabled()) {
+            state.calculate_weight = nullptr;
+            return false;
+        }
+        state.calculate_weight = state.spec->weight_function(t);
+
+
+        // Update dataset ID if an external change occurred
+        if (state.changed) {
+            state.output_dataset_id = gate_dataset_state(*state.spec.get());
+            state.changed = false;
+        }
     }
-
-    // Save out the weight function in case an update arrives mid integration
-    state.calculate_weight = state.spec->weight_function(t);
 
     // Zero out accumulation arrays
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);
@@ -552,7 +585,8 @@ visAccumulate::internalState::internalState(
     buf(out_buf),
     frame_id(buf),
     spec(std::move(gate_spec)),
-    vis1(nprod),
+    changed(true),
+    vis1(2 * nprod),
     vis2(nprod)
 {
 

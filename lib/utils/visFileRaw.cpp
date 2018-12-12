@@ -32,7 +32,7 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 void visFileRaw::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id_t dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t max_time)
 {
     INFO("Creating new output file %s", name.c_str());
 
@@ -46,8 +46,12 @@ void visFileRaw::create_file(
                                  &dm, dataset);
     auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>,
                                  &dm, dataset);
+    auto evstate_fut = std::async(
+        &datasetManager::dataset_state<eigenvalueState>, &dm, dataset
+    );
+    auto gstate_fut = std::async(&datasetManager::dataset_state<gatingState>,
+                                 &dm, dataset);
 
-    const stackState* sstate = sstate_fut.get();
     const inputState* istate = istate_fut.get();
     const prodState* pstate = pstate_fut.get();
     const freqState* fstate = fstate_fut.get();
@@ -55,11 +59,10 @@ void visFileRaw::create_file(
     if (!istate || !pstate || !fstate) {
         ERROR("Required datasetState not found for dataset ID " \
               "0x%" PRIx64 "\nThe following required states were found:\n" \
-              "inputState - %d\nprodState - %d\nfreqState - %d",
+              "inputState - %d\nprodState - %d\nfreqState - %d\n",
               dataset, istate, pstate, fstate);
         throw std::runtime_error("Could not create file.");
     }
-
 
     // Set the axis metadata
     file_metadata["attributes"] = metadata;
@@ -68,16 +71,27 @@ void visFileRaw::create_file(
     file_metadata["index_map"]["prod"] = pstate->get_prods();
 
     // Create and add eigenvalue index
-    std::vector<int> eval_index(num_ev);
-    std::iota(eval_index.begin(), eval_index.end(), 0);
-    file_metadata["index_map"]["ev"] = eval_index;
+    const eigenvalueState* evstate = evstate_fut.get();
+    if (evstate) {
+        file_metadata["index_map"]["ev"] = evstate->get_ev();
+        num_ev = evstate->get_num_ev();
+    }
+    else {
+        num_ev = 0;
+    }
 
+    const stackState* sstate = sstate_fut.get();
     if (sstate) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
         file_metadata["structure"]["num_stack"] = sstate->get_num_stack();
     }
 
+    const gatingState* gstate = gstate_fut.get();
+    if (gstate) {
+        file_metadata["gating_type"] = gstate->gating_type;
+        file_metadata["gating_data"] = gstate->gating_data;
+    }
 
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();
@@ -93,7 +107,7 @@ void visFileRaw::create_file(
     auto layout = visFrameView::calculate_buffer_layout(
         ninput, nvis, num_ev
     );
-    data_size = layout["_struct"].second;
+    data_size = layout.first;
     metadata_size = sizeof(visMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1,
                                    alignment * 1024);
@@ -222,7 +236,16 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
 
 void visFileRaw::write_sample(
     uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
-) {
+)
+{
+    // TODO: consider adding checks for all dims
+    if (frame.num_ev != num_ev) {
+        std::string msg = fmt::format(
+            "Number of eigenvalues don't match for write (got {}, expected {})",
+            frame.num_ev, num_ev
+        );
+        throw std::runtime_error(msg);
+    }
 
     const uint8_t ONE = 1;
 

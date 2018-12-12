@@ -93,12 +93,14 @@ void kotekanMode::start_processes() {
 }
 
 void kotekanMode::stop_processes() {
-    // Send shutdown signal to buffers
+    // First set the shutdown variable on all processes
+    for (auto const &process : processes)
+        process.second->stop();
+
+    // Then send shutdown signal to buffers which 
+    // should wake up processes which are blocked.
     for (auto const &buf : buffers) {
         INFO("Sending shutdown signal to buffer: %s", buf.first.c_str());
         send_shutdown_signal(buf.second);
     }
-
-    for (auto const &process : processes)
-        process.second->stop();
 }

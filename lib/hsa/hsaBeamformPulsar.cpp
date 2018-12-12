@@ -4,8 +4,8 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
 hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float", "pulsar_beamformer_float.hsaco") {
-    command_type = CommandType::KERNEL;
+    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float", "pulsar_beamformer_nbeam.hsaco") {
+    command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
@@ -50,12 +50,12 @@ hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, hsa_signal_t precede_s
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     kernelParams params;
-    params.workgroup_size_x = 256;
+    params.workgroup_size_x = 64;//256;
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
-    params.grid_size_x = 512;
+    params.grid_size_x = 128;//512;
     params.grid_size_y = _num_pulsar;
-    params.grid_size_z = _samples_per_data_set/32;
+    params.grid_size_z = _samples_per_data_set/64;//32;
     params.num_dims = 3;
 
     params.private_segment_size = 0;

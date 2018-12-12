@@ -20,7 +20,7 @@ hsaRfiVdif::hsaRfiVdif(Config& config,const string &unique_name,
                         bufferContainer& host_buffers,
                         hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif", "rfi_vdif.hsaco") {
-    command_type = CommandType::KERNEL;
+    command_type = gpuCommandType::KERNEL;
 
     //Grab values from config and calculates buffer size
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); //Data parameters

@@ -18,6 +18,7 @@
 #include "Config.hpp"
 #include "errors.h"
 #include "visUtil.hpp"
+#include "gateSpec.hpp"
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -389,12 +390,34 @@ public:
         _ev(ev) {};
 
     /**
+     * @brief Constructor
+     * @param num_ev The number of eigenvalues. The indices will end up
+     *               running from 0 to num_ev - 1
+     * @param inner An inner state (optional).
+     */
+    eigenvalueState(size_t num_ev, state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+        _ev(num_ev)
+    {
+        std::iota(_ev.begin(), _ev.end(), 0);
+    }
+
+    /**
      * @brief Get eigenvalues (read only).
      *
      * @return The eigenvalues.
      */
     const std::vector<uint32_t>& get_ev() const {
         return _ev;
+    }
+
+    /**
+     * @brief Get the number of eigenvalues
+     *
+     * @return The number of eigenvalues.
+     */
+    size_t get_num_ev() const {
+        return _ev.size();
     }
 
 private:
@@ -582,6 +605,62 @@ private:
 
     // the actual metadata
     std::string _weight_type, _instrument_name, _git_version_tag;
+};
+
+
+/**
+ * @brief A state to describe any applied gating.
+ *
+ * @author Richard Shaw
+ **/
+class gatingState : public datasetState {
+public:
+
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  type   A string labelling the type of the gating.
+     * @param  data   Arbitrary type specific data to describe what's happening.
+     * @param  inner  Inner state.
+     **/
+    gatingState(const gateSpec& spec, state_uptr inner=nullptr) :
+        datasetState(std::move(inner)),
+        gating_type(FACTORY(gateSpec)::label(spec)),
+        gating_data(spec.to_dm_json())
+    {
+    }
+
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  data   Full serialised data.
+     * @param  inner  Inner state.
+     **/
+    gatingState(json& data, state_uptr inner) :
+        datasetState(std::move(inner)),
+        gating_type(data["type"].get<std::string>()),
+        gating_data(data["data"])
+    {
+    }
+
+
+    /**
+     * @brief Serialise the gatingState data.
+     *
+     * @return  JSON serialisation.
+     **/
+    json data_to_json() const override {
+        return {
+            {"type", gating_type},
+            {"data", gating_data}
+        };
+    }
+
+    /// Type of gating
+    const std::string gating_type;
+
+    /// Type specific data
+    const json gating_data;
 };
 
 #endif // DATASETSTATE_HPP

@@ -8,7 +8,7 @@ hsaBarrier::hsaBarrier(Config& config,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
-    command_type = CommandType::BARRIER;
+    command_type = gpuCommandType::BARRIER;
 }
 
 

@@ -282,7 +282,7 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod,
-                        num_ev)["_struct"].second;
+                        num_ev).first;
             prometheusMetrics::instance().add_process_metric(
                 "kotekan_vistranspose_data_transposed_bytes", unique_name,
                         frame_size * frames_so_far);
