@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 260 # Set this back up later, maybe 296 = 118 GB, 37s buffer
+baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -103,7 +103,7 @@ waterfall_request_delay: 60
 rfi_masking:
   toggle:
     kotekan_update_endpoint: "json"
-    rfi_zeroing: True
+    rfi_zeroing: False
 
 
 # Pool
