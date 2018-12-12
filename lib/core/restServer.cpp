@@ -25,7 +25,12 @@ restServer::restServer() : main_thread() {
 
 restServer::~restServer() {
     stop_thread = true;
-    main_thread.join();
+    try {
+        main_thread.join();
+    } catch (std::exception& e) {
+        WARN("restServer: Failure when joining server thread: %s", e.what());
+        WARN("restServer: Was the server used but never started?");
+    }
 }
 
 void restServer::start(const std::string &bind_address, u_short port) {
