@@ -23,9 +23,27 @@ std::map<std::string, std::function<visFile*()>>& visFile::_registered_types()
 }
 
 
-bool visFileBundle::resolve_sample(time_ctype new_time) {
+visFileBundle::~visFileBundle()
+{
+    // Deactivate each open sample and remove them from the map
+    auto it = vis_file_map.begin();
 
-    uint64_t count = new_time.fpga_count;
+    while (it != vis_file_map.end()) {
+        auto file = it->second.first;
+        auto ind = it->second.second;
+        file->deactivate_time(ind);
+        it = vis_file_map.erase(it);
+    }
+}
+
+
+time_ctype visFileBundle::last_update() const
+{
+    return vis_file_map.rbegin()->first;
+}
+
+
+bool visFileBundle::resolve_sample(time_ctype new_time) {
 
     if(vis_file_map.size() == 0) {
         // If no files are currently in the map we should create a new one.
@@ -33,18 +51,18 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
     } else {
         // If there are files in the list we need to figure out whether to
         // insert a new entry or not
-        uint64_t max_fpga = vis_file_map.rbegin()->first;
-        uint64_t min_fpga = vis_file_map.begin()->first;
+        time_ctype max_time = vis_file_map.rbegin()->first;
+        time_ctype min_time = vis_file_map.begin()->first;
 
-        if(count < min_fpga) {
+        if(new_time < min_time) {
             // This data is older that anything else in the map so we should just drop it
             INFO("Dropping integration as buffer (FPGA count: %" PRIu64
                  ") arrived too late (minimum in pool %" PRIu64 ")",
-                 new_time.fpga_count, min_fpga);
+                 new_time.fpga_count, min_time.fpga_count);
             return false;
         }
 
-        if(count > max_fpga) {
+        if(new_time > max_time) {
             // We've got a later time and so we need to add a new time sample,
             // if the current file does not need to rollover register the new
             // sample as being in the last file, otherwise create a new file
@@ -55,7 +73,7 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
             if((rollover == 0 || file->num_time() < rollover) && !change_file) {
                 // Extend the time axis and add into the sample map
                 ind = file->extend_time(new_time);
-                vis_file_map[count] = std::make_tuple(file, ind);
+                vis_file_map[new_time] = std::make_pair(file, ind);
             } else {
                 add_file(new_time);
                 change_file = false;
@@ -70,13 +88,13 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
         }
     }
 
-    if(vis_file_map.find(count) == vis_file_map.end()) {
+    if(vis_file_map.find(new_time) == vis_file_map.end()) {
         // This is slightly subtle, but if a sample was not found at this point
         // then it must lie within the range, but not have been saved into the
         // files already. This means that adding it would make the files time
         // axis be out of order, so we just skip it for now.
         INFO("Skipping integration (FPGA count %" PRIu64
-             ") as it would be written out of order.", count);
+             ") as it would be written out of order.", new_time.fpga_count);
         return false;
     }
 
@@ -108,7 +126,7 @@ void visFileBundle::add_file(time_ctype first_time) {
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);
     auto ind = file->extend_time(first_time);
-    vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
+    vis_file_map[first_time] = std::make_pair(file, ind);
 }
 
 void visCalFileBundle::set_file_name(std::string fname, std::string aname) {
@@ -122,8 +140,9 @@ void visCalFileBundle::add_file(time_ctype first_time) {
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);
     auto ind = file->extend_time(first_time);
-    vis_file_map[first_time.fpga_count] = std::make_tuple(file, ind);
+    vis_file_map[first_time] = std::make_pair(file, ind);
 }
+
 
 void visCalFileBundle::swap_file(std::string new_fname, std::string new_aname) {
     // Change the file and and request writing to a new file
@@ -131,16 +150,6 @@ void visCalFileBundle::swap_file(std::string new_fname, std::string new_aname) {
     change_file = true;
 }
 
-void visCalFileBundle::clear_file_map() {
-    // RFlush and remove all entries in the map
-    std::shared_ptr<visFile> file;
-    uint32_t ind;
-    for (size_t i = 0; i < vis_file_map.size(); i++) {
-        std::tie(file, ind) = vis_file_map[i];
-        file->deactivate_time(ind); // Cleanup the sample
-    }
-    vis_file_map.clear();
-}
 
 std::string create_lockfile(std::string filename) {
 

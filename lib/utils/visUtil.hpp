@@ -119,6 +119,33 @@ inline bool operator==(const prod_ctype& lhs, const prod_ctype& rhs)
     return (lhs.input_a == rhs.input_a) && (lhs.input_b == rhs.input_b);
 }
 
+/**
+ * @brief Comparison of two time_ctype structs.
+ *
+ * Note this compares only the FPGA counts.
+ *
+ * @param  a  Time a.
+ * @param  b  Time b.
+ * @return    The comparison result.
+ **/
+inline bool operator<(const time_ctype& a, const time_ctype& b) {
+    return (a.fpga_count < b.fpga_count);
+}
+
+
+/**
+ * @brief Comparison of two time_ctype structs.
+ *
+ * Note this compares only the FPGA counts.
+ *
+ * @param  a  Time a.
+ * @param  b  Time b.
+ * @return    The comparison result.
+ **/
+inline bool operator>(const time_ctype& a, const time_ctype& b) {
+    return (a.fpga_count > b.fpga_count);
+}
+
 // Conversions of the index types to json
 void to_json(json& j, const freq_ctype& f);
 void to_json(json& j, const input_ctype& f);
