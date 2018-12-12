@@ -28,10 +28,12 @@
 #include "errors.h"
 #include "prometheusMetrics.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "signal.h"
 
 
 #define DS_UNIQUE_NAME "/dataset_manager"
+#define DS_FORCE_UPDATE_ENDPOINT_NAME "/dataset-manager/force-update"
 
 // names of broker endpoints
 const std::string PATH_REGISTER_STATE = "/register-state";
@@ -200,6 +202,11 @@ private:
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
  *                                           communication with the broker.
  *
+ * @par endpoints
+ * @endpoint    /force-update ``GET`` Forces the datasetManager to register
+ *                                    all datasets and states with the
+ *                                    dataset_broker.
+ *
  * @author Richard Shaw, Rick Nitsche
  **/
 class datasetManager {
@@ -305,15 +312,15 @@ public:
      **/
     template<typename T> inline const T* dataset_state(dset_id_t dset);
 
+    /**
+     * @brief Callback for endpoint `force-update` called by the restServer.
+     * @param conn The HTTP connection object.
+     */
+    void force_update_callback(connectionInstance& conn);
+
 private:
-    /// Constructor
-    datasetManager() :
-        _conn_error_count(0),
-        _timestamp_update(json(0)),
-        _stop_request_threads(false),
-        _n_request_threads(0),
-        _config_applied(false),
-        _rest_client(restClient::instance()) {}
+    /// Private constructor. Called by `private_instace()`.
+    datasetManager();
 
     /// Generate a private static instance so that the overloaded instance()
     /// members can use the same static variable
