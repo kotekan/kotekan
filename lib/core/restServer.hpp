@@ -104,8 +104,7 @@ private:
  *
  * Provides the system for any framwork process to register endpoints.
  *
- * Currently this object uses the mongoose webserver internally to handle
- * the http requests.
+ * This object uses libevent internally to handle the http requests.
  *
  * See the docs for examples of using this class.
  *
