@@ -28,7 +28,7 @@ void nt_memset(void * dest, uint8_t val, size_t len) {
 
     __m256i ymm0;
     ymm0 = _mm256_set1_epi8((char)val);
-    for (int i = 0; i < num_loops; ++i) {
+    for (size_t i = 0; i < num_loops; ++i) {
         _mm256_stream_si256(dest_p + 0, ymm0);
         _mm256_stream_si256(dest_p + 1, ymm0);
         _mm256_stream_si256(dest_p + 2, ymm0);

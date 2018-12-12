@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 pulsar_params = {
     'num_elements': 4,
@@ -18,12 +18,15 @@ pulsar_params = {
     'phase_ref': 0.,
     'rot_freq': 0.03e3,  # one period spans 3 frames
     'pulse_width': 1e-3,
-    'gaussian_bgnd': False
+    'gaussian_bgnd': False,
 }
 
 accumulate_params = pulsar_params.copy()
 accumulate_params.update({
     'num_gpu_frames': 1,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
     })
 
 
@@ -32,11 +35,11 @@ def pulsar_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visAccumulate', accumulate_params,
-        kotekan_runner.FakeGPUBuffer(**pulsar_params),
+        runner.FakeGPUBuffer(**pulsar_params),
         dump_buffer,
         accumulate_params
     )
@@ -47,6 +50,7 @@ def pulsar_data(tmpdir_factory):
 
 
 def test_pulsar(pulsar_data):
+    assert len(pulsar_data) != 0
     # Should have one or two frames with a pulse
     real_part = 0
     for frame in pulsar_data:

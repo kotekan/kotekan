@@ -1,14 +1,19 @@
 #include "restClient.hpp"
-#include "errors.h"
-#include "signal.h"
 
-#include <evhttp.h>
+#include <event2/buffer.h>
+#include <event2/dns.h>
 #include <event2/event.h>
 #include <event2/http.h>
-#include <event2/dns.h>
 #include <event2/thread.h>
-#include <cxxabi.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <chrono>
 #include <condition_variable>
+
+#include "errors.h"
+#include "signal.h"
 
 
 restClient &restClient::instance() {
@@ -42,6 +47,11 @@ restClient::~restClient() {
 }
 
 void restClient::timer(evutil_socket_t fd, short event, void *arg) {
+
+    // Unused parameters, required by libevent. Suppress warning.
+    (void)fd;
+    (void)event;
+
     restClient * client = (restClient *)arg;
     if (client->_stop_thread) {
         event_base_loopbreak(client->_base);
@@ -290,7 +300,7 @@ bool restClient::make_request(std::string path,
         }
 
         evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)datalen);
-        evhttp_add_header(output_headers, "Content-Length", buf);
+        ret = evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
             WARN("restClient: Failure adding \"Content-Length\" header.");
             evhttp_connection_free(evcon);
@@ -311,4 +321,50 @@ bool restClient::make_request(std::string path,
         return false;
     }
     return true;
+}
+
+restReply restClient::make_request_blocking(std::string path,
+                                            const nlohmann::json& data,
+                                            const std::string& host,
+                                            const unsigned short port,
+                                            const int retries,
+                                            const int timeout) {
+    restReply reply = restReply(false, "");
+    bool reply_copied = false;
+
+    // Condition variable to signal that reply was copied
+    std::condition_variable cv_reply;
+    std::mutex mtx_reply;
+
+    // As a callback, pass a lambda that synchronizes copying the reply in here.
+    std::function<void(restReply)> callback([&](restReply reply_in){
+        std::lock_guard<std::mutex> lck_reply(mtx_reply);
+        reply = reply_in;
+        reply_copied = true;
+        cv_reply.notify_one();
+    });
+
+    std::unique_lock<std::mutex> lck_reply(mtx_reply);
+
+    if (!make_request(path, callback, data, host, port, retries, timeout)) {
+        WARN("restClient::rest_reply_blocking: Failed.");
+        return reply;
+    }
+
+    // Wait for the callback to receive the reply.
+    // Note: This timeout is only in case libevent for any reason never
+    // calls the callback lambda we pass to it. That's a serious error case.
+    // In a normal timeout situation, we have to make sure libevent times out
+    // before this, that's why we wait twice as long.
+    auto time_point = std::chrono::system_clock::now()
+            + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
+    while (!cv_reply.wait_until(lck_reply, time_point,
+                              [&](){return reply_copied;})) {
+            ERROR("restClient: Timeout in make_request_blocking " \
+                  "(%s:%d/%s). This might leave the restClient in an abnormal "\
+                  "state. Exiting...", host.c_str(), port, path.c_str());
+            raise(SIGINT);
+            return reply;
+    }
+    return reply;
 }

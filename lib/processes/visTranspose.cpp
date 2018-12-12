@@ -1,18 +1,32 @@
-#include <algorithm>
-#include <sys/stat.h>
-#include <fstream>
-#include <csignal>
-#include <stdexcept>
-#include <unistd.h>
-
-#include "errors.h"
-#include "visBuffer.hpp"
-#include "fmt.hpp"
-#include "visUtil.hpp"
 #include "visTranspose.hpp"
-#include "prometheusMetrics.hpp"
+
+#include <cxxabi.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <algorithm>
+#include <atomic>
+#include <complex>
+#include <csignal>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <future>
+#include <iterator>
+#include <regex>
+#include <stdexcept>
+#include <utility>
+#include <inttypes.h>
+
+#include "gsl-lite.hpp"
+
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
 #include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
@@ -50,145 +64,76 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     gethostname(temp, 256);
     std::string hostname = temp;
     metadata["collection_server"] = hostname;
+}
 
-    _use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
-    if (!_use_dataset_manager) {
-        // Read the metadata from file like in the old times
-        // TODO: remove this option completely
-        std::string md_filename = config.get<std::string>(unique_name, "infile")
-                + ".meta";
+bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
-        INFO("Reading metadata file: %s", md_filename.c_str());
-        struct stat st;
-        if (stat(md_filename.c_str(), &st) == -1)
-            throw std::ios_base::failure("visTranspose: Error reading from " \
-                                    "metadata file: " + md_filename);
-        size_t filesize = st.st_size;
-        std::vector<uint8_t> packed_json(filesize);
-        std::string version;
+    datasetManager& dm = datasetManager::instance();
 
-        std::ifstream metadata_file(md_filename, std::ios::binary);
-        if (metadata_file) // read only if no error
-            metadata_file.read((char *)&packed_json[0], filesize);
-        if (!metadata_file) // check if open and read successful
-            throw std::ios_base::failure("visTranspose: Error reading from " \
-                                    "metadata file: " + md_filename);
-        json _t = json::from_msgpack(packed_json);
-        metadata_file.close();
+    // Get the states synchronously.
+    auto tstate_fut = std::async(&datasetManager::dataset_state<timeState>, &dm,
+                                 ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm,
+                                 ds_id);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm,
+                                 ds_id);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>,
+                                 &dm, ds_id);
+    auto evstate_fut = std::async(
+                &datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
+    auto mstate_fut = std::async(
+                &datasetManager::dataset_state<metadataState>, &dm, ds_id);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
+                                 &dm, ds_id);
 
-        // Extract the attributes and index maps from metadata
+    const stackState* sstate = sstate_fut.get();
+    const metadataState* mstate = mstate_fut.get();
+    const eigenvalueState* evstate = evstate_fut.get();
+    const timeState* tstate = tstate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
+    const inputState* istate = istate_fut.get();
 
-        // change archive version: remove "NT_" prefix (not transposed)
-        metadata = _t["attributes"];
-        metadata["archive_version"] = "3.1.0";
 
-        times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
-        freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
-        inputs = _t["index_map"]["input"].get<std::vector<input_ctype>>();
-        prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
-        ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
+    if (mstate == nullptr || tstate == nullptr || pstate == nullptr ||
+        fstate == nullptr || istate == nullptr || evstate == nullptr)
+        return false;
 
-        // Check if this is baseline-stacked data
-        if (_t["index_map"].find("stack") != _t["index_map"].end()) {
-            stack = _t["index_map"]["stack"].get<std::vector<stack_ctype>>();
-            // TODO: verify this is where it gets stored
-            reverse_stack =
-                    _t["reverse_map"]["stack"].get<std::vector<rstack_ctype>>();
-        }
+    // TODO split instrument_name up into the real instrument name,
+    // registered by visAccumulate (?) and a data type, registered where
+    // data is written to file the first time
+    metadata["instrument_name"] = mstate->get_instrument_name();
+    metadata["weight_type"] = mstate->get_weight_type();
+
+    std::string git_commit_hash_dataset = mstate->get_git_version_tag();
+
+    //TODO: enforce this if build type == release?
+    if (git_commit_hash_dataset
+                != metadata["git_version_tag"].get<std::string>())
+        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s," \
+             "while the local git version tag is %s", ds_id,
+             git_commit_hash_dataset.c_str(),
+             metadata["git_version_tag"].get<std::string>().c_str());
+
+    times = tstate->get_times();
+    inputs = istate->get_inputs();
+    prods = pstate->get_prods();
+    ev = evstate->get_ev();
+
+    // unzip the vector of pairs in freqState
+    auto freq_pairs = fstate->get_freqs();
+    for (auto it = std::make_move_iterator(freq_pairs.begin()),
+             end = std::make_move_iterator(freq_pairs.end());
+         it != end; ++it)
+    {
+        freqs.push_back(std::move(it->second));
     }
-}
 
-void visTranspose::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
-void visTranspose::gather_metadata() {
-    dset_id_t ds_id = 0;
-
-    if (_use_dataset_manager) {
-        // Wait for the first frame in the input buffer
-        if((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
-            return;
-        }
-        auto frame = visFrameView(in_buf, 0);
-        ds_id = frame.dataset_id;
-
-        // Get metadata from dataset states
-        datasetManager& dm = datasetManager::instance();
-        const metadataState* mstate = nullptr;
-        const timeState* tstate = nullptr;
-        const prodState* pstate = nullptr;
-        const freqState* fstate = nullptr;
-        const inputState* istate = nullptr;
-        const eigenvalueState* evstate = nullptr;
-        const stackState* sstate = nullptr;
-        try {
-            // TODO: get the states synchronously (?)
-            mstate = dm.dataset_state<metadataState>(ds_id);
-            tstate = dm.dataset_state<timeState>(ds_id);
-            pstate = dm.dataset_state<prodState>(ds_id);
-            fstate = dm.dataset_state<freqState>(ds_id);
-            istate = dm.dataset_state<inputState>(ds_id);
-            evstate = dm.dataset_state<eigenvalueState>(ds_id);
-            sstate = dm.dataset_state<stackState>(ds_id);
-        } catch (std::runtime_error& e) {
-            // Crash if anything goes wrong. This process is processing data
-            // from a file, so should be restarted after fixing the problem.
-            ERROR("Failure in datasetManager: %s.");
-            ERROR("Exiting...");
-            raise(SIGINT);
-        }
-
-        if (mstate == nullptr || tstate == nullptr || pstate == nullptr ||
-            fstate == nullptr || istate == nullptr || evstate == nullptr ||
-            sstate == nullptr) {
-
-            // Also crash here, if a state is missing, there is something wrong.
-            // Problem should be fixed and restarted.
-            ERROR("Could not find all dataset states.");
-            ERROR("One of those is a nullptr: stack %d, meta %d, time %d, " \
-                  "prod %d, freq %d, input %d, ev %d",
-                  sstate, mstate, tstate, pstate, fstate, istate, evstate);
-            ERROR("Exiting...");
-            raise(SIGINT);
-        }
-
-        // TODO split instrument_name up into the real instrument name,
-        // registered by visAccumulate (?) and a data type, registered where
-        // data is written to file the first time
-        metadata["instrument_name"] = mstate->get_instrument_name();
-        metadata["weight_type"] = mstate->get_weight_type();
-        std::string git_commit_hash_dataset = mstate->get_git_version_tag();
-
-        //TODO: enforce this if build type == release?
-        if (git_commit_hash_dataset
-                    != metadata["git_version_tag"].get<std::string>())
-            INFO("Git version tags don't match: dataset %zu has tag %s, while "\
-                 "the local git version tag is %s", ds_id,
-                 git_commit_hash_dataset.c_str(),
-                 metadata["git_version_tag"].get<std::string>().c_str());
-
-        times = tstate->get_times();
-        inputs = istate->get_inputs();
-        prods = pstate->get_prods();
-        ev = evstate->get_ev();
-
-        // unzip the vector of pairs in freqState
-        auto freq_pairs = fstate->get_freqs();
-        for (auto it = std::make_move_iterator(freq_pairs.begin()),
-                 end = std::make_move_iterator(freq_pairs.end());
-             it != end; ++it)
-        {
-            freqs.push_back(std::move(it->second));
-        }
-
-        // Check if this is baseline-stacked data
-        if (sstate->is_stacked()) {
-            stack = sstate->get_stack_map();
-            // TODO: verify this is where it gets stored
-            reverse_stack = sstate->get_rstack_map();
-        }
+    // Check if this is baseline-stacked data
+    if (sstate) {
+        stack = sstate->get_stack_map();
+        // TODO: verify this is where it gets stored
+        reverse_stack = sstate->get_rstack_map();
     }
 
     num_time = times.size();
@@ -200,12 +145,8 @@ void visTranspose::gather_metadata() {
     // the dimension of the visibilities is different for stacked data
     eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
-    if (_use_dataset_manager) {
-        DEBUG("Dataset %zu has %d times, %d frequencies, %d products",
-              ds_id, num_time, num_freq, eff_prod_dim);
-    } else
-        DEBUG("File has %d times, %d frequencies, %d products",
-              num_time, num_freq, eff_prod_dim);
+    DEBUG("Dataset 0x%" PRIx64 " has %d times, %d frequencies, %d products",
+          ds_id, num_time, num_freq, eff_prod_dim);
 
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
@@ -223,6 +164,8 @@ void visTranspose::gather_metadata() {
     frac_lost.resize(chunk_t*chunk_f);
     input_flags.resize(chunk_t*num_input);
     std::fill(input_flags.begin(), input_flags.end(), 0.);
+
+    return true;
 }
 
 void visTranspose::main_thread() {
@@ -237,8 +180,26 @@ void visTranspose::main_thread() {
 
     uint64_t frame_size = 0;
 
-    // Get the dataset states and prepare all metadata
-    gather_metadata();
+    // Wait for a frame in the input buffer in order to get the dataset ID
+    if((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
+        return;
+    }
+    auto frame = visFrameView(in_buf, 0);
+    dset_id_t ds_id = frame.dataset_id;
+    auto future_ds_state = std::async(&visTranspose::get_dataset_state, this,
+                                      ds_id);
+
+    if (!future_ds_state.get()) {
+       ERROR("Set to not use dataset_broker and couldn't find " \
+             "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"\
+             " upstream in the config, that adds the dataset states." \
+             "\nExiting...",
+             ds_id);
+       raise(SIGINT);
+   }
+
+    // Once the async get_dataset_state() is done, we have all the metadata to
+    // create a file.
 
     found_flags = vector<bool>(write_t, false);
 
@@ -261,6 +222,13 @@ void visTranspose::main_thread() {
             break;
         }
         auto frame = visFrameView(in_buf, frame_id);
+
+        if (frame.dataset_id != ds_id) {
+            ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"\
+                  "0x%" PRIx64 ". " \
+                  "Not supported, exiting...", ds_id, frame.dataset_id);
+            raise(SIGINT);
+        }
 
         // Collect frames until a chunk is filled
         // Time-transpose as frames come in
@@ -314,7 +282,7 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod,
-                        num_ev)["_struct"].second;
+                        num_ev).first;
             prometheusMetrics::instance().add_process_metric(
                 "kotekan_vistranspose_data_transposed_bytes", unique_name,
                         frame_size * frames_so_far);

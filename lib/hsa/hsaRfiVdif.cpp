@@ -5,11 +5,10 @@ By: Jacob Taylor
 Date: August 2017
 File Purpose: Handles the kotekan GPU process for RFI removal in VDIF data.
 Details:
-	-Constructor: Applies config and sets up the Mean array
-	-apply_config: Gets values from config file and calculates buffer sizes
-	-execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
+    -Constructor: Applies config and sets up the Mean array
+    -execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
 Notes:
-	This process was designed to run on VDIF data.
+    This process was designed to run on VDIF data.
 
 **********************************************************************************/
 
@@ -20,8 +19,8 @@ REGISTER_HSA_COMMAND(hsaRfiVdif);
 hsaRfiVdif::hsaRfiVdif(Config& config,const string &unique_name,
                         bufferContainer& host_buffers,
                         hsaDeviceInterface& device) :
-    hsaCommand("rfi_vdif", "rfi_vdif.hsaco", config, unique_name, host_buffers, device) {
-    command_type = CommandType::KERNEL;
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif", "rfi_vdif.hsaco") {
+    command_type = gpuCommandType::KERNEL;
 
     //Grab values from config and calculates buffer size
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); //Data parameters
@@ -51,7 +50,11 @@ hsaRfiVdif::~hsaRfiVdif() {
     // TODO Free device memory allocations.
 }
 
-hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id,
+                                 hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
 
     struct __attribute__ ((aligned(16))) args_t { //Kernel Arguments
 	void *input;

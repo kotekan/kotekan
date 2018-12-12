@@ -31,7 +31,10 @@ using json = nlohmann::json;
 using cfloat = typename std::complex<float>;
 
 /// Aliased type for storing the layout of members in a struct
-using struct_layout = typename std::map<std::string, std::pair<size_t, size_t>>;
+/// The first element of the pair is the total struct size, the second is a map
+/// associating the type T member labels with their offsets
+template<typename T>
+using struct_layout = typename std::pair<size_t, std::map<T, std::pair<size_t, size_t>>>;
 
 
 /**
@@ -114,6 +117,33 @@ bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs);
 inline bool operator==(const prod_ctype& lhs, const prod_ctype& rhs)
 {
     return (lhs.input_a == rhs.input_a) && (lhs.input_b == rhs.input_b);
+}
+
+/**
+ * @brief Comparison of two time_ctype structs.
+ *
+ * Note this compares only the FPGA counts.
+ *
+ * @param  a  Time a.
+ * @param  b  Time b.
+ * @return    The comparison result.
+ **/
+inline bool operator<(const time_ctype& a, const time_ctype& b) {
+    return (a.fpga_count < b.fpga_count);
+}
+
+
+/**
+ * @brief Comparison of two time_ctype structs.
+ *
+ * Note this compares only the FPGA counts.
+ *
+ * @param  a  Time a.
+ * @param  b  Time b.
+ * @return    The comparison result.
+ **/
+inline bool operator>(const time_ctype& a, const time_ctype& b) {
+    return (a.fpga_count > b.fpga_count);
 }
 
 // Conversions of the index types to json
@@ -218,6 +248,15 @@ inline double ts_to_double(const timespec & ts) {
  **/
 inline timespec double_to_ts(double dtime) {
     return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e9)};
+}
+
+/**
+ * @brief Convert a UNIX time as double into a timeval.
+ * @param  dtime  Time as double.
+ * @return        Time as timeval.
+ **/
+inline timeval double_to_tv(double dtime) {
+    return {(time_t)dtime, (suseconds_t)(fmod(dtime, 1.0) * 1e6)};
 }
 
 /**
@@ -368,13 +407,38 @@ size_t _member_alignment(size_t offset, size_t size);
  /**
   * @brief Calculate the alignment of members in a struct and its total size.
   *
-  * @param  members  A vector of tupeles of `name`, `element_size` and `num_elements`.
-  * @return          A map of member name to start and end in bytes of each
-  *                  member. The total size is packed into `"_struct"`.
+  * @param  members  A vector of tuples of a `label` for the member (can be
+  *                  any type, but must be unique per member), `element_size`
+  *                  and `num_elements`. `name` can be of any type.
+  * @return          A pair, of the total size and the struct layout. The
+  *                  layout is a map of member name to start and end in bytes
+  *                  of each member.
   */
-struct_layout struct_alignment(
-    std::vector<std::tuple<std::string, size_t, size_t>> members
-);
+template<typename T>
+struct_layout<T> struct_alignment(
+    std::vector<std::tuple<T, size_t, size_t>> members
+) {
+
+    T label;
+    size_t size, num, end = 0, max_size = 0;
+
+    std::map<T, std::pair<size_t, size_t>> layout;
+
+    for(auto member : members) {
+        std::tie(label, size, num) = member;
+
+        // Uses the end of the *last* member
+        size_t start = _member_alignment(end, size);
+        end = start + size * num;
+        max_size = std::max(max_size, size);
+
+        layout[label] = {start, end};
+    }
+
+    size_t struct_size = _member_alignment(end, max_size);
+
+    return {struct_size, layout};
+}
 
 
 /**
@@ -507,6 +571,17 @@ inline std::vector<U> func_map(const std::vector<T>& vec,
     }
     return ret;
 }
+
+/**
+ * @brief Splits a string based on a regex delimiter
+ *
+ * Aside: how is something like this not in std::string?
+ *
+ * @param input The string to split
+ * @param reg The regex string delimiter
+ * @return A vector of strings as split by the delimiter
+ */
+std::vector<std::string> regex_split(const std::string input, const std::string reg);
 
 
 /**

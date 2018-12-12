@@ -1,10 +1,24 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <iosfwd>
+#include <map>
+#include <set>
 #include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "json.hpp"
+
+#include "Config.hpp"
+#include "errors.h"
 #include "visUtil.hpp"
+#include "gateSpec.hpp"
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -85,7 +99,13 @@ public:
      * @param s    State to compare with.
      * @return True if states identical, False otherwise.
      */
-    const bool equals(datasetState& s) const;
+    bool equals(datasetState& s) const;
+
+    /**
+     * @brief Get typeids of this state and its inner states.
+     * @return A set of state names.
+     */
+    std::set<std::string> types() const;
 
 private:
 
@@ -109,7 +129,6 @@ private:
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
-
 };
 
 #define REGISTER_DATASET_STATE(T) int _register_ ## T = \
@@ -371,12 +390,34 @@ public:
         _ev(ev) {};
 
     /**
+     * @brief Constructor
+     * @param num_ev The number of eigenvalues. The indices will end up
+     *               running from 0 to num_ev - 1
+     * @param inner An inner state (optional).
+     */
+    eigenvalueState(size_t num_ev, state_uptr inner=nullptr) :
+        datasetState(move(inner)),
+        _ev(num_ev)
+    {
+        std::iota(_ev.begin(), _ev.end(), 0);
+    }
+
+    /**
      * @brief Get eigenvalues (read only).
      *
      * @return The eigenvalues.
      */
     const std::vector<uint32_t>& get_ev() const {
         return _ev;
+    }
+
+    /**
+     * @brief Get the number of eigenvalues
+     *
+     * @return The number of eigenvalues.
+     */
+    size_t get_num_ev() const {
+        return _ev.size();
     }
 
 private:
@@ -412,14 +453,8 @@ public:
         datasetState(move(inner))
     {
         try {
-            _stacked = data["stacked"].get<bool>();
-            if (_stacked) {
-                _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
-                _num_stack = data["num_stack"].get<uint32_t>();
-            } else {
-                _rstack_map = {};
-                _num_stack = 0;
-            }
+            _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
+            _num_stack = data["num_stack"].get<uint32_t>();
         } catch (std::exception& e) {
              throw std::runtime_error("stackState: Failure parsing json data: "
                                       + std::string(e.what()));
@@ -436,22 +471,7 @@ public:
                state_uptr inner=nullptr) :
         datasetState(std::move(inner)),
         _num_stack(num_stack),
-        _rstack_map(rstack_map),
-        _stacked(true) {}
-
-
-    /**
-     * @brief Constructor for an empty stack state
-     *
-     * This constructs a stackState describing a dataset that is not stacked.
-     */
-    stackState(state_uptr inner=nullptr) :
-        datasetState(std::move(inner)),
-        _stacked(false) {
-        _rstack_map = {};
-        _num_stack = 0;
-    }
-
+        _rstack_map(rstack_map) {}
 
     /**
      * @brief Get stack map information (read only).
@@ -466,21 +486,12 @@ public:
     }
 
     /**
-     * @brief Get the number of stacks (read only).
+     * @brief Get the number of stacks.
      *
      * @return The number of stacks.
      */
-    const uint32_t get_num_stack() const {
+    uint32_t get_num_stack() const {
         return _num_stack;
-    }
-
-    /**
-     * @brief Tells if the data is stacked (read only).
-     *
-     * @return True for stacked data, otherwise False.
-     */
-    const bool is_stacked() const {
-        return _stacked;
     }
 
     /**
@@ -492,18 +503,13 @@ public:
      **/
     std::vector<stack_ctype> get_stack_map() const
     {
-        if (_stacked)
-            return invert_stack(_num_stack, _rstack_map);
-        return {};
+        return invert_stack(_num_stack, _rstack_map);
     }
 
     /// Serialize the data of this state in a json object
     json data_to_json() const override
     {
-        if (_stacked)
-            return {{"rstack", _rstack_map }, {"num_stack", _num_stack},
-                    {"stacked", _stacked}};
-        return {{"stacked", _stacked}};
+        return {{"rstack", _rstack_map }, {"num_stack", _num_stack}};
     }
 
 private:
@@ -513,9 +519,6 @@ private:
 
     /// The stack definition
     std::vector<rstack_ctype> _rstack_map;
-
-    /// Is the data stacked at all?
-    bool _stacked;
 };
 
 
@@ -602,6 +605,62 @@ private:
 
     // the actual metadata
     std::string _weight_type, _instrument_name, _git_version_tag;
+};
+
+
+/**
+ * @brief A state to describe any applied gating.
+ *
+ * @author Richard Shaw
+ **/
+class gatingState : public datasetState {
+public:
+
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  type   A string labelling the type of the gating.
+     * @param  data   Arbitrary type specific data to describe what's happening.
+     * @param  inner  Inner state.
+     **/
+    gatingState(const gateSpec& spec, state_uptr inner=nullptr) :
+        datasetState(std::move(inner)),
+        gating_type(FACTORY(gateSpec)::label(spec)),
+        gating_data(spec.to_dm_json())
+    {
+    }
+
+    /**
+     * @brief Construct a gating state
+     *
+     * @param  data   Full serialised data.
+     * @param  inner  Inner state.
+     **/
+    gatingState(json& data, state_uptr inner) :
+        datasetState(std::move(inner)),
+        gating_type(data["type"].get<std::string>()),
+        gating_data(data["data"])
+    {
+    }
+
+
+    /**
+     * @brief Serialise the gatingState data.
+     *
+     * @return  JSON serialisation.
+     **/
+    json data_to_json() const override {
+        return {
+            {"type", gating_type},
+            {"data", gating_data}
+        };
+    }
+
+    /// Type of gating
+    const std::string gating_type;
+
+    /// Type specific data
+    const json gating_data;
 };
 
 #endif // DATASETSTATE_HPP

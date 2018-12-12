@@ -53,20 +53,19 @@
  */
 class rfiBroadcast : public KotekanProcess {
 public:
-    //Constructor, intializes config variables via apply_config
+    //Constructor
     rfiBroadcast(Config& config,
                        const string& unique_name,
                        bufferContainer& buffer_container);
     //Deconstructor, cleans up / does nothing
     virtual ~rfiBroadcast();
     //Primary loop, reads buffer and sends out UDP stream
-    void main_thread();
+    void main_thread() override;
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
     //Callback function called by rest server
     void rest_zero(connectionInstance& conn);
-    //Intializes config variables
-    virtual void apply_config(uint64_t fpga_seq);
+
 private:
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer *rfi_buf;

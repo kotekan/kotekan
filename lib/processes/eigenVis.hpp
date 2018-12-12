@@ -9,6 +9,7 @@
 #include "buffer.h"
 #include "KotekanProcess.hpp"
 #include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 /**
  * @class eigenVis
@@ -29,14 +30,14 @@
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                Int. The number of eigenvectors to be calculated as
+ * @conf  num_ev                UInt. The number of eigenvectors to be calculated as
  *                              an approximation to the visibilities.
  * @conf  num_diagonals_filled  Int, default 0. Number of diagonals to fill with
  *                              the previous time step's solution prior to
  *                              factorization. For example, setting to 1 will replace
  *                              the main diagonal only. Filled with zero on the first
  *                              time step.
- * @conf  exclude_inputs        List of Ints, optional. Inputs to exclude (rows and
+ * @conf  exclude_inputs        List of UInts, optional. Inputs to exclude (rows and
  *                              columns to set to zero) in visibilities prior to
  *                              factorization.
  *
@@ -58,20 +59,25 @@ public:
     eigenVis(Config& config,
              const string& unique_name,
              bufferContainer &buffer_container);
-    ~eigenVis();
-    void apply_config(uint64_t fpga_seq) override;
+    virtual ~eigenVis() = default;
     void main_thread() override;
 private:
-    struct Buffer *input_buffer;
-    struct Buffer *output_buffer;
 
-    int32_t num_eigenvectors;
-    int32_t num_diagonals_filled;
+    dset_id_t change_dataset_state(dset_id_t input_dset_id);
+
+    Buffer *input_buffer;
+    Buffer *output_buffer;
+
+    uint32_t num_eigenvectors;
+    uint32_t num_diagonals_filled;
     /// List of input indeces to zero prior to decomposition.
-    std::vector<int32_t> exclude_inputs;
+    std::vector<uint32_t> exclude_inputs;
 
     /// Keep track of the average write time
     movingAverage calc_time;
+
+    state_id_t ev_state_id;
+    dset_id_t input_dset_id = 0;
 
 };
 

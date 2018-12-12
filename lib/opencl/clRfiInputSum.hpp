@@ -57,17 +57,11 @@ public:
     //Builds the program/kernel
     virtual void build(device_interface &param_Device) override;
     //Executes the kernel
-    virtual cl_event execute(int param_bufferID, const uint64_t& fpga_seq, device_interface &param_Device, cl_event param_PrecedeEvent) override;
+    virtual cl_event execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent) override;
     //Rest Server Callback
     void rest_callback(connectionInstance& conn, json& json_request);
-protected:
-    //Applies config parameters
-    void apply_config(const uint64_t& fpga_seq) override;
+
 private:
-    /// Length of the input frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
-    uint32_t input_frame_len;
-    /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
-    uint32_t output_frame_len;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
     /// The total number of faulty inputs

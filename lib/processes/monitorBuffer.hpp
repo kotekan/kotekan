@@ -41,10 +41,7 @@ public:
     virtual ~monitorBuffer();
 
     /// Watches the list of buffers for timeouts
-    void main_thread();
-
-    /// Deprecated
-    virtual void apply_config(uint64_t fpga_seq);
+    void main_thread() override;
 
 private:
     /// Internal list of buffers to check

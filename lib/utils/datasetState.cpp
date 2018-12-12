@@ -1,4 +1,5 @@
 #include "datasetState.hpp"
+#include <typeinfo>
 
 // Initialise static map of types
 std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&
@@ -53,6 +54,21 @@ json datasetState::to_json() const {
 }
 
 // TODO: compare without serialization
-const bool datasetState::equals(datasetState& s) const {
+bool datasetState::equals(datasetState& s) const {
     return to_json() == s.to_json();
+}
+
+std::set<std::string> datasetState::types() const {
+    std::set<std::string> types;
+
+    types.insert(typeid(*this).name());
+
+    const datasetState* t = _inner_state.get();
+
+    while(t != nullptr) {
+        types.insert(typeid(*t).name());
+        t = t->_inner_state.get();
+    }
+
+    return types;
 }

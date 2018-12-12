@@ -12,6 +12,7 @@
 #include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include <emmintrin.h>
+#include <immintrin.h>
 
 using std::vector;
 
@@ -77,9 +78,6 @@ public:
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
-
-    /// Initializes internal variables from config
-    virtual void apply_config(uint64_t fpga_seq) override;
 
 private:
     void write_header(unsigned char * dest);

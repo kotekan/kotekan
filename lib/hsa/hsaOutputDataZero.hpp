@@ -1,18 +1,18 @@
 #ifndef HSA_OUTPUT_DATA_ZERO_H
 #define HSA_OUTPUT_DATA_ZERO_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-class hsaOutputDataZero: public hsaCommand
+class hsaOutputDataZero: public hsaSubframeCommand
 {
 public:
 
-    hsaOutputDataZero(Config &config, const string &unique_name, 
+    hsaOutputDataZero(Config &config, const string &unique_name,
                   bufferContainer &host_buffers, hsaDeviceInterface &device);
 
     virtual ~hsaOutputDataZero();
 
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
 private:

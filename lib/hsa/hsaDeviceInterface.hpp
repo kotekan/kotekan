@@ -5,18 +5,14 @@
 #include <sys/mman.h>
 #include <string>
 #include <vector>
-#include <map>
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "kotekanLogging.hpp"
+#include "gpuDeviceInterface.hpp"
 
 using std::vector;
 using std::string;
-using std::map;
 
 // Parameters for the get_gpu_agent function
 struct gpu_config_t {
@@ -30,38 +26,12 @@ struct gpu_mem_config_t {
   hsa_amd_memory_pool_t *region;
 };
 
-// Store named set of gpu pointer(s) with uniform size
-struct gpuMemoryBlock {
-    vector<void*> gpu_pointers;
-    uint32_t len;
 
-    // Need to be able to release the hsa pointers
-    ~gpuMemoryBlock();
-};
-
-class hsaDeviceInterface: public kotekanLogging
+class hsaDeviceInterface: public gpuDeviceInterface
 {
 public:
     hsaDeviceInterface(Config& config, int32_t gpu_id, int gpu_buffer_depth);
     virtual ~hsaDeviceInterface();
-    int get_gpu_id();
-    int get_gpu_buffer_depth();
-
-    // Get one of the gpu memory pointers with the given name and size = len at the given index
-    // The size of the set is equal to gpu_buffer_depth, so index < gpu_buffer_depth
-    // If a region with this name exists then it will just return an existing pointer
-    // at the give index, if the region doesn't exist, then it creates
-    // it with gpu_buffer_depth pointers of size len
-    // NOTE: if accessing an existing named region then len must match the existing
-    // length or the system will throw an assert.
-    void *get_gpu_memory_array(const string &name, const uint32_t index, const uint32_t len);
-
-    // Same as get_gpu_memory_array but gets just one gpu memory buffer
-    // This can be used when internal memory is needed.
-    // i.e. memory used for lookup tables that are the same between runs
-    // or temporary buffers between kernels.
-    // Should NOT be used for any memory that's copied between GPU and HOST memory.
-    void *get_gpu_memory(const string &name, const uint32_t len);
 
     // Note, if precede_signal is 0, then we don't wait on any signal.
     // These functions should only be called once per command, and
@@ -87,9 +57,8 @@ public:
     uint64_t get_hsa_timestamp_freq();
 
 protected:
-
-    Config &config;
-    int32_t gpu_id; // Internal GPU ID.
+    void *alloc_gpu_memory(int len) override;
+    void free_gpu_memory(void *) override;
 
     // GPU HSA variables
     hsa_agent_t gpu_agent;
@@ -109,12 +78,7 @@ protected:
     hsa_agent_t cpu_agent;
     hsa_amd_memory_pool_t host_region;
 
-    uint32_t gpu_buffer_depth;
-
 private:
-
-    map<string, gpuMemoryBlock> gpu_memory;
-
     static hsa_status_t get_gpu_agent(hsa_agent_t agent, void *data);
     static hsa_status_t get_cpu_agent(hsa_agent_t agent, void* data);
     static hsa_status_t get_kernarg_memory_region(hsa_region_t region, void* data);

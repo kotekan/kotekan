@@ -7,15 +7,21 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include <unistd.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <map>
 #include <string>
-#include "buffer.h"
+#include <vector>
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.
@@ -52,11 +58,9 @@
  *                          mode 'test_pattern_freq'.
  * @conf  freq_values       Array of CFloat. Values for the frequency IDs in
  *                          mode 'test_pattern_freq'.
- * @conf  use_dataset_manager   Bool. If this is `True`, the dataset manager
- *                              is used (default False).
- * @conf  dataset_id        Int. Use a fixed dataset ID. If not set,
- *                          `use_dataset_manager` is `True`, the dataset
- *                          manager will create the dataset ID.
+ * @conf  dataset_id        Int. Use a fixed dataset ID and don't register
+ *                          states. If not set, the dataset manager will create
+ *                          the dataset ID.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -72,11 +76,8 @@ public:
             const string& unique_name,
             bufferContainer &buffer_container);
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Default fill pattern.
@@ -162,8 +163,6 @@ private:
     // Test mode that sets all weights to zero
     bool zero_weight;
 
-    bool use_dataset_manager;
-
     bool wait;
     int32_t num_frames;
 
@@ -206,11 +205,8 @@ public:
                const string& unique_name,
                bufferContainer& buffer_container);
 
-    /// Not yet implemented, should update runtime parameters.
-    void apply_config(uint64_t fpga_seq);
-
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Buffers

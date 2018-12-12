@@ -40,7 +40,27 @@ std::bind(&frbNetworkProcess::main_thread, this))
 {
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-    apply_config(0);
+
+    // Apply config.
+    udp_frb_packet_size = config.get_default<int>(
+                unique_name, "udp_frb_packet_size", 4264);
+    udp_frb_port_number = config.get_default<int>(
+                unique_name, "udp_frb_port_number", 1313);
+    number_of_nodes = config.get_default<int>(
+                unique_name, "number_of_nodes", 256);
+    number_of_subnets = config.get_default<int>(
+                unique_name, "number_of_subnets",4);
+    packets_per_stream = config.get_default<int>(
+                unique_name, "packets_per_stream",8);
+    beam_offset = config.get_default<int>(
+                unique_name, "beam_offset",0);
+    time_interval = config.get_default<unsigned long>(
+                unique_name, "time_interval",125829120);
+    column_mode = config.get_default<bool>(
+                unique_name, "column_mode", false);
+    samples_per_packet = config.get_default<int>(
+                unique_name, "timesamples_per_frb_packet",16);
+
     my_host_name = (char*) malloc(sizeof(char)*100);
     CHECK_MEM(my_host_name);
 }
@@ -71,31 +91,6 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "beam_offset", beam_offset);
 }
-
-
-
-void frbNetworkProcess::apply_config(uint64_t fpga_seq)
-{
-    udp_frb_packet_size = config.get_default<int>(
-                unique_name, "udp_frb_packet_size", 4264);
-    udp_frb_port_number = config.get_default<int>(
-                unique_name, "udp_frb_port_number", 1313);
-    number_of_nodes = config.get_default<int>(
-                unique_name, "number_of_nodes", 256);
-    number_of_subnets = config.get_default<int>(
-                unique_name, "number_of_subnets",4);
-    packets_per_stream = config.get_default<int>(
-                unique_name, "packets_per_stream",8);
-    beam_offset = config.get_default<int>(
-                unique_name, "beam_offset",0);
-    time_interval = config.get_default<unsigned long>(
-                unique_name, "time_interval",125829120);
-    column_mode = config.get_default<bool>(
-                unique_name, "column_mode", false);
-    samples_per_packet = config.get_default<int>(
-                unique_name, "timesamples_per_frb_packet",16);
-}
-
 
 void frbNetworkProcess::main_thread()
 {
@@ -221,6 +216,7 @@ void frbNetworkProcess::main_thread()
     int my_sequence_id = (int)(my_node_id/128) + 2*((my_node_id%128)/8) + 32*(my_node_id%8);
 
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (packet_buffer == NULL) return;
 
     //waiting for atleast two frames for the buffer to fill up takes care of the random delay at the start.
 

@@ -18,7 +18,7 @@
  * @brief Receives gains and apply them to the output buffer.
  *
  * This process registers as a subscriber to an updatable config block. The
- * full name of the block should be defined in the value <updateable_block>
+ * full name of the block should be defined in the value <updatable_block>
  *
  * @par Buffers
  * @buffer in_buf The input stream.
@@ -66,10 +66,8 @@ public:
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
     /// Callback function to receive updates on timestamps from configUpdater
     bool receive_update(nlohmann::json &json);

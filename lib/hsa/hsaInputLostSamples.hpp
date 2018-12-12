@@ -36,7 +36,7 @@ class hsaInputLostSamples: public hsaCommand
         /// Wait for full metadata frame and keep track of precondition_id
         int wait_on_precondition(int gpu_frame_id) override;
         /// Allocates kernel arguments, places kernel in queue
-        hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+        hsa_signal_t execute(int gpu_frame_id,
                              hsa_signal_t precede_signal) override;
         /// Marks frame empty for re-fill
         void finalize_frame(int frame_id) override;

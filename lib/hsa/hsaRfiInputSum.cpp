@@ -10,8 +10,8 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
     //Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
-    hsaCommand("rfi_chime_inputsum", "rfi_chime_inputsum.hsaco", config, unique_name, host_buffers, device) {
-    command_type = CommandType::KERNEL;
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum", "rfi_chime_inputsum.hsaco") {
+    command_type = gpuCommandType::KERNEL;
     //Retrieve parameters from kotekan config
     //Data Parameters
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -32,10 +32,13 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config,
     rebuild_input_mask = true;
     //Allocate memory for input mask
     input_mask = (uint8_t *)hsa_host_malloc(input_mask_len);
+
+    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+
     //Register rest server endpoint
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint = unique_name + "/update_bad_inputs";
+    endpoint = config_base + "/update_bad_inputs";
     rest_server.register_post_callback(endpoint,
             std::bind(&hsaRfiInputSum::rest_callback, this, _1, _2));
 }
@@ -59,10 +62,15 @@ void hsaRfiInputSum::rest_callback(connectionInstance& conn, json& json_request)
     rebuild_input_mask = true;
     //Send reply
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    config.update_value(unique_name, "bad_inputs", _bad_inputs);
+    config.update_value(config_base, "bad_inputs", _bad_inputs);
 }
 
-hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id,
+                                     hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     //Lock rest server callback mutex
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     //Build Input mask when needed (after rest callback or on first execution)

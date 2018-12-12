@@ -21,7 +21,26 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config,
         bufferContainer &buffer_container) :
     KotekanProcess(config, unique_name, buffer_container, std::bind(&gpuBeamformSimulate::main_thread, this)) {
 
-    apply_config(0);
+    // Apply config.
+    _num_elements = config.get<int32_t>(unique_name, "num_elements");
+    _samples_per_data_set = config.get<int32_t>(unique_name,
+                                                "samples_per_data_set");
+    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
+    _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
+    _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
+    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
+    _northmost_beam = config.get<float>(unique_name, "northmost_beam");
+    Freq_ref = (light*(128) / (sin(_northmost_beam *PI/180.) *feed_sep*256))/1.e6;
+    _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
+    _ew_spacing_c = (float *) malloc(4*sizeof(float));
+    for (int i=0;i<4;i++) {
+        _ew_spacing_c[i] = _ew_spacing[i];
+    }
+    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
+    vector<float> dg = {0.0,0.0}; //re,im
+    default_gains = config.get_default<std::vector<float>>(
+            unique_name, "frb_missing_gains", dg);
+    scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());
@@ -70,31 +89,6 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
     free(cpu_final_output);
     free(reorder_map_c);
     free(_ew_spacing_c);
-}
-
-void gpuBeamformSimulate::apply_config(uint64_t fpga_seq) {
-    _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(unique_name,
-                                                "samples_per_data_set");
-    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
-    _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
-    _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
-    _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
-    _northmost_beam = config.get<float>(unique_name, "northmost_beam");
-    Freq_ref = (light*(128) / (sin(_northmost_beam *PI/180.) *feed_sep*256))/1.e6;
-
-    _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
-    _ew_spacing_c = (float *) malloc(4*sizeof(float));
-    for (int i=0;i<4;i++){
-        _ew_spacing_c[i] = _ew_spacing[i];
-    }
-    
-    _gain_dir = config.get<std::string>(unique_name, "gain_dir");
-    vector<float> dg = {0.0,0.0}; //re,im
-    default_gains = config.get_default<std::vector<float>>(
-            unique_name, "frb_missing_gains", dg);
-
-    scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 }
 
 void gpuBeamformSimulate::reorder(unsigned char *data, int *map){
@@ -327,6 +321,7 @@ void gpuBeamformSimulate::main_thread() {
         FILE *ptr_myfile = NULL;
         char filename[512];
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",_gain_dir.c_str(), freq_now);
+        ptr_myfile=fopen(filename,"rb");
 
         if (ptr_myfile == NULL){
             ERROR("CPU verification code: Cannot open gain file %s", filename);

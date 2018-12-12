@@ -7,18 +7,25 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include <vector>
-#include <cstdint>
-#include <fstream>
-#include <functional>
-#include <memory>
 #include <time.h>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
 #include "gateSpec.hpp"
 #include "visUtil.hpp"
-#include "datasetManager.hpp"
+
 
 /**
  * @class visAccumulate
@@ -27,10 +34,8 @@
  * This process will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
- * It tags the stream with a properly allocated dataset_id if
- * `use_dataset_manager` is `true` and adds associated datasetStates to the
- * datasetManager. It adds an empty stackState to the dataset (as in not
- * stacked).
+ * It tags the stream with a properly allocated dataset_id and adds associated
+ * datasetStates to the datasetManager.
  *
  * @par Buffers
  * @buffer in_buf
@@ -52,7 +57,6 @@
  *                              correlator data.
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                Int. The number of eigenvectors to be stored
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
  *                              Only the first element of each sub-array is used and it is the the index of
  *                              the input to move into this new location. The remaining elements of the
@@ -67,8 +71,6 @@
  * @metric  kotekan_vis_accumulate_skipped_frame_total
  *      The number of frames skipped entirely because they were under the
  *      low_sample_fraction.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
@@ -77,8 +79,7 @@ public:
     visAccumulate(Config& config,
                   const string& unique_name,
                   bufferContainer &buffer_container);
-    ~visAccumulate();
-    void apply_config(uint64_t fpga_seq) override;
+    ~visAccumulate() = default;
     void main_thread() override;
 
 private:
@@ -121,11 +122,16 @@ private:
         std::function<float(timespec, timespec, float)> calculate_weight;
 
         /// Mutex to control update of gateSpec
+        /// ... and bool to signal changes (should only be changed when locked)
         std::mutex state_mtx;
+        bool changed;
 
         /// Accumulation vectors
-        std::vector<cfloat> vis1;
+        std::vector<int32_t> vis1;
         std::vector<float> vis2;
+
+        /// Dataset ID for output
+        dset_id_t output_dataset_id;
 
         friend visAccumulate;
     };
@@ -137,7 +143,6 @@ private:
     // Parameters saved from the config files
     size_t num_elements;
     size_t num_freq_in_frame;
-    size_t num_eigenvectors;
     size_t block_size;
     size_t samples_per_data_set;
     size_t num_gpu_frames;
@@ -169,27 +174,30 @@ private:
     /**
      * @brief Reset the state when we restart an integration.
      *
+     * @param    internalState  State to reset.
+     * @param    timespec       Current time.
      * @returns Return if this accumulation was enabled.
      **/
-    bool reset_state(internalState& state);
+    bool reset_state(internalState& state, timespec t);
 
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;
 
-    // dataset ID written to output frames
-    dset_id_t _ds_id_out;
+    // dataset ID for the base (input, prod, freq, meta)
+    dset_id_t base_dataset_id;
 
 
     /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
-    dset_id_t change_dataset_state();
+    dset_id_t base_dataset_state(std::string& instrument_name,
+                                 std::vector<std::pair<uint32_t, freq_ctype>>&
+                                 freqs,
+                                 std::vector<input_ctype>& inputs,
+                                 std::vector<prod_ctype>& prods);
 
-    // data saved to register dataset states
-    std::string _instrument_name;
-    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
-    std::vector<input_ctype> _inputs;
-    std::vector<prod_ctype> _prods;
+    /// Register a new state with the gating params
+    dset_id_t gate_dataset_state(const gateSpec& spec);
 };
 
 #endif

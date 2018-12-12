@@ -1,17 +1,18 @@
 #ifndef VIS_FILE_ARCHIVE_HPP
 #define VIS_FILE_ARCHIVE_HPP
 
+#include <stddef.h>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 #include <iostream>
-#include <cstdint>
 
 #include <highfive/H5File.hpp>
 #include <highfive/H5DataSet.hpp>
 
-#include "visBuffer.hpp"
-#include "visFile.hpp"
+#include "Config.hpp"
 #include "visUtil.hpp"
-#include "errors.h"
-#include "visFileH5.hpp"  // For HighFive types
 
 
 /** @brief A CHIME correlator archive file.
@@ -101,7 +102,6 @@ private:
                     const std::map<std::string, std::string>& metadata,
                     const std::vector<time_ctype>& times,
                     const std::vector<freq_ctype>& freqs,
-                    const std::vector<input_ctype>& inputs,
                     const std::vector<prod_ctype>& prods,
                     size_t num_ev,
                     std::vector<int> chunk_size);

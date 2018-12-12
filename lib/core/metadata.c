@@ -87,7 +87,7 @@ struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t obje
     pool->metadata_objects = malloc(pool->pool_size * sizeof(struct metadataContainer *));
     CHECK_MEM(pool->metadata_objects);
 
-    for (int i = 0; i < pool->pool_size; ++i) {
+    for (unsigned int i = 0; i < pool->pool_size; ++i) {
         pool->metadata_objects[i] = create_metadata(object_size, pool);
         pool->in_use[i] = 0;
     }
@@ -96,7 +96,7 @@ struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t obje
 }
 
 void delete_metadata_pool(struct metadataPool * pool) {
-    for (int i = 0; i < pool->pool_size; ++i) {
+    for (unsigned int i = 0; i < pool->pool_size; ++i) {
         delete_metadata(pool->metadata_objects[i]);
     }
 
@@ -111,7 +111,7 @@ struct metadataContainer * request_metadata_object(struct metadataPool * pool) {
     CHECK_ERROR( pthread_mutex_lock(&pool->pool_lock) );
 
     // TODO there are better data structures for this.
-    for (int i = 0; i < pool->pool_size; ++i) {
+    for (unsigned int i = 0; i < pool->pool_size; ++i) {
         if (pool->in_use[i] == 0) {
             //DEBUG("pool->metadata_objects[%d] == %p", i, pool->metadata_objects[i]);
             container = pool->metadata_objects[i];
@@ -135,7 +135,7 @@ void return_metadata_to_pool(struct metadataPool * pool, struct metadataContaine
     CHECK_ERROR( pthread_mutex_lock(&pool->pool_lock) );
 
     //DEBUG("Called return_metadata_to_pool");
-    for (int i = 0; i < pool->pool_size; ++i) {
+    for (unsigned int i = 0; i < pool->pool_size; ++i) {
         // Pointer check
         if (pool->metadata_objects[i] == info) {
             assert(pool->in_use[i] == 1); // Should be in-use if we are returning it!

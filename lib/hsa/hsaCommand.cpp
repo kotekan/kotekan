@@ -5,17 +5,13 @@ using std::string;
 #define MAX_ARGS_LEN 64
 
 hsaCommand::hsaCommand(
-        const string &default_kernel_command,
-        const string &default_kernel_file_name,
         Config& config_,
         const string &unique_name_,
         bufferContainer &host_buffers_,
-        hsaDeviceInterface& device_) :
-        kernel_command(default_kernel_command),
-        kernel_file_name(default_kernel_file_name),
-        config(config_),
-        unique_name(unique_name_),
-        host_buffers(host_buffers_),
+        hsaDeviceInterface& device_,
+        const string &default_kernel_command,
+        const string &default_kernel_file_name) :
+        gpuCommand(config_,unique_name_,host_buffers_,device_,default_kernel_command,default_kernel_file_name),
         device(device_)
 {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
@@ -72,10 +68,6 @@ hsaCommand::~hsaCommand() {
 
 }
 
-string &hsaCommand::get_name() {
-    return kernel_command;
-}
-
 void hsaCommand::allocate_kernel_arg_memory(int max_size) {
     hsa_status_t hsa_status;
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
@@ -96,14 +88,14 @@ void hsaCommand::finalize_frame(int frame_id) {
         return;
     }
 
-    if (command_type == CommandType::KERNEL) {
+    if (command_type == gpuCommandType::KERNEL) {
         hsa_status = hsa_amd_profiling_get_dispatch_time(device.get_gpu_agent(),
                                                 signals[frame_id], &kernel_time);
         last_gpu_execution_time =
                 ((double)(kernel_time.end - kernel_time.start))/
                 (double)timestamp_frequency_hz;
-    } else if (command_type == CommandType::COPY_IN ||
-               command_type == CommandType::COPY_OUT) {
+    } else if (command_type == gpuCommandType::COPY_IN ||
+               command_type == gpuCommandType::COPY_OUT) {
         hsa_status = hsa_amd_profiling_get_async_copy_time(signals[frame_id],
                                                                 &copy_time);
         last_gpu_execution_time =
@@ -117,11 +109,6 @@ void hsaCommand::finalize_frame(int frame_id) {
     if (hsa_status != HSA_STATUS_SUCCESS) {
         throw std::runtime_error("HSA Profiling call failed");
     }
-}
-
-int hsaCommand::wait_on_precondition(int gpu_frame_id) {
-    (void)gpu_frame_id;
-    return 0;
 }
 
 uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
@@ -261,11 +248,7 @@ hsa_signal_t hsaCommand::enqueue_kernel(const kernelParams &params, const int gp
     return packet->completion_signal;
 }
 
-double hsaCommand::get_last_gpu_execution_time() {
-    return last_gpu_execution_time;
-}
-
-CommandType hsaCommand::get_command_type() {
+gpuCommandType hsaCommand::get_command_type() {
     return command_type;
 }
 

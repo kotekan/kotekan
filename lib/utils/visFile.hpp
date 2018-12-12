@@ -31,7 +31,7 @@ class visFile {
 
 public:
 
-virtual ~visFile() {};
+    virtual ~visFile() = default;
 
     /** @brief Create the file.
      *
@@ -65,7 +65,10 @@ virtual ~visFile() {};
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind) {};
+    virtual void deactivate_time(uint32_t time_ind) {
+        (void)time_ind;
+        DEBUG("visFile::deactivate_time: called but not implemented.");
+    };
 
     /**
      * @brief Write a sample of data into the file at the given index.
@@ -102,15 +105,13 @@ protected:
      *  @param name     Name of the file to write
      *  @param metadata Textual metadata to write into the file.
      *  @param dataset  ID of dataset we are writing.
-     *  @param num_ev   Number of eigenvectors to write (0 turns off the
-     *                  datasets entirely).
      *  @param max_time Maximum number of times to write into the file.
      **/
     // TODO: decide if the num_ev can be eliminated.
     virtual void create_file(
         const std::string& name,
         const std::map<std::string, std::string>& metadata,
-        dset_id_t dataset, size_t num_ev, size_t max_time) = 0;
+        dset_id_t dataset, size_t max_time) = 0;
 
     // Private constructor to discourage creation of subclasses outside of the
     // create routine
@@ -203,6 +204,15 @@ public:
     template<typename... WriteArgs>
     bool add_sample(time_ctype new_time, WriteArgs&&... args);
 
+    virtual ~visFileBundle();
+
+    /**
+     * @brief Get the time of the last update.
+     *
+     * @return  The time of the last update.
+     **/
+    time_ctype last_update() const;
+
 protected:
 
     // Add a file if we need to
@@ -211,7 +221,7 @@ protected:
     // Find/create the slot for data at this time to go into
     bool resolve_sample(time_ctype new_time);
 
-    std::map<uint64_t, std::tuple<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
+    std::map<time_ctype, std::pair<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
     // Thin function to actually create the file
     std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mk_file;
 
@@ -258,13 +268,12 @@ public:
      * @warning The directory will not be created if it doesn't exist.
      **/
     template<typename... Args>
-    visCalFileBundle(Args... args) :
-        visFileBundle(args...) {};
-
-    /**
-     * Close all files and clear the map.
-     **/
-    void clear_file_map();
+    visCalFileBundle(Args&&... args) :
+        visFileBundle(std::forward<Args>(args)...)
+    {
+        // Override the rollover setting for the calibration bundles
+        rollover = 0;
+    }
 
     /**
      * Set the file name to write to.
@@ -324,7 +333,7 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
         std::shared_ptr<visFile> file;
         uint32_t ind;
         // We can now safely add the sample into the file
-        std::tie(file, ind) = vis_file_map[new_time.fpga_count];
+        std::tie(file, ind) = vis_file_map[new_time];
         file->write_sample(ind, std::forward<WriteArgs>(args)...);
 
         return false;

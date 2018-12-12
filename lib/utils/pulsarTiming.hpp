@@ -60,5 +60,56 @@ private:
 
 };
 
+/**
+ * @class SegmentedPolyco
+ * @brief Collection of Polyco objects representing timing solutions
+ *        over a segmented span of time.
+ *
+ * @author Tristan Pinsonneault-Marotte
+ **/
+class SegmentedPolyco {
+
+public:
+    /**
+     * @brief Constructor.
+     * @param rot_freq   Rotation frequency (Hz), i.e. (period)^-1.
+     * @param dm         Dispersion measure (cm^-3 pc).
+     * @param segment    Length in time (s) of polyco segments.
+     * @param tmid       Reference times in MJD (days). i.e. centres of segments.
+     * @param phase_ref  Reference phases at tmid
+     * @param coeff      Polynomial coefficients in Tempo format.
+     * @raises           std::runtime_error if parameter vectors have different lenghts.
+     **/
+    SegmentedPolyco(double rot_freq, float dm, float seg, std::vector<double> tmid,
+                    std::vector<double> phase_ref, std::vector<std::vector<float>> coeff);
+
+    SegmentedPolyco();
+
+    /**
+     * @brief Get the polyco that is valid at a given time.
+     * @param t    Time to when polyco is required.
+     * @returns    The corresponding Polyco object.
+     * @raises     std::runtime_error if no polyco is found.
+     **/
+    const Polyco& get_polyco(timespec t) const;
+
+    /**
+     * @brief Get the polyco at the given index.
+     * @param i    Index of polyco list. Negative values will index backwards.
+     * @returns    The corresponding Polyco object.
+     * @raises     std::runtime_error if no polyco is found.
+     **/
+    const Polyco& get_polyco(int i) const;
+
+private:
+    std::vector<Polyco> polycos;
+    std::vector<std::pair<double, double>> segments;
+
+};
+
+inline double ts2mjd(timespec t) {
+    // number of days between UNIX epoch and MJD epoch is 40587
+    return ((double) t.tv_sec/ 86400.) + ((double) t.tv_nsec/ 86400 / 1e9) + 40587;
+};
 
 #endif

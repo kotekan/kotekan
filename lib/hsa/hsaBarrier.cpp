@@ -7,8 +7,8 @@ hsaBarrier::hsaBarrier(Config& config,
                        const string &unique_name, 
                        bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device) {
-    command_type = CommandType::BARRIER;
+    hsaCommand(config, unique_name, host_buffers, device, "", "") {
+    command_type = gpuCommandType::BARRIER;
 }
 
 
@@ -16,7 +16,7 @@ hsaBarrier::~hsaBarrier() {
 
 }
 
-hsa_signal_t hsaBarrier::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBarrier::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Get the queue index
     uint64_t index = hsa_queue_add_write_index_scacquire(device.get_queue(), 1);

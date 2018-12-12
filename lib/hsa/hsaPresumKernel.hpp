@@ -1,12 +1,9 @@
 #ifndef HSA_PRESUM_KERNEL_H
 #define HSA_PRESUM_KERNEL_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-// What is this?
-#define N_PRESUM 1024
-
-class hsaPresumKernel: public hsaCommand
+class hsaPresumKernel: public hsaSubframeCommand
 {
 public:
 
@@ -16,7 +13,7 @@ public:
 
     virtual ~hsaPresumKernel();
 
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                             hsa_signal_t precede_signal) override;
 
 private:

@@ -6,16 +6,25 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
+#include <sys/types.h>
+#include <atomic>
 #include <cstdint>
+#include <functional>
+#include <iosfwd>
+#include <map>
+#include <string>
+#include <thread>
+#include <utility>
 #include <vector>
-#include <tuple>
 
-#include "json.hpp"
-
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "visUtil.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -38,17 +47,17 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf stack_type      String. Type of stacking to apply to the data. Look at
- *                       documentation of stack_X functions for details.
- * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
+ * @conf stack_type             String. Type of stacking to apply to the data.
+ *                              Look at documentation of stack_X functions for
+ *                              details.
+ * @conf exclude_inputs         List of ints. Extra inputs to exclude from
+ *                              stack.
  *
  * @par Metrics
  * @metric kotekan_baselinecompression_residuals
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
  */
@@ -61,8 +70,6 @@ public:
                         const string& unique_name,
                         bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq) override;
-
     // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;
 
@@ -73,7 +80,7 @@ private:
     void compress_thread(int thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    void change_dataset_state(dset_id_t ds_id);
+    dset_id_t change_dataset_state(dset_id_t input_ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -105,13 +112,9 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // dataset states and IDs
-    dset_id_t output_dset_id;
+    // dataset states
     const prodState* prod_state_ptr;
     const stackState* stack_state_ptr;
-
-    // Number of errors when dealing with datasetManager
-    std::atomic<uint32_t> err_count;
 };
 
 
