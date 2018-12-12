@@ -88,9 +88,9 @@ public:
     const std::string& name() const { return _name; }
 
     /**
-     * @brief Get the name of the gated dataset.
+     * @brief Get the name of the gating type.
      *
-     * @return Name of the gated dataset.
+     * @return Name of the gating type.
      **/
     const std::string& type() const { return _type; }
 
