@@ -253,3 +253,38 @@ if (${BOOST_TESTS})
 else()
     MESSAGE("BOOST_TESTS disabled")
 endif()
+
+# Enforce code formatting rules with clang-format.
+find_program(
+  CLANG_FORMAT_PATH
+  NAMES "clang-format"
+  DOC "Path to clang-format executable"
+  )
+if(NOT CLANG_FORMAT_PATH)
+  message(STATUS "clang-format not found.")
+else()
+  message(STATUS "clang-format found: ${CLANG_FORMAT_PATH}")
+  set(DO_CLANG_FORMAT "${CLANG_FORMAT_PATH}" "-i -style=file")
+endif()
+
+# Helper function to make absolute from relative paths.
+function(prepend var prefix subdir)
+  message("subdir " ${subdir})
+  set(listVar "")
+
+  foreach(f ${ARGN})
+    list(APPEND listVar "${prefix}/${subdir}/${f}")
+  endforeach()
+
+  set(${var} "${listVar}" PARENT_SCOPE)
+endfunction()
+
+if(CLANG_FORMAT_PATH)
+  include(kotekan/Kotekan.cmake)
+  prepend(FILES_TO_FORMAT ${CMAKE_CURRENT_SOURCE_DIR} "kotekan" ${SOURCE_EXE})
+
+  add_custom_target(
+    clang-format
+    COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
+  )
+endif()

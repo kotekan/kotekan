@@ -2,9 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 PROJECT (kotekan)
 
-SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
-
+include (Kotekan.cmake)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)

@@ -143,7 +143,27 @@ The small details
           }
       }
 
+- Don't use a space before opening parenthesis, except after control statements,
+  e.g.:
+
+  .. code-block:: c++
+
+      void foo(bool a) {
+        if (a) {
+          bar();
+          for (auto& b : _c) {}
+        }
+      }
+
 For more details, compare the `kotekan clang-format file
 <https://github.com/kotekan/kotekan/blob/master/.clang-format>`_ and the
 `formatting options of clang-format
 <https://clang.llvm.org/docs/ClangFormatStyleOptions.html>`_
+
+
+Automatic code formatting
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you have `clang-format <https://clang.llvm.org/docs/ClangFormat.html>`_,
+you can get free auto-formatting of that messy code you just wrote with
+`make clang-format`.
