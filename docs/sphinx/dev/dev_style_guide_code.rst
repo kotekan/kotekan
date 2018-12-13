@@ -61,8 +61,89 @@ at the end of the file.
 The list of #includes should be in the order:
 
  - Header file implementing the interface of this `.cpp` file.
- - System #includes
- - Local/Private Headers
  - kotekan project headers
+ - Local/Private Headers
+ - System #includes
 
 Each category should be sorted lexicographically by the full path.
+
+The small details
+^^^^^^^^^^^^^^^^^^
+
+- Access modifiers (like `public`, `private`, etc.) should have indentation level
+  `0`.
+
+- Don't indent namespaces.
+
+- Pointer and reference symbols should be left aligned, e.g.
+
+  .. code-block:: c++
+
+      int* a;
+      int& b;
+
+- Operands of binary and ternary expressions, trailing comments should be
+  horizontally aligned if
+  they are split over multiple lines, e.g.:
+
+  .. code-block:: c++
+
+      int a = abc *     // My comment
+              def;      // is quite long.
+      bool aaaaa = bbbbbbbbbbbbbbbbbbbb
+                   && ccccccccccccccccccccc;
+
+- The parameters in a function definition or declaration as well as the
+  arguments in a function call should either be all in one line or in one line
+  each and horizontally aligned, e.g.:
+
+  .. code-block:: c++
+
+      int a = f(b, c, d, e);
+      int f(int b, int c, int d, int e);
+      int f(int b, int c, int d, int e) {}
+
+  .. code-block:: c++
+
+      int a = f(
+          bbb, ccc, ddd, eee);
+      int f(
+          int bbb, int ccc, int ddd, int edd);
+      int f(
+          int bbb, int ccc, int ddd, int eee) {}
+
+  .. code-block:: c++
+
+      int a = f(bbbbbb,
+                cccccc,
+                dddddd,
+                eeeeee);
+      int f(int bbbbbb,
+            int cccccc,
+            int dddddd,
+            int eeeeee);
+      int f(int bbbbbb,
+            int cccccc,
+            int dddddd,
+            int eeeeee) {}
+
+- Don't add a newline before an opening curly bracket, e.g.:
+
+  .. code-block:: c++
+
+      void f(bool a) {
+          if (a) {
+              foo();
+              bar();
+          } else {
+              try {
+                  foo();
+              } catch () {
+              }
+          }
+      }
+
+For more details, compare the `kotekan clang-format file
+<https://github.com/kotekan/kotekan/blob/master/.clang-format>`_ and the
+`formatting options of clang-format
+<https://clang.llvm.org/docs/ClangFormatStyleOptions.html>`_
