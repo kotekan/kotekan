@@ -15,7 +15,6 @@ public:
                   const string& unique_name,
                   bufferContainer &buffer_container);
     ~testDataCheck();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     struct Buffer *first_buf;
@@ -34,9 +33,6 @@ template <typename A_Type> testDataCheck<A_Type>::testDataCheck(Config& config,
 }
 
 template <typename A_Type> testDataCheck<A_Type>::~testDataCheck() {
-}
-
-template <typename A_Type> void testDataCheck<A_Type>::apply_config(uint64_t fpga_seq) {
 }
 
 template <typename A_Type> void testDataCheck<A_Type>::main_thread() {

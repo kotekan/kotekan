@@ -14,6 +14,12 @@ set(SPHINX_CACHE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_doctrees")
  
 # HTML output directory
 set(SPHINX_HTML_DIR "${CMAKE_CURRENT_BINARY_DIR}/html")
+
+if (NOT DEFINED PLANTUML_PATH)
+    message("PLANTUML_PATH not specified: Can't draw some graphs in the html docs.")
+else()
+    message("Using plantUML from ${PLANTUML_PATH}")
+endif()
  
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/conf.py.in"

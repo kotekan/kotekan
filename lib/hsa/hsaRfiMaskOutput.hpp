@@ -6,14 +6,14 @@
 #ifndef HSA_RFI_MASK_OUTPUT_H
 #define HSA_RFI_MASK_OUTPUT_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
 /*
  * @class hsaRfiMaskOutput
  * @brief hsaCommand for copying RFI mask from gpu to host.
  *
- * This is an hsaCommand that async copies the RFI Mask buffer from GPU 
- * to CPU. It marks the RFI Mask buffer to be full when done so that 
+ * This is an hsaCommand that async copies the RFI Mask buffer from GPU
+ * to CPU. It marks the RFI Mask buffer to be full when done so that
  * it can be reused. This code also passes metadata along.
  *
  * Note: This commands MUST only be used before the hsaOutputData command. This command presumes that
@@ -27,7 +27,7 @@
  *
  * @author Jacob Taylor
  */
-class hsaRfiMaskOutput: public hsaCommand
+class hsaRfiMaskOutput: public hsaSubframeCommand
 {
 public:
     ///Constructor
@@ -40,7 +40,7 @@ public:
     /// Function to handle updatble config rest server calls for rfi zeroing toggle
     bool update_rfi_add_lostsamples_flag(nlohmann::json &json);
     /// Async copy output form gpu to host
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
     /// Marks output full when done and passes metadata
     void finalize_frame(int frame_id) override;
 private:
@@ -48,8 +48,12 @@ private:
     Buffer * _network_buf;
     /// Output buffer from the FRB pipeline
     Buffer * _rfi_mask_output_buf;
+    /// Output of the N2 correlation products
+    Buffer * _output_buf;
     /// ID for _network_buf
     int32_t _network_buf_id;
+    /// ID for _output_buf;
+    int32_t _output_buf_id;
     /// ID for _rfi_mask_output_buf
     int32_t _rfi_mask_output_buf_id;
     /// ID for _rfi_mask_output_buf_precondition

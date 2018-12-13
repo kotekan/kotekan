@@ -22,11 +22,11 @@
  * This needs to be subclassed to actualy do something with the packets, it
  * just provides a common set of functions that are needed for ICEBoard packets
  *
- * @config   alignment         Int. Align each output frame of data to this FPGA seq number edge.
- *                                  Note it could be larger than the output frame size
- *                                  (in number of FPGA samples) but must be a multiple of that.
- * @config   sample_size       Int. Default 2048. Size of a time samples (unlikely to change)
- * @config   fpga_packet_size  Int. Default 4928. Full size of the FPGA packet, including Ethernet,
+ * @config   alignment         UInt. Align each output frame of data to this FPGA seq number edge.
+ *                                   Note it could be larger than the output frame size
+ *                                   (in number of FPGA samples) but must be a multiple of that.
+ * @config   sample_size       Int.  Default 2048. Size of a time samples (unlikely to change)
+ * @config   fpga_packet_size  Int.  Default 4928. Full size of the FPGA packet, including Ethernet,
  *                                                IP, UDP, and FPGA frame headers, FPGA data payload,
  *                                                FPGA footer flags, and any padding
  *                                                (but not the Ethernet CRC).
@@ -88,12 +88,11 @@ protected:
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
         // in as lost packets.
-        if ( ((seq % alignment) <= 100) && ((seq % alignment) >= 0 )) {
+        if ( (seq % alignment) <= 100) {
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;
             port_stream_id = stream_id;
-            got_first_packet = true;
 
             INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, start seq num: %" PRIu64 " current seq num: %" PRIu64 "",
                 port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused, last_seq, seq);
@@ -103,6 +102,8 @@ protected:
                 raise(SIGINT);
                 return false;
             }
+
+            got_first_packet = true;
 
             return true;
         }
@@ -287,7 +288,8 @@ protected:
     uint64_t last_seq = 0;
 
     /// The streamID seen by this port handler
-    stream_id_t port_stream_id;
+    /// Values of 255 = unset
+    stream_id_t port_stream_id = {255, 255, 255, 255};
 
     /// Set to true after the first packet is alligned.
     bool got_first_packet = false;
@@ -363,7 +365,18 @@ json iceBoardHandler::get_json_port_info() {
     stream_id_t temp_stream_id = port_stream_id;
     temp_stream_id.crate_id = port_stream_id.crate_id % 2;
     for (int32_t i = 0; i < num_local_freq; ++i) {
-        if (num_local_freq == 1) { // CHIME
+        if (port_stream_id.crate_id == 255) {
+            // This is the error case where the stream ID hasn't been set yet.
+            if (num_local_freq == 1) {
+                for (int j = 0; j < 4; ++j) {
+                    freq_bins.push_back(std::numeric_limits<uint32_t>::max());
+                    freq_mhz.push_back(0);
+                }
+            } else {
+                freq_bins.push_back(std::numeric_limits<uint32_t>::max());
+                freq_mhz.push_back(0);
+            }
+        } else if (num_local_freq == 1) { // CHIME
             // Even though CHIME sets num_local_freq == 1
             // The packets actually have 4 frequencies and 512 elements before the transpose
             for (int j = 0; j < 4; ++j) {

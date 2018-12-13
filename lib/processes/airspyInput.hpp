@@ -68,10 +68,6 @@ public:
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
 
-    /// Not yet implemented, should update runtime parameters.
-    virtual void apply_config(uint64_t fpga_seq) override;
-
-
     /// Initializes the airspy device.
     /// Also configures runtime parameters: gains, LO tuning, samplerate, and sample type.
     struct airspy_device *init_device();

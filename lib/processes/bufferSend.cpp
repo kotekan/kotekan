@@ -42,10 +42,6 @@ bufferSend::bufferSend(Config& config,
 bufferSend::~bufferSend() {
 }
 
-void bufferSend::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void bufferSend::main_thread() {
 
     int frame_id = 0;
@@ -170,7 +166,7 @@ void bufferSend::connect_to_server() {
         }
 
         if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-            ERROR("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
+            WARN("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
                   server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
             // TODO Add a kotekanProcess level "breakable sleep" so this doesn't

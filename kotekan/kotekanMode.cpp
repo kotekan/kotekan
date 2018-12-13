@@ -6,6 +6,7 @@
 #include "restServer.hpp"
 #include "configUpdater.hpp"
 #include "json.hpp"
+#include "datasetManager.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
     restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
@@ -65,6 +66,10 @@ void kotekanMode::initalize_processes() {
     buffers = buffer_factory.build_buffers();
     buffer_container.set_buffer_map(buffers);
 
+    // Apply config to datasetManager
+    if (config.exists("/", "dataset_manager"))
+        datasetManager::instance(config);
+
     // Create Processes
     processFactory process_factory(config, buffer_container);
     processes = process_factory.build_processes();
@@ -88,12 +93,14 @@ void kotekanMode::start_processes() {
 }
 
 void kotekanMode::stop_processes() {
-    // Send shutdown signal to buffers
+    // First set the shutdown variable on all processes
+    for (auto const &process : processes)
+        process.second->stop();
+
+    // Then send shutdown signal to buffers which 
+    // should wake up processes which are blocked.
     for (auto const &buf : buffers) {
         INFO("Sending shutdown signal to buffer: %s", buf.first.c_str());
         send_shutdown_signal(buf.second);
     }
-
-    for (auto const &process : processes)
-        process.second->stop();
 }

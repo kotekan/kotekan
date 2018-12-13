@@ -4,11 +4,13 @@ REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
 hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string &unique_name,
         bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device) {
-    command_type = CommandType::COPY_OUT;
+    hsaCommand(config, unique_name, host_buffers, device, "hsaBeamformOutputData", "") {
+    command_type = gpuCommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
+    register_consumer(network_buffer, unique_name.c_str());
     output_buffer = host_buffers.get_buffer("beamform_output_buf");
+    register_producer(output_buffer, unique_name.c_str());
 
     network_buffer_id = 0;
     output_buffer_id = 0;
@@ -17,10 +19,10 @@ hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string &uniqu
 }
 
 hsaBeamformOutputData::~hsaBeamformOutputData() {
-
 }
 
 int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_empty_frame(output_buffer,
                           unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL) return -1;
@@ -29,7 +31,7 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     void * gpu_output_ptr = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_buffer->frame_size);
 
@@ -50,8 +52,7 @@ void hsaBeamformOutputData::finalize_frame(int frame_id) {
     pass_metadata(network_buffer, network_buffer_id,
                   output_buffer, output_buffer_id);
 
-    // NOTE: HACK TO ALLOW RUN ALONGSIDE N2! WILL NOT WORK INDEPENDENTLY!
-    //mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
+    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;

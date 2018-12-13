@@ -2,6 +2,7 @@
 #define APPLY_GAINS_HPP
 
 #include <unistd.h>
+#include <shared_mutex>
 #include "fpga_header_functions.h"
 #include "buffer.h"
 #include "KotekanProcess.hpp"
@@ -12,13 +13,12 @@
 #include "updateQueue.hpp"
 
 
-
 /**
  * @class applyGains
  * @brief Receives gains and apply them to the output buffer.
  *
  * This process registers as a subscriber to an updatable config block. The
- * full name of the block should be defined in the value <updateable_block>
+ * full name of the block should be defined in the value <updatable_block>
  *
  * @par Buffers
  * @buffer in_buf The input stream.
@@ -37,6 +37,7 @@
  * @conf   tcombine         Double. Time (in seconds) over which to combine old
  * and new gains to prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
+ * @conf   num_threads      Int.    Number of threads to run. Default is 1.
  *
  * @par Metrics
  * @metric kotekan_applygains_late_update_count The number of updates received
@@ -55,15 +56,18 @@ class applyGains : public KotekanProcess {
 
 public:
 
+    struct gainUpdate {
+        std::vector<std::vector<cfloat>> gain;
+        std::vector<std::vector<float>> weight;
+    };
+
     /// Default constructor
     applyGains(Config &config,
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
     /// Callback function to receive updates on timestamps from configUpdater
     bool receive_update(nlohmann::json &json);
@@ -85,7 +89,7 @@ private:
     double tcombine;
 
     /// The gains and when to start applying them in a FIFO (len set by config)
-    updateQueue<std::vector<std::vector<cfloat>>> gains_fifo;
+    updateQueue<gainUpdate> gains_fifo;
 
     /// Output buffer with gains applied
     Buffer * out_buf;
@@ -93,13 +97,28 @@ private:
     Buffer * in_buf;
 
     /// Mutex to protect access to gains
-    std::mutex gain_mtx;
+    // N.B. `shared_mutex` is only available in C++17
+    std::shared_timed_mutex gain_mtx;
 
     /// Timestamp of the current frame
-    timespec ts_frame = {0,0};
+    std::atomic<timespec> ts_frame{{0,0}};
 
     /// Number of updates received too late
-    size_t num_late_updates;
+    std::atomic<size_t> num_late_updates;
+
+    /// Number of frames received too late, every thread must be able to increment
+    std::atomic<size_t> num_late_frames;
+
+	/// Entrancepoint for n threads. Each thread takes frames with a
+	/// different frame_id from the buffer and applies gains.
+    void apply_thread(int thread_id);
+
+    ///Vector to hold the thread handles
+    std::vector<std::thread> thread_handles;
+
+    /// Number of parallel threads accessing the same buffers (default 1)
+    uint32_t num_threads;
+
 };
 
 

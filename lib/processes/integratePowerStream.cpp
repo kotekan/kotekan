@@ -33,9 +33,6 @@ integratePowerStream::integratePowerStream(Config& config,
 integratePowerStream::~integratePowerStream() {
 }
 
-void integratePowerStream::apply_config(uint64_t fpga_seq) {
-}
-
 void integratePowerStream::main_thread() {
     int in_buf_id = 0;
     uint8_t * in_frame = NULL;

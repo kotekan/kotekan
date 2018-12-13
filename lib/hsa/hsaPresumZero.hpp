@@ -1,9 +1,9 @@
 #ifndef HSA_PRESUM_ZERO_H
 #define HSA_PRESUM_ZERO_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
-class hsaPresumZero: public hsaCommand
+class hsaPresumZero: public hsaSubframeCommand
 {
 public:
 
@@ -12,7 +12,7 @@ public:
 
     virtual ~hsaPresumZero();
 
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
 private:

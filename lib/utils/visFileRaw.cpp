@@ -1,19 +1,26 @@
 
 #include "visFileRaw.hpp"
-#include "errors.h"
-#include <time.h>
-#include <unistd.h>
-#include <iomanip>
-#include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
-#include <sys/stat.h>
-#include <libgen.h>
-#include <errno.h>
-#include "fmt.hpp"
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
 #include "visCompression.hpp"
+
+#include "json.hpp"
+
+#include <cxxabi.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <cstdio>
+#include <exception>
+#include <fmt.hpp>
+#include <fstream>
+#include <future>
+#include <numeric>
+#include <stdexcept>
+#include <utility>
+#include <inttypes.h>
 
 
 // Register the raw file writer
@@ -25,21 +32,37 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 void visFileRaw::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t max_time)
 {
     INFO("Creating new output file %s", name.c_str());
 
     // Get properties of stream from datasetManager
     auto& dm = datasetManager::instance();
-    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
+                                 &dm, dataset);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>,
+                                 &dm, dataset);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>,
+                                 &dm, dataset);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>,
+                                 &dm, dataset);
+    auto evstate_fut = std::async(
+        &datasetManager::dataset_state<eigenvalueState>, &dm, dataset
+    );
+    auto gstate_fut = std::async(&datasetManager::dataset_state<gatingState>,
+                                 &dm, dataset);
+
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
+
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetStates not found for dataset_id=%i", dataset);
+        ERROR("Required datasetState not found for dataset ID " \
+              "0x%" PRIx64 "\nThe following required states were found:\n" \
+              "inputState - %d\nprodState - %d\nfreqState - %d\n",
+              dataset, istate, pstate, fstate);
         throw std::runtime_error("Could not create file.");
     }
-
 
     // Set the axis metadata
     file_metadata["attributes"] = metadata;
@@ -48,20 +71,33 @@ void visFileRaw::create_file(
     file_metadata["index_map"]["prod"] = pstate->get_prods();
 
     // Create and add eigenvalue index
-    std::vector<int> eval_index(num_ev);
-    std::iota(eval_index.begin(), eval_index.end(), 0);
-    file_metadata["index_map"]["ev"] = eval_index;
+    const eigenvalueState* evstate = evstate_fut.get();
+    if (evstate) {
+        file_metadata["index_map"]["ev"] = evstate->get_ev();
+        num_ev = evstate->get_num_ev();
+    }
+    else {
+        num_ev = 0;
+    }
 
+    const stackState* sstate = sstate_fut.get();
     if (sstate) {
         file_metadata["index_map"]["stack"] = sstate->get_stack_map();
         file_metadata["reverse_map"]["stack"] = sstate->get_rstack_map();
+        file_metadata["structure"]["num_stack"] = sstate->get_num_stack();
     }
 
+    const gatingState* gstate = gstate_fut.get();
+    if (gstate) {
+        file_metadata["gating_type"] = gstate->gating_type;
+        file_metadata["gating_data"] = gstate->gating_data;
+    }
 
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();
     size_t ninput = istate->get_inputs().size();
-    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    size_t nvis = sstate ?
+                sstate->get_num_stack() : pstate->get_prods().size();
 
     // Set the alignment (in kB)
     // TODO: find some way of getting this from config
@@ -71,7 +107,7 @@ void visFileRaw::create_file(
     auto layout = visFrameView::calculate_buffer_layout(
         ninput, nvis, num_ev
     );
-    data_size = layout["_struct"].second;
+    data_size = layout.first;
     metadata_size = sizeof(visMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1,
                                    alignment * 1024);
@@ -100,8 +136,11 @@ void visFileRaw::create_file(
 #ifdef FALLOC_FL_KEEP_SIZE
     fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
 #else
+    (void)max_time; // Suppress warning
     WARN("fallocate not supported on this system!");
 #endif
+#else
+    (void)max_time; // Suppress warning
 #endif
 }
 
@@ -128,6 +167,8 @@ void visFileRaw::flush_raw_async(int ind) {
 #ifdef __linux__
     size_t n = nfreq * frame_size;
     sync_file_range(fd, ind * n, n, SYNC_FILE_RANGE_WRITE);
+#else
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -139,6 +180,8 @@ void visFileRaw::flush_raw_sync(int ind) {
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
+#else
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -193,7 +236,16 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
 
 void visFileRaw::write_sample(
     uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
-) {
+)
+{
+    // TODO: consider adding checks for all dims
+    if (frame.num_ev != num_ev) {
+        std::string msg = fmt::format(
+            "Number of eigenvalues don't match for write (got {}, expected {})",
+            frame.num_ev, num_ev
+        );
+        throw std::runtime_error(msg);
+    }
 
     const uint8_t ONE = 1;
 

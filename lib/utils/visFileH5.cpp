@@ -1,21 +1,31 @@
 
 #include "visFileH5.hpp"
-#include "visCompression.hpp"
-#include "errors.h"
-#include <time.h>
+
+#include <cxxabi.h>
+#include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <iomanip>
-#include <algorithm>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
+#include <string.h>
 #include <sys/stat.h>
-#include <libgen.h>
+#include <unistd.h>
+#include <complex>
+#include <cstdio>
+#include <exception>
+#include <future>
+#include <numeric>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
+#include <inttypes.h>
+
+#include "gsl-lite.hpp"
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
 
 using namespace HighFive;
 
@@ -32,19 +42,36 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 void visFileH5::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time)
+    dset_id_t dataset, size_t max_time)
 {
     auto& dm = datasetManager::instance();
 
-    auto istate = dm.closest_ancestor_of_type<inputState>(dataset).second;
-    auto pstate = dm.closest_ancestor_of_type<prodState>(dataset).second;
-    auto fstate = dm.closest_ancestor_of_type<freqState>(dataset).second;
-    auto sstate = dm.closest_ancestor_of_type<stackState>(dataset).second;
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>,
+                                 &dm, dataset);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm,
+                                 dataset);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm,
+                                 dataset);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
+                                 &dm, dataset);
+    auto evstate_fut = std::async(
+        &datasetManager::dataset_state<eigenvalueState>, &dm, dataset
+    );
+
+    const stackState* sstate = sstate_fut.get();
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
+    const eigenvalueState* evstate = evstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetStates not found for dataset_id=%i", dataset);
+        ERROR("Required datasetState not found for dataset ID " \
+              "0x%" PRIx64 "\nThe following required states were found:\n" \
+              "inputState - %d\nprodState - %d\nfreqState - %d\n",
+              dataset, istate, pstate, fstate);
         throw std::runtime_error("Could not create file.");
     }
+
 
     if(sstate) {
         throw std::runtime_error("H5 writers do not currently worked with "
@@ -55,8 +82,8 @@ void visFileH5::create_file(
 
     lock_filename = create_lockfile(data_filename);
 
-    // Determine whether to write the eigensector or not...
-    write_ev = (num_ev > 0);
+    // Save the number of eigenvalues we are going to get
+    num_ev = evstate ? evstate->get_num_ev() : 0;
 
     INFO("Creating new output file %s", name.c_str());
 
@@ -100,7 +127,7 @@ void visFileH5::create_axes(const std::vector<freq_ctype>& freqs,
     create_axis("input", inputs);
     create_axis("prod", prods);
 
-    if(write_ev) {
+    if(num_ev != 0) {
         std::vector<uint32_t> ev_vector(num_ev);
         std::iota(ev_vector.begin(), ev_vector.end(), 0);
         create_axis("ev", ev_vector);
@@ -142,7 +169,7 @@ void visFileH5::create_datasets() {
 
     // Only write the eigenvector datasets if there's going to be anything in
     // them
-    if(write_ev) {
+    if(num_ev != 0) {
         create_dataset("eval", {"time", "freq", "ev"}, create_datatype<float>());
         create_dataset("evec", {"time", "freq", "ev", "input"}, create_datatype<cfloat>());
         create_dataset("erms", {"time", "freq"}, create_datatype<float>());
@@ -189,7 +216,7 @@ DataSet visFileH5::dset(const std::string& name) {
 }
 
 size_t visFileH5::length(const std::string& axis_name) {
-    if(!write_ev && axis_name == "ev") return 0;
+    if(axis_name == "ev" && num_ev == 0) return 0;
     return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
 }
 
@@ -217,7 +244,7 @@ uint32_t visFileH5::extend_time(time_ctype new_time) {
     dset("gain_coeff").resize({ntime, nfreq, ninput});
     dset("gain_exp").resize({ntime, ninput});
 
-    if(write_ev) {
+    if(num_ev != 0) {
         dset("eval").resize({ntime, nfreq, nev});
         dset("evec").resize({ntime, nfreq, nev, ninput});
         dset("erms").resize({ntime, nfreq});
@@ -234,6 +261,15 @@ void visFileH5::write_sample(
     uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
 ) {
 
+    // TODO: consider adding checks for all dims
+    if (frame.num_ev != num_ev) {
+        std::string msg = fmt::format(
+            "Number of eigenvalues don't match for write (got {}, expected {})",
+            frame.num_ev, num_ev
+        );
+        throw std::runtime_error(msg);
+    }
+
     // Get the current dimensions
     size_t nprod = length("prod"), ninput = length("input"), nev = length("ev");
 
@@ -246,7 +282,7 @@ void visFileH5::write_sample(
     dset("gain_coeff").select({time_ind, freq_ind, 0}, {1, 1, ninput}).write(gain_coeff);
     dset("gain_exp").select({time_ind, 0}, {1, ninput}).write(gain_exp);
 
-    if(write_ev) {
+    if(num_ev != 0) {
         dset("eval").select({time_ind, freq_ind, 0}, {1, 1, nev}).write(frame.eval.data());
         dset("evec").select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput}).write(frame.evec.data());
         dset("erms").select({time_ind, freq_ind}, {1, 1}).write(&frame.erms);
@@ -264,9 +300,9 @@ void visFileH5::write_sample(
 void visFileH5Fast::create_file(
     const std::string& name,
     const std::map<std::string, std::string>& metadata,
-    dset_id dataset, size_t num_ev, size_t max_time
+    dset_id_t dataset, size_t max_time
 ) {
-    visFileH5::create_file(name, metadata, dataset, num_ev, max_time);
+    visFileH5::create_file(name, metadata, dataset, max_time);
     setup_raw();
 }
 
@@ -324,7 +360,7 @@ void visFileH5Fast::setup_raw() {
     gcoeff_offset = H5Dget_offset(dset("gain_coeff").getId());
     gexp_offset = H5Dget_offset(dset("gain_exp").getId());
 
-    if(write_ev) {
+    if(num_ev != 0) {
         eval_offset = H5Dget_offset(dset("eval").getId());
         evec_offset = H5Dget_offset(dset("evec").getId());
         erms_offset = H5Dget_offset(dset("erms").getId());
@@ -383,6 +419,10 @@ bool visFileH5Fast::write_raw(off_t dset_base, int ind, size_t n,
 void visFileH5Fast::flush_raw_async(off_t dset_base, int ind, size_t n) {
 #ifdef __linux__
     sync_file_range(fd, dset_base + ind * n, n, SYNC_FILE_RANGE_WRITE);
+#else
+    (void)dset_base;
+    (void)ind;
+    (void)n;
 #endif
 }
 
@@ -393,6 +433,10 @@ void visFileH5Fast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
                     SYNC_FILE_RANGE_WRITE |
                     SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, dset_base + ind * n, n, POSIX_FADV_DONTNEED);
+#else
+    (void)dset_base;
+    (void)ind;
+    (void)n;
 #endif
 }
 
@@ -409,7 +453,7 @@ uint32_t visFileH5Fast::extend_time(time_ctype new_time) {
         flush_raw_async(gcoeff_offset, ntime - delta_async, nfreq * ninput * sizeof(cfloat));
         flush_raw_async(gexp_offset, ntime - delta_async, ninput * sizeof(int32_t));
 
-        if(write_ev) {
+        if(num_ev != 0) {
             flush_raw_async(eval_offset, ntime - delta_async, nfreq * nev * sizeof(float));
             flush_raw_async(evec_offset, ntime - delta_async, nfreq * nev * ninput * sizeof(cfloat));
             flush_raw_async(evec_offset, ntime - delta_async, nfreq * sizeof(float));
@@ -424,7 +468,7 @@ uint32_t visFileH5Fast::extend_time(time_ctype new_time) {
         flush_raw_sync(gcoeff_offset, ntime - delta_sync, nfreq * ninput * sizeof(cfloat));
         flush_raw_sync(gexp_offset, ntime - delta_sync, ninput * sizeof(int32_t));
 
-        if(write_ev) {
+        if(num_ev != 0) {
             flush_raw_sync(eval_offset, ntime - delta_sync, nfreq * nev * sizeof(float));
             flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * nev * ninput * sizeof(cfloat));
             flush_raw_sync(evec_offset, ntime - delta_sync, nfreq * sizeof(float));
@@ -441,7 +485,7 @@ void visFileH5Fast::deactivate_time(uint32_t time_ind) {
     flush_raw_sync(gcoeff_offset, time_ind, nfreq * ninput * sizeof(cfloat));
     flush_raw_sync(gexp_offset, time_ind, ninput * sizeof(int32_t));
 
-    if(write_ev) {
+    if(num_ev != 0) {
         flush_raw_sync(eval_offset, time_ind, nfreq * nev * sizeof(float));
         flush_raw_sync(evec_offset, time_ind, nfreq * nev * ninput * sizeof(cfloat));
         flush_raw_sync(evec_offset, time_ind, nfreq * sizeof(float));
@@ -452,6 +496,15 @@ void visFileH5Fast::write_sample(
     uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame
 ) {
 
+    // TODO: consider adding checks for all dims
+    if (frame.num_ev != num_ev) {
+        std::string msg = fmt::format(
+            "Number of eigenvalues don't match for write (got {}, expected {})",
+            frame.num_ev, num_ev
+        );
+        throw std::runtime_error(msg);
+    }
+
     std::vector<cfloat> gain_coeff(ninput, {1, 0});
     std::vector<int32_t> gain_exp(ninput, 0);
 
@@ -460,7 +513,7 @@ void visFileH5Fast::write_sample(
     write_raw(gcoeff_offset, time_ind * nfreq + freq_ind, ninput, gain_coeff);
     write_raw(gexp_offset, time_ind, ninput, gain_exp);
 
-    if(write_ev) {
+    if(num_ev != 0) {
         write_raw(eval_offset, time_ind * nfreq + freq_ind, nev, frame.eval.data());
         write_raw(evec_offset, time_ind * nfreq + freq_ind, nev * ninput, frame.evec.data());
         write_raw(erms_offset, time_ind * nfreq + freq_ind, 1, (const float*)&frame.erms);

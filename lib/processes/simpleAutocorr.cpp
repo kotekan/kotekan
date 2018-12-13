@@ -23,9 +23,6 @@ simpleAutocorr::~simpleAutocorr() {
     free(spectrum_out);
 }
 
-void simpleAutocorr::apply_config(uint64_t fpga_seq) {
-}
-
 void simpleAutocorr::main_thread() {
     float *in_local;
     uint *out_local;

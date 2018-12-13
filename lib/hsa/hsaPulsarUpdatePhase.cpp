@@ -27,7 +27,7 @@ REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
 hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "", ""){
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_beams = config.get<int16_t>(unique_name, "num_beams");
@@ -75,11 +75,13 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_
     bank_use_0 = 0;
     bank_use_1 = 0;
     second_last = 0;
-    
+
+    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
     restServer &rest_server = restServer::instance();
-    endpoint_psrcoord = unique_name + "/update_pulsar/"+std::to_string(device.get_gpu_id());
+    endpoint_psrcoord = config_base + "/update_pulsar/"+std::to_string(device.get_gpu_id());
     rest_server.register_post_callback(endpoint_psrcoord,
                                         std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
 
@@ -110,6 +112,7 @@ bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json &json) {
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
 {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == NULL) return -1;
     metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
@@ -160,8 +163,8 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
 }
 
-hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
-                                            hsa_signal_t precede_signal) {
+hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id,
+                                           hsa_signal_t precede_signal) {
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
@@ -283,9 +286,9 @@ void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& 
         psr_coord_latest_update.dec[beam] = json_request["dec"];
         psr_coord_latest_update.scaling[beam] = json_request["scaling"];
         conn.send_empty_reply(HTTP_RESPONSE::OK);
-        config.update_value(unique_name, "source_ra/" + std::to_string(beam), json_request["ra"]);
-        config.update_value(unique_name, "source_dec/" + std::to_string(beam), json_request["dec"]);
-        config.update_value(unique_name, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
+        config.update_value(config_base, "source_ra/" + std::to_string(beam), json_request["ra"]);
+        config.update_value(config_base, "source_dec/" + std::to_string(beam), json_request["dec"]);
+        config.update_value(config_base, "psr_scaling/" + std::to_string(beam), json_request["scaling"]);
         update_phase = true;
     }
 }

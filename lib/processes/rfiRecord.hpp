@@ -48,18 +48,17 @@
  */
 class rfiRecord : public KotekanProcess {
 public:
-    //Constructor, intializes config variables via apply_config
+    //Constructor
     rfiRecord(Config& config,
                        const string& unique_name,
                        bufferContainer& buffer_container);
     //Deconstructor, cleans up / does nothing
     virtual ~rfiRecord();
     //Primary loop, reads buffer and sends out UDP stream
-    void main_thread();
+    void main_thread() override;
     //Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
-    //Intializes config variables
-    virtual void apply_config(uint64_t fpga_seq);
+
 private:
     /*
      * @brief  Creates acquisition folders and saves metadata file
@@ -93,7 +92,7 @@ private:
     /// Where to record the RFI data
     string _write_to;
     /// Holder for time-code directory name
-    char time_dir[50];
+    char time_dir[64];
     /// Whether or not the process should write to the disk
     bool _write_to_disk;
     /// A mutex to prevent the rest server callback from overwriting data currently in use

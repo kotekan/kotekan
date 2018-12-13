@@ -1,7 +1,7 @@
 #ifndef HSA_CORRELATOR_KERNEL_H
 #define HSA_CORRELATOR_KERNEL_H
 
-#include "hsaCommand.hpp"
+#include "hsaSubframeCommand.hpp"
 
 #pragma pack(4)
 struct corr_kernel_config_t {
@@ -12,7 +12,7 @@ struct corr_kernel_config_t {
 };
 #pragma pack(0)
 
-class hsaCorrelatorKernel: public hsaCommand
+class hsaCorrelatorKernel: public hsaSubframeCommand
 {
 public:
 
@@ -21,7 +21,7 @@ public:
 
     virtual ~hsaCorrelatorKernel();
 
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
 private:

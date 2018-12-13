@@ -4,11 +4,13 @@ REGISTER_HSA_COMMAND(hsaRfiOutput);
 
 hsaRfiOutput::hsaRfiOutput(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("","", config, unique_name, host_buffers, device){
-    command_type = CommandType::COPY_OUT;
+    hsaCommand(config, unique_name, host_buffers, device, "hsaRfiOutput",""){
+    command_type = gpuCommandType::COPY_OUT;
     //Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(_network_buf, unique_name.c_str());
     _rfi_output_buf = host_buffers.get_buffer("rfi_output_buf");
+    register_producer(_rfi_output_buf, unique_name.c_str());
     //Initialize ID's
     _network_buf_id = 0;
     _rfi_output_buf_id = 0;
@@ -31,7 +33,8 @@ int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id,
+                                   hsa_signal_t precede_signal) {
     //Get GPU memory
     void * gpu_output_ptr = device.get_gpu_memory_array("rfi_output", gpu_frame_id, _rfi_output_buf->frame_size);
     //Copy GPU memory to host
@@ -50,9 +53,8 @@ void hsaRfiOutput::finalize_frame(int frame_id) {
     // Copy the information contained in the input buffer
     pass_metadata(_network_buf, _network_buf_id,
                   _rfi_output_buf, _rfi_output_buf_id);
-    //Un-comment the following during testing when the gpu command hsaOutputData is not in use.
     // Mark the input buffer as "empty" so that it can be reused.
-    //mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_id);
+    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_id);
     // Mark the output buffer as full, so it can be processed.
     mark_frame_full(_rfi_output_buf, unique_name.c_str(), _rfi_output_buf_id);
     // Note this will change once we do accumulation in the GPU

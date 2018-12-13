@@ -29,7 +29,7 @@ public:
     // Implement the create_file method
     void create_file(const std::string& name,
                      const std::map<std::string, std::string>& metadata,
-                     dset_id dataset, size_t num_ev, size_t max_time) override;
+                     dset_id_t dataset, size_t max_time) override;
 
     /**
      * @brief Extend the file to a new time sample.

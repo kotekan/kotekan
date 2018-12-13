@@ -1,9 +1,21 @@
 #ifndef VISTRANSPOSE
 #define VISTRANSPOSE
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "json.hpp"
+
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "visFileArchive.hpp"
+#include "visUtil.hpp"
+#include "datasetManager.hpp"
 
 using json = nlohmann::json;
 
@@ -29,9 +41,10 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer.
  *         @buffer_metadata visMetadata
  *
- * @conf   chunk_size			Array of [int, int, int]. Chunk size of the data (freq, prod, time).
- * @conf   infile				String. Path to the data files to read (e.g. "/path/to/0000_000", without .data/meta).
- * @conf   outfile				String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
+ * @conf   chunk_size           Array of [int, int, int]. Chunk size of the data
+ *                              (freq, prod, time).
+ * @conf   outfile              String. Path to the (data-meta-pair of) files to
+ *                              write to (e.g. "/path/to/0000_000", without .h5).
  *
  * @par Metrics
  * @metric kotekan_vistranspose_data_transposed_bytes
@@ -42,14 +55,18 @@ using json = nlohmann::json;
 class visTranspose : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
-    visTranspose(Config &config, const string& unique_name, bufferContainer &buffer_container);
+    visTranspose(Config &config, const string& unique_name,
+                 bufferContainer &buffer_container);
     ~visTranspose() = default;
 
     /// Main loop over buffer frames
     void main_thread() override;
 
-    void apply_config(uint64_t fpga_seq) override;
 private:
+    /// Request dataset states from the datasetManager and prepare all metadata
+    /// that is not already set in the constructor.
+    bool get_dataset_state(dset_id_t ds_id);
+
     // Buffers
     Buffer * in_buf;
 
@@ -60,6 +77,7 @@ private:
     //size of frequency dimension of chunk
     size_t chunk_f;
 
+    // Config values
     std::string filename;
 
     // Datasets to be stored until ready to write
@@ -122,7 +140,9 @@ private:
 
 template<typename T>
 inline void strided_copy(T* in, T* out, size_t offset, size_t stride, size_t n_val) {
+#ifdef _OPENMP
     #pragma omp parallel for
+#endif
     for (size_t i = 0; i < n_val; i++) {
         out[offset + i * stride] = in[i];
     }

@@ -33,10 +33,6 @@ visTruncate::visTruncate(Config &config, const string& unique_name,
                 + std::to_string(vis_prec) + ").");
 }
 
-void visTruncate::apply_config(uint64_t fpga_seq) {
-    (void)fpga_seq;
-}
-
 void visTruncate::main_thread() {
 
     unsigned int frame_id = 0;
@@ -77,10 +73,10 @@ void visTruncate::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, frame);
 
-		// truncate visibilities and weights (8 at a time)
+        // truncate visibilities and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
             err_vec = _mm256_broadcast_ss(&err_init);
-            wgt_vec = _mm256_load_ps(&output_frame.weight[i_vec]);
+            wgt_vec = _mm256_loadu_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_vec, wgt_vec);
             err_vec = _mm256_sqrt_ps(err_vec);
             _mm256_store_ps(err_all + i_vec, err_vec);

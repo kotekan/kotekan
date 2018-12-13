@@ -30,7 +30,6 @@ public:
         const string& unique_name,
         bufferContainer &buffer_container);
     ~gpuBeamformSimulate();
-    void apply_config(uint64_t fpga_seq) override;
     void main_thread() override;
 private:
     ///Initializes internal variables from config, allocates reorder_map, gain, get metadata buffer

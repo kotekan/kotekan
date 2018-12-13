@@ -18,9 +18,6 @@ hexDump::hexDump(Config& config,
 hexDump::~hexDump() {
 }
 
-void hexDump::apply_config(uint64_t fpga_seq) {
-}
-
 void hexDump::main_thread() {
 
     int frame_id = 0;

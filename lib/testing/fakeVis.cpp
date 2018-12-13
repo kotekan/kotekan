@@ -1,13 +1,33 @@
 #include "fakeVis.hpp"
+
+#include <math.h>
+#include <sys/time.h>
+#include <time.h>
+#include <algorithm>
+#include <atomic>
+#include <complex>
+#include <csignal>
+#include <cstdint>
+#include <exception>
+#include <fmt.hpp>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+#include "gsl-lite.hpp"
+
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
+#include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
-#include "chimeMetadata.h"
-#include <csignal>
-#include <time.h>
-#include <math.h>
-#include <functional>
-#include "datasetManager.hpp"
-#include "fmt.hpp"
 
 
 using namespace std::placeholders;
@@ -38,6 +58,13 @@ fakeVis::fakeVis(Config &config,
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
 
+    // Was a fixed dataset ID configured?
+    if (config.exists(unique_name, "dataset_id")) {
+        _dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
+        _fixed_dset_id = true;
+    } else
+        _fixed_dset_id = false;
+
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
     fill_map["fill_ij"] = std::bind(&fakeVis::fill_mode_fill_ij, this, _1);
@@ -60,8 +87,6 @@ fakeVis::fakeVis(Config &config,
     cadence = config.get<float>(unique_name, "cadence");
     num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
     wait = config.get_default<bool>(unique_name, "wait", true);
-    use_dataset_manager = config.get_default<bool>(
-                unique_name, "use_dataset_manager", false);
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
@@ -107,10 +132,6 @@ fakeVis::fakeVis(Config &config,
     }
 }
 
-void fakeVis::apply_config(uint64_t fpga_seq) {
-
-}
-
 void fakeVis::main_thread() {
 
     unsigned int output_frame_id = 0, frame_count = 0;
@@ -123,20 +144,24 @@ void fakeVis::main_thread() {
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
-    // If configured, register datasetStates to describe the properties of the
-    // created stream
-    dset_id dataset = 0;
-    if (use_dataset_manager) {
+    // Register datasetStates to describe the properties of the created stream
+    dset_id_t ds_id = 0;
+    auto& dm = datasetManager::instance();
 
-        auto& dm = datasetManager::instance();
+    if (_fixed_dset_id) {
+        ds_id = _dset_id;
+    } else {
+        auto mstate = std::make_unique<metadataState>("not set", "fakeVis",
+                                                      get_git_commit_hash());
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+        // TODO: CHIME specific
         std::transform(
             std::begin(freq), std::end(freq), std::back_inserter(fspec),
             [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
                 return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
             });
-        auto fstate = std::make_unique<freqState>(fspec);
+        auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
 
         std::vector<input_ctype> ispec;
         for (uint32_t i = 0; i < num_elements; i++)
@@ -148,9 +173,13 @@ void fakeVis::main_thread() {
             for (uint16_t j = i; j < num_elements; j++)
                 pspec.push_back({i, j});
         auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
+        auto evstate = std::make_unique<eigenvalueState>(num_eigenvectors,
+                                                         std::move(pstate));
 
-        auto s = dm.add_state(std::move(pstate));
-        dataset = dm.add_dataset(s.first, -1);  // Register a root state
+        auto s = dm.add_state(std::move(evstate));
+
+        // Register a root state
+        ds_id = dm.add_dataset(s.first);
     }
 
     while (!stop_thread) {
@@ -172,7 +201,7 @@ void fakeVis::main_thread() {
             auto output_frame = visFrameView(out_buf, output_frame_id,
                                              num_elements, num_eigenvectors);
 
-            output_frame.dataset_id = dataset;
+            output_frame.dataset_id = ds_id;
 
             // Set the frequency index
             output_frame.freq_id = f;
@@ -406,9 +435,6 @@ replaceVis::replaceVis(Config& config,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-}
-
-void replaceVis::apply_config(uint64_t fpga_seq) {
 }
 
 void replaceVis::main_thread() {

@@ -25,11 +25,11 @@ void to_json(json& j, const freq_ctype& f) {
 }
 
 void to_json(json& j, const input_ctype& i) {
-    j = json{{"chan_id", i.chan_id}, {"correlator_input", i.correlator_input}};
+    j = json{i.chan_id, i.correlator_input};
 }
 
 void to_json(json& j, const prod_ctype& p) {
-    j = json{{"input_a", p.input_a}, {"input_b", p.input_b}};
+    j = json{p.input_a, p.input_b};
 }
 
 void to_json(json& j, const time_ctype& t) {
@@ -50,15 +50,15 @@ void from_json(const json& j, freq_ctype& f) {
 }
 
 void from_json(const json& j, input_ctype& i) {
-    i.chan_id = j.at("chan_id").get<uint32_t>();
-    std::string t = j.at("correlator_input").get<std::string>();
+    i.chan_id = j.at(0).get<uint32_t>();
+    std::string t = j.at(1).get<std::string>();
     std::memset(i.correlator_input, 0, 32);
     t.copy(i.correlator_input, 32);
 }
 
 void from_json(const json& j, prod_ctype& p) {
-    p.input_a = j.at("input_a").get<uint16_t>();
-    p.input_b = j.at("input_b").get<uint16_t>();
+    p.input_a = j.at(0).get<uint16_t>();
+    p.input_b = j.at(1).get<uint16_t>();
 }
 
 void from_json(const json& j, time_ctype& t) {
@@ -84,40 +84,18 @@ void copy_vis_triangle(
     size_t block, size_t N, gsl::span<cfloat> output
 ) {
 
-    size_t pi = 0;
-    uint32_t bi;
-    uint32_t ii, jj;
-    float i_sign;
-    bool no_flip;
+    auto copyfunc  = [&](int32_t pi, int32_t bi, bool conj) {
+        int i_sign = conj ? -1 : 1;
+        output[pi] = {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
+    };
 
-    if(*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
-        throw std::invalid_argument("Input map asks for elements out of range.");
-    }
-
-    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
-        for(auto j = i; j != inputmap.end(); j++) {
-
-            // Account for the case when the reordering means we should be
-            // indexing into the lower triangle, by flipping into the upper
-            // triangle and conjugating.
-            no_flip = *i <= *j;
-            ii = no_flip ? *i : *j;
-            jj = no_flip ? *j : *i;
-            i_sign = no_flip ? 1.0 : -1.0;
-
-            bi = prod_index(ii, jj, block, N);
-
-            // IMPORTANT: for some reason the buffers are packed as imaginary
-            // *then* real so we need to account for that here.
-            output[pi] = {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
-            pi++;
-        }
-    }
+    map_vis_triangle(inputmap, block, N, 0, copyfunc);
 }
 
 // Apply a function over the visibility triangle
 void map_vis_triangle(const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
+    size_t block, size_t N, uint32_t freq,
+    std::function<void(int32_t, int32_t, bool)> f
 ) {
 
     size_t pi = 0;
@@ -129,8 +107,12 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap,
         throw std::invalid_argument("Input map asks for elements out of range.");
     }
 
-    for(auto i = inputmap.begin(); i != inputmap.end(); i++) {
-        for(auto j = i; j != inputmap.end(); j++) {
+    uint32_t num_blocks1 = ((N - 1) / block) + 1;  // Blocks per side
+    uint32_t num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
+    uint32_t offset = freq * num_blocks2 * block * block; // Offset due to freq
+
+    for (auto i = inputmap.begin(); i != inputmap.end(); i++) {
+        for (auto j = i; j != inputmap.end(); j++) {
 
             // Account for the case when the reordering means we should be
             // indexing into the lower triangle, by flipping into the upper
@@ -139,7 +121,7 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap,
             ii = no_flip ? *i : *j;
             jj = no_flip ? *j : *i;
 
-            bi = prod_index(ii, jj, block, N);
+            bi = offset + prod_index(ii, jj, block, N);
 
             f(pi, bi, !no_flip);
 
@@ -218,31 +200,6 @@ size_t _member_alignment(size_t offset, size_t size) {
     return (((size - (offset % size)) % size) + offset);
 }
 
-struct_layout struct_alignment(
-    std::vector<std::tuple<std::string, size_t, size_t>> members
-) {
-
-    std::string name;
-    size_t size, num, end = 0, max_size = 0;
-
-    std::map<std::string, std::pair<size_t, size_t>> layout;
-
-    for(auto member : members) {
-        std::tie(name, size, num) = member;
-
-        // Uses the end of the *last* member
-        size_t start = _member_alignment(end, size);
-        end = start + size * num;
-        max_size = std::max(max_size, size);
-
-        layout[name] = {start, end};
-    }
-
-    layout["_struct"] = {0, _member_alignment(end, max_size)};
-
-    return layout;
-}
-
 
 movingAverage::movingAverage(double length) {
     // Calculate the coefficient for the moving average as a halving of the weight
@@ -266,4 +223,13 @@ double movingAverage::average() {
         return NAN;
     }
     return current_value;
+}
+
+std::vector<std::string> regex_split(const std::string input, const std::string reg) {
+    vector<std::string> split_array;
+    std::regex split_regex(reg);
+    std::copy(std::sregex_token_iterator(input.begin(), input.end(), split_regex, -1),
+              std::sregex_token_iterator(),
+              std::back_inserter(split_array));
+    return split_array;
 }

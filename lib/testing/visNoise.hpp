@@ -1,11 +1,11 @@
 /*****************************************
 @file
-@brief Processe that adds noise to the
+@brief Process that adds noise to the
        visibility data.
 - visNoise : public KotekanProcess
 *****************************************/
-#ifndef VISNOISE_H
-#define VISNOISE_H
+#ifndef VISNOISE_HPP
+#define VISNOISE_HPP
 
 #include <random>
 
@@ -34,8 +34,6 @@ public:
     // Main loop for the process
     void main_thread() override;
 
-    void apply_config(uint64_t fpga_seq) override;
-
 private:
 
     // random number generation
@@ -51,5 +49,5 @@ private:
     Buffer* buf_in;
 };
 
-#endif /* VISNOISE_H */
+#endif /* VISNOISE_HPP */
 

@@ -2,6 +2,7 @@ pipeline {
   agent any
   options {
     timeout(time: 1, unit: 'HOURS')
+    disableConcurrentBuilds()
   }
   stages {
     stage('Build') {
@@ -52,7 +53,7 @@ pipeline {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
                   mkdir build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON ..
+                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
                   cd docs/
                   make'''
           }
@@ -62,7 +63,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-              pytest -s -vvv'''
+              PYTHONPATH=../python/ pytest -s -vvv'''
       }
     }
   }

@@ -7,6 +7,7 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
+#include <set>
 #include <time.h>
 #include <sys/time.h>
 #include <tuple>
@@ -18,12 +19,29 @@
 #include "buffer.h"
 #include "chimeMetadata.h"
 
+
+/**
+ * @brief The fields within the visBuffer.
+ *
+ * Use this enum to refer to the fields.
+ **/
+enum class visField {
+    vis,
+    weight,
+    flags,
+    eval,
+    evec,
+    erms,
+    gain
+};
+
+
 /**
  * @struct visMetadata
  * @brief Metadata for the visibility style buffers
  *
  * @author Richard Shaw
- */
+ **/
 struct visMetadata {
 
     /// The FPGA sequence number of the integration frame
@@ -38,7 +56,7 @@ struct visMetadata {
     /// ID of the frequency bin
     uint32_t freq_id;
     /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
-    int32_t dataset_id;
+    uint64_t dataset_id;
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
@@ -68,7 +86,7 @@ struct visMetadata {
  *       references.
  *
  * @author Richard Shaw
- */
+ **/
 class visFrameView {
 
 public:
@@ -95,7 +113,7 @@ public:
      * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
-     */
+     **/
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
                  uint32_t num_ev);
 
@@ -112,7 +130,7 @@ public:
      * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
-     */
+     **/
     visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
                  uint32_t num_prod, uint32_t num_ev);
 
@@ -126,7 +144,7 @@ public:
      * @param frame_to_copy    An instance of visFrameView corresponding to the frame to be copied.
      *
      * @warning The metadata object must already have been allocated.
-     */
+     **/
     visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
 
     /**
@@ -147,7 +165,7 @@ public:
      *
      * @returns A visFrameView of the copied frame.
      *
-     */
+     **/
     static visFrameView copy_frame(Buffer* buf_src, int frame_id_src,
                                    Buffer* buf_dest, int frame_id_dest);
 
@@ -158,13 +176,13 @@ public:
      * @param num_prod         Number of products.
      * @param num_ev           Number of eigenvectors.
      *
-     * @returns A map from member name to start and end in bytes. The start
+     * @returns A mnonvis_bufferap from member name to start and end in bytes. The start
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
-     */
-    static struct_layout calculate_buffer_layout(uint32_t num_elements,
-                                                 uint32_t num_prod,
-                                                 uint32_t num_ev);
+     **/
+    static struct_layout<visField> calculate_buffer_layout(
+        uint32_t num_elements, uint32_t num_prod, uint32_t num_ev
+    );
 
     /**
      * @brief Return a summary of the visibility buffer contents.
@@ -178,21 +196,29 @@ public:
      *
      * Transfers all the non-structural metadata from the source frame.
      *
-     * @param frame_to_copy Frame to copy metadata from.
+     * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_nonconst_metadata(visFrameView frame_to_copy);
+    void copy_metadata(visFrameView frame_to_copy);
 
     /**
-     * @brief Copy the non-visibility parts of the buffer.
+     * @brief Copy over the data, skipping specified members.
      *
-     * Transfers all the datasets except the visibilities and their weights.
+     * This routine copys member by member and the structural parameters of the
+     * buffer only need to match for the members actually being copied. If they
+     * don't match an exception is thrown.
      *
-     * @param frame_to_copy Frame to copy metadata from.
+     * @note To copy the whole frame it is more efficient to use the copying
+     * constructor.
+     *
+     * @param  frame_to_copy  Frame to copy metadata from.
+     * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_nonvis_buffer(visFrameView frame_to_copy);
+    void copy_data(visFrameView frame_to_copy,
+                   const std::set<visField>& skip_members);
 
+    // TODO: CHIME specific
     /**
      * @brief Fill the visMetadata from a chimeMetadata struct.
      *
@@ -203,20 +229,20 @@ public:
      *
      * @param chime_metadata Metadata to fill from.
      *
-     */
-     void fill_chime_metadata(const chimeMetadata * chime_metadata);
+     **/
+    void fill_chime_metadata(const chimeMetadata* chime_metadata);
 
     /**
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const visMetadata * metadata() const { return _metadata; }
+    const visMetadata* metadata() const { return _metadata; }
 
     /**
      * @brief Read only access to the frame data.
      * @returns The data.
      **/
-    const uint8_t * data() const { return _frame; }
+    const uint8_t* data() const { return _frame; }
 
 private:
 
@@ -230,7 +256,7 @@ private:
     uint8_t * const _frame;
 
     // The calculated layout of the buffer
-    struct_layout buffer_layout;
+    struct_layout<visField> buffer_layout;
 
 // NOTE: these need to be defined in a final public block to ensure that they
 // are initialised after the above members.
@@ -253,7 +279,7 @@ public:
     /// A reference to the frequency ID.
     uint32_t& freq_id;
     /// A reference to the dataset ID.
-    int32_t& dataset_id;
+    uint64_t& dataset_id;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;

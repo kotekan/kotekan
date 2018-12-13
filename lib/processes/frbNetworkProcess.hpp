@@ -56,9 +56,6 @@ public:
   /// Destructor , cleaning local allocations
   virtual ~frbNetworkProcess();
 
-  ///parse config
-  void apply_config(uint64_t fpga_seq) override;
-
   /// Callback to update the beam offset
   void update_offset_callback(connectionInstance& conn, json& json_request);
 

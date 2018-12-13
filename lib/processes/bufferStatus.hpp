@@ -35,8 +35,7 @@ public:
     bufferStatus(Config& config, const string& unique_name,
                          bufferContainer &buffer_container);
     virtual ~bufferStatus();
-    void main_thread();
-    virtual void apply_config(uint64_t fpga_seq);
+    void main_thread() override;
 private:
     map<string, Buffer*> buffers;
 

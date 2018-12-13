@@ -24,7 +24,7 @@
  * an FFT beamforming along the N-S direction that is padded by 2. An array of
  * clamping index is used to tell which of the 512 beams to clamp to, to form 256
  * N-S beams. A brute force beamform along the E-W direction is calculated using an
- * array of phase delays to form 4 E-W beams. The N-S beam extent and the 4 E-W beam 
+ * array of phase delays to form 4 E-W beams. The N-S beam extent and the 4 E-W beam
  * positions are both tunable via endpoints. The output is flipped in the N-S
  * direction in order to following the L2/3 convention of south beams before north
  * beams. The ordering of the output data is time-pol-beamEW-beamNS, where beamNS
@@ -35,15 +35,15 @@
  * @requires_kernel    unpack_shift_beamform_flip.hasco
  *
  * @par REST Endpoints
- * @endpoint    /frb/update_NS_beam/<gpu id> ``POST`` Trigger re-set of 
+ * @endpoint    /frb/update_NS_beam/<gpu id> ``POST`` Trigger re-set of
  *              FFT beam spacing in N-S
  *              requires json values      northmost_beam
  *              update config             northmost_beam
- * @endpoint    /frb/update_EW_beam/<gpu id> ``POST`` Trigger re-calculate 
+ * @endpoint    /frb/update_EW_beam/<gpu id> ``POST`` Trigger re-calculate
  *              of phase delay for the 4 E-W brute-force formed beams
  *              requires json values      ew_id, ew_beam
  *              update config             ew_spacing[ew_id]
- * 
+ *
  * @par GPU Memory
  * @gpu_mem  input_reordered    Input data of size input_frame_len
  *     @gpu_mem_type            static
@@ -71,13 +71,13 @@
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
- * @conf   northmost_beam       Float - Setting the extent in NS of the FFT formed beams. 
+ * @conf   northmost_beam       Float - Setting the extent in NS of the FFT formed beams.
  *                              Zenith angle of the northmost beam (in deg).
  * @conf   ew_spacing           Float array - 4 sky angles for the columns of E-W beams (in deg).
  *
- * @todo   Better handle of variables that gets updated via endpoint, prevent 
+ * @todo   Better handle of variables that gets updated via endpoint, prevent
  *         read/write conflicts.
- * 
+ *
  * @author Cherry Ng
  *
  */
@@ -96,7 +96,7 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates
@@ -109,7 +109,7 @@ public:
 
 private:
 
-    /** 
+    /**
      * @brief  Calculate clamping index for the N-S beams
      * @param host_map    array of output clamping indices
      * @param freq_now    freq of this gpu
@@ -120,7 +120,7 @@ private:
     /**
      * @brief Calculate phase delays for the E-W beams
      * @param freq_now       freq of this gpu
-     * @param host_coeff     phase offset 
+     * @param host_coeff     phase offset
      * @param _ew_spacing_c  Float array size 4 - desired EW sky angles
      */
     void calculate_ew_phase(float freq_now, float *host_coeff, float *_ew_spacing_c);
@@ -174,7 +174,7 @@ private:
     vector<float> _ew_spacing;
     float * _ew_spacing_c;
 
-    /// The reference freq for calcating beam spacing, a function of the input _northmost_beam 
+    /// The reference freq for calcating beam spacing, a function of the input _northmost_beam
     double freq_ref;
 
     ///Flag to control gains to be only loaded on request.
@@ -190,6 +190,9 @@ private:
     std::string endpoint_NS_beam;
     /// Endpoint for updating EW beams
     std::string endpoint_EW_beam;
+
+    /// Config base (@TODO this is a huge hack replace with updatable config)
+    string config_base;
 
 };
 

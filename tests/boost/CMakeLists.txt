@@ -14,9 +14,13 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 # list them all here:
 set(KOTEKAN_BOOST_TEST_SOURCES
     test_dataset_manager.cpp
+    # TODO: disabled until we can fix the Libevent issues
+    #test_dataset_manager_rest.cpp
     test_updatequeue.cpp
     test_truncate.cpp
+    test_restclient.cpp
     test_chime_stacking.cpp
+    test_config.cpp
 )
 
 # list test source files that need HDF5 here:
@@ -41,3 +45,22 @@ foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
     RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/..)
 endforeach(testSrc)
 
+# compile source files for broker test
+set(BROKER_BOOST_TEST_SOURCES
+    dataset_broker_producer.cpp
+    dataset_broker_producer2.cpp
+    dataset_broker_consumer.cpp
+)
+
+# Run through each source
+foreach(testSrc ${BROKER_BOOST_TEST_SOURCES})
+	get_filename_component(testName ${testSrc} NAME_WE)
+    add_executable(${testName} ${testSrc})
+    target_link_libraries(${testName} kotekan_libs dl m pthread)
+    #target_link_libraries(${testName} libinclude)
+
+    # those binaries will be in a seperate folder and are run by
+    # test_dataset_broker.py
+    set_target_properties(${testName} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker)
+endforeach(testSrc)

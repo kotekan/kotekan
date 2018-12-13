@@ -31,7 +31,10 @@ using json = nlohmann::json;
 using cfloat = typename std::complex<float>;
 
 /// Aliased type for storing the layout of members in a struct
-using struct_layout = typename std::map<std::string, std::pair<size_t, size_t>>;
+/// The first element of the pair is the total struct size, the second is a map
+/// associating the type T member labels with their offsets
+template<typename T>
+using struct_layout = typename std::pair<size_t, std::map<T, std::pair<size_t, size_t>>>;
 
 
 /**
@@ -110,6 +113,38 @@ struct rstack_ctype {
 /// Comparison operator for stacks
 bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs);
 
+/// Comparison operator for products
+inline bool operator==(const prod_ctype& lhs, const prod_ctype& rhs)
+{
+    return (lhs.input_a == rhs.input_a) && (lhs.input_b == rhs.input_b);
+}
+
+/**
+ * @brief Comparison of two time_ctype structs.
+ *
+ * Note this compares only the FPGA counts.
+ *
+ * @param  a  Time a.
+ * @param  b  Time b.
+ * @return    The comparison result.
+ **/
+inline bool operator<(const time_ctype& a, const time_ctype& b) {
+    return (a.fpga_count < b.fpga_count);
+}
+
+
+/**
+ * @brief Comparison of two time_ctype structs.
+ *
+ * Note this compares only the FPGA counts.
+ *
+ * @param  a  Time a.
+ * @param  b  Time b.
+ * @return    The comparison result.
+ **/
+inline bool operator>(const time_ctype& a, const time_ctype& b) {
+    return (a.fpga_count > b.fpga_count);
+}
 
 // Conversions of the index types to json
 void to_json(json& j, const freq_ctype& f);
@@ -179,7 +214,8 @@ inline prod_ctype icmap(uint32_t k, uint16_t n) {
  * @return       Index into blocked array.
  */
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t b_ix = cmap(i / block, j / block, N / block);
+    uint32_t num_blocks1 = ((N - 1) / block) + 1;  // Blocks needed to tile 1D
+    uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);
 }
@@ -214,6 +250,41 @@ inline timespec double_to_ts(double dtime) {
     return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * 1e9)};
 }
 
+/**
+ * @brief Convert a UNIX time as double into a timeval.
+ * @param  dtime  Time as double.
+ * @return        Time as timeval.
+ **/
+inline timeval double_to_tv(double dtime) {
+    return {(time_t)dtime, (suseconds_t)(fmod(dtime, 1.0) * 1e6)};
+}
+
+/**
+ * @brief Division and positive modulus of two integers.
+ *
+ * @param  a  Dividend.
+ * @param  n  Divisor.
+ *
+ * @return    Pair of (a / n, a mod n) with a/n defined to round down.
+ **/
+template<typename T>
+inline std::pair<T, T> divmod_pos(T a, T n) {
+    T d = a / n; // Compiler can usually optimise these into a single instruction
+    T m = a % n;
+
+    return {d - (a < 0), (m + n) % n};
+}
+
+/**
+ * @brief Add an offset to a timespec.
+ * @param t     timespec to modify.
+ * @param nsec  Number of nsec to add (can be negative).
+ * @return      Modified timespec.
+ **/
+inline timespec add_nsec(const timespec& t, const long nsec) {
+    auto dm = divmod_pos(t.tv_nsec + nsec, 1000000000L);
+    return {t.tv_sec + dm.first, dm.second};
+}
 
 /**
  * @brief Subtraction of two timespec structs.
@@ -223,12 +294,22 @@ inline timespec double_to_ts(double dtime) {
  **/
 inline timespec operator-(const timespec & a, const timespec & b)
 {
-    if(a.tv_nsec < b.tv_nsec)
-        return {a.tv_sec - b.tv_sec - 1, 1000000000 + a.tv_nsec - b.tv_nsec};
-    else
-        return {a.tv_sec - b.tv_sec, a.tv_nsec - b.tv_nsec};
+    auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, 1000000000L);
+    return {a.tv_sec - b.tv_sec + dm.first, dm.second};
 }
 
+/**
+ * @brief Addition of two timespec structs.
+ * @param  a  Time as timespec.
+ * @param  b  Time as timespec.
+ * @return    a + b as timespec.
+ **/
+inline timespec operator+(const timespec & a, const timespec & b)
+{
+    // Use std::div instead of divmod_pos to save the extra instructions.
+    auto ns_div = std::div(a.tv_nsec + b.tv_nsec, 1000000000L);
+    return {a.tv_sec + b.tv_sec + ns_div.quot, ns_div.rem};
+}
 
 /**
  * @brief Comparison of two timespec structs.
@@ -281,20 +362,28 @@ void copy_vis_triangle(
 /**
  * @brief Apply a function over the visibility triangle.
  *
- * This function is best by passing a lambda function/closure that does the
- * computation you want. It allows you to avoid doing the index computation
- * yourself.
+ * This will call a function for every set of indices in a *GPU output buffer*.
+ * The function is given the index into the GPU buffer and the correlation
+ * triangle. To actually process any data use the a lambda/closure and bind the
+ * data you want to be able to access.
+ *
+ * To support multi-frequency GPU buffer this takes a frequency index which
+ * will change the GPU buffer offset. As the visibility buffers are single
+ * frequency that offset will be unaffected.
  *
  * @param inputmap  Vector of feed indices to use.
  * @param block     Block size.
  * @param N         Number of inputs in input data.
+ * @param freq      Frequency index to use. This just gives an offset into the
+ *                  visibility triangle.
  * @param f         Function to apply. It takes three arguments.
  *                    - The product index into the correlation triangle.
  *                    - The same product in the GPU packed data.
  *                    - Whether we need to conjugate to map between the two.
  */
 void map_vis_triangle(const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, std::function<void(int32_t, int32_t, bool)> f
+    size_t block, size_t N, uint32_t freq,
+    std::function<void(int32_t, int32_t, bool)> f
 );
 
 
@@ -318,13 +407,38 @@ size_t _member_alignment(size_t offset, size_t size);
  /**
   * @brief Calculate the alignment of members in a struct and its total size.
   *
-  * @param  members  A vector of tupeles of `name`, `element_size` and `num_elements`.
-  * @return          A map of member name to start and end in bytes of each
-  *                  member. The total size is packed into `"_struct"`.
+  * @param  members  A vector of tuples of a `label` for the member (can be
+  *                  any type, but must be unique per member), `element_size`
+  *                  and `num_elements`. `name` can be of any type.
+  * @return          A pair, of the total size and the struct layout. The
+  *                  layout is a map of member name to start and end in bytes
+  *                  of each member.
   */
-struct_layout struct_alignment(
-    std::vector<std::tuple<std::string, size_t, size_t>> members
-);
+template<typename T>
+struct_layout<T> struct_alignment(
+    std::vector<std::tuple<T, size_t, size_t>> members
+) {
+
+    T label;
+    size_t size, num, end = 0, max_size = 0;
+
+    std::map<T, std::pair<size_t, size_t>> layout;
+
+    for(auto member : members) {
+        std::tie(label, size, num) = member;
+
+        // Uses the end of the *last* member
+        size_t start = _member_alignment(end, size);
+        end = start + size * num;
+        max_size = std::max(max_size, size);
+
+        layout[label] = {start, end};
+    }
+
+    size_t struct_size = _member_alignment(end, max_size);
+
+    return {struct_size, layout};
+}
 
 
 /**
@@ -457,6 +571,121 @@ inline std::vector<U> func_map(const std::vector<T>& vec,
     }
     return ret;
 }
+
+/**
+ * @brief Splits a string based on a regex delimiter
+ *
+ * Aside: how is something like this not in std::string?
+ *
+ * @param input The string to split
+ * @param reg The regex string delimiter
+ * @return A vector of strings as split by the delimiter
+ */
+std::vector<std::string> regex_split(const std::string input, const std::string reg);
+
+
+/**
+ * @brief A class for modular arithmetic. Used for holding ring buffer indices.
+ *
+ * This implements comparison and arithmetic operators for modular arithmetic.
+ *
+ * @note The binary arithmetic operators only work adding/subtracting normal numbers
+ *       to a modular number. They are also *asymmetric*.
+ **/
+template<typename T>
+class modulo {
+
+public:
+
+    // Use an unsigned type for the base
+    using Tu = typename std::make_unsigned<T>::type;
+
+    /**
+     * @brief Create a new modular number.
+     **/
+    modulo(Tu n) : _n(n) {};
+
+    // Default constructor
+    modulo() : modulo(0) {};
+
+    /// Assignment of a number into the modular number.
+    modulo<T>& operator=(const T& i) { _i = i; return *this; }
+
+    // Increment and decrement
+    modulo<T>& operator++() { _i++; return *this; }
+    modulo<T>& operator--() { _i--; return *this; }
+    modulo<T> operator++(int) { modulo<T> t(*this); operator++(); return t; }
+    modulo<T> operator--(int) { modulo<T> t(*this); operator--(); return t; }
+
+    modulo<T>& operator+=(const T& rhs) { _i += rhs; return *this; }
+    modulo<T>& operator-=(const T& rhs) { _i -= rhs; return *this; }
+
+    // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
+    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) { lhs += rhs; return lhs; }
+    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) { lhs -= rhs; return lhs; }
+
+    // Comparisons are always false if the bases don't match
+    friend bool operator==(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() == rhs.norm());
+    }
+    friend bool operator!=(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() != rhs.norm());
+    }
+    friend bool operator<(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() < rhs.norm());
+    }
+    friend bool operator>(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() > rhs.norm());
+    }
+    friend bool operator<=(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() <= rhs.norm());
+    }
+    friend bool operator>=(const modulo<T>& lhs, const modulo<T>& rhs) {
+        return (lhs._n == rhs._n) && (lhs.norm() >= rhs.norm());
+    }
+
+    /**
+     * @brief Return the normalised modular number.
+     *
+     * @returns The modular number.
+     **/
+    T norm() const { return _i % _n; }
+
+    /// Conversion back to type T
+    operator T() const { return norm(); }
+
+private:
+
+    // Internally we don't actually keep bother mod'ing the number when
+    // we do arithmetic, only at output time.
+    T _i = 0;
+
+    // The modular base.
+    Tu _n;
+};
+
+/// Stream output for modular types
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const modulo<T>& m)
+{
+  return (os << m.norm());
+}
+
+
+/**
+ * @brief Class to hold buffer indices.
+ **/
+class frameID : public modulo<int> {
+public:
+
+    /**
+     * @brief Create a frameID for a given buffer.
+     *
+     * @param Buffer to use.
+     * @returns frameID instance.
+     **/
+    frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}
+};
 
 
 #endif

@@ -7,7 +7,7 @@ add_definitions(/D__STDC_FORMAT_MACROS)
 
 # This quiets a noisy cmake warning on newer versions,
 # triggered by some of our CMake/FindXYZ.cmake scripts.
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0") 
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
     cmake_policy(SET CMP0075 NEW)
 endif ()
 
@@ -23,6 +23,8 @@ option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output processes" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
+option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
+option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
 option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
@@ -40,13 +42,14 @@ else ()
 endif ()
 
 if (${USE_HSA})
-  find_package( HSA )
+  find_package( HSA REQUIRED )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
 
 if (${USE_OPENCL})
-  find_package( OpenCL )
+  set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
+  find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
 endif ()
 
@@ -73,8 +76,8 @@ endif()
 
 #Libevent is required now
 find_package(LibEvent REQUIRED )
-include_directories(${EVENT_INCLUDE_DIR}/../)
-link_directories(${EVENT_LIBRARY_DIR})
+include_directories(${LIBEVENT_INCLUDE_DIR}/../)
+link_libraries(${LIBEVENT_LIBRARIES})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
@@ -160,14 +163,11 @@ find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-# Required for some SSE/AVX intrinsics
-add_definitions(-D__STDC_LIMIT_MACROS)
-
 # Note that -lrt here is needed on some versions of CentOS
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
 endif ()
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
 if(${USE_OMP})
@@ -175,7 +175,7 @@ if(${USE_OMP})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")  # Reduce the optimisation for debugging
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
@@ -183,7 +183,15 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+
+# Warning about missing override is called differently in clang and gcc
+# TODO: enable once we are using a release version of HighFive
+#if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Winconsistent-missing-override")
+#else()
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wsuggest-override")
+#endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
@@ -199,9 +207,11 @@ else()
 endif()
 
 # Add fcx-limited-range to speed up complex arithmetic if we are using GCC
+# Add atomic operations library which is sometimes needed for GCC
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
 endif()
 
 if (${USE_OPENCL})
@@ -214,9 +224,24 @@ if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
+
+# Improve debugging by turning off all optimisations.
+if (${SUPERDEBUG})
+    MESSAGE("Superdebugging enabled!!")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
+endif()
+
+# Turn on sanitizers for finding memory issues.
+if (${SANITIZE})
+    MESSAGE("Sanitization enabled!!")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address")
+endif()
+
+
 add_subdirectory(lib)
 add_subdirectory(kotekan)
-add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
 

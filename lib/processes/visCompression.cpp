@@ -1,22 +1,39 @@
-#include <cstdlib>
-#include <vector>
-#include <algorithm>
-#include <functional>
-#include <iterator>
-#include <stdexcept>
-#include <iostream>
-#include <pthread.h>
-
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
 #include "visCompression.hpp"
+
+#include <cxxabi.h>
+#include <pthread.h>
+#include <sched.h>
+#include <signal.h>
+#include <algorithm>
+#include <complex>
+#include <cstdlib>
+#include <exception>
+#include <functional>
+#include <future>
+#include <iostream>
+#include <iterator>
+#include <memory>
+#include <numeric>
+#include <regex>
+#include <stdexcept>
+#include <tuple>
+#include <vector>
+#include <inttypes.h>
+
 #include "fmt.hpp"
+#include "gsl-lite.hpp"
+
+#include "datasetManager.hpp"
+#include "errors.h"
+#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 using namespace std::placeholders;
 
 REGISTER_KOTEKAN_PROCESS(baselineCompression);
-REGISTER_DATASET_STATE(stackState);
+
 
 baselineCompression::baselineCompression(Config &config,
                                          const string& unique_name,
@@ -34,12 +51,7 @@ baselineCompression::baselineCompression(Config &config,
     stack_type_defs["diagonal"] = stack_diagonal;
     stack_type_defs["chime_in_cyl"] = stack_chime_in_cyl;
 
-    apply_config(0);
-}
-
-
-void baselineCompression::apply_config(uint64_t fpga_seq) {
-
+    // Apply config.
     std::string stack_type = config.get<std::string>(unique_name, "stack_type");
     if(stack_type_defs.count(stack_type) == 0) {
         ERROR("unknown stack type %s", stack_type.c_str());
@@ -55,11 +67,11 @@ void baselineCompression::apply_config(uint64_t fpga_seq) {
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
-        throw std::invalid_argument("baselineCompression: apply_config: "
+        throw std::invalid_argument("baselineCompression: "
                                     "num_threads has to be at least 1.");
     if (in_buf->num_frames % num_threads != 0 ||
         out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("baselineCompression: apply_config: both "
+        throw std::invalid_argument("baselineCompression: both "
                                     "the size of the input and output buffer"
                                     "have to be multiples of num_threads.");
 }
@@ -87,18 +99,57 @@ void baselineCompression::main_thread() {
     }
 }
 
+dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
+    auto& dm = datasetManager::instance();
+    state_id_t stack_state_id;
+
+    // Get input & prod states synchronoulsy
+    auto input_state = std::async(&datasetManager::dataset_state<inputState>,
+                                  &dm, input_ds_id);
+    auto prod_state = std::async(&datasetManager::dataset_state<prodState>,
+                                 &dm, input_ds_id);
+
+    const inputState* input_state_ptr = input_state.get();
+    prod_state_ptr = prod_state.get();
+    if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
+        ERROR("Set to not use dataset_broker and couldn't find " \
+              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there " \
+              "is a process upstream in the config, that adds a freqState.\n" \
+              "Exiting...", input_ds_id);
+        raise(SIGINT);
+    }
+
+    auto sspec = calculate_stack(input_state_ptr->get_inputs(),
+                                 prod_state_ptr->get_prods());
+    auto sstate = std::make_unique<stackState>(
+        sspec.first, std::move(sspec.second));
+
+    std::tie(stack_state_id, stack_state_ptr) =
+        dm.add_state(std::move(sstate));
+
+    return dm.add_dataset(input_ds_id, stack_state_id);
+}
+
 void baselineCompression::compress_thread(int thread_id) {
 
     // use the thread id as an offset on frame ids
     unsigned int output_frame_id = thread_id;
     unsigned int input_frame_id = thread_id;
 
-    auto& dm = datasetManager::instance();
-    const stackState * stack_state_ptr = nullptr;
-    const prodState * prod_state_ptr = nullptr;
-    dset_id input_dset_id = -1;
-    dset_id output_dset_id = -1;
-    state_id stack_state_id;
+    dset_id_t input_dset_id;
+    dset_id_t output_dset_id = 0;
+
+    // Wait for the input buffer to be filled with data
+    // in order to get dataset ID
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           input_frame_id) == nullptr) {
+        return;
+    }
+    auto input_frame = visFrameView(in_buf, input_frame_id);
+    input_dset_id = input_frame.dataset_id;
+    auto future_output_dset_id = std::async(
+                &baselineCompression::change_dataset_state, this,
+                input_dset_id);
 
     while (!stop_thread) {
 
@@ -108,36 +159,23 @@ void baselineCompression::compress_thread(int thread_id) {
             break;
         }
 
-        // Wait for the output buffer frame to be free
-        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                output_frame_id) == nullptr) {
-            break;
-        }
-
         double start_time = current_time();
 
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
-        // If the input dataset has changed construct a new stack spec from the
+        // If the input dataset has changed construct a new stack spec for the
         // datasetManager
         if (input_dset_id != input_frame.dataset_id) {
             input_dset_id = input_frame.dataset_id;
-
-            auto input_state_ptr = dm.closest_ancestor_of_type<inputState>(
-                input_dset_id).second;
-            prod_state_ptr = dm.closest_ancestor_of_type<prodState>(
-                input_dset_id).second;
-
-            auto sspec = calculate_stack(input_state_ptr->get_inputs(),
-                                         prod_state_ptr->get_prods());
-            auto sstate = std::make_unique<stackState>(
-                sspec.first, std::move(sspec.second));
-
-            std::tie(stack_state_id, stack_state_ptr) =
-                dm.add_state(std::move(sstate));
-            output_dset_id = dm.add_dataset(stack_state_id, input_dset_id);
+            future_output_dset_id = std::async(
+                        &baselineCompression::change_dataset_state, this,
+                        input_dset_id);
         }
+
+        // Are we waiting for a new dataset ID?
+        if (future_output_dset_id.valid())
+            output_dset_id = future_output_dset_id.get();
 
         const auto& stack_map = stack_state_ptr->get_rstack_map();
         const auto& prods = prod_state_ptr->get_prods();
@@ -145,6 +183,12 @@ void baselineCompression::compress_thread(int thread_id) {
 
         std::vector<float> stack_norm(stack_state_ptr->get_num_stack(), 0.0);
         std::vector<float> stack_v2(stack_state_ptr->get_num_stack(), 0.0);
+
+        // Wait for the output buffer frame to be free
+        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
+                                output_frame_id) == nullptr) {
+            break;
+        }
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
@@ -155,12 +199,13 @@ void baselineCompression::compress_thread(int thread_id) {
                                          input_frame.num_ev);
 
         // Copy over the data we won't modify
-        output_frame.copy_nonconst_metadata(input_frame);
-        output_frame.copy_nonvis_buffer(input_frame);
+        output_frame.copy_metadata(input_frame);
+        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame
-        std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
+        std::fill(std::begin(output_frame.vis),
+                  std::end(output_frame.vis), 0.0);
         std::fill(std::begin(output_frame.weight),
                   std::end(output_frame.weight), 0.0);
 
@@ -214,7 +259,11 @@ void baselineCompression::compress_thread(int thread_id) {
 
             // Calculate the mean and accumulate weight and place in the frame
             float norm = stack_norm[stack_ind];
-            output_frame.vis[stack_ind] /= norm;
+
+            // Invert norm if set, otherwise use zero to set data to zero.
+            float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
+
+            output_frame.vis[stack_ind] *= inorm;
             output_frame.weight[stack_ind] = norm * norm /
                 output_frame.weight[stack_ind];
 
@@ -224,7 +273,6 @@ void baselineCompression::compress_thread(int thread_id) {
             normt += norm;
         }
 
-
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
@@ -233,14 +281,16 @@ void baselineCompression::compress_thread(int thread_id) {
         output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
         input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
 
-        double elapsed = current_time() - start_time;
+        // Calculate residuals (return zero if no data for this freq)
+        float residual = (normt != 0.0) ? (vart / normt) : 0.0;
 
         // Update prometheus metrics
+        double elapsed = current_time() - start_time;
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
             output_frame.freq_id, output_frame.dataset_id);
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_residuals",
-            unique_name, vart / normt, labels);
+            unique_name, residual, labels);
         prometheusMetrics::instance().add_process_metric(
             "kotekan_baselinecompression_time_seconds",
             unique_name, elapsed);
@@ -368,19 +418,4 @@ std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
     }
 
     return {++cur_stack_ind, stack_map};
-}
-
-
-std::vector<stack_ctype> invert_stack(
-    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map)
-{
-    std::vector<stack_ctype> res(num_stack);
-    size_t num_prod = stack_map.size();
-
-    for(uint32_t i = 0; i < num_prod; i++) {
-        uint32_t j = num_prod - i - 1;
-        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
-    }
-
-    return res;
 }
