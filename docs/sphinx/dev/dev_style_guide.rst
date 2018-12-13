@@ -11,6 +11,8 @@ General Rules
 
 * No trailing whitespace.
 
+* Files should end with a newline.
+
 
 Detailed Rules
 ---------------
