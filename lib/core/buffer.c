@@ -574,6 +574,8 @@ int get_num_producers(struct Buffer * buf) {
 
 void print_buffer_status(struct Buffer* buf)
 {
+//TODO: temporary solution to not print buffer status on gossec
+#if !defined(_GOSSEC) || defined(DEBUGGING)
     int is_full[buf->num_frames];
 
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
@@ -592,7 +594,10 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-//TODO: temporary solution to not print buffer status on gossec
+#else
+    (void)buf;
+#endif
+
 #ifndef _GOSSEC
     INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
 #else
@@ -708,8 +713,10 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
     int num_consumers = get_num_consumers(from_buf);
     assert(num_consumers == 1);
+    (void)num_consumers;
     int num_producers = get_num_producers(to_buf);
     assert(num_producers == 1);
+    (void)num_producers;
 
     // Swap the frames
     uint8_t * temp_frame = from_buf->frames[from_frame_id];
